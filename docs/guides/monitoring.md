@@ -433,7 +433,7 @@ route validation, actual enrollment and encrypted credential routes, and the
 separate address review. It does not establish Rust compilation, OS-dialog,
 real two-Station TLS, installed-shell or deployment behavior.
 
-### Operational outcome consent preparation
+### Operational outcome consent and private terminal outcomes
 
 The source enrollment API and SDK can reserve the explicit consent profile
 `operationalConsent:"terminal-outcomes/v1"`. Existing intents and credentials
@@ -444,15 +444,41 @@ exact intent digest, delivery seals the choice, and receiving custody checks it
 against the enrolled intent. No prompts, tool input/output, error strings or
 paths are authorized by this profile.
 
-This is an incomplete implementation checkpoint for #3460/#3463. The current
-exporter still selects only canonical usage receipts. No operational observation
-model, PG operational index/summary, saved operational measure or mounted
-Personal Insights outcome display is implemented. The UI therefore does not
-offer this opt-in yet. Future operational readers must require this exact
-consent, reuse current owner/tenant and revision/restore fences, and withdraw
-live-mirror facts and derived caches on deletion, revocation and retention.
-Product/fleet incidents remain independent. Source inspection and authored,
-unexecuted controls do not qualify that future path.
+The backend path for #3460/#3463 is implemented:
+
+- **Classification.** The
+  [canonical terminal owner](../../src-server/services/orchestration/canonical-terminal-outcome.ts)
+  is shared with live engine-turn telemetry. A completed or aborted turn is an
+  outcome, and so is a turn-scoped `runtime.error` unless it is codex's deferred
+  retry. A deferred retry is never counted as a failure.
+- **Source export.** When the current grant record carries the exact consent,
+  the existing EventStore export page also selects those terminals. It uses the
+  same committed `globalSequence`, high water, stream epoch, source revision and
+  owner/tenant joins. Each terminal is an allowlisted fact: class, engine family,
+  Station-observed UTC time and opaque event/thread/turn IDs. The grant echo,
+  page literal and cursor context bind the consent. Usage-only grants keep
+  byte-identical receipt pages, and the legacy interactive rollup and dedup are
+  unchanged.
+- **Receiving storage.** Core takes consent only from the decrypted credential,
+  requires the source grant to echo it and binds it into the companion commit.
+  The companion PG store keeps terminals as ordinary observations, so
+  invalidation, retention pruning and revocation remove them with usage facts.
+  Restore-generation fences refuse them as they refuse usage queries.
+  Invalidation removes a terminal only with its own thread. Additive migration 5 adds a partial index; earlier digests are
+  unchanged.
+- **Query.** `POST …/recipient-candidates/<id>/outcomes` returns engine or day
+  counts. Each opaque thread/turn in a source bucket counts once, with its
+  latest terminal. The response includes the observed-turn denominator and
+  retained-only, unknown coverage. Equal IDs from different sources stay
+  separate. Missing consent, stale snapshots, alien owners/tenants and held
+  responses after source revocation are refused.
+
+Remaining work: the setup UI does not offer this opt-in, and no saved
+operational measure, SDK reader, capability flag or mounted Personal Insights
+outcome display exists. Product/fleet incidents remain independent and are
+never joined to these facts. The composed source/receiving and companion PGlite
+controls were authored without being run in this change. PGlite does not
+establish PG TCP, durability or installed-companion behavior.
 
 ### Source enrollment proposals
 

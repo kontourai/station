@@ -1,5 +1,6 @@
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import type {
+  AnalyticsOperationalConsent,
   UsageExportPage,
   UsageExportRequest,
   UsageExportScope,
@@ -24,6 +25,7 @@ export function createSourceGrantExportRoutes(deps: {
   ): Promise<{
     authority: SessionReadAuthority;
     scope: UsageExportScope;
+    operationalConsent?: AnalyticsOperationalConsent;
     revision: number;
     authorizationContext: string;
     assertCurrent(): Promise<void>;
@@ -43,6 +45,7 @@ export function createSourceGrantExportRoutes(deps: {
     authority: SessionReadAuthority,
     request: UsageExportRequest,
     authorizationContext: string,
+    operationalConsent?: AnalyticsOperationalConsent,
   ): { page: UsageExportPage; sourceRevision: number; assertCurrent(): void };
 }) {
   const app = new Hono();
@@ -152,6 +155,7 @@ export function createSourceGrantExportRoutes(deps: {
                   : {}),
               },
               grant.authorizationContext,
+              grant.operationalConsent,
             );
       c.header(
         USAGE_EXPORT_SOURCE_REVISION_HEADER,
@@ -169,6 +173,10 @@ export function createSourceGrantExportRoutes(deps: {
             sourceApprovalId: c.req.param('approvalId'),
             revision: grant.revision,
             scope: grant.scope,
+            // Omitted for usage-only grants so their response bytes are unchanged.
+            ...(grant.operationalConsent
+              ? { operationalConsent: grant.operationalConsent }
+              : {}),
           },
         }),
         assertCurrent,

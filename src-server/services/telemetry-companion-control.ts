@@ -1104,6 +1104,35 @@ export async function captureTelemetryCompanionPrivateUsageTarget(
         indexId: body.indexId,
       });
     },
+    queryOperationalOutcomes: async (key, body, assertSource) => {
+      const result = await call(
+        '/v1/private-usage/outcomes/query',
+        key,
+        'POST',
+        body,
+        assertSource,
+      );
+      if (
+        result.response.status === 403 &&
+        z
+          .object({ error: z.literal('private_usage_consent_required') })
+          .safeParse(result.data).success
+      )
+        throw new PrivateUsageClientRejected(
+          403,
+          'private_usage_operational_consent_required',
+        );
+      success(result.response.status);
+      const { parsePrivateOperationalOutcomeSummary } = await import(
+        '@kontourai/station-contracts/usage-export'
+      );
+      return parsePrivateOperationalOutcomeSummary(result.data, {
+        groupBy: body.groupBy,
+        highWater: body.expectedHighWater,
+        from: body.from,
+        to: body.to,
+      });
+    },
     commit: async (key, body, assertSource) => {
       const result = await call(
         '/v1/private-usage/pages',

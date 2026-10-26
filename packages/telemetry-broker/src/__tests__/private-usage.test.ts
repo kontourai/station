@@ -690,7 +690,7 @@ test('version-one data upgrades without changing its receiver epoch or treating 
   input.sourceRevision = 7;
   expect((await send('/v1/private-usage/pages', input)).status).toBe(201);
   const originalEpoch = receiverEpoch;
-  await db.exec(`DROP TABLE station_private_usage.receipt_summaries; DELETE FROM station_private_usage.migrations WHERE version=4; DROP TABLE station_private_usage.current_receipts; DROP TABLE station_private_usage.receipt_indexes; ALTER TABLE station_private_usage.vaults DROP COLUMN data_revision; DELETE FROM station_private_usage.migrations WHERE version=3; DROP TABLE station_private_usage.invalidation_commits;
+  await db.exec(`DROP INDEX station_private_usage.observations_terminal_turns; DELETE FROM station_private_usage.migrations WHERE version=5; DROP TABLE station_private_usage.receipt_summaries; DELETE FROM station_private_usage.migrations WHERE version=4; DROP TABLE station_private_usage.current_receipts; DROP TABLE station_private_usage.receipt_indexes; ALTER TABLE station_private_usage.vaults DROP COLUMN data_revision; DELETE FROM station_private_usage.migrations WHERE version=3; DROP TABLE station_private_usage.invalidation_commits;
     ALTER TABLE station_private_usage.vaults DROP COLUMN journal;
     ALTER TABLE station_private_usage.vaults DROP COLUMN invalidation_baseline;
     DELETE FROM station_private_usage.migrations WHERE version=2;`);
@@ -1166,4 +1166,332 @@ test('comparison windows keep independent derived indexes and refuse a cursor fr
       })
     ).status,
   ).toBe(409);
+});
+
+const thirdKey = `stai_${'c'.repeat(43)}`;
+function consented(): PrivateUsageCommit {
+  const input = batch();
+  const time = input.page.observations[0].receipts[0].observedAt;
+  const terminal = (
+    globalSequence: number,
+    fact: Omit<
+      NonNullable<
+        PrivateUsageCommit['page']['observations'][number]['terminal']
+      >,
+      'observedAt'
+    >,
+  ) => ({
+    globalSequence,
+    receipts: [],
+    terminal: { ...fact, observedAt: time },
+  });
+  delete input.page.nextCursor;
+  input.binding.operationalConsent = 'terminal-outcomes/v1';
+  input.query.operationalConsent = 'terminal-outcomes/v1';
+  input.query.pageSize = 100;
+  input.page.operationalConsent = 'terminal-outcomes/v1';
+  input.page.highWater = 6;
+  input.page.observations = [
+    input.page.observations[0],
+    terminal(2, {
+      outcome: 'failed',
+      engine: 'codex',
+      eventId: 'event-2',
+      threadId: 'thread-a',
+      turnId: 'turn-1',
+    }),
+    // A later terminal for the same turn restates it; it must replace, not add.
+    terminal(3, {
+      outcome: 'completed',
+      engine: 'codex',
+      eventId: 'event-3',
+      threadId: 'thread-a',
+      turnId: 'turn-1',
+    }),
+    terminal(4, {
+      outcome: 'aborted',
+      engine: 'claude',
+      eventId: 'event-4',
+      threadId: 'thread-b',
+      turnId: 'turn-2',
+    }),
+    terminal(5, {
+      outcome: 'completed',
+      engine: 'claude',
+      eventId: 'event-5',
+      threadId: 'thread-c',
+    }),
+    terminal(6, {
+      outcome: 'failed',
+      engine: 'other',
+      eventId: 'event-6',
+      threadId: 'thread-d',
+      turnId: 'turn-4',
+    }),
+  ];
+  return input;
+}
+const outcomeQuery = (
+  input: PrivateUsageCommit,
+  groupBy: 'engine' | 'day',
+  fence: { checkpoint: number; sourceRevision: number },
+) => ({
+  protocol: 'station-private-operational-outcomes-query/v1',
+  groupBy,
+  expectedReceiverEpoch: receiverEpoch,
+  expectedCheckpoint: fence.checkpoint,
+  expectedSourceRevision: fence.sourceRevision,
+  expectedHighWater: input.page.highWater,
+  from: input.query.from,
+  to: input.query.to,
+});
+
+test('consented terminal outcomes upsert per turn, withdraw only their thread and stay per source', async () => {
+  await provision();
+  const input = consented();
+  const first = await send('/v1/private-usage/pages', input);
+  expect(first.status, await first.clone().text()).toBe(201);
+  const receipt = await first.json();
+  const replay = await send('/v1/private-usage/pages', input);
+  expect(replay.status).toBe(201);
+  expect(await replay.json()).toEqual(receipt);
+  const engine = await send(
+    '/v1/private-usage/outcomes/query',
+    outcomeQuery(input, 'engine', { checkpoint: 1, sourceRevision: 0 }),
+  );
+  expect(engine.status, await engine.clone().text()).toBe(200);
+  const expected = {
+    protocol: 'station-private-operational-outcomes/v1',
+    operationalConsent: 'terminal-outcomes/v1',
+    groupBy: 'engine',
+    highWater: 6,
+    observedTurns: 4,
+    rows: [
+      { key: 'claude', completed: 1, aborted: 1, failed: 0 },
+      { key: 'codex', completed: 1, aborted: 0, failed: 0 },
+      { key: 'other', completed: 0, aborted: 0, failed: 1 },
+    ],
+    sourceAuthority: 'not-verified-by-storage',
+    coverage: {
+      state: 'unknown',
+      reason: 'retained-terminal-observations-only',
+      retentionDays: 7,
+    },
+  };
+  expect(await engine.json()).toEqual(expected);
+  const day = await send(
+    '/v1/private-usage/outcomes/query',
+    outcomeQuery(input, 'day', { checkpoint: 1, sourceRevision: 0 }),
+  );
+  expect(await day.json()).toMatchObject({
+    observedTurns: 4,
+    rows: [{ key: input.query.from, completed: 2, aborted: 1, failed: 1 }],
+  });
+
+  // A restarted snapshot re-sends the same facts; nothing is counted twice.
+  const restated: PrivateUsageCommit = {
+    ...input,
+    operationId: randomUUID(),
+    expectedCheckpoint: 1,
+    restartSnapshot: true,
+  };
+  const again = await send('/v1/private-usage/pages', restated);
+  expect(again.status).toBe(201);
+  expect(await again.json()).toMatchObject({
+    receipt: { inserted: 0, alreadyPresent: 6 },
+  });
+  const counted = await send(
+    '/v1/private-usage/outcomes/query',
+    outcomeQuery(input, 'engine', { checkpoint: 2, sourceRevision: 0 }),
+  );
+  expect(await counted.json()).toEqual(expected);
+  expect(
+    (
+      await send(
+        '/v1/private-usage/outcomes/query',
+        outcomeQuery(input, 'engine', { checkpoint: 1, sourceRevision: 0 }),
+      )
+    ).status,
+  ).toBe(409);
+
+  // Equal opaque IDs from another source stay in that source's namespace.
+  await provision(thirdKey);
+  const other = consented();
+  other.page.observations = [other.page.observations[3]];
+  const otherCommit = await send('/v1/private-usage/pages', other, thirdKey);
+  expect(otherCommit.status, await otherCommit.clone().text()).toBe(201);
+  expect(
+    await (
+      await send(
+        '/v1/private-usage/outcomes/query',
+        outcomeQuery(other, 'engine', { checkpoint: 1, sourceRevision: 0 }),
+        thirdKey,
+      )
+    ).json(),
+  ).toMatchObject({
+    observedTurns: 1,
+    rows: [{ key: 'claude', completed: 0, aborted: 1, failed: 0 }],
+  });
+
+  // Withdrawal of thread-b removes exactly its terminal, never other threads'.
+  const changes = invalidation(input);
+  changes.page.highWater = 6;
+  changes.page.nextAfter = 6;
+  changes.page.invalidations[0] = {
+    ...changes.page.invalidations[0],
+    revision: 6,
+    threadId: 'thread-b',
+  };
+  const withdrawn = await send('/v1/private-usage/invalidations', changes);
+  expect(withdrawn.status, await withdrawn.clone().text()).toBe(201);
+  expect(await withdrawn.json()).toMatchObject({ receipt: { removed: 1 } });
+  const resynced: PrivateUsageCommit = {
+    ...input,
+    operationId: randomUUID(),
+    expectedCheckpoint: 2,
+    restartSnapshot: true,
+    sourceRevision: 6,
+    page: {
+      ...input.page,
+      observations: input.page.observations.filter(
+        (o) => o.globalSequence !== 4,
+      ),
+    },
+  };
+  expect((await send('/v1/private-usage/pages', resynced)).status).toBe(201);
+  expect(
+    await (
+      await send(
+        '/v1/private-usage/outcomes/query',
+        outcomeQuery(input, 'engine', { checkpoint: 3, sourceRevision: 6 }),
+      )
+    ).json(),
+  ).toMatchObject({
+    observedTurns: 3,
+    rows: [
+      { key: 'claude', completed: 1, aborted: 0, failed: 0 },
+      { key: 'codex', completed: 1, aborted: 0, failed: 0 },
+      { key: 'other', completed: 0, aborted: 0, failed: 1 },
+    ],
+  });
+  expect(
+    await (
+      await send(
+        '/v1/private-usage/outcomes/query',
+        outcomeQuery(other, 'engine', { checkpoint: 1, sourceRevision: 0 }),
+        thirdKey,
+      )
+    ).json(),
+  ).toMatchObject({ observedTurns: 1 });
+
+  // Retention ages a fact out of the summary as it does a receipt.
+  await db.exec(
+    "UPDATE station_private_usage.observations SET stored_at=clock_timestamp()-interval '8 days' WHERE global_sequence=6",
+  );
+  expect(
+    await (
+      await send(
+        '/v1/private-usage/outcomes/query',
+        outcomeQuery(input, 'engine', { checkpoint: 3, sourceRevision: 6 }),
+      )
+    ).json(),
+  ).toMatchObject({ observedTurns: 2 });
+
+  // The receipt index re-validates stored terminal rows under the vault consent.
+  const receipts = await send('/v1/private-usage/receipts/query', {
+    protocol: 'station-private-usage-receipt-query/v1',
+    expectedReceiverEpoch: receiverEpoch,
+    expectedCheckpoint: 3,
+    expectedSourceRevision: 6,
+    expectedHighWater: 6,
+    from: input.query.from,
+    to: input.query.to,
+  });
+  expect(receipts.status, await receipts.clone().text()).toBe(200);
+
+  expect(
+    (
+      await app.request('/v1/private-usage/vault', {
+        method: 'DELETE',
+        headers: { authorization: `Bearer ${key}` },
+      })
+    ).status,
+  ).toBe(200);
+  expect(
+    (
+      await send(
+        '/v1/private-usage/outcomes/query',
+        outcomeQuery(input, 'engine', { checkpoint: 3, sourceRevision: 6 }),
+      )
+    ).status,
+  ).toBe(401);
+});
+
+test('usage-only vaults and content-bearing or unconsented terminal pages are refused', async () => {
+  await provision();
+  const legacy = batch();
+  delete legacy.page.nextCursor;
+  legacy.page.highWater = 2;
+  expect((await send('/v1/private-usage/pages', legacy)).status).toBe(201);
+  const refused = await send('/v1/private-usage/outcomes/query', {
+    ...outcomeQuery(legacy, 'engine', { checkpoint: 1, sourceRevision: 0 }),
+  });
+  expect(refused.status).toBe(403);
+  expect(await refused.json()).toEqual({
+    error: 'private_usage_consent_required',
+  });
+
+  await provision(otherKey);
+  const canaries: Array<(input: PrivateUsageCommit) => void> = [
+    (input) => {
+      Object.assign(input.page.observations[1].terminal ?? {}, {
+        message: 'CANARY prompt text',
+      });
+    },
+    (input) => {
+      Object.assign(input.page.observations[1].terminal ?? {}, {
+        path: '/Users/CANARY/secret',
+      });
+    },
+    (input) => {
+      Object.assign(input.page.observations[1].terminal ?? {}, {
+        engine: 'CANARY-provider',
+      });
+    },
+    (input) => {
+      Object.assign(input.page.observations[1], {
+        receipts: input.page.observations[0].receipts,
+      });
+    },
+    (input) => {
+      delete input.page.operationalConsent;
+      delete input.query.operationalConsent;
+      delete input.binding.operationalConsent;
+    },
+    (input) => {
+      delete input.binding.operationalConsent;
+      delete input.query.operationalConsent;
+    },
+    (input) => {
+      Object.assign(input.page, { operationalConsent: true });
+    },
+  ];
+  for (const mutate of canaries) {
+    const input = consented();
+    mutate(input);
+    const response = await send('/v1/private-usage/pages', input, otherKey);
+    expect(response.status).toBe(400);
+  }
+  const stored = await db.query<{ body: string }>(
+    'SELECT body::text AS body FROM station_private_usage.observations',
+  );
+  expect(stored.rows.map((row) => row.body).join('\n')).not.toContain('CANARY');
+  expect(
+    (
+      await db.query<{ total: string }>(
+        'SELECT COUNT(*)::text AS total FROM station_private_usage.vaults WHERE id=$1 AND binding IS NOT NULL',
+        [createHash('sha256').update(otherKey).digest('hex')],
+      )
+    ).rows[0].total,
+  ).toBe('0');
 });

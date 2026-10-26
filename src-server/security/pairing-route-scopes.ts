@@ -833,6 +833,14 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     origin: 'explicit',
   },
   {
+    id: '/api/analytics/recipient-candidates:outcomes',
+    method: 'POST',
+    prefix: '/api/analytics/recipient-candidates/:recipientId/outcomes',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
     id: '/api/analytics/recipient-candidates:sync',
     method: 'POST',
     prefix: '/api/analytics/recipient-candidates/:recipientId/sync',

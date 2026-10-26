@@ -3424,12 +3424,13 @@ export function configureRuntimeRoutes(
             return authority;
           },
         ),
-      read: (authority, query, authorizationContext) =>
+      read: (authority, query, authorizationContext, operationalConsent) =>
         context.orchestrationService.readUsageReceiptExport(
           authority,
           context.environmentSecurityService.devicePairing.environmentId(),
           query,
           authorizationContext,
+          operationalConsent,
         ),
     }),
   );

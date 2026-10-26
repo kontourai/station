@@ -11,6 +11,7 @@ import { recipientSourceReadInput } from '../../analytics/recipient-source-read.
 import {
   RecipientCandidateRejected,
   type RecipientStore,
+  recipientOutcomeQueryInput,
   recipientReceiptQueryInput,
   recipientSyncInput,
 } from '../../analytics/recipient-store.js';
@@ -305,6 +306,34 @@ export function createRecipientCandidateRoutes(deps: {
     await deps.store.get(actor, c.req.param('recipientId'));
     const target = await deps.captureSyncTarget(c.req.raw, actor.assertCurrent);
     const result = await deps.store.queryReceipts(
+      actor,
+      c.req.param('recipientId'),
+      input,
+      target,
+      c.req.raw.signal,
+    );
+    return guardAuthorityObservationResponse(
+      c.json({ data: result.data }),
+      result.assertCurrent,
+    );
+  });
+  // #3460: consented terminal-outcome summary; no client calls it yet, so it
+  // ships without a capability flag until the Personal Insights lane does.
+  app.post('/:recipientId/outcomes', async (c) => {
+    if (!deps.captureSyncTarget)
+      return c.json({ error: { code: 'private_usage_unavailable' } }, 503);
+    const body = await readBoundedRequestBody(c.req.raw, 2048);
+    let input: ReturnType<typeof recipientOutcomeQueryInput.parse>;
+    try {
+      if (body.status !== 'ok') throw new Error();
+      input = recipientOutcomeQueryInput.parse(JSON.parse(body.body));
+    } catch {
+      return c.json({ error: { code: 'recipient_candidate_invalid' } }, 400);
+    }
+    const actor = await deps.capture({ env: c.env, req: c.req });
+    await deps.store.get(actor, c.req.param('recipientId'));
+    const target = await deps.captureSyncTarget(c.req.raw, actor.assertCurrent);
+    const result = await deps.store.queryOperationalOutcomes(
       actor,
       c.req.param('recipientId'),
       input,

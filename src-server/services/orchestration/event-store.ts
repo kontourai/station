@@ -67,7 +67,10 @@ import {
 import { parseStationControlRefusal } from '@kontourai/station-contracts/station-control-refusal';
 import { parseTenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
-import type { UsageInvalidationPage } from '@kontourai/station-contracts/usage-export';
+import type {
+  UsageInvalidationPage,
+  UsageTerminalFact,
+} from '@kontourai/station-contracts/usage-export';
 import { isAuthoredInputContent } from '@kontourai/station-shared/authored-input';
 import { htmlReplyReference } from '@kontourai/station-shared/html-reply-document';
 import { isSuccessfulMcpResult } from '@kontourai/station-shared/mcp-app-result';
@@ -212,6 +215,11 @@ import {
   attachmentBlobRefFor,
   isAttachmentBlobRef,
 } from './attachment-blob-store.js';
+import {
+  CANONICAL_TERMINAL_EVENT_SQL,
+  canonicalTerminalOutcome,
+  terminalEngineFamily,
+} from './canonical-terminal-outcome.js';
 import {
   ConversationContextBoundaryConflictError,
   type ConversationContextBoundaryMarker,
@@ -5842,7 +5850,13 @@ export class EventStore {
     };
   }
 
-  /** Committed-order selection for paged canonical usage, distinct from interactive rollups. */
+  /**
+   * Committed-order selection for paged canonical usage, distinct from
+   * interactive rollups. `terminalOutcomes` is set only by the export reader
+   * for a grant whose current consent is exactly `terminal-outcomes/v1`; it
+   * adds canonical turn terminals to the same ordered, owner/tenant-joined
+   * page so one high water and cursor cover both fact kinds.
+   */
   readUsageReceiptExportPage(options: {
     ownerUserIds: readonly string[];
     tenantId?: string;
@@ -5853,11 +5867,15 @@ export class EventStore {
     streamEpoch?: string;
     sourceRevision?: number;
     limit: number;
+    terminalOutcomes?: boolean;
   }): {
     streamEpoch: string;
     sourceRevision: number;
     highWater: number;
-    rows: Array<{ globalSequence: number; usage: UsageReceiptEventRow }>;
+    rows: Array<
+      | { globalSequence: number; usage: UsageReceiptEventRow }
+      | { globalSequence: number; terminal: UsageTerminalFact }
+    >;
     hasMore: boolean;
   } {
     if (
@@ -5892,7 +5910,11 @@ export class EventStore {
            FROM orchestration_events e
            INNER JOIN orchestration_conversation_history h ON h.thread_id = e.thread_id
            LEFT JOIN orchestration_conversation_sessions cs ON cs.session_id = e.thread_id
-          WHERE e.method = 'token-usage.updated'
+          WHERE (e.method = 'token-usage.updated'${
+            options.terminalOutcomes
+              ? ` OR ${CANONICAL_TERMINAL_EVENT_SQL}`
+              : ''
+          })
             AND e.global_sequence > ? AND e.global_sequence <= ?
             AND e.observed_at >= ? AND e.observed_at <= ?
             AND h.owner_user_id IN (${owners})
@@ -5913,6 +5935,7 @@ export class EventStore {
       const cumulativeThreads = selected
         .filter(
           (row) =>
+            row.method === 'token-usage.updated' &&
             typeof row.provider === 'string' &&
             providerCostScope(row.provider) === 'engine-process-cumulative',
         )
@@ -5928,6 +5951,11 @@ export class EventStore {
           !Number.isSafeInteger(row.global_sequence)
         )
           throw new Error('Invalid usage export sequence');
+        if (row.method !== 'token-usage.updated')
+          return {
+            globalSequence: row.global_sequence,
+            terminal: usageTerminalFact(this.mapEventRow(row, false)),
+          };
         return {
           globalSequence: row.global_sequence,
           usage: this.mapUsageReceiptEventRow(row, segments),
@@ -15136,6 +15164,33 @@ function mapPersistedSessionRow(row: any): ProviderSession {
     ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+/**
+ * The `terminal-outcomes/v1` allowlist projection. It copies only the class,
+ * engine family, Station-observed time and opaque identities; the payload's
+ * message, details, tool data and paths are never read into the fact.
+ */
+function usageTerminalFact(event: PersistedRuntimeEvent): UsageTerminalFact {
+  const payload = event.payload as { retriable?: unknown };
+  const outcome = canonicalTerminalOutcome({
+    method: event.method,
+    ...(event.turnId ? { turnId: event.turnId } : {}),
+    provider: event.provider,
+    ...(typeof payload.retriable === 'boolean'
+      ? { retriable: payload.retriable }
+      : {}),
+  });
+  if (!outcome || !event.observedAt)
+    throw new Error('Invalid usage export terminal');
+  return {
+    outcome,
+    engine: terminalEngineFamily(event.provider),
+    observedAt: event.observedAt,
+    eventId: event.id,
+    threadId: event.threadId,
+    ...(event.turnId ? { turnId: event.turnId } : {}),
   };
 }
 

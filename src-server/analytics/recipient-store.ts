@@ -17,6 +17,7 @@ import {
   type PrivateUsageCommit,
   type PrivateUsageInvalidationCheckpoint,
   type PrivateUsageInvalidationCommit,
+  parsePrivateOperationalOutcomeSummary,
   parsePrivateUsageCommit,
   parsePrivateUsageInvalidations,
   parsePrivateUsageReceiptPage,
@@ -86,6 +87,14 @@ const validWindow = (value: { from: string; to: string }) =>
   value.from <= value.to &&
   Date.parse(value.to) - Date.parse(value.from) <= 365 * 86400000;
 export const recipientSyncInput = syncInput.refine(validWindow);
+export const recipientOutcomeQueryInput = z
+  .object({
+    from: syncInput.shape.from,
+    to: syncInput.shape.to,
+    groupBy: z.enum(['engine', 'day']),
+  })
+  .strict()
+  .refine(validWindow);
 export const recipientReceiptQueryInput = z
   .object({
     from: syncInput.shape.from,
@@ -602,6 +611,9 @@ export class RecipientStore {
       approvalId: credential.payload.sourceApprovalId,
       revision: credential.payload.revision,
       scope: credential.payload.scope,
+      ...(credential.payload.operationalConsent
+        ? { operationalConsent: credential.payload.operationalConsent }
+        : {}),
       credential: credential.payload.credential,
       proof: credential.proof,
       assertLocalCurrent,
@@ -880,6 +892,99 @@ export class RecipientStore {
             cp.highWater === selected.page.highWater
               ? ('at-captured-source-head' as const)
               : ('behind-current-source-head' as const),
+        },
+      },
+      assertCurrent,
+    };
+  }
+  /**
+   * Consented terminal-outcome summary over the private copy. Consent comes
+   * only from the decrypted receiving credential, and the current source grant
+   * must echo it on the fencing read; storage additionally refuses a vault
+   * whose binding lacks it. Same freshness and queued-release fences as
+   * {@link queryReceipts}.
+   */
+  async queryOperationalOutcomes(
+    actor: EnrollmentActor,
+    recipientId: string,
+    raw: z.infer<typeof recipientOutcomeQueryInput>,
+    target: PrivateUsageTarget,
+    signal: AbortSignal,
+  ) {
+    const input = recipientOutcomeQueryInput.parse(raw);
+    const record = this.sourceRecord(this.read(actor), actor, recipientId);
+    const credential = record.sourceCredential?.payload;
+    if (!credential)
+      throw new AuthorityObservationRejected(403, 'authority_changed');
+    if (credential.operationalConsent !== 'terminal-outcomes/v1')
+      throw new PrivateUsageClientRejected(
+        403,
+        'private_usage_operational_consent_required',
+      );
+    const selected = await this.readSourcePage(
+      actor,
+      recipientId,
+      { from: input.from, to: input.to, pageSize: 1 },
+      signal,
+    );
+    if (selected.page.operationalConsent !== 'terminal-outcomes/v1')
+      throw new AuthorityObservationRejected(403, 'authority_changed');
+    await target.assertCurrent();
+    const key = this.indexKey(
+      record,
+      target,
+      credential.revision,
+      credential.sourceApprovalId,
+    );
+    const state = await target.checkpoint(key, {
+      from: input.from,
+      to: input.to,
+    });
+    const cp = state?.checkpoint;
+    if (
+      !state ||
+      !cp?.completeThroughHighWater ||
+      cp.highWater !== selected.page.highWater ||
+      cp.sourceRevision !== selected.sourceRevision ||
+      state.journal?.after !== selected.sourceRevision ||
+      state.journal.nextCursor
+    )
+      throw new PrivateUsageClientRejected(409, 'private_usage_sync_required');
+    const result = await target.queryOperationalOutcomes(
+      key,
+      {
+        protocol: 'station-private-operational-outcomes-query/v1',
+        groupBy: input.groupBy,
+        expectedReceiverEpoch: state.receiverEpoch,
+        expectedCheckpoint: cp.revision,
+        expectedSourceRevision: selected.sourceRevision,
+        expectedHighWater: cp.highWater,
+        from: input.from,
+        to: input.to,
+      },
+      selected.assertCurrent,
+    );
+    const summary = parsePrivateOperationalOutcomeSummary(result, {
+      groupBy: input.groupBy,
+      highWater: cp.highWater,
+      from: input.from,
+      to: input.to,
+    });
+    const assertCurrent = async () => {
+      await actor.assertCurrent();
+      await target.assertCurrent();
+      await selected.assertCurrent();
+    };
+    await assertCurrent();
+    return {
+      data: {
+        ...summary,
+        recipientId,
+        asOf: {
+          stationId: credential.sourceStationId,
+          streamEpoch: selected.page.streamEpoch,
+          highWater: cp.highWater,
+          sourceRevision: selected.sourceRevision,
         },
       },
       assertCurrent,
@@ -1208,6 +1313,9 @@ export class RecipientStore {
             sourceApprovalId: credential.sourceApprovalId,
             recipientId,
             scope: credential.scope,
+            ...(credential.operationalConsent
+              ? { operationalConsent: credential.operationalConsent }
+              : {}),
             expiresAt: credential.expiresAt,
             retention: credential.retention,
           },
@@ -1215,6 +1323,9 @@ export class RecipientStore {
             ...query,
             scope: credential.scope,
             expectedStationId: credential.sourceStationId,
+            ...(credential.operationalConsent
+              ? { operationalConsent: credential.operationalConsent }
+              : {}),
           },
           page: selected.page,
           sourceRevision: selected.sourceRevision,

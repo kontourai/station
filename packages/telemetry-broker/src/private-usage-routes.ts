@@ -58,6 +58,15 @@ export function createPrivateUsageRoutes(store: PrivateUsageRepository) {
     }
     return c.json(await store.queryReceipts(key(c.req.raw), body));
   });
+  app.post('/outcomes/query', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      throw new PrivateUsageError('invalid_commit');
+    }
+    return c.json(await store.queryOperationalOutcomes(key(c.req.raw), body));
+  });
   app.get('/checkpoint', async (c) => {
     const q = new URL(c.req.url).searchParams;
     const from = q.get('from'),
@@ -126,7 +135,7 @@ export function createPrivateUsageRoutes(store: PrivateUsageRepository) {
               ? 409
               : error.code === 'capacity'
                 ? 507
-                : error.code === 'expired'
+                : error.code === 'expired' || error.code === 'consent_required'
                   ? 403
                   : 503,
       );

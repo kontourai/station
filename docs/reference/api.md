@@ -2489,8 +2489,10 @@ be canonical HTTPS or HTTP loopback and is not contacted. The body is bounded to
 4 KiB. Optional `operationalConsent:"terminal-outcomes/v1"` records a separate,
 immutable opt-in for content-free terminal outcomes. Omission remains usage-only;
 booleans, unknown profiles and changing consent under an existing operation ID
-are refused. This is consent preparation only: the current exporter still emits
-usage receipts, and operational storage/query/summary/UI delivery is not implemented.
+are refused. A grant approved from this intent adds canonical turn terminals to its
+source export, and its receiving slot can query them through
+[the outcome summary](#query-receiving-terminal-outcomes). No UI offers this
+opt-in yet.
 The current verified person and server-derived owner/tenant policy bind
 the record; callers cannot supply those identities or authority flags.
 
@@ -2681,6 +2683,16 @@ fresh per-request signature or source identity verification.
 Only unique `from`, `to`, `pageSize` (1–100) and `cursor` query fields are accepted.
 Scope and owners derive from the approved policy. Success returns
 `{success:true,data:UsageExportPage,grant:{sourceApprovalId,revision,scope}}`.
+When the current approval record carries `operationalConsent:"terminal-outcomes/v1"`,
+`grant` echoes it, the page carries the same literal, and the committed-order page
+also contains canonical turn terminals: `turn.completed`, `turn.aborted`, and a
+turn-scoped `runtime.error` other than codex's deferred retry. Each is an
+observation with no receipts and
+`terminal:{outcome,engine,observedAt,eventId,threadId,turnId?}`: class
+`completed`/`aborted`/`failed`, engine family, Station-observed UTC time and
+opaque IDs. Prompts, outputs, tool data, error text and paths are not
+representable. Consent comes from the grant record, never the request, and the
+cursor context binds it. Usage-only grants receive byte-identical receipt pages.
 Current source Device/account standing, tenant, owner set, expiry, credential
 hash and proof are checked before reading and before queued bytes release.
 Revocation refuses further pages and ends held responses. Continuations bind
@@ -2808,6 +2820,32 @@ Derived caches are bounded to four index windows, eight summaries per index,
 partial totals as ready. These grouped rows still have retained-only coverage;
 operational/product measure composition and installed/native qualification
 remain unfinished. The owned definitions and shared Insights UI are described below.
+
+### Query receiving terminal outcomes
+
+`POST /api/analytics/recipient-candidates/<recipientId>/outcomes` accepts exactly
+`{from,to,groupBy}` (at most 2 KiB), where `groupBy` is `engine` or `day` and
+the window follows the sync limit. It uses the same verified-person slot,
+agent/plugin refusal, managed companion and no-provisioning rules as the receipt
+query. The decrypted receiving credential must carry
+`operationalConsent:"terminal-outcomes/v1"`; otherwise the response is 403
+`private_usage_operational_consent_required` before the source or companion is
+contacted. The current source grant must echo that consent on the fencing read,
+and the companion refuses a bucket whose binding lacks it.
+
+The captured checkpoint, current source head, source revision and invalidation
+position must agree, or the response is 409 `private_usage_sync_required`. There
+is no pinned continuation. Success is
+`{data:{...PrivateOperationalOutcomeSummary,recipientId,asOf}}` with
+`observedTurns` (the denominator) and up to 400 rows of
+`{key,completed,aborted,failed}`. Each opaque thread/turn counts once with its
+latest committed terminal, so replay and restatement never double-count.
+Withdrawn and retention-expired observations are excluded; an expired or revoked
+companion binding refuses. Coverage
+is `{state:"unknown",reason:"retained-terminal-observations-only",retentionDays}`.
+Source revocation and person, tenant and companion changes end held responses.
+The route has no capability flag or SDK/UI client yet, and is not joined to
+product telemetry.
 
 ### Principal-owned saved analytics views
 

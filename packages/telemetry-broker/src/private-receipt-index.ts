@@ -4,6 +4,7 @@ import {
   type PrivateUsageGroupBy,
   type PrivateUsageReceiptPage,
   parseUsageExportPage,
+  type UsageTerminalFact,
 } from '@kontourai/station-contracts/usage-export';
 import type { UsageReceipt } from '@kontourai/station-contracts/usage-rollup';
 import { reconcileUsageReceiptObservations } from '@kontourai/station-shared/usage-rollup';
@@ -36,6 +37,8 @@ export async function readPrivateReceiptIndex(
     highWater: number;
     retentionDays: number;
     expiresAt: string;
+    /** The vault binding's consent; stored terminal rows re-validate only under it. */
+    operationalConsent?: 'terminal-outcomes/v1';
     indexId?: string;
     after?: string;
     mode?: 'receipts' | 'summary';
@@ -134,7 +137,11 @@ export async function readPrivateReceiptIndex(
     const raw = await client.query<{
       global_sequence: string;
       digest: string;
-      body: { globalSequence: number; receipts: UsageReceipt[] };
+      body: {
+        globalSequence: number;
+        receipts: UsageReceipt[];
+        terminal?: UsageTerminalFact;
+      };
     }>(
       `SELECT global_sequence::text,digest,body FROM station_private_usage.observations AS o
       WHERE vault_id=$1 AND global_sequence>$2 AND global_sequence<=$3 AND stored_at>=clock_timestamp()-($4::integer*interval '1 day')
@@ -158,6 +165,9 @@ export async function readPrivateReceiptIndex(
         streamEpoch: input.epoch,
         highWater: input.highWater,
         scope: input.scope,
+        ...(input.operationalConsent
+          ? { operationalConsent: input.operationalConsent }
+          : {}),
         window: {
           from: '0001-01-01',
           to: '9999-12-31',
@@ -178,6 +188,9 @@ export async function readPrivateReceiptIndex(
         expectedStationId: input.stationId,
         pageSize: 100,
         cursor: 'index',
+        ...(input.operationalConsent
+          ? { operationalConsent: input.operationalConsent }
+          : {}),
         snapshot: {
           streamEpoch: input.epoch,
           highWater: input.highWater,

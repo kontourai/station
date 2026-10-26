@@ -4,6 +4,7 @@ import {
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
 import type {
+  AnalyticsOperationalConsent,
   UsageExportPage,
   UsageExportRequest,
 } from '@kontourai/station-contracts/usage-export';
@@ -125,6 +126,11 @@ export function readAuthorizedUsageExport(input: {
   authorizationContext?: string;
   /** The existing SessionAuthorization owner policy, re-read at release. */
   personalOwnerIds: () => readonly string[] | undefined;
+  /**
+   * Derived only from the current source grant record by its authenticator,
+   * never from request input. Omitted keeps the usage-only page byte-identical.
+   */
+  operationalConsent?: AnalyticsOperationalConsent;
 }): { page: UsageExportPage; sourceRevision: number; assertCurrent(): void } {
   const { store, authority, stationId, request } = input;
   const currentRevision = () => {
@@ -140,6 +146,9 @@ export function readAuthorizedUsageExport(input: {
     (authority.mode === 'hosted' && !authority.tenantExecutionContext)
   )
     throw new UsageExportRejected('usage_export_authority_changed', 403);
+  const operational = input.operationalConsent === 'terminal-outcomes/v1';
+  if (input.operationalConsent !== undefined && !operational)
+    throw new UsageExportRejected('invalid_usage_export', 400);
   const limit = request.pageSize ?? 100;
   if (
     !validDay(request.from) ||
@@ -170,6 +179,8 @@ export function readAuthorizedUsageExport(input: {
         request.from,
         request.to,
         ...(input.authorizationContext ? [input.authorizationContext] : []),
+        // A usage-only cursor can never continue a consented selection.
+        ...(operational ? ['terminal-outcomes/v1'] : []),
       ]),
     )
     .digest('hex');
@@ -190,6 +201,7 @@ export function readAuthorizedUsageExport(input: {
       to: request.to,
       after: cursor?.after ?? 0,
       limit,
+      ...(operational ? { terminalOutcomes: true } : {}),
       ...(cursor
         ? {
             highWater: cursor.highWater,
@@ -221,15 +233,26 @@ export function readAuthorizedUsageExport(input: {
       streamEpoch: selected.streamEpoch,
       highWater: selected.highWater,
       scope: request.scope,
+      ...(operational
+        ? { operationalConsent: 'terminal-outcomes/v1' as const }
+        : {}),
       window: {
         from: request.from,
         to: request.to,
         clock: 'station-observed-utc',
       },
-      observations: selected.rows.map((row) => ({
-        globalSequence: row.globalSequence,
-        receipts: usageReceiptsForEventRow(row.usage, stationId),
-      })),
+      observations: selected.rows.map((row) =>
+        'terminal' in row
+          ? {
+              globalSequence: row.globalSequence,
+              receipts: [],
+              terminal: row.terminal,
+            }
+          : {
+              globalSequence: row.globalSequence,
+              receipts: usageReceiptsForEventRow(row.usage, stationId),
+            },
+      ),
       ...(next
         ? {
             nextCursor: Buffer.from(JSON.stringify(next)).toString('base64url'),

@@ -1,10 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
   canonicalUsageExportJson as canonical,
+  type PrivateOperationalOutcomeSummary,
   type PrivateUsageCheckpoint,
   type PrivateUsageCommitReceipt,
   type PrivateUsageInvalidationCheckpoint,
   type PrivateUsageInvalidationReceipt,
+  parsePrivateOperationalOutcomeQuery,
   parsePrivateUsageCommit,
   parsePrivateUsageInvalidations,
   parsePrivateUsageReceiptQuery,
@@ -34,7 +36,8 @@ export class PrivateUsageError extends Error {
       | 'conflict'
       | 'capacity'
       | 'schema_unavailable'
-      | 'expired',
+      | 'expired'
+      | 'consent_required',
   ) {
     super(`private_usage_${code}`);
   }
@@ -55,9 +58,19 @@ ALTER TABLE station_private_usage.vaults ADD COLUMN journal jsonb;
 UPDATE station_private_usage.vaults SET invalidation_baseline=0,journal=jsonb_build_object('after',0,'streamEpoch',epoch,'highWater',0) WHERE binding IS NOT NULL;
 CREATE TABLE station_private_usage.invalidation_commits(vault_id text NOT NULL REFERENCES station_private_usage.vaults(id),operation_id uuid NOT NULL,digest text NOT NULL,after_revision bigint NOT NULL,receipt jsonb NOT NULL,PRIMARY KEY(vault_id,operation_id));
 `;
+/**
+ * #3460 additive migration. Consented terminal facts live in the existing
+ * observations rows, so every deletion, retention, revocation and restore fence
+ * that removes an observation also removes its outcome; this index only makes
+ * the per-turn current-terminal selection bounded.
+ */
+const OPERATIONAL_OUTCOME_SCHEMA = `
+CREATE INDEX observations_terminal_turns ON station_private_usage.observations(vault_id,epoch,(body->'terminal'->>'threadId'),(COALESCE(body->'terminal'->>'turnId','event:'||(body->'terminal'->>'eventId'))),global_sequence DESC) WHERE body ? 'terminal';
+`;
 const digest = (value: string) =>
   createHash('sha256').update(value).digest('hex');
 const SCHEMA_DIGEST = digest(SCHEMA);
+const OPERATIONAL_OUTCOME_DIGEST = digest(OPERATIONAL_OUTCOME_SCHEMA);
 const INVALIDATION_DIGEST = digest(INVALIDATION_SCHEMA);
 const RECEIPT_INDEX_DIGEST = digest(PRIVATE_RECEIPT_INDEX_SCHEMA);
 const SUMMARY_DIGEST = digest(PRIVATE_USAGE_SUMMARY_SCHEMA);
@@ -82,7 +95,7 @@ async function assertPrivateUsageSchema(client: PrivateUsageSqlClient) {
     'SELECT version,digest FROM station_private_usage.migrations ORDER BY version',
   );
   if (
-    migration.rows.length !== 4 ||
+    migration.rows.length !== 5 ||
     migration.rows[0].version !== 1 ||
     migration.rows[0].digest !== SCHEMA_DIGEST ||
     migration.rows[1].version !== 2 ||
@@ -90,7 +103,9 @@ async function assertPrivateUsageSchema(client: PrivateUsageSqlClient) {
     migration.rows[2].version !== 3 ||
     migration.rows[2].digest !== RECEIPT_INDEX_DIGEST ||
     migration.rows[3].version !== 4 ||
-    migration.rows[3].digest !== SUMMARY_DIGEST
+    migration.rows[3].digest !== SUMMARY_DIGEST ||
+    migration.rows[4].version !== 5 ||
+    migration.rows[4].digest !== OPERATIONAL_OUTCOME_DIGEST
   )
     throw new PrivateUsageError('schema_unavailable');
   const keys = await client.query<{ name: string; definition: string }>(
@@ -195,6 +210,26 @@ export async function migratePrivateUsage(client: PrivateUsageSqlClient) {
     await client.query(
       'INSERT INTO station_private_usage.migrations VALUES(4,$1)',
       [SUMMARY_DIGEST],
+    );
+  }
+  const operational = await client.query<{ version: number; digest: string }>(
+    'SELECT version,digest FROM station_private_usage.migrations ORDER BY version',
+  );
+  if (
+    operational.rows.length === 4 &&
+    operational.rows[0].version === 1 &&
+    operational.rows[0].digest === SCHEMA_DIGEST &&
+    operational.rows[1].version === 2 &&
+    operational.rows[1].digest === INVALIDATION_DIGEST &&
+    operational.rows[2].version === 3 &&
+    operational.rows[2].digest === RECEIPT_INDEX_DIGEST &&
+    operational.rows[3].version === 4 &&
+    operational.rows[3].digest === SUMMARY_DIGEST
+  ) {
+    await client.query(OPERATIONAL_OUTCOME_SCHEMA);
+    await client.query(
+      'INSERT INTO station_private_usage.migrations VALUES(5,$1)',
+      [OPERATIONAL_OUTCOME_DIGEST],
     );
   }
   await assertPrivateUsageSchema(client);
@@ -328,10 +363,13 @@ export class PrivateUsageRepository {
           refreshThreads.add(invalidation.threadId);
           continue;
         }
+        // A terminal names its thread exactly, so it is withdrawn only with
+        // that thread; the receipt rule below is unchanged for usage rows.
         const result = await client.query(
           `DELETE FROM station_private_usage.observations o WHERE vault_id=$1 AND source_revision<$2 AND
+          (CASE WHEN o.body ? 'terminal' THEN o.body->'terminal'->>'threadId'=$3 ELSE
           (EXISTS(SELECT 1 FROM jsonb_array_elements(o.body->'receipts') r WHERE r->>'threadId'=$3)
-          OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(o.body->'receipts') r WHERE r ? 'threadId'))`,
+          OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(o.body->'receipts') r WHERE r ? 'threadId')) END)`,
           [id, invalidation.revision, invalidation.threadId],
         );
         removed += result.rowCount ?? 0;
@@ -803,6 +841,9 @@ export class PrivateUsageRepository {
             v.binding.retention.mode === 'retained-copy'
               ? v.binding.retention.days
               : 90,
+          ...(v.binding.operationalConsent
+            ? { operationalConsent: v.binding.operationalConsent }
+            : {}),
           ...(input.mode ? { mode: input.mode } : {}),
           ...(input.groupBy ? { groupBy: input.groupBy } : {}),
           ...(input.summaryId ? { summaryId: input.summaryId } : {}),
@@ -820,6 +861,122 @@ export class PrivateUsageRepository {
           throw new PrivateUsageError(error.code);
         throw error;
       }
+    });
+  }
+  /**
+   * Consented terminal-outcome summary. One current terminal per opaque
+   * thread/turn (latest committed sequence wins), so replayed pages and
+   * restated terminals never double-count. Only this vault's rows are read:
+   * equal IDs from another source stay in their own namespace.
+   */
+  async queryOperationalOutcomes(
+    key: string,
+    raw: unknown,
+  ): Promise<PrivateOperationalOutcomeSummary> {
+    const id = this.vaultId(key);
+    let input: ReturnType<typeof parsePrivateOperationalOutcomeQuery>;
+    try {
+      input = parsePrivateOperationalOutcomeQuery(raw);
+    } catch {
+      throw new PrivateUsageError('invalid_commit');
+    }
+    return this.transaction(async (client) => {
+      await assertPrivateUsageSchema(client);
+      // Serializes with commits, withdrawals and pruning, which all take it.
+      await client.query(
+        'SELECT singleton FROM station_private_usage.capacity WHERE singleton=true FOR UPDATE',
+      );
+      const state = await this.checkpointState(
+        client,
+        id,
+        input.from,
+        input.to,
+      );
+      const cp = state.checkpoint;
+      if (
+        !cp ||
+        state.receiverEpoch !== input.expectedReceiverEpoch ||
+        cp.revision !== input.expectedCheckpoint ||
+        !cp.completeThroughHighWater ||
+        cp.highWater !== input.expectedHighWater ||
+        cp.sourceRevision !== input.expectedSourceRevision ||
+        state.journal?.after !== input.expectedSourceRevision ||
+        state.journal.nextCursor
+      )
+        throw new PrivateUsageError('conflict');
+      const vault = await client.query<{
+        binding: ReturnType<typeof parsePrivateUsageCommit>['binding'];
+        epoch: string;
+      }>('SELECT binding,epoch FROM station_private_usage.vaults WHERE id=$1', [
+        id,
+      ]);
+      const v = vault.rows[0];
+      if (!v?.binding || Date.parse(v.binding.expiresAt) <= Date.now())
+        throw new PrivateUsageError('expired');
+      if (v.binding.operationalConsent !== 'terminal-outcomes/v1')
+        throw new PrivateUsageError('consent_required');
+      const retentionDays =
+        v.binding.retention.mode === 'retained-copy'
+          ? v.binding.retention.days
+          : 90;
+      const rows = await client.query<{
+        key: string;
+        completed: number;
+        aborted: number;
+        failed: number;
+      }>(
+        `WITH current_terminals AS (
+          SELECT DISTINCT ON (o.body->'terminal'->>'threadId',COALESCE(o.body->'terminal'->>'turnId','event:'||(o.body->'terminal'->>'eventId')))
+            o.body->'terminal'->>'outcome' AS outcome,
+            o.body->'terminal'->>'engine' AS engine,
+            (o.body->'terminal'->>'observedAt')::timestamptz AS observed_at
+          FROM station_private_usage.observations o
+          WHERE o.vault_id=$1 AND o.epoch=$2 AND o.body ? 'terminal' AND o.global_sequence<=$3
+            AND o.stored_at>=clock_timestamp()-($4::integer*interval '1 day')
+          ORDER BY o.body->'terminal'->>'threadId',COALESCE(o.body->'terminal'->>'turnId','event:'||(o.body->'terminal'->>'eventId')),o.global_sequence DESC
+        )
+        SELECT CASE WHEN $5::text='engine' THEN engine ELSE to_char(observed_at AT TIME ZONE 'UTC','YYYY-MM-DD') END AS key,
+          (COUNT(*) FILTER (WHERE outcome='completed'))::integer AS completed,
+          (COUNT(*) FILTER (WHERE outcome='aborted'))::integer AS aborted,
+          (COUNT(*) FILTER (WHERE outcome='failed'))::integer AS failed
+        FROM current_terminals
+        WHERE observed_at>=$6::timestamptz AND observed_at<=$7::timestamptz
+        GROUP BY 1 ORDER BY 1 LIMIT 401`,
+        [
+          id,
+          v.epoch,
+          cp.highWater,
+          retentionDays,
+          input.groupBy,
+          `${input.from}T00:00:00.000Z`,
+          `${input.to}T23:59:59.999Z`,
+        ],
+      );
+      if (rows.rows.length > 400)
+        throw new PrivateUsageError('schema_unavailable');
+      const summary: PrivateOperationalOutcomeSummary = {
+        protocol: 'station-private-operational-outcomes/v1',
+        operationalConsent: 'terminal-outcomes/v1',
+        groupBy: input.groupBy,
+        highWater: cp.highWater,
+        observedTurns: rows.rows.reduce(
+          (sum, row) => sum + row.completed + row.aborted + row.failed,
+          0,
+        ),
+        rows: rows.rows.map((row) => ({
+          key: row.key,
+          completed: row.completed,
+          aborted: row.aborted,
+          failed: row.failed,
+        })),
+        sourceAuthority: 'not-verified-by-storage',
+        coverage: {
+          state: 'unknown',
+          reason: 'retained-terminal-observations-only',
+          retentionDays,
+        },
+      };
+      return summary;
     });
   }
   async observations(key: string, after: number, highWater?: number) {

@@ -1,5 +1,8 @@
 import { PGlite, type PGliteInterface } from '@electric-sql/pglite';
-import { parsePrivateUsageReceiptPage } from '@kontourai/station-contracts/usage-export';
+import {
+  parsePrivateOperationalOutcomeSummary,
+  parsePrivateUsageReceiptPage,
+} from '@kontourai/station-contracts/usage-export';
 import type { QueryResultRow } from 'pg';
 import { vi } from 'vitest';
 import {
@@ -225,6 +228,34 @@ export async function privateUsageFixture() {
           groupBy: body.groupBy,
           summaryId: body.summaryId,
           indexId: body.indexId,
+        });
+      },
+      queryOperationalOutcomes: async (key, body, assertSource) => {
+        if (beforeWrite) await beforeWrite();
+        const result = await call(
+          '/v1/private-usage/outcomes/query',
+          key,
+          'POST',
+          body,
+          assertSource,
+        );
+        if (
+          result.response.status === 403 &&
+          result.data &&
+          typeof result.data === 'object' &&
+          'error' in result.data &&
+          result.data.error === 'private_usage_consent_required'
+        )
+          throw new PrivateUsageClientRejected(
+            403,
+            'private_usage_operational_consent_required',
+          );
+        status(result.response.status);
+        return parsePrivateOperationalOutcomeSummary(result.data, {
+          groupBy: body.groupBy,
+          highWater: body.expectedHighWater,
+          from: body.from,
+          to: body.to,
         });
       },
       commit: async (key, body, assertSource) => {

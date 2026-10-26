@@ -105,8 +105,15 @@ choice with a prepared/cancelled phase. Optional
 `operationalConsent:"terminal-outcomes/v1"` is a separate immutable consent
 reservation. Absence means usage-only. Its exact presence is bound by the
 recipient candidate intent digest, source approval and encrypted credential;
-receiving custody rejects a mismatch. It does not activate operational export.
-Terminal outcome projection, storage/query and visible summaries remain unimplemented. `destinationVerified:false` and
+receiving custody rejects a mismatch. The proposal itself activates nothing.
+Under an approved grant with that consent, `UsageExportPage.operationalConsent`
+admits `UsageTerminalFact` observations: outcome class, engine family,
+Station-observed time and opaque event/thread/turn IDs. Without the literal a
+`terminal` field is refused as unknown. `PrivateUsageCommit.binding`, its query
+and its page must agree exactly. `PrivateOperationalOutcomeQuery` and
+`PrivateOperationalOutcomeSummary` are the strict companion query/response pair
+(engine or day groups, observed-turn denominator, retained-only coverage). No
+saved measure or visible summary consumes them yet. `destinationVerified:false` and
 `exportAuthority:false` are required literals. The source's private person,
 tenant and owner-set binding is not a caller-supplied DTO. This proposal neither
 issues a credential nor authorizes export; see the

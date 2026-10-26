@@ -423,6 +423,11 @@ export class SourceGrantApprovalStore {
     return {
       authority,
       scope: record.view.scope,
+      // Read from the current approval record; the snapshot fence above
+      // refuses release if that record (and so its consent) changes.
+      ...(record.view.operationalConsent
+        ? { operationalConsent: record.view.operationalConsent }
+        : {}),
       authorizationContext: `analytics:${operationId}:${delivery.view.revision}:${delivery.credentialSha256}`,
       revision: delivery.view.revision,
       assertCurrent,

@@ -97,8 +97,9 @@ operation ID, expected receiver epoch and expected journal position to a strict
 source invalidation page. The source Station/scope/epoch must match the bucket,
 and replay continuation retains its fixed high water. Withdrawals remove only
 observations captured at a source revision earlier than the invalidation;
-newer authorized captures of the same thread remain. Unattributed empty
-observations are withdrawn conservatively. Scope-entry records return thread
+newer authorized captures of the same thread remain. A consented terminal
+observation names its thread and is withdrawn only with that thread. Other
+unattributed empty observations are withdrawn conservatively. Scope-entry records return thread
 refresh/backfill requirements instead of deleting facts.
 
 Withdrawal, capacity accounting, replay checkpoint and operation receipt commit
@@ -159,6 +160,27 @@ still apply. Summary-state loss or count disagreement refuses instead of returni
 an apparently complete total. The shared accumulator preserves sparse/cumulative
 reconciliation's results, currencies and price provenance. Saved views, UI,
 restore fencing and real PostgreSQL/native/release qualification remain open.
+
+### Consented terminal outcomes
+
+A bucket whose binding carries `operationalConsent:"terminal-outcomes/v1"`
+stores consented commits' canonical terminal facts as ordinary observations.
+They contain only class, engine family, Station-observed time and opaque IDs.
+The contract decoder refuses a terminal field without that consent in the
+binding, query and page alike. Schema v5 adds only a partial index over those
+rows; v1–v4 digests and data are unchanged.
+
+Private POST `/v1/private-usage/outcomes/query` accepts the strict
+`station-private-operational-outcomes-query/v1` request. It carries the same
+receiver/checkpoint/source-revision/high-water fences as the receipt query and
+`groupBy` (`engine` or `day`). It returns
+`station-private-operational-outcomes/v1` with up to 400 rows, the observed-turn
+denominator and `retained-terminal-observations-only` coverage. Each
+thread/turn counts once by its latest committed terminal, so replay and
+restatement do not double-count. A bucket without consent returns 403
+`private_usage_consent_required`. Withdrawal, retention, expiry and erasure
+apply because the facts are the same rows; there is no separate derived cache.
+Real PostgreSQL/TCP and installed-companion qualification remain open.
 
 ## Run privately
 

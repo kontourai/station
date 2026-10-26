@@ -15,6 +15,41 @@ export interface UsageExportRequest {
   cursor?: string;
 }
 
+/** The canonical turn-terminal classes: completed, aborted, or a non-deferred turn failure. */
+export type UsageTerminalOutcome = 'completed' | 'aborted' | 'failed';
+export type UsageTerminalEngine =
+  | 'station'
+  | 'acp'
+  | 'bedrock'
+  | 'claude'
+  | 'codex'
+  | 'muse'
+  | 'ollama'
+  | 'other';
+const TERMINAL_ENGINES: readonly string[] = [
+  'station',
+  'acp',
+  'bedrock',
+  'claude',
+  'codex',
+  'muse',
+  'ollama',
+  'other',
+];
+/**
+ * The complete `terminal-outcomes/v1` allowlist. Opaque IDs exist only so a
+ * receiver can replace a restated terminal and withdraw a deleted thread; no
+ * prompt, tool input/output, error text or path is representable.
+ */
+export interface UsageTerminalFact {
+  outcome: UsageTerminalOutcome;
+  engine: UsageTerminalEngine;
+  observedAt: string;
+  eventId: string;
+  threadId: string;
+  turnId?: string;
+}
+
 /** A page of retained canonical facts, not proof of complete provider history. */
 export interface UsageExportPage {
   schemaVersion: 1;
@@ -22,8 +57,15 @@ export interface UsageExportPage {
   streamEpoch: string;
   highWater: number;
   scope: UsageExportScope;
+  /** Present only when the current source grant carries this exact consent. */
+  operationalConsent?: AnalyticsOperationalConsent;
   window: { from: string; to: string; clock: 'station-observed-utc' };
-  observations: Array<{ globalSequence: number; receipts: UsageReceipt[] }>;
+  /** A terminal observation carries no receipts; absent consent, none exist. */
+  observations: Array<{
+    globalSequence: number;
+    receipts: UsageReceipt[];
+    terminal?: UsageTerminalFact;
+  }>;
   nextCursor?: string;
   coverage: {
     state: 'unknown';
@@ -66,6 +108,8 @@ export interface UsageExportSnapshot {
 export interface UsageExportQuery extends UsageExportRequest {
   expectedStationId: string;
   snapshot?: UsageExportSnapshot;
+  /** The consent the receiver expects from its decrypted credential; it must match the page exactly. */
+  operationalConsent?: AnalyticsOperationalConsent;
 }
 function wireObject(
   value: unknown,
@@ -206,9 +250,29 @@ function wireReceipt(value: unknown): value is UsageReceipt {
     optionalFields(value.pricing, ['pricingSnapshotCapturedAt'], wireTime)
   );
 }
-function wirePage(value: unknown): value is UsageExportPage {
+const wireOpaqueId = (value: unknown): value is string =>
+  wireText(value) && value.length <= 512;
+function wireTerminal(value: unknown): value is UsageTerminalFact {
   return (
     wireObject(
+      value,
+      ['outcome', 'engine', 'observedAt', 'eventId', 'threadId'],
+      ['turnId'],
+    ) &&
+    (value.outcome === 'completed' ||
+      value.outcome === 'aborted' ||
+      value.outcome === 'failed') &&
+    typeof value.engine === 'string' &&
+    TERMINAL_ENGINES.includes(value.engine) &&
+    wireTime(value.observedAt) &&
+    wireOpaqueId(value.eventId) &&
+    wireOpaqueId(value.threadId) &&
+    optionalFields(value, ['turnId'], wireOpaqueId)
+  );
+}
+function wirePage(value: unknown): value is UsageExportPage {
+  if (
+    !wireObject(
       value,
       [
         'schemaVersion',
@@ -220,8 +284,15 @@ function wirePage(value: unknown): value is UsageExportPage {
         'observations',
         'coverage',
       ],
-      ['nextCursor'],
-    ) &&
+      ['nextCursor', 'operationalConsent'],
+    ) ||
+    (value.operationalConsent !== undefined &&
+      value.operationalConsent !== 'terminal-outcomes/v1')
+  )
+    return false;
+  // Without the exact consent literal a terminal field is an unknown field.
+  const terminalAllowed = value.operationalConsent === 'terminal-outcomes/v1';
+  return (
     value.schemaVersion === 1 &&
     wireText(value.stationId) &&
     wireText(value.streamEpoch) &&
@@ -235,10 +306,16 @@ function wirePage(value: unknown): value is UsageExportPage {
     value.observations.length <= 100 &&
     value.observations.every(
       (item) =>
-        wireObject(item, ['globalSequence', 'receipts']) &&
+        wireObject(
+          item,
+          ['globalSequence', 'receipts'],
+          terminalAllowed ? ['terminal'] : [],
+        ) &&
         wireSequence(item.globalSequence) &&
         Array.isArray(item.receipts) &&
-        item.receipts.every(wireReceipt),
+        item.receipts.every(wireReceipt) &&
+        (item.terminal === undefined ||
+          (item.receipts.length === 0 && wireTerminal(item.terminal))),
     ) &&
     (value.nextCursor === undefined || wireCursor(value.nextCursor)) &&
     wireObject(value.coverage, ['state', 'reason']) &&
@@ -257,6 +334,7 @@ export function parseUsageExportPage(
   if (
     value.stationId !== input.expectedStationId ||
     value.scope !== input.scope ||
+    value.operationalConsent !== input.operationalConsent ||
     value.window.from !== input.from ||
     value.window.to !== input.to ||
     value.observations.length > (input.pageSize ?? 100) ||
@@ -278,7 +356,10 @@ export function parseUsageExportPage(
           item.observedAt === undefined ||
           Date.parse(item.observedAt) < from ||
           Date.parse(item.observedAt) > to,
-      )
+      ) ||
+      (observation.terminal !== undefined &&
+        (Date.parse(observation.terminal.observedAt) < from ||
+          Date.parse(observation.terminal.observedAt) > to))
     )
       throw new Error(
         'Usage export observations do not match the captured source order',
@@ -489,6 +570,8 @@ export interface PrivateUsageCommit {
     sourceApprovalId: string;
     recipientId: string;
     scope: UsageExportScope;
+    /** Absent for usage-only grants, preserving their stored binding bytes. */
+    operationalConsent?: AnalyticsOperationalConsent;
     expiresAt: string;
     retention: AnalyticsSourceEnrollmentIntent['retention'];
   };
@@ -542,14 +625,20 @@ function privateCommitShape(value: unknown): value is PrivateUsageCommit {
     !wireSequence(value.sourceRevision) ||
     (value.restartSnapshot !== undefined &&
       typeof value.restartSnapshot !== 'boolean') ||
-    !wireObject(value.binding, [
-      'sourceStationId',
-      'sourceApprovalId',
-      'recipientId',
-      'scope',
-      'expiresAt',
-      'retention',
-    ]) ||
+    !wireObject(
+      value.binding,
+      [
+        'sourceStationId',
+        'sourceApprovalId',
+        'recipientId',
+        'scope',
+        'expiresAt',
+        'retention',
+      ],
+      ['operationalConsent'],
+    ) ||
+    (value.binding.operationalConsent !== undefined &&
+      value.binding.operationalConsent !== 'terminal-outcomes/v1') ||
     !wireText(value.binding.sourceStationId) ||
     !uuid(value.binding.sourceApprovalId) ||
     !uuid(value.binding.recipientId) ||
@@ -575,8 +664,9 @@ function privateCommitShape(value: unknown): value is PrivateUsageCommit {
     !wireObject(
       query,
       ['from', 'to', 'scope', 'expectedStationId'],
-      ['pageSize', 'cursor', 'snapshot'],
+      ['pageSize', 'cursor', 'snapshot', 'operationalConsent'],
     ) ||
+    query.operationalConsent !== value.binding.operationalConsent ||
     !wireDay(query.from) ||
     !wireDay(query.to) ||
     query.from > query.to ||
@@ -1048,4 +1138,138 @@ export function parsePrivateUsageReceiptPage(
   if (!privateReceiptPageShape(value, expected))
     throw new Error('Invalid private receipt page');
   return value;
+}
+
+/**
+ * Receiver-storage fence for a consented terminal-outcome summary. Like the
+ * receipt query it carries no person authority; Core supplies current
+ * source/person checks and the storage refuses a vault bound without consent.
+ */
+export type PrivateOperationalOutcomeGroupBy = 'engine' | 'day';
+export interface PrivateOperationalOutcomeQuery {
+  protocol: 'station-private-operational-outcomes-query/v1';
+  groupBy: PrivateOperationalOutcomeGroupBy;
+  expectedReceiverEpoch: string;
+  expectedCheckpoint: number;
+  expectedSourceRevision: number;
+  expectedHighWater: number;
+  from: string;
+  to: string;
+}
+/** One group's current terminal count per class; the classes partition its turns. */
+export interface PrivateOperationalOutcomeRow {
+  key: string;
+  completed: number;
+  aborted: number;
+  failed: number;
+}
+export interface PrivateOperationalOutcomeSummary {
+  protocol: 'station-private-operational-outcomes/v1';
+  operationalConsent: AnalyticsOperationalConsent;
+  groupBy: PrivateOperationalOutcomeGroupBy;
+  highWater: number;
+  /** Distinct retained turns with a current terminal in the window: the denominator. */
+  observedTurns: number;
+  rows: PrivateOperationalOutcomeRow[];
+  sourceAuthority: 'not-verified-by-storage';
+  coverage: {
+    state: 'unknown';
+    reason: 'retained-terminal-observations-only';
+    retentionDays: number;
+  };
+}
+const OPERATIONAL_GROUPS: readonly string[] = ['engine', 'day'];
+export function parsePrivateOperationalOutcomeQuery(
+  value: unknown,
+): PrivateOperationalOutcomeQuery {
+  if (
+    !wireObject(value, [
+      'protocol',
+      'groupBy',
+      'expectedReceiverEpoch',
+      'expectedCheckpoint',
+      'expectedSourceRevision',
+      'expectedHighWater',
+      'from',
+      'to',
+    ]) ||
+    value.protocol !== 'station-private-operational-outcomes-query/v1' ||
+    typeof value.groupBy !== 'string' ||
+    !OPERATIONAL_GROUPS.includes(value.groupBy) ||
+    typeof value.expectedReceiverEpoch !== 'string' ||
+    !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+      value.expectedReceiverEpoch,
+    ) ||
+    !wireSequence(value.expectedCheckpoint) ||
+    value.expectedCheckpoint === 0 ||
+    !wireSequence(value.expectedSourceRevision) ||
+    !wireSequence(value.expectedHighWater) ||
+    !wireDay(value.from) ||
+    !wireDay(value.to) ||
+    value.from > value.to ||
+    Date.parse(value.to) - Date.parse(value.from) > 365 * 86400000
+  )
+    throw new Error('Invalid private operational outcome query');
+  return value as unknown as PrivateOperationalOutcomeQuery;
+}
+export function parsePrivateOperationalOutcomeSummary(
+  value: unknown,
+  expected: {
+    groupBy: PrivateOperationalOutcomeGroupBy;
+    highWater: number;
+    from: string;
+    to: string;
+  },
+): PrivateOperationalOutcomeSummary {
+  const keys = new Set<string>();
+  let total = 0;
+  if (
+    !wireObject(value, [
+      'protocol',
+      'operationalConsent',
+      'groupBy',
+      'highWater',
+      'observedTurns',
+      'rows',
+      'sourceAuthority',
+      'coverage',
+    ]) ||
+    value.protocol !== 'station-private-operational-outcomes/v1' ||
+    value.operationalConsent !== 'terminal-outcomes/v1' ||
+    value.groupBy !== expected.groupBy ||
+    value.highWater !== expected.highWater ||
+    !wireSequence(value.observedTurns) ||
+    value.sourceAuthority !== 'not-verified-by-storage' ||
+    !wireObject(value.coverage, ['state', 'reason', 'retentionDays']) ||
+    value.coverage.state !== 'unknown' ||
+    value.coverage.reason !== 'retained-terminal-observations-only' ||
+    !wireSequence(value.coverage.retentionDays) ||
+    value.coverage.retentionDays < 1 ||
+    value.coverage.retentionDays > 90 ||
+    !Array.isArray(value.rows) ||
+    value.rows.length > 400 ||
+    !value.rows.every((row) => {
+      if (
+        !wireObject(row, ['key', 'completed', 'aborted', 'failed']) ||
+        !wireSequence(row.completed) ||
+        !wireSequence(row.aborted) ||
+        !wireSequence(row.failed) ||
+        row.completed + row.aborted + row.failed === 0 ||
+        typeof row.key !== 'string' ||
+        keys.has(row.key) ||
+        (expected.groupBy === 'engine'
+          ? !TERMINAL_ENGINES.includes(row.key)
+          : !wireDay(row.key) ||
+            row.key < expected.from ||
+            row.key > expected.to)
+      )
+        return false;
+      keys.add(row.key);
+      total += row.completed + row.aborted + row.failed;
+      return true;
+    }) ||
+    total !== value.observedTurns
+  )
+    throw new Error('Invalid private operational outcome summary');
+  return value as unknown as PrivateOperationalOutcomeSummary;
 }

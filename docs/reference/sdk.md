@@ -5702,9 +5702,11 @@ or false reuses a completed guide for the current head.
 offer decoder. Omit it for usage-only enrollment. Consent is immutable for an
 operation ID and is bound to the receiving candidate, source requester approval
 and encrypted credential; rotation cannot expand it. Older strict servers or
-SDKs may reject this optional profile, so use matching versions. The profile
-only records consent preparation: operational export, PG summaries and visible
-outcome measures are not implemented, and the setup UI offers no such opt-in.
+SDKs may reject this optional profile, so use matching versions. The server
+exports and stores consented terminal outcomes and serves the receiving
+[outcome summary route](api.md#query-receiving-terminal-outcomes). The SDK has
+no reader for that route yet, no saved operational measure exists, and the
+setup UI offers no such opt-in.
 
 ### Private enrolled Insights and saved views
 

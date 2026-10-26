@@ -314,7 +314,7 @@ async function fixture(
             );
           },
         ),
-      read: (authority, query, authorizationContext) =>
+      read: (authority, query, authorizationContext, operationalConsent) =>
         readAuthorizedUsageExport({
           store: facts,
           authority,
@@ -322,6 +322,7 @@ async function fixture(
           request: query,
           personalOwnerIds: () => undefined,
           authorizationContext,
+          ...(operationalConsent ? { operationalConsent } : {}),
         }),
     }),
   );
@@ -467,6 +468,12 @@ async function fixture(
     syncStatus: () => receiving.request(`${recipientBase}/${recipientId}`),
     query: (value: unknown) =>
       receiving.request(`${recipientBase}/${recipientId}/query`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(value),
+      }),
+    outcomes: (value: unknown) =>
+      receiving.request(`${recipientBase}/${recipientId}/outcomes`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(value),
@@ -2221,10 +2228,15 @@ test('onboarding SDK transports explicit consent, real public proof and encrypte
   }
 });
 
-test.each(['normal', 'update'] as const)(
-  '%s restore cannot revive a subsequently revoked source credential',
-  async (mode) => {
-    const h = await fixture();
+test.each([
+  ['normal', undefined],
+  ['update', undefined],
+  ['normal', 'terminal-outcomes/v1'],
+  ['update', 'terminal-outcomes/v1'],
+] as const)(
+  '%s restore cannot revive a subsequently revoked source credential (consent %s)',
+  async (mode, operationalConsent) => {
+    const h = await fixture({ operationalConsent });
     await h.approve();
     const delivery = z
       .object({ data: sourceCredentialDeliverySchema })
@@ -2239,17 +2251,16 @@ test.each(['normal', 'update'] as const)(
     );
     const validateOwner = vi.fn(async () => true);
     let approvals = new SourceGrantApprovalStore(h.sourceHome, () => now);
-    expect(
-      (
-        await approvals.authorizeExport(
-          'source-station',
-          approvalId,
-          credential,
-          proof,
-          validateOwner,
-        )
-      ).revision,
-    ).toBe(1);
+    const authorized = await approvals.authorizeExport(
+      'source-station',
+      approvalId,
+      credential,
+      proof,
+      validateOwner,
+    );
+    expect(authorized.revision).toBe(1);
+    // Operational release rides the same grant fence a restore cannot revive.
+    expect(authorized.operationalConsent).toBe(operationalConsent);
     h.facts.close();
     stores.splice(stores.indexOf(h.facts), 1);
     const restore = snapshotHome(h.sourceHome, mode);
@@ -2481,3 +2492,334 @@ test.each(['normal', 'update'] as const)(
     }
   },
 );
+
+/** Canonical session + terminal events in the shape the adapters and EventStore write. */
+function seedOperationalThread(
+  h: Awaited<ReturnType<typeof fixture>>,
+  threadId: string,
+  provider: 'claude' | 'codex',
+  owner: { userId: string; tenant: string } = {
+    userId: 'human:tailscale:alice',
+    tenant: 'tenant-a',
+  },
+) {
+  const time = new Date().toISOString();
+  h.facts.upsertSession({
+    threadId,
+    provider,
+    status: 'ready',
+    createdAt: time,
+    updatedAt: time,
+    tenantExecutionContext: {
+      tenantId: tenantId(owner.tenant),
+      source: 'session',
+    },
+  });
+  h.facts.appendEvent({
+    eventId: `${threadId}:start`,
+    threadId,
+    sessionId: threadId,
+    provider,
+    method: 'session.started',
+    createdAt: time,
+    metadata: { userId: owner.userId },
+  });
+  const at = () => new Date().toISOString();
+  return {
+    started(turnId: string) {
+      h.facts.appendEvent({
+        eventId: `${threadId}:${turnId}:started`,
+        threadId,
+        provider,
+        method: 'turn.started',
+        turnId,
+        prompt: 'CANARY prompt text must stay on the source',
+        createdAt: at(),
+      });
+    },
+    completed(turnId: string, eventId = `${threadId}:${turnId}:completed`) {
+      h.facts.appendEvent({
+        eventId,
+        threadId,
+        provider,
+        method: 'turn.completed',
+        turnId,
+        finishReason: 'stop',
+        outputText: 'CANARY tool output and reply text',
+        createdAt: at(),
+      });
+    },
+    aborted(turnId: string) {
+      h.facts.appendEvent({
+        eventId: `${threadId}:${turnId}:aborted`,
+        threadId,
+        provider,
+        method: 'turn.aborted',
+        turnId,
+        reason: 'CANARY abort reason /Users/canary/private/path',
+        createdAt: at(),
+      });
+    },
+    error(eventId: string, turnId: string | undefined, retriable: boolean) {
+      h.facts.appendEvent({
+        eventId,
+        threadId,
+        provider,
+        method: 'runtime.error',
+        ...(turnId ? { turnId } : {}),
+        severity: 'error',
+        message: 'CANARY error string /Users/canary/private/path',
+        retriable,
+        details: { toolInput: 'CANARY tool input' },
+        createdAt: at(),
+      });
+    },
+  };
+}
+async function syncUntilCaptured(
+  h: Awaited<ReturnType<typeof fixture>>,
+  day: string,
+) {
+  for (let step = 0; step < 12; step++) {
+    const response = await h.sync({
+      operationId: crypto.randomUUID(),
+      from: day,
+      to: day,
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    const text = await response.text();
+    expect(text).not.toContain('CANARY');
+    const status = z
+      .object({ data: z.object({ phase: z.string() }) })
+      .parse(JSON.parse(text)).data;
+    if (status.phase === 'facts-captured') return step + 1;
+  }
+  throw new Error('Sync did not capture the source high water');
+}
+const outcomeSummarySchema = z.object({
+  data: z.object({
+    protocol: z.literal('station-private-operational-outcomes/v1'),
+    operationalConsent: z.literal('terminal-outcomes/v1'),
+    observedTurns: z.number(),
+    rows: z.array(
+      z
+        .object({
+          key: z.string(),
+          completed: z.number(),
+          aborted: z.number(),
+          failed: z.number(),
+        })
+        .strict(),
+    ),
+    coverage: z.object({
+      state: z.literal('unknown'),
+      reason: z.literal('retained-terminal-observations-only'),
+    }),
+    asOf: z.object({ stationId: z.string(), highWater: z.number() }),
+  }),
+});
+
+test('consented canonical terminal outcomes flow export→commit→query over more than 500 turns, owner/tenant scoped and content-free', async () => {
+  const storage = await privateUsageFixture();
+  try {
+    const h = await fixture({
+      operationalConsent: 'terminal-outcomes/v1',
+      now: Date.now(),
+      target: storage.target,
+    });
+    const day = new Date().toISOString().slice(0, 10);
+    const main = seedOperationalThread(h, 'ops-main', 'claude');
+    h.facts.appendEvent({
+      eventId: 'ops-main:usage',
+      threadId: 'ops-main',
+      provider: 'claude',
+      method: 'token-usage.updated',
+      createdAt: new Date().toISOString(),
+      promptTokens: 1,
+    });
+    for (let i = 0; i < 503; i++) {
+      main.started(`turn-${i}`);
+      main.completed(`turn-${i}`);
+    }
+    // A failure restated by a later terminal of the same turn counts once, as completed.
+    const restated = seedOperationalThread(h, 'ops-restate', 'codex');
+    restated.started('r1');
+    restated.error('ops-restate:r1:failed', 'r1', false);
+    restated.completed('r1');
+    // codex's deferred retry is not an outcome; the later abort is.
+    const retry = seedOperationalThread(h, 'ops-retry', 'codex');
+    retry.started('d1');
+    retry.error('ops-retry:d1:deferred', 'd1', true);
+    retry.aborted('d1');
+    // A non-turn-scoped error is not a terminal outcome.
+    retry.error('ops-retry:session-error', undefined, false);
+    // Real failure stays a failure.
+    const failing = seedOperationalThread(h, 'ops-failing', 'codex');
+    failing.started('f1');
+    failing.error('ops-failing:f1:failed', 'f1', false);
+    // Alien owner and alien tenant facts never leave the source.
+    const bob = seedOperationalThread(h, 'ops-bob', 'claude', {
+      userId: 'human:tailscale:bob',
+      tenant: 'tenant-a',
+    });
+    bob.completed('b1');
+    const foreign = seedOperationalThread(h, 'ops-foreign', 'claude', {
+      userId: 'human:tailscale:alice',
+      tenant: 'tenant-b',
+    });
+    foreign.completed('x1');
+    await confirmPrivateSyncSource(h);
+
+    const raw = await h.readSource({ from: day, to: day, pageSize: 100 });
+    expect(raw.status, await raw.clone().text()).toBe(200);
+    const rawText = await raw.text();
+    expect(rawText).not.toContain('CANARY');
+    expect(JSON.parse(rawText)).toMatchObject({
+      data: { operationalConsent: 'terminal-outcomes/v1' },
+    });
+
+    expect(await syncUntilCaptured(h, day)).toBeGreaterThan(5);
+    const terminalRows = await storage.db.query<{ body: string }>(
+      "SELECT body::text AS body FROM station_private_usage.observations WHERE body ? 'terminal'",
+    );
+    // 503 completions, the restated pair, one abort and one failure.
+    expect(terminalRows.rows.length).toBe(503 + 2 + 1 + 1);
+    expect(terminalRows.rows.map((r) => r.body).join('\n')).not.toContain(
+      'CANARY',
+    );
+    expect(terminalRows.rows.map((r) => r.body).join('\n')).not.toContain(
+      'ops-bob',
+    );
+    expect(terminalRows.rows.map((r) => r.body).join('\n')).not.toContain(
+      'ops-foreign',
+    );
+
+    storage.operatorAllowed(false);
+    const engine = await h.outcomes({ from: day, to: day, groupBy: 'engine' });
+    expect(engine.status, await engine.clone().text()).toBe(200);
+    const engineText = await engine.text();
+    expect(engineText).not.toContain('CANARY');
+    expect(engineText).not.toContain('stai_');
+    expect(engineText).not.toContain('stax_');
+    const summary = outcomeSummarySchema.parse(JSON.parse(engineText)).data;
+    expect(summary.observedTurns).toBe(506);
+    expect(summary.rows).toEqual([
+      { key: 'claude', completed: 503, aborted: 0, failed: 0 },
+      { key: 'codex', completed: 1, aborted: 1, failed: 1 },
+    ]);
+    const byDay = outcomeSummarySchema.parse(
+      await (await h.outcomes({ from: day, to: day, groupBy: 'day' })).json(),
+    ).data;
+    expect(byDay.rows).toEqual([
+      { key: day, completed: 504, aborted: 1, failed: 1 },
+    ]);
+    expect(
+      (await h.outcomes({ from: day, to: day, groupBy: 'engine', userId: 'x' }))
+        .status,
+    ).toBe(400);
+    h.receiverUser('human:tailscale:bob');
+    expect(
+      (await h.outcomes({ from: day, to: day, groupBy: 'engine' })).status,
+    ).toBe(404);
+    h.receiverUser('human:tailscale:alice');
+    h.receiverTenant('tenant-b');
+    expect(
+      (await h.outcomes({ from: day, to: day, groupBy: 'engine' })).status,
+    ).toBe(404);
+    h.receiverTenant('tenant-a');
+
+    // A newer source fact makes the captured copy stale rather than silently current.
+    restated.completed('r2');
+    const stale = await h.outcomes({ from: day, to: day, groupBy: 'engine' });
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toEqual({
+      error: { code: 'private_usage_sync_required' },
+    });
+
+    // Deletion withdraws the thread's private terminals; the rest survive.
+    h.facts.deleteThread('ops-restate');
+    await syncUntilCaptured(h, day);
+    const withdrawn = outcomeSummarySchema.parse(
+      await (
+        await h.outcomes({ from: day, to: day, groupBy: 'engine' })
+      ).json(),
+    ).data;
+    expect(withdrawn.rows).toEqual([
+      { key: 'claude', completed: 503, aborted: 0, failed: 0 },
+      { key: 'codex', completed: 0, aborted: 1, failed: 1 },
+    ]);
+    expect(withdrawn.observedTurns).toBe(505);
+
+    // Queued bytes are fenced by source revocation, and later queries refuse.
+    const held = await h.outcomes({ from: day, to: day, groupBy: 'engine' });
+    expect(held.status).toBe(200);
+    expect(
+      (
+        await h.source.request(`${sourceBase}/${approvalId}`, {
+          method: 'DELETE',
+        })
+      ).status,
+    ).toBe(200);
+    await expect(held.text()).rejects.toThrow('Authority observation ended');
+    expect(
+      (await h.outcomes({ from: day, to: day, groupBy: 'engine' })).status,
+    ).toBe(403);
+  } finally {
+    await storage.close();
+  }
+});
+
+test('a usage-only grant exports no terminal facts and its private copy refuses outcome queries', async () => {
+  const storage = await privateUsageFixture();
+  try {
+    const h = await fixture({ now: Date.now(), target: storage.target });
+    const day = new Date().toISOString().slice(0, 10);
+    const thread = seedOperationalThread(h, 'legacy-ops', 'claude');
+    h.facts.appendEvent({
+      eventId: 'legacy-ops:usage',
+      threadId: 'legacy-ops',
+      provider: 'claude',
+      method: 'token-usage.updated',
+      createdAt: new Date().toISOString(),
+      promptTokens: 1,
+    });
+    thread.started('t1');
+    thread.completed('t1');
+    await confirmPrivateSyncSource(h);
+    const raw = await h.readSource({ from: day, to: day, pageSize: 100 });
+    expect(raw.status).toBe(200);
+    const page = z
+      .object({
+        data: z
+          .object({
+            observations: z.array(
+              z
+                .object({
+                  globalSequence: z.number(),
+                  receipts: z.array(z.unknown()),
+                })
+                .strict(),
+            ),
+          })
+          .passthrough(),
+      })
+      .parse(await raw.json()).data;
+    expect(page).not.toHaveProperty('operationalConsent');
+    expect(page.observations).toHaveLength(1);
+    await syncUntilCaptured(h, day);
+    expect(
+      (
+        await storage.db.query<{ count: string }>(
+          "SELECT COUNT(*)::text AS count FROM station_private_usage.observations WHERE body ? 'terminal'",
+        )
+      ).rows[0].count,
+    ).toBe('0');
+    const refused = await h.outcomes({ from: day, to: day, groupBy: 'engine' });
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toEqual({
+      error: { code: 'private_usage_operational_consent_required' },
+    });
+  } finally {
+    await storage.close();
+  }
+});

@@ -5,6 +5,7 @@ import {
   STATION_COMPAT_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
 import {
+  type AnalyticsOperationalConsent,
   type PrivateUsageInvalidationCheckpoint,
   parseUsageExportPage,
   parseUsageInvalidationPage,
@@ -63,11 +64,26 @@ interface SourceReadInput {
   approvalId: string;
   revision: number;
   scope: UsageExportQuery['scope'];
+  /** From the decrypted receiving credential; the source grant must echo it exactly. */
+  operationalConsent?: AnalyticsOperationalConsent;
   credential: string;
   proof: z.infer<typeof sourceDeliveryProofSchema>;
   assertLocalCurrent(): Promise<void>;
   signal: AbortSignal;
   fetchImpl: typeof fetch;
+}
+/** A grant whose current consent differs from the receiving credential's is refused, never reinterpreted. */
+function grantEcho(input: SourceReadInput) {
+  return z
+    .object({
+      sourceApprovalId: z.literal(input.approvalId),
+      revision: z.literal(input.revision),
+      scope: z.literal(input.scope),
+      ...(input.operationalConsent
+        ? { operationalConsent: z.literal(input.operationalConsent) }
+        : {}),
+    })
+    .strict();
 }
 async function connectSource(input: SourceReadInput) {
   const origin = new URL(input.origin);
@@ -181,13 +197,7 @@ export async function readRecipientSourcePage(
     .object({
       success: z.literal(true),
       data: z.unknown(),
-      grant: z
-        .object({
-          sourceApprovalId: z.literal(input.approvalId),
-          revision: z.literal(input.revision),
-          scope: z.literal(input.scope),
-        })
-        .strict(),
+      grant: grantEcho(input),
     })
     .strict()
     .parse(received.body);
@@ -195,6 +205,9 @@ export async function readRecipientSourcePage(
     ...query,
     scope: input.scope,
     expectedStationId: input.stationId,
+    ...(input.operationalConsent
+      ? { operationalConsent: input.operationalConsent }
+      : {}),
   });
   const assertCurrent = async () => {
     await input.assertLocalCurrent();
@@ -242,13 +255,7 @@ export async function readRecipientSourceInvalidations(
     .object({
       success: z.literal(true),
       data: z.unknown(),
-      grant: z
-        .object({
-          sourceApprovalId: z.literal(input.approvalId),
-          revision: z.literal(input.revision),
-          scope: z.literal(input.scope),
-        })
-        .strict(),
+      grant: grantEcho(input),
     })
     .strict()
     .parse(received.body);

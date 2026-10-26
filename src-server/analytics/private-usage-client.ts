@@ -1,4 +1,6 @@
 import type {
+  PrivateOperationalOutcomeQuery,
+  PrivateOperationalOutcomeSummary,
   PrivateUsageCheckpoint,
   PrivateUsageCommit,
   PrivateUsageCommitReceipt,
@@ -59,6 +61,7 @@ export class PrivateUsageClientRejected extends Error {
     readonly code:
       | 'private_usage_unavailable'
       | 'private_usage_conflict'
+      | 'private_usage_operational_consent_required'
       | 'private_usage_provision_required'
       | 'private_usage_sync_required',
   ) {
@@ -104,6 +107,11 @@ export interface PrivateUsageTarget {
     body: PrivateUsageCommit,
     assertSource: () => Promise<void>,
   ): Promise<PrivateUsageCommitReceipt>;
+  queryOperationalOutcomes(
+    key: string,
+    body: PrivateOperationalOutcomeQuery,
+    assertSource: () => Promise<void>,
+  ): Promise<PrivateOperationalOutcomeSummary>;
 }
 export const privateReceiptIntentSchema = z
   .object({
