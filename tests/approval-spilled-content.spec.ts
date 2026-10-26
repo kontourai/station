@@ -251,7 +251,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
     );
     const dock = page.locator('body');
     await expect(
-      dock.getByText('Loading the full request before it can be allowed…'),
+      dock.getByText('Allow is offered once the full request has loaded.'),
     ).toBeVisible();
     await expect(dock.getByRole('button', { name: 'Allow Once' })).toHaveCount(
       0,
@@ -302,7 +302,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
     const sheet = page.getByRole('dialog', { name: /Needs approval/ });
     await expect(sheet).toBeVisible();
     await expect(
-      sheet.getByText('Loading the full request before it can be allowed…'),
+      sheet.getByText('Allow is offered once the full request has loaded.'),
     ).toBeVisible();
     await expect(sheet.getByRole('button', { name: 'Allow Once' })).toHaveCount(
       0,

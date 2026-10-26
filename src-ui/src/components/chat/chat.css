@@ -923,11 +923,6 @@
   font-family: var(--k-font-mono);
   font-size: 0.85em;
 }
-/* Focus moves to the loaded content when its button unmounts; a pointer
-   click shows no ring there, a keyboard press does. */
-.load-full-content__loaded:focus:not(:focus-visible) {
-  outline: none;
-}
 /* A check-back Station sent: sent as the person, written by nobody. A
    quiet panel with Station's label instead of the person's filled bubble. */
 .message.user.message--station-check-back {

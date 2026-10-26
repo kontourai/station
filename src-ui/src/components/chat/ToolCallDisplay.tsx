@@ -45,7 +45,7 @@ import {
   TerminalGlyph,
 } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
-import { ErrorState } from '../state';
+import { ErrorState, SkeletonBlock } from '../state';
 import { useApprovalSheet } from './ApprovalSheetContext';
 import { OutgoingSessionMessage } from './agent-message/OutgoingSessionMessage';
 import { hasStationControlCallRow } from './agent-message/station-control-calls';
@@ -579,9 +579,11 @@ function ApprovalContentStatus({ gate }: { gate?: ApprovalContentGate }) {
     return null;
   if (gate.status === 'loading')
     return (
-      <p className="tool-call__approval-loading" role="status">
-        Loading the full request before it can be allowed…
-      </p>
+      <div className="tool-call__approval-loading">
+        {/* Why there is no Allow yet; the skeleton is the wait itself. */}
+        <p>Allow is offered once the full request has loaded.</p>
+        <SkeletonBlock count={1} label="Loading the full request" />
+      </div>
     );
   return (
     <ErrorState

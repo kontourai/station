@@ -2,7 +2,7 @@ import { collectRuntimeEventContentRefs } from '@kontourai/station-contracts/run
 import { useResolvedRuntimeEventValueQuery } from '@kontourai/station-sdk/runtime-event-content';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Button } from '../Button';
-import { ErrorState } from '../state';
+import { ErrorState, SkeletonBlock } from '../state';
 
 /**
  * docs/design/event-content-spill.md: a value Station stored out of line
@@ -94,8 +94,10 @@ function ResolvedValueLoader<T>({
       />
     );
   return (
-    <p className="load-full-content__status" role="status">
-      Loading the full content…
-    </p>
+    <SkeletonBlock
+      count={1}
+      label="Loading the full content"
+      className="load-full-content__status"
+    />
   );
 }
