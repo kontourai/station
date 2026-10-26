@@ -658,7 +658,7 @@ test('receipt write failure after operation creation terminalizes the operation'
   expect((await operations.get(ACTOR, operationId))?.status).toBe('failed');
 });
 
-test('long-video scene work is sampled and deadlines scale with duration', async () => {
+test('long-video import keeps unknown-density scenes cheap and scales frame deadlines', async () => {
   audio = false;
   formatDuration = '1800';
   videoDuration = '1800';
@@ -671,8 +671,9 @@ test('long-video scene work is sampled and deadlines scale with duration', async
   expect(scenes[1][scenes[1].indexOf('-vf') + 1]).toContain(
     "fps=5,scale='min(640,iw)':'min(640,ih)':force_original_aspect_ratio=decrease",
   );
-  expect(scenes[2].timeoutMs).toBeGreaterThan(120_000);
-  expect(scenes[2].timeoutMs).toBeLessThanOrEqual(300_000);
+  expect(scenes[1][scenes[1].indexOf('-skip_frame') + 1]).toBe('nokey');
+  expect(scenes[2].timeoutMs).toBeGreaterThan(0);
+  expect(scenes[2].timeoutMs).toBeLessThanOrEqual(15_000);
   const frame = capture.mock.calls.find(([, args]) =>
     args.at(-1).endsWith('.jpg'),
   )!;
