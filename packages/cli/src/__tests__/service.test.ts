@@ -3853,6 +3853,8 @@ describe('service status remedy reproduces the installed unit (#4189)', () => {
    */
   async function statusAfterReinstallElsewhere(
     platform: 'darwin' | 'linux',
+    // false: only the second install, so no home holds a stale manifest.
+    installFromChannelFirst = true,
   ): Promise<{
     channelHome: string;
     dependencies: import('../commands/service.js').ServiceDependencies;
@@ -3962,15 +3964,19 @@ describe('service status remedy reproduces the installed unit (#4189)', () => {
       platform,
       run,
     };
-    await runServiceCommand(['install'], channelDefaults(channelHome), {
-      ...dependencies,
-    });
+    if (installFromChannelFirst) {
+      await runServiceCommand(['install'], channelDefaults(channelHome), {
+        ...dependencies,
+      });
+    }
     await runServiceCommand(['install'], installedSettings(installedHome), {
       ...dependencies,
     });
-    const staleManifest = JSON.parse(
-      readFileSync(join(channelHome, 'service', 'default.json'), 'utf8'),
-    );
+    const staleManifest = installFromChannelFirst
+      ? JSON.parse(
+          readFileSync(join(channelHome, 'service', 'default.json'), 'utf8'),
+        )
+      : null;
     loginPath = `${addedLater}:/usr/bin:/bin`;
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {
@@ -4103,6 +4109,7 @@ describe('service status remedy reproduces the installed unit (#4189)', () => {
           path: manifestPath,
           removeCommand: `rm -- ${manifestPath}`,
           unitHome: installedHome,
+          unitManifest: 'present',
           unitPath,
         });
         expect(json.manifest.baseDir).toBe(installedHome);
@@ -4119,6 +4126,218 @@ describe('service status remedy reproduces the installed unit (#4189)', () => {
       }
     },
   );
+
+  /** Every console line of one service command, and its exit code. */
+  async function capture(
+    args: string[],
+    settings: ReturnType<typeof channelDefaults> & {
+      allowedOrigins?: string[];
+    },
+    dependencies: import('../commands/service.js').ServiceDependencies,
+  ): Promise<{ errors: string; exitCode: unknown; lines: string[] }> {
+    const { runServiceCommand } = await import('../commands/service.js');
+    process.exitCode = undefined;
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await runServiceCommand(args, settings, { ...dependencies });
+      return {
+        errors: error.mock.calls.flat().join('\n'),
+        exitCode: process.exitCode,
+        lines: log.mock.calls.flat().map(String),
+      };
+    } finally {
+      log.mockRestore();
+      error.mockRestore();
+      process.exitCode = undefined;
+    }
+  }
+
+  test.each(['linux', 'darwin'] as const)(
+    'on %s a home reached through a symlinked parent is not stale and offers no rm (#4200 review)',
+    async (platform) => {
+      const { dependencies, installedHome } =
+        await statusAfterReinstallElsewhere(platform, false);
+      const root = join(installedHome, '..', '..');
+      const alias = join(makeTempDir('station-service-alias-'), 'alias');
+      nodeFs.symlinkSync(root, alias);
+      const aliasHome = join(alias, 'instances', 'default');
+      // The probe: the live manifest, reached by another spelling.
+      expect(
+        nodeFs.realpathSync(join(aliasHome, 'service', 'default.json')),
+      ).toBe(
+        nodeFs.realpathSync(join(installedHome, 'service', 'default.json')),
+      );
+      const status = await capture(
+        ['status'],
+        installedSettings(aliasHome),
+        dependencies,
+      );
+      expect(status.lines.join('\n')).not.toContain('manifest       stale');
+      expect(status.lines.join('\n')).not.toContain('rm --');
+      const json = await capture(
+        ['status', '--json'],
+        installedSettings(aliasHome),
+        dependencies,
+      );
+      expect(JSON.parse(String(json.lines.at(-1)))).not.toHaveProperty(
+        'staleManifest',
+      );
+      const start = await capture(
+        ['start'],
+        installedSettings(aliasHome),
+        dependencies,
+      );
+      expect(start.errors).not.toContain('Refusing');
+    },
+  );
+
+  test.each(['absent home', 'absent manifest'] as const)(
+    'with the unit home manifest %s, status says so and offers no rm (#4200 review)',
+    async (variant) => {
+      const { channelHome, dependencies, installedHome } =
+        await statusAfterReinstallElsewhere('linux');
+      if (variant === 'absent home') {
+        nodeFs.rmSync(installedHome, { force: true, recursive: true });
+      } else {
+        nodeFs.rmSync(join(installedHome, 'service', 'default.json'));
+      }
+      const unitManifestPath = join(installedHome, 'service', 'default.json');
+      const manifestPath = join(channelHome, 'service', 'default.json');
+      const status = await capture(
+        ['status'],
+        channelDefaults(channelHome),
+        dependencies,
+      );
+      const text = status.lines.join('\n');
+      expect(text).toContain('manifest       stale');
+      expect(text).toContain(
+        `               ${unitManifestPath} does not exist, so the lines below are read from ${installedHome} without a manifest; pass --base=${installedHome} to address it`,
+      );
+      expect(text).toContain(
+        `               no removal offered: ${manifestPath} is the only manifest that records this service`,
+      );
+      expect(text).not.toContain('rm --');
+      const json = await capture(
+        ['status', '--json'],
+        channelDefaults(channelHome),
+        dependencies,
+      );
+      expect(JSON.parse(String(json.lines.at(-1))).staleManifest).toMatchObject(
+        { removeCommand: null, unitManifest: 'absent' },
+      );
+    },
+  );
+
+  test.skipIf(process.getuid?.() === 0)(
+    'with an unreadable unit home service directory, status says so and offers no rm (#4200 review)',
+    async () => {
+      const { channelHome, dependencies, installedHome } =
+        await statusAfterReinstallElsewhere('linux');
+      const serviceDir = join(installedHome, 'service');
+      nodeFs.chmodSync(serviceDir, 0o000);
+      try {
+        const status = await capture(
+          ['status'],
+          channelDefaults(channelHome),
+          dependencies,
+        );
+        const text = status.lines.join('\n');
+        expect(text).toContain(
+          `               ${join(serviceDir, 'default.json')} could not be read (`,
+        );
+        expect(text).toContain(
+          '               no removal offered until that manifest can be read',
+        );
+        expect(text).not.toContain('rm --');
+      } finally {
+        nodeFs.chmodSync(serviceDir, 0o700);
+      }
+    },
+  );
+
+  test('an invalid manifest in the unit home refuses status, as it does in the invoked home (#4200 review)', async () => {
+    const { runServiceCommand } = await import('../commands/service.js');
+    const { channelHome, dependencies, installedHome } =
+      await statusAfterReinstallElsewhere('linux');
+    const unitManifestPath = join(installedHome, 'service', 'default.json');
+    writeFileSync(unitManifestPath, '{', { mode: 0o600 });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await expect(
+        runServiceCommand(['status'], channelDefaults(channelHome), {
+          ...dependencies,
+        }),
+      ).rejects.toThrow(`Invalid Station service manifest ${unitManifestPath}`);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  test.each([
+    ['linux', 'start'],
+    ['linux', 'stop'],
+    ['linux', 'uninstall'],
+    ['darwin', 'start'],
+    ['darwin', 'stop'],
+    ['darwin', 'uninstall'],
+  ] as const)(
+    'on %s, %s from a stale manifest home refuses and acts on nothing (#4200 review)',
+    async (platform, action) => {
+      const { channelHome, dependencies, installedHome, unitPath } =
+        await statusAfterReinstallElsewhere(platform);
+      const manifestPath = join(channelHome, 'service', 'default.json');
+      const unit = readFileSync(unitPath, 'utf8');
+      for (const mock of [
+        startSystemd,
+        stopSystemd,
+        uninstallSystemd,
+        startLaunchd,
+        stopLaunchd,
+        uninstallLaunchd,
+        stop,
+      ])
+        mock.mockClear();
+      const result = await capture(
+        [action],
+        channelDefaults(channelHome),
+        dependencies,
+      );
+      expect(result.exitCode).toBe(1);
+      expect(result.errors).toBe(
+        `Refusing to ${action} Station user service default from ${channelHome}: ${manifestPath} describes an earlier install, and the installed unit ${unitPath} runs from ${installedHome}. Nothing was changed. Pass --base=${installedHome} to ${action} the installed service.`,
+      );
+      for (const mock of [
+        startSystemd,
+        stopSystemd,
+        uninstallSystemd,
+        startLaunchd,
+        stopLaunchd,
+        uninstallLaunchd,
+        stop,
+      ])
+        expect(mock).not.toHaveBeenCalled();
+      expect(readFileSync(unitPath, 'utf8')).toBe(unit);
+      expect(nodeFs.existsSync(manifestPath)).toBe(true);
+    },
+  );
+
+  test('a unit that names no --base is not called stale (#4200 review)', async () => {
+    const { channelHome, dependencies, unitPath } =
+      await statusAfterReinstallElsewhere('linux');
+    // Station always writes --base (renderServiceCommand); a unit without one
+    // names no home to compare against.
+    const unit = readFileSync(unitPath, 'utf8');
+    expect(unit).toMatch(/ "--base=[^"]+"/u);
+    writeFileSync(unitPath, unit.replace(/ "--base=[^"]+"/u, ''));
+    const status = await capture(
+      ['status'],
+      channelDefaults(channelHome),
+      dependencies,
+    );
+    expect(status.lines.join('\n')).not.toContain('manifest       stale');
+    expect(status.lines.join('\n')).not.toContain('rm --');
+  });
 
   test('an unreadable unit is named by its path in the fallback (#4196)', async () => {
     const { resolveInstalledServiceRemedy } = await import(

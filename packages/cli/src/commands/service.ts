@@ -558,6 +558,13 @@ async function stopAndWaitForWindowsSupervisorExit(
   );
 }
 
+/**
+ * A manifest that exists but is unsafe, invalid, or names another service.
+ * These refuse the command wherever the manifest is read; they are never
+ * reported as an absent manifest.
+ */
+class ServiceManifestIntegrityError extends Error {}
+
 function readManifest(
   fs: ServiceFs,
   path: string,
@@ -580,7 +587,7 @@ function readManifest(
     // directory and ACL are the actual boundary there.
     (process.platform !== 'win32' && (info.mode & 0o777) !== 0o600)
   ) {
-    throw new Error(
+    throw new ServiceManifestIntegrityError(
       `Unsafe Station service manifest (expected owned mode 0600): ${path}`,
     );
   }
@@ -588,7 +595,7 @@ function readManifest(
   try {
     manifest = JSON.parse(fs.readFileSync(path, 'utf8')) as ServiceManifest;
   } catch (error) {
-    throw new Error(
+    throw new ServiceManifestIntegrityError(
       `Invalid Station service manifest ${path}: ${(error as Error).message}`,
       { cause: error },
     );
@@ -616,7 +623,9 @@ function readManifest(
           (origin) => typeof origin !== 'string' || origin.length === 0,
         )))
   ) {
-    throw new Error(`Invalid Station service manifest: ${path}`);
+    throw new ServiceManifestIntegrityError(
+      `Invalid Station service manifest: ${path}`,
+    );
   }
   const reservedReference =
     RESERVED_LAUNCHD_LABELS.some(
@@ -627,7 +636,7 @@ function readManifest(
     manifest.unitName === RESERVED_SYSTEMD_UNIT ||
     basename(manifest.unitPath) === RESERVED_SYSTEMD_UNIT;
   if (reservedReference) {
-    throw new Error(
+    throw new ServiceManifestIntegrityError(
       `Station service manifest conflict: ${path} references reserved dogfood identity ${manifest.label ?? manifest.unitName ?? basename(manifest.unitPath)}`,
     );
   }
@@ -663,7 +672,7 @@ function readManifest(
     }
   }
   if (conflicts.length > 0) {
-    throw new Error(
+    throw new ServiceManifestIntegrityError(
       `Station service manifest conflict for ${instanceId}: ${conflicts.join('; ')}`,
     );
   }
@@ -978,7 +987,7 @@ function describeServiceUpdate(
 }
 
 /**
- * A manifest in the home `status` read that does not describe the installed
+ * A manifest in the home a command read that does not describe the installed
  * unit (#4196). launchd labels and systemd units are named by instance id
  * alone, so reinstalling an instance from another `--base` rewrites the unit
  * but leaves this home's earlier manifest behind.
@@ -988,25 +997,56 @@ interface StaleServiceManifest {
   allowedOrigins: string[];
   manifestPath: string;
   unitHome: string;
+  /** The manifest in the unit's home, when it could be read. */
+  unitManifest: ServiceManifest | null;
+  unitManifestPath: string;
+  /** Why the unit home's manifest could not be read. */
+  unitManifestReason?: string;
+  unitManifestState: 'absent' | 'present' | 'unreadable';
   unitPath: string;
 }
 
-/** Printed, never performed: removal is the operator's decision. */
-function staleManifestRemoval(stale: StaleServiceManifest): string {
-  return `rm -- ${shellArgument(stale.manifestPath)}`;
+/**
+ * Printed, never performed: removal is the operator's decision. Offered only
+ * while the unit's home holds its own readable manifest, so the stale one is
+ * never the only record of the service.
+ */
+function staleManifestRemoval(stale: StaleServiceManifest): string | null {
+  return stale.unitManifestState === 'present'
+    ? `rm -- ${shellArgument(stale.manifestPath)}`
+    : null;
+}
+
+/** Whether both paths name one existing file (device and inode). */
+function sameExistingFile(left: string, right: string, fs: ServiceFs): boolean {
+  try {
+    const a = fs.lstatSync(left);
+    const b = fs.lstatSync(right);
+    return a.dev === b.dev && a.ino === b.ino;
+  } catch {
+    return false;
+  }
 }
 
 /**
- * The installed launchd or systemd unit's home, when it is not `home`.
- * Null when they agree, on Windows (whose wrapper lives in the manifest's
- * own home), or when the unit cannot be read: the remedy explains those.
+ * The installed launchd or systemd unit's home, when it is not `home`, and
+ * the state of the manifest there. Null when both name one manifest file, on
+ * Windows (whose wrapper lives in the manifest's own home), or
+ * when the unit cannot be read: the remedy explains those. Station's
+ * renderServiceCommand always writes `--base`; a unit without one names no
+ * home to compare, so it is not called stale.
  */
 function findStaleServiceManifest(
   manifest: ServiceManifest,
   manifestPath: string,
   home: string,
-  dependencies: { fs: ServiceFs; run: CommandRunner },
+  dependencies: {
+    fs: ServiceFs;
+    readManifestAt: (path: string) => ServiceManifest | null;
+    run: CommandRunner;
+  },
 ): StaleServiceManifest | null {
+  const { fs } = dependencies;
   if (manifest.platform === 'win32') return null;
   let installed: ReturnType<typeof readInstalledServiceRun>;
   try {
@@ -1021,12 +1061,40 @@ function findStaleServiceManifest(
   if (typeof baseDir !== 'string' || sameRuntimePath(baseDir, home)) {
     return null;
   }
+  const unitManifestPath = join(baseDir, 'service', basename(manifestPath));
+  // Homes compare by path text, so a symlinked parent (or macOS /tmp and
+  // /private/tmp) spells one home two ways. One manifest file, by device
+  // and inode, is never stale: its "removal" would delete the live one.
+  if (sameExistingFile(unitManifestPath, manifestPath, fs)) return null;
+  let unitManifest: ServiceManifest | null = null;
+  let unitManifestState: StaleServiceManifest['unitManifestState'];
+  let unitManifestReason: string | undefined;
+  try {
+    // An unreadable service directory hides the manifest from existsSync,
+    // so list it first: only a missing one means no manifest.
+    fs.readdirSync(join(baseDir, 'service'));
+    unitManifest = dependencies.readManifestAt(unitManifestPath);
+    unitManifestState = unitManifest === null ? 'absent' : 'present';
+  } catch (error) {
+    if (error instanceof ServiceManifestIntegrityError) throw error;
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      unitManifestState = 'absent';
+    } else {
+      unitManifestState = 'unreadable';
+      unitManifestReason =
+        error instanceof Error ? error.message : String(error);
+    }
+  }
   return {
     allowedOrigins: Array.isArray(allowedOrigins)
       ? (allowedOrigins as string[])
       : [],
     manifestPath,
     unitHome: baseDir,
+    unitManifest,
+    unitManifestPath,
+    ...(unitManifestReason === undefined ? {} : { unitManifestReason }),
+    unitManifestState,
     unitPath: manifest.unitPath,
   };
 }
@@ -1068,6 +1136,10 @@ function renderStatus(
             path: staleManifest.manifestPath,
             removeCommand: staleManifestRemoval(staleManifest),
             unitHome: staleManifest.unitHome,
+            unitManifest: staleManifest.unitManifestState,
+            ...(staleManifest.unitManifestReason === undefined
+              ? {}
+              : { unitManifestReason: staleManifest.unitManifestReason }),
             unitPath: staleManifest.unitPath,
           },
         }),
@@ -1079,16 +1151,35 @@ function renderStatus(
   console.log('LAYER          STATUS');
   console.log(`installation   ${installed ? 'installed' : 'not installed'}`);
   if (staleManifest !== null) {
-    const { manifestPath, unitHome, unitPath } = staleManifest;
+    const { manifestPath, unitHome, unitManifestPath, unitPath } =
+      staleManifest;
+    const base = `pass --base=${shellArgument(unitHome)} to address it`;
     console.log(
       `manifest       stale: ${manifestPath} describes an earlier install; the installed unit ${unitPath} runs from ${unitHome}`,
     );
-    console.log(
-      `               the lines below are read from ${unitHome}; pass --base=${shellArgument(unitHome)} to address it`,
-    );
-    console.log(
-      `               to remove only the stale manifest (not \`service uninstall\`, which removes the installed unit): ${staleManifestRemoval(staleManifest)}`,
-    );
+    const removal = staleManifestRemoval(staleManifest);
+    if (staleManifest.unitManifestState === 'present') {
+      console.log(
+        `               the lines below are read from ${unitHome}; ${base}`,
+      );
+      console.log(
+        `               to remove only the stale manifest (not \`service uninstall\`, which removes the installed unit): ${removal}`,
+      );
+    } else if (staleManifest.unitManifestState === 'absent') {
+      console.log(
+        `               ${unitManifestPath} does not exist, so the lines below are read from ${unitHome} without a manifest; ${base}`,
+      );
+      console.log(
+        `               no removal offered: ${manifestPath} is the only manifest that records this service`,
+      );
+    } else {
+      console.log(
+        `               ${unitManifestPath} could not be read (${staleManifest.unitManifestReason}), so the lines below are read from ${unitHome} without it; ${base}`,
+      );
+      console.log(
+        '               no removal offered until that manifest can be read',
+      );
+    }
   }
   console.log(
     `service unit   ${state.supervisor.error !== null ? 'unknown' : state.supervisor.state}`,
@@ -1835,6 +1926,36 @@ export async function runServiceCommand(
     return receipt;
   }
 
+  // The unit is shared by instance id; this home's manifest may describe
+  // an earlier install of it (#4196).
+  const staleManifest = existing
+    ? findStaleServiceManifest(existing, manifestPath, lifecycle.baseDir, {
+        fs,
+        readManifestAt: (path) =>
+          readManifest(
+            fs,
+            path,
+            instanceId,
+            registration,
+            run,
+            legacyRegistrations,
+          ),
+        run,
+      })
+    : null;
+  if (
+    staleManifest !== null &&
+    (action === 'start' || action === 'stop' || action === 'uninstall')
+  ) {
+    // Acting from here would drive the shared unit while reading, waiting
+    // on and cleaning up this home's earlier install.
+    console.error(
+      `Refusing to ${action} Station user service ${instanceId} from ${lifecycle.baseDir}: ${staleManifest.manifestPath} describes an earlier install, and the installed unit ${staleManifest.unitPath} runs from ${staleManifest.unitHome}. Nothing was changed. Pass --base=${shellArgument(staleManifest.unitHome)} to ${action} the installed service.`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   if (action === 'uninstall') {
     const target = existing ?? registration;
     if (target.platform === 'darwin') uninstallLaunchd(target, { fs, run });
@@ -1893,29 +2014,12 @@ export async function runServiceCommand(
     }
   }
 
-  const staleManifest = existing
-    ? findStaleServiceManifest(existing, manifestPath, lifecycle.baseDir, {
-        fs,
-        run,
-      })
-    : null;
   // The installed unit's own home owns its manifest, registry and running
   // instance; read the reported state there, not from the stale manifest.
-  let unitManifest: ServiceManifest | null = existing;
+  const unitManifest: ServiceManifest | null =
+    staleManifest === null ? existing : staleManifest.unitManifest;
   if (staleManifest !== null) {
     const unitLifecycle = { ...lifecycle, baseDir: staleManifest.unitHome };
-    try {
-      unitManifest = readManifest(
-        fs,
-        join(staleManifest.unitHome, 'service', `${instanceId}.json`),
-        instanceId,
-        registration,
-        run,
-        legacyRegistrations,
-      );
-    } catch {
-      unitManifest = null;
-    }
     const unitState = await createStationInstanceReconciler(
       createServiceInstancePlatformAdapter({
         existing: unitManifest,
