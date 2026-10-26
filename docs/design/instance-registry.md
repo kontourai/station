@@ -340,7 +340,8 @@ Prebuilt server archives instead put those per-instance lifecycle records in
 `<root>/state/<channel>/instances/`, outside the extracted version. The resolved
 home determines the root; service status and stop calls carry that same home.
 When the installed unit's `--base` names another home, status reads that home
-instead and reports this home's manifest as stale.
+instead and reports this home's manifest as stale; start, stop and uninstall
+refuse from such a home and act on nothing.
 Archives share their shipped build and refuse an in-place build. An archive
 installed under the installer's `versions/` layout can upgrade through its
 recorded installer; a loose extracted archive still requires manual replacement.
