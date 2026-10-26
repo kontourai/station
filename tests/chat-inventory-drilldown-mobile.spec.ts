@@ -202,6 +202,18 @@ test.describe('Chat inventory item drill-down on a phone', () => {
       name: 'Chat actions',
       exact: true,
     });
+    const inventoryRow = page.getByRole('menuitem', {
+      name: 'Chat inventory',
+      exact: true,
+    });
+    // Measured once Chat inventory is available (the row appears when the
+    // chat's inventory is ready), since that is when it used to wrap the bar.
+    await chatActions.click();
+    await expect(inventoryRow).toBeVisible({ timeout: 15_000 });
+    await page
+      .getByRole('button', { name: 'Close actions menu', exact: true })
+      .click();
+    await expect(inventoryRow).toHaveCount(0);
     for (const width of [320, WIDTH]) {
       await page.setViewportSize({ width, height: HEIGHT });
       await expect(async () => {
@@ -258,9 +270,7 @@ test.describe('Chat inventory item drill-down on a phone', () => {
     }
 
     await chatActions.click();
-    await page
-      .getByRole('menuitem', { name: 'Chat inventory', exact: true })
-      .click();
+    await inventoryRow.click();
     const reader = page.getByRole('dialog', {
       name: 'Chat inventory',
       exact: true,
