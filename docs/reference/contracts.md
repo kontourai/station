@@ -395,13 +395,15 @@ It claims neither success nor failure; the inventory lists and counts it under
 Execution, and the reader shows it as "No result recorded". Clients of protocol
 3 or lower validate the terminal status exactly, so for them the host omits such
 rows as before (never folding them into `cancelled`). An `unresolved`
-completion is not listed when the next start or completion carrying the same
-call id is a completion of a compatible turn (a result that arrived after the
-session-end settle): the transcript replaces that row with it (station#1569).
-A new start in between claims that completion instead, and a second
-`unresolved` in between is the row a late result would replace. The lookup is
-an indexed seek and reads only events at or below the read's frozen high-water
-mark. A page cursor records the
+completion is not listed when a later result of the same call id replaces it in
+the transcript (station#1569), by the transcript's own rule: a completion right
+after a start of a compatible turn is that start's result and is skipped, an
+unclaimed completion of another turn is skipped, a later `unresolved`
+completion takes over the replaceable slot, and the first unclaimed completion
+of a compatible turn before that replaces the row. Turns are compatible when
+they are equal or either is absent. The lookup is one index range seek and reads
+only events at or below the read's frozen high-water mark. A page cursor
+records the
 owner events a page read, not the rows it kept, so paging past an omitted row
 resumes at the right event. Inventory
 continuations bind the client dialect as well as scope and authority. Output

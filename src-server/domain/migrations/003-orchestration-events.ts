@@ -28,6 +28,12 @@ const { DatabaseSync } = require('node:sqlite') as {
  * Partial over tool lifecycle events with valid JSON only: \`json_extract\`
  * raises on a malformed payload, and a partial index evaluates its WHERE for
  * every row (see idx_events_thread_owner_recency below).
+ *
+ * Build cost, paid once on the first open of an existing store, on the
+ * startup path: about 5 s per GB with a cold page cache (a 1.59 GB store took
+ * 8.5 s to open cold; a ~1 GB synthetic store 5.2 s), and about 0.4-1 s per GB
+ * warm. Moving the build off the startup path (it can also outlast an
+ * upgrade handoff's readiness window on a very large store) is #4217.
  */
 export const TOOL_CALL_LIFECYCLE_INDEX = 'idx_events_thread_tool_call_sequence';
 
@@ -1238,8 +1244,9 @@ export function ensureOrchestrationEventStoreColumns(
        WHERE json_valid(payload)
          AND json_extract(payload, '$.metadata.userId') IS NOT NULL`,
   );
-  // Additive and re-runnable like the index above; build cost is measured in
-  // the #4178 review round (see TOOL_CALL_LIFECYCLE_INDEX).
+  // Additive and re-runnable like the index above, but NOT sub-second: it
+  // covers every tool lifecycle row (see TOOL_CALL_LIFECYCLE_INDEX for the
+  // measured cold and warm build cost).
   db.exec(TOOL_CALL_LIFECYCLE_INDEX_SQL);
 }
 
