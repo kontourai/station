@@ -12,7 +12,7 @@ import {
   TaskToolResultRequestError,
   useSessionToolResultQuery,
 } from '@kontourai/station-sdk/task-tool-results';
-import type { ReactNode } from 'react';
+import { type ReactNode, type RefObject, useEffect, useRef } from 'react';
 import { Button } from '../components/Button';
 import { ErrorState, SkeletonBlock } from '../components/state';
 import { useShowSurface } from '../contexts/useShowSurface';
@@ -114,11 +114,14 @@ function InputDetails({
   requestScope,
   footer,
   fallback,
+  focusTarget,
 }: {
   row: ThreadAuthoredInputRow;
   requestScope: ApiRequestScope;
   footer: ReactNode;
   fallback: ReactNode;
+  /** Where focus goes when the failure panel holding it goes away. */
+  focusTarget: RefObject<HTMLElement | null>;
 }) {
   const query = useSessionInventoryInput(
     row.sessionId,
@@ -126,6 +129,22 @@ function InputDetails({
     row.turnId,
     requestScope,
   );
+  // A recheck that finds the host now serves the read unmounts the failure
+  // panel and the Check again button that had focus. Focus would fall to the
+  // page, outside the dialog's Escape handling, so it moves to this item's
+  // details instead, but only when it was actually lost.
+  const wasUnsupported = useRef(false);
+  useEffect(() => {
+    if (query.hostSupport === 'unsupported') {
+      wasUnsupported.current = true;
+      return;
+    }
+    if (!wasUnsupported.current) return;
+    wasUnsupported.current = false;
+    const active = document.activeElement;
+    if (!active || active === document.body)
+      focusTarget.current?.focus({ preventScroll: true });
+  }, [query.hostSupport, focusTarget]);
   if (query.hostSupport === 'unsupported') {
     // Unsupported is not proof of an old host: a hosted deployment never
     // serves this read (#4177). The recheck result says only what it saw.
@@ -259,6 +278,7 @@ export function SessionInventoryItemDetails({
   onDismiss?(): void;
 }) {
   const showSurface = useShowSurface();
+  const detailsRef = useRef<HTMLElement>(null);
   const openSession = (session: string) => {
     onDismiss?.();
     showSurface('activity', { session });
@@ -318,8 +338,10 @@ export function SessionInventoryItemDetails({
     row.kind === 'thread-authored-input' || row.kind === 'thread-tool-result';
   return (
     <section
+      ref={detailsRef}
       className="session-inventory__item-details"
       aria-label={`${item.label} details`}
+      tabIndex={-1}
     >
       {row.kind === 'thread-authored-input' ? (
         <InputDetails
@@ -327,9 +349,23 @@ export function SessionInventoryItemDetails({
           requestScope={requestScope}
           footer={footer}
           fallback={openSessionButton}
+          focusTarget={detailsRef}
         />
       ) : null}
-      {row.kind === 'thread-tool-result' ? (
+      {row.kind === 'thread-tool-result' &&
+      row.terminalStatus === 'unresolved' ? (
+        // Nothing to read: the command never reported an outcome, and the
+        // result read refuses it. The same two facts as the adapters'
+        // UNRESOLVED_TOOL_OUTPUT, without naming which boundary passed
+        // (most engines settle at session end, Muse at turn end).
+        <>
+          <p>
+            No result recorded. This command never reported an outcome, so
+            whether it ran is unknown.
+          </p>
+          {footer}
+        </>
+      ) : row.kind === 'thread-tool-result' ? (
         <ToolDetails
           row={row}
           requestScope={requestScope}

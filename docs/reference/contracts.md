@@ -422,7 +422,23 @@ appears in a current-answer inventory. See the
 
 Client protocol 3 admits these lineage rows in the server inventory. Older or
 undeclared HTTP clients retain contribution-only groups and typed gaps; the
-server never strips rows after computing a continuation digest. Inventory
+server never strips rows after computing a continuation digest.
+
+Client protocol 4 admits a `thread-tool-result` row with `terminalStatus:
+'unresolved'`: a command that started but never reported an outcome (#4178).
+It claims neither success nor failure; the inventory lists and counts it under
+Execution, and the reader shows it as "No result recorded". Clients of protocol
+3 or lower validate the terminal status exactly, so for them the host omits such
+rows as before (never folding them into `cancelled`). An `unresolved`
+completion is listed only while the conversation transcript still shows it:
+a later result of the same call can replace that row (station#1569), and the
+transcript projection (`projectRuntimeEventsToMessages`) decides, over the
+thread's events at or below the read's frozen high-water mark. The projection
+runs only when a listing meets an unresolved row, at most once per thread and
+high-water mark per process while cached; continuation pages reuse it, and a
+thread deleted and recreated under the same id is projected afresh. A page cursor records the owner
+events a page read, not the rows it kept, so paging past an omitted row resumes
+at the right event. Inventory
 continuations bind the client dialect as well as scope and authority. Output
 pages filter the durable declaration index by the exact turn before paging,
 and their signed cursors cannot be reused for another turn or Whole Session.

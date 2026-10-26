@@ -10,6 +10,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import {
@@ -196,6 +197,46 @@ const inputInventory = {
           turnId: 'turn',
           inputKind: 'message',
           attachmentDescriptors: [],
+        },
+      ],
+    },
+  ],
+} as unknown as SessionInventoryProjection;
+
+/** A crashed turn: one command reported, one never did (#4178). */
+const noResultInventory = {
+  ...projection,
+  groups: [
+    {
+      id: 'execution',
+      owner: { owner: 'thread.canonical-events', id: 'v1' },
+      state: 'available',
+      count: { kind: 'exact', value: 2 },
+      gaps: [],
+      items: [
+        {
+          kind: 'thread-tool-result',
+          key: 'tool:tool-done',
+          owner: { owner: 'thread.canonical-events', id: 'v1' },
+          relations: ['observed-during'],
+          sessionId: 'session',
+          eventId: 'tool-done',
+          turnId: 'turn',
+          toolCallId: 'call-done',
+          name: 'Bash',
+          terminalStatus: 'succeeded',
+        },
+        {
+          kind: 'thread-tool-result',
+          key: 'tool:tool-open',
+          owner: { owner: 'thread.canonical-events', id: 'v1' },
+          relations: ['observed-during'],
+          sessionId: 'session',
+          eventId: 'tool-open',
+          turnId: 'turn',
+          toolCallId: 'call-open',
+          name: 'Read',
+          terminalStatus: 'unresolved',
         },
       ],
     },
@@ -411,6 +452,48 @@ describe('ConnectedSessionInventory', () => {
     });
   });
 
+  test('a command with no recorded result is listed, counted, and named without an outcome', () => {
+    configure();
+    hooks.inventory.mockReturnValue({
+      data: noResultInventory,
+      isLoading: false,
+      error: null,
+    });
+    hooks.tool.mockClear();
+    render(<ConnectedSessionInventory sessionId="session" />);
+    // Counted in the Execution tile, like the transcript's "1 with no result".
+    fireEvent.click(screen.getByRole('button', { name: /^Execution 2$/ }));
+    const rows = [...document.querySelectorAll('.session-inventory__item')];
+    expect(rows).toHaveLength(2);
+    const [succeeded, open] = rows;
+    expect(succeeded!.textContent).not.toContain('No result recorded');
+    const badge = open!.querySelector('.status');
+    expect(badge?.textContent).toBe('No result recorded');
+    // The shared status primitive, in its neutral tone.
+    expect(badge?.classList.contains('tone-neutral')).toBe(true);
+    for (const outcome of ['Cancelled', 'cancelled', 'Failed', 'failed'])
+      expect(open!.textContent).not.toContain(outcome);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Read View details' }));
+    const details = screen.getByRole('region', { name: 'Read details' });
+    expect(details.textContent).toContain('No result recorded.');
+    expect(details.textContent).toContain(
+      'This command never reported an outcome, so whether it ran is unknown.',
+    );
+    // Neither boundary is claimed: engines settle at session or turn end.
+    expect(details.textContent).not.toMatch(/turn ended|session ended/);
+    expect(screen.queryByRole('alert')).toBeNull();
+    // Nothing is read for a result that was never recorded.
+    expect(hooks.tool).not.toHaveBeenCalledWith(
+      'session',
+      'tool-open',
+      expect.anything(),
+    );
+    expect(
+      within(details).getByRole('button', { name: 'Open session' }),
+    ).toBeTruthy();
+  });
+
   test('an input on a host that does not serve the read says so, suggests an update, and can check again', () => {
     const recheckHost = vi.fn();
     openInputDetails({ ...UNSUPPORTED_HOST_INPUT, recheckHost });
@@ -472,6 +555,62 @@ describe('ConnectedSessionInventory', () => {
     const again = screen.getByRole('button', { name: 'Check again' });
     expect(again.getAttribute('aria-busy')).toBeNull();
     expect(again.getAttribute('aria-disabled')).toBeNull();
+  });
+
+  test('when Check again finds the host now serves the read, focus moves to the details instead of the page', () => {
+    const view = openInputDetails({
+      ...UNSUPPORTED_HOST_INPUT,
+      recheckHost: vi.fn(),
+      hostRecheck: 'idle',
+    });
+    const again = screen.getByRole('button', { name: 'Check again' });
+    again.focus();
+    expect(document.activeElement).toBe(again);
+    // The recheck answered: the host serves the read, and it is loading.
+    hooks.input.mockReturnValue({
+      data: undefined,
+      error: null,
+      refetch: vi.fn(),
+      hostSupport: 'supported',
+      recheckHost: vi.fn(),
+      hostRecheck: 'idle',
+    });
+    view.rerender(<ConnectedSessionInventory sessionId="session" />);
+    expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
+    const details = screen.getByRole('region', {
+      name: 'Authored message details',
+    });
+    // Inside the dialog, where Escape still works, not on the page.
+    expect(document.activeElement).toBe(details);
+    // And it stays there as the body arrives.
+    hooks.input.mockReturnValue({ ...SUCCESS_INPUT, error: null });
+    view.rerender(<ConnectedSessionInventory sessionId="session" />);
+    expect(screen.getByText('Continue')).toBeTruthy();
+    expect(document.activeElement).toBe(details);
+  });
+
+  test('when Check again succeeds after the user moved focus elsewhere, focus stays where the user put it', () => {
+    const view = openInputDetails({
+      ...UNSUPPORTED_HOST_INPUT,
+      recheckHost: vi.fn(),
+      hostRecheck: 'idle',
+    });
+    // The user has moved on to the row's own toggle, outside the panel.
+    const toggle = screen.getByRole('button', {
+      name: 'Authored message Hide details',
+    });
+    toggle.focus();
+    hooks.input.mockReturnValue({
+      data: undefined,
+      error: null,
+      refetch: vi.fn(),
+      hostSupport: 'supported',
+      recheckHost: vi.fn(),
+      hostRecheck: 'idle',
+    });
+    view.rerender(<ConnectedSessionInventory sessionId="session" />);
+    expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
+    expect(document.activeElement).toBe(toggle);
   });
 
   test.each([
@@ -1077,6 +1216,62 @@ describe.skipIf(!chromiumAvailable)(
         ).toBeLessThanOrEqual(420);
       } finally {
         await page.close();
+      }
+    });
+
+    test('lays out a command with no recorded result at phone and desktop widths', async () => {
+      const css = buildInventoryFixtureCss();
+      configure();
+      hooks.inventory.mockReturnValue({
+        data: noResultInventory,
+        isLoading: false,
+        error: null,
+      });
+      const view = render(<ConnectedSessionInventory sessionId="session" />);
+      fireEvent.click(screen.getByRole('button', { name: /^Execution 2$/ }));
+      const markup = view.container.innerHTML;
+      view.unmount();
+      for (const width of [390, 1440]) {
+        const page = await browser.newPage({
+          viewport: { width, height: 900 },
+        });
+        try {
+          await page.setContent(
+            `<!doctype html><style>${css}</style><main>${markup}</main>`,
+          );
+          const label = `${width}px`;
+          const item = page.locator('.session-inventory__item').nth(1);
+          const itemBox = await item.boundingBox();
+          const badge = item.locator('.session-inventory__item-status');
+          await expectPlaywright(badge).toHaveCount(1);
+          const badgeBox = await badge.boundingBox();
+          const toggle = item.getByRole('button', {
+            name: 'Read View details',
+          });
+          const toggleBox = await toggle.boundingBox();
+          expect(badgeBox, label).not.toBeNull();
+          // The shared primitive's styles applied, not an unstyled div.
+          await expectPlaywright(badge).not.toHaveCSS(
+            'border-top-width',
+            '0px',
+          );
+          // As wide as its words, inside the card, and the title row keeps
+          // its 44px target beside or below it.
+          expect(badgeBox!.width, label).toBeLessThan(itemBox!.width / 2);
+          expect(badgeBox!.x, label).toBeGreaterThanOrEqual(itemBox!.x);
+          expect(badgeBox!.x + badgeBox!.width, label).toBeLessThanOrEqual(
+            itemBox!.x + itemBox!.width,
+          );
+          expect(toggleBox!.height, label).toBeGreaterThanOrEqual(
+            MIN_TOUCH_TARGET_PX,
+          );
+          expect(
+            await page.evaluate(() => document.body.scrollWidth),
+            label,
+          ).toBeLessThanOrEqual(width);
+        } finally {
+          await page.close();
+        }
       }
     });
 
