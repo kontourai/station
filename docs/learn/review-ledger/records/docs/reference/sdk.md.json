@@ -746,7 +746,9 @@
 
     "packages/sdk/src/components/ActionControl.tsx",
 
-    "packages/sdk/src/components/ActionControl.css"
+    "packages/sdk/src/components/ActionControl.css",
+
+    "packages/sdk/src/query-domains/chatRuntimeStream.ts"
   ],
 
   "checks": [
