@@ -1,0 +1,7 @@
+{
+  "revision": "cf4a3a03079d50a130c6e10bd536350848452e23",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"ChatDockBody engine-chip label order changed (live Session engine before Agent configuration). No Agent/app setting, default, or config claim changes; reviewed Agent execution connection prose remains accurate.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

@@ -1282,14 +1282,50 @@ describe('EventStore', () => {
       const starts = page.events.filter(
         (event) => event.method === 'turn.started',
       );
+      // Its start carries no prompt and no attachments, so the listing query
+      // never returns it (the module's trigger check stays as a second
+      // guard for a provider turn that does carry text).
       expect(starts).toEqual([
         expect.objectContaining({ id: 'pt-user-start' }),
-        expect.objectContaining({
-          id: 'pt-provider-start',
-          trigger: 'provider',
-        }),
       ]);
       expect(starts[0]).not.toHaveProperty('trigger');
+    });
+
+    test('projects the provider trigger for a provider-opened start that carries text', () => {
+      // A provider-opened turn with text passes the authored-input filter, so
+      // the store's own trigger projection is what lets the inventory module
+      // drop it as a turn nobody authored.
+      const textThread = 'provider-turn-with-text';
+      store.appendEvent({
+        provider: 'claude',
+        threadId: textThread,
+        createdAt: at,
+        eventId: 'pt-text-provider-start',
+        turnId: 'provider:text',
+        method: 'turn.started',
+        prompt: 'background job finished',
+        metadata: trigger,
+      });
+      store.appendEvent({
+        provider: 'claude',
+        threadId: textThread,
+        createdAt: at,
+        eventId: 'pt-text-user-start',
+        turnId: 'user-text',
+        method: 'turn.started',
+        prompt: 'start the job',
+      });
+      const starts = store
+        .listSessionInventoryEvents(textThread)
+        .events.filter((event) => event.method === 'turn.started');
+      expect(starts).toEqual([
+        expect.objectContaining({
+          id: 'pt-text-provider-start',
+          trigger: 'provider',
+        }),
+        expect.objectContaining({ id: 'pt-text-user-start' }),
+      ]);
+      expect(starts[1]).not.toHaveProperty('trigger');
     });
 
     test('its Basis window carries no input for its start', () => {

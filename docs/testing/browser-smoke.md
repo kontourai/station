@@ -11,7 +11,7 @@ temporary home, and dynamically allocated loopback API/UI ports, keeping it
 separate from an always-on dogfood environment on the same host.
 
 The normative manifest is
-[`PR_BROWSER_SMOKE_CONTRACT`](../../tests/e2e-manifest.mjs). Its seven selected
+[`PR_BROWSER_SMOKE_CONTRACT`](../../tests/e2e-manifest.mjs). Its eight selected
 specs cover these journeys:
 
 | Spec | Journey |
@@ -23,8 +23,9 @@ specs cover these journeys:
 | `orchestration-chat-flow` | Transcript, tool activity, and approval UI driven by synthetic canonical events |
 | `cross-runtime-chat-switching` | Deterministic provider continuity and mobile layout containment, including the required 320/390/412-pixel switcher observations |
 | `pr-smoke-live-chat-send` | A real orchestration HTTP dispatch and rendered reply from a local Ollama-compatible fixture server |
+| `chat-inventory-drilldown-mobile` | At 390x844, a real chat's authored input drilled into from Chat inventory, read back through the exact input read, and measured for overflow, chip width, and 44px targets |
 
-The last journey tests Station's request and rendering path; the fixture returns
+The live-chat send journey tests Station's request and rendering path; the fixture returns
 fixed text and does not run a model or contact a provider. A phone-sized browser
 viewport is not physical-phone evidence.
 

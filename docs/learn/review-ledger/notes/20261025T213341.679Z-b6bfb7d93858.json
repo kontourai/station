@@ -1,0 +1,19 @@
+{
+  "revision": "2ef26fcf80e9268f03848e2b5d2afc819b5ead5d",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"testing.md delta: anchor parts (type, name, label, scoped bare tags), JSON screen maps, unknown and removed screen rules. No operations vocabulary changed.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"testing.md delta only; the gate:for sentence and link remain accurate.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Updated anchor description and the ceiling rules: maps read as JSON data, unknown listed screens fail, removal plus addition in one change fails (REMOVED SCREEN). Map reference now the JSON file. Checked against stable-anchor.ts, gallery-ui-findings.mjs allowlistGrowth/runGrowth and their tests.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"testing.md delta is the gallery allowlist section; scripts scope rules unchanged.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"testing.md delta is the gallery allowlist section; server guidance unchanged.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"testing.md delta is the gallery allowlist section; UI guidance unchanged.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"testing.md delta is the gallery allowlist section; fixture and journey rules unchanged.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

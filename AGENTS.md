@@ -36,7 +36,7 @@ Codex loads only this root automatically; read the routed scope explicitly. Clau
 | --- | --- |
 | Documentation, decisions | [docs/guides/documentation.md](docs/guides/documentation.md) |
 | `src-server/**` | [src-server/AGENTS.md](src-server/AGENTS.md) |
-| `src-ui/**` | [src-ui/AGENTS.md](src-ui/AGENTS.md) |
+| `src-ui/**`, `packages/basis-pane/**`, `packages/board-pane/**` | [src-ui/AGENTS.md](src-ui/AGENTS.md) |
 | `scripts/**`, `.github/**`, root configuration, package scripts | [scripts/AGENTS.md](scripts/AGENTS.md) |
 | `src-desktop/**` | [src-desktop/AGENTS.md](src-desktop/AGENTS.md) |
 | `packages/contracts/**` | [packages/contracts/AGENTS.md](packages/contracts/AGENTS.md) |
