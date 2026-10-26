@@ -32,7 +32,7 @@ export interface ServiceInstallConfiguration {
   uiPort?: unknown;
 }
 
-function shellArgument(value: string): string {
+export function shellArgument(value: string): string {
   // Comma included: feature lists are comma-separated and a comma is not a
   // shell metacharacter outside brace expansion, so quoting them adds noise
   // to a command the operator is meant to read and paste.
@@ -53,8 +53,27 @@ export interface ServiceInstallInvocation {
   stationRoot?: string;
 }
 
-const INCOMPLETE_REGISTRATION_REASON =
-  'this registration does not record every setting. Inspect its manifest before reinstalling.';
+/**
+ * What a remedy was derived from, as its explanations name it: the unit a
+ * launchd or systemd service runs, or a manifest (Windows, upgrade
+ * fallbacks).
+ */
+interface RemedySource {
+  inspect: string;
+  subject: string;
+}
+
+const MANIFEST_SOURCE: RemedySource = {
+  inspect: 'Inspect its manifest before reinstalling.',
+  subject: 'this registration',
+};
+
+function unitSource(path: string): RemedySource {
+  return {
+    inspect: 'Inspect it before reinstalling.',
+    subject: `the installed unit ${shellArgument(path)}`,
+  };
+}
 
 /**
  * The install command that reproduces this registration, or why none can be
@@ -72,6 +91,7 @@ export function resolveServiceInstallRemedy(
   configuration: ServiceInstallConfiguration,
   fallbackBaseDir?: string,
   invocation: ServiceInstallInvocation = { launcher: 'station' },
+  source: RemedySource = MANIFEST_SOURCE,
 ): ServiceInstallRemedy {
   const baseDir = configuration.baseDir ?? fallbackBaseDir;
   if (
@@ -87,7 +107,10 @@ export function resolveServiceInstallRemedy(
     (configuration.stationRoot !== undefined &&
       typeof configuration.stationRoot !== 'string')
   ) {
-    return { command: null, reason: INCOMPLETE_REGISTRATION_REASON };
+    return {
+      command: null,
+      reason: `${source.subject} does not record every setting. ${source.inspect}`,
+    };
   }
   const recordedRoot = configuration.stationRoot as string | undefined;
   const { launcher, stationRoot: launcherRoot } = invocation;
@@ -98,7 +121,7 @@ export function resolveServiceInstallRemedy(
     ) {
       return {
         command: null,
-        reason: `this registration carries ${recordedRoot === undefined ? 'no STATION_ROOT' : `STATION_ROOT=${shellArgument(recordedRoot)}`}, but ${launcher} sets STATION_ROOT=${shellArgument(launcherRoot)}. Inspect it before reinstalling.`,
+        reason: `${source.subject} carries ${recordedRoot === undefined ? 'no STATION_ROOT' : `STATION_ROOT=${shellArgument(recordedRoot)}`}, but ${launcher} sets STATION_ROOT=${shellArgument(launcherRoot)}. ${source.inspect}`,
       };
     }
   }
@@ -110,7 +133,7 @@ export function resolveServiceInstallRemedy(
   ) {
     return {
       command: null,
-      reason: `this registration carries no STATION_ROOT, but a reinstall of this home would set STATION_ROOT=${shellArgument(bareRoot)}. Inspect its manifest before reinstalling.`,
+      reason: `${source.subject} carries no STATION_ROOT, but a reinstall of this home would set STATION_ROOT=${shellArgument(bareRoot)}. ${source.inspect}`,
     };
   }
   // A recorded root is prefixed only when a bare reinstall would derive a
@@ -195,6 +218,44 @@ function parseServiceRunArguments(
 }
 
 /**
+ * The `service run` an installed launchd or systemd unit starts: its flags as
+ * an install configuration (STATION_ROOT from the unit's environment) and the
+ * entry files before `service run`. A reason, naming the unit, when the unit
+ * runs something a reinstall command cannot reproduce.
+ */
+export function readInstalledServiceRun(
+  unit: InstalledServiceUnit,
+):
+  | { configuration: ServiceInstallConfiguration; entries: string[] }
+  | { reason: string } {
+  const source = unitSource(unit.path);
+  const run = unit.argv?.findIndex(
+    (argument, index) =>
+      argument === 'service' && unit.argv?.[index + 1] === 'run',
+  );
+  if (unit.argv === null || run === undefined || run < 1) {
+    return {
+      reason: `${source.subject} does not run \`service run\`. ${source.inspect}`,
+    };
+  }
+  const parsed = parseServiceRunArguments(unit.argv.slice(run + 2));
+  if ('unknownArgument' in parsed) {
+    return {
+      reason: `${source.subject} runs ${shellArgument(parsed.unknownArgument)}, which a reinstall command cannot reproduce. ${source.inspect}`,
+    };
+  }
+  const stationRoot = unit.environment.STATION_ROOT;
+  return {
+    // An empty STATION_ROOT= is how the unit records none.
+    configuration: {
+      ...parsed,
+      stationRoot: stationRoot ? stationRoot : undefined,
+    },
+    entries: unit.argv.slice(1, run),
+  };
+}
+
+/**
  * The reinstall command for what an installed launchd or systemd unit runs:
  * its own `service run` arguments and STATION_ROOT, under the launcher that
  * owns the code it runs.
@@ -202,27 +263,11 @@ function parseServiceRunArguments(
 export function resolveInstalledUnitRemedy(
   unit: InstalledServiceUnit,
 ): ServiceInstallRemedy {
-  const run = unit.argv?.findIndex(
-    (argument, index) =>
-      argument === 'service' && unit.argv?.[index + 1] === 'run',
-  );
-  if (unit.argv === null || run === undefined || run < 1) {
-    return {
-      command: null,
-      reason:
-        'the installed unit does not run `service run`. Inspect it before reinstalling.',
-    };
-  }
-  const parsed = parseServiceRunArguments(unit.argv.slice(run + 2));
-  if ('unknownArgument' in parsed) {
-    return {
-      command: null,
-      reason: `the installed unit runs ${shellArgument(parsed.unknownArgument)}, which a reinstall command cannot reproduce. Inspect it before reinstalling.`,
-    };
-  }
+  const run = readInstalledServiceRun(unit);
+  if ('reason' in run) return { command: null, reason: run.reason };
   // renderServiceCommand: a launcher service runs exactly
   // `<node> <installRoot>/runtime/station-launcher.mjs`.
-  const entries = unit.argv.slice(1, run);
+  const { entries } = run;
   const installRoot =
     entries.length === 1 &&
     basename(entries[0]) === 'station-launcher.mjs' &&
@@ -231,12 +276,11 @@ export function resolveInstalledUnitRemedy(
       : undefined;
   const owner = serviceInstallLauncher(installRoot);
   if ('reason' in owner) return { command: null, reason: owner.reason };
-  const stationRoot = unit.environment.STATION_ROOT;
   return resolveServiceInstallRemedy(
-    // An empty STATION_ROOT= is how the unit records none.
-    { ...parsed, stationRoot: stationRoot ? stationRoot : undefined },
+    run.configuration,
     undefined,
     owner,
+    unitSource(unit.path),
   );
 }
 
@@ -271,7 +315,7 @@ export function resolveInstalledServiceRemedy(
   } catch (error) {
     return {
       command: null,
-      reason: `the installed unit could not be read (${error instanceof Error ? error.message : String(error)}). Inspect it before reinstalling.`,
+      reason: `the installed unit ${shellArgument(manifest.unitPath)} could not be read (${error instanceof Error ? error.message : String(error)}). Inspect it before reinstalling.`,
     };
   }
   return resolveInstalledUnitRemedy(unit);
