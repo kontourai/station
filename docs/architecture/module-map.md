@@ -1993,7 +1993,71 @@ Canonical JSON sorts object keys, preserves array order and text exactly, and re
 
 Legacy rows without original digest proof remain unknown, even after reclaim: a retry never supplies their original digest. SQLite mirrors the digest in the current owner JSON and the digest column, and trusts it only when they agree. An older writer replacing the owner JSON drops that marker, so a leftover column is unknown. Mixed-version operation therefore cannot guarantee conflict enforcement; missing-digest callers and legacy rows retain legacy replay behavior. Tombstone expiry and unresolved-claim safety remain unchanged. This is only the existing-key conflict slice of #3567: mandatory/generated keys, `/chat`'s independent stream ledger, CLI coverage and retention-policy expansion remain outside it.
 
-**Code and evidence.** `EventStore` composes its private `src-server/services/orchestration/sqlite-turn-dedup-persistence.ts` coordinator into the Module; orchestration callers receive only the Interface. The claim, begin, resolve, release, retention and tombstone rules are the turn-dedup commands of [`@kontourai/monument`](../../packages/monument/CONTEXT.md), run through its `node:sqlite` adapter on `EventStore`'s own connection and bound to the existing `orchestration_turn_dedup` and `orchestration_turn_dedup_expired` tables, which stay the source of truth. An additive migration supplies nullable `input_digest`; the owner id remains `token`. Older binaries can still read and write the tables, but cannot enforce input conflicts. Additive encoding compatibility does not qualify legacy writers for prepared intent; those need host-enforced fencing. What stays in Station is the key scheme (`turnDedupKey`, `chatTurnDedupKey`), the `chat:` rule that reads an unmarked legacy row as `untracked`, the 30-day `chat:` tombstone bound, the one-way owner handle, and the metrics. `monument-station-tables.conformance.test.ts` runs Monument's conformance suite against that binding, and `deleteThread` forgets a thread's claims and tombstones through Monument's `turnDedup.forgetPrefix` inside its own transaction, so the prefix comparison is byte-exact for any thread id. `src-server/services/orchestration/__tests__/turn-deduplicator.test.ts` uses real temporary SQLite for ownership, restart, and fault behaviour, and `turn-dedup-crash.process.test.ts` SIGKILLs a real owner process before and after its provider call. `/chat` claims are tracked like thread claims ([#3581](https://github.com/kontourai/station/issues/3581)): `streamPrimaryAgentChat` claims the key before the response starts and records invocation durably immediately before `agent.streamText`, so a retry after its owner died past that point is refused. A refused `/chat` retry (`indeterminate` or `expired`) answers 409 with `code: foreground_message_indeterminate` and `outcome: 'indeterminate'` before any stream, and the SDK's `streamConversationTurn` rejects with a `ChatHttpError` carrying `outcome: 'indeterminate'`. A `chat:` row with no invocation record, written before #3581, still reads as `untracked` and keeps the dead-owner reclaim rule; an unrecognised record fails closed on every key. An in-process agent failure still releases the claim so the user can retry; only a crash past the invocation point is refused. `chat-turn-dedup-crash.process.test.ts` SIGKILLs a real `/chat` owner before and after its agent call. The separate `/chat` facade retains its own `EventStore` chat-turn family because it owns conversation-id replay, bounded retention, and direct-route compatibility; it is not a second TurnDeduplicator caller family. **Do not reintroduce:** a process-local map, raw `(threadId, clientTurnId)` updates, elapsed-time takeover or pruning unresolved claims, or a generic ledger wrapper around the retained chat-turn facade.
+**Code and evidence.** `EventStore` composes its private `src-server/services/orchestration/sqlite-turn-dedup-persistence.ts` coordinator into the Module; orchestration callers receive only the Interface. The claim, begin, resolve, release, retention and tombstone rules are the turn-dedup commands of [`@kontourai/monument`](../../packages/monument/CONTEXT.md), run through its `node:sqlite` adapter on `EventStore`'s own connection and bound to the existing `orchestration_turn_dedup` and `orchestration_turn_dedup_expired` tables, which stay the source of truth. An additive migration supplies nullable `input_digest`; the owner id remains `token`. Older binaries can still read and write the tables, but cannot enforce input conflicts. Additive encoding compatibility does not qualify legacy writers for prepared intent; those need host-enforced fencing. What stays in Station is the key scheme (`turnDedupKey`, `chatTurnDedupKey`), the `chat:` rule that reads an unmarked legacy row as `untracked`, the 30-day `chat:` tombstone bound, the one-way owner handle, and the metrics. `monument-station-tables.conformance.test.ts` runs Monument's conformance suite against that binding, and `deleteThread` forgets a thread's claims and tombstones through Monument's `turnDedup.forgetPrefix` inside its own transaction, so the prefix comparison is byte-exact for any thread id. `src-server/services/orchestration/__tests__/turn-deduplicator.test.ts` uses real temporary SQLite for ownership, restart, and fault behaviour, and `turn-dedup-crash.process.test.ts` SIGKILLs a real owner process before and after its provider call.
+
+**Direct chat claim lifecycle.** `/chat` claims are tracked like thread claims
+([#3581](https://github.com/kontourai/station/issues/3581)).
+[`streamPrimaryAgentChat`](../../src-server/routes/chat/chat-primary-stream.ts)
+claims the key through the
+[`/chat` facade](../../src-server/routes/chat/chat-turn-dedup.ts) before the
+response starts. It records invocation durably immediately before
+`agent.streamText`, inside the native foreground relay's final guard when
+that guard applies. Admission, Agent identity and runtime configuration must
+pass that guard first. Cancellation, guard refusal, a failed invocation record
+or setup failure before the call releases the key: the Agent was not invoked.
+
+After invocation, the key resolves only when Station drains the stream and
+finishes its response without observing an abort, regardless of the model's
+finish reason (`stop`, `length` or another value). A thrown or rejected call,
+stream error, client cancellation or disconnect, runtime configuration change,
+or thrown resolution write retains the unresolved key. This includes a
+client disconnect after the model finishes but before Station finishes the
+response. A store that silently fails to apply a resolution without throwing
+is not detected. Direct `/chat` still aborts its turn when the client
+disconnects; it offers no durable continuation or exactly-once model/tool
+effects.
+
+Retention uses the bounded process-local marker described under Giving a
+claim up. While that marker remains, a new same-key request in the owning
+process is refused before streaming with HTTP 409,
+`code: foreground_message_indeterminate` and `outcome: 'indeterminate'`.
+The SDK's `streamConversationTurn` surfaces this as a `ChatHttpError`. A
+same-key request already waiting ends its stream with an error event on its
+next poll. Another live process, or the owner after its marker is forgotten,
+meets the claim as contended: it waits up to five minutes for resolution,
+then ends its stream with an error event. After the owner dies, the durable
+invocation record makes the unresolved claim indeterminate. An expired key
+also receives the pre-stream 409 refusal. These protections depend on retained
+records and compatible writers; the tombstone expiry rules above still apply.
+
+A resolved-key replay sends `conversation-started` with the original
+conversation ID and a `finish` whose `finishReason` is always `completed`.
+It replays no output or original finish reason; the client reads the
+conversation. An unmarked legacy `chat:` row still reads as `untracked` and
+keeps the dead-owner reclaim rule; an unrecognised invocation record fails
+closed. The key is not bound to the caller, Agent, conversation or input
+([#3567](https://github.com/kontourai/station/issues/3567)): different input
+under a resolved key replays the earlier conversation ID. Inspect that
+conversation after an uncertain send; do not automatically resend under a
+new key. Use a new key only for a deliberate new request. A pre-call refusal
+can leave a created conversation with the user message and a failure marker;
+retrying without that `conversationId` can create another conversation.
+Unresolved `chat:` rows remain unbounded; Station's shared resolved-row floor
+above protects a count of resolved replays, not a per-scope duration.
+
+[`chat-primary-stream.dedup.test.ts`](../../src-server/routes/chat/__tests__/chat-primary-stream.dedup.test.ts)
+drives the route over temporary SQLite, including the real native relay
+companion with stub admission.
+[`chat-turn-dedup-crash.process.test.ts`](../../src-server/routes/chat/__tests__/chat-turn-dedup-crash.process.test.ts)
+SIGKILLs a real `/chat` owner before its call, while held in the native guard,
+after the call and after a retained failure. These fixtures do not qualify
+live providers or durable Station adoption. The separate `/chat` facade keeps
+its own EventStore family for conversation-ID replay and direct-route
+compatibility; it is not a second TurnDeduplicator caller family.
+**Do not reintroduce:** a process-local map as the durable authority, raw
+`(threadId, clientTurnId)` updates, elapsed-time takeover, pruning unresolved
+claims, or a generic ledger wrapper around the retained chat-turn facade.
+
 
 ## AdoptionLedger
 
@@ -5077,6 +5141,96 @@ The [route tests](../../src-server/routes/operations/__tests__/telemetry-events.
 install a signed fixture, invoke the SDK and real kernel routes, and observe a
 loopback receiver. They do not qualify a deployed broker or physical UI journey.
 Distribution manifests and broker `plugin_daily` acceptance remain separate work.
+
+## TaskReviewThreads
+
+Task review keeps anchored comments outside the shared room's document and
+history, and outside revision-bound evidence (#4007, #4055). The
+[review contract](../../packages/contracts/src/task-review.ts) owns shapes,
+bounds, quote relocation and state derivation. Personal
+[routes](../../src-server/routes/orchestration/task-review.ts) obtain current
+request authority from `ProjectTaskRoomRuntime.personTaskReviewAccess`;
+`sessionTaskReviewAccess` exposes the same Task binding check for future agent
+callers without requiring Task memory. `readPlanForReview` only reads working
+state. [Runtime composition](../../src-server/runtime/routes/runtime-routes.ts)
+mounts the routes and resolves linked answers through the canonical turn reader,
+with at most four concurrent reads and an exact selector for item/mutation reads.
+
+[TaskReviewModule](../../src-server/services/projects/task-review-module.ts)
+lists metadata and counts for the plan, Task summary (Brief), kept outputs,
+linked answers and captures. List threads are summaries with state, anchor,
+event count, opening-comment preview and latest delivery event alongside the
+last event; a separate thread-detail GET supplies full history. Summary event
+bodies are capped at 500 UTF-16 code units without partial surrogates.
+Corrupt rows are logged once per thread/event count within the bounded warning
+cache and projected as unavailable entries while healthy
+threads remain readable. Unavailable entries are omitted from aggregate counts.
+Freshness caches use thread ID, event count and current revision/availability;
+normalized text, digest and line offsets are reused per plan/summary revision,
+and immutable answer digests are cached. Owner reads and request authority still
+run on every request. Optional synchronous constructor port
+`deliveryStatusFor(threadId, deliveryKey)` reads owner-proven inbox standing
+after the freshness-cache lookup on every list/detail/mutation projection;
+omitting it yields unconfirmed. A port failure also yields unconfirmed, with a
+distinct delivery-status warning; it does not mark the thread corrupt. Delivery
+status is never cached. #4158 should
+supply this port and use `listThreadEntries`, the tolerant store listing.
+The strict `listThreads` reader has been removed. Creation counts every stored
+thread toward the cap and refuses a retry with `unavailable` when its operation
+ID belongs to a corrupt thread. `appendReviewEvent` writes review-domain events;
+the deprecated `appendEvent` alias has been removed. Review writes do not append
+canonical conversation events or UI-block provenance.
+The caches use LRU ordering on reads. Retained payload budgets are 8 MiB for
+prepared revisions (at most 16), 8 MiB for thread views (2000), 1 MiB for answer
+digests (2000), and 1 MiB for warning identities (2000). Accounting includes
+UTF-16 string storage, numeric line offsets, keys and an entry allowance; these
+are retained-payload estimates, not process-heap measurements. Failed document
+preparations are never retained. A document at the maximum size with about one
+million lines exceeds the 8 MiB prepared-revision budget once its line offsets
+are counted, so each poll prepares it again. Eviction/restart can repeat cold work or a
+warning. The caches confer no authority. A selected-item route returns text
+capped at
+1,048,576 UTF-8 bytes and UTF-16 code units. Output listing uses a single owner
+metadata read and does not request output content; oversized selected outputs
+are refused before reading content. Mutation responses project the committed
+store row with only the affected artifact. It validates new anchors against the current
+revision and digest, and derives Outdated when a retained quote cannot be
+uniquely relocated. Revision changes appear separately; unavailable mutable
+artifacts have unknown freshness. Newer kept outputs for the same source path
+provide the shared contract's freshness provenance; answers and captures are
+immutable. Whole anchors retain no full-body quote and never enter Outdated;
+revision chips remain separate. Structured answer refs preserve Session and
+turn IDs independently, and summary revisions remain numeric at the boundary.
+
+[TaskReviewStore](../../src-server/services/orchestration/task-review-store.ts),
+accessed through `EventStore.taskReviewStore()`, owns three append-only SQLite
+tables from [migration 023](../../src-server/domain/migrations/023-task-review.ts):
+threads, ordered events and capture metadata. Each write is one `BEGIN IMMEDIATE`
+transaction with synchronous person-grant, Task and scope rechecks, shared
+event parsing and transition admission, idempotency and refusing bounds. Person-only thread/comment/reply
+checks exist in both store validation and SQLite. Task id
+plus creation time fences both reads and writes. Batch send records commit
+atomically; agent replies and `recordSendFailed` require the active delivery key.
+SQLite also rejects summary revisions with leading zeros and agent replies
+without an earlier same-thread sent key; active-key retirement remains contract
+admission's responsibility.
+Admission folds full event history, preserving Sent on a person follow-up; this increment delivers no agent messages and stores no image bytes.
+The separate capture primitives in [PR #4150](https://github.com/kontourai/station/pull/4150),
+`workspace-commit-pin` and `task-capture-blob-store`, own commit pinning and
+content-addressed image bytes; this module does not depend on that PR.
+
+The [SDK hooks](../../packages/sdk/src/query-domains/taskReview.ts) invalidate
+review reads after person mutations and support opt-in polling every three
+seconds while a thread is sent, stopping on error. Selected item queries never
+poll. See the [API](../reference/api.md#task-review-threads)
+and [SDK reference](../reference/sdk.md#task-review-threads). Evidence owners:
+[real SQLite tests](../../src-server/services/orchestration/__tests__/task-review-store.test.ts)
+[module cache/projection tests](../../src-server/services/projects/__tests__/task-review-module.test.ts),
+and [composed runtime routes](../../src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts).
+They cover durable reopening, append-only enforcement, idempotency, capacity
+refusals, incarnation isolation, plan editing, unavailable working state and
+review writes preserving room content, history and revision evidence. They do
+not qualify agent delivery, browser capture, a UI journey or a release.
 
 ## TerminalSessions
 
