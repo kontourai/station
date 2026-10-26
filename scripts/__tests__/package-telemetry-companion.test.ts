@@ -73,6 +73,19 @@ vi.mock('../../src-server/services/telemetry-companion.js', () => ({
     architecture: 'arm64',
   }),
 }));
+vi.mock(
+  '../../src-server/services/telemetry-companion-artifact.mjs',
+  async (importOriginal) => {
+    const original =
+      await importOriginal<
+        typeof import('../../src-server/services/telemetry-companion-artifact.mjs')
+      >();
+    return {
+      ...original,
+      readCompanionFile: vi.fn(original.readCompanionFile),
+    };
+  },
+);
 vi.mock('../../config/release-manifest-keys.json', () => ({
   default: fixtureKeys,
 }));
@@ -413,7 +426,8 @@ test.skipIf(process.platform === 'win32')(
         verification: { keys },
       });
     // Observe the later retained-installation guard without changing its result.
-    const read = vi.spyOn(companionArtifact, 'readCompanionFile');
+    const read = vi.mocked(companionArtifact.readCompanionFile);
+    read.mockClear();
     docker.mockClear();
     try {
       await expect(install()).rejects.toMatchObject({
@@ -469,7 +483,7 @@ test.skipIf(process.platform === 'win32')(
         await replacedLease.release();
       }
     } finally {
-      read.mockRestore();
+      read.mockClear();
       await lease.release();
       fixtureKeys.keys = [];
     }
