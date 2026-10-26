@@ -55,3 +55,43 @@ test('accessors and proxy traps do not execute through optional room fields', ()
   const proxy = new Proxy(record, { getOwnPropertyDescriptor: read });
   expect(parseProjectTaskRoomBrowserHistory(page(proxy))).toBeUndefined();
 });
+
+test('projects member standing, structured mentions, and an agent requester without losing legacy records', () => {
+  const startedBy = {
+    principalId: 'person-1',
+    label: 'Alex',
+    standing: 'member',
+  };
+  const agent = { ...record, startedBy };
+  expect(parseProjectTaskRoomBrowserHistory(page(agent))).toMatchObject({
+    records: [agent],
+  });
+  const human = {
+    ...record,
+    actor: { kind: 'human', label: 'Alex', standing: 'member' },
+    execution: undefined,
+    body: {
+      kind: 'human-message',
+      text: 'Review this',
+      mentions: [{ kind: 'person', principalId: 'person-2' }],
+    },
+  };
+  expect(parseProjectTaskRoomBrowserHistory(page(human))).toMatchObject({
+    records: [{ actor: human.actor, body: human.body }],
+  });
+  for (const invalid of [
+    { ...agent, startedBy: { label: 'Alex', standing: 'member' } },
+    { ...agent, startedBy: { ...startedBy, extra: true } },
+    { ...human, startedBy },
+    { ...human, actor: { ...human.actor, standing: 'guest' } },
+    {
+      ...human,
+      body: {
+        ...human.body,
+        mentions: Array.from({ length: 33 }, () => human.body.mentions[0]),
+      },
+    },
+  ]) {
+    expect(parseProjectTaskRoomBrowserHistory(page(invalid))).toBeUndefined();
+  }
+});

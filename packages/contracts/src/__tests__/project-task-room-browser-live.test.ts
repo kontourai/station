@@ -45,6 +45,43 @@ function readOutcome(publication: 'published' | 'private' = 'published') {
 }
 
 describe('ProjectTaskRoom browser live parser', () => {
+  test('retains presence location and requester attribution and refuses malformed additions', () => {
+    const live = readOutcome();
+    const participant = live.snapshot.participants[0]!;
+    const startedBy = {
+      principalId: 'person-1',
+      label: 'Alex',
+      standing: 'operator',
+    };
+    const parse = (extra: object) =>
+      parseProjectTaskRoomBrowserLiveSnapshot({
+        type: 'snapshot',
+        generation: 'generation-1',
+        viewerActorId: 'actor-viewer',
+        document: {},
+        live: {
+          ...live,
+          snapshot: {
+            ...live.snapshot,
+            participants: [{ ...participant, ...extra }],
+          },
+        },
+      });
+    for (const location of [
+      'conversation',
+      'review',
+      'plan',
+      { file: 'src/main.ts' },
+    ]) {
+      expect(parse({ location, startedBy })?.participants[0]).toMatchObject({
+        location,
+        startedBy,
+      });
+    }
+    expect(parse({ location: { file: 'a', secret: true } })).toBeUndefined();
+    expect(parse({ location: 'elsewhere' })).toBeUndefined();
+    expect(parse({ startedBy: { label: 'Alex' } })).toBeUndefined();
+  });
   test('allowlists initial and subsequent authoritative live envelopes', () => {
     const initial = parseProjectTaskRoomBrowserLiveSnapshot({
       type: 'snapshot',
