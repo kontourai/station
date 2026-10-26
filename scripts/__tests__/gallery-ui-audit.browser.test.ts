@@ -190,13 +190,16 @@ describe('hit-target and overflow identities', { timeout: 60_000 }, () => {
     ).toEqual(['hit-target:small:button.deferred-action[Deferred]']);
   });
 
-  it('clears content the page has scrolled up under a fixed header', async () => {
-    // Scrolled 100px: scrolling back up 10px drops the control below the bar.
+  it('reports content scrolled under a fixed header: scroll position is not credited', async () => {
+    // Scrolling back up would separate them, but modelling scroll clearance
+    // kept hiding real defects, so the audit stays conservative.
     expect(
       await overlaps(
         `${bar}<div style="height:130px"></div><button class="under-choice" aria-label="Choice" style="display:block;width:200px;height:44px;margin-top:10px">Choice</button><div style="height:2000px"></div><script>scrollTo(0, 100)</script>`,
       ),
-    ).toEqual([]);
+    ).toEqual([
+      'hit-target:overlap:button.bar-action[Menu] / button.under-choice[Choice]',
+    ]);
   });
 
   it('clears content behind a modal sheet that covers its centre', async () => {
@@ -278,6 +281,20 @@ describe('hit-target and overflow identities', { timeout: 60_000 }, () => {
       '<div style="height:744px"></div><div style="height:100px;overflow:auto"><button class="pane-row" aria-label="Pane row" style="display:block;width:390px;height:44px">R</button><div style="height:400px"></div></div><div style="position:fixed;left:0;right:0;bottom:0;height:100px;z-index:2"><button class="bar-save" aria-label="Bar save" style="width:390px;height:100px">Bar</button></div>',
       'hit-target:overlap:button.pane-row[Pane row] / button.bar-save[Bar save]',
     ],
+    'N5c: a clipped scroller taller than its clip, at max scroll, under a bar':
+      [
+        '<div style="height:844px;overflow:hidden"><div style="height:500px"></div><div id="i" style="height:1000px;overflow:auto"><div style="height:1000px"></div><button class="last-row" aria-label="Last row" style="display:block;width:390px;height:44px">Last</button><div style="height:666px"></div></div></div><div style="position:fixed;left:0;right:0;bottom:0;height:60px;z-index:2"><button class="bar-save" aria-label="Bar save" style="width:390px;height:60px">Bar</button></div><script>{const i=document.getElementById("i");i.scrollTop=99999;window.__dbg={st:i.scrollTop,max:i.scrollHeight-i.clientHeight}}</script>',
+        'hit-target:overlap:button.last-row[Last row] / button.bar-save[Bar save]',
+      ],
+    'N7: an un-stuck sticky header over a row in the same scroller': [
+      '<div style="height:600px;overflow:auto"><div style="height:300px"></div><div style="position:sticky;top:0;height:50px;z-index:2"><button class="sec-hdr" aria-label="Sec hdr" style="width:390px;height:50px">H</button></div><button class="row-x" aria-label="Row x" style="display:block;width:390px;height:44px;margin-top:-30px;position:relative">Row</button><div style="height:2000px"></div></div>',
+      'hit-target:overlap:button.sec-hdr[Sec hdr] / button.row-x[Row x]',
+    ],
+    'B4m: a fixed control inside a mid-scrolled pane, under another fixed control':
+      [
+        '<div id="p" style="height:844px;overflow:auto"><div style="height:2000px"></div><div style="position:fixed;left:0;top:0"><button class="fx-a" aria-label="Fx A" style="width:60px;height:60px">A</button></div></div><div style="position:fixed;top:20px;left:20px"><button class="fx-b" aria-label="Fx B" style="width:60px;height:60px">B</button></div><script>document.getElementById("p").scrollTop=500</script>',
+        'hit-target:overlap:button.fx-a[Fx A] / button.fx-b[Fx B]',
+      ],
     'two overlapping content controls': [
       '<button class="first-action" aria-label="First" style="display:block;width:60px;height:60px">1</button><button class="second-action" aria-label="Second" style="display:block;width:60px;height:60px;margin-top:-20px;margin-left:20px;position:relative">2</button><div style="height:2000px"></div>',
       'hit-target:overlap:button.first-action[First] / button.second-action[Second]',

@@ -1324,9 +1324,10 @@ photographed, recorded per screen as `uiAudit` in `gallery/capture.json`
 
 - hit targets (`tests/helpers/hit-target-audit.ts`): controls a clip hides
   on screen, overlapping targets that both centres can confirm (a pair with
-  a pinned control, in a fixed or sticky layer, counts only when the other
-  control cannot scroll clear of the layer and is not behind a covering
-  sheet: `aria-modal`, an open `<dialog>`, or the expanded chat dock;
+  a pinned control, in a fixed or sticky layer, counts unless the other
+  control is behind a covering sheet: `aria-modal`, an open `<dialog>`, or
+  the expanded chat dock; scroll position is not credited, so content a user
+  could scroll clear of a bar is still reported (conservative by design);
   controls the UA does not render, inside a closed `<details>`, are
   skipped; accepted limitation: the sheet test trusts markup, so a bar that
   carries `aria-modal="true"` or the `chat-dock` class is treated as a

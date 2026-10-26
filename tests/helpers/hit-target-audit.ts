@@ -46,10 +46,9 @@ export interface HitTargetAudit {
   /**
    * `overlaps` as data: the two controls' names, in document order;
    * `checkable` when both centres are on screen to hit-test, and `layered`
-   * when a third element is topmost at either centre, when one control is
+   * when a third element is topmost at either centre, or when one control is
    * in a sheet that covers the other (content behind a modal or the expanded
-   * chat dock), or when the content has the scroll room to move clear of the
-   * pinned layer.
+   * chat dock).
    */
   overlapPairs: Array<{
     first: string;
@@ -58,8 +57,8 @@ export interface HitTargetAudit {
     secondAnchor: string;
     checkable: boolean;
     layered: boolean;
-    /** Which rule layered the pair: a third element on top, a covering sheet, or scroll room. */
-    layeredBy: 'third' | 'sheet' | 'scroll' | null;
+    /** Which rule layered the pair: a third element on top, or a covering sheet. */
+    layeredBy: 'third' | 'sheet' | null;
   }>;
 }
 
@@ -128,18 +127,13 @@ export const HIT_TARGET_AUDIT = `(() => {
     // left:-9999px until focused), not one a clip swallowed on screen.
     const offCanvas = r.right <= 0 || r.left >= innerWidth;
     // Pinned: the nearest fixed or sticky container (a toolbar, a dock).
-    // Scroller: the nearest ancestor that really scrolls vertically; a
-    // control that is not pinned falls back to the document's scroll.
-    let pinned = null, scroller = null;
-    for (let a = el; a; a = a.parentElement) {
+    let pinned = null;
+    for (let a = el; a && !pinned; a = a.parentElement) {
       const cs = getComputedStyle(a);
-      if (!pinned && (cs.position === 'fixed' || cs.position === 'sticky')) pinned = a;
-      if (!scroller && a !== el && scrolls(cs.overflowY) && a.scrollHeight > a.clientHeight + 1) scroller = a;
+      if (cs.position === 'fixed' || cs.position === 'sticky') pinned = a;
     }
-    const page = document.scrollingElement;
-    if (!scroller && !pinned && page && page.scrollHeight > page.clientHeight + 1) scroller = page;
     return {
-      el, hit, name, anchor: stableAnchor(el), hidden, offCanvas, pinned, scroller,
+      el, hit, name, anchor: stableAnchor(el), hidden, offCanvas, pinned,
       w: Math.min(rr - l, reachSpan(x)), h: Math.min(b - t, reachSpan(y)), l, r: rr, t, b,
     };
   });
@@ -150,52 +144,20 @@ export const HIT_TARGET_AUDIT = `(() => {
   const small = smallZones.map((z) => z.name + ' ' + Math.round(z.w) + 'x' + Math.round(z.h));
   const smallTargets = smallZones.map((z) => ({ name: z.name, anchor: z.anchor, width: Math.round(z.w), height: Math.round(z.h) }));
   // A pinned control (in a fixed or sticky layer) over a content control is
-  // not two targets competing for one press in exactly two cases:
-  // - the layer is a sheet (aria-modal, an open <dialog>, the expanded chat
-  //   dock) that covers the content control's centre, and that control is
-  //   outside the sheet and not itself pinned: it is behind the sheet;
-  // - the content control's scroller has enough room left, in the direction
-  //   that matters, to move it clear of the layer's box.
-  // Everything else is reported: a bar over content that cannot move far
-  // enough, a header over a page's first row, a sticky header over row one at
-  // scrollTop 0, and two pinned controls. A collapsed chat dock is a bar.
+  // not two targets competing for one press in one case only: the layer is a
+  // sheet (aria-modal, an open <dialog>, the expanded chat dock) that covers
+  // the content control's centre, and that control is outside the sheet and
+  // not itself pinned: it is behind the sheet. Scroll position is not
+  // credited: a bar over content that could scroll clear is still reported,
+  // which errs conservative (attempts to model scroll clearance kept hiding
+  // real defects). A collapsed chat dock is a bar.
   const SHEET = '[aria-modal="true"], dialog[open], .chat-dock:not(.is-collapsed)';
   const pinnedOver = (p, c) => {
     if (p.pinned === null || p.pinned.contains(c.el)) return null;
     const sheet = p.el.closest(SHEET);
-    if (sheet && !sheet.contains(c.el) && c.pinned === null && c.hit !== null && sheet.contains(c.hit)) return 'sheet';
-    if (c.scroller === null) return null;
-    const s = c.scroller;
-    // A pinned content control moves with a scroller only when that scroller
-    // is inside its own pinned container; otherwise scrolling leaves it put.
-    if (c.pinned !== null && !c.pinned.contains(s)) return null;
-    const layer = p.pinned.getBoundingClientRect();
-    const box = c.el.getBoundingClientRect();
-    // The scroller's visible area, in viewport coordinates.
-    const page = s === document.scrollingElement;
-    const area = page ? { top: 0, bottom: innerHeight } : (() => {
-      const r = s.getBoundingClientRect();
-      const top = r.top + s.clientTop;
-      return { top, bottom: top + s.clientHeight };
-    })();
-    // Which edge the layer is pinned to: a layer in the lower half of the
-    // visible area is a bottom bar, else a header. The free band is the
-    // visible area the layer leaves; the control must fit inside it.
-    const bottomBar = layer.top + layer.height / 2 > (area.top + area.bottom) / 2;
-    const free = bottomBar
-      ? { top: area.top, bottom: Math.min(area.bottom, layer.top) }
-      : { top: Math.max(area.top, layer.bottom), bottom: area.bottom };
-    if (free.bottom - free.top < box.height - 1) return null;
-    // Scrolling by d (scrollTop += d) moves the control up by d. It lands in
-    // the free band for d in [box.bottom - free.bottom, box.top - free.top];
-    // the scroller can reach d in [lo - scrollTop, hi - scrollTop], where a
-    // column-reverse scroller counts scrollTop from 0 down to -max.
-    const max = s.scrollHeight - s.clientHeight;
-    const reversed = getComputedStyle(s).flexDirection === 'column-reverse';
-    const lo = (reversed ? -max : 0) - s.scrollTop;
-    const hi = (reversed ? 0 : max) - s.scrollTop;
-    const want = { lo: box.bottom - free.bottom, hi: box.top - free.top };
-    return Math.max(want.lo, lo) <= Math.min(want.hi, hi) + 1 ? 'scroll' : null;
+    return sheet && !sheet.contains(c.el) && c.pinned === null && c.hit !== null && sheet.contains(c.hit)
+      ? 'sheet'
+      : null;
   };
   const overlaps = [];
   const overlapPairs = [];
