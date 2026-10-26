@@ -689,6 +689,8 @@ out of the first-paint root barrel.
   (inspection point queries), `/session-output-actions` (keep a Session output
   in a Task), `/session-inventory`, `/task-user-input-references`.
 - Activity: `/live-activity` and `/action-operations` (lazy Activity feeds).
+- Event content: `/runtime-event-content` (the full value behind an
+  out-of-line event content reference, and the approval content gate).
 - Flow gates: `/client/flow-gate-evaluations`.
 - Setup and devices: `/setup-imports` and `/setup-imports-query` (existing-setup
   import), `/mobile-devices-query` (Device pane inventory and sessions),
