@@ -26,6 +26,7 @@ vi.mock('@kontourai/station-sdk/runtime-event-content', () => ({
 }));
 
 const { ToolCallDisplay } = await import('../components/chat/ToolCallDisplay');
+const { LoadFullContent } = await import('../components/chat/LoadFullContent');
 
 const FULL = 'line of the document\n'.repeat(2_000);
 const ref = {
@@ -73,6 +74,44 @@ describe('loading spilled tool content on demand', () => {
     expect(
       screen.queryByRole('button', { name: 'Load full content' }),
     ).toBeNull();
+  });
+
+  test('focus moves to the loaded content when the button unmounts', () => {
+    query.data = 'the whole reply';
+    const view = render(
+      <LoadFullContent threadId="thread-1" value={ref}>
+        {(full) => <p>{typeof full === 'string' ? full : ref.preview}</p>}
+      </LoadFullContent>,
+    );
+    const button = screen.getByRole('button', { name: 'Load full content' });
+    button.focus();
+    fireEvent.click(button);
+    const loaded = view.container.querySelector('.load-full-content__loaded');
+    expect(loaded?.textContent).toBe('the whole reply');
+    expect(document.activeElement).toBe(loaded);
+  });
+
+  test('a later reference on the same row offers the load again, not the old content', () => {
+    query.data = 'first full body';
+    const view = render(
+      <LoadFullContent threadId="thread-1" value={ref}>
+        {(full) => <p>{typeof full === 'string' ? full : 'preview'}</p>}
+      </LoadFullContent>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Load full content' }));
+    expect(view.container.textContent).toContain('first full body');
+    const later = { ...ref, ref: `sha256-${'e'.repeat(64)}` };
+    query.data = 'second full body';
+    view.rerender(
+      <LoadFullContent threadId="thread-1" value={later}>
+        {(full) => <p>{typeof full === 'string' ? full : 'preview'}</p>}
+      </LoadFullContent>,
+    );
+    expect(view.container.textContent).not.toContain('first full body');
+    expect(view.container.textContent).toContain('preview');
+    expect(
+      screen.getByRole('button', { name: 'Load full content' }),
+    ).toBeTruthy();
   });
 
   test('a row with nothing stored out of line offers no load action', () => {

@@ -1,6 +1,6 @@
-import { hasRuntimeEventContentRefs } from '@kontourai/station-contracts/runtime-event-content';
+import { collectRuntimeEventContentRefs } from '@kontourai/station-contracts/runtime-event-content';
 import { useResolvedRuntimeEventValueQuery } from '@kontourai/station-sdk/runtime-event-content';
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Button } from '../Button';
 import { ErrorState } from '../state';
 
@@ -20,23 +20,48 @@ export function LoadFullContent<T>({
   value: T;
   children: (resolved: T | undefined) => ReactNode;
 }) {
-  const [requested, setRequested] = useState(false);
-  const [resolved, setResolved] = useState<{ value: T }>();
-  const spilled = Boolean(threadId) && hasRuntimeEventContentRefs(value);
-  if (!spilled || resolved) return <>{children(resolved?.value)}</>;
+  // A value whose references change (a later event for the same row) is a
+  // new value to load: the request and the result are keyed by its refs.
+  const refsKey = collectRuntimeEventContentRefs(value)
+    .map((ref) => ref.ref)
+    .join(',');
+  const [requested, setRequested] = useState<string>();
+  const [resolved, setResolved] = useState<{ key: string; value: T }>();
+  const loadedRef = useRef<HTMLDivElement>(null);
+  const focusOnLoad = useRef(false);
+  const spilled = Boolean(threadId) && refsKey.length > 0;
+  const loaded = resolved?.key === refsKey ? resolved : undefined;
+  useEffect(() => {
+    // The button the person pressed is gone once the content loads; focus
+    // moves to what it loaded, not to the document body.
+    if (loaded && focusOnLoad.current) {
+      focusOnLoad.current = false;
+      loadedRef.current?.focus();
+    }
+  }, [loaded]);
+  if (!spilled) return <>{children(undefined)}</>;
+  if (loaded)
+    return (
+      <div ref={loadedRef} tabIndex={-1} className="load-full-content__loaded">
+        {children(loaded.value)}
+      </div>
+    );
   return (
     <>
       {children(undefined)}
-      {requested ? (
+      {requested === refsKey ? (
         <ResolvedValueLoader
           threadId={threadId!}
           value={value}
-          onLoaded={(next) => setResolved({ value: next })}
+          onLoaded={(next) => setResolved({ key: refsKey, value: next })}
         />
       ) : (
         <Button
           className="load-full-content"
-          onClick={() => setRequested(true)}
+          onClick={() => {
+            focusOnLoad.current = true;
+            setRequested(refsKey);
+          }}
         >
           Load full content
         </Button>
