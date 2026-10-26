@@ -372,6 +372,35 @@ describe('gallery-ui-findings growth', () => {
     expect(run.out).not.toContain('REKEY');
   });
 
+  it('pairs one removed key with only one renamed key', () => {
+    const OTHER =
+      'axe:label-content-name-mismatch:button.choice-trigger[Agent: demo]';
+    const { root, base } = based({ chat: [OLD] }, ['chat']);
+    write(root, { chat: [NEW, OTHER] });
+    const run = growth(root, base);
+    expect(run.status).toBe(1);
+    expect(run.out.match(/^GROWTH /gm)?.length).toBe(1);
+    expect(run.out.match(/^REKEY /gm)?.length).toBe(1);
+  });
+
+  it('refuses a base allowlist that lists a key twice', () => {
+    const { root, base } = based({ chat: [OLD, OLD] }, ['chat']);
+    write(root, { chat: [NEW] });
+    const run = growth(root, base);
+    expect(run.status).toBe(2);
+    expect(run.out).toContain('more than once');
+  });
+
+  it('does not treat an attribute-shaped anchor end as a name', () => {
+    const { root, base } = based({ chat: ['axe:link-name:a[href=/old]'] }, [
+      'chat',
+    ]);
+    write(root, { chat: ['axe:link-name:a[href=/new]'] });
+    const run = growth(root, base);
+    expect(run.status).toBe(1);
+    expect(run.out).toContain('GROWTH chat: axe:link-name:a[href=/new]');
+  });
+
   it('is an input error for an unknown base, or a base allowlist without a map', () => {
     const { root } = based({}, []);
     expect(judge(['growth', '--base=no-such-ref'], root).status).toBe(2);

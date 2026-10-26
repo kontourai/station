@@ -159,8 +159,9 @@ describe('allowlist ceiling step (child process)', { timeout: 120_000 }, () => {
     const run = runStep(forkHead({ home: [after] }), base, root);
     expect(run.status).toBe(0);
     expect(run.out).toContain(
-      `::warning title=Gallery finding rekeyed by a name change::REKEY home: ${before} → ${after}`,
+      `::warning file=tests/gallery-ui-findings.allowlist.json,title=Gallery finding rekeyed by a name change::REKEY home: ${before} → ${after}`,
     );
+    expect(run.summary).toContain('### Gallery allowlist ceiling (1 REKEY)');
     expect(run.summary).toContain(`REKEY home: ${before} → ${after}`);
   });
 

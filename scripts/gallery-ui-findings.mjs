@@ -96,6 +96,15 @@ function parseAllowlist(text, source) {
     throw new UsageError(
       `${source} must be { schemaVersion: 1, screens: { <screen>: string[] } }`,
     );
+  // A key listed twice would let the ceiling pair two renames against it.
+  for (const [screen, ids] of Object.entries(parsed.screens)) {
+    const seen = new Set();
+    for (const id of ids) {
+      if (seen.has(id))
+        throw new UsageError(`${source} lists ${screen}: ${id} more than once`);
+      seen.add(id);
+    }
+  }
   return parsed;
 }
 
@@ -311,18 +320,15 @@ export function allowlistGrowth(base, head, baseScreens, headScreens) {
     const fresh = identities.filter((identity) => !kept.has(identity));
     const gone = before.filter((identity) => !identities.includes(identity));
     // An intended copy change renames a finding: same rule, same anchor once
-    // the accessible-name segments are set aside, and no more findings of
-    // that shape than the base had. Those pair as REKEY (each a reviewed
-    // annotation, never silent); anything else added is growth.
-    const shapeCount = (list, shape) =>
-      list.filter((identity) => withoutName(identity) === shape).length;
+    // the trailing name segment is set aside. Each added key may consume one
+    // removed key of its shape, and a consumed key is gone (the splice), so a
+    // shape can never come out with more keys than the base had: that
+    // one-to-one pairing is the count guard. Pairs report as REKEY (a
+    // reviewed annotation, never silent); anything unpaired is growth.
     for (const identity of fresh) {
       const shape = withoutName(identity);
       const partner = gone.find((old) => withoutName(old) === shape);
-      if (
-        partner !== undefined &&
-        shapeCount(identities, shape) <= shapeCount(before, shape)
-      ) {
+      if (partner !== undefined) {
         gone.splice(gone.indexOf(partner), 1);
         rekeys.push({ screen, from: partner, to: identity });
       } else added.push({ screen, identity });
@@ -332,14 +338,26 @@ export function allowlistGrowth(base, head, baseScreens, headScreens) {
 }
 
 /**
- * A finding identity with its accessible-name segments removed: the bracketed
- * parts of an anchor that are not `type=`, `name=`, `role=` or `data-testid=`.
- * Nameless keys collide too often to be the identity themselves (143 of 257
- * allowlist entries shared one when this was measured), so they only pair a
- * rename with what it replaced.
+ * A finding identity with each anchor's trailing accessible-name segment
+ * removed. A stable anchor ends `tag.class[type=…][name=…][Name]`; only that
+ * last bracket goes, and only when it is not attribute-shaped (so a raw
+ * fallback's `[href=…]` stays, and a lowercase-hyphen name is kept too, which
+ * fails closed to growth). Overlap identities carry two anchors (` / `). Nameless keys
+ * collide too often to be identities themselves (143 of 257 allowlist entries
+ * shared one when measured), so they only pair a rename with what it
+ * replaced.
  */
 export function withoutName(identity) {
-  return identity.replace(/\[(?!type=|name=|role=|data-testid=)[^\]]*\]/g, '');
+  return identity
+    .split(' / ')
+    .map((part) => {
+      const match = /\[([^\]]*)\]$/.exec(part);
+      // Attribute-shaped (`href=…`, `aria-pressed`, `type=…`) is part of the
+      // anchor, as in a raw frame or shadow-root fallback; only a name goes.
+      if (!match || /^[a-z][a-z-]*(=.*)?$/.test(match[1])) return part;
+      return part.slice(0, match.index);
+    })
+    .join(' / ');
 }
 
 /** A file at `base`, or null when the path does not exist there. */
