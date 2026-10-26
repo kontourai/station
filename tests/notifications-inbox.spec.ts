@@ -193,7 +193,7 @@ test.describe('Notifications hierarchy', () => {
       page.getByRole('heading', { name: 'Activity', level: 2 }),
     ).toBeVisible();
     const notificationsButton = page.getByRole('button', {
-      name: 'Notifications (4 need attention)',
+      name: 'Notifications, 4 need attention',
     });
     await expect(notificationsButton).toBeVisible();
     await notificationsButton.click();
@@ -470,7 +470,7 @@ test.describe('Failed-session notifications on a phone (#3203)', () => {
 
     // Now the tray popover, which carries the same rows in a narrower column.
     await page
-      .getByRole('button', { name: 'Notifications (3 need attention)' })
+      .getByRole('button', { name: 'Notifications, 3 need attention' })
       .click();
     const tray = page.locator('.notification-history');
     await expect(tray).toBeVisible();

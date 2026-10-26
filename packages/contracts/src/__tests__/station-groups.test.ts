@@ -29,6 +29,7 @@ describe('Station group ceilings (#3557)', () => {
         'consent:decide',
         'orchestration:operate',
         'orchestration:read',
+        'terminal:observe',
         'terminal:operate',
       ].sort(),
     );
@@ -37,15 +38,17 @@ describe('Station group ceilings (#3557)', () => {
   test('a cap removes only governed permissions the group does not allow', () => {
     expect(
       capScopeToGroup(
-        'orchestration:read terminal:operate coding:exec relay:manage access:manage',
+        'orchestration:read terminal:observe terminal:operate coding:exec relay:manage access:manage',
         'member',
       ),
     ).toBe('orchestration:read terminal:operate relay:manage access:manage');
     expect(
       capScopeToGroup(
-        'orchestration:read coding:exec approval:full-access',
+        'orchestration:read terminal:observe coding:exec approval:full-access',
         'admin',
       ),
-    ).toBe('orchestration:read coding:exec approval:full-access');
+    ).toBe(
+      'orchestration:read terminal:observe coding:exec approval:full-access',
+    );
   });
 });
