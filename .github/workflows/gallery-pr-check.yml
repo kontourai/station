@@ -129,10 +129,15 @@ jobs:
           while IFS= read -r line; do
             case "$line" in
               "NEW SCREEN "*) echo "::warning title=Gallery screen arrived with listed findings::${line}" ;;
+              "REKEY "*) echo "::warning file=tests/gallery-ui-findings.allowlist.json,title=Gallery finding rekeyed by a name change::${line}" ;;
             esac
           done < "$verdict"
           {
-            echo "### Gallery allowlist ceiling"
+            rekeys=0
+            while IFS= read -r line; do
+              case "$line" in "REKEY "*) rekeys=$((rekeys + 1)) ;; esac
+            done < "$verdict"
+            echo "### Gallery allowlist ceiling (${rekeys} REKEY)"
             echo
             echo '```'
             cat "$verdict"
