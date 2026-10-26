@@ -594,7 +594,7 @@ function collectEntries(
   options: {
     checkpointSqlite?: boolean;
     kind: BackupKind;
-    countDirectories?: boolean;
+    includeDirectories?: boolean;
   },
 ): {
   files: StationHomeBackupFile[];
@@ -610,7 +610,7 @@ function collectEntries(
     if (
       files.length +
         symlinks.length +
-        (options.countDirectories === false ? 0 : directories.length) >=
+        (options.includeDirectories === false ? 0 : directories.length) >=
       limits.maxFiles
     )
       fail('Station home exceeds the archive file-count limit');
@@ -645,8 +645,10 @@ function collectEntries(
         continue;
       }
       if (stats.isDirectory()) {
-        if (options.countDirectories !== false) reserveEntry();
-        directories.push(segments);
+        if (options.includeDirectories !== false) {
+          reserveEntry();
+          directories.push(segments);
+        }
         visit(path, segments);
         continue;
       }
@@ -910,7 +912,7 @@ function validateBackupDirectory(
   // A backup's copy holds regular files only (links live in its manifest).
   const contents = collectEntries(contentRoot, limits, {
     kind: 'home',
-    countDirectories: manifest.directories !== undefined,
+    includeDirectories: manifest.directories !== undefined,
   });
   const actual = contents.files;
   assertDirectories(manifest.directories, contents.directories);
@@ -1189,7 +1191,7 @@ export function restoreStationHomeBackup(
     }
     const staged = collectEntries(staging, limits, {
       kind: 'home',
-      countDirectories: manifest.directories !== undefined,
+      includeDirectories: manifest.directories !== undefined,
     });
     const stagedFiles = staged.files;
     assertDirectories(manifest.directories, staged.directories);
@@ -1558,7 +1560,7 @@ export function restoreStationHomeUpdateBackup(
     }
     const restored = collectEntries(homeDir, limits, {
       kind: 'update',
-      countDirectories: directories !== undefined,
+      includeDirectories: directories !== undefined,
     });
     const expectedDirectories = new Set(
       directories?.map((path) => JSON.stringify(path)),

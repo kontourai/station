@@ -458,7 +458,9 @@ describe('StationHomeArchive', () => {
       JSON.stringify({ ...legacy, schemaVersion: 'station.home-backup/v1' }),
     );
     rmSync(join(backup.backupDir, 'home', 'empty'), { recursive: true });
-    const manifest = readStationHomeBackupManifest(backup.backupDir);
+    const manifest = readStationHomeBackupManifest(backup.backupDir, {
+      maxFiles: 3,
+    });
     expect(manifest.schemaVersion).toBe('station.home-backup/v1');
     expect(manifest).not.toHaveProperty('directories');
     const target = join(fixture.root, 'legacy-restored');
@@ -466,6 +468,7 @@ describe('StationHomeArchive', () => {
       backupDir: backup.backupDir,
       homeDir: target,
       confirm: true,
+      maxFiles: 3,
     });
     expect(readFileSync(join(target, 'config', 'app.json'), 'utf8')).toBe(
       '{"model":"original"}\n',
