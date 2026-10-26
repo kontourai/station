@@ -118,7 +118,11 @@ const migrationTables = [
 
 export function assertMigrationTransition(prior, upgraded, current) {
   for (const table of migrationTables) {
-    assert(Array.isArray(prior[table]) && prior[table].length > 0);
+    assert(
+      Array.isArray(prior[table]) &&
+        (prior[table].length > 0 ||
+          table === 'station_private_usage.migrations'),
+    );
     assert(Array.isArray(current[table]) && current[table].length > 0);
     assert.deepEqual(
       upgraded[table],
@@ -231,9 +235,28 @@ export async function exerciseCompanionLifecycle({
       );
     return result;
   }
-  async function migrationHistory(comp, environment) {
+  async function migrationHistory(
+    comp,
+    environment,
+    allowAbsentPrivate = false,
+  ) {
     const history = {};
     for (const table of migrationTables) {
+      const present = await sql(
+        comp,
+        environment,
+        `SELECT to_regclass('${table}') IS NOT NULL`,
+        `inspect migration history presence ${table}`,
+      );
+      if (present === 'f') {
+        assert(
+          allowAbsentPrivate && table === 'station_private_usage.migrations',
+          `${table}: required migration history absent`,
+        );
+        history[table] = [];
+        continue;
+      }
+      assert.equal(present, 't');
       history[table] = JSON.parse(
         await sql(
           comp,
@@ -639,7 +662,11 @@ export async function exerciseCompanionLifecycle({
     );
     const oldTables = await digests(old.comp, old.environment);
     lifecycle.priorDigests = oldTables;
-    const priorMigrations = await migrationHistory(old.comp, old.environment);
+    const priorMigrations = await migrationHistory(
+      old.comp,
+      old.environment,
+      true,
+    );
     lifecycle.priorMigrations = priorMigrations;
     const originalBackup = `${await docker([...old.comp, 'exec', '-T', 'postgres', 'pg_dump', '-U', 'station_telemetry', '-d', 'station_telemetry', '--no-owner', '--no-privileges'], 'capture original pre-upgrade backup', old.environment)}\n`;
     await writeFile(join(output, 'prior-before-upgrade.sql'), originalBackup, {

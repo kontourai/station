@@ -1075,6 +1075,24 @@ test('lifecycle migration comparison retains prior digests and permits only exac
   expect(() =>
     assertMigrationTransition(prior, structuredClone(current), current),
   ).not.toThrow();
+  const withoutPrivate = { ...prior, 'station_private_usage.migrations': [] };
+  expect(() =>
+    assertMigrationTransition(withoutPrivate, current, current),
+  ).not.toThrow();
+  expect(() =>
+    assertMigrationTransition(
+      { ...withoutPrivate, 'station_telemetry.migrations': [] },
+      current,
+      current,
+    ),
+  ).toThrow();
+  expect(() =>
+    assertMigrationTransition(
+      withoutPrivate,
+      { ...current, 'station_private_usage.migrations': [] },
+      current,
+    ),
+  ).toThrow();
   for (const table of Object.keys(prior) as (keyof typeof prior)[]) {
     for (const fault of [
       'altered',
