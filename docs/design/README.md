@@ -49,6 +49,7 @@ category.
 - [conversation-state.md](conversation-state.md) — Design: conversation state — channel-home logs, signed proposals, per-noun consistency
 - [developer-surface.md](developer-surface.md) — Developer surface
 - [entity-hierarchy.md](entity-hierarchy.md) — Design: Entity Hierarchy & Navigation Restructure
+- [event-content-spill.md](event-content-spill.md) — Event content spill: keep runtime events small, store large values once
 - [event-store-ledger-migration.md](event-store-ledger-migration.md) — EventStore ledger migration order
 - [hosted-execution-isolation.md](hosted-execution-isolation.md) — Hosted execution and plugin isolation
 - [identity.md](identity.md) — Design: Identity (pluggable sources, local-first invariant)
