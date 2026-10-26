@@ -486,6 +486,15 @@ test('an observed SDK credential read shares one current home hold without cachi
     h.environment,
   );
   const credential = h.store(owner).captureSdkCredential(h.request, 'selected');
+  const open = fs.openSync;
+  let registryReads = 0;
+  const read = vi
+    .spyOn(fs, 'openSync')
+    .mockImplementation((path, flags, mode) => {
+      if (String(path) === join(h.home, 'security', 'paired-devices.json'))
+        registryReads++;
+      return open(path, flags, mode);
+    });
   const link = fs.linkSync;
   let holds = 0;
   const observe = vi.spyOn(fs, 'linkSync').mockImplementation((from, to) => {
@@ -501,6 +510,7 @@ test('an observed SDK credential read shares one current home hold without cachi
       'selected',
     );
     assert.equal(holds, 1);
+    assert.equal(registryReads, 2);
     h.environment.devicePairing.revokeDevice(
       h.paired.device.id,
       'operator-credential',
@@ -510,6 +520,31 @@ test('an observed SDK credential read shares one current home hold without cachi
     );
   } finally {
     observe.mockRestore();
+    read.mockRestore();
     syncBuiltinESMExports();
+  }
+});
+
+test('a complete authority check refuses registry bytes changed during its synchronous callback', async () => {
+  const h = await setup();
+  const path = join(h.home, 'security', 'paired-devices.json');
+  const original = readFileSync(path);
+  try {
+    assert.throws(
+      () =>
+        h.environment.withCurrentAuthority(() => {
+          assert.equal(
+            isRuntimeRequestPrincipalCurrent(h.request, h.environment),
+            true,
+          );
+          const changed = JSON.parse(original.toString('utf8'));
+          changed.devices[0].revokedAt = '2026-10-26T00:00:00.000Z';
+          writeFileSync(path, JSON.stringify(changed));
+          return true;
+        }),
+      /Paired-device registry revision changed/,
+    );
+  } finally {
+    writeFileSync(path, original);
   }
 });

@@ -3569,10 +3569,12 @@ export class DevicePairingService {
   readCurrentUnboundLocalGrantScope(candidate: string): string | undefined {
     return this.#writer.runSynchronous(() => {
       try {
-        const registry = validateRegistry(
-          this.#readRegistrySnapshot().value,
-          this.#environmentId,
-        );
+        const registry = this.#registrySpanDepth
+          ? this.#registry
+          : validateRegistry(
+              this.#readRegistrySnapshot().value,
+              this.#environmentId,
+            );
         const match = this.#findActiveCredential(registry, candidate);
         return match &&
           !match.alias &&
@@ -3958,6 +3960,19 @@ export class DevicePairingService {
     this.#registry = registry;
     this.#environmentId = registry.environmentId;
     this.#registryPreimage = nextPreimage;
+  }
+
+  withCurrentRegistry<T>(check: () => T): T {
+    if (this.#registrySpanDepth) return this.#withRegistrySpan(check);
+    return this.#withRegistrySpan(() => {
+      const result = check();
+      if (
+        this.#registryPreimage !== null &&
+        this.#readRegistrySnapshot().sha256 !== this.#registryPreimage
+      )
+        throw new Error('Paired-device registry revision changed');
+      return result;
+    });
   }
 
   #withRegistrySpan<T>(operation: () => T): T {

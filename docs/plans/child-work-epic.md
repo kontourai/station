@@ -2258,3 +2258,21 @@ suites pass54 cases and server-test types pass. Filesystem durability fault prob
 now identify the observation record or directory by descriptor identity, so a
 home-lock flush cannot masquerade as the observation durability check. Composed
 execution qualification is still pending.
+
+The next composed run passed independent and mixed execution but again exhausted
+the Flow preparation deadline. The remaining consumer run passed28 cases and
+timed out five; a profiled preparation-only run on unchanged source subsequently
+passed20 cases. Those results do not establish reliable composed completion.
+Both SDK and response-scope removal mutations failed at their intended hold-count
+assertions, then passed after byte-exact restoration.
+
+Current-source profiling and an extended SDK-read regression found60 pairing
+registry opens inside one home hold. Complete authority checks now share one
+validated registry snapshot and confirm its bytes before returning, reducing that
+read to two opens. A callback-time registry substitution refuses, and a later
+revocation is read afresh. Four owner suites pass48 cases and server-test types
+pass. The controlled task-driver fixture also groups its complete synchronous
+finalizer like the production execution owner. Literal route classification
+avoids splitting paths that cannot match a parameterized route. No deadline,
+durability flush or authority predicate was removed; composed execution and the
+five timed-out cases still require qualification on this revision.

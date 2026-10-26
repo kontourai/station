@@ -2807,6 +2807,7 @@ function ruleMatchesExternalSurface(
 /** Hono's route inventory uses `:param`; live requests contain its value. */
 function exactRoutePathMatches(pattern: string, path: string): boolean {
   if (pattern === path) return true;
+  if (!pattern.includes(':')) return false;
   const expected = pattern.split('/');
   const actual = path.split('/');
   return (

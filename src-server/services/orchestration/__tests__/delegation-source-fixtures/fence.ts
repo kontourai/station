@@ -117,15 +117,18 @@ export async function publicFenceFixture(
     actual?.root.authenticated_principal_ref.id ?? 'fixture-owner';
   const clientTurnId = initial?.clientTurnId ?? 'reserved-client-turn';
   const current = () =>
-    runtimeRequestPrincipalMayAccessHttpRoute(f.req, f.environment, {
-      method: 'POST',
-      path: '/api/orchestration/chat',
+    f.environment.withCurrentAuthority(() =>
+      runtimeRequestPrincipalMayAccessHttpRoute(f.req, f.environment, {
+        method: 'POST',
+        path: '/api/orchestration/chat',
+      }),
+    );
+  const finalize = (): undefined =>
+    f.environment.withCurrentAuthority(() => {
+      if (!current()) throw Error('actual-local-grant-revoked');
+      if (issued) issued.owner.read(issued.handle, f.req);
+      return undefined;
     });
-  const finalize = (): undefined => {
-    if (!current()) throw Error('actual-local-grant-revoked');
-    if (issued) issued.owner.read(issued.handle, f.req);
-    return undefined;
-  };
   const persistence = new StationDelegationPersistence(f.root);
   const modelId = observation?.modelId ?? 'fixture-model';
   const allocation = observation?.allocation ?? {

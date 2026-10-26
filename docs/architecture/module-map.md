@@ -397,6 +397,12 @@ Environment initialization, rotation and reset take the home hold before their
 legacy environment lock. A synchronous contender refuses busy rather than
 waiting or probing another process. Filesystem calls themselves remain synchronous.
 
+Complete synchronous authority checks share a validated pairing-registry snapshot
+under that home hold. The outer check re-reads its retained bytes before returning;
+changed or corrupt bytes refuse. Nested checks use the same snapshot, while a later
+check loads current state again. Registry mutations still validate their preimage
+before publication, and successful mutations update the held snapshot.
+
 **Borrowing and recovery.** Only an explicit live lease can start a borrowed
 span. Thenables refuse; the span invalidates before return, so a late async
 descendant cannot borrow it. Cleanup retains exact handles and can be retried by
