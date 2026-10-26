@@ -1970,7 +1970,9 @@ export type ConversationOpenResolution =
        * reserved but not started. The same rule as the server's continuation
        * decision, read with this resolution; a model change the Session
        * cannot apply per turn also starts one, and is not counted here.
-       * Absent on older servers. It sits on the resolution rather than on
+       * Absent on older servers, and when the server would refuse that turn
+       * (a handoff awaiting its target, a context delivery not yet
+       * reconciled). It sits on the resolution rather than on
        * `execution`, whose field set older clients validate strictly.
        */
       nextTurnStartsSession?: boolean;

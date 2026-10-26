@@ -1903,8 +1903,10 @@ successful arms carry the server-derived `canContinue` decision. A pending first
 start may return `canContinue: false` with `continuationPending: true`; clients
 must wait rather than fabricate a Session identity. A current server also says on
 the `resolved` arm whether the next ordinary turn starts a new Session
-(`nextTurnStartsSession`, #4179); the field is optional and absent on older
-servers; a value that is not a boolean is refused as `invalid-response`.
+(`nextTurnStartsSession`, #4179). The field is optional: older servers omit it,
+and so does a server that would refuse that turn (a handoff awaiting its target,
+or a context delivery not yet reconciled). A value that is not a boolean is
+refused as `invalid-response`.
 Transport, rejection, and invalid wire failures throw a
 typed `ConversationOpenResolutionFailure` rather than degrading to an empty
 chat. Optional `options.signal` cancels the request and `options.timeoutMs`

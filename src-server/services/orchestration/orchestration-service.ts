@@ -2984,9 +2984,10 @@ export class OrchestrationService {
             : undefined;
         const model = session.reportedModel ?? session.model;
         const nextTurnStartsSession =
-          this.conversationLineage.nextTurnStartsSession(
+          await this.conversationLineage.nextTurnStartsSession(
             conversationId,
             detail,
+            authority,
           );
         return {
           sessionId: session.threadId,

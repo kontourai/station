@@ -556,6 +556,18 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
               )?.status,
             ).toBe('failed');
           });
+          // #4179: the handoff Session is still live, but its failed seed
+          // fences the next ordinary turn, so the open read does not say
+          // whether that turn starts a Session.
+          const opened = await service.resolveConversationOpen(
+            conversationId,
+            sessionReadAuthorityFromRequest(OWNER, undefined, undefined),
+          );
+          expect(opened).toMatchObject({
+            status: 'resolved',
+            currentSessionId: handoffReceipt.data.sessionId,
+          });
+          expect(opened).not.toHaveProperty('nextTurnStartsSession');
           await expect(
             execute(target, {
               conversationId,

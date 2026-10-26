@@ -441,74 +441,12 @@ export class ConversationLineage {
         'This conversation is not writable under its current control state.',
       );
     }
-    const startSeed = store.conversationStartContext(current.sessionId);
-    if (
-      startSeed &&
-      !this.deps.nativeMemoryOwnsTranscriptFor?.(detail.session.provider)
-    ) {
-      const started = [...detail.events]
-        .reverse()
-        .find((event) => event.method === 'session.started');
-      const carrier = readConversationStartSeedCarrier(
-        started?.method === 'session.started' ? started.metadata : undefined,
-        startSeed,
-      );
-      const delivered = carrier
-        ? hasCompletedConversationSeedTurn({
-            store,
-            threadId: current.sessionId,
-            clientTurnId: carrier.clientTurnId,
-            expected: {
-              kind: 'boundary',
-              contextId: current.sessionId,
-              contextDigest: startSeed.pinDigest,
-              seedDigest: startSeed.seedDigest,
-            },
-            requiresNativeIdentity:
-              this.deps.nativeIdentityRequiredFor?.(detail.session.provider) ===
-              true,
-          })
-        : undefined;
-      if (!delivered)
-        throw new ConversationStartContextError(
-          'Continuation context delivery has not completed. Reconcile the context before continuing.',
-        );
-    }
-    const handoff = store.conversationHandoffForSession(current.sessionId);
-    const forkDelivery = await this.deps.readForkContextDelivery?.(
-      current.sessionId,
+    const deliveryRefusal = await this.currentSessionDeliveryRefusal(
+      conversationId,
+      detail,
       authority,
     );
-    if (forkDelivery && forkDelivery.contextStatus !== 'completed')
-      throw new ConversationForkContextError(
-        'Fork context delivery has not completed. Reconcile the fork before continuing.',
-      );
-    if (
-      handoff &&
-      !this.deps.nativeMemoryOwnsTranscriptFor?.(detail.session.provider) &&
-      (handoff.contextSeed ||
-        store.conversationContextBoundaryForSuccessor(current.sessionId)
-          ?.policy !== 'empty-next-cold-start')
-    ) {
-      const delivery = await this.readConversationHandoffStatus(
-        conversationId,
-        handoff.idempotencyKey,
-        authority,
-      );
-      // An accepted Session start does not establish delivery of its seed.
-      // Ordinary reuse must not turn a failed or uncertain seeded turn into a
-      // continuation that silently forgets the intervening conversation.
-      const completed = handoff.contextSeed
-        ? delivery?.contextDelivery?.status === 'completed' &&
-          (!handoff.nativeReturnSourceSessionId ||
-            delivery.nativeResumeIdentity === 'matched')
-        : delivery?.status === 'completed';
-      if (!completed) {
-        throw new Error(
-          `${handoff.nativeReturnSourceSessionId ? 'Native-return' : 'Handoff'} context delivery has not completed. Reconcile the handoff before continuing.`,
-        );
-      }
-    }
+    if (deliveryRefusal) throw deliveryRefusal;
     // A successor is reserved only when the current Session cannot take the
     // turn (`sessionTakesNextTurn`, which the conversation-open read also
     // reports as `nextTurnStartsSession`), or for a model switch the live
@@ -582,13 +520,14 @@ export class ConversationLineage {
    * for the next ordinary turn (no model change), read without reserving
    * one. `described` is the Session `readCurrentConversationSession`
    * answered. Undefined when that turn would be refused (a handoff awaiting
-   * its target, a control state continuation does not admit), so nothing is
-   * claimed about it.
+   * its target, a control state continuation does not admit, a context
+   * delivery not yet reconciled), so nothing is claimed about it.
    */
-  nextTurnStartsSession(
+  async nextTurnStartsSession(
     conversationId: string,
     described: OrchestrationSessionDetail,
-  ): boolean | undefined {
+    authority: SessionReadScope,
+  ): Promise<boolean | undefined> {
     const store = this.deps.eventStore;
     const tail = store?.conversationSessions(conversationId).at(-1);
     // No lineage: the continuation reuses the conversation's own Session.
@@ -598,7 +537,103 @@ export class ConversationLineage {
     if (described.session.threadId !== tail.sessionId)
       return reservedTailRefusal(store, tail.sessionId) ? undefined : true;
     if (!isConversationContinuationControlEligible(described)) return undefined;
+    // A delivery read that fails refuses the send too (it throws there).
+    const refused = await this.currentSessionDeliveryRefusal(
+      conversationId,
+      described,
+      authority,
+    ).then(
+      (refusal) => refusal !== undefined,
+      () => true,
+    );
+    if (refused) return undefined;
     return !sessionTakesNextTurn(described.session);
+  }
+
+  /**
+   * Why an ordinary turn may not run in the current started Session, or
+   * succeed it, until a pinned context delivery is reconciled; undefined when
+   * it may. The delivery is a continuation seed, a fork seed, or a handoff
+   * seed that has not completed. `resolveConversationContinuation` throws
+   * this refusal; the open read's `nextTurnStartsSession` claims nothing
+   * while it stands.
+   */
+  private async currentSessionDeliveryRefusal(
+    conversationId: string,
+    detail: OrchestrationSessionDetail,
+    authority: SessionReadScope,
+  ): Promise<Error | undefined> {
+    const store = this.deps.eventStore!;
+    const sessionId = detail.session.threadId;
+    const startSeed = store.conversationStartContext(sessionId);
+    if (
+      startSeed &&
+      !this.deps.nativeMemoryOwnsTranscriptFor?.(detail.session.provider)
+    ) {
+      const started = [...detail.events]
+        .reverse()
+        .find((event) => event.method === 'session.started');
+      const carrier = readConversationStartSeedCarrier(
+        started?.method === 'session.started' ? started.metadata : undefined,
+        startSeed,
+      );
+      const delivered = carrier
+        ? hasCompletedConversationSeedTurn({
+            store,
+            threadId: sessionId,
+            clientTurnId: carrier.clientTurnId,
+            expected: {
+              kind: 'boundary',
+              contextId: sessionId,
+              contextDigest: startSeed.pinDigest,
+              seedDigest: startSeed.seedDigest,
+            },
+            requiresNativeIdentity:
+              this.deps.nativeIdentityRequiredFor?.(detail.session.provider) ===
+              true,
+          })
+        : undefined;
+      if (!delivered)
+        return new ConversationStartContextError(
+          'Continuation context delivery has not completed. Reconcile the context before continuing.',
+        );
+    }
+    const handoff = store.conversationHandoffForSession(sessionId);
+    const forkDelivery = await this.deps.readForkContextDelivery?.(
+      sessionId,
+      authority,
+    );
+    if (forkDelivery && forkDelivery.contextStatus !== 'completed')
+      return new ConversationForkContextError(
+        'Fork context delivery has not completed. Reconcile the fork before continuing.',
+      );
+    if (
+      handoff &&
+      !this.deps.nativeMemoryOwnsTranscriptFor?.(detail.session.provider) &&
+      (handoff.contextSeed ||
+        store.conversationContextBoundaryForSuccessor(sessionId)?.policy !==
+          'empty-next-cold-start')
+    ) {
+      const delivery = await this.readConversationHandoffStatus(
+        conversationId,
+        handoff.idempotencyKey,
+        authority,
+      );
+      // An accepted Session start does not establish delivery of its seed.
+      // Ordinary reuse must not turn a failed or uncertain seeded turn into a
+      // continuation that silently forgets the intervening conversation.
+      const completed = handoff.contextSeed
+        ? delivery?.contextDelivery?.status === 'completed' &&
+          (!handoff.nativeReturnSourceSessionId ||
+            delivery.nativeResumeIdentity === 'matched')
+        : delivery?.status === 'completed';
+      if (!completed) {
+        return new Error(
+          `${handoff.nativeReturnSourceSessionId ? 'Native-return' : 'Handoff'} context delivery has not completed. Reconcile the handoff before continuing.`,
+        );
+      }
+    }
+    return undefined;
   }
 
   /** Current replaceable Session for a durable conversation; legacy falls back to its id. */
