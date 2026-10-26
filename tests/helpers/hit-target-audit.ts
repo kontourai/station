@@ -58,6 +58,8 @@ export interface HitTargetAudit {
     secondAnchor: string;
     checkable: boolean;
     layered: boolean;
+    /** Which rule layered the pair: a third element on top, a covering sheet, or scroll room. */
+    layeredBy: 'third' | 'sheet' | 'scroll' | null;
   }>;
 }
 
@@ -159,10 +161,10 @@ export const HIT_TARGET_AUDIT = `(() => {
   // scrollTop 0, and two pinned controls. A collapsed chat dock is a bar.
   const SHEET = '[aria-modal="true"], dialog[open], .chat-dock:not(.is-collapsed)';
   const pinnedOver = (p, c) => {
-    if (p.pinned === null || p.pinned.contains(c.el)) return false;
+    if (p.pinned === null || p.pinned.contains(c.el)) return null;
     const sheet = p.el.closest(SHEET);
-    if (sheet && !sheet.contains(c.el) && c.pinned === null && c.hit !== null && sheet.contains(c.hit)) return true;
-    if (c.scroller === null) return false;
+    if (sheet && !sheet.contains(c.el) && c.pinned === null && c.hit !== null && sheet.contains(c.hit)) return 'sheet';
+    if (c.scroller === null) return null;
     const layer = p.pinned.getBoundingClientRect();
     const box = c.el.getBoundingClientRect();
     const s = c.scroller;
@@ -171,7 +173,7 @@ export const HIT_TARGET_AUDIT = `(() => {
     // Above: scroll back up to drop it below the layer.
     const need = below ? box.bottom - layer.top : layer.bottom - box.top;
     const room = below ? s.scrollHeight - s.clientHeight - s.scrollTop : s.scrollTop;
-    return need <= room + 1;
+    return need <= room + 1 ? 'scroll' : null;
   };
   const overlaps = [];
   const overlapPairs = [];
@@ -185,14 +187,15 @@ export const HIT_TARGET_AUDIT = `(() => {
       // not both pressable here. One control covering the other is not
       // layered: that centre lands on the pair.
       const third = (z) => z.hit !== null && !a.el.contains(z.hit) && !b.el.contains(z.hit);
-      const overlay = (p, c) => pinnedOver(p, c);
+      const layeredBy = third(a) || third(b) ? 'third' : pinnedOver(a, b) || pinnedOver(b, a);
       overlapPairs.push({
         first: a.name,
         second: b.name,
         firstAnchor: a.anchor,
         secondAnchor: b.anchor,
         checkable: a.hit !== null && b.hit !== null,
-        layered: third(a) || third(b) || overlay(a, b) || overlay(b, a),
+        layered: layeredBy !== null,
+        layeredBy,
       });
     }
   }
