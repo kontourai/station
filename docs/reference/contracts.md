@@ -413,8 +413,9 @@ completion is listed only while the conversation transcript still shows it:
 a later result of the same call can replace that row (station#1569), and the
 transcript projection (`projectRuntimeEventsToMessages`) decides, over the
 thread's events at or below the read's frozen high-water mark. The projection
-runs only when a listing meets an unresolved row, once per thread and
-high-water mark; continuation pages reuse it. A page cursor records the owner
+runs only when a listing meets an unresolved row, at most once per thread and
+high-water mark per process while cached; continuation pages reuse it, and a
+thread deleted and recreated under the same id is projected afresh. A page cursor records the owner
 events a page read, not the rows it kept, so paging past an omitted row resumes
 at the right event. Inventory
 continuations bind the client dialect as well as scope and authority. Output
