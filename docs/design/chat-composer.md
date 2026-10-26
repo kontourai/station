@@ -908,7 +908,7 @@ Task** in its ⋯ menu, as an answer lists **Add to Task**, rather than as a
 button under every message. These details retain their original event-backed
 identities. Desktop attribution stays inline. On every screen size a message's
 copy control is one icon button, named "Copy your message" or "Copy answer";
-no menu repeats it as text. Received-agent messages instead use the compact
+no menu repeats it as text. On phones, received-agent messages instead use the compact
 cause disclosure, containing their message content, sender attribution and
 available details; they do not render those inline Copy/actions controls.
 
