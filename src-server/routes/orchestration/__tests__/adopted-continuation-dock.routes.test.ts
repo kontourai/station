@@ -22,6 +22,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
@@ -1195,7 +1196,7 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
     // The Agent now points at another engine; the successor still runs on
     // the one it started on.
     await f.loader.updateAgent('claude', {
-      execution: { agentConnectionId: 'codex' },
+      execution: { agentConnectionId: engineConnectionId('codex') },
     });
     const turns = {
       claude: f.engines.claude.turns.length,

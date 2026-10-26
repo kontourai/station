@@ -3820,7 +3820,8 @@ selected input on access refusal. It does not hydrate a whole transcript.
 Before reading, the hook checks the host's public handshake for the
 `sessionInventoryInputRead` capability (`fetchSessionInventoryInputCapability`)
 and returns `hostSupport`: `checking`, `supported`, `unsupported` (an older host
-without the route; no read is sent) or `unknown` (the handshake could not be
+without the route, or a hosted deployment, which does not advertise it; no read
+is sent) or `unknown` (the handshake could not be
 read; the read is still attempted). `recheckHost()` drops that host's cached
 handshake and asks again, for after the host is updated; it keeps one identity
 across renders and resolves when the host has answered. `hostRecheck` reports
@@ -4296,12 +4297,71 @@ this header in its validated response metadata, so native SDK requests use the
 same marker and fallback rules.
 `ForegroundMessageIndeterminateError` keeps its `detail` and fixed `code`.
 Both classes retain their positional constructors.
-The direct chat stream (`streamConversationTurn`) rejects a retried
-`clientTurnId` that may already have reached the agent, or whose result
+For new integrations, use `sendExecutionMessage` from
+`@kontourai/station-sdk/client` and the orchestration chat entry described in
+the [Session API](session-api.md). The legacy `streamConversationTurn` export
+targets Station's private compatibility route, `/api/agents/:slug/chat`.
+
+`streamConversationTurn` chooses one `clientTurnId` per call. Pass
+`chatOptions.clientTurnId` to reuse a caller-owned key; an omitted key is generated
+with the shared correlation-ID helper. A supplied key must be a nonblank string of
+at most 200 UTF-16 code units. The request uses `msg-${clientTurnId}` as its user message
+ID, including for a text-only turn, so an explicit retry keeps that identity.
+The returned result includes `clientTurnId`, including when an active stream is
+aborted. Aborting consumption does not prove that server execution stopped.
+
+`sentTurnKey(error)`, exported by the root SDK and the React-free `/client`
+entry, retrieves the chosen key from an object thrown by this direct chat call.
+The SDK rethrows the same object; its class, fields and identity are preserved,
+including for transport failures, aborts and stalls. If the same object is
+thrown for different keys, the accessor returns `undefined` permanently for
+that object; it never substitutes another turn's key. Repeated use with the same
+key keeps the association. Primitive throws cannot carry this association.
+Retain a caller-owned key separately when reusing an abort signal or error.
+Invalid-key validation happens before a key is chosen.
+The accessor does not prove dispatch, acceptance or completion, and other SDK
+send functions do not yet register their errors with it.
+
+Retain the key and the original input when inspecting an uncertain outcome.
+The SDK does not retry automatically. A `SyntaxError` can come from parsing a
+response after dispatch; `isProvablyNotSent` therefore does not classify that
+error class as proof of no send, even when its message contains a connection
+refusal word. Errors recorded by the keyed direct-chat helper also remain
+uncertain regardless of their message, including after their key association
+becomes ambiguous and for a read-only refusal before network dispatch. This
+conservative classification does not override the refusal or issue a request.
+An unregistered fetch-time `SyntaxError` now becomes
+`ScheduledCheckStarterResponseError` in `launchScheduledCheckStarter`, keeping
+its original `operationId` and cause. In `adoptOrchestrationSession`, it becomes
+`AdoptSessionError` with `failureClass: 'uncertain-no-response'`, rather than
+`'certain-not-sent'`. Other proven pre-dispatch refusals keep their existing
+classification.
+
+Keys and stable message IDs do not establish server replay retention or digest
+checking. The retained-claim behavior below requires a Station server build
+containing [the #4191 lifecycle fix](https://github.com/kontourai/station/commit/82b0727539d0b585cfd4f986073649b495501e00).
+Check the deployed server's build revision before relying on it. Servers built
+before this fix can execute a same-key retry again after an invoked attempt
+fails, is cancelled or loses its client. A claim released before Agent
+invocation allows a same-key retry. Stable request IDs do not establish
+transcript uniqueness or a minimum replay window.
+
+The direct chat stream (`streamConversationTurn`) can refuse a retried
+`clientTurnId` that may already have reached the Agent, or whose result
 Station no longer keeps, with a `ChatHttpError` whose `code` is
 `foreground_message_indeterminate` and whose `outcome` is `'indeterminate'`.
-Do not resend that turn automatically; open the conversation instead. Other
-refusals leave `outcome` unset.
+Station retains a claim after an invoked attempt fails, is cancelled or
+loses its client. A new same-key request in the owning process receives this
+refusal while its local retention marker remains; after owner death the
+invocation record supplies the durable refusal. A contended retry, including
+one served by another live process, can instead end its stream with an error
+event. Resolved retries replay the conversation ID and a `completed` finish,
+without replaying output. Read the conversation after an uncertain send; do
+not automatically resend with a new key. Use a new `clientTurnId` only for a
+deliberate new request. The key is not yet bound to input or caller identity;
+legacy rows, older writers and retention limits still apply. See the
+[direct chat lifecycle](../architecture/module-map.md#turndeduplicator).
+Other refusals leave `outcome` unset.
 `getTurnDelivery(apiBase, conversationId, clientTurnId, { projectSlug? })`
 asks Station what became of one send by its `clientTurnId`, for example after
 the connection dropped before the answer arrived. It is read-only and, on success,
@@ -5551,7 +5611,10 @@ SDK barrels; detail provides full text. Use `openingEvent.body`/author/createdAt
 for the card preview and `lastDeliveryEvent` for the latest delivery, even when
 `lastEvent` is a person reply or resolve. Render `status:'unavailable'`
 as an unavailable card; it has no invented base state or history and does not
-contribute to aggregate counts.
+contribute to aggregate counts. Its optional `artifact` identifies the item on
+which to render that state. The list's optional `authors` projection supplies
+person and agent display labels without People-management scope or transcript
+reads; missing identity facts use the UI's generic label.
 
 `fetchTaskReviewItem(taskId, kind, id)` and
 `useTaskReviewItemQuery(taskId, kind, id, options)` read one selected item through
@@ -5581,3 +5644,43 @@ returns `{thread}` and invalidates both the Task's list and thread-detail querie
 responses also throw `StationHttpError`, preserving the HTTP status. The SDK re-exports
 these request types, `TaskReviewThreadSummary`, `TaskReviewThreadView` and `TaskReviewView` from the
 [review contract](../../packages/contracts/src/task-review.ts).
+
+`useCaptureToTaskMutation(taskId)` takes `TaskReviewCreateCaptureRequest` with
+`sourceKind:'browser'`, `sourceSessionId`, optional `label` and a stable
+`operationId`. It requires `orchestration:operate`, returns `{capture}` and
+invalidates the Task review query.
+`fetchTaskCaptureSessions(taskId, signal?)` and
+`useTaskCaptureSessionsQuery(taskId, options?)` supply live, view-authorized
+Browser sessions for the picker. `fetchTaskCaptureContent(taskId, captureId,
+signal?)` returns an image `Blob`; callers own any object URL they create and
+must revoke it. Content stays Task-scoped, uses authenticated fetch and throws
+`StationHttpError` on refusals. These functions and `TaskCapture`,
+`TaskReviewCreateCaptureRequest` and `TaskCaptureBrowserSession` are exported
+from both the root and query barrels.
+
+`useSendReviewThreadsMutation(taskId)` takes the shared `TaskReviewSendRequest`
+`{threadIds, operationId, mode}`, where `mode` is `send` or `send-and-resolve`. It returns `{deliveryKey, status,
+threads, reason?}` and invalidates the review list and thread detail queries.
+`unconfirmed` carries "Send unconfirmed" for uncertain inbox evidence, including
+dismissed unconfirmed entries and missing keys after retention. Only a refused
+entry or one withdrawn while queued is recorded failed on retry and reopens
+Sent; use a new operation id to send again. For uncertain delivery, explicitly
+reply to set `pendingFollowUp` before sending a fresh follow-up. The second mode resolves only after
+queue acceptance. Retry with the same operation id, selection and mode to avoid
+another send; changing the mode on that same operation is a conflict. Only the recorded
+lead owner may send until multiplayer is supported. Older replies are omitted from oversized messages while preserving the opening
+and latest comments with an omitted count. Only selections whose minimal content
+cannot fit fail with `message-too-large` before Sent; select fewer threads.
+
+`useCaptureToTaskMutation(taskId)` takes `TaskReviewCreateCaptureRequest` with
+`sourceKind:'browser'`, `sourceSessionId`, optional `label` and a stable
+`operationId`. It requires `orchestration:operate`, returns `{capture}` and
+invalidates the Task review query.
+`fetchTaskCaptureSessions(taskId, signal?)` and
+`useTaskCaptureSessionsQuery(taskId, options?)` supply live, view-authorized
+Browser sessions for the picker. `fetchTaskCaptureContent(taskId, captureId,
+signal?)` returns an image `Blob`; callers own any object URL they create and
+must revoke it. Content stays Task-scoped, uses authenticated fetch and throws
+`StationHttpError` on refusals. These functions and `TaskCapture`,
+`TaskReviewCreateCaptureRequest` and `TaskCaptureBrowserSession` are exported
+from both the root and query barrels.

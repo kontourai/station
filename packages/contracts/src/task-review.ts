@@ -251,10 +251,17 @@ export type TaskReviewThreadSummary =
   | {
       readonly status: 'unavailable';
       readonly state: 'unavailable';
+      readonly artifact?: TaskReviewArtifactRef;
       readonly threadId: string;
       readonly ordinal: number;
       readonly eventCount: number;
     };
+
+export interface TaskReviewAuthorIdentity {
+  readonly author: TaskReviewAuthor;
+  readonly name: string;
+  readonly startedBy?: { readonly name: string };
+}
 
 export interface TaskReviewView {
   readonly version: typeof TASK_REVIEW_VERSION;
@@ -262,6 +269,7 @@ export interface TaskReviewView {
   readonly taskCreatedAt: string;
   readonly items: readonly TaskReviewItem[];
   readonly threads: readonly TaskReviewThreadSummary[];
+  readonly authors?: readonly TaskReviewAuthorIdentity[];
   /** Unfiltered counts, even when the request selects one state. */
   readonly counts: TaskReviewCounts;
   readonly limits: typeof TASK_REVIEW_LIMITS;
@@ -276,6 +284,8 @@ export type TaskReviewRefusalCode =
   | 'unavailable'
   | 'no_task_binding'
   | 'no-live-agent'
+  | 'sender-not-task-owner'
+  | 'message-too-large'
   | 'anchor-mismatch'
   | 'artifact-unavailable'
   | 'operation-conflict'
@@ -284,6 +294,7 @@ export type TaskReviewRefusalCode =
   | 'capture-limit'
   | 'capture-home-limit'
   | 'workspace-changed'
+  | 'workspace-unobservable'
   | 'screenshot-too-large'
   | 'capture-unavailable'
   | 'capture-corrupt'
@@ -345,6 +356,7 @@ export type TaskReviewReopenResponse = TaskReviewResponse<{
 
 /** POST /api/tasks/:taskId/review/send; nonempty, unique thread ids from this incarnation. */
 export interface TaskReviewSendRequest {
+  readonly mode: 'send' | 'send-and-resolve';
   readonly threadIds: readonly string[];
   readonly operationId: string;
 }
@@ -387,6 +399,8 @@ export type TaskThreadListResponse = TaskReviewResponse<{
   readonly taskCreatedAt: string;
   readonly threads: readonly TaskReviewThreadView[];
   readonly counts: TaskReviewCounts;
+  /** Corrupt entries omitted from threads and state counts, independent of the state filter. */
+  readonly unavailableThreadCount: number;
 }>;
 
 /** POST /api/orchestration/station-control/task-thread-reply. */
@@ -902,7 +916,10 @@ export function parseTaskReviewSendRequest(
 ): TaskReviewSendRequest | null {
   if (
     !isRecord(value) ||
-    !onlyKeys(value, ['threadIds', 'operationId']) ||
+    !onlyKeys(value, ['threadIds', 'operationId', 'mode']) ||
+    (value.mode !== undefined &&
+      value.mode !== 'send' &&
+      value.mode !== 'send-and-resolve') ||
     !identity(value.operationId) ||
     !Array.isArray(value.threadIds) ||
     value.threadIds.length < 1 ||
@@ -915,7 +932,11 @@ export function parseTaskReviewSendRequest(
     threadIds.push(id);
   }
   return new Set(threadIds).size === threadIds.length
-    ? { threadIds, operationId: value.operationId }
+    ? {
+        threadIds,
+        operationId: value.operationId,
+        mode: value.mode === 'send-and-resolve' ? 'send-and-resolve' : 'send',
+      }
     : null;
 }
 export function parseTaskReviewCreateCaptureRequest(

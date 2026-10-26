@@ -46,7 +46,9 @@ export interface HitTargetAudit {
   /**
    * `overlaps` as data: the two controls' names, in document order;
    * `checkable` when both centres are on screen to hit-test, and `layered`
-   * when a third element is topmost at either centre.
+   * when a third element is topmost at either centre, or when one control is
+   * in a sheet that covers the other (content behind a modal or the expanded
+   * chat dock).
    */
   overlapPairs: Array<{
     first: string;
@@ -55,6 +57,8 @@ export interface HitTargetAudit {
     secondAnchor: string;
     checkable: boolean;
     layered: boolean;
+    /** Which rule layered the pair: a third element on top, or a covering sheet. */
+    layeredBy: 'third' | 'sheet' | null;
   }>;
 }
 
@@ -74,10 +78,18 @@ export const HIT_TARGET_AUDIT = `(() => {
     else if (clip) { axis.lo = Math.max(axis.lo, lo); axis.hi = Math.min(axis.hi, hi); }
   };
   const interactive = Array.from(root.querySelectorAll(
-    'button, input, textarea, summary, a[href], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]',
+    'button, input, select, textarea, summary, a[href], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]',
   )).filter((el) => {
     const r = el.getBoundingClientRect();
-    return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+    // checkVisibility() also excludes content the UA is not rendering: a
+    // closed <details> keeps layout boxes for its content (it is
+    // content-visibility: hidden) but draws none of it. Its default leaves
+    // content-visibility: auto content measured, so off-screen sections that
+    // render on scroll are still judged.
+    const rendered = typeof el.checkVisibility === 'function'
+      ? el.checkVisibility({ visibilityProperty: true })
+      : getComputedStyle(el).visibility !== 'hidden';
+    return r.width > 0 && r.height > 0 && rendered;
   });
   const all = interactive.map((el) => {
     const r = el.getBoundingClientRect();
@@ -114,8 +126,14 @@ export const HIT_TARGET_AUDIT = `(() => {
     // Wholly beside the viewport: an off-canvas control (a skip link at
     // left:-9999px until focused), not one a clip swallowed on screen.
     const offCanvas = r.right <= 0 || r.left >= innerWidth;
+    // Pinned: the nearest fixed or sticky container (a toolbar, a dock).
+    let pinned = null;
+    for (let a = el; a && !pinned; a = a.parentElement) {
+      const cs = getComputedStyle(a);
+      if (cs.position === 'fixed' || cs.position === 'sticky') pinned = a;
+    }
     return {
-      el, hit, name, anchor: stableAnchor(el), hidden, offCanvas,
+      el, hit, name, anchor: stableAnchor(el), hidden, offCanvas, pinned,
       w: Math.min(rr - l, reachSpan(x)), h: Math.min(b - t, reachSpan(y)), l, r: rr, t, b,
     };
   });
@@ -125,6 +143,27 @@ export const HIT_TARGET_AUDIT = `(() => {
   const smallZones = zones.filter((z) => z.w < 43.5 || z.h < 43.5);
   const small = smallZones.map((z) => z.name + ' ' + Math.round(z.w) + 'x' + Math.round(z.h));
   const smallTargets = smallZones.map((z) => ({ name: z.name, anchor: z.anchor, width: Math.round(z.w), height: Math.round(z.h) }));
+  // A pinned control (in a fixed or sticky layer) over a content control is
+  // not two targets competing for one press in one case only: the layer is a
+  // sheet (aria-modal, a modal <dialog>, the expanded chat dock) that covers
+  // the content control's centre or the part where the two overlap, and that
+  // control is outside the sheet and not itself pinned: it is behind the
+  // sheet. Scroll position is not
+  // credited: a bar over content that could scroll clear is still reported,
+  // which errs conservative (attempts to model scroll clearance kept hiding
+  // real defects). A collapsed chat dock is a bar.
+  const SHEET = '[aria-modal="true"], dialog:modal, .chat-dock:not(.is-collapsed)';
+  // meet is what a press lands on at the centre of the two targets'
+  // intersection. Content partly behind a sheet (its centre still visible
+  // above an expanded dock) loses only the covered part, where the sheet is
+  // on top; it competes with nothing there.
+  const pinnedOver = (p, c, meet) => {
+    if (p.pinned === null || p.pinned.contains(c.el)) return null;
+    const sheet = p.el.closest(SHEET);
+    if (!sheet || sheet.contains(c.el) || c.pinned !== null) return null;
+    const covered = (hit) => hit !== null && sheet.contains(hit);
+    return covered(c.hit) || covered(meet) ? 'sheet' : null;
+  };
   const overlaps = [];
   const overlapPairs = [];
   for (let i = 0; i < zones.length; i += 1) for (let j = i + 1; j < zones.length; j += 1) {
@@ -137,13 +176,17 @@ export const HIT_TARGET_AUDIT = `(() => {
       // not both pressable here. One control covering the other is not
       // layered: that centre lands on the pair.
       const third = (z) => z.hit !== null && !a.el.contains(z.hit) && !b.el.contains(z.hit);
+      const mx = (Math.max(a.l, b.l) + Math.min(a.r, b.r)) / 2, my = (Math.max(a.t, b.t) + Math.min(a.b, b.b)) / 2;
+      const meet = mx >= 0 && my >= 0 && mx < innerWidth && my < innerHeight ? document.elementFromPoint(mx, my) : null;
+      const layeredBy = third(a) || third(b) ? 'third' : pinnedOver(a, b, meet) || pinnedOver(b, a, meet);
       overlapPairs.push({
         first: a.name,
         second: b.name,
         firstAnchor: a.anchor,
         secondAnchor: b.anchor,
         checkable: a.hit !== null && b.hit !== null,
-        layered: third(a) || third(b),
+        layered: layeredBy !== null,
+        layeredBy,
       });
     }
   }

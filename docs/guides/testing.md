@@ -13,6 +13,16 @@ rerunning a failed gate to recover its output. Capture limits still apply;
 truncated diagnostics do not establish a complete failure inventory. The JSON
 format does not change readiness requirements or promotion evidence.
 
+For a failed Vitest corpus, the runner prints the child exit status and signal.
+The failed full-regression artifact also retains `receipt.json`, `stdout.log`
+and `stderr.log` in a unique directory for each failed group invocation under
+`vitest-corpus/` (from the runner’s temporary directory). The receipt names that
+invocation, so a later write cannot mix its logs with an older receipt.
+These logs preserve the capture already bounded by the runner, including
+diagnostics before the printed tails; they do not recover bytes lost to an
+output-limit refusal. A receipt reports cancellation and capture truncation
+separately from a test failure.
+
 The [documentation maintenance workflow](documentation.md) and its
 [repository skill](../../.agents/skills/documentation-audit/SKILL.md) apply to
 instructions and diagrams too. Structural gates check named patterns and
@@ -1323,8 +1333,18 @@ photographed, recorded per screen as `uiAudit` in `gallery/capture.json`
 (`tests/helpers/gallery-ui-audit.ts`):
 
 - hit targets (`tests/helpers/hit-target-audit.ts`): controls a clip hides
-  on screen, overlapping targets that both centres can confirm, and, at the
-  touch layout (600px wide or less), targets under 44px. Desktop is exempt from
+  on screen, overlapping targets that both centres can confirm (a pair with
+  a pinned control, in a fixed or sticky layer, counts unless a covering
+  sheet is on top: `aria-modal`, a modal `<dialog>`, or the expanded chat
+  dock. Content behind, or partly under, a covering sheet, including the
+  non-modal expanded chat dock, is cleared; a user can still tap the visible
+  part of such content, which this check accepts. Scroll position is not
+  credited, so content a user could scroll clear of a bar is still reported
+  (conservative by design);
+  controls the UA does not render, inside a closed `<details>`, are
+  skipped; accepted limitation: the sheet test trusts markup, so a bar that
+  carries `aria-modal="true"` or the `chat-dock` class is treated as a
+  sheet), and, at the touch layout (600px wide or less), targets under 44px. Desktop is exempt from
   the 44px rule: about 1,370 of 1,672 desktop controls measured under 44px
   when it was introduced, so it would measure the desktop design, not defects;
 - horizontal overflow: the document scrolling sideways, and elements that
