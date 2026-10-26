@@ -403,10 +403,11 @@ Version drift between a pin and the install is guarded by
   handed a scope string containing it rejects the entire grant. §3.3 handles
   this.
 - **`StationCapabilityFlags` are a static build registry.**
-  `src-server/capabilities/station-capability-flags.ts`. The only
+  `src-server/capabilities/station-capability-flags.ts`. Its one
   deployment-dependent step withdraws a flag in a deployment mode whose route
-  refuses every call (hosted mode omits `sessionInventoryInputRead`, #4177);
-  no flag reflects runtime participation or configuration. Fleet inference
+  refuses every call (hosted mode omits `sessionInventoryInputRead` and
+  `webPushNotifications`, #4177); no flag reflects runtime participation or
+  configuration. Fleet inference
   needs both a protocol-support flag (static) and a participation fact
   (runtime); §3.3 keeps them distinct.
 - **Mobile Station is a WebView shell, not a server.**

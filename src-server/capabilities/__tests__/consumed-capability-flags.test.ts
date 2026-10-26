@@ -6,10 +6,16 @@ import ts from 'typescript-api';
 import { describe, expect, test, vi } from 'vitest';
 import { readStreamUntil } from '../../__test-utils__/sse-helpers.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { createPushRoutes } from '../../routes/operations/push-routes.js';
 import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../runtime/bootstrap/hosted-tenant-mode.js';
+import { resolveRuntimeWebPushEnabled } from '../../runtime/routes/runtime-route-support.js';
 import { configureRuntimePublicRoutes } from '../../runtime/routes/runtime-routes.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
+import {
+  resolveStationCapabilityFlags,
+  STATION_CAPABILITY_FLAGS,
+} from '../station-capability-flags.js';
 
 const makeTempDir = trackTempDirs();
 const REPO_ROOT = resolve(__dirname, '../../..');
@@ -41,8 +47,8 @@ function orchestrationRoutes(
 }
 
 /**
- * Every handshake flag a client gates on (`hasCapability` in packages/sdk or
- * src-ui), with a probe that asks the real route whether it serves that
+ * Every handshake flag a client gates on (packages/sdk or src-ui), plus every
+ * flag a deployment mode withdraws, with a probe that asks the real route whether it serves that
  * feature in a deployment mode, given an owner that would grant the request.
  * The coverage test below fails when a client gates on a flag missing here.
  */
@@ -78,6 +84,23 @@ const CONSUMED_FLAGS: Record<
       '/sessions/session-a/inputs/input-a?turnId=turn-a',
     );
     return response.status === 200;
+  },
+  // Not gated by a client today, but withdrawn in hosted mode, so pinned too.
+  // GET /vapid-public-key answers under the runtime's real enablement.
+  webPushNotifications: async ({ hosted }) => {
+    const routes = createPushRoutes({
+      enabled: resolveRuntimeWebPushEnabled(
+        hosted
+          ? { [HOSTED_TENANT_REGISTRY_FILE_ENV]: '/hosted/tenants.json' }
+          : {},
+      ),
+      getVapidPublicKey: () => 'vapid-public-key',
+      identifyDevice: () => null,
+      credentialAliasId: () => undefined,
+      setPushSubscription: vi.fn(),
+      clearPushSubscription: vi.fn(),
+    });
+    return (await routes.request('/vapid-public-key')).status === 200;
   },
   // GET /events honours Last-Event-ID: a cursor inside the gap replays the
   // missed event instead of sending a fresh snapshot.
@@ -152,7 +175,25 @@ describe('consumed capability flags match what their routes serve', () => {
     sessionEventWindow: { personal: true, hosted: true },
     sessionInventoryInputRead: { personal: true, hosted: false },
     eventStreamResume: { personal: true, hosted: true },
+    webPushNotifications: { personal: true, hosted: false },
   };
+
+  test('every flag a deployment withdraws has a row', () => {
+    const hostedFlags = resolveStationCapabilityFlags({ hosted: true });
+    const withdrawn = Object.keys(STATION_CAPABILITY_FLAGS).filter(
+      (flag) => !Object.hasOwn(hostedFlags, flag),
+    );
+    expect(withdrawn).toEqual(
+      expect.arrayContaining([
+        'sessionInventoryInputRead',
+        'webPushNotifications',
+      ]),
+    );
+    expect(
+      withdrawn.filter((flag) => !Object.hasOwn(CONSUMED_FLAGS, flag)),
+      'A flag withdrawn in hosted mode needs a row in CONSUMED_FLAGS probing its route.',
+    ).toEqual([]);
+  });
 
   test('every table row has a pinned expectation', () => {
     expect(Object.keys(EXPECTED).sort()).toEqual(
@@ -205,16 +246,46 @@ function clientSourceFiles(root: string): string[] {
   return files;
 }
 
+const FLAG_NAMES = new Set(Object.keys(STATION_CAPABILITY_FLAGS));
+
+type Gate = {
+  file: string;
+  /** The gated flag, or `null` when this scan cannot tell which flag. */
+  flag: string | null;
+  form: 'call' | 'alias' | 'direct-read';
+};
+
+/** `x.capabilities` / `x?.capabilities`, or a bare `capabilities` binding. */
+function isCapabilitiesObject(node: ts.Expression): boolean {
+  const inner = ts.isNonNullExpression(node) ? node.expression : node;
+  if (ts.isIdentifier(inner)) return inner.text === 'capabilities';
+  return (
+    ts.isPropertyAccessExpression(inner) && inner.name.text === 'capabilities'
+  );
+}
+
 /**
- * Every `hasCapability(handshake, '<flag>')` call in the given files. A call
- * whose flag argument is not a string literal is reported as `null`, since
- * this check cannot tell which flag it gates on.
+ * Every client gate on a handshake flag in the given files, found
+ * syntactically:
+ * - a `hasCapability(...)` call, including through a renamed import
+ *   (`import { hasCapability as gate }`) or a member call
+ *   (`sdk.hasCapability(...)`);
+ * - any other use of `hasCapability` as a value (`const has = hasCapability`,
+ *   passing it as an argument, re-exporting it renamed), reported with
+ *   `flag: null` because the scan cannot follow the alias;
+ * - a direct read of a registry flag on a `capabilities` object
+ *   (`h?.capabilities?.webPushNotifications`, `capabilities['x']`, or
+ *   destructuring a flag from `.capabilities`).
+ * A hasCapability flag argument that is not a string literal is `flag: null`.
+ * Not caught: a capabilities read through a dynamic key, or through a
+ * variable that is not itself named `capabilities`.
  */
-function gatedFlagsIn(files: readonly string[]) {
-  const found: Array<{ file: string; flag: string | null }> = [];
+function gatedFlagsIn(files: readonly string[]): Gate[] {
+  const found: Gate[] = [];
   for (const file of files) {
     const text = readFileSync(file, 'utf8');
-    if (!text.includes('hasCapability')) continue;
+    if (!text.includes('hasCapability') && !text.includes('capabilities'))
+      continue;
     const source = ts.createSourceFile(
       file,
       text,
@@ -222,19 +293,89 @@ function gatedFlagsIn(files: readonly string[]) {
       true,
       file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
     );
+    const at = relative(REPO_ROOT, file);
+    const gateNames = new Set(['hasCapability']);
+    for (const statement of source.statements) {
+      const bindings = ts.isImportDeclaration(statement)
+        ? statement.importClause?.namedBindings
+        : undefined;
+      if (bindings && ts.isNamedImports(bindings))
+        for (const element of bindings.elements)
+          if ((element.propertyName ?? element.name).text === 'hasCapability')
+            gateNames.add(element.name.text);
+    }
+    const literalFlag = (node: ts.Node | undefined) =>
+      node && ts.isStringLiteralLike(node) ? node.text : null;
     const visit = (node: ts.Node) => {
-      if (
-        ts.isCallExpression(node) &&
-        ts.isIdentifier(node.expression) &&
-        node.expression.text === 'hasCapability'
-      ) {
-        const argument = node.arguments[1];
-        found.push({
-          file: relative(REPO_ROOT, file),
-          flag:
-            argument && ts.isStringLiteralLike(argument) ? argument.text : null,
-        });
+      if (ts.isCallExpression(node)) {
+        const callee = node.expression;
+        if (
+          (ts.isIdentifier(callee) && gateNames.has(callee.text)) ||
+          (ts.isPropertyAccessExpression(callee) &&
+            callee.name.text === 'hasCapability')
+        ) {
+          found.push({
+            file: at,
+            flag: literalFlag(node.arguments[1]),
+            form: 'call',
+          });
+          // Arguments may hold further gates; the callee itself is accounted.
+          for (const argument of node.arguments) visit(argument);
+          if (ts.isPropertyAccessExpression(callee)) visit(callee.expression);
+          return;
+        }
       }
+      if (ts.isIdentifier(node) && gateNames.has(node.text)) {
+        const parent = node.parent;
+        const declaresOrImports =
+          ts.isImportSpecifier(parent) ||
+          (ts.isFunctionDeclaration(parent) && parent.name === node) ||
+          (ts.isExportSpecifier(parent) &&
+            !parent.propertyName &&
+            parent.name.text === 'hasCapability') ||
+          // A type position (`typeof hasCapability`) gates nothing.
+          ts.isTypeQueryNode(parent);
+        if (!declaresOrImports)
+          found.push({ file: at, flag: null, form: 'alias' });
+      }
+      if (
+        ts.isPropertyAccessExpression(node) &&
+        node.name.text === 'hasCapability' &&
+        !(ts.isCallExpression(node.parent) && node.parent.expression === node)
+      )
+        found.push({ file: at, flag: null, form: 'alias' });
+      if (
+        ts.isPropertyAccessExpression(node) &&
+        FLAG_NAMES.has(node.name.text) &&
+        isCapabilitiesObject(node.expression)
+      )
+        found.push({ file: at, flag: node.name.text, form: 'direct-read' });
+      if (
+        ts.isElementAccessExpression(node) &&
+        isCapabilitiesObject(node.expression)
+      ) {
+        // Only a literal key is attributable. A dynamic key is not reported:
+        // engine, voice and native-shell objects also expose `capabilities`
+        // maps read by variable, and hasCapability itself reads `[name]`.
+        const key = literalFlag(node.argumentExpression);
+        if (key !== null && FLAG_NAMES.has(key))
+          found.push({ file: at, flag: key, form: 'direct-read' });
+      }
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isObjectBindingPattern(node.name) &&
+        node.initializer &&
+        isCapabilitiesObject(node.initializer)
+      )
+        for (const element of node.name.elements) {
+          const key = element.propertyName ?? element.name;
+          const name =
+            ts.isIdentifier(key) || ts.isStringLiteralLike(key)
+              ? key.text
+              : null;
+          if (name !== null && FLAG_NAMES.has(name))
+            found.push({ file: at, flag: name, form: 'direct-read' });
+        }
       ts.forEachChild(node, visit);
     };
     visit(source);
@@ -243,35 +384,61 @@ function gatedFlagsIn(files: readonly string[]) {
 }
 
 describe('every flag a client gates on has a row above', () => {
-  test('hasCapability calls in packages/sdk and src-ui name only tabled flags', () => {
-    const calls = gatedFlagsIn(
+  test('gates in packages/sdk and src-ui name only tabled flags', () => {
+    const gates = gatedFlagsIn(
       CLIENT_ROOTS.flatMap((root) => clientSourceFiles(join(REPO_ROOT, root))),
     );
     // Proves the scan reaches the real gates rather than passing on nothing.
-    expect(calls.map((call) => call.flag)).toContain(
+    expect(gates.map((gate) => gate.flag)).toContain(
       'sessionInventoryInputRead',
     );
-    const untabled = calls.filter(
-      (call) => call.flag === null || !Object.hasOwn(CONSUMED_FLAGS, call.flag),
+    const untabled = gates.filter(
+      (gate) => gate.flag === null || !Object.hasOwn(CONSUMED_FLAGS, gate.flag),
     );
-    expect(untabled).toEqual([]);
+    expect(
+      untabled,
+      'A client gates on a handshake flag that has no row in CONSUMED_FLAGS. ' +
+        "Add a row (and an EXPECTED entry) that probes the flag's route in " +
+        'personal and hosted mode. A flag of null means the gate is aliased, ' +
+        'or names its flag dynamically: call hasCapability(handshake, ' +
+        "'<flag>') directly with a literal.",
+    ).toEqual([]);
   });
 
-  test('the parser finds a gate in source text, and ignores comments and strings', () => {
+  test('the scan follows every gate form and ignores comments, strings and unrelated capabilities', () => {
     const dir = makeTempDir('station-capability-scan-');
     const file = join(dir, 'client.ts');
     writeFileSync(
       file,
       [
+        "import * as sdk from './capability.js';",
+        "import { hasCapability, hasCapability as gate } from './capability.js';",
+        "export { hasCapability } from './capability.js';",
         "// hasCapability(handshake, 'commentFlag')",
         'const text = "hasCapability(handshake, \'stringFlag\')";',
-        "hasCapability(handshake, 'newFlag');",
+        "hasCapability(handshake, 'sshEnvironments');",
         'hasCapability(handshake, dynamicName);',
+        "sdk.hasCapability(handshake, 'scopedPairing');",
+        "gate(handshake, 'fleetInference');",
+        'const has = hasCapability;',
+        'type Gate = typeof hasCapability;',
+        'const ok = handshake?.capabilities?.webPushNotifications === true;',
+        "const viaKey = handshake.capabilities['executionPreparation'];",
+        'const { delegatedInputAnswers } = handshake.capabilities;',
+        'const unrelated = compatibility.capabilities.clientProtocolHeader;',
       ].join('\n'),
     );
-    expect(gatedFlagsIn([file]).map((call) => call.flag)).toEqual([
-      'newFlag',
-      null,
+    expect(
+      gatedFlagsIn([file]).map(({ flag, form }) => `${form}:${flag}`),
+    ).toEqual([
+      'call:sshEnvironments',
+      'call:null',
+      'call:scopedPairing',
+      'call:fleetInference',
+      'alias:null',
+      'direct-read:webPushNotifications',
+      'direct-read:executionPreparation',
+      'direct-read:delegatedInputAnswers',
     ]);
   });
 });

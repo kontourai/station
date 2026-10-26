@@ -23,6 +23,7 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // routes, packages/sdk/src/query-domains/sshEnvironments.ts.
   sshEnvironments: true,
   // Web Push subscribe/unsubscribe: src-server/routes/operations/push-routes.ts.
+  // Hosted deployments withdraw it: see servesWebPushNotifications.
   webPushNotifications: true,
   // Sequence-cursor resume for the orchestration event stream (archive#1092):
   // src-server/routes/orchestration/orchestration.ts `/events`. Server-side
@@ -119,6 +120,31 @@ export function servesSessionInventoryInputRead(
 }
 
 /**
+ * Whether Web Push subscribe/unsubscribe and key discovery serve in this
+ * deployment. Pairing records have no durable tenant ownership yet, so hosted
+ * mode answers every push route 404. Runtime route support derives
+ * `webPushEnabled` from this predicate, so the flag cannot drift from it.
+ */
+export function servesWebPushNotifications(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
+/** Flags whose route serves only in some deployment modes. */
+const DEPLOYMENT_SERVED_FLAGS: Readonly<
+  Partial<
+    Record<
+      keyof StationCapabilityFlags,
+      (deployment: StationCapabilityDeployment) => boolean
+    >
+  >
+> = {
+  sessionInventoryInputRead: servesSessionInventoryInputRead,
+  webPushNotifications: servesWebPushNotifications,
+};
+
+/**
  * The flags this deployment's handshake advertises: the build registry above,
  * minus any flag whose route cannot serve in this deployment. Absence means
  * unsupported (see `StationCapabilityFlags`), so a withdrawn flag reads exactly
@@ -127,8 +153,10 @@ export function servesSessionInventoryInputRead(
 export function resolveStationCapabilityFlags(
   deployment: StationCapabilityDeployment,
 ): StationCapabilityFlags {
-  const { sessionInventoryInputRead, ...rest } = STATION_CAPABILITY_FLAGS;
-  return servesSessionInventoryInputRead(deployment)
-    ? { ...rest, sessionInventoryInputRead }
-    : rest;
+  const flags: StationCapabilityFlags = { ...STATION_CAPABILITY_FLAGS };
+  for (const [flag, serves] of Object.entries(DEPLOYMENT_SERVED_FLAGS)) {
+    if (serves && !serves(deployment))
+      delete flags[flag as keyof StationCapabilityFlags];
+  }
+  return flags;
 }

@@ -5,10 +5,10 @@
  * or distribution's declared runtime contract with its clients.
  *
  * One deployment fact does reach the handshake: hosted mode withdraws
- * `sessionInventoryInputRead` (`resolveStationCapabilityFlags`, #4177). That
- * is not an operator declaration but a property of this build's own route,
- * which refuses every hosted read, so it lives beside the flag it withdraws
- * rather than here.
+ * `sessionInventoryInputRead` and `webPushNotifications`
+ * (`resolveStationCapabilityFlags`, #4177). That is not an operator
+ * declaration but a property of this build's own routes, which refuse every
+ * hosted call, so it lives beside the flags it withdraws rather than here.
  */
 const DEPLOYMENT_CAPABILITY_IDS = ['web-push', 'scheduler'] as const;
 

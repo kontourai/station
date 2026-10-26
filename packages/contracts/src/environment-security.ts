@@ -1187,7 +1187,10 @@ export interface EnvironmentSecurityRecord {
 export interface StationCapabilityFlags {
   /** SSH environment management (`src-server/services/ssh/`, `/api/ssh-environments`). */
   sshEnvironments?: boolean;
-  /** Web Push subscribe/unsubscribe (`src-server/routes/operations/push-routes.ts`). */
+  /**
+   * Web Push subscribe/unsubscribe (`src-server/routes/operations/push-routes.ts`).
+   * Absent on hosted deployments, whose push routes all answer 404 (#4177).
+   */
   webPushNotifications?: boolean;
   /**
    * The `/api/orchestration/events` (+ per-session) SSE stream honors a
