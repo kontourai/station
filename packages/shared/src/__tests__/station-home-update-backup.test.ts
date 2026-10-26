@@ -724,6 +724,8 @@ describe('update backup and in-place restore (#2675 D)', () => {
 
   it('rolls a trial that bumped the schema and wrote new data back, keeping live roots as they are', () => {
     const fixture = serviceHome();
+    const empty = join(fixture.home, 'agents', 'research', 'memory', 'empty');
+    mkdirSync(empty, { recursive: true });
     mkdirSync(join(fixture.root, 'update-backups'));
     createStationHomeUpdateBackup({
       homeDir: fixture.home,
@@ -734,6 +736,7 @@ describe('update backup and in-place restore (#2675 D)', () => {
     // The trial: migrates the home, rewrites data, adds a store, and the
     // service lifecycle keeps writing its live entries meanwhile.
     writeSchemaVersion(fixture.home, 99);
+    rmSync(join(fixture.home, 'agents'), { recursive: true });
     writeFileSync(
       join(fixture.home, 'config', 'app.json'),
       '{"model":"trial"}\n',
@@ -755,6 +758,9 @@ describe('update backup and in-place restore (#2675 D)', () => {
 
     expect(sha(join(fixture.home, STATION_HOME_SCHEMA_FILE))).toBe(before);
     expect(schemaVersion(fixture.home)).not.toBe(99);
+    expect(existsSync(empty), 'the empty directory must survive rollback').toBe(true);
+    expect(readdirSync(empty)).toEqual([]);
+    expect(existsSync(join(empty, 'never-created'))).toBe(false);
     expect(readFileSync(join(fixture.home, 'config', 'app.json'), 'utf8')).toBe(
       '{"model":"before"}\n',
     );

@@ -180,6 +180,8 @@ describe('StationHomeArchive', () => {
   it('backs up and atomically restores validated home data', () => {
     const fixture = homeFixture();
     const backupDir = join(fixture.root, 'backup');
+    const empty = join(fixture.home, 'agents', 'research', 'memory', 'empty');
+    mkdirSync(empty, { recursive: true });
     mkdirSync(join(fixture.home, 'logs'), { recursive: true });
     writeFileSync(join(fixture.home, 'logs', 'server.log'), 'transient');
     writeFileSync(
@@ -214,6 +216,7 @@ describe('StationHomeArchive', () => {
       join(fixture.home, 'config', 'app.json'),
       '{"model":"new"}\n',
     );
+    rmSync(join(fixture.home, 'agents'), { recursive: true });
     const restored = restoreStationHomeBackup({
       backupDir,
       homeDir: fixture.home,
@@ -223,6 +226,9 @@ describe('StationHomeArchive', () => {
     expect(readFileSync(join(fixture.home, 'config', 'app.json'), 'utf8')).toBe(
       '{"model":"original"}\n',
     );
+    expect(existsSync(empty), 'the empty directory must survive restore').toBe(true);
+    expect(readdirSync(empty)).toEqual([]);
+    expect(existsSync(join(empty, 'never-created'))).toBe(false);
     expect(restored.previousHome).toBeDefined();
     expect(
       readFileSync(join(restored.previousHome!, 'config', 'app.json'), 'utf8'),
