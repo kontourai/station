@@ -147,13 +147,14 @@ describe('acquireFileMutationLockAsync (#2646 event-loop yield)', () => {
 });
 
 describe('held file mutation leases', () => {
-  it.each(['rename', 'remove'] as const)(
+  it.each(['rename', 'remove', 'read-lock', 'read-guard'] as const)(
     'retries owned guard cleanup after a post-lock-deletion %s failure',
     async (failure) => {
       const lock = temporaryLockPath();
       const lease = await acquireFileMutationLeaseAsync(lock);
       const rename = fs.renameSync;
       const remove = fs.rmSync;
+      const open = fs.openSync;
       const fault =
         failure === 'rename'
           ? vi.spyOn(fs, 'renameSync').mockImplementation((source, target) => {
@@ -161,11 +162,21 @@ describe('held file mutation leases', () => {
                 throw new Error('injected guard cleanup failure');
               rename(source, target);
             })
-          : vi.spyOn(fs, 'rmSync').mockImplementation((path, options) => {
-              if (String(path).startsWith(`${lock}.guard.stale-`))
-                throw new Error('injected guard cleanup failure');
-              remove(path, options);
-            });
+          : failure === 'remove'
+            ? vi.spyOn(fs, 'rmSync').mockImplementation((path, options) => {
+                if (String(path).startsWith(`${lock}.guard.stale-`))
+                  throw new Error('injected guard cleanup failure');
+                remove(path, options);
+              })
+            : vi.spyOn(fs, 'openSync').mockImplementation((path, flags, mode) => {
+                const prefix =
+                  failure === 'read-lock'
+                    ? `${lock}.stale-`
+                    : `${lock}.guard.stale-`;
+                if (String(path).startsWith(prefix))
+                  throw new Error('injected guard cleanup failure');
+                return open(path, flags, mode);
+              });
       syncBuiltinESMExports();
       try {
         await expect(lease.release()).rejects.toThrow(

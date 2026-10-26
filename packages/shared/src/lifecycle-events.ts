@@ -619,12 +619,14 @@ function deleteGuard(
   if (!sameGuard(inspectGuard(path), observed)) return;
   const quarantine = `${path}.stale-${randomUUID()}`;
   renameSync(path, quarantine);
+  if (progress) progress.guardQuarantine = quarantine;
   if (!sameGuard(inspectGuard(quarantine), observed)) {
-    if (!existsSync(path) && existsSync(quarantine))
+    if (!existsSync(path) && existsSync(quarantine)) {
       renameSync(quarantine, path);
+      if (progress) delete progress.guardQuarantine;
+    }
     throw new Error('lock guard changed during compare-delete');
   }
-  if (progress) progress.guardQuarantine = quarantine;
   rmSync(quarantine, { force: true });
   if (progress) delete progress.guardQuarantine;
 }
@@ -799,15 +801,20 @@ function* guardedDeleteLockGen(
     if (!sameLock(inspectLock(lock), observed)) return false;
     const quarantine = `${lock}.stale-${randomUUID()}`;
     renameSync(lock, quarantine);
-    const moved = inspectLock(quarantine);
-    if (!sameLock(moved, observed)) {
-      if (!existsSync(lock) && existsSync(quarantine))
-        renameSync(quarantine, lock);
-      throw new Error('journal lock changed during compare-delete');
-    }
     if (progress) {
       progress.lockRemoved = true;
       progress.quarantine = quarantine;
+    }
+    const moved = inspectLock(quarantine);
+    if (!sameLock(moved, observed)) {
+      if (!existsSync(lock) && existsSync(quarantine)) {
+        renameSync(quarantine, lock);
+        if (progress) {
+          delete progress.quarantine;
+          progress.lockRemoved = false;
+        }
+      }
+      throw new Error('journal lock changed during compare-delete');
     }
     rmSync(quarantine, { force: true });
     if (progress) delete progress.quarantine;
