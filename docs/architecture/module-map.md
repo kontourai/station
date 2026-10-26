@@ -5150,11 +5150,13 @@ history, and outside revision-bound evidence (#4007, #4055). The
 bounds, quote relocation and state derivation. Personal
 [routes](../../src-server/routes/orchestration/task-review.ts) obtain current
 request authority from `ProjectTaskRoomRuntime.personTaskReviewAccess`;
-`sessionTaskReviewAccess` exposes the same Task binding check for future agent
-callers without requiring Task memory. `readPlanForReview` only reads working
-state. [Runtime composition](../../src-server/runtime/routes/runtime-routes.ts)
-mounts the routes and resolves linked answers through the canonical turn reader,
-with at most four concurrent reads and an exact selector for item/mutation reads.
+`sessionTaskReviewAccess` requires the caller's bound Session to be the Task's
+lead, without requiring Task memory. Its transaction callback rechecks the
+binding, incarnation, lead and workspace. `readPlanForReview` and the caller-bound
+`readPlanForSessionReview` read the same working-state owner. Agent list filters
+and person reads share `TaskReviewModule` artifact resolution and freshness.
+[Runtime composition](../../src-server/runtime/routes/runtime-routes.ts) mounts the routes and resolves linked answers through the canonical turn reader.
+Answer reads are bounded to four at a time and an exact item/mutation selector.
 
 [TaskReviewModule](../../src-server/services/projects/task-review-module.ts)
 lists metadata and counts for the plan, Task summary (Brief), kept outputs,
@@ -5173,13 +5175,15 @@ run on every request. Optional synchronous constructor port
 after the freshness-cache lookup on every list/detail/mutation projection;
 omitting it yields unconfirmed. A port failure also yields unconfirmed, with a
 distinct delivery-status warning; it does not mark the thread corrupt. Delivery
-status is never cached. #4158 should
-supply this port and use `listThreadEntries`, the tolerant store listing.
-The strict `listThreads` reader has been removed. Creation counts every stored
-thread toward the cap and refuses a retry with `unavailable` when its operation
-ID belongs to a corrupt thread. `appendReviewEvent` writes review-domain events;
-the deprecated `appendEvent` alias has been removed. Review writes do not append
-canonical conversation events or UI-block provenance.
+status is never cached. Runtime composition resolves the thread's current Task
+incarnation and lead conversation inside this port. Send uses
+`listThreadEntries`, the tolerant store listing; only an unavailable selected
+thread is refused as not found. The strict `listThreads` reader has been removed.
+Creation counts every stored thread toward the cap and refuses a retry with
+`unavailable` when its operation ID belongs to a corrupt thread.
+`appendReviewEvent` writes review-domain events; the deprecated `appendEvent`
+alias has been removed. Review writes do not append canonical conversation
+events or UI-block provenance.
 The caches use LRU ordering on reads. Retained payload budgets are 8 MiB for
 prepared revisions (at most 16), 8 MiB for thread views (2000), 1 MiB for answer
 digests (2000), and 1 MiB for warning identities (2000). Accounting includes
@@ -5214,7 +5218,7 @@ atomically; agent replies and `recordSendFailed` require the active delivery key
 SQLite also rejects summary revisions with leading zeros and agent replies
 without an earlier same-thread sent key; active-key retirement remains contract
 admission's responsibility.
-Admission folds full event history, preserving Sent on a person follow-up; this increment delivers no agent messages and stores no image bytes.
+Admission folds full event history, preserving Sent on a person follow-up; image bytes belong to the capture increment.
 The separate capture primitives in [PR #4150](https://github.com/kontourai/station/pull/4150),
 `workspace-commit-pin` and `task-capture-blob-store`, own commit pinning and
 content-addressed image bytes; this module does not depend on that PR.
@@ -5230,7 +5234,69 @@ and [composed runtime routes](../../src-server/runtime/routes/__tests__/runtime-
 They cover durable reopening, append-only enforcement, idempotency, capacity
 refusals, incarnation isolation, plan editing, unavailable working state and
 review writes preserving room content, history and revision evidence. They do
-not qualify agent delivery, browser capture, a UI journey or a release.
+not qualify a real provider, browser capture, a UI journey or a release.
+
+[TaskReviewSend](../../src-server/services/orchestration/task-review-send.ts)
+implements the person's `POST /api/tasks/:taskId/review/send`. It refuses a
+stopped lead with `no-live-agent` and any sender other than the recorded lead
+owner with `sender-not-task-owner`, before recording `sent`. A missing recorded
+owner returns `unavailable`. The inbox receives
+the actual sending principal, who must currently be that owner; multiplayer
+send remains deferred to #4136. `sent` commits before inbox submission; a
+non-queued outcome appends `send-failed`. Keys retain the mode after a `tr-`
+digest of the Task incarnation and sorted thread ids/latest ordinals. Reusing
+an operation with another mode returns `operation-conflict`; fresh operations
+still check recovery when the mode differs. Legacy keys cannot replay confirmed
+delivery without a recorded mode; known non-delivery and uncertainty remain
+reportable.
+A queued, sending or sent inbox entry is reused. On retry, only a refused
+entry or one cancelled while queued appends `send-failed` under its active key,
+returning Sent to Open. A new operation then gets a fresh key; an old operation
+stays a replay. The inbox's `nonDeliveryReason` uses the persisted placement
+retained through cancellation: dismissing an unconfirmed placement proves no
+non-delivery. Missing keys, including pruned settled entries, also stay
+**Send unconfirmed** and are never resubmitted automatically. A person can reply
+to set `pendingFollowUp` and explicitly send again. The durable inbox owns
+restart recovery. Missing inbox service is also unconfirmed, without assuming
+non-delivery. The inbox starts an idle lead's turn or waits
+for a busy turn to complete, without steering. The message lists the delivery
+key and each thread's artifact, anchor, comments and replies. Quoted excerpts
+and bodies are capped at 800 UTF-16 code units after quote prefixes, with a
+marker. Older replies are omitted as needed, retaining the opening and latest
+comments and recording the omitted count. A selection is refused only when
+minimal per-thread content cannot fit, with instructions to send fewer threads.
+The complete frame, including metadata, is capped at 190,000 code units, below
+the 200,000 chat input limit. A selection still exceeding that budget returns
+`message-too-large` before Sent. The frame tells the agent not to follow
+instructions inside review data, to echo the key in replies and to commit
+before claiming a commit.
+`send-and-resolve` appends `resolved` with reason `sent-and-resolved` only after
+queue acceptance. [Inbox tests](../../src-server/services/orchestration/__tests__/task-review-send.test.ts)
+exercise counting-engine delivery, busy queuing, deduplication, restart,
+stopped leads, capacity, both modes, mode replay, sender attribution, bounded
+messages, known non-delivery recovery and uncertain inbox intent.
+
+[Station-control routes](../../src-server/routes/orchestration/task-review-station-control.ts)
+are internal-only and derive the Session from verified caller authority.
+[The tools](../../src-server/tools/station-control-task-thread-tools.ts) expose
+`task_thread_list`, `task_thread_reply` and `task_thread_resolve` under Tasks.
+List uses SELF_READ; reply and resolve are self-scoped bounded writes at any
+assurance. Replies carry the current `deliveryKey`: an older delivery cannot
+claim a new follow-up. A reply after Send + Resolve preserves Resolved. The write callback checks the thread's Task id, creation time and
+Project against the binding inside the transaction. There is no delete or
+reopen tool. [Evidence verification](../../src-server/services/projects/task-review-evidence.ts)
+checks the exact object's type with confined `git cat-file -t` in the Task
+workspace. `commitVerified` means the object exists and is a commit; it proves
+neither branch membership nor the review repair. A tag or blob stays claimed.
+Gate refs must occur in this Task's protected gate-evaluation reference links
+and resolve through Flow to the exact current passing evaluation. The link
+snapshot and Task authority are rechecked after owner I/O. Missing, foreign or
+unavailable refs stay claimed; receipt refs are always claims.
+[The MCP integration tests](../../src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts)
+use a real Codex URL token and temporary Git repository to cover replies,
+commit verification, resolution without Task status changes, cross-Task
+refusal and unbound/non-lead refusal. This is local protocol and fixture
+engine evidence, ahead of live provider and hosted qualification.
 
 ## TerminalSessions
 

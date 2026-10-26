@@ -141,6 +141,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Real bounded Node children exercise failure receipts without running another corpus.
   'scripts/__tests__/run-vitest-corpus.test.ts',
+  // Real private Git fixtures and hardened cat-file verification through the MCP route.
+  'src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts',
   // Small loopback responses exercise dependency stream ownership in naturally exiting children.
   'scripts/__tests__/dependency-http-availability.process.test.ts',
   'src-server/runtime/frameworks/__tests__/voltagent-stream-finish-flush.process.test.ts',
