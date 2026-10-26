@@ -66,7 +66,6 @@
       "overflow:element:div.settings__update-meta span"
     ],
     "mobile-access-request-error-390": [
-      "hit-target:overlap:button[Back] / button.button[Import previous preferences]",
       "hit-target:small:[data-testid=notification-delivery] input[type=checkbox][Hide content]",
       "hit-target:small:[data-testid=notification-delivery] input[type=checkbox][Quiet hours]",
       "hit-target:small:button.button[+ Pair device]",
@@ -83,11 +82,9 @@
       "hit-target:small:summary[Source installation details]"
     ],
     "mobile-agent-editor": [
-      "hit-target:overlap:button.button[New agent] / button.split-pane__back[← Back to list]",
       "hit-target:small:button.split-pane__back[← Back to list]"
     ],
     "mobile-agent-editor-project-control": [
-      "hit-target:overlap:button.button[New agent] / button.split-pane__back[← Back to list]",
       "hit-target:overlap:button.split-pane__back[← Back to list] / input.editor-input[type=text][name=name][Name *]",
       "hit-target:small:button.editor__lock-btn[Add model connection]",
       "hit-target:small:button.split-pane__back[← Back to list]",
@@ -95,7 +92,6 @@
       "hit-target:small:summary[Delegated-child denials (# built-in)]"
     ],
     "mobile-agent-editor-save-footer": [
-      "hit-target:overlap:button.button[New agent] / button.split-pane__back[← Back to list]",
       "hit-target:overlap:input.editor-input[type=text][name=slug][Agent ID] / input.editor-input[type=text][name=icon][Icon]",
       "hit-target:small:button.editor__lock-btn[Add model connection]",
       "hit-target:small:button.split-pane__back[← Back to list]",
@@ -117,18 +113,10 @@
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "axe:label:input.attachment-input[type=file]",
       "axe:scrollable-region-focusable:div.chat-messages[role=status]",
-      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=chat-dock-mobile-header] button.app-toolbar__icon-btn[Chat actions]",
-      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=chat-dock-mobile-header] button.app-toolbar__icon-btn[Collapse chat]",
-      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=chat-dock-mobile-header] button.app-toolbar__icon-btn[New chat]",
-      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-identity[Chats and tasks — Mismatch demo chat, demo-agent · Project B]",
-      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-project[Switch project — New chats, No project]",
-      "hit-target:overlap:button.home-view__action[Last projectProject A] / textarea[Type a message — @ files, / for commands…]",
-      "hit-target:overlap:button.home-view__action[ProjectNew ProjectRepository, folder, documents or tools] / button.chat-status-pill[Status unavailable — resync this conversation]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "mobile-home": [
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
-      "hit-target:overlap:button.home-view__action[# · Add a Project, if you need oneNew ProjectOptional: ordinary chats can start without a Project. Repository, folder, d] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-identity[Chats and tasks — Chat]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "mobile-http-consent-320": [
@@ -164,7 +152,6 @@
     ],
     "mobile-onboarding-setup": [
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
-      "hit-target:overlap:button.home-view__action[# · Add a Project, if you need oneNew ProjectOptional: ordinary chats can start without a Project. Repository, folder, d] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-identity[Chats and tasks — Chat]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "mobile-settings-overview": [
@@ -184,8 +171,6 @@
     ],
     "motion-reduced-mobile-chat": [
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
-      "hit-target:overlap:button.choice-trigger[Agent: Choose an agent] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-project[Switch project — New chats, No project]",
-      "hit-target:overlap:button.choice-trigger[Model: Model not reported] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-identity[Chats and tasks — Chat]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "motion-reduced-navigation": [
@@ -350,14 +335,12 @@
     ],
     "telemetry-settings-dnt-mobile": [
       "hit-target:overlap:button.station-toggle[Save offline reading copies] / button.button[Clear offline copies]",
-      "hit-target:overlap:summary[Technical details] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-identity[Chats and tasks — Chat]",
       "hit-target:small:input[type=radio][name=*][Anonymous usage counts]",
       "hit-target:small:input[type=radio][name=*][Detailed usage to help improve Station]",
       "hit-target:small:input[type=radio][name=*][Don't share]"
     ],
     "telemetry-settings-mobile": [
       "hit-target:overlap:button.station-toggle[Save offline reading copies] / button.button[Clear offline copies]",
-      "hit-target:overlap:summary[Technical details] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-identity[Chats and tasks — Chat]",
       "hit-target:small:input[type=radio][name=*][Anonymous usage counts]",
       "hit-target:small:input[type=radio][name=*][Detailed usage to help improve Station]",
       "hit-target:small:input[type=radio][name=*][Don't share]"
