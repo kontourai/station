@@ -111,6 +111,30 @@ export async function authenticatePriorCompanion({
   };
 }
 
+const migrationTables = [
+  'station_telemetry.migrations',
+  'station_private_usage.migrations',
+];
+
+export function assertMigrationTransition(prior, upgraded, current) {
+  for (const table of migrationTables) {
+    assert(Array.isArray(prior[table]) && prior[table].length > 0);
+    assert(Array.isArray(current[table]) && current[table].length > 0);
+    assert.deepEqual(
+      upgraded[table],
+      current[table],
+      `${table}: unsupported current history`,
+    );
+    for (const row of prior[table]) {
+      assert.deepEqual(
+        current[table].find((entry) => entry.version === row.version),
+        row,
+        `${table}: prior migration changed or missing`,
+      );
+    }
+  }
+}
+
 /** Fresh volumes only; never mutates a user project or starts an old binary on schema 9. */
 export async function exerciseCompanionLifecycle({
   output,
@@ -133,6 +157,7 @@ export async function exerciseCompanionLifecycle({
   save,
   unusedPort,
   ownedProjects,
+  retireProject,
   previous,
 }) {
   const lifecycle = {
@@ -205,6 +230,20 @@ export async function exerciseCompanionLifecycle({
         `digest ${table}`,
       );
     return result;
+  }
+  async function migrationHistory(comp, environment) {
+    const history = {};
+    for (const table of migrationTables) {
+      history[table] = JSON.parse(
+        await sql(
+          comp,
+          environment,
+          `SELECT coalesce(json_agg(t ORDER BY version),'[]'::json) FROM (SELECT version,digest FROM ${table}) t`,
+          `capture exact migration history ${table}`,
+        ),
+      );
+    }
+    return history;
   }
   async function fresh(name) {
     const owned = `${project}-${name}`;
@@ -354,6 +393,8 @@ export async function exerciseCompanionLifecycle({
     'synthetic sealed row; does not establish privacy reconciliation';
   const before = await digests(compose, env);
   lifecycle.before = before;
+  const currentMigrations = await migrationHistory(compose, env);
+  lifecycle.currentMigrations = currentMigrations;
   const backup = `${await docker([...compose, 'exec', '-T', 'postgres', 'pg_dump', '-U', 'station_telemetry', '-d', 'station_telemetry', '--no-owner', '--no-privileges'], 'bounded fresh logical backup')}\n`;
   const backupPath = join(output, 'fresh-backup.sql');
   await writeFile(backupPath, backup, { mode: 0o600, flag: 'wx' });
@@ -361,6 +402,7 @@ export async function exerciseCompanionLifecycle({
     .update(await readFile(backupPath))
     .digest('hex');
   await save();
+  await retireProject(project);
   const target = await fresh('restore');
   lifecycle.restoreProject = target.project;
   await restore(target, backup);
@@ -457,6 +499,7 @@ export async function exerciseCompanionLifecycle({
     'fresh isolated PostgreSQL backup SHA and all-table row digests; managed fence; copied key 401; permanent publication suppression across recreation; operator query retained',
   );
   // A separate restored database keeps the negative control out of the accepted restore.
+  await retireProject(target.project);
   const negative = await fresh('private-negative');
   await restore(negative, backup);
   await sql(
@@ -490,6 +533,7 @@ export async function exerciseCompanionLifecycle({
   await check(
     'copied private custody refuses managed fence atomically without activation',
   );
+  await retireProject(negative.project);
   if (previous) {
     lifecycle.previousRelease = previous;
     assert.notEqual(
@@ -595,6 +639,8 @@ export async function exerciseCompanionLifecycle({
     );
     const oldTables = await digests(old.comp, old.environment);
     lifecycle.priorDigests = oldTables;
+    const priorMigrations = await migrationHistory(old.comp, old.environment);
+    lifecycle.priorMigrations = priorMigrations;
     const originalBackup = `${await docker([...old.comp, 'exec', '-T', 'postgres', 'pg_dump', '-U', 'station_telemetry', '-d', 'station_telemetry', '--no-owner', '--no-privileges'], 'capture original pre-upgrade backup', old.environment)}\n`;
     await writeFile(join(output, 'prior-before-upgrade.sql'), originalBackup, {
       mode: 0o600,
@@ -619,13 +665,24 @@ export async function exerciseCompanionLifecycle({
     const upgraded = await digests(transition.comp, transition.environment);
     lifecycle.upgradedDigests = upgraded;
     for (const [table, digest] of Object.entries(oldTables)) {
-      if (table !== 'station_telemetry.migrations')
+      if (!migrationTables.includes(table))
         assert.equal(
           upgraded[table],
           digest,
           `${table}: upgrade changed retained rows`,
         );
     }
+    const upgradedMigrations = await migrationHistory(
+      transition.comp,
+      transition.environment,
+    );
+    lifecycle.upgradedMigrations = upgradedMigrations;
+    assertMigrationTransition(
+      priorMigrations,
+      upgradedMigrations,
+      currentMigrations,
+    );
+    await retireProject(transition.project);
     lifecycle.versionTransition.state =
       'upgrade-executed-rollback-NOT_SUPPORTED';
     lifecycle.versionTransition.reason =

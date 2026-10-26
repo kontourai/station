@@ -1052,3 +1052,55 @@ test('prior transition refuses a self-signed parent before extraction or executi
   ).rejects.toThrow(/key/i);
   expect(command).not.toHaveBeenCalled();
 });
+
+test('lifecycle migration comparison retains prior digests and permits only exact current history for both schemas', async () => {
+  const { assertMigrationTransition } = await import(
+    '../lib/telemetry-companion-lifecycle.mjs'
+  );
+  const prior = {
+    'station_telemetry.migrations': [{ version: 1, digest: 'product-old' }],
+    'station_private_usage.migrations': [{ version: 4, digest: 'private-old' }],
+  };
+  const current = {
+    'station_telemetry.migrations': [
+      ...prior['station_telemetry.migrations'],
+      { version: 2, digest: 'product-new' },
+    ],
+    'station_private_usage.migrations': [
+      ...prior['station_private_usage.migrations'],
+      { version: 5, digest: 'private-five' },
+      { version: 6, digest: 'private-six' },
+    ],
+  };
+  expect(() =>
+    assertMigrationTransition(prior, structuredClone(current), current),
+  ).not.toThrow();
+  for (const table of Object.keys(prior) as (keyof typeof prior)[]) {
+    for (const fault of [
+      'altered',
+      'missing',
+      'unexpected-version',
+      'missing-addition',
+    ]) {
+      const upgraded = structuredClone(current);
+      if (fault === 'altered') upgraded[table][0].digest = 'tampered';
+      if (fault === 'missing') upgraded[table].shift();
+      if (fault === 'unexpected-version')
+        upgraded[table].push({ version: 99, digest: 'unknown' });
+      if (fault === 'missing-addition') upgraded[table].pop();
+      expect(() =>
+        assertMigrationTransition(prior, upgraded, current),
+      ).toThrow();
+    }
+    // Even matching upgraded/current rows must retain the authenticated prior history.
+    const changedCurrent = structuredClone(current);
+    changedCurrent[table][0].digest = 'rewritten-old';
+    expect(() =>
+      assertMigrationTransition(prior, changedCurrent, changedCurrent),
+    ).toThrow();
+    changedCurrent[table].shift();
+    expect(() =>
+      assertMigrationTransition(prior, changedCurrent, changedCurrent),
+    ).toThrow();
+  }
+});

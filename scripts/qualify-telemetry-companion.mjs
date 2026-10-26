@@ -259,6 +259,107 @@ async function qualifyTelemetryCompanion(candidate, output, priorOptions) {
   const ownedProjects = [project];
   const docker = (args, label, timeout) =>
     command('docker', ['--host', endpoint, ...args], label, env, timeout);
+  async function retireProject(project) {
+    assert(
+      ownedProjects.includes(project),
+      'Retirement requires owned project',
+    );
+    try {
+      const ids = (
+        await docker(
+          [
+            'ps',
+            '-aq',
+            '--filter',
+            `label=com.docker.compose.project=${project}`,
+          ],
+          'identify owned containers',
+        )
+      )
+        .split(/\s+/)
+        .filter(Boolean);
+      assert(ids.length <= 7);
+      for (const id of ids) {
+        const [info] = JSON.parse(
+          await docker(['inspect', id], 'verify container custody'),
+        );
+        assert.equal(info.Config.Labels['com.docker.compose.project'], project);
+      }
+      if (ids.length)
+        await docker(
+          ['stop', '--time', '15', ...ids],
+          'stop exact owned containers including one-shot',
+          60_000,
+        );
+      assert.equal(
+        await docker(
+          [
+            'ps',
+            '-q',
+            '--filter',
+            `label=com.docker.compose.project=${project}`,
+          ],
+          'confirm no owned listener remains',
+        ),
+        '',
+      );
+      if (ids.length)
+        await docker(
+          ['rm', ...ids],
+          'remove stopped exact owned containers; retain volumes',
+          60_000,
+        );
+      assert.equal(
+        await docker(
+          [
+            'ps',
+            '-aq',
+            '--filter',
+            `label=com.docker.compose.project=${project}`,
+          ],
+          'confirm all exact owned containers removed',
+        ),
+        '',
+      );
+      const networks = (
+        await docker(
+          [
+            'network',
+            'ls',
+            '-q',
+            '--filter',
+            `label=com.docker.compose.project=${project}`,
+          ],
+          'identify exact owned qualification networks',
+        )
+      )
+        .split(/\s+/)
+        .filter(Boolean);
+      for (const id of networks) {
+        const [network] = JSON.parse(
+          await docker(
+            ['network', 'inspect', id],
+            'verify empty network custody',
+          ),
+        );
+        assert.equal(network.Labels['com.docker.compose.project'], project);
+        assert.deepEqual(Object.keys(network.Containers ?? {}), []);
+        await docker(
+          ['network', 'rm', id],
+          'release exact owned empty network',
+        );
+      }
+      report.cleanupProjects[project] =
+        'stopped owned containers removed; empty owned networks released; private credentials, candidate, image and volumes retained';
+      await save();
+    } catch (error) {
+      report.cleanupProjects[project] =
+        'UNPROVEN; reconcile owned project before retry';
+      report.state = 'failed';
+      await save();
+      throw error;
+    }
+  }
   async function mutate(port, path, options, label) {
     const requestFile = `${report.effects.length}.request.json`;
     await writeFile(
@@ -1196,6 +1297,7 @@ async function qualifyTelemetryCompanion(candidate, output, priorOptions) {
       save,
       unusedPort,
       ownedProjects,
+      retireProject,
       previous,
     });
     assert.equal(
@@ -1234,77 +1336,7 @@ async function qualifyTelemetryCompanion(candidate, output, priorOptions) {
     if (started) {
       for (const project of ownedProjects) {
         try {
-          const ids = (
-            await docker(
-              [
-                'ps',
-                '-aq',
-                '--filter',
-                `label=com.docker.compose.project=${project}`,
-              ],
-              'identify owned containers',
-            )
-          )
-            .split(/\s+/)
-            .filter(Boolean);
-          assert(ids.length <= 7);
-          for (const id of ids) {
-            const [info] = JSON.parse(
-              await docker(['inspect', id], 'verify container custody'),
-            );
-            assert.equal(
-              info.Config.Labels['com.docker.compose.project'],
-              project,
-            );
-          }
-          if (ids.length)
-            await docker(
-              ['stop', '--time', '15', ...ids],
-              'stop exact owned containers including one-shot',
-              60_000,
-            );
-          assert.equal(
-            await docker(
-              [
-                'ps',
-                '-q',
-                '--filter',
-                `label=com.docker.compose.project=${project}`,
-              ],
-              'confirm no owned listener remains',
-            ),
-            '',
-          );
-          const networks = (
-            await docker(
-              [
-                'network',
-                'ls',
-                '-q',
-                '--filter',
-                `label=com.docker.compose.project=${project}`,
-              ],
-              'identify exact owned qualification networks',
-            )
-          )
-            .split(/\s+/)
-            .filter(Boolean);
-          for (const id of networks) {
-            const [network] = JSON.parse(
-              await docker(
-                ['network', 'inspect', id],
-                'verify empty network custody',
-              ),
-            );
-            assert.equal(network.Labels['com.docker.compose.project'], project);
-            assert.deepEqual(Object.keys(network.Containers ?? {}), []);
-            await docker(
-              ['network', 'rm', id],
-              'release exact owned empty network',
-            );
-          }
-          report.cleanupProjects[project] =
-            'stopped; empty owned networks released; private credentials, candidate, image and volumes retained';
+          await retireProject(project);
         } catch {
           report.cleanupProjects[project] =
             'UNPROVEN; reconcile owned project before retry';

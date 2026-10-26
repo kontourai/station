@@ -99,7 +99,10 @@ resource identity and no exported credential. The Station child must stop withou
 forced termination before qualification completes.
 Docker/HTTP mutation intents precede effects; uncertain outcomes require manual
 inspection rather than retry. Commands and response bodies are bounded, and
-cleanup stops only the owned project while retaining private files and volumes.
+completed phases retire serially before the next fresh project starts. Retirement
+stops and removes only exact owned containers and releases only inspected empty
+owned networks, retaining private files, backups, images and volumes. Final cleanup
+repeats the same idempotent retirement for every owned project.
 
 `report.json` is explicitly `source-Station-OTel-and-component-runtime-only` with
 `installationAuthority: false`. This command does not yet exercise trace retention
@@ -124,7 +127,10 @@ source equality before building the prior image. A prior `verification.json` or
 build-only payload metadata alone supplies no trust. No download is performed.
 The prior receiver starts on its own fresh database, accepts a product event,
 and is stopped before upgrading to the current captured image. The query,
-receipt and preexisting table rows must survive (migration records may advance).
+receipt and preexisting data-table rows must survive exactly. For both product and
+private schemas, every prior migration version and digest must remain unchanged,
+and the upgraded history must exactly match the history captured from the current
+image’s migrated original database before its retirement.
 The original pre-upgrade backup is retained privately with its SHA.
 
 Schema 9 cannot be served by the schema 8 prior binary. In-place rollback is
