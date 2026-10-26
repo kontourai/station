@@ -1993,7 +1993,7 @@ Flow-run topology share this custody. The source owner privately supplies the
 workspace, definition and actor; published Flow rounds own readiness, claims,
 joins and evaluation. The concurrent HTTP composition remains unqualified.
 Earlier Flow Agents 9.5.1 and direct Flow 5.2.2 used different runtime bindings.
-Published Flow Agents 9.6.0 is now installed, and the actual Flow references pass
+Published Flow Agents 9.7.0 is now installed, and the actual Flow references pass
 its public same-realm assertion. Profiling identified repeated durability and
 prepared-source checks at storage boundaries. Current request authority now
 fences storage, with preparation checks around transaction bodies/publication
@@ -2119,8 +2119,9 @@ transfer operation: legacy journals and charges are not reconstructed or reset.
 Personal-host report serving composes this store with preparation and the
 reviewed narrow provider profile. The execution runner supplies the published
 Flow callbacks with retained schedule, member and evaluation observations;
-authenticated context ACK remains separate integration work. Store availability alone does
-not enable the full group capability.
+authenticated context ACK is composed by the separate renewal and continuation
+owners described below. Store availability alone does not enable the full group
+capability or qualify the live journey.
 
 The [rounds final-fetch fence](../../src-server/services/orchestration/delegation-group-launch-fence.ts)
 checks the latest seat attempt, unreturned round, current adopted grant,
@@ -2135,16 +2136,18 @@ mutation lock, loads the actual active claim, checks lifecycle and current lease
 and rechecks source/request authority before synchronous transport entry. Renewed
 lease timestamps may change; claim identity and base may not. Nested owner/launch
 entry refuses; no lock is held while awaiting the provider response. Serving
-preparation still issues only independent advisory specifications: this private
-fence does not enable public Flow topology or supply frontier/join semantics.
+preparation supports independent advisory specifications or an explicitly selected
+Flow run and member steps. This private fence supplies neither frontier/join
+semantics nor serving qualification; published Flow owns scheduling.
 
 The [reserved provider transport](../../src-server/runtime/conversation/reserved-provider-fetch.ts)
 selects the rounds fence only through its explicit server-owned protocol; the
 legacy group fence remains separate. Its private context-sync path joins a
 pending durable command to the published reservation namespace and checks the
 exact Flow head after wire-intent consumption. It does not issue provider
-qualification or authenticate a recipient; current session/ACK admission and
-the public continuation caller remain separate requirements.
+qualification or authenticate a recipient. The separate renewal and continuation
+owners supply current Session/ACK admission and the public continuation caller;
+live returning-session qualification remains open.
 
 ### Narrow Anthropic source preparation
 
@@ -2170,9 +2173,9 @@ cap must be at most 128,000. Missing/inconsistent usage remains unknown-held.
 The installed SDK entry and manifest must match reviewed hashes. Facts expire
 at a fixed snapshot-derived deadline; startup cannot extend it. A changed SDK
 or expired profile requires new evidence and review, not a configuration flag. The
-current public-terms snapshot was retrieved on 2026-10-24 and admits preparation
-from `2026-10-24T01:59:12Z` until (excluding)
-`2026-10-25T01:59:08Z`. Refreshing those facts does not renew an
+issuer's current fixed validity window admits preparation
+from `2026-10-25T19:56:02Z` until (excluding)
+`2026-10-26T19:51:02Z`. Refreshing those facts does not renew an
 existing group's authority or establish provider entitlement.
 
 The authority comes from retained official [model](https://platform.claude.com/docs/en/models/sonnet-4-6/overview),
@@ -2187,8 +2190,9 @@ The authority comes from retained official [model](https://platform.claude.com/d
 [migration](https://platform.claude.com/docs/en/api/migration-2026-10-21) snapshots;
 the issuer records their hashes. It does not prove model entitlement. The
 personal-host report runtime uses this profile for new preparation; expiry or
-unsupported configuration refuses it. Authenticated Flow context-sync
-recipients remain unwired.
+unsupported configuration refuses it. Authenticated Flow context-sync recipients
+are supplied by the separate report-group continuation owners; this issuer alone
+does not authenticate them or establish live synchronization.
 
 ### Narrow Google source preparation
 
@@ -2216,8 +2220,8 @@ The retained official [model](https://ai.google.dev/gemini-api/docs/models/gemin
 [pricing](https://ai.google.dev/gemini-api/docs/pricing),
 [billing](https://ai.google.dev/gemini-api/docs/billing), and
 [Generate Content caching](https://ai.google.dev/gemini-api/docs/generate-content/caching)
-snapshots anchor its validity from `2026-10-24T19:02:54Z` until (excluding)
-`2026-10-25T18:56:41Z`. Startup cannot extend that window. The stable model label
+snapshots anchor its validity from `2026-10-25T20:05:31Z` until (excluding)
+`2026-10-26T20:04:16Z`. Startup cannot extend that window. The stable model label
 is not an assertion of immutable weights or current-account access; Google
 restricts 2.5 access to prior active users. The installed SDK can request an
 automatic continuation, but Station's single-use source interceptor refuses it
@@ -2324,8 +2328,9 @@ Pending interrupts retain that check. Authority loss before dispatch rejects and
 clears its timer/stop slot without publishing terminal evidence. These receipts
 do not prove provider termination or change invocation usage. The personal-host
 runtime separately composes public report serving, cancellation and explicit
-receipt finalization. Flow-backed synchronization and live-provider qualification
-remain open.
+receipt finalization. Its separate continuation owners compose Flow-backed
+synchronization under controlled responses; live returning-session and provider
+qualification remain open.
 
 The [controlled integration](../../src-server/services/orchestration/__tests__/station-report-group-preparation.test.ts)
 consumes an issued root through the published durable v3 authority, rounds
@@ -2539,8 +2544,8 @@ output or an unsigned hash. Retained input is data, not a live source, Session o
 execution capability.
 The report resolver remains scoped to the initial authenticated preparation. Terminal observations link an immutable
 retained recipient observation; that saved reference cannot resolve a session
-after replacement or restart. This does not enable continuation or prove
-native/provider identity. Renewal still requires
+after replacement or restart. This initial resolver and retained observation alone
+do not enable continuation or prove native/provider identity. Renewal still requires
 fresh source and recipient admission rather than extending the old request.
 
 The [controlled owner test](../../src-server/services/orchestration/__tests__/delegation-group-sdk-source-wire-owner.test.ts)
