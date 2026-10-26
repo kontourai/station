@@ -427,6 +427,34 @@ describe('ConnectedSessionInventory', () => {
     expect(screen.queryByText('Recorded origin')).toBeNull();
   });
 
+  test('Check again shows a pending check, and a host that is still old says so', () => {
+    const view = openInputDetails({
+      ...UNSUPPORTED_HOST_INPUT,
+      recheckHost: vi.fn(),
+      hostRecheck: 'checking',
+    });
+    const pending = screen.getByRole('button', { name: 'Checking…' });
+    expect(pending.getAttribute('aria-busy')).toBe('true');
+    expect((pending as HTMLButtonElement).disabled).toBe(true);
+    hooks.input.mockReturnValue({
+      data: undefined,
+      error: null,
+      refetch: vi.fn(),
+      ...UNSUPPORTED_HOST_INPUT,
+      recheckHost: vi.fn(),
+      hostRecheck: 'still-unsupported',
+    });
+    view.rerender(<ConnectedSessionInventory sessionId="session" />);
+    const failure = screen.getByRole('alert');
+    expect(failure.textContent).toContain(
+      'Station is still on an older version',
+    );
+    expect(failure.textContent).toContain('checked the host again just now');
+    const again = screen.getByRole('button', { name: 'Check again' });
+    expect(again.getAttribute('aria-busy')).toBeNull();
+    expect((again as HTMLButtonElement).disabled).toBe(false);
+  });
+
   test.each([
     [404, "This input isn't available", false],
     [403, "This input isn't available", false],

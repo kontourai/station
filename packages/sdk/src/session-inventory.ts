@@ -3,7 +3,7 @@ import type {
   SessionInventoryV2GroupId,
 } from '@kontourai/station-contracts/session-inventory';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { hasCapability } from './capability.js';
 import {
   getSessionInventory,
@@ -285,6 +285,18 @@ export type SessionInventoryInputHostSupport =
   | 'unknown';
 
 /**
+ * The outcome of the latest "check again" on an unsupported host:
+ * - `idle`: not rechecked, or the recheck found the host now serves the read
+ *   (or could not tell, so the read is attempted and reports for itself).
+ * - `checking`: the host is being asked again.
+ * - `still-unsupported`: it answered, and still predates the read.
+ */
+export type SessionInventoryInputHostRecheck =
+  | 'idle'
+  | 'checking'
+  | 'still-unsupported';
+
+/**
  * Input bodies are fetched only for the selected item under current
  * authority, and only from a host that has not said it lacks the read.
  */
@@ -348,10 +360,28 @@ export function useSessionInventoryInput(
   // The handshake is cached for the page's life once it names this flag's
   // neighbours, so a host updated while the app stays open would keep reading
   // as unsupported. Rechecking drops this host's cached handshake and asks
-  // again; a supported answer then enables the read.
-  const recheckHost = useCallback(() => {
-    invalidatePublicStationCapabilities(requestScope.apiBase);
-    void capability.refetch();
-  }, [capability, requestScope.apiBase]);
-  return { ...query, hostSupport, recheckHost };
+  // again; a supported answer then enables the read. `hostRecheck` reports
+  // the press itself, so a host that is still old says so instead of the
+  // screen staying exactly as it was. It is keyed to the host it asked.
+  const { refetch: refetchCapability } = capability;
+  const [recheck, setRecheck] = useState<{
+    apiBase: string;
+    state: Exclude<SessionInventoryInputHostRecheck, 'idle'>;
+  } | null>(null);
+  const recheckHost = useCallback(async () => {
+    const apiBase = requestScope.apiBase;
+    setRecheck({ apiBase, state: 'checking' });
+    invalidatePublicStationCapabilities(apiBase);
+    const answer = await refetchCapability();
+    setRecheck((current) =>
+      current?.apiBase !== apiBase
+        ? current
+        : answer.data === false
+          ? { apiBase, state: 'still-unsupported' }
+          : null,
+    );
+  }, [refetchCapability, requestScope.apiBase]);
+  const hostRecheck: SessionInventoryInputHostRecheck =
+    recheck?.apiBase === requestScope.apiBase ? recheck.state : 'idle';
+  return { ...query, hostSupport, recheckHost, hostRecheck };
 }

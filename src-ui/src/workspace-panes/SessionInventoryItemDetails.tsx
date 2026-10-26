@@ -66,8 +66,13 @@ function ReadFailure({
   fallback,
 }: {
   title: string;
-  description: string;
-  retry?: { label: string; onRetry(): void };
+  description: ReactNode;
+  retry?: {
+    label: string;
+    onRetry(): void;
+    pending?: boolean;
+    pendingLabel?: string;
+  };
   fallback?: ReactNode;
 }) {
   return (
@@ -80,7 +85,12 @@ function ReadFailure({
         retry || fallback ? (
           <div className="session-inventory__item-details-actions">
             {retry ? (
-              <Button variant="primary" onClick={retry.onRetry}>
+              <Button
+                variant="primary"
+                onClick={retry.onRetry}
+                pending={retry.pending}
+                pendingLabel={retry.pendingLabel}
+              >
                 {retry.label}
               </Button>
             ) : null}
@@ -109,15 +119,30 @@ function InputDetails({
     row.turnId,
     requestScope,
   );
-  if (query.hostSupport === 'unsupported')
+  if (query.hostSupport === 'unsupported') {
+    const stillOld = query.hostRecheck === 'still-unsupported';
     return (
       <ReadFailure
-        title="Update Station to see this input"
-        description="The Station host this app is connected to runs an older version that can't show input details. Update Station on the host and check again, or open the session to read the message in the conversation."
-        retry={{ label: 'Check again', onRetry: query.recheckHost }}
+        title={
+          stillOld
+            ? 'Station is still on an older version'
+            : 'Update Station to see this input'
+        }
+        description={
+          stillOld
+            ? "Station checked the host again just now, and it still runs a version that can't show input details. Update Station on the host and check again, or open the session to read the message in the conversation."
+            : "The Station host this app is connected to runs an older version that can't show input details. Update Station on the host and check again, or open the session to read the message in the conversation."
+        }
+        retry={{
+          label: 'Check again',
+          onRetry: () => void query.recheckHost(),
+          pending: query.hostRecheck === 'checking',
+          pendingLabel: 'Checking…',
+        }}
         fallback={fallback}
       />
     );
+  }
   if (query.error) {
     const failure = describeItemReadFailure(query.error, 'input');
     return (

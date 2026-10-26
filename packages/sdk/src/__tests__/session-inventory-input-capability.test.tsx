@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import * as React from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { setClientCredentialResolver } from '../client/http';
@@ -91,9 +91,11 @@ function station(
 ) {
   let handshake = initial;
   const inputReads: string[] = [];
+  let handshakeReads = 0;
   const fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = new URL(String(input instanceof Request ? input.url : input));
     if (url.pathname === '/.well-known/station/v1') {
+      handshakeReads += 1;
       if (handshake === 'unreachable') throw new TypeError('Failed to fetch');
       return respond(200, handshake);
     }
@@ -120,6 +122,7 @@ function station(
   vi.stubGlobal('fetch', fetch);
   return {
     inputReads,
+    handshakeReads: () => handshakeReads,
     /** The host is updated in place, as an operator would. */
     update(next: unknown) {
       handshake = next;
@@ -192,6 +195,45 @@ describe('session inventory input read against hosts of different versions', () 
     );
     expect(observer.result.current.hostSupport).toBe('supported');
     expect(host.inputReads).toHaveLength(1);
+    observer.unmount();
+    client.clear();
+  });
+
+  test('Check again on a host that is still old shows a pending check, then says it is still old', async () => {
+    const host = station(HOST_WITHOUT_INPUT_READ);
+    const { observer, client } = mountInput();
+    await waitFor(() =>
+      expect(observer.result.current.hostSupport).toBe('unsupported'),
+    );
+    expect(observer.result.current.hostRecheck).toBe('idle');
+    const asked = host.handshakeReads();
+    let pending: Promise<void> | undefined;
+    act(() => {
+      pending = observer.result.current.recheckHost();
+    });
+    expect(observer.result.current.hostRecheck).toBe('checking');
+    await act(async () => {
+      await pending;
+    });
+    expect(observer.result.current.hostRecheck).toBe('still-unsupported');
+    expect(observer.result.current.hostSupport).toBe('unsupported');
+    // The host really was asked again, and the read was still never sent.
+    expect(host.handshakeReads()).toBe(asked + 1);
+    expect(host.inputReads).toEqual([]);
+    observer.unmount();
+    client.clear();
+  });
+
+  test('Check again keeps one identity across renders', async () => {
+    station(HOST_WITHOUT_INPUT_READ);
+    const { observer, client } = mountInput();
+    await waitFor(() =>
+      expect(observer.result.current.hostSupport).toBe('unsupported'),
+    );
+    const first = observer.result.current.recheckHost;
+    observer.rerender();
+    observer.rerender();
+    expect(observer.result.current.recheckHost).toBe(first);
     observer.unmount();
     client.clear();
   });
