@@ -5803,7 +5803,7 @@ and reconnect checkpoints. They do not prove mounted routes or live providers.
 `@kontourai/station-sdk/client` exports `createReportGroup`, `getReportGroup`,
 `listReportGroups`, `cancelReportGroup`, `finalizeReportGroupCancel`, `readReportGroupEvents`,
 `subscribeReportGroupEvents`, `readReportGroupResult`, `syncReportGroupContext`
-and `finalizeReportGroupSync`. Public shapes live at
+`finalizeReportGroupSync` and `recoverReportGroupAccounting`. Public shapes live at
 `@kontourai/station-contracts/report-group`. This is the personal-host advisory
 report surface, separate from CLI session groups. Optional create `flow` selectors
 bind a run ID and exact seat-to-step map; workspace and grants remain server-owned.
@@ -5815,7 +5815,7 @@ its deadline under mismatched installed Flow module bindings. The API reference 
 the alignment prerequisite and remaining runtime proof. `parseReportGroupInput`
 preserves explicitly supplied finite initial continuation limits and rejects
 limits without Flow or beyond aggregate attempt capacity. Published Flow Agents
-9.6.0 supplies explicit initial-request sync admission; the installed runtime
+9.8.0 supplies explicit initial-request sync admission; the installed runtime
 references pass its public assertion and the controlled same-Session report/ACK
 test passes. These are local controlled results, not live-provider qualification.
 Member `input: "operator-clarification-v1"` opts into the fixed qualified input

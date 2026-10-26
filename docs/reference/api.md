@@ -1939,7 +1939,7 @@ Flow 5.2.2 and Flow Agents 9.5.1 loaded a separate Flow 5.2.0 module. Their
 actual `loadRun` and mutation-lock references differed; a timeout alone did not
 establish whether an attempt reached the provider. A prior returning-session
 attempt stopped before initial release under the positive-sync ACK policy.
-Published Flow Agents 9.7.0 is now installed with matching runtime identity,
+Published Flow Agents 9.8.0 is now installed with matching runtime identity,
 and the controlled returning-session test passes with explicit initial-request
 admission. These local results do not qualify live providers or the complete
 serving composition. Independent advisory receipts do not qualify this path. Full group capability remains disabled while the remaining
@@ -2117,7 +2117,7 @@ private context observations allow 512 KiB. Neither allowance changes token,
 attempt or inference-micro reservations.
 
 
-This serving composition is not live-qualified. Published Flow Agents 9.7.0
+This serving composition is not live-qualified. Published Flow Agents 9.8.0
 supplies the adopted initial-request policy and public reservation identities;
 Station's actual Flow references pass its same-realm assertion. A controlled
 returning request runs an initial report and a fresh no-tools context ACK in the
@@ -2126,8 +2126,10 @@ HTTP case also completes its Flow join. These results do not establish live
 provider/model-family diversity, answered MCP elicitation, active-context
 interruption or full live continuation acceptance. The explicit input narrowing,
 verified-answer ACK and separately funded report now have controlled runtime
-coverage. Reappraisal/retry-authorization serving and historical reconciliation
-remain unfinished. A declared limit or ACK is not semantic acceptance or
+coverage. Retained accounting recovery is mounted and has controlled HTTP/SDK
+coverage, including Session deletion and partial dual-ledger settlement. Broader
+cross-process and live recovery qualification remains open. Reappraisal and
+retry-authorization serving remain unfinished. A declared limit or ACK is not semantic acceptance or
 permission to resend an uncertain attempt.
 
 The published Flow controller owns ready-frontier admission, durable claims,

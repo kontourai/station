@@ -2486,8 +2486,10 @@ request into a fresh no-tools SDK wire and retains a distinct invocation/client
 turn. Historical result reads use signed durable delivery and canonical read
 authority; new effects and cancellation still require the actual live recipient.
 Exact concurrent replay returns the committed invocation without finalizing or
-resending another caller's turn. Evaluation/retry-authorization serving and
-historical reconciliation remain unfinished. This does not enable the full group capability. Controlled handshake/Agent reads and
+resending another caller's turn. Evaluation/retry-authorization serving remains
+unfinished. Retained accounting recovery is mounted with controlled route/SDK
+coverage; broader cross-process and live recovery qualification remains open.
+This does not enable the full group capability. Controlled handshake/Agent reads and
 synthetic provider responses do not establish live-provider or billing acceptance.
 
 ### Reserved Station source execution
