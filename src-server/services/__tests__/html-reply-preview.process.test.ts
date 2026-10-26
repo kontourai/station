@@ -3,62 +3,249 @@ import { createServer } from 'node:http';
 import { networkInterfaces } from 'node:os';
 import { expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { createLogger } from '../../utils/logger.js';
+import { CdpPipeTransport } from '../browser/cdp-pipe-transport.js';
 import { ChromiumServerHost } from '../browser/hosts/chromium-server-host.js';
 import { HtmlReplyPreview } from '../html-reply-preview.js';
 
 const makeTempDir = trackTempDirs();
-test('Chromium preview returns PNG, measured height and console stacks inside the opaque page', async () => {
-  const service = new HtmlReplyPreview(makeTempDir('html-preview-'));
-  const result = await service.render(
-    {
-      html: `<h1>Preview integration</h1><script>console.log('preview log');console.log('heap limit',performance.memory.jsHeapSizeLimit);console.warn('preview warning');console.error('preview error');try{parent.document.body;console.log('PARENT ACCESS ALLOWED')}catch{console.log('parent blocked')}setTimeout(()=>{throw new Error('preview uncaught')},0)</script>`,
-      height: 400,
+
+/** Diagnostic-only observer: forwards real CDP calls and retains no page content. */
+function observePreviewPhases() {
+  const logger = createLogger({ name: 'preview-phase-diagnostic' });
+  const started = performance.now();
+  const entries: Record<string, unknown>[] = [];
+  const identities = new Map<string, string>();
+  const transports = new WeakSet<CdpPipeTransport>();
+  const unsubscribe: (() => void)[] = [];
+  let truncated = false;
+  const object = (value: unknown): value is Record<string, unknown> =>
+    value !== null && typeof value === 'object' && !Array.isArray(value);
+  const identity = (value: unknown) => {
+    if (typeof value !== 'string') return undefined;
+    if (!identities.has(value) && identities.size < 96)
+      identities.set(value, `opaque-${identities.size + 1}`);
+    return identities.get(value) ?? 'overflow';
+  };
+  const urlKind = (value: unknown) =>
+    value === 'about:blank'
+      ? 'about-blank'
+      : typeof value === 'string' &&
+          value.startsWith('chrome://prefs-internals/')
+        ? 'prefs-internals'
+        : 'other';
+  const record = (entry: Record<string, unknown>) => {
+    if (entries.length < 96)
+      entries.push({ atMs: Math.round(performance.now() - started), ...entry });
+    else truncated = true;
+  };
+  const methods = new Set([
+    'Browser.getVersion',
+    'Target.createTarget',
+    'Target.attachToTarget',
+    'Page.enable',
+    'Page.navigate',
+    'Runtime.evaluate',
+    'Target.closeTarget',
+    'Page.captureScreenshot',
+    'Browser.close',
+  ]);
+  const original = CdpPipeTransport.prototype.send;
+  const spy = vi
+    .spyOn(CdpPipeTransport.prototype, 'send')
+    .mockImplementation(async function <R>(
+      this: CdpPipeTransport,
+      method: string,
+      params?: object,
+      sessionId?: string,
+    ): Promise<R> {
+      if (!transports.has(this)) {
+        transports.add(this);
+        unsubscribe.push(
+          this.on('Page.loadEventFired', (_params, session) =>
+            record({ event: 'load', session: identity(session) }),
+          ),
+        );
+        unsubscribe.push(
+          this.on('Page.frameNavigated', (params, session) => {
+            const frame =
+              object(params) && object(params.frame) ? params.frame : undefined;
+            record({
+              event: 'frame-navigated',
+              session: identity(session),
+              frame: identity(frame?.id),
+              loader: identity(frame?.loaderId),
+              urlKind: urlKind(frame?.url),
+            });
+          }),
+        );
+      }
+      const selected = methods.has(method);
+      if (selected)
+        record({
+          method,
+          state: 'sent',
+          session: identity(sessionId),
+          ...(method === 'Page.navigate' && object(params)
+            ? { urlKind: urlKind(params.url) }
+            : {}),
+        });
+      try {
+        const send = original<R>;
+        const answer = await send.call(this, method, params, sessionId);
+        if (selected) {
+          const safe: Record<string, unknown> = {};
+          if (object(answer)) {
+            if (method === 'Browser.getVersion')
+              safe.product =
+                typeof answer.product === 'string' &&
+                /^(?:Chrome|HeadlessChrome)\/[0-9.]{1,48}$/.test(answer.product)
+                  ? answer.product
+                  : 'other';
+            if (method === 'Target.createTarget')
+              safe.target = identity(answer.targetId);
+            if (method === 'Target.attachToTarget')
+              safe.attachedSession = identity(answer.sessionId);
+            if (method === 'Page.navigate') {
+              safe.frame = identity(answer.frameId);
+              safe.loader = identity(answer.loaderId);
+              safe.navigationError = typeof answer.errorText === 'string';
+            }
+            if (method === 'Runtime.evaluate') {
+              safe.exceptionPresent = object(answer.exceptionDetails);
+              const value = object(answer.result)
+                ? answer.result.value
+                : undefined;
+              if (
+                object(value) &&
+                ('policy' in value || 'urlOverrides' in value)
+              ) {
+                safe.policy =
+                  typeof value.policy === 'string' &&
+                  [
+                    'default',
+                    'default_public_interface_only',
+                    'default_public_and_private_interfaces',
+                    'disable_non_proxied_udp',
+                  ].includes(value.policy)
+                    ? value.policy
+                    : 'other-or-missing';
+                safe.urlOverrides =
+                  typeof value.urlOverrides === 'boolean'
+                    ? value.urlOverrides
+                    : 'unavailable';
+              } else safe.valueKind = value === null ? 'null' : 'other';
+            }
+          }
+          record({
+            method,
+            state: 'answered',
+            session: identity(sessionId),
+            ...safe,
+          });
+        }
+        return answer;
+      } catch (error) {
+        if (selected)
+          record({
+            method,
+            state: 'rejected',
+            session: identity(sessionId),
+            protocolCode:
+              object(error) && Number.isSafeInteger(error.code)
+                ? error.code
+                : undefined,
+          });
+        throw error;
+      }
+    });
+  const receipt = () => ({
+    schemaVersion: 1,
+    platform: process.platform,
+    arch: process.arch,
+    node: process.versions.node,
+    entries,
+    truncated,
+  });
+  return {
+    attachFailure(error: unknown) {
+      if (error instanceof Error)
+        Object.defineProperty(error, 'previewPhaseReceipt', {
+          value: JSON.stringify(receipt()),
+          enumerable: true,
+          configurable: true,
+        });
     },
-    800,
-    'dark',
-  );
-  expect(Buffer.from(result.png, 'base64').subarray(0, 8)).toEqual(
-    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-  );
-  const heap = result.console.find((entry) =>
-    entry.text.startsWith('heap limit '),
-  );
-  expect(heap).toBeDefined();
-  expect(Number(heap?.text.split(' ').at(-1))).toBeLessThanOrEqual(
-    256 * 1024 * 1024,
-  );
-  expect(result.width).toBe(800);
-  expect(result.contentHeight).toBeGreaterThan(40);
-  expect(result.console).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({
-        level: 'log',
-        text: expect.stringContaining('preview log'),
-      }),
-      expect.objectContaining({
-        level: 'warning',
-        text: expect.stringContaining('preview warning'),
-      }),
-      expect.objectContaining({
-        level: 'error',
-        text: expect.stringContaining('preview error'),
-      }),
-      expect.objectContaining({
-        level: 'uncaught',
-        text: expect.stringContaining('preview uncaught'),
-        stack: expect.anything(),
-      }),
-      expect.objectContaining({
-        level: 'log',
-        text: expect.stringContaining('parent blocked'),
-      }),
-    ]),
-  );
-  expect(
-    result.console.some((entry) =>
-      entry.text.includes('PARENT ACCESS ALLOWED'),
-    ),
-  ).toBe(false);
+    finish() {
+      spy.mockRestore();
+      for (const off of unsubscribe) off();
+      logger.info('HTML preview safe phase receipt', {
+        previewPhaseReceipt: receipt(),
+      });
+    },
+  };
+}
+
+test('Chromium preview returns PNG, measured height and console stacks inside the opaque page', async () => {
+  const observation = observePreviewPhases();
+  try {
+    const service = new HtmlReplyPreview(makeTempDir('html-preview-'));
+    const result = await service.render(
+      {
+        html: `<h1>Preview integration</h1><script>console.log('preview log');console.log('heap limit',performance.memory.jsHeapSizeLimit);console.warn('preview warning');console.error('preview error');try{parent.document.body;console.log('PARENT ACCESS ALLOWED')}catch{console.log('parent blocked')}setTimeout(()=>{throw new Error('preview uncaught')},0)</script>`,
+        height: 400,
+      },
+      800,
+      'dark',
+    );
+    expect(Buffer.from(result.png, 'base64').subarray(0, 8)).toEqual(
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    );
+    const heap = result.console.find((entry) =>
+      entry.text.startsWith('heap limit '),
+    );
+    expect(heap).toBeDefined();
+    expect(Number(heap?.text.split(' ').at(-1))).toBeLessThanOrEqual(
+      256 * 1024 * 1024,
+    );
+    expect(result.width).toBe(800);
+    expect(result.contentHeight).toBeGreaterThan(40);
+    expect(result.console).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: 'log',
+          text: expect.stringContaining('preview log'),
+        }),
+        expect.objectContaining({
+          level: 'warning',
+          text: expect.stringContaining('preview warning'),
+        }),
+        expect.objectContaining({
+          level: 'error',
+          text: expect.stringContaining('preview error'),
+        }),
+        expect.objectContaining({
+          level: 'uncaught',
+          text: expect.stringContaining('preview uncaught'),
+          stack: expect.anything(),
+        }),
+        expect.objectContaining({
+          level: 'log',
+          text: expect.stringContaining('parent blocked'),
+        }),
+      ]),
+    );
+    expect(
+      result.console.some((entry) =>
+        entry.text.includes('PARENT ACCESS ALLOWED'),
+      ),
+    ).toBe(false);
+  } catch (error) {
+    observation.attachFailure(error);
+    throw error;
+  } finally {
+    observation.finish();
+  }
 }, 30_000);
 
 test('preview delivers script delimiters, Unicode separators and template syntax byte-exact to the frame', async () => {

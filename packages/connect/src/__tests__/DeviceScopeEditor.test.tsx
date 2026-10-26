@@ -254,6 +254,7 @@ test('the derivations agree with the contracts vocabulary', () => {
 test.each([
   { token: 'engine:login', label: /Start engine sign-in/ },
   { token: 'relay:manage', label: /Manage remote access/ },
+  { token: 'terminal:observe', label: /Watch terminals/ },
 ] satisfies ReadonlyArray<{ token: PairingScope; label: RegExp }>)(
   'an operator can grant $token, and it is marked elevated',
   ({ token, label }) => {
@@ -409,6 +410,7 @@ test('an account-bound grant with extras still opens as Delegation, extras intac
 test.each([
   { token: 'engine:login', label: /Start engine sign-in/ },
   { token: 'relay:manage', label: /Manage remote access/ },
+  { token: 'terminal:observe', label: /Watch terminals/ },
 ] satisfies ReadonlyArray<{ token: PairingScope; label: RegExp }>)(
   'an existing $token grant survives an unrelated base edit',
   ({ token, label }) => {

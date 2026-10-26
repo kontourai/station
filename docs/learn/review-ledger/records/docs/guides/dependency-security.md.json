@@ -128,7 +128,19 @@
 
     ".github/workflows/release-advisory.yml",
 
-    "scripts/__tests__/release-advisory-gate.test.ts"
+    "scripts/__tests__/release-advisory-gate.test.ts",
+
+    "scripts/__tests__/dependency-availability.test.ts",
+
+    "scripts/__tests__/dependency-http-availability.process.test.ts",
+
+    "scripts/__tests__/fixtures/dependency-http-availability.mjs",
+
+    "patches/voltagent-core-2.11.0.patch",
+
+    "src-server/runtime/frameworks/__tests__/voltagent-stream-finish-flush.process.test.ts",
+
+    "src-server/runtime/frameworks/__tests__/__fixtures__/voltagent-stream-finish-flush.mts"
   ],
 
   "checks": [
