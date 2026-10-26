@@ -2469,14 +2469,25 @@ command can be given, the explanation names the installed unit file to
 inspect.
 
 If the installed unit's `--base` is another home than the one `status` read,
-this home's manifest is left over from an earlier install. `status` prints a
+this home's manifest is left over from an earlier install. Two spellings of
+one home (a symlinked parent, or macOS `/tmp` and `/private/tmp`) are not
+stale: a manifest is stale only when it is a different file, by device and
+inode, from the one in the unit's home. `status` prints a
 `manifest       stale` line naming that manifest, the unit file, and the
-`--base` to use, plus an `rm -- <manifest>` command that removes only the
-leftover manifest. Station never runs that command, and `service uninstall`
-would remove the installed unit instead. The remaining lines (manifest,
-registry, origins, instance health and update) are read from the unit's home,
-and the origins are the unit's own `--allowed-origin` flags. `--json` carries
-the same facts as `staleManifest: { path, removeCommand, unitHome, unitPath }`.
+`--base` to use. It also prints an `rm -- <manifest>` command that removes
+only the leftover manifest, offered only while the unit's home holds its own
+readable manifest. When that manifest is missing or unreadable, `status` says
+so and offers no removal. Station never runs the command, and
+`service uninstall` would remove the installed unit instead. An unsafe or
+invalid manifest in the unit's home refuses `status`, as it does in the home
+`status` read. The remaining lines (manifest, registry, origins, instance
+health and update) are read from the unit's home, and the origins are the
+unit's own `--allowed-origin` flags. `--json` carries the same facts as
+`staleManifest: { path, removeCommand, unitHome, unitManifest, unitPath }`,
+where `unitManifest` is `present`, `absent`, or `unreadable` (with
+`unitManifestReason`) and `removeCommand` is null when no removal is offered.
+`service start`, `stop`, and `uninstall` from such a home act on nothing,
+exit 1, and name the `--base` that addresses the installed service.
 
 `service start` and `service stop` require the private service manifest that
 `service install` creates; they never infer a service registration from a
