@@ -471,8 +471,12 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   operator, so either one's in-app list can differ from its card; the card
   never exceeds what the device credential may read. The registration file
   is cached in memory and re-read when its file identity changes, which covers
-  `station environment reset` from another process; two processes writing it
-  in the same instant can still lose one write. It sends one card per registered
+  `station environment reset` from another process. Registration reads and writes
+  coordinate through the shared home writer; a competing writer is refused
+  rather than allowed to overwrite a stale snapshot. Scope-change and retirement
+  listeners run after the writer lease is confirmed released. This coordination
+  applies to participating local processes using the same canonical home; it
+  does not establish distributed push delivery. It sends one card per registered
   phone: at most five
   rows, attention first (approval, input), then failed, then live, then
   sessions finished in the last 15 minutes. Lifecycle maps to the plugin's
