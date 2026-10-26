@@ -2476,8 +2476,11 @@ inode, from the one in the unit's home. `status` prints a
 `manifest       stale` line naming that manifest, the unit file, and the
 `--base` to use. It also prints an `rm -- <manifest>` command that removes
 only the leftover manifest, offered only while the unit's home holds its own
-readable manifest. When that manifest is missing or unreadable, `status` says
-so and offers no removal. Station never runs the command, and
+readable manifest. When that manifest is missing, or its `service/` directory
+cannot be listed, `status` says so and offers no removal. A manifest file that
+exists but cannot be read (for example mode `0000`) is unsafe rather than
+unreadable: `status` refuses with the same "expected owned mode 0600" error it
+gives for the home it read. Station never runs the command, and
 `service uninstall` would remove the installed unit instead. An unsafe or
 invalid manifest in the unit's home refuses `status`, as it does in the home
 `status` read. The remaining lines (manifest, registry, origins, instance
@@ -2487,7 +2490,12 @@ unit's own `--allowed-origin` flags. `--json` carries the same facts as
 where `unitManifest` is `present`, `absent`, or `unreadable` (with
 `unitManifestReason`) and `removeCommand` is null when no removal is offered.
 `service start`, `stop`, and `uninstall` from such a home act on nothing,
-exit 1, and name the `--base` that addresses the installed service.
+exit 1, and name the `--base` that addresses the installed service. When the
+unit's home has no readable manifest, `start` and `stop` there cannot converge
+either, so the refusal instead names the two commands that resolve it:
+`service install --instance=<id>` from this home, which rewrites the unit to
+run from it, or `service uninstall --instance=<id> --base=<unit home>`, which
+removes the installed unit and reports it as uninstalled.
 
 `service start` and `service stop` require the private service manifest that
 `service install` creates; they never infer a service registration from a

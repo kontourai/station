@@ -1949,8 +1949,14 @@ export async function runServiceCommand(
   ) {
     // Acting from here would drive the shared unit while reading, waiting
     // on and cleaning up this home's earlier install.
+    const refusal = `Refusing to ${action} Station user service ${instanceId} from ${lifecycle.baseDir}: ${staleManifest.manifestPath} describes an earlier install, and the installed unit ${staleManifest.unitPath} runs from ${staleManifest.unitHome}. Nothing was changed.`;
+    const unitHome = shellArgument(staleManifest.unitHome);
     console.error(
-      `Refusing to ${action} Station user service ${instanceId} from ${lifecycle.baseDir}: ${staleManifest.manifestPath} describes an earlier install, and the installed unit ${staleManifest.unitPath} runs from ${staleManifest.unitHome}. Nothing was changed. Pass --base=${shellArgument(staleManifest.unitHome)} to ${action} the installed service.`,
+      staleManifest.unitManifestState === 'present'
+        ? `${refusal} Pass --base=${unitHome} to ${action} the installed service.`
+        : // Without a manifest there, start and stop from that home cannot
+          // converge either; only these two commands resolve the unit.
+          `${refusal} ${staleManifest.unitManifestPath} is ${staleManifest.unitManifestState === 'absent' ? 'missing' : 'unreadable'}, so --base=${unitHome} cannot start or stop it either. Either reinstall it from this home with \`service install --instance=${shellArgument(instanceId)}\` (the unit then runs from ${lifecycle.baseDir}), or remove the installed unit with \`service uninstall --instance=${shellArgument(instanceId)} --base=${unitHome}\`.`,
     );
     process.exitCode = 1;
     return;
@@ -1958,6 +1964,8 @@ export async function runServiceCommand(
 
   if (action === 'uninstall') {
     const target = existing ?? registration;
+    // A unit with no manifest in this home is still an installed service.
+    const unitWasPresent = fs.existsSync(target.unitPath);
     if (target.platform === 'darwin') uninstallLaunchd(target, { fs, run });
     else if (target.platform === 'linux') uninstallSystemd(target, { fs, run });
     else uninstallWindowsService(target, { fs, run });
@@ -1966,7 +1974,9 @@ export async function runServiceCommand(
     console.log(
       existing
         ? `✓ Uninstalled Station user service ${instanceId}`
-        : `✓ Reconciled absent Station user service ${instanceId}`,
+        : unitWasPresent
+          ? `✓ Uninstalled Station user service ${instanceId} (its unit ${target.unitPath} had no manifest in ${lifecycle.baseDir})`
+          : `✓ Reconciled absent Station user service ${instanceId}`,
     );
     return;
   }

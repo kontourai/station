@@ -4322,6 +4322,55 @@ describe('service status remedy reproduces the installed unit (#4189)', () => {
     },
   );
 
+  test('with no manifest in the unit home, the refusal names the escapes that work, and both do (#4200 delta review)', async () => {
+    const { channelHome, dependencies, installedHome, unitPath } =
+      await statusAfterReinstallElsewhere('linux');
+    const unitManifestPath = join(installedHome, 'service', 'default.json');
+    nodeFs.rmSync(unitManifestPath);
+    const manifestPath = join(channelHome, 'service', 'default.json');
+    const refused = await capture(
+      ['start'],
+      channelDefaults(channelHome),
+      dependencies,
+    );
+    expect(refused.exitCode).toBe(1);
+    expect(refused.errors).toBe(
+      `Refusing to start Station user service default from ${channelHome}: ${manifestPath} describes an earlier install, and the installed unit ${unitPath} runs from ${installedHome}. Nothing was changed. ${unitManifestPath} is missing, so --base=${installedHome} cannot start or stop it either. Either reinstall it from this home with \`service install --instance=default\` (the unit then runs from ${channelHome}), or remove the installed unit with \`service uninstall --instance=default --base=${installedHome}\`.`,
+    );
+    expect(startSystemd).not.toHaveBeenCalled();
+
+    // Escape 2: uninstall from the unit's home removes the installed unit,
+    // and says so rather than calling it absent.
+    uninstallSystemd.mockClear();
+    const removed = await capture(
+      ['uninstall'],
+      channelDefaults(installedHome),
+      dependencies,
+    );
+    expect(removed.exitCode).toBeUndefined();
+    expect(uninstallSystemd).toHaveBeenCalledTimes(1);
+    expect(uninstallSystemd.mock.calls[0]?.[0]).toMatchObject({ unitPath });
+    expect(removed.lines).toContain(
+      `✓ Uninstalled Station user service default (its unit ${unitPath} had no manifest in ${installedHome})`,
+    );
+
+    // Escape 1: install from this home rewrites the unit to run from it,
+    // after which nothing here is stale.
+    const reinstalled = await capture(
+      ['install'],
+      channelDefaults(channelHome),
+      dependencies,
+    );
+    expect(reinstalled.exitCode).toBeUndefined();
+    expect(readFileSync(unitPath, 'utf8')).toContain(`"--base=${channelHome}"`);
+    const status = await capture(
+      ['status'],
+      channelDefaults(channelHome),
+      dependencies,
+    );
+    expect(status.lines.join('\n')).not.toContain('manifest       stale');
+  });
+
   test('a unit that names no --base is not called stale (#4200 review)', async () => {
     const { channelHome, dependencies, unitPath } =
       await statusAfterReinstallElsewhere('linux');
