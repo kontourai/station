@@ -1,0 +1,7 @@
+{
+  "revision": "aaa7e86cd13e724d37f078c7aa29a4b52836aaab",
+
+  "notes": [
+    {"path":"examples/fieldwork-review/README.md","note":"Evidence-timing clarification for the bounded #4210 review note at source 1db51c76c7b: its phrase consumer integration is still unexecuted describes the independent r1 source-review cutoff, not the later recording time. Root subsequently executed the five selected Station consumer suites (51 PASS across 5 files, consumer-integration-first.log) and the real Fieldwork/Survey example server suites (28 PASS across 2 files, fieldwork-survey-real-plugin-first.log), each exit 0 at unchanged reviewed source bytes. These are Root local execution observations; no independent execution is attributed to the source reviewer, and selected suites do not certify every consumer scenario or complete compatibility. The original append-only note is preserved. Canonical README, source relationships and implementation are unchanged; no new source/history/whole-document approval or platform/provider/release/performance qualification. #4210/C0 remain held on legacy Zod; original <=2x target remains NOT MET10.75-12.21 and full #3558 remains unrelaxed.","inputs":["examples/fieldwork-review/README.md"]}
+  ]
+}

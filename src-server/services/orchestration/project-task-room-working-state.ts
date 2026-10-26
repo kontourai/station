@@ -51,6 +51,8 @@ export interface ProjectTaskRoomWorkingState {
     };
     epoch: number;
     operations: readonly TextDocumentOperation[];
+    /** Proposal seeding rechecks emptiness inside the write transaction. */
+    onlyIfEmpty?: boolean;
     /** E2E/reference-only bulk replay seed; never emits immutable evidence. */
     suppressRevisionPublicationForDiagnostic?: true;
     /** Parent-owned authorization fence immediately before SQLite COMMIT. */

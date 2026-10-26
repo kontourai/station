@@ -155,6 +155,38 @@
     ],
     "mobile-connections": ["src-ui/src/views/ConnectionsHub.tsx"],
     "mobile-agent-editor": ["src-ui/src/views/AgentsView.tsx"],
-    "mobile-onboarding-setup": ["src-ui/src/views/HomeView.tsx"]
+    "mobile-onboarding-setup": ["src-ui/src/views/HomeView.tsx"],
+    "inventory-drilldown-read-dark-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "inventory-drilldown-older-host-dark-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "inventory-drilldown-read-light-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "inventory-drilldown-older-host-light-desktop": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "inventory-drilldown-read-dark-mobile": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "inventory-drilldown-older-host-dark-mobile": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "inventory-drilldown-read-light-mobile": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "inventory-drilldown-older-host-light-mobile": [
+      "src-ui/src/views/HomeView.tsx",
+      "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ]
   }
 }

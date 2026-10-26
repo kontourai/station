@@ -1332,7 +1332,27 @@
 
     "src-ui/src/views/task-workspace/review/ReviewThreadCard.tsx",
 
-    "src-ui/src/views/task-workspace/review/TaskReviewLayout.css"
+    "src-ui/src/views/task-workspace/review/TaskReviewLayout.css",
+
+    "src-server/services/terminal/shell-host.ts",
+
+    "src-server/services/terminal/terminal-sessions.ts",
+
+    "src-server/services/terminal/terminal-journal.ts",
+
+    "src-server/services/terminal/terminal-output-sanitizer.ts",
+
+    "src-server/adapters/file-terminal-history-store.ts",
+
+    "src-server/routes/projects/terminal-session-routes.ts",
+
+    "src-server/services/terminal/__tests__/terminal-sessions.process.test.ts",
+
+    "src-server/routes/chat/chat-turn-dedup.ts",
+
+    "src-server/routes/chat/__tests__/chat-primary-stream.dedup.test.ts",
+
+    "src-server/routes/chat/__tests__/chat-turn-dedup-crash.process.test.ts"
   ],
 
   "checks": [

@@ -23,6 +23,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 
 | Module | Intent | Primary source |
 | --- | --- | --- |
+| [TerminalSessions](#terminalsessions) | Authorize Project/binding terminal operations and preserve bounded numbered output across reconnects. | `src-server/services/terminal/terminal-sessions.ts` |
 | [ProductTelemetryReceiver](#producttelemetryreceiver) | Commit and query disclosed product observations with scoped source credentials and explicit delivery coverage. | `packages/telemetry-broker/src/store.ts` |
 | [PluginTelemetryPublisher](#plugintelemetrypublisher) | Validate signed public publisher declarations and deliver kernel-owned, per-publisher counts under notice/consent policy. | `src-server/services/plugin-telemetry-service.ts` |
 | [VirtualApplicationIngress](#virtualapplicationingress) | Dispatch encrypted connector requests into ordinary application authorization without socket or cookie authority. | `src-server/services/connections/virtual-application.ts` |
@@ -1992,7 +1993,71 @@ Canonical JSON sorts object keys, preserves array order and text exactly, and re
 
 Legacy rows without original digest proof remain unknown, even after reclaim: a retry never supplies their original digest. SQLite mirrors the digest in the current owner JSON and the digest column, and trusts it only when they agree. An older writer replacing the owner JSON drops that marker, so a leftover column is unknown. Mixed-version operation therefore cannot guarantee conflict enforcement; missing-digest callers and legacy rows retain legacy replay behavior. Tombstone expiry and unresolved-claim safety remain unchanged. This is only the existing-key conflict slice of #3567: mandatory/generated keys, `/chat`'s independent stream ledger, CLI coverage and retention-policy expansion remain outside it.
 
-**Code and evidence.** `EventStore` composes its private `src-server/services/orchestration/sqlite-turn-dedup-persistence.ts` coordinator into the Module; orchestration callers receive only the Interface. The claim, begin, resolve, release, retention and tombstone rules are the turn-dedup commands of [`@kontourai/monument`](../../packages/monument/CONTEXT.md), run through its `node:sqlite` adapter on `EventStore`'s own connection and bound to the existing `orchestration_turn_dedup` and `orchestration_turn_dedup_expired` tables, which stay the source of truth. An additive migration supplies nullable `input_digest`; the owner id remains `token`. Older binaries can still read and write the tables, but cannot enforce input conflicts. Additive encoding compatibility does not qualify legacy writers for prepared intent; those need host-enforced fencing. What stays in Station is the key scheme (`turnDedupKey`, `chatTurnDedupKey`), the `chat:` rule that reads an unmarked legacy row as `untracked`, the 30-day `chat:` tombstone bound, the one-way owner handle, and the metrics. `monument-station-tables.conformance.test.ts` runs Monument's conformance suite against that binding, and `deleteThread` forgets a thread's claims and tombstones through Monument's `turnDedup.forgetPrefix` inside its own transaction, so the prefix comparison is byte-exact for any thread id. `src-server/services/orchestration/__tests__/turn-deduplicator.test.ts` uses real temporary SQLite for ownership, restart, and fault behaviour, and `turn-dedup-crash.process.test.ts` SIGKILLs a real owner process before and after its provider call. `/chat` claims are tracked like thread claims ([#3581](https://github.com/kontourai/station/issues/3581)): `streamPrimaryAgentChat` claims the key before the response starts and records invocation durably immediately before `agent.streamText`, so a retry after its owner died past that point is refused. A refused `/chat` retry (`indeterminate` or `expired`) answers 409 with `code: foreground_message_indeterminate` and `outcome: 'indeterminate'` before any stream, and the SDK's `streamConversationTurn` rejects with a `ChatHttpError` carrying `outcome: 'indeterminate'`. A `chat:` row with no invocation record, written before #3581, still reads as `untracked` and keeps the dead-owner reclaim rule; an unrecognised record fails closed on every key. An in-process agent failure still releases the claim so the user can retry; only a crash past the invocation point is refused. `chat-turn-dedup-crash.process.test.ts` SIGKILLs a real `/chat` owner before and after its agent call. The separate `/chat` facade retains its own `EventStore` chat-turn family because it owns conversation-id replay, bounded retention, and direct-route compatibility; it is not a second TurnDeduplicator caller family. **Do not reintroduce:** a process-local map, raw `(threadId, clientTurnId)` updates, elapsed-time takeover or pruning unresolved claims, or a generic ledger wrapper around the retained chat-turn facade.
+**Code and evidence.** `EventStore` composes its private `src-server/services/orchestration/sqlite-turn-dedup-persistence.ts` coordinator into the Module; orchestration callers receive only the Interface. The claim, begin, resolve, release, retention and tombstone rules are the turn-dedup commands of [`@kontourai/monument`](../../packages/monument/CONTEXT.md), run through its `node:sqlite` adapter on `EventStore`'s own connection and bound to the existing `orchestration_turn_dedup` and `orchestration_turn_dedup_expired` tables, which stay the source of truth. An additive migration supplies nullable `input_digest`; the owner id remains `token`. Older binaries can still read and write the tables, but cannot enforce input conflicts. Additive encoding compatibility does not qualify legacy writers for prepared intent; those need host-enforced fencing. What stays in Station is the key scheme (`turnDedupKey`, `chatTurnDedupKey`), the `chat:` rule that reads an unmarked legacy row as `untracked`, the 30-day `chat:` tombstone bound, the one-way owner handle, and the metrics. `monument-station-tables.conformance.test.ts` runs Monument's conformance suite against that binding, and `deleteThread` forgets a thread's claims and tombstones through Monument's `turnDedup.forgetPrefix` inside its own transaction, so the prefix comparison is byte-exact for any thread id. `src-server/services/orchestration/__tests__/turn-deduplicator.test.ts` uses real temporary SQLite for ownership, restart, and fault behaviour, and `turn-dedup-crash.process.test.ts` SIGKILLs a real owner process before and after its provider call.
+
+**Direct chat claim lifecycle.** `/chat` claims are tracked like thread claims
+([#3581](https://github.com/kontourai/station/issues/3581)).
+[`streamPrimaryAgentChat`](../../src-server/routes/chat/chat-primary-stream.ts)
+claims the key through the
+[`/chat` facade](../../src-server/routes/chat/chat-turn-dedup.ts) before the
+response starts. It records invocation durably immediately before
+`agent.streamText`, inside the native foreground relay's final guard when
+that guard applies. Admission, Agent identity and runtime configuration must
+pass that guard first. Cancellation, guard refusal, a failed invocation record
+or setup failure before the call releases the key: the Agent was not invoked.
+
+After invocation, the key resolves only when Station drains the stream and
+finishes its response without observing an abort, regardless of the model's
+finish reason (`stop`, `length` or another value). A thrown or rejected call,
+stream error, client cancellation or disconnect, runtime configuration change,
+or thrown resolution write retains the unresolved key. This includes a
+client disconnect after the model finishes but before Station finishes the
+response. A store that silently fails to apply a resolution without throwing
+is not detected. Direct `/chat` still aborts its turn when the client
+disconnects; it offers no durable continuation or exactly-once model/tool
+effects.
+
+Retention uses the bounded process-local marker described under Giving a
+claim up. While that marker remains, a new same-key request in the owning
+process is refused before streaming with HTTP 409,
+`code: foreground_message_indeterminate` and `outcome: 'indeterminate'`.
+The SDK's `streamConversationTurn` surfaces this as a `ChatHttpError`. A
+same-key request already waiting ends its stream with an error event on its
+next poll. Another live process, or the owner after its marker is forgotten,
+meets the claim as contended: it waits up to five minutes for resolution,
+then ends its stream with an error event. After the owner dies, the durable
+invocation record makes the unresolved claim indeterminate. An expired key
+also receives the pre-stream 409 refusal. These protections depend on retained
+records and compatible writers; the tombstone expiry rules above still apply.
+
+A resolved-key replay sends `conversation-started` with the original
+conversation ID and a `finish` whose `finishReason` is always `completed`.
+It replays no output or original finish reason; the client reads the
+conversation. An unmarked legacy `chat:` row still reads as `untracked` and
+keeps the dead-owner reclaim rule; an unrecognised invocation record fails
+closed. The key is not bound to the caller, Agent, conversation or input
+([#3567](https://github.com/kontourai/station/issues/3567)): different input
+under a resolved key replays the earlier conversation ID. Inspect that
+conversation after an uncertain send; do not automatically resend under a
+new key. Use a new key only for a deliberate new request. A pre-call refusal
+can leave a created conversation with the user message and a failure marker;
+retrying without that `conversationId` can create another conversation.
+Unresolved `chat:` rows remain unbounded; Station's shared resolved-row floor
+above protects a count of resolved replays, not a per-scope duration.
+
+[`chat-primary-stream.dedup.test.ts`](../../src-server/routes/chat/__tests__/chat-primary-stream.dedup.test.ts)
+drives the route over temporary SQLite, including the real native relay
+companion with stub admission.
+[`chat-turn-dedup-crash.process.test.ts`](../../src-server/routes/chat/__tests__/chat-turn-dedup-crash.process.test.ts)
+SIGKILLs a real `/chat` owner before its call, while held in the native guard,
+after the call and after a retained failure. These fixtures do not qualify
+live providers or durable Station adoption. The separate `/chat` facade keeps
+its own EventStore family for conversation-ID replay and direct-route
+compatibility; it is not a second TurnDeduplicator caller family.
+**Do not reintroduce:** a process-local map as the durable authority, raw
+`(threadId, clientTurnId)` updates, elapsed-time takeover, pruning unresolved
+claims, or a generic ledger wrapper around the retained chat-turn facade.
+
 
 ## AdoptionLedger
 
@@ -3115,8 +3180,14 @@ file alone grants no trust. Returned records, exports and projections are cloned
 [SQLite persistence adapter](../../src-server/services/orchestration/sqlite-revision-evidence-persistence.ts).
 It preflights count/text/byte limits before 32-row restore pages. A validated
 ledger digest is rechecked under `BEGIN IMMEDIATE` before batch persistence;
-a stale witness/response-loss path gets one bounded retry. Current persisted
-reads refresh canonical truth. Registration precedes callback-bearing restore,
+a stale witness/response-loss path gets one bounded retry. SQLite
+write batches use a temporary zero busy timeout so a room worker awaiting
+main-thread approval cannot stall that thread. A contended freeze retains its
+publication outbox; a later person or agent save drains and retries once on
+`revision-publication-pending`, with current authority rechecked.
+Proposal seeding also rechecks its empty-document precondition inside the worker
+transaction, including retries.
+Current persisted reads refresh canonical truth. Registration precedes callback-bearing restore,
 and lifecycle generations fence every external callback and successful
 projection so reentrant close cannot refill or disclose a closed module's cache.
 
@@ -5290,3 +5361,24 @@ engine evidence, ahead of live provider and hosted qualification.
 exercise real Git, SQLite, room binding authority and blob storage with a CDP
 double, including restart, Task isolation, digest corruption and region bounds.
 They do not qualify a real Chromium or provider run.
+
+## TerminalSessions
+
+[TerminalSessions](../../src-server/services/terminal/terminal-sessions.ts) owns
+instance UUIDs, durable Project/binding records, cwd confinement and operation
+authority. [ShellHost](../../src-server/services/terminal/shell-host.ts) supplies
+a replaceable process handle; the in-process implementation uses node-pty.
+[TerminalJournal](../../src-server/services/terminal/terminal-journal.ts) owns
+serialized sanitized records, bounded memory and append-only disk segments.
+The [personal-operator control routes](../../src-server/routes/projects/terminal-session-routes.ts)
+are composed by runtime routes and disposed through TerminalService. Hosted,
+account, device, agent and plugin admission is withheld. The legacy Coding
+socket and process projections retain their current owner during migration.
+
+The [design boundary](../design/terminal.md#first-implementation-boundary-3994-part-a)
+separates this foundation from supervisor survival, retention Settings, the
+public observe grant, same-origin transport, SDK runtime and Ghostty. The
+[real PTY suite](../../src-server/services/terminal/__tests__/terminal-sessions.process.test.ts)
+checks durable replay, scope/cwd refusals, service-level observer refusal,
+journal bounds and history migration. It does not qualify Windows, native
+clients, live remote access, or process survival across server restarts.

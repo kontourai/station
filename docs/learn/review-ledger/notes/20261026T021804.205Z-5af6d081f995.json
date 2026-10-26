@@ -1,0 +1,7 @@
+{
+  "revision": "d4807b05e43a5c865600578e016e6e71ddd7fd1b",
+
+  "notes": [
+    {"path":"deploy/public-ingress/README.md","note":"#4196 delta only: the changed sources add stale-manifest reporting to service status (service.ts) and name the installed unit in reinstall-remedy fallbacks (service-remedy.ts); docs/reference/cli.md gained the matching paragraph. Searched this document for service status, manifest-home, origins and reinstall claims; none describe the changed behavior, so no prose change. Other claims bound to these sources were not re-reviewed.","inputs":["deploy/public-ingress/README.md","packages/cli/src/commands/service.ts"]}
+  ]
+}

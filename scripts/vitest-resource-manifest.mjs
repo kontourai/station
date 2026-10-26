@@ -47,6 +47,9 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
 // changes the system under test or turns their correctness bound into a
 // scheduler-contention measurement.
 export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // #4204 measures main-thread approval latency while a real room worker
+  // holds SQLite's write lock; overlapping suites would distort that bound.
+  'src-server/services/orchestration/__tests__/project-task-room-revision-evidence-bridge.test.ts',
   // Disposable Chromium boots retain 15s render/3s policy deadlines; keep
   // sibling runtime boots out of this lifecycle measurement (#4022).
   'src-server/services/__tests__/html-reply-preview.process.test.ts',
@@ -138,6 +141,13 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Real private Git fixtures and hardened cat-file verification through the MCP route.
   'src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts',
+  // Small loopback responses exercise dependency stream ownership in naturally exiting children.
+  'scripts/__tests__/dependency-http-availability.process.test.ts',
+  'src-server/runtime/frameworks/__tests__/voltagent-stream-finish-flush.process.test.ts',
+  // Loads node-pty with a fake PTY and mocked child-process observations.
+  'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+  // Real node-pty shells in isolated homes; no shared ports or host state.
+  'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
   // Two disposable workers contend on private SQLite connections; no shared host output or timing assertion.
   'src-server/services/outside-agent/__tests__/oauth-concurrency.test.ts',
   // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.
@@ -147,6 +157,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Tiny disposable user-service/scope budgets exercise actual OOM containment.
   'src-server/services/infra/__tests__/workload-resources.process.test.ts',
   'scripts/__tests__/run-biome.process.test.ts',
+  'scripts/__tests__/component-style-hygiene.process.test.ts',
   // Real second-process Task/share writers contend with the publication fence.
   'src-server/services/projects/project-room-agent-task-context.test.ts',
   // Reviewed setup launches real bounded commands and verifies durable outcomes.
@@ -155,6 +166,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/projects/__tests__/repository-acquisition-service.test.ts',
   'src-server/routes/projects/__tests__/project-working-directory-authority.test.ts',
   'packages/agent-runtime/src/__tests__/body-process.test.ts',
+  // Immutable Git extraction and one private SQLite runner; no shared output or timing assertion.
+  'packages/agent-runtime/src/__tests__/sqlite-compatibility.test.ts',
   'src-server/runtime/mcp/__tests__/mcp-ui-network.process.test.ts',
   // Real temporary Git repositories; isolated home per case.
   'src-server/services/pull-requests/__tests__/pull-request-review-guide.test.ts',
