@@ -418,7 +418,12 @@ type LockDeletionProgress = {
   lockRemoved?: boolean;
   quarantine?: string;
   guardQuarantine?: string;
-  guardTemporary?: { path: string; ino?: number; dev?: number };
+  guardTemporary?: {
+    path: string;
+    ino?: number;
+    dev?: number;
+    descriptor?: number;
+  };
 };
 
 function pathPresent(path: string): boolean {
@@ -463,6 +468,18 @@ function hasReclamationEntries(lock: string): boolean {
 function removeOwnedTemporary(
   temporary: NonNullable<LockDeletionProgress['guardTemporary']>,
 ): void {
+  if (temporary.descriptor !== undefined) {
+    const identity = fstatSync(temporary.descriptor);
+    if (
+      temporary.ino !== undefined &&
+      (temporary.ino !== identity.ino || temporary.dev !== identity.dev)
+    )
+      throw new Error('lock temporary descriptor ownership was lost');
+    temporary.ino = identity.ino;
+    temporary.dev = identity.dev;
+    closeSync(temporary.descriptor);
+    delete temporary.descriptor;
+  }
   if (!pathPresent(temporary.path)) return;
   const current = lstatSync(temporary.path);
   if (
@@ -684,9 +701,9 @@ function publishGuard(
   );
   const staged: NonNullable<LockDeletionProgress['guardTemporary']> = {
     path: temporary,
+    descriptor: fd,
   };
   if (progress) progress.guardTemporary = staged;
-  let descriptorOpen = true;
   try {
     const info = fstatSync(fd);
     staged.ino = info.ino;
@@ -694,7 +711,7 @@ function publishGuard(
     writeFileSync(fd, metadata);
     fsyncSync(fd);
     closeSync(fd);
-    descriptorOpen = false;
+    delete staged.descriptor;
     const published = { owner: metadataOwner, ino: info.ino, dev: info.dev };
     if (progress) progress.guard = published;
     try {
@@ -707,11 +724,15 @@ function publishGuard(
       throw new Error('published lock guard identity was lost');
     return published;
   } finally {
-    try {
-      if (descriptorOpen) closeSync(fd);
-    } finally {
+    if (progress) {
       removeOwnedTemporary(staged);
-      if (progress) delete progress.guardTemporary;
+      delete progress.guardTemporary;
+    } else {
+      try {
+        removeOwnedTemporary(staged);
+      } finally {
+        if (staged.descriptor !== undefined) closeSync(staged.descriptor);
+      }
     }
   }
 }
@@ -1359,7 +1380,14 @@ export async function prepareFileMutationOwner(
   const cleanupCandidate = () => {
     if (!candidate) return;
     if (candidate.descriptor !== undefined) {
-      candidate.identity ??= fstatSync(candidate.descriptor);
+      const identity = fstatSync(candidate.descriptor);
+      if (
+        candidate.identity &&
+        (identity.ino !== candidate.identity.ino ||
+          identity.dev !== candidate.identity.dev)
+      )
+        throw new Error('prepared lock descriptor ownership was lost');
+      candidate.identity ??= identity;
       closeSync(candidate.descriptor);
       delete candidate.descriptor;
     }

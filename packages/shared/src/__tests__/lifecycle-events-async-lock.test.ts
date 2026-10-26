@@ -360,6 +360,53 @@ describe('prepared file mutation owner', () => {
       expect(existsSync(lock)).toBe(false);
     },
   );
+
+  it('retains the guard descriptor when its first identity inspection fails', async () => {
+    const lock = temporaryLockPath();
+    const owner = await prepareFileMutationOwner(lock);
+    const attempt = owner.tryAcquire();
+    if (attempt.kind !== 'acquired') throw new Error('missing prepared lease');
+    const open = fs.openSync;
+    const stat = fs.fstatSync;
+    let guardDescriptor: number | undefined;
+    const openFault = vi
+      .spyOn(fs, 'openSync')
+      .mockImplementation((path, flags, mode) => {
+        const descriptor = open(path, flags, mode);
+        if (
+          String(path).startsWith(`${lock}.guard.`) &&
+          String(path).endsWith('.tmp')
+        )
+          guardDescriptor = descriptor;
+        return descriptor;
+      });
+    const statFault = vi
+      .spyOn(fs, 'fstatSync')
+      .mockImplementation((...args) => {
+        if (args[0] === guardDescriptor)
+          throw new Error('injected guard identity unavailable');
+        return stat(...args);
+      });
+    syncBuiltinESMExports();
+    try {
+      expect(attempt.lease.tryRelease()).toBe('cleanup-required');
+      expect(owner.tryAcquire()).toEqual({ kind: 'cleanup-required' });
+    } finally {
+      openFault.mockRestore();
+      statFault.mockRestore();
+      syncBuiltinESMExports();
+    }
+    if (guardDescriptor === undefined)
+      throw new Error('guard descriptor was not opened');
+    expect(() => stat(guardDescriptor)).not.toThrow();
+    await owner.settlePendingCleanup();
+    expect(() => stat(guardDescriptor)).toThrow();
+    expect(existsSync(lock)).toBe(false);
+    expect(
+      readdirSync(join(lock, '..')).filter((name) => name.endsWith('.tmp')),
+    ).toEqual([]);
+    await owner.close();
+  });
 });
 
 describe('held file mutation leases', () => {
