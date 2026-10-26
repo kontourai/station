@@ -19,6 +19,32 @@ const { DatabaseSync } = require('node:sqlite') as {
   DatabaseSync: typeof NodeDatabaseSync;
 };
 
+/**
+ * #4178 review: the Session inventory asks, for each \`unresolved\` tool
+ * completion, which start or completion event of the same call id comes next
+ * in its thread. The call id lives only in the JSON payload, so without this
+ * index each such row scanned every later tool event in the thread
+ * (measured 204 ms for one inventory page at 20k completions, 1.08 s at 100k).
+ * Partial over tool lifecycle events with valid JSON only: \`json_extract\`
+ * raises on a malformed payload, and a partial index evaluates its WHERE for
+ * every row (see idx_events_thread_owner_recency below).
+ */
+export const TOOL_CALL_LIFECYCLE_INDEX = 'idx_events_thread_tool_call_sequence';
+
+/**
+ * The index's partial WHERE, for the table aliased \`alias\` (or unaliased).
+ * A query must repeat these terms for the planner to prove it may use the
+ * partial index.
+ */
+export function toolCallLifecycleIndexWhere(alias?: string): string {
+  const column = (name: string) => (alias ? `${alias}.${name}` : name);
+  return `${column('method')} IN ('tool.started', 'tool.completed') AND json_valid(${column('payload')})`;
+}
+
+const TOOL_CALL_LIFECYCLE_INDEX_SQL = `CREATE INDEX IF NOT EXISTS ${TOOL_CALL_LIFECYCLE_INDEX}
+  ON orchestration_events(thread_id, json_extract(payload, '$.toolCallId'), sequence)
+  WHERE ${toolCallLifecycleIndexWhere()}`;
+
 export const ORCHESTRATION_EVENT_STORE_MIGRATION = `
 CREATE TABLE IF NOT EXISTS orchestration_events (
   id TEXT PRIMARY KEY,
@@ -1212,6 +1238,9 @@ export function ensureOrchestrationEventStoreColumns(
        WHERE json_valid(payload)
          AND json_extract(payload, '$.metadata.userId') IS NOT NULL`,
   );
+  // Additive and re-runnable like the index above; build cost is measured in
+  // the #4178 review round (see TOOL_CALL_LIFECYCLE_INDEX).
+  db.exec(TOOL_CALL_LIFECYCLE_INDEX_SQL);
 }
 
 /** Resumable backfill for origin facts added after the complete V3 rebuild. */

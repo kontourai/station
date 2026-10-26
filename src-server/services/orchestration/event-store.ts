@@ -100,6 +100,8 @@ import {
   ensureOrchestrationTurnDedupColumns,
   ensureVoiceTurnRunColumns,
   ORCHESTRATION_EVENT_STORE_MIGRATION,
+  TOOL_CALL_LIFECYCLE_INDEX,
+  toolCallLifecycleIndexWhere,
 } from '../../domain/migrations/003-orchestration-events.js';
 import { OPERATIONAL_EVENT_OUTBOX_MIGRATION } from '../../domain/migrations/004-operational-events.js';
 import { PROJECT_TASK_ROOM_RUNTIME_MIGRATION } from '../../domain/migrations/006-project-task-room-runtime.js';
@@ -608,10 +610,11 @@ export type SessionInventoryEventDescriptor =
       toolCallId: string;
       name: string;
       /**
-       * station#1558: `'unresolved'` exists on THIS internal descriptor and
-       * deliberately not on the published `ThreadToolResultRow`. The
-       * inventory projection drops such a completion rather than emit a row
-       * — see `session-inventory-module.ts` and the note on that contract.
+       * station#1558: a command that never reported an outcome. The
+       * inventory projection emits it as a `ThreadToolResultRow` with
+       * `terminalStatus: 'unresolved'` only to a client of protocol 4 or
+       * later (#4178) and omits it for older clients, whose validator does
+       * not know the member — see `session-inventory-module.ts`.
        */
       terminalStatus: 'succeeded' | 'failed' | 'cancelled' | 'unresolved';
     }
@@ -3034,30 +3037,42 @@ export class EventStore {
                method <> 'turn.started'
                OR ${READABLE_USER_INPUT_SQL_FUNCTION}(${USER_INPUT_DESCRIPTOR_FIELDS_SQL}) = 1
              )
-             -- An \`unresolved\` completion a later completion of the same call
-             -- superseded is not a second command: the transcript replaces
-             -- that row with the late result (station#1569 H1, same turn
-             -- rule), so the inventory lists the call once (#4178 review).
-             -- Bounded by the frozen high-water mark, so a continuation
-             -- re-reads its prior page exactly as it was first read.
+             -- An \`unresolved\` completion that the call's own late result
+             -- superseded is not a second command (#4178 review). The
+             -- transcript's rule (station#1569 H1): the NEXT start or
+             -- completion carrying the same call id replaces the unresolved
+             -- row only when it is a completion of a compatible turn. A new
+             -- start in between claims that completion for itself, and a
+             -- second unresolved in between is the row a late result would
+             -- replace instead. One indexed seek per unresolved row
+             -- (${TOOL_CALL_LIFECYCLE_INDEX}); its partial-index terms are
+             -- repeated verbatim so the planner can use it. Bounded by the
+             -- frozen high-water mark, so a continuation re-reads its prior
+             -- page exactly as it was first read.
              AND NOT (
                method = 'tool.completed'
                AND json_extract(payload, '$.status') = 'unresolved'
-               AND EXISTS (
-                 SELECT 1 FROM orchestration_events AS later
-                  WHERE later.thread_id = orchestration_events.thread_id
-                    AND later.method = 'tool.completed'
-                    AND later.sequence > orchestration_events.sequence
-                    AND later.sequence <= ?
-                    AND json_extract(later.payload, '$.toolCallId')
+               -- No next event (NULL) means nothing superseded it.
+               AND coalesce((
+                 SELECT CASE
+                          WHEN next_event.method = 'tool.completed'
+                           AND (
+                             coalesce(json_extract(next_event.payload, '$.turnId'), next_event.turn_id) IS NULL
+                             OR coalesce(json_extract(orchestration_events.payload, '$.turnId'), orchestration_events.turn_id) IS NULL
+                             OR coalesce(json_extract(next_event.payload, '$.turnId'), next_event.turn_id)
+                                = coalesce(json_extract(orchestration_events.payload, '$.turnId'), orchestration_events.turn_id)
+                           )
+                          THEN 1 ELSE 0 END
+                   FROM orchestration_events AS next_event
+                  WHERE next_event.thread_id = orchestration_events.thread_id
+                    AND ${toolCallLifecycleIndexWhere('next_event')}
+                    AND json_extract(next_event.payload, '$.toolCallId')
                         = json_extract(orchestration_events.payload, '$.toolCallId')
-                    AND (
-                      coalesce(json_extract(later.payload, '$.turnId'), later.turn_id) IS NULL
-                      OR coalesce(json_extract(orchestration_events.payload, '$.turnId'), orchestration_events.turn_id) IS NULL
-                      OR coalesce(json_extract(later.payload, '$.turnId'), later.turn_id)
-                         = coalesce(json_extract(orchestration_events.payload, '$.turnId'), orchestration_events.turn_id)
-                    )
-               )
+                    AND next_event.sequence > orchestration_events.sequence
+                    AND next_event.sequence <= ?
+                  ORDER BY next_event.sequence ASC
+                  LIMIT 1
+               ), 0) = 1
              )
              AND (
                ? IS NULL

@@ -1,13 +1,17 @@
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { STATION_COMPAT_PROTOCOL_VERSION } from '@kontourai/station-contracts/environment-security';
 import { parseSessionInventoryProjection } from '@kontourai/station-contracts/session-inventory';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { TOOL_CALL_LIFECYCLE_INDEX } from '../../../domain/migrations/003-orchestration-events.js';
 import {
   mapClaudeSdkMessage,
   settleUnresolvedClaudeToolCalls,
 } from '../../../providers/adapters/claude-adapter-events.js';
+import { UNRESOLVED_TOOL_OUTPUT } from '../../../providers/adapters/unresolved-tool-output.js';
 import { EventStore } from '../event-store.js';
 import {
   createSessionInventoryModule,
@@ -390,6 +394,179 @@ describe('Session inventory commands with no recorded result (#4178)', () => {
       const fresh = await readExecution(store, 4, 'page');
       expect(fresh.rows).not.toContainEqual(['call-open-1', 'unresolved']);
       expect(fresh.rows).toContainEqual(['call-open-1', 'succeeded']);
+    } finally {
+      store.close?.();
+    }
+  });
+
+  function turnStart(turnId: string) {
+    return {
+      provider: 'claude',
+      threadId: THREAD,
+      createdAt: '2026-10-24T16:00:01.000Z',
+      eventId: `start-${turnId}`,
+      turnId,
+      method: 'turn.started',
+      prompt: 'Again',
+      attachments: [],
+    } as never;
+  }
+
+  /** One tool lifecycle event in the shape the adapters write. */
+  function toolEvent(
+    eventId: string,
+    turnId: string,
+    method: 'tool.started' | 'tool.completed',
+    status?: 'success' | 'unresolved',
+  ) {
+    return {
+      provider: 'claude',
+      threadId: THREAD,
+      createdAt: '2026-10-24T16:00:01.000Z',
+      eventId,
+      turnId,
+      itemId: 'call-x',
+      method,
+      toolCallId: 'call-x',
+      toolName: 'Bash',
+      ...(status
+        ? {
+            status,
+            output: status === 'unresolved' ? UNRESOLVED_TOOL_OUTPUT : 'ok',
+          }
+        : {}),
+    } as never;
+  }
+
+  test.each([
+    [
+      'a late result replaces the unresolved row',
+      [
+        toolEvent('s1', 'turn-1', 'tool.started'),
+        toolEvent('u1', 'turn-1', 'tool.completed', 'unresolved'),
+        toolEvent('late', 'turn-1', 'tool.completed', 'success'),
+      ],
+      [['call-x', 'succeeded']],
+    ],
+    [
+      'a new start in between claims the later result',
+      [
+        toolEvent('s1', 'turn-1', 'tool.started'),
+        toolEvent('u1', 'turn-1', 'tool.completed', 'unresolved'),
+        toolEvent('s2', 'turn-1', 'tool.started'),
+        toolEvent('done', 'turn-1', 'tool.completed', 'success'),
+      ],
+      [
+        ['call-x', 'unresolved'],
+        ['call-x', 'succeeded'],
+      ],
+    ],
+    [
+      'a second unresolved in between is the row a late result would replace',
+      [
+        toolEvent('u1', 'turn-1', 'tool.completed', 'unresolved'),
+        turnStart('turn-2'),
+        toolEvent('u2', 'turn-2', 'tool.completed', 'unresolved'),
+        toolEvent('late', 'turn-1', 'tool.completed', 'success'),
+      ],
+      [
+        ['call-x', 'unresolved'],
+        ['call-x', 'unresolved'],
+        ['call-x', 'succeeded'],
+      ],
+    ],
+  ] as const)(
+    'agrees with the transcript when one call id recurs: %s',
+    async (_label, events, expected) => {
+      const store = new EventStore(
+        join(tempRoot('station-inventory-unresolved-'), 'orchestration.sqlite'),
+      );
+      try {
+        store.appendEvent({
+          provider: 'claude',
+          threadId: THREAD,
+          createdAt: '2026-10-24T16:00:00.000Z',
+          eventId: 'start-1',
+          turnId: 'turn-1',
+          method: 'turn.started',
+          prompt: 'Run the checks',
+          attachments: [],
+        } as never);
+        for (const event of events) store.appendEvent(event);
+        // The transcript's own fold of the same stored events.
+        const transcript = projectRuntimeEventsToMessages(
+          store.listEventPayloads(THREAD),
+        )
+          .flatMap((message) => message.parts)
+          .filter((part) => part.type === 'tool-invocation')
+          .map((part) => (part.state === 'unresolved' ? 'unresolved' : 'other'))
+          .sort();
+        const current = await readExecution(store, 4);
+        expect(current.rows).toEqual(expected);
+        expect(
+          current.rows
+            .map(([, status]) =>
+              status === 'unresolved' ? 'unresolved' : 'other',
+            )
+            .sort(),
+        ).toEqual(transcript);
+      } finally {
+        store.close?.();
+      }
+    },
+  );
+
+  test('the supersede lookup seeks the tool-call index, on new and existing stores', () => {
+    // Pinned beside the constant: a rename must be deliberate here too.
+    expect(TOOL_CALL_LIFECYCLE_INDEX).toBe(
+      'idx_events_thread_tool_call_sequence',
+    );
+    const path = join(
+      tempRoot('station-inventory-unresolved-'),
+      'orchestration.sqlite',
+    );
+    // An existing store from before the index: the migration builds it.
+    new EventStore(path).close?.();
+    const legacy = new DatabaseSync(path);
+    legacy.exec(`DROP INDEX ${TOOL_CALL_LIFECYCLE_INDEX}`);
+    legacy.close();
+    const store = new EventStore(path);
+    try {
+      seedCrashedTurn(store);
+      const db = (
+        store as unknown as {
+          db: {
+            prepare(sql: string): { all(...args: unknown[]): unknown[] };
+          };
+        }
+      ).db;
+      // The listing's own statement and bindings, as it ran.
+      let captured: { sql: string; args: unknown[] } | undefined;
+      const prepare = db.prepare.bind(db);
+      db.prepare = (sql: string) => {
+        const statement = prepare(sql);
+        if (!sql.includes('station_is_readable_user_input')) return statement;
+        return {
+          all: (...args: unknown[]) => {
+            captured = { sql, args };
+            return statement.all(...args);
+          },
+        };
+      };
+      store.listSessionInventoryEvents(THREAD, { group: 'execution' });
+      db.prepare = prepare;
+      if (!captured) throw new Error('the listing statement was not observed');
+      const plan = prepare(`EXPLAIN QUERY PLAN ${captured.sql}`)
+        .all(...captured.args)
+        .map((row) => (row as { detail: string }).detail);
+      // A seek on (thread, call id, sequence), not a scan of later events.
+      expect(plan).toContainEqual(
+        expect.stringMatching(
+          new RegExp(
+            `^SEARCH next_event USING INDEX ${TOOL_CALL_LIFECYCLE_INDEX} \\(thread_id=\\? AND <expr>=\\? AND sequence>\\?`,
+          ),
+        ),
+      );
     } finally {
       store.close?.();
     }
