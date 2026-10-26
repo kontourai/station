@@ -306,6 +306,15 @@ its user's message in durable history. The real-framework regression in
 the first storage read and verifies model admission and persisted ordering.
 Remove a version's patch only after that test passes against an upstream fix
 for that version.
+The 2.11.0 patch also awaits the configured observability flush attempt at
+normal `streamText` finish. Its CJS and ESM regression in
+`src-server/runtime/frameworks/__tests__/voltagent-stream-finish-flush.process.test.ts`
+holds a real span processor and checks stream EOF after fulfillment or rejection;
+Node `auto` and `never` strategies remain no-flush controls. This preserves the
+existing export-error handling and OpenTelemetry timeout semantics. A timeout can
+settle the flush attempt while its exporter remains active, so stream completion
+is not proof that every exporter or other run resource has settled. This change
+does not extend the 2.10.0 patch or qualify cancellation and early-return paths.
 The lifecycle allowlist still owns the stronger
 exact-hook and artifact proofs; a successful raw pnpm install is not their
 receipt.
