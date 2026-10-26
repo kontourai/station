@@ -9405,18 +9405,20 @@ describe('EventStore', () => {
       ];
       for (const [appendIndex, append] of appenders.entries()) {
         for (const [label, value] of structural) {
+          // A field outside the contract: an adapter can still send one.
+          const completed: CanonicalRuntimeEvent = {
+            eventId: `evt-ingress-structure-${appendIndex}-${label}`,
+            provider: 'claude',
+            threadId: 'thread',
+            createdAt: '2026-08-25T00:00:00.000Z',
+            method: 'tool.completed',
+            itemId: 'call',
+            toolCallId: 'call',
+            toolName: 'shell',
+            status: 'success',
+          };
           expect(() =>
-            append({
-              eventId: `evt-ingress-structure-${appendIndex}-${label}`,
-              provider: 'claude',
-              threadId: 'thread',
-              createdAt: '2026-08-25T00:00:00.000Z',
-              method: 'tool.completed',
-              toolCallId: 'call',
-              toolName: 'shell',
-              status: 'success',
-              adapterNote: value,
-            } as CanonicalRuntimeEvent),
+            append(Object.assign(completed, { adapterNote: value })),
           ).toThrow('cannot be safely persisted');
           expect(
             append({

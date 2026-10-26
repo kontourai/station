@@ -4,7 +4,10 @@ import {
   collectRuntimeEventContentRefs,
   isRuntimeEventContentRef,
 } from '@kontourai/station-contracts/runtime-event-content';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type {
+  CanonicalRuntimeEvent,
+  RequestOpenedEvent,
+} from '@kontourai/station-contracts/runtime-events';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -60,7 +63,7 @@ function codexHtmlPreviewApproval(threadId: string): CanonicalRuntimeEvent {
 function claudeWriteApproval(
   threadId: string,
   content: string,
-): CanonicalRuntimeEvent {
+): RequestOpenedEvent {
   return {
     eventId: `open-write-${threadId}`,
     provider: 'claude',
@@ -248,7 +251,7 @@ describe('EventStore event content spill', () => {
     const event = {
       ...claudeWriteApproval('thread-f', 'small'),
       payload: { toolName: 'Bash', toolInput: { command: forged } },
-    } as CanonicalRuntimeEvent;
+    } satisfies RequestOpenedEvent;
     store.appendEvent(event);
     const { payload } = storedPayload(event.eventId);
     expect(payload.payload.toolInput.command).toEqual({

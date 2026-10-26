@@ -15,7 +15,7 @@ import {
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
-import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import {
   computeViewedContentDigest,
   loadApprovalContent,
@@ -262,9 +262,15 @@ describe('oversized event content through the live adapter loop', () => {
       (e) => e.payload.method === 'request.opened',
     )!;
     expect(persisted.payload).toEqual(frame);
-    const input = (frame as { payload: { toolInput: { content: unknown } } })
-      .payload.toolInput;
-    expect(isRuntimeEventContentRef(input.content)).toBe(true);
+    const toolInput =
+      frame.method === 'request.opened' ? frame.payload?.toolInput : undefined;
+    expect(
+      isRuntimeEventContentRef(
+        toolInput && typeof toolInput === 'object' && 'content' in toolInput
+          ? toolInput.content
+          : undefined,
+      ),
+    ).toBe(true);
     const [resolved] = store.resolveEventContent([persisted]);
     expect(
       (resolved!.payload as { payload: { toolInput: { content: string } } })
@@ -538,19 +544,23 @@ describe('oversized event content through the live adapter loop', () => {
     });
 
     test('an adapter field over the backstop is skipped with a warning', async () => {
-      adapter.events.push({
+      // A field outside the contract: an adapter can still send one.
+      const completed: CanonicalRuntimeEvent = {
         eventId: 'odd-event',
         provider: 'claude',
         threadId,
         turnId: 'turn-1',
         createdAt: at(),
         method: 'tool.completed',
+        itemId: 'c1',
         toolCallId: 'c1',
         toolName: 'x',
         status: 'success',
         output: 'ok',
-        adapterNote: 'n'.repeat(100_000),
-      } as CanonicalRuntimeEvent);
+      };
+      adapter.events.push(
+        Object.assign(completed, { adapterNote: 'n'.repeat(100_000) }),
+      );
       pushNext();
       await vi.waitFor(() =>
         expect(stored().some((e) => e.id === 'next-event')).toBe(true),
@@ -721,7 +731,7 @@ describe('oversized event content through the live adapter loop', () => {
     );
     const turn = await service.sessionQueries.readAssistantTurn(
       { type: 'assistant-turn', threadId, turnId: 'turn-1' },
-      INTERNAL_SESSION_READ_SCOPE,
+      sessionReadAuthorityFromRequest('default', undefined, undefined),
     );
     expect(turn.status).toBe('found');
     const text = (
