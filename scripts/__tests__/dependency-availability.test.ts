@@ -38,8 +38,8 @@ test('Ajv URI normalization never turns an encoded scheme into an executable sch
   for (const input of ['%6Aavascript:alert(1)', '%u006Aavascript:alert(1)']) {
     expect(uri.parse(input).scheme).not.toBe('javascript');
     expect(uri.normalize(input)).not.toBe('javascript:alert(1)');
-    expect(uri.resolve('https://example.test/', input)).not.toBe(
-      'javascript:alert(1)',
+    expect(() => uri.resolve('https://example.test/', input)).toThrow(
+      'URI scheme is malformed.',
     );
   }
   expect(uri.equal('%68ttp://example.test/', 'http://example.test/')).toBe(
@@ -70,9 +70,10 @@ test('Ajv URI parsing refuses ambiguous or whitespace-smuggled HTTP hosts', () =
 });
 
 test('Ajv suffix serialization escapes a first-segment colon instead of creating a scheme', () => {
-  expect(uri.normalize('one/two', { reference: 'suffix' })).toBe('one/two');
+  const options = { reference: 'suffix' as const, scheme: 'x' };
+  expect(uri.normalize('one/two', options)).toBe('one/two');
   const normalized = uri.normalize('javascript:alert(1)', {
-    reference: 'suffix',
+    ...options,
   });
   expect(normalized).not.toBe('javascript:alert(1)');
   expect(uri.parse(normalized).scheme).toBeUndefined();
