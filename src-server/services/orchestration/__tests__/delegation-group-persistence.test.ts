@@ -26,7 +26,7 @@ import {
   type DelegationGroupSpecV2,
 } from '@kontourai/flow-agents/delegation-group-v2';
 import { canonicalJson } from '@kontourai/relay';
-import { expect, onTestFinished, test, vi } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import {
   executeOwnedProcess,
   terminateSuiteExecution,
@@ -927,31 +927,31 @@ try {
   child.child.stderr?.on('data', (chunk) => {
     childError = (childError + String(chunk)).slice(-16_384);
   });
-  onTestFinished(async () => {
-    if (existsSync(f.root)) writeFileSync(resume, 'cleanup');
-    const cleanup = await terminateSuiteExecution(child, {
-      processLabel: 'Accounting domain publisher',
-      waitForSuiteSettlement,
-      terminationGraceMs: 1000,
-      terminationForceMs: 1000,
-    });
-    expect(cleanup).toMatchObject({ settled: true, errors: [] });
-  });
-  await vi.waitFor(() => expect(existsSync(barrier), childError).toBe(true), {
-    timeout: 15_000,
-  });
-  const owner = await HomeWriterOwner.forHome(f.root);
-  const hold = await owner.acquire();
+  let hold: Awaited<ReturnType<HomeWriterOwner['acquire']>> | undefined;
+  let pending: Promise<unknown> | undefined;
   try {
+    await vi.waitFor(() => expect(existsSync(barrier), childError).toBe(true), {
+      timeout: 15_000,
+    });
+    const owner = await HomeWriterOwner.forHome(f.root);
+    const acquired = await owner.acquire();
+    hold = acquired;
     let disclosed = false;
     const read = f.persistence
       .readReportExecution('group', 'authority', () =>
-        owner.runWithLease(hold, () => undefined),
+        owner.runWithLease(acquired, () => undefined),
       )
-      .then((value) => {
-        disclosed = true;
-        return value;
-      });
+      .then(
+        (value) => {
+          disclosed = true;
+          return { value };
+        },
+        (error: unknown) => {
+          disclosed = true;
+          return { error };
+        },
+      );
+    pending = read;
     const waiting = () =>
       readdirSync(f.root).some(
         (name) =>
@@ -964,10 +964,24 @@ try {
     expect(disclosed).toBe(false);
     writeFileSync(resume, 'publish');
     const drained = await read;
-    expect(drained.authority).toEqual(ledger);
+    if ('error' in drained) throw drained.error;
+    expect(drained.value.authority).toEqual(ledger);
     expect(await child.completion).toMatchObject({ status: 0, signal: null });
     expect(readFileSync(outcome, 'utf8')).toBe('refused-after-publication');
   } finally {
-    await hold.release();
+    writeFileSync(resume, 'cleanup');
+    try {
+      const cleanup = await terminateSuiteExecution(child, {
+        processLabel: 'Accounting domain publisher',
+        waitForSuiteSettlement,
+        terminationGraceMs: 1000,
+        terminationForceMs: 1000,
+      });
+      await pending;
+      expect(cleanup).toMatchObject({ settled: true, errors: [] });
+    } finally {
+      await pending;
+      await hold?.release();
+    }
   }
 });
