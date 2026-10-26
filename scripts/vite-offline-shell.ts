@@ -44,7 +44,11 @@ const WEB_APP_MANIFEST = {
   ],
 };
 
-/** A chunk's static import graph and the stylesheets each chunk loads. */
+/**
+ * A chunk's static import graph and the stylesheets each chunk loads. A lazy
+ * chunk's stylesheet travels with it: the preload helper refuses a dynamic
+ * import whose stylesheet cannot load.
+ */
 function collectChunkGraph(
   bundle: Rollup.OutputBundle,
   start: string,
@@ -59,6 +63,59 @@ function collectChunkGraph(
     files.add(`/${css}`);
   for (const dependency of output.imports)
     collectChunkGraph(bundle, dependency, files);
+}
+
+/**
+ * The required install set: the static shell, then the entry, `main` and
+ * voice graphs (boot imports main; main starts voice registration without a
+ * mounted consumer) and every asset the document names.
+ */
+function shellFiles(bundle: Rollup.OutputBundle, html: string): Set<string> {
+  const files = new Set<string>([
+    '/manifest.webmanifest',
+    '/offline-shell.json',
+    '/startup-theme.js',
+    '/favicon.png',
+    '/fonts/dm-sans-latin.woff2',
+  ]);
+  for (const output of Object.values(bundle)) {
+    if (
+      output.type === 'chunk' &&
+      (output.isEntry ||
+        output.name === 'main' ||
+        output.moduleIds.some((id) =>
+          id.endsWith('/src-ui/src/providers/voice/index.ts'),
+        ))
+    )
+      collectChunkGraph(bundle, output.fileName, files);
+  }
+  for (const match of html.matchAll(/(?:href|src)="(\/assets\/[^"]+)"/g))
+    collectChunkGraph(bundle, match[1].slice(1), files);
+  return files;
+}
+
+/**
+ * Other lazy features are cached when opened online; the warm set is fetched
+ * ahead of that so a dropped connection can still open them. A named module
+ * missing from the bundle fails the build rather than warming nothing.
+ */
+function warmGraph(
+  bundle: Rollup.OutputBundle,
+  modules: readonly string[],
+): Set<string> {
+  const files = new Set<string>();
+  for (const module of modules) {
+    const suffix = `/${module}`;
+    const owner = Object.values(bundle).find(
+      (output) =>
+        output.type === 'chunk' &&
+        output.moduleIds.some((id) => id.endsWith(suffix)),
+    );
+    if (!owner)
+      throw new Error(`Offline warm module not in the bundle: ${module}`);
+    collectChunkGraph(bundle, owner.fileName, files);
+  }
+  return files;
 }
 
 /** A credential-free shell, before the listener injects its per-request bootstrap. */
@@ -95,43 +152,8 @@ export function offlineShell(options: OfflineShellOptions = {}): Plugin {
           )
           .replace(/<script\b(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/gi, '')
           .replace(/\snonce="[^"]*"/g, '');
-        const files = new Set<string>([
-          '/manifest.webmanifest',
-          '/offline-shell.json',
-          '/startup-theme.js',
-          '/favicon.png',
-          '/fonts/dm-sans-latin.woff2',
-        ]);
-        // boot imports main; main starts voice registration without a mounted consumer.
-        // A lazy chunk's stylesheet travels with its chunk: the preload helper
-        // refuses a dynamic import whose stylesheet cannot load.
-        for (const output of Object.values(bundle)) {
-          if (
-            output.type === 'chunk' &&
-            (output.isEntry ||
-              output.name === 'main' ||
-              output.moduleIds.some((id) =>
-                id.endsWith('/src-ui/src/providers/voice/index.ts'),
-              ))
-          )
-            collectChunkGraph(bundle, output.fileName, files);
-        }
-        for (const match of html.matchAll(/(?:href|src)="(\/assets\/[^"]+)"/g))
-          collectChunkGraph(bundle, match[1].slice(1), files);
-        // Other lazy features are cached when opened online; the warm set is
-        // fetched ahead of that so a dropped connection can still open them.
-        const warmFiles = new Set<string>();
-        for (const module of options.warmModules ?? []) {
-          const suffix = `/${module}`;
-          const owner = Object.values(bundle).find(
-            (output) =>
-              output.type === 'chunk' &&
-              output.moduleIds.some((id) => id.endsWith(suffix)),
-          );
-          if (!owner)
-            throw new Error(`Offline warm module not in the bundle: ${module}`);
-          collectChunkGraph(bundle, owner.fileName, warmFiles);
-        }
+        const files = shellFiles(bundle, html);
+        const warmFiles = warmGraph(bundle, options.warmModules ?? []);
         const precache = [...files].sort();
         const warm = [...warmFiles].filter((file) => !files.has(file)).sort();
         const immutable = UI_IMMUTABLE_ASSET_PATTERN.source;
