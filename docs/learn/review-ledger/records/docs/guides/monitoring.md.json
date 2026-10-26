@@ -190,7 +190,9 @@
 
     "src-server/routes/operations/__tests__/source-credential-delivery.test.ts",
 
-    "src-ui/src/components/monitoring/AnalyticsSourceSetup.tsx"
+    "src-ui/src/components/monitoring/AnalyticsSourceSetup.tsx",
+
+    "src-server/services/orchestration/canonical-terminal-outcome.ts"
   ],
 
   "checks": [

@@ -774,7 +774,17 @@
 
     "packages/sdk/src/query-domains/taskReview.ts",
 
-    "packages/sdk/src/__tests__/task-review-hooks.test.tsx"
+    "packages/sdk/src/__tests__/task-review-hooks.test.tsx",
+
+    "packages/sdk/src/client/private-insights.ts",
+
+    "packages/sdk/src/client/capability.ts",
+
+    "packages/sdk/src/client/publicStationCapabilities.ts",
+
+    "packages/sdk/src/capability.ts",
+
+    "packages/sdk/src/publicStationCapabilities.ts"
   ],
 
   "checks": [
