@@ -346,7 +346,7 @@ test.skipIf(!tools)(
     const cuts = manifest.events.filter(
       (e) => e.kind === 'frame' && e.reasons.includes('scene-change'),
     );
-    expect(cuts.length).toBeGreaterThanOrEqual(3);
+    expect(cuts).toHaveLength(3);
     for (const time of [3000, 13000, 14000])
       expect(cuts.some((e) => Math.abs(e.tMs - time) <= 250)).toBe(true);
   },
@@ -464,6 +464,102 @@ test.skipIf(!tools).each(['partial', 'exhausted'] as const)(
     } finally {
       spy.mockRestore();
       clock.mockRestore();
+    }
+  },
+  45_000,
+);
+
+// Slow only scene decoding; fixture generation and JPEG extraction remain real and fast.
+test.skipIf(!tools).each(['nokey', 'noref'] as const)(
+  'real %s scene timeout publishes partial cuts and retains uncovered baseline cuts',
+  async (mode) => {
+    const home = makeHome('station-partial-scenes-');
+    const path = await fixture(home, 'partial.mp4', [
+      '-f',
+      'lavfi',
+      '-i',
+      'color=c=red:size=160x90:rate=10:duration=24',
+      '-vf',
+      "drawbox=color=blue:t=fill:enable='gte(t,3)',drawbox=color=black:t=fill:enable='gte(t,13)',drawbox=color=white:t=fill:enable='gte(t,14)'",
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-x264-params',
+      `keyint=${mode === 'nokey' ? 10 : 80}:min-keyint=${mode === 'nokey' ? 10 : 80}:scenecut=0:bframes=0`,
+      '-threads',
+      '1',
+    ]);
+    const original = hostTools.runBoundedToolCapture;
+    let reached = false;
+    const spy = vi
+      .spyOn(hostTools, 'runBoundedToolCapture')
+      .mockImplementation((command, args, options) => {
+        if (
+          args.some((a) => a.includes('select=gt(scene')) &&
+          args[args.indexOf('-skip_frame') + 1] === mode
+        ) {
+          reached = true;
+          const paced = [...args];
+          paced.splice(paced.indexOf('-i'), 0, '-readrate', '4');
+          return original(command, paced, { ...options, timeoutMs: 2500 });
+        }
+        return original(command, args, options);
+      });
+    try {
+      const manifest = await importRecording(home, path);
+      const times = manifest.events
+        .filter((e) => e.kind === 'frame' && e.reasons.includes('scene-change'))
+        .map((e) => e.tMs);
+      expect(reached).toBe(true);
+      expect(
+        times.some((t) => Math.abs(t - 3000) <= 250),
+        'partial precise cut was discarded',
+      ).toBe(true);
+      expect(
+        times.some((t) => t > 10000),
+        'uncovered cheap baseline must survive',
+      ).toBe(mode === 'noref');
+      expect(times).toHaveLength(mode === 'noref' ? 2 : 1);
+    } finally {
+      spy.mockRestore();
+    }
+  },
+  45_000,
+);
+
+test.skipIf(!tools)(
+  'real dense-keyframe recording sizes its cheap scene deadline by packet count',
+  async () => {
+    const home = makeHome('station-dense-scene-budget-');
+    const path = await fixture(home, 'dense.mp4', [
+      '-f',
+      'lavfi',
+      '-i',
+      'color=c=red:size=64x64:rate=10:duration=24',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-g',
+      '1',
+      '-threads',
+      '1',
+    ]);
+    const original = hostTools.runBoundedToolCapture;
+    const budgets: number[] = [];
+    const spy = vi
+      .spyOn(hostTools, 'runBoundedToolCapture')
+      .mockImplementation((command, args, options) => {
+        if (args.some((a) => a.includes('select=gt(scene')))
+          budgets.push(options.timeoutMs);
+        return original(command, args, options);
+      });
+    try {
+      await importRecording(home, path);
+      expect(budgets).toEqual([24000]);
+    } finally {
+      spy.mockRestore();
     }
   },
   45_000,

@@ -367,7 +367,11 @@ export class WalkthroughService {
     const run = (
       command: string,
       args: string[],
-      options: { timeoutMs: number; maxBuffer: number },
+      options: {
+        timeoutMs: number;
+        maxBuffer: number;
+        partialOnTimeout?: boolean;
+      },
     ) => {
       const remaining = pipelineDeadline - Date.now();
       if (remaining <= 0)
@@ -636,6 +640,12 @@ export class WalkthroughService {
     const sparse = keyframes.length > 0 && maxKeyframeGap > 2_000;
     const sceneBudget = Math.min(300_000, 30_000 + videoDurationMs * 0.5);
     const sceneDeadline = Math.min(pipelineDeadline, Date.now() + sceneBudget);
+    // Dense 30-minute HEVC measured 105s for 1800 keyframes (~58ms each).
+    // 100ms leaves headroom for in-service contention; sparse files keep 15s.
+    const cheapBudget = Math.min(
+      sceneBudget,
+      Math.max(15_000, keyframes.length * 100),
+    );
     const detectScenes = (references: boolean) => {
       const remaining = sceneDeadline - Date.now();
       if (remaining <= 0) throw new Error('Scene detection deadline exceeded');
@@ -660,27 +670,46 @@ export class WalkthroughService {
           '-',
         ],
         {
-          timeoutMs: Math.min(references ? sceneBudget : 15_000, remaining),
+          timeoutMs: Math.min(
+            references ? sceneBudget : cheapBudget,
+            remaining,
+          ),
+          partialOnTimeout: true,
           maxBuffer: 1024 * 1024,
         },
       );
     };
-    let scenes = '';
+    const parseScenes = (output: string) =>
+      [...output.matchAll(/pts_time:([\d.]+)/g)].map(
+        (m) => Number(m[1]) * 1000,
+      );
+    let cheapScenes: number[] = [];
+    let preciseScenes: number[] = [];
     try {
-      scenes = await detectScenes(false);
+      cheapScenes = parseScenes(await detectScenes(false));
     } catch {
       // Transcript and interval coverage still select useful frames.
     }
     if (sparse) {
       try {
-        scenes += `\n${await detectScenes(true)}`;
+        preciseScenes = parseScenes(await detectScenes(true));
       } catch {
         // Enrichment cannot erase the completed keyframe-only baseline.
       }
     }
-    const sceneTimes = [...scenes.matchAll(/pts_time:([\d.]+)/g)].map(
-      (m) => Number(m[1]) * 1000,
-    );
+    // fps places a cheap cut just before keyframe K. A precise cut in its
+    // preceding GOP supersedes that estimate, even beyond the 500ms cluster.
+    const sceneTimes = [
+      ...cheapScenes.filter((time) => {
+        const index = keyframes.findIndex((keyframe) => keyframe >= time);
+        if (index < 0) return true;
+        const previous = keyframes[index - 1] ?? 0;
+        return !preciseScenes.some(
+          (precise) => precise > previous && precise <= keyframes[index]!,
+        );
+      }),
+      ...preciseScenes,
+    ];
     const selection = selectWalkthroughFrames({
       durationMs: videoDurationMs,
       tokens: transcript.flatMap((e) => e.tokens ?? []),
