@@ -15,14 +15,12 @@ import {
   fetchAchievements,
   fetchUsage,
   getJobLogs,
-  getProject,
   getReviewReceipt,
   getReviewRequestStatus,
   getSchedulerStats,
   getSchedulerStatus,
   listJobs,
   listProjectLayouts,
-  listProjects,
   listReviewReceipts,
   listSchedulerProviders,
   migratePreIndexKnowledge,
@@ -58,6 +56,7 @@ import {
   respondToDelegatedTaskRequest,
 } from './station-control-delegation.js';
 import type { StationControlToolRegistry } from './station-control-mcp-server.js';
+import { registerProjectReadTools } from './station-control-project-read-tools.js';
 
 export const MONITORING_ENGINE_FILTER_VALUES = [
   'station',
@@ -262,7 +261,10 @@ async function connectSshEnvironmentWithPolling(id: string): Promise<unknown> {
   }
 }
 
-export function registerOperationsTools(server: StationControlToolRegistry) {
+export function registerOperationsTools(
+  server: Pick<StationControlToolRegistry, 'tool' | 'toolWithSchema'>,
+  projectReads?: Parameters<typeof registerProjectReadTools>[1],
+) {
   server.tool(
     REVIEW_EVIDENCE_OPERATOR_SURFACE.run.mcp,
     'Run independent read-only reviewers over one exact Git range; findings are evidence input, never a verdict',
@@ -670,25 +672,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
     async ({ path }) => jsonToolResult(await navigateTo(path)),
   );
 
-  server.tool('list_projects', 'List all projects', {}, async () =>
-    jsonToolResult(
-      await toOperationsEnvelope(
-        listProjects(controlApiBase(), controlRequestOptions()),
-      ),
-    ),
-  );
-
-  server.tool(
-    'get_project',
-    'Get project details',
-    { slug: z.string() },
-    async ({ slug }) =>
-      jsonToolResult(
-        await toOperationsEnvelope(
-          getProject(controlApiBase(), slug, controlRequestOptions()),
-        ),
-      ),
-  );
+  registerProjectReadTools(server, projectReads);
 
   server.tool(
     'list_project_layouts',

@@ -725,10 +725,10 @@ function assertToolbarPreconditions(
   // A non-empty, complete inventory — precondition 2.
   const keys = measurement.controls.map((control) => control.key);
   for (const required of REQUIRED_CONTROL_KEYS) {
-    // The bell's label gains a " (N need attention)" suffix when its first
+    // The bell's label gains a ", N need attention" suffix when its first
     // notification arrives, which lands at a different moment per run.
     expect(
-      keys.map((key) => (key.startsWith(`${required} (`) ? required : key)),
+      keys.map((key) => (key.startsWith(`${required}, `) ? required : key)),
       `required toolbar control '${required}' is missing from the measured ` +
         `inventory — this guard would be checking less than it claims\n${context}`,
     ).toContain(required);

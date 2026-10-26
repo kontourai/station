@@ -2452,10 +2452,19 @@ on a `service PATH` line:
 `{ position, unit, current }` with `position` counted from 0 within the shared
 directories. Drift is advice and does not change `healthy` or the exit code.
 The comparison reads the unit file Station wrote, not systemd drop-ins or the
-loaded job, and uses the environment of the shell that runs `status`. A
-reinstall command is prefixed with `STATION_ROOT=…` when the registration's
-recorded root differs from the one a shell without `STATION_ROOT` would
-derive.
+loaded job, and uses the environment of the shell that runs `status`.
+
+On macOS and Linux the reinstall command (here, for stale scheduling, and in
+`station upgrade` guidance) repeats the installed unit's own `service run`
+arguments: instance, home, ports, host, features and allowed origins. The
+unit is named by instance alone, so a manifest in the home `status` read can
+describe an earlier install. On Windows the command comes from the manifest
+beside the task's wrapper. A service that runs an installer-owned archive is
+reinstalled through that install's channel launcher (`station`,
+`station-beta`, or `station-nightly`); the launcher sets `STATION_ROOT`
+itself, so when the unit records another root no command is given. Otherwise
+the command is prefixed with `STATION_ROOT=…` when the unit's recorded root
+differs from the one a shell without `STATION_ROOT` would derive.
 
 `service start` and `service stop` require the private service manifest that
 `service install` creates; they never infer a service registration from a
