@@ -652,11 +652,12 @@ describe('update backup and in-place restore (#2675 D)', () => {
           homeDir: fixture.home,
           outputDir: fixture.backupDir,
         });
+        const { directories: _directories, ...legacyManifest } = manifest;
         writeFileSync(
           join(fixture.backupDir, STATION_HOME_BACKUP_MANIFEST),
           JSON.stringify({
-            ...manifest,
-            schemaVersion: STATION_HOME_UPDATE_BACKUP_SCHEMA,
+            ...legacyManifest,
+            schemaVersion: 'station.home-update-backup/v1',
             symlinks: [],
           }),
         );
@@ -758,7 +759,9 @@ describe('update backup and in-place restore (#2675 D)', () => {
 
     expect(sha(join(fixture.home, STATION_HOME_SCHEMA_FILE))).toBe(before);
     expect(schemaVersion(fixture.home)).not.toBe(99);
-    expect(existsSync(empty), 'the empty directory must survive rollback').toBe(true);
+    expect(existsSync(empty), 'the empty directory must survive rollback').toBe(
+      true,
+    );
     expect(readdirSync(empty)).toEqual([]);
     expect(existsSync(join(empty, 'never-created'))).toBe(false);
     expect(readFileSync(join(fixture.home, 'config', 'app.json'), 'utf8')).toBe(
@@ -1007,10 +1010,12 @@ describe('update backup of a realistic home (#2675 D review F1)', () => {
       ['plugins/demo', join(fixture.generation, 'package')],
       ['plugins/draft/node_modules/@kontourai/station-shared', fixture.outside],
     ]);
-    // Never followed: the backup's copy holds no link and nothing of the
-    // package outside the home (the draft holds only its link).
+    // The draft's parent directories are retained, but its link is not followed.
     const copied = join(fixture.backupDir, 'home', 'plugins');
-    expect(readdirSync(copied)).toEqual(['.generations']);
+    expect(readdirSync(copied)).toEqual(['.generations', 'draft']);
+    expect(
+      readdirSync(join(copied, 'draft', 'node_modules', '@kontourai')),
+    ).toEqual([]);
   });
 
   it('a rollback restores links as links and leaves users repositories and the browser profiles as the trial left them', () => {

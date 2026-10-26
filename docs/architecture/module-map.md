@@ -2469,13 +2469,20 @@ observations for useful offline diagnostics. These checks do not stop an
 unrelated external writer that ignores Station's ownership protocol.
 
 Traversal is sorted and rejects symlinks/non-regular entries. Defaults cap an
-archive at 100,000 files, 20 GiB total and 2 GiB per file. Paths are segment
+archive at 100,000 entries (files and directories), 20 GiB total and 2 GiB per file. Paths are segment
 arrays, so a POSIX backslash cannot become a directory separator on import.
 Declared volatile files are excluded. SQLite is checkpointed and integrity
 checked before copying; backup does not advance the home schema. Each copied
 file is checked against its size/hash and synced before the staged archive is
 renamed into place. The manifest records schema, creation time, segments,
 modes, sizes, hashes and total bytes. Mode preservation follows platform support.
+The v2 home and update manifests also record all retained directory paths,
+including empty ones. Validation rejects missing/unlisted directories, aliases,
+duplicate paths and incomplete parents before destructive restore. Update
+restore preserves containers needed by external work. New readers retain v1
+support without inventing the missing directory history; old readers reject v2.
+This archive version does not change the runtime home-schema marker or provide
+post-snapshot effect-history reconciliation.
 
 **Restore and failure.** Explicit confirmation and an inactive home are required.
 The owner validates the manifest and every archived/staged byte before

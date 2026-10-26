@@ -267,6 +267,10 @@ that the published client can restore a server home:
 ```
 
 The archive contains sensitive home files and is not an encrypted transport.
+Use a v2-capable CLI for newly written home archives; it preserves empty
+directories and can also read older v1 archives. A v1 archive cannot recover
+empty directories it never recorded. This format compatibility does not
+establish post-snapshot effect-history continuity or a safe runtime downgrade.
 Restrict archive access and encrypt off-host storage using your organization's
 backup system. Preserve required evidence-signing keys securely; rotating the
 operator credential is separate from replacing those keys. OS-held credentials,

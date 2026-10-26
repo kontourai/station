@@ -3221,7 +3221,8 @@ WAL and shared-memory sidecars are not copied. Symlinks in included content,
 corrupt databases, detected active instances, and
 configured size/count limits fail closed. Volatile logs, monitoring output,
 service state, temporary files, live instance records, and the top-level
-quarantine directory are excluded. Defaults are 100,000 files, 20 GiB total,
+quarantine directory are excluded. Defaults are 100,000 entries (files and
+directories), 20 GiB total,
 and 2 GiB per file. This is a private local copy, not an encrypted export or a
 transfer of execution authority.
 
@@ -3232,6 +3233,12 @@ station home backup [--output=<directory>] [--home=<dir>] [--base=<dir>] [--json
 If `--output` is omitted, Station creates a timestamped sibling of the home.
 The destination must not already exist or be inside the home.
 
+New backups use `station.home-backup/v2` and retain empty directories as well
+as file content. Restore them with a CLI that supports v2; older tools refuse
+this archive version. The current reader also accepts v1 backups, whose
+unrecorded empty directories cannot be recovered. Update snapshots use their
+separate v2 format and additionally count recorded links toward their entry cap.
+
 ### `home restore`
 
 Validate manifest entries and content hashes, stage the copied home, then
@@ -3240,6 +3247,10 @@ rename the previous home aside and publish the staged directory. The
 maintenance lease, checks recorded live instances and attempts rollback on
 publication failure. The two renames are not a single crash-atomic exchange:
 the retained previous home is the recovery copy if publication is interrupted.
+For v2 archives, directory paths and contents must match the manifest before
+the current home is replaced. Duplicate, aliased, unsafe or incomplete directory
+plans are refused. Directory preservation does not reconcile effect history
+created after the backup or grant a restored home execution authority.
 
 The CLI identifies the result as **recovered from a copy**, prints the backup's
 snapshot time, and notes that work after that snapshot may be missing. Its JSON
