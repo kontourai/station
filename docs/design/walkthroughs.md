@@ -355,11 +355,17 @@ zero decoded frames fails without publishing an artifact.
 
 A bounded packet-flag probe measures gaps relative to stream start time without
 decoding, including the gaps before the first and after the last keyframe.
-Every recording first runs keyframe-only scene decoding, capped at 15 seconds.
-Gaps above two seconds permit a second pass decoding reference frames with the
-remaining scene budget. Its cuts merge with the cheap baseline; failure or
-timeout preserves that baseline. Reference-frame decoding can still decode
-every frame for VP8 and H.264/HEVC without B-frames. Probe failure selects only
+Every recording first runs keyframe-only scene decoding with a budget of
+`min(scene budget, max(15s, keyframe count × 100ms))`. Measured 30-minute
+2880×1800 HEVC recordings took 13.5s with 8-second GOPs and 105s with 1-second
+GOPs (about 60ms per keyframe); 100ms leaves contention headroom. Gaps above
+two seconds permit a second pass decoding reference frames with the remaining
+scene budget. Each deadline reserves up to one second within that budget for
+SIGTERM flushing, then SIGKILL settles capture even if a pipe remains open.
+Both passes parse partial scene metadata. A precise cut in
+(previous keyframe, K] replaces the cheap estimate at keyframe K; uncovered
+baseline cuts remain. Other tool captures retain timeout errors and no partial
+output. Reference-frame decoding can still decode every frame for VP8 and H.264/HEVC without B-frames. Probe failure selects only
 the cheap pass. If detection fails, transcript and interval coverage select
 frames without failing the import. Both modes sample at 5 fps
 and fit within 640 by 640 pixels without upscaling,

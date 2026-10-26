@@ -261,9 +261,11 @@ test.skipIf(!tools).each([8, 16])(
     const cuts = manifest.events.filter(
       (e) => e.kind === 'frame' && e.reasons.includes('scene-change'),
     );
-    expect(cuts).toHaveLength(3);
-    for (const time of [duration * 250, duration * 500, duration * 750])
-      expect(cuts.some((e) => Math.abs(e.tMs - time) <= 250)).toBe(true);
+    expect(cuts.map((cut) => cut.tMs)).toEqual([
+      duration * 250,
+      duration * 500,
+      duration * 750,
+    ]);
   },
   45_000,
 );
@@ -346,9 +348,7 @@ test.skipIf(!tools)(
     const cuts = manifest.events.filter(
       (e) => e.kind === 'frame' && e.reasons.includes('scene-change'),
     );
-    expect(cuts).toHaveLength(3);
-    for (const time of [3000, 13000, 14000])
-      expect(cuts.some((e) => Math.abs(e.tMs - time) <= 250)).toBe(true);
+    expect(cuts.map((cut) => cut.tMs)).toEqual([3000, 13000, 14000]);
   },
   45_000,
 );

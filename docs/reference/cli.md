@@ -2657,6 +2657,10 @@ required to reach Station from:
   MagicDNS name), or
 - a single-origin HTTPS reverse proxy that only forwards the UI port.
 
+Malformed or reset upstream response bodies close the downstream connection
+without a clean end, so clients observe truncation. The listener contains
+response errors and continues serving subsequent requests.
+
 `STATION_API_BASE` (set before `station start`) is the explicit override: when
 set, it is the **only** case where the UI server injects an absolute
 `window.__API_BASE__` value into `index.html`, and that override always wins

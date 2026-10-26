@@ -124,10 +124,17 @@ Processing after upload has a 30-minute budget, with scaled scene/frame deadline
 A bounded packet-flag probe measures keyframe gaps relative to the video stream's
 start time without decoding frames, including the gaps from stream start to the
 first keyframe and from the last keyframe to stream end. Every recording first
-runs keyframe-only scene decoding with a budget of at most 15 seconds. Gaps above
-two seconds then permit reference-frame decoding using only the remaining scene
-budget. Completed enrichment adds to the baseline cuts; failure or timeout keeps
-the baseline. Reference-frame decoding can still decode every frame for VP8 and
+runs keyframe-only scene decoding with 100 ms per probed keyframe, clamped
+between 15 seconds and the total scene budget. Measurements on 30-minute
+2880×1800 HEVC recordings took 13.5 seconds for 225 keyframes (8-second GOPs)
+and 105 seconds for 1,800 keyframes (1-second GOPs): about 60 ms per keyframe,
+with 100 ms allowing contention headroom. Gaps above two seconds then permit
+reference-frame decoding using only the remaining scene budget. A deadline
+reserves up to one second within its budget for ffmpeg to flush; both passes
+retain scene metadata emitted before cutoff. Precise cuts supersede delayed
+keyframe-only estimates in the same preceding GOP; uncovered baseline cuts
+remain. Other tool callers still fail on timeout without returning partial output.
+Reference-frame decoding can still decode every frame for VP8 and
 H.264/HEVC without B-frames. Both passes apply a 5 fps/640-pixel filter, so
 transitions between sampled frames can still be missed. A failed probe selects
 only the cheap pass. If both passes fail, transcript and interval coverage still

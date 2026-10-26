@@ -815,7 +815,7 @@ it.each(['invalid-chunk', 'mid-SSE-reset', 'mid-body-reset'] as const)(
         req.socket.write(
           `HTTP/1.1 200 OK\r\nContent-Type: ${contentType}\r\nTransfer-Encoding: chunked\r\n\r\n` +
             (failure === 'invalid-chunk'
-              ? '5\r\nab\r\nZZ\r\n'
+              ? '2\r\nab\r\nZZ\r\n'
               : `${Buffer.byteLength(payload).toString(16)}\r\n${payload}\r\n`),
         );
         if (failure !== 'invalid-chunk')
