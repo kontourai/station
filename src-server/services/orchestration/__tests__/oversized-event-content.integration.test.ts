@@ -13,6 +13,7 @@ import {
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
+import { computeViewedContentDigest } from '@kontourai/station-sdk/runtime-event-content';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type {
   ProviderAdapterMetadata,
@@ -26,7 +27,10 @@ import type { IProviderAdapterRegistry } from '../../../providers/provider-inter
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { DELTA_SPLIT_MAX_BYTES } from '../delta-splitting.js';
 import { EventBus } from '../event-bus.js';
-import { EVENT_STORED_TARGET_BYTES } from '../event-content-spill.js';
+import {
+  EVENT_STORED_TARGET_BYTES,
+  storedEventDigest,
+} from '../event-content-spill.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 
@@ -282,5 +286,99 @@ describe('oversized event content through the live adapter loop', () => {
             'adapter-event-stream-interrupted',
       ),
     ).toBe(false);
+  });
+
+  describe('allowing a request whose content was stored out of line', () => {
+    const openBigWrite = async () => {
+      adapter.events.push({
+        eventId: 'open-big',
+        provider: 'claude',
+        threadId,
+        turnId: 'turn-1',
+        createdAt: at(),
+        requestId: 'req-big',
+        method: 'request.opened',
+        requestType: 'approval',
+        title: 'Allow Write',
+        payload: {
+          toolName: 'Write',
+          toolCallId: 'toolu_big',
+          toolInput: { file_path: '/repo/x.ts', content: 'y'.repeat(200_000) },
+          suggestions: [],
+        },
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(() =>
+        expect(stored().some((e) => e.id === 'open-big')).toBe(true),
+      );
+      return stored().find((e) => e.id === 'open-big')!.payload;
+    };
+
+    test('refuses an accept without the viewed-content digest', async () => {
+      await openBigWrite();
+      await expect(
+        service.dispatch({
+          type: 'respondToRequest',
+          threadId,
+          requestId: 'req-big',
+          expectedRequestEventId: 'open-big',
+          decision: 'accept',
+        }),
+      ).rejects.toMatchObject({ code: 'request_content_not_loaded' });
+      expect(adapter.respondToRequest).not.toHaveBeenCalled();
+    });
+
+    test('refuses a digest of a different event', async () => {
+      await openBigWrite();
+      await expect(
+        service.dispatch({
+          type: 'respondToRequest',
+          threadId,
+          requestId: 'req-big',
+          expectedRequestEventId: 'open-big',
+          decision: 'acceptForSession',
+          viewedContentDigest: `sha256-${'0'.repeat(64)}`,
+        }),
+      ).rejects.toMatchObject({ code: 'request_content_not_loaded' });
+      expect(adapter.respondToRequest).not.toHaveBeenCalled();
+    });
+
+    test('accepts with the digest a client computes from the live frame', async () => {
+      const stored = await openBigWrite();
+      // The client hashes the event as it arrived (an SSE frame, parsed);
+      // the server hashes its stored row. They must agree.
+      const frame = JSON.parse(
+        JSON.stringify(frames.find((e) => e.eventId === 'open-big')),
+      );
+      const clientDigest = await computeViewedContentDigest(frame);
+      expect(clientDigest).toBe(storedEventDigest(stored));
+      await service.dispatch({
+        type: 'respondToRequest',
+        threadId,
+        requestId: 'req-big',
+        expectedRequestEventId: 'open-big',
+        decision: 'accept',
+        viewedContentDigest: clientDigest,
+      });
+      expect(adapter.respondToRequest).toHaveBeenCalledWith(
+        threadId,
+        'req-big',
+        'accept',
+      );
+    });
+
+    test('a decline never needs the digest', async () => {
+      await openBigWrite();
+      await service.dispatch({
+        type: 'respondToRequest',
+        threadId,
+        requestId: 'req-big',
+        decision: 'decline',
+      });
+      expect(adapter.respondToRequest).toHaveBeenCalledWith(
+        threadId,
+        'req-big',
+        'decline',
+      );
+    });
   });
 });

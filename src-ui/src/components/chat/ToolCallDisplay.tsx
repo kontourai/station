@@ -1,3 +1,4 @@
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   parseStationControlRefusal,
   type StationControlRefusalView,
@@ -43,6 +44,7 @@ import {
   TerminalGlyph,
 } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
+import { ErrorState } from '../state';
 import { useApprovalSheet } from './ApprovalSheetContext';
 import { OutgoingSessionMessage } from './agent-message/OutgoingSessionMessage';
 import { hasStationControlCallRow } from './agent-message/station-control-calls';
@@ -69,6 +71,10 @@ import {
   toolCallPhase,
 } from './tool-call-labels';
 import { toolDisplayView } from './tool-display-view';
+import {
+  type ApprovalContentGate,
+  useApprovalContent,
+} from './useApprovalContent';
 
 const loadTranscriptMCPApp = () => import('./TranscriptMCPApp');
 
@@ -109,6 +115,8 @@ export interface ToolCallData {
   /** #2316: the thread of the request that set `approvalId`. */
   approvalThreadId?: string;
   approvalEventId?: string;
+  /** See `MessagePart.approvalContentEvent`. */
+  approvalContentEvent?: CanonicalRuntimeEvent;
   /** See `MessagePart.approvalToolName` — what the session grant names. */
   approvalToolName?: string;
   /** #2915/#2916: what a session answer grants; see `MessagePart`. */
@@ -213,7 +221,18 @@ function ToolCallRow({
   const candidateRef = transcriptMcpToolRef(toolCall);
   const appToolRef =
     candidateRef && appTools.has(candidateRef) ? candidateRef : undefined;
-  const display = toolDisplayView(toolCall);
+  // docs/design/event-content-spill.md: an approval whose content was
+  // stored out of line is loaded whole before Allow is offered, and the
+  // loaded arguments are what the details show.
+  const { gate: contentGate, loader: contentLoader } = useApprovalContent(
+    toolCall,
+    isToolCallAwaitingApproval(toolCall) && Boolean(onApprove),
+  );
+  const display = toolDisplayView(
+    contentGate.args !== undefined
+      ? { ...toolCall, args: contentGate.args }
+      : toolCall,
+  );
   const toolName = display.toolName;
   const originalName = toolCall.originalName;
   const args = display.args;
@@ -440,6 +459,7 @@ function ToolCallRow({
           }}
         />
       )}
+      {contentLoader}
       {awaitingApproval && onApprove && (
         <div className="tool-call__actions">
           <ToolApprovalControls
@@ -449,11 +469,16 @@ function ToolCallRow({
               requestEventId: toolCall.approvalEventId,
             }}
             onApprove={onApprove}
+            contentGate={contentGate}
             grantToolName={grantToolName}
-            serverGrant={toolCall.approvalServerGrant ?? 'none'}
+            serverGrant={
+              contentGate.serverGrant ?? toolCall.approvalServerGrant ?? 'none'
+            }
             sessionGrant={
+              // Grants derive from the resolved request once it is loaded.
               // A part without the projected grant (a registry-route
               // request) is judged by its tool name alone.
+              contentGate.sessionGrant ??
               toolCall.approvalSessionGrant ??
               toolRequestSessionGrant({ toolName: grantToolName })
             }
@@ -497,6 +522,47 @@ type ApprovalPhase =
   | 'sent'
   | 'already-settled'
   | 'unconfirmed';
+
+/**
+ * The decision body a gate allows: the full body once the request is loaded
+ * (or needed no loading), Deny alone until then. Declining needs no content.
+ */
+function gatedDecisionBody(
+  gate: ApprovalContentGate | undefined,
+  grantLabel: string | undefined,
+  serverGrant: ToolRequestServerGrant,
+) {
+  const body = approvalDecisionBody(
+    grantLabel,
+    serverGrant === 'server' ? STATION_BROWSER_SERVER_GRANT_LABEL : undefined,
+  );
+  return !gate || gate.allowable
+    ? body
+    : {
+        ...body,
+        options: body.options.filter((option) => option.effect === 'deny'),
+      };
+}
+
+/** Loading and failure of an approval's out-of-line content. */
+function ApprovalContentStatus({ gate }: { gate?: ApprovalContentGate }) {
+  if (!gate || gate.status === 'not-needed' || gate.status === 'ready')
+    return null;
+  if (gate.status === 'loading')
+    return (
+      <p className="tool-call__approval-loading" role="status">
+        Loading the full request before it can be allowed…
+      </p>
+    );
+  return (
+    <ErrorState
+      variant="compact"
+      title="The full request could not be loaded"
+      description="It cannot be allowed until it has loaded. You can still deny it."
+      action={<Button onClick={gate.retry}>Try again</Button>}
+    />
+  );
+}
 
 /** The decision lifecycle above, shared by the inline buttons and the sheet. */
 function useApprovalDecision(
@@ -716,6 +782,8 @@ function ApprovalDecisionStatus({
 
 interface ToolApprovalControlProps {
   onApprove: ToolApprovalHandler;
+  /** Allow is offered only once `contentGate.allowable` (see useApprovalContent). */
+  contentGate?: ApprovalContentGate;
   serverGrant: ToolRequestServerGrant;
   reference?: ApprovalAnswerReference;
   onCheck?: () => Promise<'pending' | 'already-settled'>;
@@ -783,6 +851,7 @@ function ToolApprovalControls({
 
 function ToolApprovalSheet({
   serverGrant,
+  contentGate,
   reference,
   onApprove,
   onCheck,
@@ -815,12 +884,7 @@ function ToolApprovalSheet({
   );
   const actions = (
     <DecisionActionRow
-      body={approvalDecisionBody(
-        grantLabel,
-        serverGrant === 'server'
-          ? STATION_BROWSER_SERVER_GRANT_LABEL
-          : undefined,
-      )}
+      body={gatedDecisionBody(contentGate, grantLabel, serverGrant)}
       busy={busy}
       inFlight={inFlight}
       chosen={chosen}
@@ -830,6 +894,7 @@ function ToolApprovalSheet({
   if (grouped)
     return (
       <>
+        <ApprovalContentStatus gate={contentGate} />
         {actions}
         {status}
       </>
@@ -853,6 +918,7 @@ function ToolApprovalSheet({
           actions={actions}
         >
           {details ?? <p className="request-sheet__status">{summary}</p>}
+          <ApprovalContentStatus gate={contentGate} />
           {status}
         </RequestSheet>
       )}
@@ -864,6 +930,7 @@ function ToolApprovalButtons({
   reference,
   onCheck,
   onApprove,
+  contentGate,
   grantToolName,
   serverGrant,
   sessionGrant,
@@ -882,13 +949,9 @@ function ToolApprovalButtons({
   // `toolName`, which can be an ACP title — a whole command line.
   return (
     <>
+      <ApprovalContentStatus gate={contentGate} />
       <DecisionButtons
-        body={approvalDecisionBody(
-          grantLabel,
-          serverGrant === 'server'
-            ? STATION_BROWSER_SERVER_GRANT_LABEL
-            : undefined,
-        )}
+        body={gatedDecisionBody(contentGate, grantLabel, serverGrant)}
         busy={busy}
         onChoose={decide}
       />

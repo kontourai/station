@@ -18,6 +18,7 @@ import {
   type RuntimeEventContentKind,
   type RuntimeEventContentRef,
   type RuntimeEventSpilledContent,
+  runtimeEventStoredText,
   unescapeRuntimeEventContent,
   usesReservedContentKey,
 } from '@kontourai/station-contracts/runtime-event-content';
@@ -124,6 +125,14 @@ function previewOf(text: string): string {
     end = index + 1;
   }
   return text.slice(0, end);
+}
+
+/**
+ * The viewed-content digest of a stored event (see `viewedContentDigest` on
+ * the respond command): sha256 of its stored text.
+ */
+export function storedEventDigest(event: unknown): string {
+  return `sha256-${createHash('sha256').update(runtimeEventStoredText(event), 'utf8').digest('hex')}`;
 }
 
 export function contentDigest(

@@ -1,6 +1,7 @@
 import { isStationCheckBackTurn } from '@kontourai/station-contracts/agent-schedule';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import {
+  hasRuntimeEventContentRefs,
   isRuntimeEventContentRef,
   isRuntimeEventContentUnavailable,
   runtimeEventContentDisplayText,
@@ -1281,6 +1282,11 @@ export function projectRuntimeEventsToMessages(
           target.approvalServerGrant = toolRequestServerGrantFromPayload(
             ev.payload,
           );
+          // docs/design/event-content-spill.md: what a surface must load
+          // whole before it offers Allow.
+          if (ev.spilledContent || hasRuntimeEventContentRefs(target.args))
+            target.approvalContentEvent = ev;
+          else delete target.approvalContentEvent;
           target.state = 'awaiting-approval';
           approvalTargets.set(ev.requestId, target);
           openApprovalParts.set(approvalKey(ev.threadId, ev.requestId), {

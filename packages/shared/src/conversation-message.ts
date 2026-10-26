@@ -1,6 +1,9 @@
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import type { InputRequestRecord } from '@kontourai/station-contracts/input-request';
-import type { EngineToolKind } from '@kontourai/station-contracts/runtime-events';
+import type {
+  CanonicalRuntimeEvent,
+  EngineToolKind,
+} from '@kontourai/station-contracts/runtime-events';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import type {
   ToolRequestServerGrant,
@@ -108,6 +111,13 @@ export interface MessagePart {
    * Set only next to `approvalThreadId`.
    */
   approvalEventId?: string;
+  /**
+   * docs/design/event-content-spill.md: the stored `request.opened` this
+   * approval answers, set only when its content (or the bound call's
+   * arguments) was stored out of line. A surface must load it whole before
+   * it offers Allow.
+   */
+  approvalContentEvent?: CanonicalRuntimeEvent;
   /**
    * The tool name that `request.opened`'s payload reported, if any — the name
    * an adapter records a session grant under. The session-grant button names

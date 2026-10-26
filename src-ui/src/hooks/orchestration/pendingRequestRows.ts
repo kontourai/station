@@ -165,6 +165,8 @@ export function unansweredApprovalRequests(
       ...(inputRequest ? { inputRequest } : {}),
       approvalThreadId: request.threadId,
       approvalEventId: request.eventId,
+      // docs/design/event-content-spill.md: loaded whole before Allow.
+      ...(request.spilledContent ? { approvalContentEvent: request } : {}),
       approvalSessionGrant: toolRequestSessionGrantFromPayload(request.payload),
       approvalServerGrant: toolRequestServerGrantFromPayload(request.payload),
     };

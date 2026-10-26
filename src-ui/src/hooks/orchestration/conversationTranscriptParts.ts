@@ -48,6 +48,9 @@ export function conversationPartToContentParts(
     approvalId: part.approvalId,
     approvalThreadId: part.approvalThreadId,
     approvalEventId: part.approvalEventId,
+    ...(part.approvalContentEvent
+      ? { approvalContentEvent: part.approvalContentEvent }
+      : {}),
     ...(part.approvalToolName !== undefined
       ? { approvalToolName: part.approvalToolName }
       : {}),

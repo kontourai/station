@@ -97,6 +97,7 @@ export * from './relay-enrollment';
 export * from './request-inspection';
 export * from './reviews';
 export * from './runs';
+export * from './runtime-event-content';
 export * from './scheduler';
 export * from './send-execution-message';
 export { sentTurnKey } from './sent-turn-key';

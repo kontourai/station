@@ -232,6 +232,29 @@ export class SessionEventReads {
     };
   }
 
+  /**
+   * One out-of-line event content body (docs/design/event-content-spill.md),
+   * under exactly the authority a window read of the same session uses, so
+   * it works wherever the window does (hosted tenant scope included). The
+   * lookup is by `(threadId, digest)`: a digest from another thread is not
+   * found.
+   */
+  readEventContent(
+    threadId: string,
+    digest: string,
+    authority: SessionReadScope,
+  ): { kind: 'string' | 'json'; body: string; bytes: number } | null {
+    const persisted = this.deps.eventStore?.readSessionByThread(threadId);
+    if (persisted) this.deps.hydratePersistedTenantContexts([persisted]);
+    const loaded = this.deps.loadedSessionForThread(threadId);
+    if (
+      (!persisted && !loaded) ||
+      !this.deps.canReadSession(threadId, authority)
+    )
+      return null;
+    return this.deps.eventStore?.readEventContentBody(threadId, digest) ?? null;
+  }
+
   async readSessionEventWindow(
     threadId: string,
     options: {

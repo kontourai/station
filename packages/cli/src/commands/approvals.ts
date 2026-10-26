@@ -36,6 +36,7 @@ import {
   authenticatedFetch,
   getOrchestrationSession,
   listOrchestrationSessions,
+  loadRuntimeEventContent,
   respondToRequest,
 } from '@kontourai/station-sdk/client';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
@@ -470,7 +471,8 @@ async function expectedRequestEvent(
   apiBase: string,
   threadId: string,
   requestId: string,
-): Promise<{ expectedRequestEventId?: string }> {
+  decision: ApprovalDecision,
+): Promise<{ expectedRequestEventId?: string; viewedContentDigest?: string }> {
   let detail: OrchestrationSessionDetail;
   try {
     detail = await getOrchestrationSession<OrchestrationSessionDetail>(
@@ -505,6 +507,27 @@ async function expectedRequestEvent(
     payload?.questionnaire !== undefined
   )
     return {};
+  // docs/design/event-content-spill.md: allowing a request whose content was
+  // stored out of line loads all of it first; the digest proves the load.
+  // A failed load leaves the answer unbound and the server refuses it.
+  if (
+    opened?.spilledContent &&
+    (decision === 'accept' || decision === 'acceptForSession')
+  ) {
+    try {
+      const { viewedContentDigest } = await loadRuntimeEventContent(
+        apiBase,
+        threadId,
+        opened,
+      );
+      return {
+        expectedRequestEventId: request.requestEventId,
+        viewedContentDigest,
+      };
+    } catch {
+      return { expectedRequestEventId: request.requestEventId };
+    }
+  }
   return { expectedRequestEventId: request.requestEventId };
 }
 
@@ -525,7 +548,12 @@ async function runApprovalsRespond(
   const { receipt } = await respondToRequest(apiBase, {
     threadId,
     requestId,
-    ...(await expectedRequestEvent(apiBase, threadId, requestId)),
+    ...(await expectedRequestEvent(
+      apiBase,
+      threadId,
+      requestId,
+      decision as ApprovalDecision,
+    )),
     decision: decision as ApprovalDecision,
   });
 

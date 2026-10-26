@@ -156,6 +156,17 @@ export function collectRuntimeEventContentRefs(
   return [...seen.values()];
 }
 
+/**
+ * The text a viewed-content digest covers: the stored, reference-bearing
+ * event exactly as EventStore persisted and delivered it. References hash
+ * their bodies, so this binds the exact content without canonicalizing the
+ * resolved value. The digest is `sha256-` plus the hex SHA-256 of this
+ * text's UTF-8 bytes.
+ */
+export function runtimeEventStoredText(event: unknown): string {
+  return JSON.stringify(event);
+}
+
 /** True when the value holds any reference or unavailable marker. */
 export function hasRuntimeEventContentRefs(value: unknown): boolean {
   return collectRuntimeEventContentRefs(value).length > 0;

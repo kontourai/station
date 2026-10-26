@@ -25,6 +25,37 @@ interface ApprovalAnswerState {
   sessionGrantScope?: 'server';
   error?: Error;
 }
+/**
+ * docs/design/event-content-spill.md: the digest an approval surface
+ * computed after loading every reference of a request whose content was
+ * stored out of line, by (thread, request event). An allow decision for
+ * such a request carries it; the server refuses one without it, so a
+ * surface that never loaded the content cannot allow it.
+ */
+const viewedContentDigests = new Map<string, string>();
+const contentKey = (threadId: string, requestEventId: string) =>
+  JSON.stringify([threadId, requestEventId]);
+export function recordViewedContentDigest(
+  threadId: string,
+  requestEventId: string,
+  digest: string,
+) {
+  if (viewedContentDigests.size >= 256)
+    viewedContentDigests.delete(viewedContentDigests.keys().next().value!);
+  viewedContentDigests.set(contentKey(threadId, requestEventId), digest);
+}
+function viewedContentDigestFor(request: {
+  threadId: string;
+  requestEventId?: string;
+  decision: 'accept' | 'acceptForSession' | 'decline';
+}): string | undefined {
+  if (request.decision === 'decline' || !request.requestEventId)
+    return undefined;
+  return viewedContentDigests.get(
+    contentKey(request.threadId, request.requestEventId),
+  );
+}
+
 const answerListeners = new Set<() => void>();
 export function subscribeApprovalAnswers(listener: () => void) {
   answerListeners.add(listener);
@@ -209,9 +240,11 @@ async function sendAnswer(
     sessionGrantScope?: 'server';
   },
 ): Promise<OrchestrationAnswerOutcome> {
+  const viewedContentDigest = viewedContentDigestFor(request);
   try {
     await resolveOrchestrationRequest({
       apiBase,
+      ...(viewedContentDigest ? { viewedContentDigest } : {}),
       threadId: request.threadId,
       requestId: request.requestId,
       // #2316: answer only the exact prompt the user saw.

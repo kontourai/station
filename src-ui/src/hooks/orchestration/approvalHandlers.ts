@@ -233,20 +233,44 @@ function showApprovalToast(
     // and the sheet render. The session option's label says what the grant
     // covers: "Allow for Session" reads as a grant for this one call, and it
     // is a standing grant for every later call to the same tool.
-    actions: approvalDecisionBody(
-      view.grantLabel,
-      view.serverGrantLabel,
-    ).options.map((option) => ({
-      label: option.label,
-      variant:
-        option.effect === 'deny'
-          ? ('danger' as const)
-          : option.scope === 'session'
-            ? ('secondary' as const)
-            : ('primary' as const),
-      onClick: () =>
-        answer(decisionOptionResponse(option), option.sessionGrantScope),
-    })),
+    // docs/design/event-content-spill.md: a request whose content was
+    // stored out of line is allowed only from its card, after the card has
+    // loaded all of it. The toast offers the way there, and Deny.
+    actions: [
+      ...(event.spilledContent
+        ? [
+            {
+              label: 'Review',
+              variant: 'primary' as const,
+              onClick: () => {
+                const chat = activeChatsStore.getChatForExecutionSession(
+                  event.threadId,
+                );
+                navigationStore.navigate('/', {
+                  chat: chat?.conversationId ?? event.threadId,
+                  dock: 'open',
+                });
+              },
+            },
+          ]
+        : []),
+      ...(event.spilledContent
+        ? approvalDecisionBody(undefined).options.filter(
+            (option) => option.effect === 'deny',
+          )
+        : approvalDecisionBody(view.grantLabel, view.serverGrantLabel).options
+      ).map((option) => ({
+        label: option.label,
+        variant:
+          option.effect === 'deny'
+            ? ('danger' as const)
+            : option.scope === 'session'
+              ? ('secondary' as const)
+              : ('primary' as const),
+        onClick: () =>
+          answer(decisionOptionResponse(option), option.sessionGrantScope),
+      })),
+    ],
   });
 
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);

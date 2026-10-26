@@ -1,5 +1,6 @@
 import type { RequestCredentialEvidence } from '@kontourai/station-connect';
 import type { OrchestrationSequencedEvent } from '@kontourai/station-contracts/orchestration';
+import { runtimeEventContentDisplayText } from '@kontourai/station-contracts/runtime-event-content';
 import { createStore, get, update } from 'idb-keyval';
 import { buildInfo } from '../build-info';
 
@@ -178,8 +179,11 @@ export async function saveOfflineReading(
     const prompt = events.find(
       ({ event }) => event.method === 'turn.started' && event.turnId === id,
     )?.event;
-    if (prompt?.method === 'turn.started' && prompt.prompt)
-      turns.push({ role: 'user', text: prompt.prompt });
+    const promptText =
+      prompt?.method === 'turn.started'
+        ? runtimeEventContentDisplayText(prompt.prompt)
+        : undefined;
+    if (promptText) turns.push({ role: 'user', text: promptText });
     const text = events
       .filter(
         ({ event }) =>

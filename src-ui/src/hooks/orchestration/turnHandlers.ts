@@ -7,6 +7,7 @@ import {
   ENGINE_TURN_FAILED_CODE,
   isApprovalMode,
 } from '@kontourai/station-contracts/provider';
+import { runtimeEventContentDisplayText } from '@kontourai/station-contracts/runtime-event-content';
 import {
   isDeferredRetriableTurnError,
   isProviderTriggeredTurn,
@@ -134,7 +135,10 @@ export function handleTurnStartedEvent(
     // `streamingMessage` the way a fresh `turn.started` does — that wipe is
     // how a Claude course-correction used to blank the in-flight answer.
     // #3419: another agent's steer is shown as that agent's words.
-    const input = agentMessageInput(event);
+    const input = agentMessageInput({
+      ...event,
+      prompt: runtimeEventContentDisplayText(event.prompt),
+    });
     const prompt = input.prompt?.trim();
     const messages = [...(currentChat?.messages ?? [])];
     if (prompt) {
@@ -162,7 +166,10 @@ export function handleTurnStartedEvent(
   }
 
   let userMessages = currentChat?.messages;
-  const turnInput = agentMessageInput(event);
+  // A long prompt stored out of line shows its preview, marked partial
+  // (docs/design/event-content-spill.md).
+  const promptText = runtimeEventContentDisplayText(event.prompt);
+  const turnInput = agentMessageInput({ ...event, prompt: promptText });
   if (
     event.prompt &&
     !userMessages?.some(
@@ -202,7 +209,7 @@ export function handleTurnStartedEvent(
         clientId: `event-input:${event.eventId ?? event.turnId}`,
         sourceEventId: event.eventId,
         role: 'user',
-        content: turnInput.prompt ?? event.prompt,
+        content: turnInput.prompt ?? promptText ?? '',
         ...(turnInput.sender ? { sender: turnInput.sender } : {}),
         timestamp: Date.parse(event.createdAt),
         turnId: event.turnId,
@@ -382,9 +389,12 @@ export function handleTurnCompletedEvent(
       ?.orchestrationHistoryRevision ?? 0;
   const closesOpenTurn = !openTurnId || openTurnId === event.turnId;
 
+  // A reply stored out of line is not known here; the streamed text stands.
+  const outputText =
+    typeof event.outputText === 'string' ? event.outputText : undefined;
   finalizeAssistantTurn(
     event.threadId,
-    event.outputText,
+    outputText,
     closesOpenTurn
       ? {
           turnId: event.turnId,
@@ -426,8 +436,8 @@ export function handleTurnCompletedEvent(
       cancelled: event.finishReason === 'cancelled',
       providerTurn: isProviderTriggeredTurn(event),
       closedWithoutResult: event.metadata?.closedWithoutResult !== undefined,
-      text: event.outputText?.trim()
-        ? event.outputText
+      text: outputText?.trim()
+        ? outputText
         : activeChatsStore
             .getChatForExecutionSession(event.threadId)
             ?.messages?.slice()

@@ -141,6 +141,8 @@ export type ChatContentPart = {
   approvalThreadId?: string;
   /** #2316: see `MessagePart.approvalEventId`. */
   approvalEventId?: string;
+  /** See `MessagePart.approvalContentEvent`. */
+  approvalContentEvent?: import('@kontourai/station-contracts/runtime-events').CanonicalRuntimeEvent;
   /** See `MessagePart.approvalToolName`. */
   approvalToolName?: string;
   /** #2915: see `MessagePart.approvalSessionGrant`. */

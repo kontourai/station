@@ -347,6 +347,7 @@ import {
   withoutDispatchCanonicalCwd,
 } from './dispatch-cwd-admission.js';
 import type { EventBus } from './event-bus.js';
+import { storedEventDigest } from './event-content-spill.js';
 import type {
   CommandRefusalPhase,
   ConversationForkProvenance,
@@ -5758,6 +5759,16 @@ export class OrchestrationService {
     return this.sessionEventReads.readSessionEventPage(threadId, options);
   }
 
+  /** See {@link SessionEventReads.readEventContent}. */
+  readEventContent(
+    threadId: string,
+    digest: string,
+    authority: SessionReadScope,
+  ): { kind: 'string' | 'json'; body: string; bytes: number } | null {
+    this.initialize();
+    return this.sessionEventReads.readEventContent(threadId, digest, authority);
+  }
+
   async readSessionEventWindow(
     threadId: string,
     options: {
@@ -9172,6 +9183,25 @@ export class OrchestrationService {
           // and is refused with a reason otherwise; never coerced or cut to
           // fit. This runs whatever the client checked: a client is not
           // trusted to have run the same validator.
+          // docs/design/event-content-spill.md: a request whose content was
+          // stored out of line is allowed only by a client that loaded it
+          // whole. The digest binds this exact stored event (references hash
+          // their bodies); decline and cancel never need it.
+          if (
+            currentQuestionRequest?.state === 'found' &&
+            currentQuestionRequest.event.payload.method === 'request.opened' &&
+            currentQuestionRequest.event.payload.spilledContent &&
+            (command.decision === 'accept' ||
+              command.decision === 'acceptForSession') &&
+            (command.expectedRequestEventId !==
+              currentQuestionRequest.event.payload.eventId ||
+              command.viewedContentDigest !==
+                storedEventDigest(currentQuestionRequest.event.payload))
+          )
+            throw new RequestEventGuardError(
+              'request_content_not_loaded',
+              'Load the full request before allowing it.',
+            );
           const inputForm = inputRequestFromRequestEvent(
             currentQuestionRequest?.state === 'found' &&
               currentQuestionRequest.event.payload.method === 'request.opened'

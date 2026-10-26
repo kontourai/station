@@ -128,6 +128,7 @@ import {
   DISPATCH_CANONICAL_CWD_METADATA_KEY,
   type DispatchCwdAdmission,
 } from '../services/orchestration/dispatch-cwd-admission.js';
+import { storedEventDigest } from '../services/orchestration/event-content-spill.js';
 import { captureExecutionWorkspaceBinding } from '../services/orchestration/execution-workspace-binding.js';
 import {
   type ForegroundInvocationAdmission,
@@ -5189,6 +5190,25 @@ export async function respondToDelegatedTaskRequest(
   if (!requestIsOpen || requestWasResolved) {
     throw new Error('Delegated task request is not open');
   }
+  // docs/design/event-content-spill.md: allowing a request whose content
+  // was stored out of line must name the exact stored event this tool
+  // answered from (owner decision: agent approve tools send the digest).
+  const opened = [...events]
+    .reverse()
+    .find(
+      (event) =>
+        event.method === 'request.opened' &&
+        event.requestId === input.requestId,
+    );
+  const contentBinding =
+    opened?.spilledContent &&
+    typeof opened.eventId === 'string' &&
+    (input.decision === 'accept' || input.decision === 'acceptForSession')
+      ? {
+          expectedRequestEventId: opened.eventId,
+          viewedContentDigest: storedEventDigest(opened),
+        }
+      : {};
   const snapshot = snapshotFor(loaded);
   if (loaded.target.kind === 'current' && orchestrationService) {
     await orchestrationService.dispatchWithReceipt(
@@ -5197,6 +5217,7 @@ export async function respondToDelegatedTaskRequest(
         threadId: snapshot.currentSessionId,
         requestId: input.requestId,
         decision: input.decision,
+        ...contentBinding,
       },
       dispatchContextForAuthority(
         readAuthority,
@@ -5222,6 +5243,7 @@ export async function respondToDelegatedTaskRequest(
           threadId: snapshot.currentSessionId,
           requestId: input.requestId,
           decision: input.decision,
+          ...contentBinding,
         },
         loaded.target.requestOptions,
       ),
