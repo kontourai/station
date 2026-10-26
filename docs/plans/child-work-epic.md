@@ -47,33 +47,39 @@ Independent source review approved the slice after historical-read and replay
 findings were repaired. Pre-payment and signed-turn custody mutations fail their
 owning integration assertions; restoration checks are retained separately.
 
-The next authority/accounting increment needs published contracts at the existing
-upstream owners. Flow source `642fd6d20d6` adds exact-head evaluation and retry
-mutation under a host-held lease, acquired before the native run lock and retained
-through publication. Independent source review approved it after input-substitution
-and report-republication findings were repaired. Local evidence includes 542 Node
-tests, console smoke, and 34 browser tests with 10 skips; publication and Station
-adoption remain pending.
+The branch merged main through `1ab221bf3d9` normally at `7ae6707ed56`.
+Upstream Flow 5.3.0 and Dispatch 0.8.0 are now published: registry integrity and
+installed runtime files were checked against their release builds. Flow adds
+exact-head evaluation/retry under a host-held lease, and Dispatch adds actual
+existing-reservation inspection and checked exact settlement. Their source
+reviews and local evidence remain separate from Station adoption.
 
-Dispatch [#89](https://github.com/kontourai/dispatch/pull/89) merged actual
-existing-reservation inspection and checked exact settlement. Source review and
-95 local tests pass. The version-only
-[0.8.0 release PR](https://github.com/kontourai/dispatch/pull/90) is pending;
-no released-package claim follows from the source merge. Full recovery still
-needs Flow Agents-owned correlation of the actual Dispatch reservation, retained
-original-epoch accounting evidence, and separate exact completion of Dispatch
-and Flow authority accounting without another provider call. The private Station
-historical-reconciliation draft currently addresses only the authority side and
-is neither mounted nor qualified. Unknown and above-capacity usage remain holds.
+Flow Agents source `6a66cbc39e` composes the actual Dispatch reservation bridge,
+original-epoch dual-ledger recovery and checked Flow continuation admission. The
+combined source and aligned coordinator closure migration are source-approved;
+67 rounds/runtime cases pass. Full qualification is still open. A broad run
+failed two kit-custody controls under load; the four-worker candidate at
+`75fbae3c` preserves the full corpus, assertions and protected 20-minute limit
+and is under readiness verification. It is not yet published or adopted by
+Station; Station still consumes Flow Agents 9.7.0.
 
-Evaluation-only serving, reappraisal/retry authorization, historical reconciliation,
-Google/mixed-family runtime, live/device journeys and final combined qualification
-remain open. A context
-ACK alone cannot authorize another paid report: Flow must admit its actual
-route-back or retry, using current-head sync evidence and original immutable
-capacity. Readiness at `dc1a940f58e` failed documentation truth on outstanding
-review/capture freshness; the other selected checks passed. No combined Station
-PR has been opened.
+Station captures original approved pricing evidence at `51b3764882d` and
+re-audits complete raw-response usage against it at `8f8732aaddc`, without
+reactivating execution capabilities or consulting the current registry. The
+contract and actual SDK-retention/persistence checks pass 133 cases, and
+server-test typechecking passes. Independent source review approved the verifier; its persisted-caller
+mutation fails all four provider/protocol cases with 72 controls passing. The
+source is restored byte-exact and all 76 caller-file cases pass again. The historical-reconciliation draft
+still addresses only authority accounting and is neither mounted nor fully
+qualified. Unknown and above-capacity usage remain holds.
+
+Evaluation-only serving, reappraisal/retry authorization, complete historical
+reconciliation, Google/mixed-family runtime, live/device journeys and final
+combined qualification remain open. An ACK alone cannot authorize another paid
+report: Flow must admit its actual route-back or retry using current-head sync
+evidence and original immutable capacity. Station readiness at `51b3764882d`
+failed documentation truth on outstanding review/capture freshness; the other
+selected checks passed. No combined Station PR has been opened.
 
 ## Revision-bound implementation history
 
@@ -2053,3 +2059,25 @@ assertions with 72 controls passing. Source review requested an explicit
 qualification-field projection to exclude undeclared owner metadata; that
 repair passes the same 131 cases. No historical verification, published
 Flow Agents adoption, live billing or full-epic acceptance follows from capture.
+
+### Historical tariff verification boundary
+
+Commit `8f8732aaddc` adds a pure verifier for the retained pricing basis. It
+validates the original qualification at the recorded pricing time and recomputes
+complete raw-response usage with the same tariff arithmetic as live pricing.
+It does not consult the current registry or register executable contract/quote
+handles. The private evidence read used by historical reconciliation requires
+this verification; older records without pricing evidence refuse that mutation.
+Ordinary historical reads and the input-phase evidence path remain separate.
+
+The contract and actual SDK-retention/persistence tests pass 133 cases, and
+server-test typechecking passes. The first composed run retained four failures:
+its synthetic reservations exceeded the exact quote expected by the historical
+join. The fixture now reserves the actual quote, matching production preparation;
+the join was not relaxed. Ignoring the recorded pricing time fails both provider
+controls, then byte-exact restoration passes all 57 contract cases. Independent
+source review approved this boundary. Bypassing the persisted pricing check
+fails all four provider/protocol cases at the altered-raw-JSON refusal, with
+72 controls passing; byte-exact restoration passes all 76 caller-file cases. This does not wire
+Dispatch settlement, publish the upstream Flow Agents contract, or establish
+live/provider/device acceptance.
