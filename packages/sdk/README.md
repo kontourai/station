@@ -685,11 +685,11 @@ Station's theme supplies light/dark values. An independent host must provide
 the applicable variables and component styles; importing a component does not
 install Station's theme.
 
-## Subpaths without a reference section
+## Additional opt-in subpaths
 
-The [SDK reference](../../docs/reference/sdk.md) documents most surfaces. These
-subpaths are exported but not described there yet. Most keep a feature's hooks
-out of the first-paint root barrel.
+The [SDK reference](../../docs/reference/sdk.md) describes the public contracts
+and host requirements. These subpaths offer focused imports without requiring
+the root barrel.
 
 - Basis and answers: `/task-basis` and `/answer-basis` (Basis queries that take
   captured host authority), `/answer-support` (support bundles, claims and
@@ -703,8 +703,11 @@ out of the first-paint root barrel.
 - Setup and devices: `/setup-imports` and `/setup-imports-query` (existing-setup
   import), `/mobile-devices-query` (Device pane inventory and sessions),
   `/core-update-restart-status` (the update watchdog's restart outcome).
-- Workspace Panes: `/workspace-browser-preview` and `/workspace-file-preview`
-  (opt-in, browser-safe pane contracts with no host implementation).
+- Workspace Panes: `/workspace-browser-preview` supplies browser-safe pane
+  contracts without host discovery, proxy, authentication bridge, or renderer.
+  `/workspace-file-preview` supplies bounded file-read clients, queries, and
+  preview contracts; the host serves the protected reads and the renderer
+  decides how to display them. See [workspace visual files](../../docs/reference/sdk.md#workspace-visual-files).
 - Client plumbing: `/client-origin` (request origin headers),
   `/notification-read` (mark an enveloped notification read), `/error-state`
   (the shared error state component).
