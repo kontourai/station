@@ -164,6 +164,7 @@ test('a phone composer keeps "Agent moved" visible ahead of a long engine name',
       clippedBy: null,
     });
     expect(hint.width).toBeGreaterThan(0);
+    expect(hint.ownOverflow).toBeLessThanOrEqual(0);
     // The engine name is what gave way.
     const engine = await page.evaluate(
       unclipped,
