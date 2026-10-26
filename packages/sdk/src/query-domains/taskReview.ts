@@ -7,6 +7,8 @@ import type {
   TaskReviewResolveRequest,
   TaskReviewResponse,
   TaskReviewRevision,
+  TaskReviewSendRequest,
+  TaskReviewSendResponse,
   TaskReviewThreadView,
   TaskReviewView,
 } from '@kontourai/station-contracts/task-review';
@@ -239,6 +241,25 @@ export function useReopenReviewThreadMutation(taskId: string) {
         body,
       );
     },
+    {
+      invalidateKeys: [
+        [...taskReviewQueryKey(taskId)],
+        ['task-review-thread', taskId],
+      ],
+    },
+  );
+}
+
+export function useSendReviewThreadsMutation(taskId: string) {
+  return useApiMutation(
+    async (input: TaskReviewSendRequest) =>
+      result<Extract<TaskReviewSendResponse, { success: true }>['data']>(
+        await authenticatedFetch(await path(taskId, '/send'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(input),
+        }),
+      ),
     {
       invalidateKeys: [
         [...taskReviewQueryKey(taskId)],

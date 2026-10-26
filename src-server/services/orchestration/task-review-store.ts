@@ -56,6 +56,8 @@ export type TaskReviewStoredThread =
       readonly error: unknown;
     };
 export interface TaskReviewStore {
+  /** Internal lookup; writers check caller custody inside beforeCommit. */
+  readThreadById(threadId: string): TaskReviewThread | undefined;
   createThread(
     input: TaskReviewWriteContext & TaskReviewCreateThreadRequest,
   ): TaskReviewResponse<TaskReviewThread>;
@@ -444,6 +446,12 @@ export function createSqliteTaskReviewStore(
   const appendReviewEvent: TaskReviewStore['appendReviewEvent'] = (input) =>
     transact(input, () => append(input, input.threadId, input.event));
   return {
+    readThreadById: (threadId) => {
+      const row = db
+        .prepare('SELECT * FROM task_review_threads WHERE thread_id = ?')
+        .get(threadId) as ThreadRow | undefined;
+      return row ? fromRow(row) : undefined;
+    },
     readThread,
     listThreadEntries,
     listCaptures,

@@ -592,7 +592,13 @@
 
     "packages/contracts/src/ensemble.ts",
 
-    "packages/sdk/src/client/cli-session-groups.ts"
+    "packages/sdk/src/client/cli-session-groups.ts",
+
+    "src-server/services/orchestration/task-review-send.ts",
+
+    "src-server/routes/orchestration/task-review-station-control.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts"
   ],
 
   "checks": [

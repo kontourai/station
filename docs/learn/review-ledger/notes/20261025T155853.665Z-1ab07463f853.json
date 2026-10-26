@@ -1,0 +1,7 @@
+{
+  "revision": "2d1f916f2121e11db8145f0324d5f77e2ddf8c6f",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Scoped review of the changed self-configuring-agent source against the Session API: the new Tasks review tools use the existing verified caller, URL-token transport, self dispatch scope and internal REST pipeline. deliveryKey is a Task-review reply argument, not a change to Session send/steer/continuation APIs or their authorities. The Session API prose remains accurate for this delta. The combined 187 focused tests and affected typechecks passed; these are local fixtures, not a real provider or released-client qualification.","inputs":["docs/reference/session-api.md","docs/guides/self-configuring-agent.md"]}
+  ]
+}

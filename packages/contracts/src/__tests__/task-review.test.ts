@@ -304,7 +304,7 @@ describe('closed boundary parsers', () => {
     ],
     [
       review.parseTaskReviewSendRequest,
-      { threadIds: ['thread'], operationId: 'op' },
+      { threadIds: ['thread'], operationId: 'op', mode: 'send' },
     ],
     [
       review.parseTaskReviewCreateCaptureRequest,
@@ -630,8 +630,20 @@ describe('closed boundary parsers', () => {
     const input = {
       threadIds: Array.from({ length: 500 }, (_, i) => `t-${i}`),
       operationId: 'op',
+      mode: 'send' as const,
     };
     expect(review.parseTaskReviewSendRequest(input)).toEqual(input);
+    expect(
+      review.parseTaskReviewSendRequest({ ...input, mode: 'send-and-resolve' }),
+    ).toEqual({ ...input, mode: 'send-and-resolve' });
+    const { mode: _mode, ...legacy } = input;
+    expect(review.parseTaskReviewSendRequest(legacy)).toEqual(input);
+    for (const mode of ['resolve', '', null, 1, 's'.repeat(257)])
+      expect(review.parseTaskReviewSendRequest({ ...input, mode })).toBeNull();
+    expect(
+      review.parseTaskReviewSendRequest({ ...input, extra: true }),
+    ).toBeNull();
+
     for (const threadIds of [
       [],
       ['a', 'a'],

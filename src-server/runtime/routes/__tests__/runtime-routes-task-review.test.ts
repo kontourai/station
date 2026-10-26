@@ -830,6 +830,15 @@ describe('Task review through configureRuntimeRoutes', () => {
     ).toBe(200);
     expect(
       store.recordSendFailed({
+        ...session,
+        threadIds: [thread.threadId],
+        deliveryKey: 'delivery-one',
+        reason: 'Late failure',
+        operationId: 'late-failure',
+      }),
+    ).toMatchObject({ success: false, code: 'invalid-request' });
+    expect(
+      store.recordSendFailed({
         ...write,
         threadIds: [thread.threadId],
         deliveryKey: 'delivery-one',

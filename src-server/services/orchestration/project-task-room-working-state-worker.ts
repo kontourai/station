@@ -763,6 +763,10 @@ async function handle(message: any) {
         }
         const state = load(value.scope);
         if (!state) throw new Error('unavailable');
+        if (value.onlyIfEmpty === true && state.text()) {
+          db.exec('ROLLBACK');
+          return send(id, { kind: 'rejected' });
+        }
         const baseWorkingRevision = state.snapshot().revision;
         const revisions: Array<{ prior: string; revision: string }> = [];
         for (const operation of value.operations as TextDocumentOperation[]) {
