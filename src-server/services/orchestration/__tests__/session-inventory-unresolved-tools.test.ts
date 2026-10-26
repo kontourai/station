@@ -212,8 +212,21 @@ describe('Session inventory commands with no recorded result (#4178)', () => {
     try {
       seedCrashedTurn(store);
       // Enough later results that Execution spans three owner pages of 20
-      // events, with the two omitted commands inside the first.
-      for (let index = 0; index < 42; index += 1)
+      // events, with omitted commands inside the first and the second.
+      for (let index = 0; index < 42; index += 1) {
+        // A third command left open inside the second page.
+        if (index === 25)
+          settleUnresolvedClaudeToolCalls({
+            provider: 'claude',
+            record: {
+              session: { threadId: THREAD },
+              activeToolCalls: new Map([
+                ['call-open-3', { toolName: 'Bash', turnId: 'turn-1' }],
+              ]),
+            } as never,
+            publish: (event) => store.appendEvent(event),
+            createdAt: '2026-10-24T16:01:25.500Z',
+          });
         store.appendEvent({
           provider: 'claude',
           threadId: THREAD,
@@ -227,6 +240,7 @@ describe('Session inventory commands with no recorded result (#4178)', () => {
           status: 'success',
           output: 'ok',
         } as never);
+      }
 
       const legacy = await readExecution(store, 3, 'page');
       expect(legacy.pages).toBe(3);
@@ -237,10 +251,10 @@ describe('Session inventory commands with no recorded result (#4178)', () => {
       expect(legacy.finalCount).toEqual({ kind: 'exact', value: 43 });
 
       const current = await readExecution(store, 4, 'page');
-      expect(current.rows).toHaveLength(45);
+      expect(current.rows).toHaveLength(46);
       expect(
         current.rows.filter(([, status]) => status === 'unresolved'),
-      ).toHaveLength(2);
+      ).toHaveLength(3);
     } finally {
       store.close?.();
     }
