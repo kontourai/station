@@ -371,6 +371,130 @@ describe('ChromiumServerHost with a fake browser', () => {
     });
   });
 
+  test('an admitted popup keeps its exact target and continues the original POST without replaying navigation', async () => {
+    const { host, profileDir, emit, calls } = harness();
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    const phone = {
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 2,
+      mobile: true,
+    };
+    await host.cdp().send('Emulation.setDeviceMetricsOverride', phone, 'S-T1');
+    const closed = vi.fn();
+    host.onTargetClosed(closed);
+    const adopted = vi.fn(() => true);
+    host.onPopup(adopted);
+    emit('Target.targetCreated', {
+      targetInfo: { targetId: 'POST', type: 'page', url: '', openerId: 'T1' },
+    });
+    emit('Fetch.requestPaused', {
+      requestId: 'post-request',
+      request: {
+        url: 'https://example.com/submit',
+        method: 'POST',
+        postData: 'value=kept',
+      },
+      resourceType: 'Document',
+      frameId: 'POST',
+    });
+    await flush();
+    expect(adopted).toHaveBeenCalledExactlyOnceWith(
+      'T1',
+      { targetId: 'POST', cdpSessionId: 'S-POST' },
+      'https://example.com/submit',
+    );
+    expect(calls).toContainEqual({
+      method: 'Fetch.continueRequest',
+      params: { requestId: 'post-request' },
+      sessionId: undefined,
+    });
+    expect(
+      calls.filter(
+        (c) =>
+          c.method === 'Page.navigate' || c.method === 'Target.closeTarget',
+      ),
+    ).toEqual([]);
+    await host.cdp().send('Page.reload', {}, 'S-POST');
+    expect(calls.at(-1)?.sessionId).toBe('S-POST');
+    expect(calls).toContainEqual({
+      method: 'Emulation.setDeviceMetricsOverride',
+      params: phone,
+      sessionId: 'S-POST',
+    });
+    emit('Target.targetDestroyed', { targetId: 'POST' });
+    expect(closed).toHaveBeenCalledExactlyOnceWith('POST');
+    await expect(
+      host.cdp().send('Page.reload', {}, 'S-POST'),
+    ).rejects.toThrow();
+  });
+
+  test('a popup finishing attachment after its opener closes is refused and its request fails', async () => {
+    let unblock = () => {};
+    let hold = false;
+    const { host, profileDir, emit, calls } = harness(undefined, {
+      beforeAttach: () =>
+        hold
+          ? new Promise<void>((resolve) => {
+              unblock = resolve;
+            })
+          : Promise.resolve(),
+    });
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    const adopted = vi.fn(() => true);
+    host.onPopup(adopted);
+    hold = true;
+    emit('Target.targetCreated', {
+      targetInfo: { targetId: 'LATE', type: 'page', url: '', openerId: 'T1' },
+    });
+    emit('Fetch.requestPaused', {
+      requestId: 'late-request',
+      request: { url: 'https://example.com/' },
+      resourceType: 'Document',
+      frameId: 'LATE',
+    });
+    await host.closeTarget('T1');
+    unblock();
+    await flush();
+    expect(adopted).not.toHaveBeenCalled();
+    expect(calls).toContainEqual({
+      method: 'Target.closeTarget',
+      params: { targetId: 'LATE' },
+      sessionId: undefined,
+    });
+    expect(calls).toContainEqual({
+      method: 'Fetch.failRequest',
+      params: { requestId: 'late-request', errorReason: 'BlockedByClient' },
+      sessionId: undefined,
+    });
+    await expect(
+      host.cdp().send('Page.reload', {}, 'S-LATE'),
+    ).rejects.toThrow();
+  });
+
+  test('a popup never gets an exemption from Station listener interception', async () => {
+    const { host, profileDir, emit, calls } = harness();
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    const adopted = vi.fn(() => true);
+    host.onPopup(adopted);
+    emit('Target.targetCreated', {
+      targetInfo: { targetId: 'SELF', type: 'page', url: '', openerId: 'T1' },
+    });
+    emit('Fetch.requestPaused', {
+      requestId: 'self-request',
+      request: { url: 'http://127.0.0.1:4100/' },
+      resourceType: 'Document',
+      frameId: 'SELF',
+    });
+    await flush();
+    expect(adopted).not.toHaveBeenCalled();
+    expect(calls).toContainEqual({
+      method: 'Fetch.failRequest',
+      params: { requestId: 'self-request', errorReason: 'BlockedByClient' },
+      sessionId: undefined,
+    });
+  });
+
   test('a popup to an out-of-scope URL is closed without navigating the opener', async () => {
     const { host, profileDir, emit, calls } = harness();
     await host.openTarget({ profileDir, viewport: VIEWPORT });
@@ -863,6 +987,30 @@ describe('ChromiumServerHost with a fake browser', () => {
       'Page.handleJavaScriptDialog',
     ]);
     producer.dispose();
+  });
+
+  test('a parsed page title is read back after the document loads, not left at the URL placeholder', async () => {
+    let title = 'example.com';
+    const { host, profileDir, emit } = harness((call) =>
+      call.method === 'Target.getTargetInfo'
+        ? { targetInfo: { targetId: 'T1', type: 'page', title } }
+        : {},
+    );
+    const seen: Array<[string, string]> = [];
+    host.onTitleChanged((targetId, value) => seen.push([targetId, value]));
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    // Chromium's only event at commit carries the host as the title.
+    emit('Target.targetInfoChanged', {
+      targetInfo: { targetId: 'T1', type: 'page', title: 'example.com' },
+    });
+    title = 'Example Domain';
+    // Another target's load does not read this one.
+    emit('Page.domContentEventFired', {}, 'S-T9');
+    await flush();
+    expect(seen).toEqual([['T1', 'example.com']]);
+    emit('Page.domContentEventFired', {}, 'S-T1');
+    await flush();
+    expect(seen.at(-1)).toEqual(['T1', 'Example Domain']);
   });
 
   test('a mobile viewport is opened with touch emulation on', async () => {

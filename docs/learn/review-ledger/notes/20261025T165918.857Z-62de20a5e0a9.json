@@ -1,0 +1,7 @@
+{
+  "revision": "cf4a3a03079d50a130c6e10bd536350848452e23",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Continuing a conversation can add a turn to its existing Session: confirmed by resolveConversationContinuation (open Session kept even when the Agent is repointed). Engine chip relabel needs no concept prose change.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

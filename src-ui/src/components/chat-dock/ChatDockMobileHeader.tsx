@@ -42,6 +42,11 @@ export interface ChatDockMobileOverflowActions {
   inputOriginLabel?: string;
   onOpenProfile: () => void;
   onOpenAppSettings: () => void;
+  /**
+   * Chat inventory, a row of the sheet like the session context below: a
+   * third trailing control in the bar wrapped it onto a second line (#4192).
+   * The trigger passed is ⋯, where focus returns when the reader closes.
+   */
   onOpenInventory?: (trigger: HTMLElement) => void;
   sessionInventory?: {
     sessionId: string;
@@ -278,17 +283,6 @@ export function ChatDockMobileHeader({
         </span>
       </button>
       <div className="chat-dock__mobile-actions">
-        {overflow.onOpenInventory ? (
-          <button
-            type="button"
-            className="chat-dock__inventory-button"
-            aria-label="Chat inventory"
-            data-no-dock-drag=""
-            onClick={(event) => overflow.onOpenInventory?.(event.currentTarget)}
-          >
-            Inventory
-          </button>
-        ) : null}
         <button
           ref={chatActionsTriggerRef}
           type="button"

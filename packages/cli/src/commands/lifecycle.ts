@@ -138,8 +138,8 @@ import {
 } from './platform.js';
 import type { CommandRunner } from './service.js';
 import {
-  renderServiceInstallRemedy,
   renderServiceStatusCommand,
+  resolveInstalledServiceRemedy,
 } from './service-remedy.js';
 import { inspectServiceSchedulingPolicy } from './service-scheduling.js';
 import {
@@ -154,7 +154,10 @@ import {
   runSupervisorHandoff,
   SUPERVISOR_BUNDLE_FILENAME,
 } from './supervisor-launch.js';
-import { UI_PROXY_BACKEND_PREFIXES } from './ui-proxy-prefixes.js';
+import {
+  UI_PROXY_BACKEND_PREFIXES,
+  UI_PROXY_EXCLUDED_PREFIXES,
+} from './ui-proxy-prefixes.js';
 import {
   assertWindowsPathsTrusted,
   runWindowsTrustCommand,
@@ -212,6 +215,7 @@ interface UiServerDeps {
   upstreamPort: number;
   /** Bare backend prefixes to proxy instead of 404ing (see {@link UI_PROXY_BACKEND_PREFIXES}). */
   backendPrefixes: string[];
+  backendExcludedPrefixes?: readonly string[];
   /** Backend-owned HTML paths that bypass the navigation SPA fallback. */
   backendNavigationPrefixes?: string[];
   readinessFile?: string;
@@ -264,6 +268,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
     inject,
     upstreamPort,
     backendPrefixes,
+    backendExcludedPrefixes = [],
     backendNavigationPrefixes = [],
     readinessFile,
     identity,
@@ -1080,6 +1085,26 @@ export function uiRequestHandler(deps: UiServerDeps) {
     req: import('node:http').IncomingMessage,
     res: import('node:http').ServerResponse,
   ) => {
+    let decodedPath: string;
+    try {
+      decodedPath = decodeURIComponent((req.url ?? '/').split('?')[0]!);
+    } catch {
+      decodedPath = '';
+    }
+    if (
+      !decodedPath ||
+      backendExcludedPrefixes.some(
+        (prefix) =>
+          decodedPath === prefix || decodedPath.startsWith(`${prefix}/`),
+      )
+    ) {
+      res.writeHead(404, {
+        'Content-Type': 'text/plain',
+        'Cache-Control': 'no-store',
+      });
+      res.end('Not found');
+      return;
+    }
     const hostedTenant = resolvedHostedTenant(req);
     let tenantId: string | undefined;
     if (hostedTenant.enabled) {
@@ -1231,6 +1256,7 @@ export function buildUiServerScript(opts: {
     const inject=${JSON.stringify(inject)};
     const upstreamPort=${JSON.stringify(opts.upstreamPort)};
     const backendPrefixes=${JSON.stringify(UI_PROXY_BACKEND_PREFIXES)};
+    const backendExcludedPrefixes=${JSON.stringify(UI_PROXY_EXCLUDED_PREFIXES)};
     const backendNavigationPrefixes=${JSON.stringify(UI_PROXY_BACKEND_NAVIGATION_PREFIXES)};
     const readinessFile=${JSON.stringify(opts.readinessFile)};
     const identity=${JSON.stringify(opts.identity)};
@@ -1238,7 +1264,7 @@ export function buildUiServerScript(opts: {
     const trustedTailscaleServeOrigin=process.env.STATION_TRUSTED_TAILSCALE_SERVE_ORIGIN;
     const hostedTenantAuthorities=${JSON.stringify(opts.hostedTenantAuthorities)};
     const uiRequestHandler=${uiRequestHandler.toString()};
-    http.createServer(uiRequestHandler({http,crypto,fs,path,dir,mime,inject,upstreamPort,backendPrefixes,backendNavigationPrefixes,readinessFile,identity,internalApiToken,trustedTailscaleServeOrigin,hostedTenantAuthorities})).listen(${opts.uiPort},${JSON.stringify(opts.host ?? '0.0.0.0')});
+    http.createServer(uiRequestHandler({http,crypto,fs,path,dir,mime,inject,upstreamPort,backendPrefixes,backendExcludedPrefixes,backendNavigationPrefixes,readinessFile,identity,internalApiToken,trustedTailscaleServeOrigin,hostedTenantAuthorities})).listen(${opts.uiPort},${JSON.stringify(opts.host ?? '0.0.0.0')});
     ${opts.exitWithLauncher ? "if(process.connected)process.on('disconnect',()=>process.exit(0));else process.exit(0);" : ''}
   `;
 }
@@ -5878,8 +5904,11 @@ function reportSchedulingPolicyUpgradeGuidance(stationHome?: string): void {
         baseDir?: unknown;
         features?: unknown;
         host?: unknown;
+        installRoot?: unknown;
+        kind?: unknown;
         platform?: unknown;
         serverPort?: unknown;
+        stationRoot?: unknown;
         taskName?: unknown;
         uiPort?: unknown;
         unitPath?: unknown;
@@ -5909,11 +5938,25 @@ function reportSchedulingPolicyUpgradeGuidance(stationHome?: string): void {
         console.log(
           `\nService scheduling is stale for ${manifest.instanceId} (${scheduling.observed}, expected ${scheduling.expected}).`,
         );
-        const remedy = renderServiceInstallRemedy(manifest, stationHome);
+        // From the installed unit itself: it is named by instance id
+        // alone, so this home's manifest may not describe it (#4189).
+        const remedy = resolveInstalledServiceRemedy(
+          {
+            ...manifest,
+            platform: manifest.platform,
+            taskName:
+              typeof manifest.taskName === 'string'
+                ? manifest.taskName
+                : undefined,
+            unitPath: manifest.unitPath,
+          },
+          stationHome,
+          { fs: { readFileSync }, run: runServiceProbe },
+        );
         console.log(
-          remedy
-            ? `Run "${remedy}" to update the registration; upgrade does not reinstall services automatically.`
-            : 'The installed registration does not record every setting, so Station will not suggest a reinstall command. Inspect its manifest before reinstalling; upgrade does not reinstall services automatically.',
+          remedy.command
+            ? `Run "${remedy.command}" to update the registration; upgrade does not reinstall services automatically.`
+            : `Station will not suggest a reinstall command: ${remedy.reason} Upgrade does not reinstall services automatically.`,
         );
       } else if (scheduling.status === 'unknown') {
         console.log(

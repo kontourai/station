@@ -9,11 +9,12 @@
  * `StationCompatibility.capabilities` or `packages/connect`'s
  * `EnvironmentCapabilities`).
  *
- * `EnvironmentSecurityService#getPublicHandshake` spreads this object
- * verbatim onto the handshake response — a sibling PR adds a new flag with
- * a one-line change here (plus mirroring the key on `StationCapabilityFlags`
- * for type safety) and does not need to touch the route handler or the
- * service.
+ * `EnvironmentSecurityService#getPublicHandshake` advertises
+ * {@link resolveStationCapabilityFlags} for its deployment — a sibling PR
+ * adds a new flag with a one-line change here (plus mirroring the key on
+ * `StationCapabilityFlags` for type safety) and does not need to touch the
+ * route handler or the service. A flag whose route refuses in some
+ * deployment mode is withdrawn there by the resolver, never by a client.
  */
 import type { StationCapabilityFlags } from '@kontourai/station-contracts';
 
@@ -22,6 +23,7 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // routes, packages/sdk/src/query-domains/sshEnvironments.ts.
   sshEnvironments: true,
   // Web Push subscribe/unsubscribe: src-server/routes/operations/push-routes.ts.
+  // Hosted deployments withdraw it: see servesWebPushNotifications.
   webPushNotifications: true,
   // Sequence-cursor resume for the orchestration event stream (archive#1092):
   // src-server/routes/orchestration/orchestration.ts `/events`. Server-side
@@ -30,6 +32,12 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   eventStreamResume: true,
   // Versioned, bounded history windows for a single orchestration session.
   sessionEventWindow: true,
+  // Exact authored-input reads behind Session inventory rows (#4129):
+  // src-server/routes/orchestration/orchestration.ts `/sessions/:threadId/
+  // inputs/:eventId`. Older hosts answer that path 404, indistinguishable
+  // from a denied read, so clients gate the drill-down on this flag. Hosted
+  // deployments withdraw it (#4177): see servesSessionInventoryInputRead.
+  sessionInventoryInputRead: true,
   // Scoped pairing (archive#1098): pairing grants/device sessions carry an
   // OAuth-style scope string, enforced by one route -> required-scope table.
   // src-server/security/pairing-route-scopes.ts,
@@ -92,3 +100,64 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // engine invocation). Senders gate the field on this flag.
   delegatedInputAnswers: true,
 };
+
+/** Deployment facts that decide whether a build-supported route can serve. */
+export interface StationCapabilityDeployment {
+  /** A hosted tenant registry is configured (`STATION_HOSTED_TENANT_REGISTRY_FILE`). */
+  hosted: boolean;
+}
+
+/**
+ * Whether the authored-input route can serve any read in this deployment.
+ * Hosted storage has no tenant-scoped input reader, so the route refuses every
+ * hosted read. The route and the handshake both ask this one predicate, so the
+ * advertised flag cannot drift from what the route serves (#4177).
+ */
+export function servesSessionInventoryInputRead(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
+/**
+ * Whether Web Push subscribe/unsubscribe and key discovery serve in this
+ * deployment. Pairing records have no durable tenant ownership yet, so hosted
+ * mode answers every push route 404. Runtime route support derives
+ * `webPushEnabled` from this predicate; runtime-route-support-notification-
+ * providers.test.ts pins that composition against the advertised flag.
+ */
+export function servesWebPushNotifications(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
+/** Flags whose route serves only in some deployment modes. */
+const DEPLOYMENT_SERVED_FLAGS: Readonly<
+  Partial<
+    Record<
+      keyof StationCapabilityFlags,
+      (deployment: StationCapabilityDeployment) => boolean
+    >
+  >
+> = {
+  sessionInventoryInputRead: servesSessionInventoryInputRead,
+  webPushNotifications: servesWebPushNotifications,
+};
+
+/**
+ * The flags this deployment's handshake advertises: the build registry above,
+ * minus any flag whose route cannot serve in this deployment. Absence means
+ * unsupported (see `StationCapabilityFlags`), so a withdrawn flag reads exactly
+ * like a host without the route.
+ */
+export function resolveStationCapabilityFlags(
+  deployment: StationCapabilityDeployment,
+): StationCapabilityFlags {
+  const flags: StationCapabilityFlags = { ...STATION_CAPABILITY_FLAGS };
+  for (const [flag, serves] of Object.entries(DEPLOYMENT_SERVED_FLAGS)) {
+    if (serves && !serves(deployment))
+      delete flags[flag as keyof StationCapabilityFlags];
+  }
+  return flags;
+}

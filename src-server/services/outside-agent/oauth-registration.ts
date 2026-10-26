@@ -48,8 +48,10 @@ function parsedRedirect(uri: string): URL {
   )
     throw new OutsideOAuthRefusal('invalid_request');
   let url: URL;
+  let pathname: string;
   try {
     url = new URL(uri);
+    pathname = decodeURIComponent(url.pathname);
   } catch {
     throw new OutsideOAuthRefusal('invalid_request');
   }
@@ -58,7 +60,9 @@ function parsedRedirect(uri: string): URL {
     url.password ||
     !['http:', 'https:'].includes(url.protocol) ||
     /%|\\/.test(url.host) ||
-    uri.includes('\\')
+    uri.includes('\\') ||
+    pathname === '/oauth' ||
+    pathname.startsWith('/oauth/')
   )
     throw new OutsideOAuthRefusal('invalid_request');
   // Reject alternative serialized authorities, including numeric-IP aliases.

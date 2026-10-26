@@ -94,7 +94,7 @@ const refuse = () => {
 const hash = (value: unknown) =>
   secretHash('management', JSON.stringify(value));
 
-function canonicalOutsideOrigin(input: string) {
+export function canonicalOutsideOrigin(input: string) {
   if (
     !/^https:\/\//i.test(input) ||
     input.includes('@') ||
@@ -195,6 +195,24 @@ export class OutsideAgentManagementService {
         this.store.policy('redirect').origins,
       ) &&
       selection.scopes.every((value) => review.request.scopes.includes(value))
+    );
+  }
+  validateGrant(grant: Records['grant']): boolean {
+    return (
+      this.authority.current(
+        {
+          ...grant.selection.actor,
+          delegatingPrincipalId: grant.selection.delegatingPrincipalId,
+        },
+        grant.selection.projectScope,
+      ) &&
+      (grant.selection.projectScope.kind === 'global' ||
+        this.authority.projectExists(grant.selection.projectScope.projectId)) &&
+      redirectPermitted(
+        grant.redirectUri,
+        'native',
+        this.store.policy('redirect').origins,
+      )
     );
   }
   #assertActor(

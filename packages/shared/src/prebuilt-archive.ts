@@ -225,7 +225,7 @@ export const INSTALL_STATE_FILENAME = '.station-release-state.json';
 
 /**
  * The part of install.sh's install state (`.station-release-state.json`,
- * schema 3 or 4) an update reads: the ring it installs and, since schema 4,
+ * schema 3 or 4) an update reads: the ring it installs, its root and, since schema 4,
  * the signed public manifest it installs from (null for the authenticated
  * GitHub-release path, and for schema 3). Null when the file is missing or
  * is not a state install.sh writes; never a guess.
@@ -233,6 +233,11 @@ export const INSTALL_STATE_FILENAME = '.station-release-state.json';
 export interface ArchiveInstallState {
   releaseChannel: PackagedReleaseChannel;
   manifestUrl: string | null;
+  /**
+   * The STATION_ROOT the install's channel launcher exports to every command
+   * it runs; null when the state does not record one.
+   */
+  stationRoot: string | null;
 }
 
 export function readArchiveInstallState(
@@ -260,7 +265,14 @@ export function readArchiveInstallState(
       return null;
     manifestUrl = state.manifestUrl || null;
   }
-  return { releaseChannel: state.releaseChannel, manifestUrl };
+  return {
+    releaseChannel: state.releaseChannel,
+    manifestUrl,
+    stationRoot:
+      typeof state.stationRoot === 'string' && state.stationRoot
+        ? state.stationRoot
+        : null,
+  };
 }
 
 /**

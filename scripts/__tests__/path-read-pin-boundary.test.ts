@@ -101,6 +101,11 @@ const derived = pathReadPinEdges({ root: ROOT });
  * construction. Shrinking this list is the goal; growing it is a decision.
  */
 const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
+  // Read captured public Sigstore bundles under __fixtures__/sigstore (test
+  // data, not production source); their verifier and trust-rule imports
+  // select them for changes.
+  'src-server/services/plugins/__tests__/plugin-install-trust.test.ts',
+  'src-server/services/plugins/__tests__/plugin-sigstore-verifier.test.ts',
   // Reads staged licenses and native binaries only in trackTempDirs fixtures.
   // Its desktop-server-runtime import selects the real staging behavior.
   'scripts/__tests__/desktop-runtime-pruning.test.ts',
@@ -156,6 +161,10 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'packages/contracts/src/__tests__/flow-agents-vocabulary-drift.test.ts',
   // Walks the whole SDK source tree (a repo scan), like its neighbours here.
   'packages/sdk/src/__tests__/body-read-deadline.scan.test.ts',
+  // Walks packages/sdk/src and src-ui/src for capability gates (a repo scan in
+  // REPO_SCAN_SUITES, #4177); its anchored roots are directories, which no
+  // single file pin can stand for.
+  'src-server/capabilities/__tests__/client-capability-gates.scan.test.ts',
   'packages/sdk/src/__tests__/client-entry-portability.test.ts',
   'packages/shared/src/__tests__/plugin-build.test.ts',
   'packages/shared/src/__tests__/plugin-dependency-install.test.ts',
@@ -642,6 +651,10 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
   // directory to codingDiffFixture, whose git closure fixes cwd to that root.
   // Its index reads and filesystem race controls also use only owned temp roots.
   'src-server/services/projects/__tests__/workspace-diff-service.test.ts':
+    TEMP_VIA_FIXTURE,
+  // repository() returns a tracked temporary root; git(dir, ...) fixes cwd
+  // to that root for the large-index fixture's sole ls-files call.
+  'src-server/services/projects/__tests__/workspace-commit-pin.test.ts':
     TEMP_VIA_FIXTURE,
   'src-server/services/ssh/__tests__/environment-security-lock-race.test.ts':
     WRAPS_FS,

@@ -1,0 +1,19 @@
+{
+  "revision": "d2a6bf9a488400a549cf4a784c3746555f7518be",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"testing.md delta: the pinned-layer rule now credits no scroll position (only a covering sheet layers a pair), conservative by design. Guidance unchanged.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"testing.md delta: the pinned-layer rule now credits no scroll position (only a covering sheet layers a pair), conservative by design. Guidance unchanged.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Rewrote the pinned-layer clause: scroll clearance removed, only a covering sheet layers a pair; content that could scroll clear is still reported. Matches hit-target-audit.ts pinnedOver and the browser fixtures.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"testing.md delta: the pinned-layer rule now credits no scroll position (only a covering sheet layers a pair), conservative by design. Guidance unchanged.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"testing.md delta: the pinned-layer rule now credits no scroll position (only a covering sheet layers a pair), conservative by design. Guidance unchanged.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"testing.md delta: the pinned-layer rule now credits no scroll position (only a covering sheet layers a pair), conservative by design. Guidance unchanged.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"testing.md delta: the pinned-layer rule now credits no scroll position (only a covering sheet layers a pair), conservative by design. Guidance unchanged.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

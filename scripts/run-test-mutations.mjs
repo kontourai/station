@@ -56,6 +56,552 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'terminal-observation-timeout-missing',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure:
+      'timed-out exit 1 ps failure stays paused and retries with bounded backoff',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(source, '            !error.killed &&\n', ''),
+      },
+    ],
+  },
+  {
+    id: 'terminal-observation-signal-missing',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure:
+      'signaled exit 1 ps failure stays paused and retries with bounded backoff',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(source, '            !error.signal &&\n', ''),
+      },
+    ],
+  },
+  {
+    id: 'terminal-observation-errors',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'ps failure preserves session pressure and clean exit',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (gone || (!error && /[ZE]/.test(stdout.trim()))) {',
+            'if (error || gone || (!error && /[ZE]/.test(stdout.trim()))) {',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-observation-backoff',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure: 'ps failure stays paused and retries with bounded backoff',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'delay = Math.min(delay * 2, 1000);',
+            'delay = 50;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-adapter-exit-latch',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure:
+      'backend exit while paused marks output incomplete without a census observation',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (this.paused) this.outputIncomplete = true;',
+            '',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-adapter-incomplete-flag',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure:
+      'positive Z observation releases delivery and retains incomplete output after drain',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'outputIncomplete: this.outputIncomplete,',
+            'outputIncomplete: false,',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-paused-child-observation',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'slow storage plus paused shell exit records unavailable output',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "    if (process.platform === 'win32' || this.pauseWatch) return;",
+            '    if (true) return;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-paused-exit',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'slow storage plus paused shell exit records unavailable output',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-sessions.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '          if (event.outputIncomplete) {',
+            '          if (false) {',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-final-batch-drain',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure:
+      'a final batch releases backpressure before its append promises settle',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-journal.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '      this.queuedBytes -= batch.reduce((sum, item) => sum + item.bytes, 0);',
+            '      setTimeout(() => { this.queuedBytes -= batch.reduce((sum, item) => sum + item.bytes, 0); }, 0);',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-observe-group-ceiling',
+    test: 'packages/contracts/src/__tests__/station-groups.test.ts',
+    failure: 'a cap removes only governed permissions the group does not allow',
+    files: [
+      {
+        path: 'packages/contracts/src/station-groups.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  ...PAIRING_SCOPE_PRESETS.standard,\n  PAIRING_SCOPE_TERMINAL_OBSERVE,',
+            '  ...PAIRING_SCOPE_PRESETS.standard,',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-session-read-scope',
+    test: 'src-server/security/__tests__/pairing-route-scopes.test.ts',
+    failure:
+      'terminal session ingress requires observe for reads and operate for writes without generic Project grants',
+    files: [
+      {
+        path: 'src-server/security/pairing-route-scopes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '        scope: PAIRING_SCOPE_TERMINAL_OBSERVE,',
+            '        scope: PAIRING_SCOPE_ORCHESTRATION_READ,',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-session-write-scope',
+    test: 'src-server/security/__tests__/pairing-route-scopes.test.ts',
+    failure:
+      'terminal session ingress requires observe for reads and operate for writes without generic Project grants',
+    files: [
+      {
+        path: 'src-server/security/pairing-route-scopes.ts',
+        change: (source) => {
+          const start = source.indexOf(
+            "    { method: 'POST', prefix: '/api/projects/:slug/terminal-sessions' },",
+          );
+          const end = source.indexOf(
+            '  // Terminal termination kills a PTY process.',
+            start,
+          );
+          if (start < 0 || end < start)
+            throw new Error('Terminal mutation rule landmarks missing');
+          return `${source.slice(0, start)}${exactReplace(
+            source.slice(start, end),
+            'scope: PAIRING_SCOPE_TERMINAL_OPERATE,',
+            'scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,',
+          )}${source.slice(end)}`;
+        },
+      },
+    ],
+  },
+  {
+    id: 'terminal-session-burst-backpressure',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure:
+      'an 8 MiB PTY burst remains live and readable; memory mode need not pause (persist=true)',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-sessions.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '            proc.pause();',
+            '            void proc;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-session-read-barrier',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'coalesced journal appends preserve intervening read barriers',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-journal.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '    if (this.appendScheduled) {\n      this.pendingAppends = [];\n      this.appendScheduled = false;\n    }\n    const task = this.queue.then(() => this.readSnapshot(fromSeq));',
+            '    const task = this.queue.then(() => this.readSnapshot(fromSeq));',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-surface-write',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'subject-bound chat writes require a matching Project surface type',
+    files: [
+      {
+        path: 'src-server/services/layouts/personal-layout-policy.ts',
+        change: (source) =>
+          exactReplace(source, "layout.type !== 'custom' &&", 'false &&'),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-surface-read',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure: 'subject-bound chat reads hide a surface removed from the Project',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (!subject) return true;',
+            "if (!subject || 'id' in layout) return true;",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-promote-not-found',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'promotion gives identical not-found answers for every unavailable source as contributor',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'layoutSlug === undefined || !service.get(owner, layoutSlug)',
+            'layoutSlug === undefined',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-promote-wiring',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure: 'promotion fails closed without Project authorization wiring',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "!(await deps.canUseProject?.(c, projectSlug, 'manage-layouts'))",
+            "deps.canUseProject && !(await deps.canUseProject(c, projectSlug, 'manage-layouts'))",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-hidden-delete',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure: 'only the owner can delete a policy-hidden personal layout',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) => exactReplace(source, '    }, true),', '    }),'),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-admission',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'Project panes and allowed plugins constrain writes, updates and reads without deleting records',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'const subject = layoutSubject(layout);',
+            'const subject = undefined;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-runtime-management',
+    test: 'src-server/runtime/routes/__tests__/runtime-routes-project-guest-admin.test.ts',
+    failure:
+      'layout management and personal subjects compose through real account credentials without sharing personal records',
+    files: [
+      {
+        path: 'src-server/runtime/routes/runtime-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "member.actions.includes('manage-layouts')",
+            "member.actions.includes('view')",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-isolation',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'personal Project layout list/fetch/update/delete/clone disclose nothing to a second principal',
+    files: [
+      {
+        path: 'src-server/domain/layout-owner-storage.ts',
+        change: (source) =>
+          exactReplace(source, '  return key;', "  return 'personal';"),
+      },
+      {
+        path: 'src-server/domain/file-storage-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '!isSameLayoutOwner(layoutOwner(parsed), owner)',
+            'false',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-read-policy',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'Project panes and allowed plugins constrain writes, updates and reads without deleting records',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (!allowHidden && saved && !(await eligible(c, saved)))',
+            'if (false)',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-project-panes',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'Project panes and allowed plugins constrain writes, updates and reads without deleting records',
+    files: [
+      {
+        path: 'src-server/services/layouts/personal-layout-policy.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'return projectComponents.has(key);',
+            'return true;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-allowed-plugins',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'Project panes and allowed plugins constrain writes, updates and reads without deleting records',
+    files: [
+      {
+        path: 'src-server/services/layouts/personal-layout-policy.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "if (policy === 'allowed-plugins' && allowed.has(ids[0])) return true;",
+            "if (policy === 'allowed-plugins') return true;",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-visibility',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'unknown or hidden plugin renderers cannot bypass policy via missing binding or alternative renderer',
+    files: [
+      {
+        path: 'src-server/services/layouts/personal-layout-policy.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (ids.length !== 1 || !canSeePlugin(ids[0])) return false;',
+            'if (ids.length !== 1) return false;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-clone-identity',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'clone keeps source bytes and identity; save as my layout clears subject; template open binds without writing',
+    files: [
+      {
+        path: 'src-server/services/layouts/personal-layout-service.ts',
+        change: (source) =>
+          exactReplace(source, 'id: this.#newId(),', 'id: source.id,'),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-clone-source',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'clone keeps source bytes and identity; save as my layout clears subject; template open binds without writing',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '      const created = await service.clone(owner, source, {',
+            '      await store.deleteOwnedLayout(source.owner ?? { kind: "project", projectSlug: source.projectSlug! }, source.slug);\n      const created = await service.clone(owner, source, {',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-template-clear',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'clone keeps source bytes and identity; save as my layout clears subject; template open binds without writing',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'const subject = input.asTemplate\n      ? undefined',
+            'const subject = input.asTemplate\n      ? source.subject',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-template-open',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'clone keeps source bytes and identity; save as my layout clears subject; template open binds without writing',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'return c.json({ success: true, data: readView(bound) });',
+            'await store.mutateOwnedLayout(owner, slug, () => bound);\n      return c.json({ success: true, data: readView(bound) });',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-manage-layouts',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'promotion remains a move and requires manage layouts; personal coding records cannot declare primary Chat',
+    files: [
+      {
+        path: 'src-server/routes/me/personal-layouts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "!(await deps.canUseProject?.(c, projectSlug, 'manage-layouts'))",
+            'false',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-primary-chat',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      'promotion remains a move and requires manage layouts; personal coding records cannot declare primary Chat',
+    files: [
+      {
+        path: 'packages/contracts/src/layout.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "isContributedLayoutRecord(layout) || layout.owner?.kind === 'principal'",
+            'isContributedLayoutRecord(layout)',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'owner-subject-legacy-migration',
+    test: 'src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts',
+    failure:
+      "today's stored Board and Project shapes read and persist unchanged under subject derivation",
+    files: [
+      {
+        path: 'packages/contracts/src/layout.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '  return subject;',
+            "  return subject ?? { kind: 'project', projectSlug: 'legacy-default' };",
+          ),
+      },
+    ],
+  },
+  {
     id: 'outside-host-grant-change',
     test: 'src-server/routes/outside-agent/__tests__/host-routes.test.ts',
     failure:

@@ -60,6 +60,42 @@ describe('TurnDeduplicator', () => {
     restarted.close();
   });
 
+  test('unresolved chat keys cannot erase a successful thread replay at the shared cap', () => {
+    const { store, ledger, directory } = open(2);
+    try {
+      for (const key of ['chat-a', 'chat-b']) {
+        expect(store.claimChatTurn(key)).toEqual({ claimed: true });
+        store.beginChatTurnInvocation(key);
+      }
+      const input = { threadId: 'thread', clientTurnId: 'successful' };
+      const owned = ledger.claim(input);
+      if (owned.kind !== 'owner') throw new Error('expected thread owner');
+      owned.claim.beginInvocation();
+      owned.claim.resolve('provider-turn');
+      expect(ledger.claim(input)).toEqual({
+        kind: 'contended',
+        turnId: 'provider-turn',
+      });
+    } finally {
+      store.close();
+    }
+    const reopened = new EventStore(join(directory, 'orchestration.sqlite'), 2);
+    try {
+      expect(
+        reopened
+          .createTurnDeduplicator()
+          .claim({ threadId: 'thread', clientTurnId: 'successful' }),
+      ).toEqual({ kind: 'contended', turnId: 'provider-turn' });
+      for (const key of ['chat-a', 'chat-b'])
+        expect(reopened.claimChatTurn(key)).toEqual({
+          claimed: false,
+          conversationId: undefined,
+        });
+    } finally {
+      reopened.close();
+    }
+  });
+
   test('upgrades a legacy host schema without fabricating original digests; an old writer invalidates its marker', () => {
     const directory = makeTempDir('station-digest-upgrade-');
     const path = join(directory, 'legacy.sqlite');

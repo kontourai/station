@@ -31,6 +31,7 @@ import {
 } from '../../tools/station-control-shared.js';
 import { createDeviceAgentRoutes } from '../device-agent.js';
 import { createDeviceToolsRoutes } from '../device-tools.js';
+import { createMobileDeviceRoutes } from '../mobile-device.js';
 
 const disposals: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -52,7 +53,7 @@ function harness(
     | 'sdk-in-process'
     | 'url-token'
     | 'http-header-token' = 'sdk-in-process',
-  options: { operator?: boolean; idleEndMs?: number } = {},
+  options: { operator?: boolean; idleEndMs?: number; remote?: boolean } = {},
 ) {
   const sessionId = `device-test-${Math.random()}`;
   const { token } = mintStationControlMcpToken(sessionId, channel);
@@ -156,11 +157,58 @@ function harness(
     elements: [],
     truncated: false,
   }));
+  const remoteDevice = {
+    ...device,
+    hostId: 'ssh-0123456789ab',
+    name: 'Remote Test',
+  };
+  let remoteAvailable = options.remote === true;
+  const remoteHost = {
+    ...host,
+    inventory: vi.fn(
+      async (): Promise<MobileDeviceInventory> => ({
+        hostId: remoteDevice.hostId,
+        state: 'ready',
+        observedAt: new Date().toISOString(),
+        devices: [remoteDevice],
+      }),
+    ),
+    capture: vi.fn(async () => ({
+      ...(await host.capture()),
+      target: remoteDevice,
+      captureId: 'remote-capture',
+    })),
+  };
+  const remoteSessions = options.remote
+    ? new DeviceSessionService({
+        hostId: remoteDevice.hostId,
+        host: remoteHost,
+        endpoint: { onExit: () => () => {} },
+        surfaces,
+        access: {
+          isOperator: async () => true,
+          hasStanding: async () => true,
+          mayAccessDevice: async () => true,
+        },
+      })
+    : undefined;
+  const localTools = { accessibility };
+  const remoteTools = {
+    accessibility: vi.fn(async () => ({
+      ...(await accessibility()),
+      truncated: true,
+    })),
+  };
   const automation = new DeviceAutomation({
     host,
     sessions,
     surfaces,
-    tools: { accessibility },
+    tools: localTools,
+    remoteHostIds: () => (remoteAvailable ? [remoteDevice.hostId] : []),
+    remoteHost: (hostId) =>
+      remoteAvailable && remoteSessions && hostId === remoteDevice.hostId
+        ? { host: remoteHost, sessions: remoteSessions, tools: remoteTools }
+        : undefined,
   });
   const access = {
     agentAccessEnabled: () => enabled,
@@ -210,6 +258,28 @@ function harness(
         : resolveStationControlCallerFromToken(presented, record);
     },
     automation,
+  });
+  const humanDevices = createMobileDeviceRoutes(host, {
+    isRequestPrincipalCurrent: () => active,
+    access: {
+      isOperator: async () => operator,
+      hasStanding: async () => active,
+      mayAccessDevice: async () => shared && active,
+    },
+    agentReveals: {
+      projectAccess: {
+        resolveProject: (slug) =>
+          slug === 'alpha' ? { id: 'project' } : undefined,
+        authorizeProject: async () =>
+          active
+            ? operator
+              ? { kind: 'operator' }
+              : { kind: 'project-admin', principalId }
+            : undefined,
+      },
+      list: (projectId, conversation, principal) =>
+        automation.revealRequests(projectId, conversation, principal),
+    },
   });
   const humanTools = createDeviceToolsRoutes({
     isRequestPrincipalCurrent: () => true,
@@ -270,10 +340,12 @@ function harness(
     revokeStationControlMcpToken(sessionId);
     for (const extra of extraTokens) revokeStationControlMcpToken(extra);
     await sessions.dispose();
+    await remoteSessions?.dispose();
     await surfaces.dispose();
   });
   return {
     run,
+    humanDevices,
     raw: (operation: string, body: unknown) =>
       routes.request(`/${operation}`, {
         method: 'POST',
@@ -317,6 +389,13 @@ function harness(
     packets,
     host,
     sessions,
+    remoteDevice,
+    remoteHost,
+    remoteSessions,
+    remoteTools,
+    removeRemote: () => {
+      remoteAvailable = false;
+    },
     surfaces,
     accessibility,
     revokeToken: () => revokeStationControlMcpToken(sessionId),
@@ -334,6 +413,118 @@ function harness(
     },
   };
 }
+
+test('reveal requests are conversation scoped, deduplicated, optional and recheck human device admission', async () => {
+  const h = harness();
+  const path = '/agent-reveals?projectSlug=alpha&conversationId=conversation';
+  const read = async (url = path) =>
+    (await (await h.humanDevices.request(url)).json()) as {
+      data: { reveals: unknown[] };
+    };
+  expect((await read()).data.reveals).toEqual([]);
+  expect(
+    parsed(await h.run('device_open', { ...h.device, reveal: false })),
+  ).toMatchObject({ ok: true, revealRequested: false });
+  expect((await read()).data.reveals).toEqual([]);
+  await h.open();
+  const first = (await read()).data.reveals;
+  expect(first).toHaveLength(1);
+  await h.open();
+  expect((await read()).data.reveals).toEqual(first);
+  expect(
+    (await read('/agent-reveals?projectSlug=alpha&conversationId=other')).data
+      .reveals,
+  ).toEqual([]);
+  h.revokeShare();
+  expect((await read()).data.reveals).toEqual([]);
+  h.revokeMember();
+  expect((await h.humanDevices.request(path)).status).toBe(403);
+});
+
+test('an authorized retry refreshes reveal admission after Agent credentials rotate', async () => {
+  const h = harness();
+  const path = '/agent-reveals?projectSlug=alpha&conversationId=conversation';
+  const read = async () =>
+    (await (await h.humanDevices.request(path)).json()) as {
+      data: { reveals: unknown[] };
+    };
+  const sessionId = await h.open();
+  const first = (await read()).data.reveals;
+  expect(first).toHaveLength(1);
+  h.revokeToken();
+  expect((await read()).data.reveals).toEqual([]);
+  h.asAnotherAgent();
+  expect(await h.open()).toBe(sessionId);
+  expect((await read()).data.reveals).toEqual(first);
+});
+
+test('opening an existing device while a person drives preserves their lease', async () => {
+  const h = harness();
+  const id = await h.open();
+  await h.take(id);
+  const entry = h.surfaces.get(h.sessions.get(id)!.surfaceId)!;
+  const before = entry.lease.snapshot();
+  expect(await h.open()).toBe(id);
+  expect(entry.lease.snapshot()).toEqual(before);
+  expect(h.packets).toEqual([]);
+});
+
+test('SSH tools retain host identity with colliding local device ids and fail closed after host removal', async () => {
+  const h = harness('sdk-in-process', { operator: true, remote: true });
+  const localId = await h.open();
+  const opened = parsed(await h.run('device_open', h.remoteDevice));
+  expect(opened).toMatchObject({
+    ok: true,
+    session: { hostId: h.remoteDevice.hostId, deviceId: h.device.deviceId },
+  });
+  const id = opened.session.sessionId;
+  expect(id).not.toBe(localId);
+  const listed = parsed(await h.run('device_list'));
+  expect(
+    listed.sessions.map((session: { hostId: string }) => session.hostId).sort(),
+  ).toEqual(['local', h.remoteDevice.hostId].sort());
+  expect(
+    parsed(await h.run('device_snapshot', { deviceSessionId: id })),
+  ).toMatchObject({ ok: true, tree: { truncated: true } });
+  expect(h.remoteTools.accessibility).toHaveBeenCalledOnce();
+  const capture = await h.run('device_screenshot', { deviceSessionId: id });
+  expect(parsed(capture)).toMatchObject({
+    ok: true,
+    capture: {
+      captureId: 'remote-capture',
+      target: { hostId: h.remoteDevice.hostId },
+    },
+  });
+  h.removeRemote();
+  expect(
+    parsed(await h.run('device_snapshot', { deviceSessionId: id })),
+  ).toMatchObject({ ok: false, code: 'not-authorized' });
+  expect(parsed(await h.run('device_open', h.remoteDevice))).toMatchObject({
+    ok: false,
+    code: 'host-unavailable',
+  });
+  expect(h.remoteTools.accessibility).toHaveBeenCalledOnce();
+  expect(h.sessions.get(localId)).toBeDefined();
+});
+
+test.each(['token', 'opt-in'] as const)(
+  'pending reveal is withdrawn when the originating Agent loses %s',
+  async (kind) => {
+    const h = harness();
+    await h.open();
+    const path = '/agent-reveals?projectSlug=alpha&conversationId=conversation';
+    const before = (await (await h.humanDevices.request(path)).json()) as {
+      data: { reveals: unknown[] };
+    };
+    expect(before.data.reveals).toHaveLength(1);
+    if (kind === 'token') h.revokeToken();
+    else h.setEnabled(false);
+    const after = (await (await h.humanDevices.request(path)).json()) as {
+      data: { reveals: unknown[] };
+    };
+    expect(after.data.reveals).toEqual([]);
+  },
+);
 
 test('bound tool input reaches the device socket, and human control refuses the next action', async () => {
   const h = harness();
@@ -588,22 +779,33 @@ test('share revocation during capture refuses publication and releases control',
   ).toBeNull();
 });
 
-test('activity renews an unwatched session idle grace without keeping it forever', async () => {
-  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
-  const h = harness('sdk-in-process', { idleEndMs: 100 });
-  const id = await h.open();
-  await vi.advanceTimersByTimeAsync(80);
-  expect(
-    parsed(await h.run('device_snapshot', { deviceSessionId: id })),
-  ).toMatchObject({ ok: true });
-  await vi.advanceTimersByTimeAsync(40);
-  expect(
-    h.sessions.get(id),
-    'agent activity must renew idle grace',
-  ).toBeDefined();
-  await vi.advanceTimersByTimeAsync(61);
-  expect(h.sessions.get(id)).toBeUndefined();
-});
+test.each(['device_snapshot', 'device_open'] as const)(
+  '%s renews unwatched idle grace without keeping the session forever',
+  async (operation) => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const h = harness('sdk-in-process', { idleEndMs: 100 });
+    const id = await h.open();
+    await vi.advanceTimersByTimeAsync(80);
+    expect(
+      parsed(
+        await h.run(
+          operation,
+          operation === 'device_open' ? h.device : { deviceSessionId: id },
+        ),
+      ),
+    ).toMatchObject({ ok: true });
+    expect(
+      h.surfaces.get(h.sessions.get(id)!.surfaceId)!.lease.snapshot().holder,
+    ).toBeNull();
+    await vi.advanceTimersByTimeAsync(40);
+    expect(
+      h.sessions.get(id),
+      'agent activity must renew idle grace',
+    ).toBeDefined();
+    await vi.advanceTimersByTimeAsync(61);
+    expect(h.sessions.get(id)).toBeUndefined();
+  },
+);
 
 test('invalid device ID is refused by the route before touching the host', async () => {
   const h = harness('sdk-in-process', { operator: true });

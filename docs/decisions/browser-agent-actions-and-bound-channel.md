@@ -32,6 +32,13 @@ It builds on frozen
 whose historical text remains unchanged. The [Browser guide](../guides/browser-workspace.md)
 owns the current inventory.
 
+The workspace tab workflow preserves exact server session identity. Popup
+adoption creates a separate session in the opener's profile and continues the
+original request; selecting a tab does not retarget an Agent's tools. Title and
+navigation observations confer no authority. The twelve-session profile bound
+includes live and opening sessions. Tab/popup fixture coverage does not establish
+a real-browser or external-provider journey.
+
 ## Threat model and decision
 
 A logged-in website may hold credentials and private data. A page, another

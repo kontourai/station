@@ -10,6 +10,7 @@ export const PROJECT_MEMBER_ACTIONS = [
   'approve',
   'manage-members',
   'manage-extensions',
+  'manage-layouts',
   'manage-compute',
 ] as const;
 export type ProjectMemberAction = (typeof PROJECT_MEMBER_ACTIONS)[number];
@@ -18,7 +19,15 @@ export type ProjectMemberAction = (typeof PROJECT_MEMBER_ACTIONS)[number];
 export const PROJECT_MEMBER_ROLES = {
   viewer: ['view'],
   contributor: ['view', 'discuss', 'edit', 'execute'],
-  admin: ['view', 'discuss', 'edit', 'execute', 'approve', 'manage-members'],
+  admin: [
+    'view',
+    'discuss',
+    'edit',
+    'execute',
+    'approve',
+    'manage-members',
+    'manage-layouts',
+  ],
   owner: [...PROJECT_MEMBER_ACTIONS],
 } as const satisfies Record<string, readonly ProjectMemberAction[]>;
 export type ProjectMemberRole = keyof typeof PROJECT_MEMBER_ROLES;

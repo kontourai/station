@@ -1,0 +1,19 @@
+{
+  "revision": "eb33d7c48cf2fe6e7af4073efc4325ee9b663a97",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"testing.md delta: REKEY path for intended accessible-name changes (pairing rule, warning annotation, LIKELY REKEY hint, why names stay in keys). No operations vocabulary changed.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"testing.md delta: REKEY path for intended accessible-name changes (pairing rule, warning annotation, LIKELY REKEY hint, why names stay in keys). The gate:for sentence and link remain accurate.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Added the REKEY paragraph. Checked against gallery-ui-findings.mjs allowlistGrowth/withoutName/formatVerdict, the gallery-pr-check.yml warning case, and the judge and ceiling-step tests; the 143-of-257 collision figure was measured on main allowlist.","inputs":["docs/guides/testing.md",".github/workflows/gallery-pr-check.yml"]},
+
+    {"path":"scripts/AGENTS.md","note":"testing.md delta: REKEY path for intended accessible-name changes (pairing rule, warning annotation, LIKELY REKEY hint, why names stay in keys). Scope rules unchanged.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"testing.md delta: REKEY path for intended accessible-name changes (pairing rule, warning annotation, LIKELY REKEY hint, why names stay in keys). Server guidance unchanged.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"testing.md delta: REKEY path for intended accessible-name changes (pairing rule, warning annotation, LIKELY REKEY hint, why names stay in keys). UI guidance unchanged.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"testing.md delta: REKEY path for intended accessible-name changes (pairing rule, warning annotation, LIKELY REKEY hint, why names stay in keys). Fixture and journey rules unchanged.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from 'hono';
-import type { ConsentChannelService } from '../services/consent/consent-channel.js';
+import type { ConsentTransactionStore } from '../services/consent/consent-transactions.js';
 
 function isOutsideAgentPath(path: string): boolean {
   return (
@@ -30,15 +30,38 @@ export const outsideAgentReleaseGuard: MiddlewareHandler = async (c, next) => {
   await next();
 };
 
-/** SUNSET(#4115): shared consent paths must also refuse outside targets until R6. */
-export function outsideAgentConsentReleaseGuard(
-  channel: ConsentChannelService,
-): MiddlewareHandler {
-  return async (c, next) => {
-    const segments = c.req.path.split('/');
-    const transaction = channel.store.get(channel.tenantId, segments[2] ?? '');
-    if (transaction?.target.kind.startsWith('outside-agent-'))
-      return c.notFound();
-    await next();
+export type ConsentListenerStore = Pick<
+  ConsentTransactionStore,
+  | 'get'
+  | 'verifyDecisionSession'
+  | 'renderReview'
+  | 'decide'
+  | 'passkeyChallenge'
+>;
+
+/** SUNSET(#4115): hide outside targets until R6 without changing handler refusal order. */
+export function outsideAgentConsentStore(
+  store: ConsentTransactionStore,
+): ConsentListenerStore {
+  const hidden = (tenantId: string, id: string) =>
+    store.get(tenantId, id)?.target.kind.startsWith('outside-agent-') === true;
+  return {
+    get: (tenantId, id) =>
+      hidden(tenantId, id) ? undefined : store.get(tenantId, id),
+    verifyDecisionSession: (tenantId, id, candidate) =>
+      !hidden(tenantId, id) &&
+      store.verifyDecisionSession(tenantId, id, candidate),
+    renderReview: (tenantId, id) =>
+      hidden(tenantId, id)
+        ? { ok: false, reason: 'not_found' }
+        : store.renderReview(tenantId, id),
+    decide: async (tenantId, id, decision, nonce, via, proof) =>
+      hidden(tenantId, id)
+        ? { ok: false, reason: 'not_found' }
+        : store.decide(tenantId, id, decision, nonce, via, proof),
+    passkeyChallenge: (tenantId, id, nonce, sessionId) =>
+      hidden(tenantId, id)
+        ? null
+        : store.passkeyChallenge(tenantId, id, nonce, sessionId),
   };
 }

@@ -265,6 +265,7 @@ import type { HonoServerConfig } from '@voltagent/server-hono';
 import type { Context } from 'hono';
 import { setCookie } from 'hono/cookie';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
+import { NodePtyAdapter } from '../../adapters/node-pty-adapter.js';
 import {
   loadOrCreateAgentRegistry,
   replacePluginEngineConnections,
@@ -404,6 +405,7 @@ import { createTaskLearningRoutes } from '../../routes/orchestration/task-learni
 import { createTaskMemoryRoutes } from '../../routes/orchestration/task-memory.js';
 import { createTaskOutputRoutes } from '../../routes/orchestration/task-outputs.js';
 import { createTaskRelationshipRoutes } from '../../routes/orchestration/task-relationships.js';
+import { createTaskReviewRoutes } from '../../routes/orchestration/task-review.js';
 import {
   createTaskRoutes,
   keptRowsForTaskSession,
@@ -433,6 +435,7 @@ import {
   createProjectRoutes,
   type ProjectResolutionRouteDeps,
 } from '../../routes/projects/projects.js';
+import { createTerminalSessionRoutes } from '../../routes/projects/terminal-session-routes.js';
 import { createUICommandRoutes } from '../../routes/projects/ui-commands.js';
 import { createConversationPullRequestLinkRoutes } from '../../routes/pull-requests/conversation-pull-request-links.js';
 import { createPullRequestRoutes } from '../../routes/pull-requests/pull-request-routes.js';
@@ -473,6 +476,7 @@ import { BoundedAttemptBudget } from '../../security/bounded-attempt-budget.js';
 import { bindFullAccessRefusalIdentity } from '../../security/full-access-refusal.js';
 import { NativeDeviceRequestAuthority } from '../../security/native-device-request-authority.js';
 import { isDefinitelyOffBox } from '../../security/off-box-peer.js';
+import { outsideAgentConsentStore } from '../../security/outside-agent-release-guard.js';
 import {
   PairingFailureLimiter,
   type PairingFailureState,
@@ -691,6 +695,7 @@ import { composeTaskBriefSource } from '../../services/projects/task-brief-sourc
 import { createTaskCloseOut } from '../../services/projects/task-close-out.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import type { TaskGraphService } from '../../services/projects/task-graph-service.js';
+import { TaskReviewModule } from '../../services/projects/task-review-module.js';
 import {
   TaskRoomWorkModule,
   type TaskRoomWorkScope,
@@ -749,7 +754,12 @@ import {
   admittedTelemetryProducer,
   TelemetryProducerStore,
 } from '../../services/telemetry-producers/telemetry-producer-store.js';
+import { InProcessShellHost } from '../../services/terminal/shell-host.js';
 import type { TerminalService } from '../../services/terminal/terminal-service.js';
+import {
+  TerminalSessionRefusal,
+  TerminalSessions,
+} from '../../services/terminal/terminal-sessions.js';
 import type { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import { FlowAgentsWorkItemProvider } from '../../services/work-item-providers/flow-agents-work-item-provider.js';
 import {
@@ -3972,7 +3982,30 @@ export function configureRuntimeRoutes(
       });
     const agentDeviceSessions = deviceSessions;
     const agentDeviceSurfaces = liveSurfaceRegistry;
+    let agentDeviceAutomation: DeviceAutomation | undefined;
     if (agentDeviceSessions && agentDeviceSurfaces && deviceShareAccess) {
+      agentDeviceAutomation = new DeviceAutomation({
+        remoteHostIds: () =>
+          hostRegistry.summaries().map((host) => host.hostId),
+        remoteHost: (hostId) => {
+          const remote = remoteDeviceHosts?.get(hostId);
+          return remote?.sessions && remote.tools
+            ? {
+                host: remote.host,
+                sessions: remote.sessions,
+                tools: remote.tools,
+              }
+            : undefined;
+        },
+        host: deviceHost,
+        sessions: agentDeviceSessions,
+        surfaces: agentDeviceSurfaces,
+        tools: new DeviceToolsService({
+          hostId: LOCAL_DEVICE_HOST_ID,
+          runner: createDeviceToolRunner(),
+          hub: deviceHubEndpoint,
+        }),
+      });
       context.app.route(
         '/api/device-agent',
         createDeviceAgentRoutes({
@@ -3993,16 +4026,7 @@ export function configureRuntimeRoutes(
           ...(deviceShareAccess.resolveAndroidAvd
             ? { resolveAndroidAvd: deviceShareAccess.resolveAndroidAvd }
             : {}),
-          automation: new DeviceAutomation({
-            host: deviceHost,
-            sessions: agentDeviceSessions,
-            surfaces: agentDeviceSurfaces,
-            tools: new DeviceToolsService({
-              hostId: LOCAL_DEVICE_HOST_ID,
-              runner: createDeviceToolRunner(),
-              hub: deviceHubEndpoint,
-            }),
-          }),
+          automation: agentDeviceAutomation,
         }),
       );
     }
@@ -4019,10 +4043,24 @@ export function configureRuntimeRoutes(
       }
       await next();
     });
+    const revealAutomation = agentDeviceAutomation;
     context.app.route(
       '/api/mobile-devices',
       createMobileDeviceRoutes(deviceHost, {
         isRequestPrincipalCurrent,
+        ...(revealAutomation && deviceShareAccess
+          ? {
+              agentReveals: {
+                projectAccess: deviceShareAccess,
+                list: (projectId, conversationId, principalId) =>
+                  revealAutomation.revealRequests(
+                    projectId,
+                    conversationId,
+                    principalId,
+                  ),
+              },
+            }
+          : {}),
         access: deviceAccess,
         ...(deviceSessions ? { sessions: deviceSessions } : {}),
         remoteHost: (hostId) => remoteDeviceHosts?.get(hostId),
@@ -4731,6 +4769,34 @@ export function configureRuntimeRoutes(
       },
       logger: context.logger,
     });
+    const resolveRoomPerson = (request: Request) => {
+      const authenticated = getRuntimeAuthenticatedRequestPrincipal(request);
+      if (!authenticated) return { kind: 'revoked' as const };
+      const principal = roomRequestPrincipals.get(request);
+      if (!principal) return { kind: 'revoked' as const };
+      const device = context.environmentSecurityService.identifyDevice(
+        authenticated.credential,
+      );
+      if (device)
+        return {
+          kind: 'granted' as const,
+          operatorId: principal.id,
+          displayName: principal.display,
+          deviceId: device.id,
+          policyRevision: device.scope,
+        };
+      return context.environmentSecurityService.verifyOperatorCredential(
+        authenticated.credential,
+      )
+        ? {
+            kind: 'granted' as const,
+            operatorId: principal.id,
+            displayName: principal.display,
+            deviceId: `operator:${principal.id}`,
+            policyRevision: 'operator',
+          }
+        : { kind: 'revoked' as const };
+    };
     const roomRuntime = new ProjectTaskRoomRuntime({
       attachments: new TaskRoomAttachments(
         join(context.configLoader.getProjectHomeDir(), 'task-room-attachments'),
@@ -4787,34 +4853,16 @@ export function configureRuntimeRoutes(
         // cached principal (resolution never ran, or threw
         // `PrincipalUnresolvedError`) revokes the grant rather than falling
         // back to any default identity.
-        resolve: async (request) => {
-          const authenticated =
-            getRuntimeAuthenticatedRequestPrincipal(request);
-          if (!authenticated) return { kind: 'revoked' as const };
-          const principal = roomRequestPrincipals.get(request);
-          if (!principal) return { kind: 'revoked' as const };
-          const device = context.environmentSecurityService.identifyDevice(
-            authenticated.credential,
+        resolve: async (request) => resolveRoomPerson(request),
+        isCurrent: (request, expected) => {
+          if (!isRequestPrincipalCurrent(request)) return false;
+          const now = resolveRoomPerson(request);
+          return (
+            now.kind === 'granted' &&
+            now.operatorId === expected.operatorId &&
+            now.deviceId === expected.deviceId &&
+            now.policyRevision === expected.policyRevision
           );
-          if (device)
-            return {
-              kind: 'granted' as const,
-              operatorId: principal.id,
-              displayName: principal.display,
-              deviceId: device.id,
-              policyRevision: device.scope,
-            };
-          return context.environmentSecurityService.verifyOperatorCredential(
-            authenticated.credential,
-          )
-            ? {
-                kind: 'granted' as const,
-                operatorId: principal.id,
-                displayName: principal.display,
-                deviceId: `operator:${principal.id}`,
-                policyRevision: 'operator',
-              }
-            : { kind: 'revoked' as const };
         },
       },
       readAgentRequests: async (taskId) => {
@@ -4950,6 +4998,73 @@ export function configureRuntimeRoutes(
     // Resolve each Request-only room consumer through the same principal owner.
     context.app.use('/api/live-activity', primeRoomRequestPrincipal);
     context.app.use('/api/home-authority/rooms/*', primeRoomRequestPrincipal);
+    context.app.route(
+      '/api/tasks',
+      createTaskReviewRoutes({
+        runtime: roomRuntime,
+        logger: context.logger,
+        module: new TaskReviewModule({
+          logger: context.logger,
+          store: roomEventStore.taskReviewStore(),
+          memory: roomEventStore.taskMemoryStore(),
+          outputs: taskOutputs,
+          readPlan: (taskId, request) =>
+            roomRuntime.readPlanForReview(taskId, request),
+          readAnswers: async (taskId, request, itemId) => {
+            const scope =
+              context.taskGraphService.readTaskTurnReferenceScope(taskId);
+            if (!scope) return [];
+            const links =
+              context.taskGraphService.readTaskTurnReferenceLinks(taskId) ?? [];
+            const refs = links.flatMap((link) => {
+              const ref = parseTaskTurnReference(String(link.targetId));
+              return ref &&
+                (itemId === undefined ||
+                  JSON.stringify([ref.sessionId, ref.turnId]) === itemId)
+                ? [ref]
+                : [];
+            });
+            const answers: {
+              sessionId: string;
+              turnId: string;
+              text: string;
+            }[] = [];
+            // Bound concurrent owner reads; never replay unrelated answers for a mutation/item.
+            for (let offset = 0; offset < refs.length; offset += 4) {
+              const batch = await Promise.all(
+                refs.slice(offset, offset + 4).map(async (ref) => {
+                  const answer =
+                    await context.orchestrationService.sessionQueries.readAssistantTurn(
+                      {
+                        type: 'assistant-turn',
+                        threadId: ref.sessionId,
+                        turnId: ref.turnId,
+                      },
+                      conversationReadAuthorityForRequest(request),
+                    );
+                  if (
+                    answer.status !== 'found' ||
+                    answer.projectSlug !== scope.projectId
+                  )
+                    return undefined;
+                  return {
+                    sessionId: ref.sessionId,
+                    turnId: ref.turnId,
+                    text: answer.message.parts
+                      .flatMap((part) =>
+                        part.type === 'text' ? [part.text] : [],
+                      )
+                      .join('\n'),
+                  };
+                }),
+              );
+              for (const answer of batch) if (answer) answers.push(answer);
+            }
+            return answers;
+          },
+        }),
+      }),
+    );
     // #4003 layer 4: a person reviews a done Task's lessons and promotes them
     // into the Project's knowledge store. Room request authority; no
     // station-control tool names these routes.
@@ -6432,14 +6547,51 @@ export function configureRuntimeRoutes(
       const agentWrite =
         c.req.method !== 'GET' &&
         c.req.method !== 'HEAD' &&
-        isPrincipalScopedAgentRequest(c.req.raw);
+        isPrincipalScopedAgentRequest(c.req.raw) &&
+        !/\/layouts(?:\/|$)|\/layout-policy$/.test(
+          new URL(c.req.raw.url).pathname,
+        );
       const restricted = agentWrite
         ? false
         : await requireAuthenticatedProjectRead(c.req.raw, c.req.param('slug'));
+      const layoutWrite =
+        c.req.method !== 'GET' &&
+        c.req.method !== 'HEAD' &&
+        /^\/api\/projects\/[^/]+\/layouts(?:\/|$)/.test(
+          new URL(c.req.raw.url).pathname,
+        );
+      const layoutActionAllowed =
+        restricted &&
+        layoutWrite &&
+        (
+          await context.projectMembership!.readableProjectAdmissions(
+            projectMembershipAuthority(c.req.raw),
+          )
+        ).some(
+          ({ scope, member }) =>
+            scope.localProjectId === restricted.localProjectId &&
+            member.actions.includes('manage-layouts'),
+        );
+
+      const layoutPolicyAllowed =
+        restricted &&
+        c.req.method === 'PUT' &&
+        new URL(c.req.raw.url).pathname.endsWith('/layout-policy') &&
+        (
+          await context.projectMembership!.readableProjectAdmissions(
+            projectMembershipAuthority(c.req.raw),
+          )
+        ).some(
+          ({ scope, member }) =>
+            scope.localProjectId === restricted.localProjectId &&
+            member.actions.includes('manage-extensions'),
+        );
       if (
         restricted &&
         c.req.method !== 'GET' &&
         c.req.method !== 'HEAD' &&
+        !layoutActionAllowed &&
+        !layoutPolicyAllowed &&
         !isProjectMemberPluginScaffold(
           c.req.method,
           new URL(c.req.raw.url).pathname,
@@ -6784,6 +6936,48 @@ export function configureRuntimeRoutes(
     '/api/me',
     createPersonalLayoutRoutes(ownedLayoutStore(context.storageAdapter), {
       resolvePrincipal: resolveOrchestrationRequestPrincipal,
+      canUseProject: async (c, slug, action) => {
+        roomRequestPrincipals.set(
+          c.req.raw,
+          resolveOrchestrationRequestPrincipal(c),
+        );
+        try {
+          const authority = await authenticatedProjectMember(c.req.raw);
+          if (!authority) return true;
+          return (
+            await context.projectMembership!.readableProjectAdmissions(
+              authority,
+            )
+          ).some(
+            ({ scope, member }) =>
+              scope.localProjectSlug === slug &&
+              member.actions.includes(action),
+          );
+        } catch (error) {
+          if (error instanceof ProjectMembershipRefusal) return false;
+          throw error;
+        }
+      },
+      componentPlugins: (name) => {
+        const plugins = new Set<string>();
+        for (const item of layoutCatalog.listLayouts()) {
+          const resolved = layoutCatalog.resolveForCatalog(item.id);
+          if (!resolved.pluginName) continue;
+          if (
+            resolved.definition.tabs.some((tab) =>
+              [tab.component, tab.alternativeRenderer?.component].some(
+                (component) =>
+                  typeof component === 'string'
+                    ? component === name
+                    : component?.kind === 'plugin-component' &&
+                      component.name === name,
+              ),
+            )
+          )
+            plugins.add(resolved.pluginName);
+        }
+        return [...plugins];
+      },
       // #2062 review BLOCKING-2 — promote publishes into a project, so it must
       // pass the admission that project's own create route applies. Both are
       // wired from the SAME two expressions, a few lines apart, so the agent
@@ -6846,6 +7040,52 @@ export function configureRuntimeRoutes(
     authorityFor: conversationReadAuthorityForRequest,
     projects: context.projectService,
   });
+  // Part (a) exposes the storage/host seam only to the personal operator.
+  // Account, hosted, device and plugin admission belongs to #3994(b).
+  if (isPersonalHost) {
+    const authorizeTerminalRequest = (request: Request) =>
+      isOperatorInPersonNotAgent(request) && isRequestPrincipalCurrent(request);
+    const terminalSessions = new TerminalSessions<Request>(
+      context.configLoader.getProjectHomeDir(),
+      new InProcessShellHost(
+        new NodePtyAdapter(),
+        async () => (await context.configLoader.loadAppConfig()).terminalShell,
+      ),
+      {
+        authorize: (request) => authorizeTerminalRequest(request),
+        resolveRoot: async (request, scope) => {
+          const project = context.storageAdapter
+            .listProjects()
+            .find((item) => item.id === scope.projectId);
+          if (!project) throw new TerminalSessionRefusal('Project not found');
+          let root =
+            scope.bindingKey === 'project'
+              ? resolveWorkspacePath(project.slug)
+              : scope.bindingKey.startsWith('thread:')
+                ? await sessionWorkspaceDirectory(
+                    request,
+                    project.slug,
+                    scope.bindingKey.slice(7),
+                  )
+                : undefined;
+          if (scope.bindingKey.startsWith('thread:') && root === undefined)
+            root = resolveWorkspacePath(project.slug);
+          if (!root)
+            throw new TerminalSessionRefusal('Terminal binding unavailable');
+          return root;
+        },
+      },
+    );
+    context.terminalService.scopedSessions = terminalSessions;
+    context.app.route(
+      '/api/projects',
+      createTerminalSessionRoutes(
+        terminalSessions,
+        (slug) => context.storageAdapter.getProject(slug).id,
+        authorizeTerminalRequest,
+      ),
+    );
+  }
   const projectCatalogue = createProjectCatalogueReader(
     context.projectService,
     projectCatalogueDeps,
@@ -11087,7 +11327,12 @@ export function configureDevicePairingHostRoutes(
   };
   app.get('/api/pairing/device-access-transactions/:id', (c) => {
     const channel = options.consentChannel;
-    const transaction = channel?.store.get(channel.tenantId, c.req.param('id'));
+    const transaction = channel
+      ? outsideAgentConsentStore(channel.store).get(
+          channel.tenantId,
+          c.req.param('id'),
+        )
+      : undefined;
     const session = operatorSession(c.req.raw);
     if (!currentOperator(c, c.req.raw) && !session)
       return c.json({ error: 'authentication_required' }, 401);

@@ -116,7 +116,9 @@
 
     "src-ui/src/workspace-panes/browser-pane/BrowserPane.css",
 
-    "src-ui/src/workspace-panes/browser-pane/BrowserOverflowMenu.tsx"
+    "src-ui/src/workspace-panes/browser-pane/BrowserOverflowMenu.tsx",
+
+    "src-ui/src/workspace-panes/browser-pane/BrowserTabs.tsx"
   ],
 
   "checks": [
