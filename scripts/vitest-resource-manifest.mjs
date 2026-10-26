@@ -151,6 +151,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/orchestration/__tests__/station-report-group-continuation.test.ts',
   'src-server/services/orchestration/__tests__/station-report-sync-recovery.test.ts',
   'src-server/services/orchestration/__tests__/station-report-accounting-recovery.test.ts',
+  'src-server/services/orchestration/__tests__/delegation-group-persistence.test.ts',
   'src-server/services/orchestration/__tests__/station-report-checkpoint.test.ts',
   'src-server/services/orchestration/__tests__/station-report-credential-sharing.test.ts',
   'src-server/services/orchestration/__tests__/google-sealed-preparation.test.ts',

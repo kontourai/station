@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   existsSync,
@@ -25,8 +26,14 @@ import {
   type DelegationGroupSpecV2,
 } from '@kontourai/flow-agents/delegation-group-v2';
 import { canonicalJson } from '@kontourai/relay';
-import { expect, test } from 'vitest';
+import { expect, onTestFinished, test, vi } from 'vitest';
+import {
+  executeOwnedProcess,
+  terminateSuiteExecution,
+  waitForSuiteSettlement,
+} from '../../../../scripts/lib/owned-process.mjs';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { HomeWriterOwner } from '../../ssh/home-writer-owner.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
 import type { ReportInterruptRecord } from '../station-report-group-cancellation.js';
 
@@ -854,4 +861,113 @@ test('interrupt intent reads and replay remain available during settlement and l
     (await store.readReportInterrupt('group:interrupt', 'right', current))
       ?.acknowledgement?.threadId,
   ).toBe('task:right');
+});
+
+test('post-home acquisition execution read drains a separate publisher paused after its finalizer and before rename', {
+  timeout: 30_000,
+}, async () => {
+  const f = fixture();
+  mkdirSync(join(f.root, 'security'), { mode: 0o700 });
+  const barrier = join(f.root, 'publisher-paused');
+  const resume = join(f.root, 'publisher-resume');
+  const outcome = join(f.root, 'publisher-outcome');
+  const ledger = {
+    schemaVersion: '3.0',
+    revision: 1,
+    maxRenewals: 0,
+    importedFromV2: null,
+    epochs: [{ root: f.authorityRoot, envelopes: [], renewal: null }],
+    cancelled: false,
+    invocations: [],
+    origins: [],
+  };
+  const payload = join(f.root, 'publisher-input.json');
+  writeFileSync(payload, JSON.stringify(ledger));
+  const source = `
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+import { join, dirname } from 'node:path';
+
+
+const root = fs.realpathSync(process.argv[1]);
+const rename = fs.renameSync;
+fs.renameSync = (from, to) => {
+  if (dirname(String(to)) === join(root, 'station-rounds-authorities-v3')) {
+    fs.writeFileSync(join(root, 'publisher-paused'), 'after-finalizer');
+    const end = Date.now() + 20000;
+    while (!fs.existsSync(join(root, 'publisher-resume'))) {
+      if (Date.now() > end) throw Error('publication barrier was not released');
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+  }
+  return rename(from, to);
+};
+syncBuiltinESMExports();
+const { StationDelegationPersistence } = await import(${JSON.stringify(new URL('../delegation-group-persistence.ts', import.meta.url).href)});
+const { HomeWriterOwner, HomeWriterUnavailableError } = await import(${JSON.stringify(new URL('../../ssh/home-writer-owner.ts', import.meta.url).href)});
+const owner = await HomeWriterOwner.forHome(root);
+const persistence = new StationDelegationPersistence(root);
+try {
+  await persistence.roundsAuthorityStore(() => owner.runSynchronous(() => undefined))
+    .transact('authority', async () => ({ ledger: JSON.parse(fs.readFileSync(join(root, 'publisher-input.json'), 'utf8')), result: undefined }));
+  throw Error('publisher disclosed success under a foreign home hold');
+} catch (error) {
+  if (!(error instanceof HomeWriterUnavailableError)) throw error;
+  fs.writeFileSync(join(root, 'publisher-outcome'), 'refused-after-publication');
+}
+`;
+  const child = executeOwnedProcess(
+    process.execPath,
+    ['--import', 'tsx', '--input-type=module', '-e', source, f.root],
+    spawn,
+    'Accounting domain publisher',
+    { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] },
+  );
+  let childError = '';
+  child.child.stderr?.on('data', (chunk) => {
+    childError = (childError + String(chunk)).slice(-16_384);
+  });
+  onTestFinished(async () => {
+    if (existsSync(f.root)) writeFileSync(resume, 'cleanup');
+    const cleanup = await terminateSuiteExecution(child, {
+      processLabel: 'Accounting domain publisher',
+      waitForSuiteSettlement,
+      terminationGraceMs: 1000,
+      terminationForceMs: 1000,
+    });
+    expect(cleanup).toMatchObject({ settled: true, errors: [] });
+  });
+  await vi.waitFor(() => expect(existsSync(barrier), childError).toBe(true), {
+    timeout: 15_000,
+  });
+  const owner = await HomeWriterOwner.forHome(f.root);
+  const hold = await owner.acquire();
+  try {
+    let disclosed = false;
+    const read = f.persistence
+      .readReportExecution('group', 'authority', () =>
+        owner.runWithLease(hold, () => undefined),
+      )
+      .then((value) => {
+        disclosed = true;
+        return value;
+      });
+    const waiting = () =>
+      readdirSync(f.root).some(
+        (name) =>
+          name.startsWith('station-delegation-authorities.mutation.') &&
+          name.endsWith('.tmp'),
+      );
+    await vi.waitFor(() => expect(disclosed || waiting()).toBe(true), {
+      timeout: 5000,
+    });
+    expect(disclosed).toBe(false);
+    writeFileSync(resume, 'publish');
+    const drained = await read;
+    expect(drained.authority).toEqual(ledger);
+    expect(await child.completion).toMatchObject({ status: 0, signal: null });
+    expect(readFileSync(outcome, 'utf8')).toBe('refused-after-publication');
+  } finally {
+    await hold.release();
+  }
 });
