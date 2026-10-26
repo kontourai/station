@@ -4,6 +4,7 @@ import { chmodSync, writeFileSync } from 'node:fs';
 import {
   createServer,
   type IncomingMessage,
+  request as nodeRequest,
   type ServerResponse,
 } from 'node:http';
 import net from 'node:net';
@@ -726,7 +727,6 @@ it.each([
       expect(diagnostic).toBe(
         'UI request failed (ERR_HTTP_INVALID_STATUS_CODE)\n',
       );
-      expect(diagnostic).not.toContain('do-not-log');
     }
   },
 );
@@ -793,5 +793,89 @@ it.each([
       .then((res) => res.status)
       .catch((error) => String(error));
     expect(next, 'asset failure must not kill the UI process').toBe(200);
+  },
+);
+
+it.each(['invalid-chunk', 'mid-SSE-reset', 'mid-body-reset'] as const)(
+  'serialized UI survives %s and exposes truncation instead of a clean end',
+  async (failure) => {
+    let diagnostic = '';
+    let reached = false;
+    const port = await uiListener(
+      (req) => {
+        req.resume();
+        reached = true;
+        req.socket.on('error', () => {});
+        const payload =
+          failure === 'mid-SSE-reset' ? 'data: first\n\n' : 'first body bytes';
+        const contentType =
+          failure === 'mid-SSE-reset'
+            ? 'text/event-stream'
+            : 'application/octet-stream';
+        req.socket.write(
+          `HTTP/1.1 200 OK\r\nContent-Type: ${contentType}\r\nTransfer-Encoding: chunked\r\n\r\n` +
+            (failure === 'invalid-chunk'
+              ? '5\r\nab\r\nZZ\r\n'
+              : `${Buffer.byteLength(payload).toString(16)}\r\n${payload}\r\n`),
+        );
+        if (failure !== 'invalid-chunk')
+          nativeTimer(() => req.socket.resetAndDestroy(), 150);
+      },
+      false,
+      {
+        onDiagnostic: (message) => {
+          diagnostic += message;
+        },
+      },
+    );
+    const result = await new Promise<{
+      ended: boolean;
+      complete: boolean;
+      body: string;
+    }>((resolve, reject) => {
+      let responseStarted = false;
+      const request = nodeRequest(
+        { hostname: '127.0.0.1', port, path: '/api/truncated', agent: false },
+        (response) => {
+          responseStarted = true;
+          let body = '',
+            ended = false;
+          response.on('data', (chunk) => {
+            body += chunk;
+          });
+          response.on('end', () => {
+            ended = true;
+          });
+          response.on('error', () => {});
+          response.on('close', () =>
+            resolve({ ended, complete: response.complete, body }),
+          );
+        },
+      );
+      request.on('error', () => {
+        if (!responseStarted)
+          resolve({ ended: false, complete: false, body: '' });
+      });
+      request.setTimeout(1500, () => {
+        request.destroy();
+        reject(new Error('truncated response hung'));
+      });
+      request.end();
+    });
+    const followup = await fetch(
+      `http://127.0.0.1:${port}/__station/identity`,
+      { signal: AbortSignal.timeout(1500) },
+    )
+      .then((response) => response.status)
+      .catch((error) => String(error));
+    expect(reached, 'raw malformed/reset upstream must be reached').toBe(true);
+    expect(followup, diagnostic).toBe(200);
+    expect(
+      result.ended,
+      'truncated upstream must not become a clean client end',
+    ).toBe(false);
+    expect(result.complete).toBe(false);
+    if (failure !== 'invalid-chunk') expect(result.body).toContain('first');
+    expect(diagnostic).toBe('');
   },
 );

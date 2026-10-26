@@ -688,6 +688,7 @@ function createUiRequestHandler(
     );
     let upstreamResponded = false;
     let timedOut = false;
+    let upstreamResponse: import('node:http').IncomingMessage | undefined;
     const proxyReq = http.request(
       {
         host: '127.0.0.1',
@@ -698,6 +699,7 @@ function createUiRequestHandler(
         timeout: mediaUpload?.idleMs ?? PROXY_UPSTREAM_TIMEOUT_MS,
       },
       (proxyRes) => {
+        upstreamResponse = proxyRes;
         try {
           if (res.headersSent || res.writableEnded || res.destroyed) {
             proxyRes.destroy();
@@ -754,7 +756,8 @@ function createUiRequestHandler(
     proxyReq.on('error', () => {
       if (res.writableEnded || res.destroyed) return;
       if (res.headersSent) {
-        if (!res.writableEnded) res.end();
+        upstreamResponse?.unpipe(res);
+        res.destroy();
         return;
       }
       if (timedOut) {
@@ -1169,6 +1172,7 @@ function createUiRequestHandler(
     req: import('node:http').IncomingMessage,
     res: import('node:http').ServerResponse,
   ) => {
+    res.on('error', () => res.destroy());
     try {
       let decodedPath: string;
       try {
