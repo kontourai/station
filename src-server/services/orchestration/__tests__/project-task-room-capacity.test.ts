@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   SHARED_WORKING_STATE_SCHEMA_VERSION,
@@ -177,6 +177,7 @@ async function setup() {
   return {
     runtime,
     scope,
+    revisionEvidence,
     directory,
     text,
     plan,
@@ -295,6 +296,7 @@ describe('#4007 a Task document refuses what it cannot hold, explicitly and up f
 
   test('a full evidence ledger refuses new references while edits and deletions keep saving', async () => {
     const room = await setup();
+    const freezes = vi.spyOn(room.revisionEvidence, 'recordPublication');
     let current = 'd'.repeat(4_000);
     let linked = true;
     for (let index = 0; index < 20 && linked; index += 1) {
@@ -310,6 +312,10 @@ describe('#4007 a Task document refuses what it cannot hold, explicitly and up f
       current += 'e';
     }
     expect(linked).toBe(false);
+    expect(freezes.mock.results.at(-1)).toMatchObject({
+      type: 'return',
+      value: { kind: 'refused', reason: 'capacity_exceeded' },
+    });
     // Upgrade custody: old outboxes are claimed even if freeze never committed.
     const database = new DatabaseSync(
       join(room.directory, 'orchestration.sqlite'),
@@ -320,6 +326,7 @@ describe('#4007 a Task document refuses what it cannot hold, explicitly and up f
           'SELECT record_json FROM revision_evidence_receipts ORDER BY revision_id',
         )
         .all();
+      expect(receipts.length).toBeGreaterThan(1);
       database
         .prepare(
           'UPDATE project_task_room_revision_publication_outbox SET freeze_requested=1',

@@ -66,12 +66,13 @@ async function fixture(
   let current = true;
   const security = new EnvironmentSecurityService({ homeDir: directory });
   await security.initialize();
+  const revisionEvidence = new ProjectTaskRoomRevisionEvidenceBridge({
+    eventStore: store,
+    security,
+  });
   const room = new ProjectTaskRoomRuntime({
     taskGraph: service,
-    revisionEvidence: new ProjectTaskRoomRevisionEvidenceBridge({
-      eventStore: store,
-      security,
-    }),
+    revisionEvidence,
     projectForId: (id) => ({ id, slug: id }),
     history: (authority) => store.createProjectTaskRoomHistory(authority),
     working,
@@ -116,6 +117,7 @@ async function fixture(
     read,
     accept,
     room,
+    revisionEvidence,
     working,
     revoke: () => {
       current = false;
@@ -401,7 +403,10 @@ test('a proposal brief the Task document cannot hold is refused before any Task 
 async function fillRevisionLedger(
   service: TaskGraphService,
   room: ProjectTaskRoomRuntime,
+  bridge: ProjectTaskRoomRevisionEvidenceBridge,
+  working: Awaited<ReturnType<typeof fixture>>['working'],
 ) {
+  const freezes = vi.spyOn(bridge, 'recordPublication');
   const request = new Request('http://station.test');
   const fillers: string[] = [];
   for (const size of [4_000, 2_000, 1_000, 500, 200, 50, 1]) {
@@ -439,20 +444,40 @@ async function fillRevisionLedger(
         workingRevision: document.revision,
         beforeCommit: () => true,
       });
-      if (!frozen) break;
+      if (!frozen) {
+        expect(freezes.mock.results.at(-1)).toMatchObject({
+          type: 'return',
+          value: { kind: 'refused', reason: 'capacity_exceeded' },
+        });
+        break;
+      }
       text += 'g';
     }
   }
+  expect(await working.revisionLedgerUsage?.()).toMatchObject({
+    kind: 'available',
+    count: expect.any(Number),
+  });
+  const usage = await working.revisionLedgerUsage?.();
+  if (usage?.kind !== 'available')
+    throw new Error('Expected real ledger usage');
+  expect(usage.count).toBeGreaterThan(1);
+  expect(usage.count).toBeLessThanOrEqual(256);
   return fillers;
 }
 
 test.each([true, false])(
   'with the revision ledger full, proposal acceptance still seeds the Task (precheck=%s)',
   async (checkLedgerBeforeCreate) => {
-    const { accept, service, room } = await fixture({
+    const { accept, service, room, revisionEvidence, working } = await fixture({
       checkLedgerBeforeCreate,
     });
-    const fillers = await fillRevisionLedger(service, room);
+    const fillers = await fillRevisionLedger(
+      service,
+      room,
+      revisionEvidence,
+      working,
+    );
     const response = await accept();
     expect(response.status, await response.clone().text()).toBe(201);
     const created = ((await response.json()) as { data: { id: string } }).data;
@@ -468,11 +493,11 @@ test.each([true, false])(
 );
 
 test('re-accepting an accepted proposal while the revision ledger is full returns the existing Task (#4007, #4055)', async () => {
-  const { accept, service, room } = await fixture();
+  const { accept, service, room, revisionEvidence, working } = await fixture();
   const first = await accept();
   expect(first.status, await first.clone().text()).toBe(201);
   const accepted = ((await first.json()) as { data: { id: string } }).data;
-  await fillRevisionLedger(service, room);
+  await fillRevisionLedger(service, room, revisionEvidence, working);
   // A lost response or a double-click: the same source again.
   const again = await accept();
   expect(again.status, await again.clone().text()).toBe(201);

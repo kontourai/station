@@ -784,6 +784,24 @@ describe('ProjectTaskRoomRevisionEvidenceBridge production composition', () => {
 
       const restarted = await composition(home, { operatorId: 'retry-caller' });
       await restarted.runtime.reconcileRevisionPublications([task.id]);
+      expect(await browserRevisionLinks(restarted.runtime)).toHaveLength(1);
+      const recovered = new DatabaseSync(join(home, 'events.sqlite'));
+      try {
+        expect(
+          recovered
+            .prepare(
+              'SELECT intent_id FROM project_task_room_revision_publication_outbox',
+            )
+            .all(),
+        ).toHaveLength(0);
+        expect(
+          recovered
+            .prepare('SELECT revision_id FROM revision_evidence_receipts')
+            .all(),
+        ).toHaveLength(1);
+      } finally {
+        recovered.close();
+      }
       await expect(
         restarted.runtime.submitBatch({
           taskId: task.id,
