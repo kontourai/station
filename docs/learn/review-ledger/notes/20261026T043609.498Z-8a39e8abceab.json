@@ -1,0 +1,7 @@
+{
+  "revision": "f8a58862bf8ce5a4f71b61b98fd98926d1912fe2",
+
+  "notes": [
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"#4200 delta-review round, delta only: service.ts changed just the stale-home refusal wording (naming install from this home or uninstall from the unit home) and the uninstall message for a unit with no manifest. Re-checked this document's service status/start/stop/uninstall and stale-home statements; still accurate, no prose change.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","packages/cli/src/commands/service.ts"]}
+  ]
+}

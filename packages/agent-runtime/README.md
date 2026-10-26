@@ -50,6 +50,82 @@ writes when the triggering command returns expired; normal `commit` still
 excludes refusals. Both run before COMMIT and roll back on failure. Closing
 a wrapper does not close the host connection.
 
+SQLite command validation is scoped to the requested run: current run/retired
+records, canonically routed receipts and outbox rows, their relationships, and
+referenced bodies. Every body read still checks the complete reference, byte
+length, digest and codec. New-run admission also checks global active-run
+capacity and same-scope conversation occupancy. Opening model storage selects
+open/running runs and suspect state/settlement headers through its index, then
+validates each selected run against the supported maximum of 128. A reduced
+`maxOpenRuns` applies to new admission; existing work remains recoverable and
+drainable above that session cap. Takeover validates the requested run before
+returning recovery authority. A record excluded by the open-time selector is
+checked when its run is read or through the explicit whole-store audit. Damage
+in unrelated settled records does not block an ordinary command on this run
+through an already-open storage handle. Reopening still refuses invalid JSON
+or suspect state/settlement headers in the unresolved selection. A shared body
+still refuses wherever a checked reference reads its damaged bytes.
+
+The additive `agent_runtime_unresolved` index changes no table, JSON/BLOB codec,
+record identity or writer format (`schema_version=2`, `runtime-model/1`). Exact
+namespace checks include this index and refuse TEMP shadows and unexpected
+objects attached to runtime tables. Participants retain the real host connection.
+Every write compares the physical unresolved-index IDs across callbacks,
+allowing only the current run's unresolved-membership transition. This control
+query selects IDs without decoding unrelated JSON payloads; physical table-page
+I/O has not been verified through SQLite planner or I/O observations. Existing
+runs on an already-open handle can finish and drain when unrelated settled
+records acquire suspect headers; callback changes
+to that current membership still roll back. The complete ID walk is not truncated
+or refused merely because suspect membership exceeds 128, so its size can grow
+with corruption. New-run admission and storage opening retain strict suspect-header
+validation and the absolute supported bound. New admission still parses and
+schema/header-validates every selected active record, so its cost depends on
+the total active-record payload. Settled-history and single-run workloads do
+not qualify that active-set admission cost. Admission derives conversation
+occupancy from validated canonical IDs. Participant admission
+cannot replace the selected run's captured row bytes; commit cannot change its
+expected logical records. Such changes roll back. Current host admission is a
+detached observation at its existing point; native release still performs its
+own final current-authority checks. This is not continuous authorization across
+callbacks.
+
+`auditAgentRuntimeStore({ database, policy })`, exported by `/sqlite`, is an
+explicit quiescent diagnostic for an already prepared M1 store. Its exact
+`agent_runtime_unresolved` index must already exist; an ordinary M1 wrapper open
+prepares the index, while the audit never creates it. The diagnostic connection
+must be idle, outside an existing transaction, with WAL, `synchronous=FULL` and
+foreign keys enabled. The host owns opening/configuring that connection and
+quiescing its callbacks; the audit changes none of these settings.
+
+The audit uses a read-only transaction and `integrity_check`, compares indexed
+unresolved membership with a raw table scan and decoded headers, and checks the
+whole journal, applied projections and every BLOB, including orphans. It rejects
+duplicate control-header keys, nontext states, inconsistent state/settlement
+pairs and noninteger numeric settlement encodings when read. SQL/JavaScript
+header disagreement and stale index membership are reported offline. Physical receipt and outbox identity issues are enumerated independently
+where possible. Per-run and retired-key checks retain the shared receipt, outbox
+ordering and body-link validators without a redundant whole-state pass.
+
+Detected damage always yields `status: 'damaged'`, including native SQLite
+`CORRUPT` and `NOTADB` errors identified by the primary byte of Node's numeric
+`errcode`. Those engine errors report `DURABLE_SQLITE_DAMAGED`; an aborted scan
+still has incomplete enumeration. Enumeration completeness is
+independent: an undecodable record, aborted relationship pass or truncated issue
+list can yield `damaged` with `complete: false`. When SQL or a preparation
+prerequisite is unavailable and no damage has been established, status is
+`incomplete`; an unprepared namespace alone is not a damage verdict. Each issue
+has `disposition: 'damage' | 'unavailable'`, a category, code and optional hashed
+row identity, without stored payloads. The audit creates or repairs nothing.
+Inspect status, completeness and bounded issues together; incomplete enumeration
+is never clean. Receipts moved outside their canonical
+run range are audited as damage; losing a receipt does not remint an existing
+attempt's grant. These checks do not authenticate the file against coherent
+malicious rewrites or consistent rollback, or lock an external effect against
+cross-process changes. Whole-run JSON work and workload performance remain
+unqualified; scoping removes the requirement to validate unrelated settled
+history on each command.
+
 The SQLite projection sink retains raw partial audit and stable abort markers.
 A drain captures the initial committed outbox high-water position and applies
 that finite window across pages, leaving concurrent later appends for the next

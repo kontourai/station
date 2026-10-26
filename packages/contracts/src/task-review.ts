@@ -229,12 +229,39 @@ export type TaskReviewItem = {
   | { readonly status: 'unavailable' }
 );
 
+/** Maximum UTF-16 code units in a list opening-comment preview. */
+export const TASK_REVIEW_OPENING_PREVIEW_CHARS = 500;
+
+/** List entries omit full history; expand a card through the thread-detail route. */
+export type TaskReviewThreadSummary =
+  | (Omit<TaskReviewThreadView, 'events'> & {
+      readonly status: 'available';
+      readonly eventCount: number;
+      /** Opening comment with body capped at TASK_REVIEW_OPENING_PREVIEW_CHARS. */
+      readonly openingEvent: Extract<
+        TaskReviewEvent,
+        { kind: 'comment' | 'reply' }
+      > & { readonly kind: 'comment' };
+      readonly lastDeliveryEvent?: Extract<
+        TaskReviewEvent,
+        { kind: 'sent' | 'send-failed' | 'agent-reply' }
+      >;
+      readonly lastEvent: TaskReviewEvent;
+    })
+  | {
+      readonly status: 'unavailable';
+      readonly state: 'unavailable';
+      readonly threadId: string;
+      readonly ordinal: number;
+      readonly eventCount: number;
+    };
+
 export interface TaskReviewView {
   readonly version: typeof TASK_REVIEW_VERSION;
   readonly taskId: string;
   readonly taskCreatedAt: string;
   readonly items: readonly TaskReviewItem[];
-  readonly threads: readonly TaskReviewThreadView[];
+  readonly threads: readonly TaskReviewThreadSummary[];
   /** Unfiltered counts, even when the request selects one state. */
   readonly counts: TaskReviewCounts;
   readonly limits: typeof TASK_REVIEW_LIMITS;
@@ -1248,6 +1275,7 @@ export function normalizeTaskReviewText(text: string): string {
 /** Immutable normalized text and relocation over that revision; cache outside the contracts module. */
 export interface TaskReviewDocument {
   readonly text: string;
+  readonly lineStarts: readonly number[];
   relocateTextQuote(
     anchor: Extract<TaskReviewAnchor, { kind: 'text-quote' }>,
   ): TaskReviewTextQuoteLocation;
@@ -1263,8 +1291,12 @@ export function prepareTaskReviewDocument(
   )
     return null;
   const normalized = normalizeTaskReviewText(text);
+  const lineStarts = [0];
+  for (let i = 0; i < normalized.length; i++)
+    if (normalized.charCodeAt(i) === 10) lineStarts.push(i + 1);
   return Object.freeze({
     text: normalized,
+    lineStarts: Object.freeze(lineStarts),
     relocateTextQuote: (
       anchor: Extract<TaskReviewAnchor, { kind: 'text-quote' }>,
     ) => relocateNormalizedTextQuote(normalized, anchor),
@@ -1322,12 +1354,14 @@ export type TaskReviewCurrentArtifact =
       readonly kind: 'plan';
       readonly revision: string;
       readonly text: string;
+      readonly preparedDocument?: TaskReviewDocument | null;
     }
   | {
       readonly status: 'available';
       readonly kind: 'summary';
       readonly revision: number;
       readonly text: string;
+      readonly preparedDocument?: TaskReviewDocument | null;
     }
   | {
       readonly status: 'available';
@@ -1362,7 +1396,10 @@ export function deriveOutdated(
   if (current.kind === 'output') return current.newerOutputWithSamePath;
   if (current.kind !== 'plan' && current.kind !== 'summary') return 'unknown';
   if (thread.anchor.kind === 'whole') return 'unknown';
-  const document = prepareTaskReviewDocument(current.text);
+  const document =
+    current.preparedDocument === undefined
+      ? prepareTaskReviewDocument(current.text)
+      : current.preparedDocument;
   if (!document) return 'unknown';
   const text = document.text;
   let anchor: Extract<TaskReviewAnchor, { kind: 'text-quote' }>;
@@ -1370,16 +1407,18 @@ export function deriveOutdated(
   else if (thread.anchor.kind === 'block') {
     const quote = parseTaskReviewQuote(thread.quote);
     if (quote === null) return 'unknown';
-    const lines = text.split('\n');
+    const { lineStarts } = document;
+    const blockStart = lineStarts[thread.anchor.startLine - 1];
+    const blockEnd = lineStarts[thread.anchor.endLine];
     if (
-      lines
-        .slice(thread.anchor.startLine - 1, thread.anchor.endLine)
-        .join('\n') === quote
+      blockStart !== undefined &&
+      text.slice(
+        blockStart,
+        blockEnd === undefined ? text.length : blockEnd - 1,
+      ) === quote
     )
       return false;
-    const start = lines
-      .slice(0, thread.anchor.startLine - 1)
-      .reduce((offset, line) => offset + line.length + 1, 0);
+    const start = blockStart ?? text.length + 1;
     anchor = {
       kind: 'text-quote',
       start,
@@ -1397,7 +1436,7 @@ export function deriveOutdated(
 
 /** Unknown freshness stays in Open. Only confirmed outdated threads enter Outdated. */
 export function matchesTaskReviewFilter(
-  view: TaskReviewThreadView,
+  view: Pick<TaskReviewThreadView, 'baseState' | 'state'>,
   filter: TaskReviewFilter,
 ): boolean {
   return filter === 'resolved'
@@ -1443,7 +1482,7 @@ export function deriveThreadView(
 }
 
 export function countThreads(
-  views: readonly TaskReviewThreadView[],
+  views: readonly Pick<TaskReviewThreadView, 'baseState' | 'state'>[],
 ): TaskReviewCounts {
   const counts = { open: 0, outdated: 0, resolved: 0 };
   for (const view of views) {

@@ -5218,3 +5218,103 @@ Invited/public result reads currently omit output feedback: their human-history
 projection includes conversation messages only. Invited/public participation,
 browser acceptance and installed delivery require separate evidence from these
 source contracts.
+
+## Task review threads
+
+Personal runtimes mount review routes under `/api/tasks/:taskId/review`, using
+Task room request authority. Reads require `orchestration:read`; mutations
+require `orchestration:operate`. Every mutation carries a stable `operationId`.
+
+- `GET /api/tasks/:taskId/review?state=open|outdated|resolved` returns
+  `station.task-review/v1`, item metadata, thread summaries and unfiltered counts.
+  Artifact text and full event arrays are excluded. Available summaries carry
+  state, anchor, `eventCount`, `openingEvent`, optional `lastDeliveryEvent` and
+  `lastEvent`. Event bodies in summaries are previews of at most 500 UTF-16
+  code units, with a trailing partial surrogate removed. Detail retains full
+  bodies. `openingEvent` includes the opening author/time; `lastDeliveryEvent`
+  is the latest sent, send-failed or agent-reply even after a later resolve or
+  person reply. If the delivery-status port fails, a Sent thread stays available
+  with `deliveryStatus: 'unconfirmed'` and a distinct warning. A corrupt thread returns
+  `{status:"unavailable", state:"unavailable", threadId, ordinal, eventCount}`,
+  is logged once per thread/event count while retained in the module's bounded
+  warning cache, and stays visible in every filter; aggregate counts omit it. Open includes sent and agent-replied threads with no Outdated overlay.
+- `GET /api/tasks/:taskId/review/threads/:threadId` returns `{thread}` with full
+  events and current derived state. A corrupt thread returns 503; another Task
+  or incarnation returns 404.
+- `GET /api/tasks/:taskId/review/items/:kind/:id` returns one item with its
+  normalized text. Use the list's opaque item `id`, URL-encoded; an answer ID
+  is the JSON tuple `[sessionId, turnId]`. Text exceeding 1,048,576 UTF-8 bytes
+  or UTF-16 code units is refused with `artifact-unavailable` (503), never
+  truncated. Output metadata above the byte cap is refused before reading
+  content. Captures return metadata here; image content belongs to the capture
+  route increment.
+- `POST /api/tasks/:taskId/review/threads` takes `{artifact, anchor, body,
+  operationId, quote?}`; block anchors require the retained `quote`. The server requires the current artifact revision and digest,
+  and validates the anchor against its content.
+- `POST /api/tasks/:taskId/review/threads/:threadId/replies` takes `{body,
+  operationId}`.
+- `POST /api/tasks/:taskId/review/threads/:threadId/resolve` and `/reopen` take
+  `{reason?, operationId}`. Resolve records a default reason when omitted.
+
+Success returns `{success:true,data:...}`; mutations return `data.thread`.
+Refusals include `invalid-request` and `invalid-event` (400), `not-found` (404),
+`anchor-mismatch`, `invalid-transition`, `operation-conflict`, `thread-limit`
+and `event-limit` (409),
+and `artifact-unavailable` or `unavailable` (503). Another Task incarnation's
+thread, a cross-Project thread and a revoked person grant are not found.
+Oversize request bodies are refused with 413.
+
+Threads and events are append-only in the orchestration SQLite database,
+isolated by Task id and creation time. Limits are 500 threads per incarnation,
+200 events per thread, 4000 UTF-16 code units per comment and 2000 per retained
+quote. Identical retries return the original write; changing an operation's
+payload is refused. Invalid reopens or repeated resolves consume no event
+slot. Opening comments, person replies, sent, reopened and send-failed events
+require a person author in both the store and SQLite. A send failure additionally
+requires the active send's original person. A delivery key can be sent only once
+per thread, backed by a partial unique index. Reopen and a reply after Resolve
+clear the active key; late agent replies then receive 409 `invalid-transition`.
+`pendingFollowUp` survives agent replies, failure and reopen until another
+accepted send clears it. SQLite also enforces contiguous event ordinals,
+evidence only on agent replies, bodies only on comments/replies/agent replies,
+anchor JSON kind agreement, block quotes, whole anchors without quotes and
+positive decimal summary revisions without leading zeros. An agent-reply key
+must match an earlier sent event in that thread (SQLite trigger); the contract
+additionally enforces active-key retirement. Bounds never truncate or evict
+existing records.
+
+Answer references use `{kind:'answer', sessionId, turnId, revision, digest}`;
+summary references use `id:'summary'` and a numeric revision. Capture references
+use the clean commit SHA as `revision` and the image digest as `digest`. The store maps
+summary revisions to decimal TEXT and back to numbers. Thread mutation
+responses project the committed store row using only the affected artifact;
+they do not rebuild the full review list. Output lists use one metadata read,
+and answer owner reads run at most four at once. Answers require an explicit
+Project matching the Task; missing provenance is refused. Person grants are
+rechecked synchronously along with Task and scope inside each write transaction.
+List authority is checked afresh even when derived data is cached.
+
+Freshness views are cached by thread ID, immutable event count and current
+artifact revision/availability (including output path provenance). Plan/summary
+normalization, digest and line offsets are retained per revision; immutable answer
+digests are cached by Session/turn. These bounded in-memory caches do not grant
+access and restart empty. Current artifact owners still supply the authorized
+revision on each request. Unchanged polls do not repeat quote relocation.
+
+Outdated is derived on read: a plan or summary quote remains current when it
+can still be uniquely relocated, even after the revision changes. An unavailable
+plan yields `outdated: "unknown"`; a resolved thread is never Outdated. Whole
+plan/summary anchors retain no body quote; changed revisions have unknown
+freshness and remain visible through `currentRevision`, following the shared
+contract. Review
+reads plan working state and never writes the room document, room history,
+Task status or revision-bound evidence. Capture metadata primitives exist in
+the store; send, capture HTTP routes, agent tools and the Review UI are separate
+increments.
+
+Owners: [review routes](../../src-server/routes/orchestration/task-review.ts),
+[artifact resolution](../../src-server/services/projects/task-review-module.ts),
+[store](../../src-server/services/orchestration/task-review-store.ts),
+[contracts](../../packages/contracts/src/task-review.ts). The
+[runtime route tests](../../src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts)
+exercise the composed runtime and plan editing.
