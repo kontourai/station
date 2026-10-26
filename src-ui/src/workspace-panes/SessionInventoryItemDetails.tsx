@@ -329,7 +329,18 @@ export function SessionInventoryItemDetails({
           fallback={openSessionButton}
         />
       ) : null}
-      {row.kind === 'thread-tool-result' ? (
+      {row.kind === 'thread-tool-result' &&
+      row.terminalStatus === 'unresolved' ? (
+        // Nothing to read: the command never reported an outcome, and the
+        // result read refuses it. Say so without claiming how it ended.
+        <>
+          <p>
+            No result recorded. This command started, but its turn ended before
+            it reported an outcome, so Station can't say whether it finished.
+          </p>
+          {footer}
+        </>
+      ) : row.kind === 'thread-tool-result' ? (
         <ToolDetails
           row={row}
           requestScope={requestScope}
