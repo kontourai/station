@@ -355,15 +355,17 @@ zero decoded frames fails without publishing an artifact.
 
 A bounded packet-flag probe measures gaps relative to stream start time without
 decoding, including the gaps before the first and after the last keyframe.
-Gaps up to two seconds select keyframe-only scene decoding; longer gaps decode
-reference frames, discarding non-reference frames where
-supported. Probe failure selects the cheap pass. A failed sparse scene pass
-retries keyframes only; if detection still fails, transcript and interval
-coverage select frames without failing the import. Both modes sample at 5 fps
+Every recording first runs keyframe-only scene decoding, capped at 15 seconds.
+Gaps above two seconds permit a second pass decoding reference frames with the
+remaining scene budget. Its cuts merge with the cheap baseline; failure or
+timeout preserves that baseline. Reference-frame decoding can still decode
+every frame for VP8 and H.264/HEVC without B-frames. Probe failure selects only
+the cheap pass. If detection fails, transcript and interval coverage select
+frames without failing the import. Both modes sample at 5 fps
 and fit within 640 by 640 pixels without upscaling,
 preserving aspect ratio before the 0.3 scene threshold. Transitions between
 sampled frames may be missed. Both scene attempts share the deadline
-`min(300s, 30s + 0.5 × video duration)`; retries get only the remaining time;
+`min(300s, 30s + 0.5 × video duration)`; enrichment gets only the remaining time;
 individual frame extraction uses `min(90s, 30s + 0.02 × video duration)`.
 Each subprocess is additionally bounded by the remaining 30-minute processing
 budget. Detection quality on arbitrary real screen recordings is not qualified
