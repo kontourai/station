@@ -1209,15 +1209,10 @@ export function ChatDockBody({
     engineDisplayLabel(activeSession.provider ?? '') ??
     modelProviderLabel;
   // Undefined while the Session's engine cannot be named: the chip then reads
-  // its neutral "Engine & model" rather than a guess. Before a Session, or
-  // while it runs on the configured connection, the configuration names it;
-  // with no resolved execution Agent that is the chat's own recorded
-  // provider, never another Agent's binding.
-  const executionEngineLabel =
-    engineIdentity.relation === 'no-session' ||
-    engineIdentity.relation === 'same'
-      ? (configuredEngineLabel ?? engineIdentity.sessionEngine)
-      : engineIdentity.sessionEngine;
+  // its neutral "Engine & model" rather than a guess.
+  const executionEngineLabel = engineIdentity.configurationNamesEngine
+    ? (configuredEngineLabel ?? engineIdentity.sessionEngine)
+    : engineIdentity.sessionEngine;
   // Set only once a Session exists: the engine that Session runs on.
   const sessionEngineLabel =
     engineIdentity.relation === 'no-session' ? undefined : executionEngineLabel;

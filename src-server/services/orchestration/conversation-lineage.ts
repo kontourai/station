@@ -122,19 +122,6 @@ function hasTurnFacts(detail: OrchestrationSessionDetail): boolean {
 }
 
 /**
- * #2540: whether a Session can take another turn itself. A turn's outcome
- * does not end its session. After a finished (`idle`), failed or stopped
- * (`canceled`) turn the follow-up runs in the same session (its engine is
- * still resident, or dispatch restarts it in place from its resume cursor),
- * so no second engine contends for the native thread. It cannot when it was
- * explicitly closed (terminal `completed`), or its engine binding can no
- * longer take a turn: `closed` or `dead` (dispatch cannot restart such a
- * row), or `error` (engines that mark a failed turn that way, Claude and ACP,
- * refuse further turns on it; Codex keeps its session `ready` through a
- * failed turn, and continues in place). A model change is decided separately
- * by `resolveConversationContinuation`.
- */
-/**
  * Why an ordinary send may not start a reserved lineage child that has not
  * started yet, or undefined when it may. A handoff-reserved child must be
  * launched by its selected target, not by an ordinary continuation racing
@@ -154,6 +141,19 @@ function reservedTailRefusal(
   return undefined;
 }
 
+/**
+ * #2540: whether a Session can take another turn itself. A turn's outcome
+ * does not end its session. After a finished (`idle`), failed or stopped
+ * (`canceled`) turn the follow-up runs in the same session (its engine is
+ * still resident, or dispatch restarts it in place from its resume cursor),
+ * so no second engine contends for the native thread. It cannot when it was
+ * explicitly closed (terminal `completed`), or its engine binding can no
+ * longer take a turn: `closed` or `dead` (dispatch cannot restart such a
+ * row), or `error` (engines that mark a failed turn that way, Claude and ACP,
+ * refuse further turns on it; Codex keeps its session `ready` through a
+ * failed turn, and continues in place). A model change is decided separately
+ * by `resolveConversationContinuation`.
+ */
 function sessionTakesNextTurn(
   session: OrchestrationSessionDetail['session'],
 ): boolean {

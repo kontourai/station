@@ -542,4 +542,106 @@ describe('ChatDockBody composer engine chip', () => {
     expect(engine).toBe('Codex');
     expect(header).toBe(engine);
   });
+
+  describe('with the Agent catalog not loaded, the chip and the header agree', () => {
+    /** Renders both surfaces with no Agents resolved, and reads each engine. */
+    async function renderUnloaded(chat: ChatSession) {
+      // An Agent name no engine shares: the header drops an engine that
+      // repeats the Agent's own name, which would hide what it names.
+      const session = { ...chat, agentName: 'Writer' };
+      agentsMock.current = [];
+      acpConnectionsMock.current = [OPENCODE];
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={queryClient}>
+          <PreviewProvider>
+            <ChatDockBody
+              activeSession={session}
+              chatFontSize={14}
+              dockHeight={400}
+              showStatsPanel={false}
+              showReasoning={false}
+              showToolDetails={false}
+              modelSupportsAttachments={false}
+              fileAttachmentsSupported={false}
+              availableModels={[]}
+              // A native chat's `provider` is its MODEL provider; this is
+              // what the chip must not mistake for an engine.
+              modelProviderLabel="Anthropic API"
+              chatInput={buildChatInput() as any}
+              setShowStatsPanel={vi.fn()}
+            />
+          </PreviewProvider>
+        </QueryClientProvider>,
+      );
+      const { engine } = await engineChip();
+      render(
+        <ChatDockActiveIdentity
+          session={session}
+          agent={undefined}
+          executionAgent={chatExecutionBinding(session, agentsMock.current)}
+          acpConnections={acpConnectionsMock.current}
+          onClose={vi.fn()}
+        />,
+      );
+      const header =
+        document.querySelector('.chat-dock__active-identity-engine')
+          ?.textContent ?? null;
+      return { engine, header };
+    }
+
+    test.each([
+      [
+        'a native Station Session (same)',
+        { provider: 'anthropic', orchestrationProvider: 'station-agent' },
+        'Station',
+      ],
+      [
+        'a native Claude Session (same)',
+        { provider: 'claude', orchestrationProvider: 'claude' },
+        'Claude Code',
+      ],
+    ])('%s is named by its own engine', async (_case, fields, expected) => {
+      const { engine, header } = await renderUnloaded(
+        buildSession({
+          ...fields,
+          orchestrationSessionStarted: true,
+          currentSessionId: 'session-1',
+        } as Partial<ChatSession>),
+      );
+      expect(engine).toBe(expected);
+      expect(header).toBe(engine);
+    });
+
+    test('a reopened chat with no Session yet (resync) reads neutral, as the header names none', async () => {
+      const { engine, header } = await renderUnloaded(
+        buildSession({ provider: 'claude' } as Partial<ChatSession>),
+      );
+      expect(engine).toBe('Engine & model');
+      expect(header).toBeNull();
+    });
+
+    test('a moved ACP Session is named by its own connection on both', async () => {
+      const { engine, header } = await renderUnloaded(
+        buildSession(observed('acp', 'opencode')),
+      );
+      expect(engine).toBe('OpenCode');
+      expect(header).toBe(engine);
+    });
+
+    test('an ACP Session with a stale connection names nothing on either', async () => {
+      const { engine, header } = await renderUnloaded(
+        buildSession(
+          observed('acp', 'opencode', {
+            currentSessionId: 'session-2',
+            agentConnectionObservedFor: 'session-1',
+          }),
+        ),
+      );
+      expect(engine).toBe('Engine & model');
+      expect(header).toBeNull();
+    });
+  });
 });
