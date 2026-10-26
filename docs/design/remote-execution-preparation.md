@@ -92,7 +92,7 @@ shown; each stays open.
 | [Attempt claims](../../src-server/services/orchestration/delegation-attempt-claim-store.ts) | One durable claim per `(caller grant, attemptId)`, written before any effect; refused claims are tombstones | The refusal code on a refused claim, and the matched preparation facts on the admitted record |
 | [Receiver admission](../../src-server/services/projects/project-contribution-service.ts) | Offer, binding and association checks, rechecked before each effect | The admitted resource's kind, so the adapter is chosen by kind |
 | [Repository reads](../../src-server/services/projects/git-read-repository.ts) | Reads a member-writable checkout with a judged copy of its config, refusing repository-defined programs | Used by the Git adapter unchanged |
-| [Capability flags](../../src-server/capabilities/station-capability-flags.ts) | Static protocol facts on the public handshake | `executionPreparation` |
+| [Capability flags](../../src-server/capabilities/station-capability-flags.ts) | Protocol facts on the public handshake, static except where a deployment mode cannot serve the route | `executionPreparation` (static) |
 
 ## Contract
 

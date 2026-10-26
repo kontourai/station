@@ -263,7 +263,7 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, update-provenance issue codes, and service and server update state |
 | `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, explicit engine/model/options digest identity, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
 | `@kontourai/station-contracts/task-memory` | Task memory (#4003): the Task summary revision and keyed record shapes, limits, default importance, the stateless write check (`checkTaskRecordWrite`, `taskSummaryRefusal`), refusal wording, the person's views, `taskAwaitsAnswer` for the Tasks list's `openQuestionCount`, and the Learning shapes (`TaskLearningView`, candidates, promotion and dismissal input, limits) for a done Task's promotion candidates. Every bound is a refusal |
-| `@kontourai/station-contracts/task-review` | Task review thread, event, evidence and capture shapes; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Published ahead of server, SDK and UI integration |
+| `@kontourai/station-contracts/task-review` | Task review thread, event, evidence and capture shapes; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Person routes, SQLite persistence and SDK hooks use this contract; agent delivery, captures and UI are separate increments |
 | `@kontourai/station-contracts/work-claims` | A Session's work claim as Station's routes answer it (#3413): information, not a lock. The view shape, its parser and the subject labels the Session-row chip uses |
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
 | `@kontourai/station-contracts/tool-library` | Safe source metadata, Project policy, requests, access summaries and Project agent drafts; [SDK client](sdk.md#project-tool-library) |
@@ -272,7 +272,8 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/workspace-pane-host-contract` | The transport-independent Pane-host capability interface: navigation, notices, confirmation, device facts, the optional Skill experience and the optional, occurrence-bound related-pane capability (`PaneRelatedPanesHost`, see [Related panes](sdk.md#related-panes)) |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
 
-The `task-review` subpath defines contracts ahead of route/tool integration.
+The `task-review` subpath defines the [Task review API](api.md#task-review-threads)
+and its SDK types; agent delivery and capture routes are separate increments.
 All `parseTaskReview*Request` and `parseTaskThread*Request` helpers, plus
 `parseTaskReviewArtifactRef`, `parseTaskReviewEvent`,
 `parseTaskReviewEvidenceInput`, `parseTaskReviewAnchor`, `parseTaskReviewQuote`
@@ -406,15 +407,15 @@ exact and block cases include `a^1000 + b + a^999`. A generous two-second
 per-call wall-time ceiling is a separate backstop; step counts own the bound.
 
 Store/read owners should normalize and validate once per artifact revision.
-`prepareTaskReviewDocument(rawText)` returns `null` for malformed or oversized
-raw input, or an immutable handle with normalized `text` and
-`relocateTextQuote(anchor)`. Cache that handle by artifact identity and revision,
-including invalidation when either changes, then reuse it for each quote. Block
-owners can compare its normalized lines to the retained quote before using the
-same relocation method. The existing `relocateTextQuote(text, anchor)` remains
-the one-shot interface. `deriveOutdated` prepares once per call and reuses its
-handle internally; it does not cache across a thread list. This contracts lane
-does not implement the store's revision cache.
+`prepareTaskReviewDocument(rawText)` returns null for malformed or oversized
+raw input, or a frozen handle with normalized `text`, frozen `lineStarts` offsets
+and `relocateTextQuote(anchor)`. Cache it by exact artifact identity and revision.
+Plan/summary `TaskReviewCurrentArtifact.preparedDocument` may carry that handle
+or null; omitting it lets `deriveOutdated` prepare the text on demand. Supplied
+handles avoid repeated validation, normalization and block-line scans across
+threads. The caller must prepare the current revision's actual text. The
+contracts module holds no cache; the server owns bounded revision caches.
+`relocateTextQuote(text, anchor)` remains the one-shot interface.
 
 A revision change alone does not mean Outdated. Text-quote anchors are Outdated
 only when missing or ambiguous in the changed revision. Block anchors first
@@ -471,6 +472,19 @@ Task or Session authority and do not establish server, SDK, UI or capture
 behavior. The existing `isWellFormedUnicode` export from `task-graph` is
 intentional: Task review reuses its pure predicate. Its root-barrel exposure
 is retained for compatibility; no export is removed or renamed.
+
+The review list's `TaskReviewView.threads` now contains
+`TaskReviewThreadSummary`: available entries omit `events` and include
+`eventCount`, `openingEvent`, optional `lastDeliveryEvent` and `lastEvent`.
+Summary event bodies use `TASK_REVIEW_OPENING_PREVIEW_CHARS` (500 UTF-16 units),
+removing any trailing partial surrogate; detail retains full bodies.
+`lastDeliveryEvent` is the latest sent, send-failed or agent-reply, independent
+of a later person event. Unavailable entries carry only status/state,
+thread ID, ordinal and event count. Thread-detail and mutation responses retain
+`TaskReviewThreadView` with full history. Unavailable entries stay visible
+through list filters and are excluded from counts. This changes the draft list
+response; consumers must fetch expanded-card detail through the SDK.
+
 
 `ProviderSendTurnInput` and `CanonicalRuntimeEventBase` may carry an optional
 `invocationId`. Station assigns it to requested work, and producers retain it

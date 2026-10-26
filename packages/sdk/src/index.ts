@@ -1,3 +1,5 @@
+export { sentTurnKey } from './client/sent-turn-key';
+
 // Re-export all types
 
 export type {
@@ -1459,6 +1461,31 @@ export {
   useTelemetryCompanionProductIncidentsQuery,
   useTelemetryCompanionProductTrendsQuery,
 } from './query-domains/telemetryCompanion';
+export {
+  fetchTaskReview,
+  fetchTaskReviewItem,
+  fetchTaskReviewThread,
+  TASK_REVIEW_OPENING_PREVIEW_CHARS,
+  type TaskReviewArtifactKind,
+  type TaskReviewCreateThreadRequest,
+  type TaskReviewItem,
+  type TaskReviewReopenRequest,
+  type TaskReviewReplyRequest,
+  type TaskReviewResolveRequest,
+  type TaskReviewThreadSummary,
+  type TaskReviewThreadView,
+  type TaskReviewView,
+  taskReviewItemQueryKey,
+  taskReviewQueryKey,
+  taskReviewThreadQueryKey,
+  useCreateReviewThreadMutation,
+  useReopenReviewThreadMutation,
+  useReplyReviewThreadMutation,
+  useResolveReviewThreadMutation,
+  useTaskReviewItemQuery,
+  useTaskReviewQuery,
+  useTaskReviewThreadQuery,
+} from './query-domains/taskReview';
 export {
   checkTelemetryConnection,
   fetchTelemetryCompanionArchivePreparation,
