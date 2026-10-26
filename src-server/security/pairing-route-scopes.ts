@@ -737,6 +737,15 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
+  // Retaining a capture persists Task data and requires operate scope.
+  {
+    id: '/api/tasks/:taskId/review/captures:operate',
+    method: 'POST',
+    prefix: '/api/tasks/:taskId/review/captures',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
   // The preview request uses POST only so the selected file path and line
   // range stay out of URLs and proxies. It is nevertheless a bounded,
   // project-owned read: no mutation, caller-supplied root, or cross-project
@@ -3248,6 +3257,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // comments and transitions use operate standing. Send starts an agent turn
     // through the lead conversation inbox.
     { method: 'GET', path: '/api/tasks/:taskId/review' },
+    { method: 'GET', path: '/api/tasks/:taskId/review/capture-sessions' },
+    { method: 'POST', path: '/api/tasks/:taskId/review/captures' },
+    {
+      method: 'GET',
+      path: '/api/tasks/:taskId/review/captures/:captureId/content',
+    },
     { method: 'GET', path: '/api/tasks/:taskId/review/items/:kind/:id' },
     { method: 'GET', path: '/api/tasks/:taskId/review/threads/:threadId' },
     { method: 'POST', path: '/api/tasks/:taskId/review/threads' },

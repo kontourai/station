@@ -139,6 +139,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Real bounded Node children exercise failure receipts without running another corpus.
+  'scripts/__tests__/run-vitest-corpus.test.ts',
   // Real private Git fixtures and hardened cat-file verification through the MCP route.
   'src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts',
   // Small loopback responses exercise dependency stream ownership in naturally exiting children.
@@ -1230,6 +1232,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Task binding mounts the real renderer over a public diff route and real Git fixture.
   'src-ui/src/__tests__/TaskWorkspaceView.test.tsx',
   'src-server/services/projects/__tests__/workspace-diff-service.test.ts',
+  // Capture primitives exercise real Git repositories, including storage exclusion.
+  'src-server/routes/__tests__/browser-agent-capture.test.ts',
   // Capture pinning uses real Git, including an index with >16 MiB of staged output.
   'src-server/services/projects/__tests__/workspace-commit-pin.test.ts',
   // Six independent tsx publishers race against one real home's five-blob cap.

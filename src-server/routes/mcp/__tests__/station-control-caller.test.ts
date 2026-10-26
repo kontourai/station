@@ -893,6 +893,7 @@ describe('station-control verified caller (in-process Claude delivery)', () => {
       .map((tool) => tool.name)
       .sort();
     expect(names).toEqual([
+      'browser_capture_to_task',
       'browser_click',
       'browser_close',
       'browser_color_scheme',
