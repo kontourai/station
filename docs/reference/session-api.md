@@ -589,7 +589,10 @@ to keep inside the event, Station stores it out of line and the event carries
 `viewedContentDigest`: the `sha256-` digest of the stored request event, which
 a client computes only after loading every reference through
 `GET /api/orchestration/sessions/:threadId/content/:ref`. Without it the
-server answers 409 `request_content_not_loaded`. Declining never needs it.
+server answers 409 `request_content_not_loaded`. Declining never needs it,
+and neither does answering a form (`payload.inputRequest`, or a legacy
+`mcpElicitation`/`questionnaire`): the form itself is never stored out of
+line and the answer is validated against it.
 A client that has not loaded the content therefore cannot allow the request.
 
 Harness questions and a tool server's form elicitation carry a
