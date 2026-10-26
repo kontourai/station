@@ -490,6 +490,10 @@ test.describe
       await expect(
         page.getByRole('article', { name: 'Thread 2', exact: true }),
       ).toContainText('Keep this heading aligned.');
+      await target.press('j');
+      await expect(
+        page.getByRole('article', { name: 'Thread 2', exact: true }),
+      ).toBeFocused();
       await expect(page.locator('.review-image__hint')).toBeHidden();
       const marker = page.locator('.review-image__marker');
       const region = page.locator('.review-image__region').first();
