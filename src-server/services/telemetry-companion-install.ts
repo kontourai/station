@@ -198,7 +198,7 @@ export async function installTelemetryCompanion(
   const root = await installationRoot(input.home, true);
   let lease: Awaited<ReturnType<typeof acquireCompanionInstallationLease>>;
   try {
-    lease = await acquireCompanionInstallationLease(root, {
+    lease = await acquireCompanionInstallationLease(join(root, '..'), {
       installationId: input.installationId,
     });
   } catch (error) {
