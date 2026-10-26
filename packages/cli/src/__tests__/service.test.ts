@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import type { CollectedInstanceStatus } from '../commands/lifecycle.js';
 import type { ServiceFs } from '../commands/service.js';
+import { plutilJson } from './helpers/launchd-plist-fixture.js';
 
 const makeTempDir = trackTempDirs();
 
@@ -693,21 +694,35 @@ describe('station service dispatch', () => {
       unitPath,
     };
     launchdRegistration.mockReturnValue(registration);
-    installLaunchd.mockImplementation((instanceId, input) => ({
-      host: input.lifecycle.host,
-      installedAt: '',
-      instanceId,
-      label: registration.label,
-      nodePath: input.nodePath,
-      platform: 'darwin',
-      repoPath: input.repoPath,
-      serverPort: input.lifecycle.serverPort,
-      uiPort: input.lifecycle.uiPort,
-      unitPath,
-    }));
-    const run = vi.fn((command: string) =>
+    const { renderLaunchdPlist } = await vi.importActual<
+      typeof import('../commands/service-launchd.js')
+    >('../commands/service-launchd.js');
+    installLaunchd.mockImplementation((instanceId, input) => {
+      // The real writer's plist, so the remedy reads the unit's own command.
+      writeFileSync(
+        unitPath,
+        renderLaunchdPlist({
+          ...input,
+          instanceId,
+          label: registration.label,
+        }),
+      );
+      return {
+        host: input.lifecycle.host,
+        installedAt: '',
+        instanceId,
+        label: registration.label,
+        nodePath: input.nodePath,
+        platform: 'darwin',
+        repoPath: input.repoPath,
+        serverPort: input.lifecycle.serverPort,
+        uiPort: input.lifecycle.uiPort,
+        unitPath,
+      };
+    });
+    const run = vi.fn((command: string, args: string[]) =>
       command === 'plutil'
-        ? { status: 0, stdout: JSON.stringify({ ProcessType: 'Background' }) }
+        ? { status: 0, stdout: plutilJson(args.at(-1) as string) }
         : { status: 0, stdout: '/usr/bin:/bin\n' },
     );
     await runServiceCommand(
@@ -726,9 +741,13 @@ describe('station service dispatch', () => {
         run,
       },
     );
+    // A unit installed before the Interactive policy.
     writeFileSync(
       unitPath,
-      '<plist><dict><key>ProcessType</key><string>Background</string></dict></plist>',
+      readFileSync(unitPath, 'utf8').replace(
+        '<key>ProcessType</key><string>Interactive</string>',
+        '<key>ProcessType</key><string>Background</string>',
+      ),
     );
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {
@@ -2190,15 +2209,20 @@ describe('station service dispatch', () => {
       mkdirSync(baseDir, { mode: 0o700, recursive: true });
       const localBin = makeTempDir('station-service-bin-');
       let loginPath = '/usr/bin:/bin';
-      const { run } = await installLinuxService(baseDir, () => loginPath);
-      // A registration written before the root was recorded: a reinstall of
-      // this instances/ home would now set STATION_ROOT, which a pasted
-      // command cannot undo.
-      const manifestPath = join(baseDir, 'service', 'service-test.json');
-      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-      expect(typeof manifest.stationRoot).toBe('string');
-      delete manifest.stationRoot;
-      writeFileSync(manifestPath, JSON.stringify(manifest));
+      const { run, unitPath } = await installLinuxService(
+        baseDir,
+        () => loginPath,
+      );
+      // A unit written before the root was recorded: a reinstall of this
+      // instances/ home would now set STATION_ROOT, which a pasted command
+      // cannot undo. The remedy reads the unit (#4189), so the unit is what
+      // lacks it.
+      const unit = readFileSync(unitPath, 'utf8');
+      expect(unit).toMatch(/^Environment="STATION_ROOT=.+"$/mu);
+      writeFileSync(
+        unitPath,
+        unit.replace(/^Environment="STATION_ROOT=.*"\n/mu, ''),
+      );
       loginPath = `${localBin}:/usr/bin:/bin`;
       const log = vi.spyOn(console, 'log').mockImplementation(() => {});
       try {
@@ -3746,5 +3770,391 @@ describe('what an installed service runs (#2675 slice C)', () => {
         run: vi.fn(() => ({ status: 0, stdout: '' })),
       }),
     ).rejects.toThrow(`Invalid Station service manifest: ${manifestPath}`);
+  });
+});
+
+describe('service status remedy reproduces the installed unit (#4189)', () => {
+  beforeEach(() => {
+    collectInstanceStatus.mockResolvedValue({
+      found: true,
+      healthy: true,
+      instanceId: 'default',
+      server: { pid: 10, reachable: true },
+      ui: { pid: 11, reachable: true },
+    });
+  });
+
+  const loginShellAnswer = (path: string) => ({
+    status: 0,
+    stdout: `__STATION_SERVICE_PATH__${path}__STATION_SERVICE_PATH__\n`,
+  });
+
+  /**
+   * install.sh's nightly layout under one STATION_ROOT: the channel home
+   * `instances/nightly`, a second home `instances/default`, and the install
+   * root with the install state it writes (schema 4).
+   */
+  function nightlyArchiveInstall() {
+    const root = nodeFs.realpathSync(makeTempDir('station-service-root-'));
+    const channelHome = join(root, 'instances', 'nightly');
+    const installedHome = join(root, 'instances', 'default');
+    for (const home of [channelHome, installedHome]) {
+      mkdirSync(home, { mode: 0o700, recursive: true });
+      ensureStationHomeSchemaSync(home);
+    }
+    const installRoot = join(root, 'installs', 'nightly');
+    mkdirSync(join(installRoot, 'runtime'), { recursive: true });
+    writeFileSync(
+      join(installRoot, '.station-release-state.json'),
+      JSON.stringify({
+        schemaVersion: 4,
+        channel: 'nightly',
+        releaseChannel: 'nightly',
+        installRoot,
+        stationRoot: root,
+        stationHome: channelHome,
+        manifestUrl: 'https://releases.example.test/nightly.json',
+        serverPort: 38141,
+        uiPort: 38000,
+      }),
+    );
+    // What resolveServiceCodeLocation yields for this install's `current`.
+    const location = {
+      kind: 'archive' as const,
+      installRoot,
+      nodePath: join(installRoot, 'current', 'runtime', 'bin', 'node'),
+      repoPath: join(installRoot, 'current'),
+    };
+    return { channelHome, installedHome, location, root };
+  }
+
+  const channelDefaults = (home: string) => ({
+    baseDir: home,
+    homeSource: '--base' as const,
+    host: '127.0.0.1',
+    instanceName: 'default',
+    serverPort: 38141,
+    uiPort: 38000,
+  });
+  const installedSettings = (home: string) => ({
+    ...channelDefaults(home),
+    allowedOrigins: ['https://station-host.example.test'],
+    serverPort: 3141,
+    uiPort: 3000,
+  });
+
+  /**
+   * One machine-wide unit, installed first from the channel home with the
+   * channel's defaults and then again from another home with its own
+   * settings: the channel home keeps a manifest that no longer describes
+   * the unit. Status then runs from the channel home, as a channel launcher
+   * does when no --base is given.
+   */
+  async function statusAfterReinstallElsewhere(
+    platform: 'darwin' | 'linux',
+  ): Promise<{ installedHome: string; staleManifest: any; text: string }> {
+    vi.stubEnv('STATION_ROOT', '');
+    const { runServiceCommand } = await import('../commands/service.js');
+    const { channelHome, installedHome, location } = nightlyArchiveInstall();
+    const unitDir = makeTempDir('station-service-units-');
+    const unitPath = join(
+      unitDir,
+      platform === 'linux'
+        ? 'station-default.service'
+        : 'io.kontourai.station.default.plist',
+    );
+    if (platform === 'linux') {
+      const { renderSystemdUnit } = await vi.importActual<
+        typeof import('../commands/service-systemd.js')
+      >('../commands/service-systemd.js');
+      systemdRegistration.mockReturnValue({
+        platform: 'linux',
+        unitName: 'station-default.service',
+        unitPath,
+      });
+      installSystemd.mockImplementation((instanceId, input) => {
+        writeFileSync(
+          unitPath,
+          renderSystemdUnit({
+            ...location,
+            instanceId,
+            lifecycle: input.lifecycle,
+            servicePath: input.servicePath,
+          }),
+        );
+        return {
+          ...location,
+          host: input.lifecycle.host,
+          installedAt: '',
+          instanceId,
+          platform: 'linux',
+          serverPort: input.lifecycle.serverPort,
+          uiPort: input.lifecycle.uiPort,
+          unitName: 'station-default.service',
+          unitPath,
+        };
+      });
+      systemdStatus.mockReturnValue({
+        active: true,
+        enabled: true,
+        present: true,
+      });
+    } else {
+      const { renderLaunchdPlist } = await vi.importActual<
+        typeof import('../commands/service-launchd.js')
+      >('../commands/service-launchd.js');
+      const label = 'io.kontourai.station.default';
+      launchdRegistration.mockReturnValue({
+        label,
+        platform: 'darwin',
+        unitPath,
+      });
+      legacyLaunchdRegistrations.mockReturnValue([]);
+      installLaunchd.mockImplementation((instanceId, input) => {
+        writeFileSync(
+          unitPath,
+          renderLaunchdPlist({
+            ...location,
+            instanceId,
+            label,
+            lifecycle: input.lifecycle,
+            servicePath: input.servicePath,
+          }),
+        );
+        return {
+          ...location,
+          host: input.lifecycle.host,
+          installedAt: '',
+          instanceId,
+          label,
+          platform: 'darwin',
+          serverPort: input.lifecycle.serverPort,
+          uiPort: input.lifecycle.uiPort,
+          unitPath,
+        };
+      });
+    }
+    const addedLater = makeTempDir('station-service-bin-');
+    let loginPath = '/usr/bin:/bin';
+    const run = vi.fn((command: string, args: string[]) => {
+      if (command === 'plutil')
+        return { status: 0, stdout: plutilJson(args.at(-1) as string) };
+      if (command === 'systemctl' && args[1] === 'cat')
+        return {
+          status: 0,
+          stdout: `# ${unitPath}\n${readFileSync(unitPath, 'utf8')}`,
+        };
+      if (args[0] === '-l' && args[1] === '-c')
+        return loginShellAnswer(loginPath);
+      return { status: 0, stdout: '' };
+    });
+    const dependencies = {
+      fs: serviceFs,
+      installReadinessTimeoutMs: 2_000,
+      platform,
+      run,
+    };
+    await runServiceCommand(['install'], channelDefaults(channelHome), {
+      ...dependencies,
+    });
+    await runServiceCommand(['install'], installedSettings(installedHome), {
+      ...dependencies,
+    });
+    const staleManifest = JSON.parse(
+      readFileSync(join(channelHome, 'service', 'default.json'), 'utf8'),
+    );
+    loginPath = `${addedLater}:/usr/bin:/bin`;
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await runServiceCommand(['status'], channelDefaults(channelHome), {
+        ...dependencies,
+      });
+      return {
+        installedHome,
+        staleManifest,
+        text: log.mock.calls.flat().join('\n'),
+      };
+    } finally {
+      log.mockRestore();
+    }
+  }
+
+  test.each(['linux', 'darwin'] as const)(
+    'on %s the PATH-drift remedy echoes the installed unit under the channel launcher',
+    async (platform) => {
+      const { installedHome, staleManifest, text } =
+        await statusAfterReinstallElsewhere(platform);
+      // The premise: the manifest status reads describes the channel defaults.
+      expect(staleManifest).toMatchObject({
+        allowedOrigins: [],
+        baseDir: expect.stringMatching(/instances[/\\]nightly$/u),
+        serverPort: 38141,
+        uiPort: 38000,
+      });
+      expect(text).toContain('service PATH   drifted');
+      const runLines = text
+        .split('\n')
+        .filter((line) => line.includes('run: '));
+      expect(runLines).toEqual([
+        `               run: station-nightly service install --instance=default --base=${installedHome} --port=3141 --ui-port=3000 --host=127.0.0.1 --allowed-origin=https://station-host.example.test`,
+      ]);
+    },
+  );
+
+  test.skipIf(process.platform !== 'darwin')(
+    'the launchd fixture reads a rendered plist exactly as plutil does',
+    async () => {
+      const { defaultRun } = await import('../commands/service.js');
+      const { renderLaunchdPlist } = await vi.importActual<
+        typeof import('../commands/service-launchd.js')
+      >('../commands/service-launchd.js');
+      const { installedHome, location, root } = nightlyArchiveInstall();
+      const plist = join(makeTempDir('station-service-units-'), 'u.plist');
+      writeFileSync(
+        plist,
+        renderLaunchdPlist({
+          ...location,
+          instanceId: 'default',
+          label: 'io.kontourai.station.default',
+          lifecycle: {
+            ...installedSettings(installedHome),
+            features: "a&b,<c>,'d'",
+            stationRoot: root,
+          },
+          servicePath: '/usr/bin:/bin',
+        }),
+      );
+      const real = defaultRun('plutil', ['-convert', 'json', '-o', '-', plist]);
+      expect(real.status).toBe(0);
+      expect(JSON.parse(plutilJson(plist))).toEqual(
+        JSON.parse(String(real.stdout)),
+      );
+    },
+  );
+
+  test('a launcher unit whose install state names no ring gives no command', async () => {
+    const { resolveInstalledUnitRemedy } = await import(
+      '../commands/service-remedy.js'
+    );
+    const installRoot = makeTempDir('station-service-unowned-install-');
+    const remedy = resolveInstalledUnitRemedy({
+      argv: [
+        join(installRoot, 'current', 'runtime', 'bin', 'node'),
+        join(installRoot, 'runtime', 'station-launcher.mjs'),
+        'service',
+        'run',
+        '--instance=default',
+        '--base=/srv/station-home',
+        '--port=3141',
+        '--ui-port=3000',
+        '--host=127.0.0.1',
+      ],
+      environment: { STATION_ROOT: '' },
+    });
+    expect(remedy.command).toBeNull();
+    expect(remedy.reason).toContain('does not name its release ring');
+  });
+
+  test('a launcher unit recording another STATION_ROOT than its launcher sets gives no command', async () => {
+    const { resolveInstalledUnitRemedy } = await import(
+      '../commands/service-remedy.js'
+    );
+    const { installedHome, location, root } = nightlyArchiveInstall();
+    const unit = (stationRoot: string) => ({
+      argv: [
+        location.nodePath,
+        join(location.installRoot, 'runtime', 'station-launcher.mjs'),
+        'service',
+        'run',
+        '--instance=default',
+        `--base=${installedHome}`,
+        '--port=3141',
+        '--ui-port=3000',
+        '--host=127.0.0.1',
+      ],
+      environment: { STATION_ROOT: stationRoot },
+    });
+    // station-nightly exports the install's own root, so no prefix applies.
+    expect(resolveInstalledUnitRemedy(unit(root)).command).toBe(
+      `station-nightly service install --instance=default --base=${installedHome} --port=3141 --ui-port=3000 --host=127.0.0.1`,
+    );
+    const other = makeTempDir('station-service-other-root-');
+    const remedy = resolveInstalledUnitRemedy(unit(other));
+    expect(remedy.command).toBeNull();
+    expect(remedy.reason).toContain(
+      `but station-nightly sets STATION_ROOT=${root}`,
+    );
+  });
+
+  test('a unit argument the remedy cannot reproduce gives no command', async () => {
+    const { resolveInstalledUnitRemedy } = await import(
+      '../commands/service-remedy.js'
+    );
+    const remedy = resolveInstalledUnitRemedy({
+      argv: [
+        '/usr/bin/node',
+        '/srv/station/bin/station.mjs',
+        'service',
+        'run',
+        '--instance=default',
+        '--base=/srv/station-home',
+        '--port=3141',
+        '--ui-port=3000',
+        '--host=127.0.0.1',
+        '--consent-port=3144',
+      ],
+      environment: {},
+    });
+    expect(remedy.command).toBeNull();
+    expect(remedy.reason).toContain('--consent-port=3144');
+  });
+
+  test('on Windows the scheduling remedy names the channel launcher that owns the archive install', async () => {
+    vi.stubEnv('STATION_ROOT', '');
+    const { runServiceCommand } = await import('../commands/service.js');
+    const { installedHome, location } = nightlyArchiveInstall();
+    installWindowsService.mockImplementation((instanceId, input) => ({
+      ...location,
+      host: input.lifecycle.host,
+      installedAt: '',
+      instanceId,
+      platform: 'win32',
+      serverPort: input.lifecycle.serverPort,
+      taskName: `\\KontourStation-${instanceId}`,
+      uiPort: input.lifecycle.uiPort,
+      unitPath: `/tmp/${instanceId}.cmd`,
+    }));
+    // Task Scheduler's defaults: a task registered before #2970.
+    const run = vi.fn((command: string) =>
+      /powershell/iu.test(command)
+        ? {
+            status: 0,
+            stdout:
+              'Priority=7, ExecutionTimeLimit=PT72H, RestartCount=0, RestartInterval=, DisallowStartIfOnBatteries=True, StopIfGoingOnBatteries=True\n',
+          }
+        : { status: 0, stdout: '' },
+    );
+    const dependencies = {
+      fs: serviceFs,
+      installReadinessTimeoutMs: 2_000,
+      platform: 'win32' as const,
+      run,
+    };
+    await runServiceCommand(['install'], installedSettings(installedHome), {
+      ...dependencies,
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await runServiceCommand(['status'], installedSettings(installedHome), {
+        ...dependencies,
+      });
+      const text = log.mock.calls.flat().join('\n');
+      expect(text).toContain('scheduling     stale');
+      expect(text).toContain(
+        `               run: station-nightly service install --instance=default --base=${installedHome} --port=3141 --ui-port=3000 --host=127.0.0.1 --allowed-origin=https://station-host.example.test`,
+      );
+    } finally {
+      log.mockRestore();
+    }
   });
 });
