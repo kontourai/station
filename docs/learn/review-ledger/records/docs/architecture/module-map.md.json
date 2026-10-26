@@ -1270,19 +1270,7 @@
 
     "packages/sdk/src/__tests__/task-review-hooks.test.tsx",
 
-    "src-server/services/projects/task-browser-capture.ts",
-
-    "src-server/routes/orchestration/task-review-captures.ts",
-
-    "src-server/routes/__tests__/browser-agent-capture.test.ts",
-
     "src-server/services/projects/__tests__/task-review-module.test.ts",
-
-    "src-server/services/projects/task-capture-blob-store.ts",
-
-    "src-server/services/projects/task-capture-blob-store-factory.ts",
-
-    "src-server/services/projects/__tests__/task-capture-blob-store-factory.test.ts",
 
     "src-server/services/terminal/shell-host.ts",
 
@@ -1322,7 +1310,19 @@
 
     "src-server/routes/chat/__tests__/chat-primary-stream.dedup.test.ts",
 
-    "src-server/routes/chat/__tests__/chat-turn-dedup-crash.process.test.ts"
+    "src-server/routes/chat/__tests__/chat-turn-dedup-crash.process.test.ts",
+
+    "src-server/services/projects/task-browser-capture.ts",
+
+    "src-server/routes/orchestration/task-review-captures.ts",
+
+    "src-server/routes/__tests__/browser-agent-capture.test.ts",
+
+    "src-server/services/projects/task-capture-blob-store.ts",
+
+    "src-server/services/projects/task-capture-blob-store-factory.ts",
+
+    "src-server/services/projects/__tests__/task-capture-blob-store-factory.test.ts"
   ],
 
   "checks": [
