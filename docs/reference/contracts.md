@@ -1886,3 +1886,14 @@ route evidence; Board UX remains #2997, and release/browser/device qualification
 is separate. Personal reads do not issue a primary Chat declaration, including
 when a caller names the Coding type; clone preserves server-issued catalog
 attribution but does not manufacture a declaration from client input.
+
+### Saved terminal outcome views
+
+`AnalyticsViewDefinition.kind` defaults to usage when omitted, preserving existing
+definitions. Explicit `kind: "outcomes"` accepts `completed`, `aborted` or `failed`
+measures and `engine` or `day` grouping. Outcome sources carry only `recipientId`;
+provider/model/account filters are rejected rather than ignored. UTC windows and
+comparison retain the existing saved-view owner and revision protocol.
+`PrivateOperationalOutcomeSummary.observedTurns` counts distinct retained turns
+with terminal observations; completed/aborted/failed partition those observations,
+with unknown retained-only coverage. Independent source populations stay separate.

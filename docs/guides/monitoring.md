@@ -1739,3 +1739,24 @@ For exact query parsing and response fields, read the
 [event-log owner](../../src-server/runtime/conversation/runtime-event-log.ts).
 Source and fixture checks do not establish real collector delivery, retained
 historical completeness, or dashboard correctness.
+
+### Optional private terminal observations
+
+In Connect or manage private sources, a new source offer can optionally include
+content-free completed, aborted and failed terminal observations. The default
+omits `operationalConsent`; permission is immutable for a grant and changing it
+requires a new grant and source approval. Inventory exposes the consent from the
+source intent. Personal Insights (also embedded in Profile) selects Usage receipts
+or Terminal outcomes, with UTC windows and independent source populations.
+Terminal outcomes group by engine or day; provider, model and account filters
+are refused. Observed turns is the denominator for the retained terminal classes.
+Coverage is unknown and counts do not establish full reliability or error rates.
+Sync is required after the source head changes. Failed, offline, stale or withdrawn
+reads withhold outcome rows. Missing host capability offers an update remedy.
+
+A combined saved or previewed definition cannot include two connections advertising
+the same source Station identity. Separate single-source views remain valid.
+Independent identities may overlap; clones advertising different identities cannot
+be detected. No cross-source ID deduplication or product telemetry join occurs.
+Real PostgreSQL, native and release qualification remain NOT_VERIFIED by this
+implementation checkpoint.

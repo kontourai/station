@@ -5,7 +5,10 @@ export type AnalyticsViewMeasure =
   | 'cacheReadTokens'
   | 'cacheWriteTokens'
   | 'reportedCost'
-  | 'estimatedCost';
+  | 'estimatedCost'
+  | 'completed'
+  | 'aborted'
+  | 'failed';
 export interface AnalyticsViewSource {
   recipientId: string;
   provider?: string;
@@ -17,12 +20,13 @@ export type AnalyticsViewRange =
   | { kind: 'fixed'; from: string; to: string };
 export interface AnalyticsViewDefinition {
   title: string;
+  kind?: 'usage' | 'outcomes';
   sources: AnalyticsViewSource[];
   range: AnalyticsViewRange;
   comparison?:
     | { kind: 'previous' }
     | { kind: 'fixed'; from: string; to: string };
-  groupBy: PrivateUsageGroupBy;
+  groupBy: PrivateUsageGroupBy | 'engine';
   measure: AnalyticsViewMeasure;
   timeZone: 'UTC';
 }
@@ -64,12 +68,12 @@ function definitionShape(v: unknown): v is AnalyticsViewDefinition {
     !keys(
       v,
       ['title', 'sources', 'range', 'groupBy', 'measure', 'timeZone'],
-      ['comparison'],
+      ['comparison', 'kind'],
     ) ||
     !text(v.title, 120) ||
     v.timeZone !== 'UTC' ||
     typeof v.groupBy !== 'string' ||
-    !['provider', 'model', 'station', 'day'].includes(v.groupBy) ||
+    !['provider', 'model', 'station', 'day', 'engine'].includes(v.groupBy) ||
     typeof v.measure !== 'string' ||
     ![
       'inputTokens',
@@ -78,10 +82,22 @@ function definitionShape(v: unknown): v is AnalyticsViewDefinition {
       'cacheWriteTokens',
       'reportedCost',
       'estimatedCost',
+      'completed',
+      'aborted',
+      'failed',
     ].includes(v.measure) ||
     !Array.isArray(v.sources) ||
     v.sources.length < 1 ||
     v.sources.length > 4
+  )
+    return false;
+  if (v.kind !== undefined && v.kind !== 'usage' && v.kind !== 'outcomes')
+    return false;
+  const outcomes = v.kind === 'outcomes';
+  if (outcomes !== ['completed', 'aborted', 'failed'].includes(v.measure))
+    return false;
+  if (
+    outcomes ? !['engine', 'day'].includes(v.groupBy) : v.groupBy === 'engine'
   )
     return false;
   const ids = new Set<string>();
@@ -95,6 +111,11 @@ function definitionShape(v: unknown): v is AnalyticsViewDefinition {
         (k) => source[k] !== undefined && !text(source[k], 200),
       ) ||
       (source.accountKey !== undefined && source.provider === undefined)
+    )
+      return false;
+    if (
+      outcomes &&
+      ['provider', 'model', 'accountKey'].some((k) => source[k] !== undefined)
     )
       return false;
     ids.add(source.recipientId);

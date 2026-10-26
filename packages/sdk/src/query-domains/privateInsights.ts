@@ -11,8 +11,10 @@ import {
   deleteSavedAnalyticsView,
   fetchPrivateInsights,
   fetchPrivateInsightsSources,
+  fetchPrivateOutcomes,
   fetchSavedAnalyticsViews,
   type PrivateInsightsQuery,
+  type PrivateOutcomesQuery,
   syncPrivateInsightsPage,
   syncPrivateInsightsWindow,
   updateSavedAnalyticsView,
@@ -527,6 +529,66 @@ export function useAnalyticsSourceOffers(
     ...query,
     data:
       scope?.isCurrent() && !query.isError && !query.isFetching
+        ? query.data
+        : undefined,
+  };
+}
+
+export function usePrivateOutcomesResult(
+  scope: PrivateInsightsAuthority | undefined,
+  id: string,
+  input: PrivateOutcomesQuery,
+  selection: string,
+) {
+  const client = useQueryClient();
+  const validationKey = [...validationPrefix(scope), id];
+  const validation = useApiQuery<SourceValidation>(
+    validationKey,
+    async () => ({ generation: 0, denied: false }),
+    { enabled: false, gcTime: Infinity },
+  );
+  const query = useApiQuery(
+    [
+      'private-insights',
+      scope?.apiBase ?? null,
+      scope?.authorityKey ?? null,
+      'outcomes',
+      id,
+      input,
+      selection,
+    ],
+    async (signal) => {
+      const authority = requireScope(scope);
+      const generation =
+        client.getQueryData<SourceValidation>(validationKey)?.generation ?? 0;
+      try {
+        const result = await fetchPrivateOutcomes(authority, id, input, signal);
+        requireScope(authority);
+        if (
+          (client.getQueryData<SourceValidation>(validationKey)?.generation ??
+            0) !== generation
+        )
+          throw new StationRequestAuthorityError();
+        client.setQueryData<SourceValidation>(validationKey, {
+          generation,
+          denied: false,
+        });
+        return { ...result, validationGeneration: generation };
+      } catch (error) {
+        if (authority.isCurrent()) denySourceSnapshot(client, authority, id);
+        throw error;
+      }
+    },
+    { ...policy, enabled: !!scope && !!id },
+  );
+  return {
+    ...query,
+    data:
+      scope?.isCurrent() &&
+      query.isSuccess &&
+      !query.isFetching &&
+      !validation.data?.denied &&
+      query.data?.validationGeneration === (validation.data?.generation ?? 0)
         ? query.data
         : undefined,
   };

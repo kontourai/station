@@ -19,6 +19,7 @@ const state = vi.hoisted(() => ({
     authorityKey: 'alice',
     isCurrent: (): boolean => true,
   },
+  duplicate: false,
   views: [] as AnalyticsSavedView[],
   mutation: vi.fn(),
   queries: vi.fn(),
@@ -28,6 +29,14 @@ vi.mock('../../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => state.scope,
 }));
 vi.mock('@kontourai/station-sdk/private-insights-query', () => ({
+  usePrivateOutcomesResult: () => ({
+    data: {
+      observedTurns: 3,
+      coverage: { retentionDays: 7 },
+      rows: [{ key: 'codex', completed: 1, aborted: 1, failed: 1 }],
+    },
+    error: null,
+  }),
   usePrivateInsightsInventory: () => ({
     sources: {
       data: [
@@ -38,6 +47,17 @@ vi.mock('@kontourai/station-sdk/private-insights-query', () => ({
           ready: true,
           retainedCopy: true,
         },
+        ...(state.duplicate
+          ? [
+              {
+                id: '41234567-89ab-4cde-8fab-0123456789ab',
+                stationId: 'source-a',
+                origin: 'https://mirror.example.test',
+                ready: true,
+                retainedCopy: true,
+              },
+            ]
+          : []),
       ],
       error: null,
       isFetching: false,
@@ -111,6 +131,7 @@ import { PersonalInsights } from './PersonalInsights';
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  state.duplicate = false;
   state.views = [];
   state.mutation.mockReset();
   state.queries.mockReset();
@@ -201,6 +222,7 @@ test('a changed principal or lost host authority does not retain another scope r
   const view = render(<PersonalInsights />);
   await screen.findByText('1 USD · 2 EUR');
   state.scope = { ...state.scope, authorityKey: 'bob' };
+  state.duplicate = false;
   state.views = [];
   view.rerender(<PersonalInsights />);
   expect(screen.queryByText('1 USD · 2 EUR')).toBeNull();
@@ -242,5 +264,54 @@ test('measure controls use contract values and keep a reported zero separate fro
   expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   expect((screen.getByLabelText('Measure') as HTMLSelectElement).value).toBe(
     'inputTokens',
+  );
+});
+
+test('selecting terminal outcomes applies a saved-compatible population without attribution filters and displays its denominator', async () => {
+  render(<PersonalInsights />);
+  fireEvent.change(screen.getByLabelText('Data population'), {
+    target: { value: 'outcomes' },
+  });
+  fireEvent.click(screen.getByRole('checkbox', { name: /source-a/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Apply view' }));
+  expect(
+    await screen.findByText(/Observed turns \(denominator\): 3/),
+  ).toBeTruthy();
+  expect(screen.getByText(/Counts are not full reliability/)).toBeTruthy();
+  expect(screen.queryByLabelText('Provider attribution')).toBeNull();
+});
+
+test('an old combined saved view with duplicate source identity cannot preview totals and remains available for cleanup', async () => {
+  state.duplicate = true;
+  state.views = [
+    {
+      id: '21234567-89ab-4cde-8fab-0123456789ab',
+      revision: 1,
+      updatedAt: new Date().toISOString(),
+      definition: {
+        title: 'Old mirror total',
+        sources: [
+          { recipientId: sourceId },
+          { recipientId: '41234567-89ab-4cde-8fab-0123456789ab' },
+        ],
+        range: { kind: 'relative', days: 14 },
+        groupBy: 'model',
+        measure: 'reportedCost',
+        timeZone: 'UTC',
+      },
+    },
+  ];
+  render(<PersonalInsights />);
+  expect(
+    await screen.findByText(/This selection cannot be applied/),
+  ).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Apply view' })).toHaveProperty(
+    'disabled',
+    true,
+  );
+  expect(screen.queryByText('1 USD · 2 EUR')).toBeNull();
+  expect(screen.getByLabelText('Saved view')).toHaveProperty(
+    'value',
+    state.views[0].id,
   );
 });

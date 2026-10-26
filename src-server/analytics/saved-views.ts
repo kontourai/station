@@ -115,13 +115,14 @@ export class AnalyticsSavedViews {
   private async sources(
     actor: EnrollmentActor,
     definitions: readonly AnalyticsViewDefinition[],
+    combining = true,
   ) {
     try {
-      await this.assertSources(actor, [
-        ...new Set(
-          definitions.flatMap((d) => d.sources.map((s) => s.recipientId)),
-        ),
-      ]);
+      for (const definition of definitions) {
+        const ids = definition.sources.map((s) => s.recipientId);
+        if (combining) await this.assertSources(actor, ids);
+        else for (const id of ids) await this.assertSources(actor, [id]);
+      }
     } catch {
       await actor.assertCurrent();
       throw new SavedViewRejected(403, 'saved_view_source_unavailable');
@@ -136,6 +137,7 @@ export class AnalyticsSavedViews {
     await this.sources(
       actor,
       result.map((v) => v.definition),
+      false,
     );
     await actor.assertCurrent();
     return result;

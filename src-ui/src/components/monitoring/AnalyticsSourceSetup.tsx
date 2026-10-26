@@ -62,6 +62,7 @@ export function AnalyticsSourceSetup({
     'individual' | 'personal-account'
   >('individual');
   const [retention, setRetention] = useState('live-mirror');
+  const [operationalConsent, setOperationalConsent] = useState(false);
   const offers = useAnalyticsSourceOffers(tab === 'share' ? scope : undefined);
   const [offer, setOffer] = useState<AnalyticsSourceOffer>(),
     [offerInput, setOfferInput] = useState(''),
@@ -236,6 +237,19 @@ export function AnalyticsSourceSetup({
               </select>
             </label>
           </div>
+          <label>
+            <input
+              type="checkbox"
+              checked={operationalConsent}
+              onChange={(e) => setOperationalConsent(e.target.checked)}
+            />
+            Include content-free terminal status observations (completed,
+            aborted, failed)
+          </label>
+          <p>
+            Optional permission is immutable for this grant. Changing it
+            requires a new grant. Usage-only sharing is the default.
+          </p>
           <p>
             Source access expires after 24 hours. A retained copy can remain for
             its approved copy period; live mirroring needs current access.
@@ -247,6 +261,9 @@ export function AnalyticsSourceSetup({
             onClick={async () => {
               const result = await run({
                 kind: 'offer',
+                ...(operationalConsent
+                  ? { operationalConsent: 'terminal-outcomes/v1' as const }
+                  : {}),
                 operationId: randomCorrelationId(),
                 destinationStationId: destination,
                 destinationOrigin,

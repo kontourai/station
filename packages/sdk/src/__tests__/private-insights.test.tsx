@@ -16,7 +16,14 @@ import {
   type PrivateInsightsAuthority,
   usePrivateInsightsInventory,
   usePrivateInsightsResult,
+  usePrivateOutcomesResult,
 } from '../query-domains/privateInsights';
+
+vi.mock('../publicStationCapabilities', () => ({
+  fetchPublicStationCapabilities: async () => ({
+    capabilities: { privateOperationalOutcomes: true },
+  }),
+}));
 
 const id = '11234567-89ab-4cde-8fab-0123456789ab',
   indexId = '21234567-89ab-4cde-8fab-0123456789ab',
@@ -586,5 +593,68 @@ test.each(['restored-slot', 'person-refused'] as const)(
       view.unmount();
       client.clear();
     }
+  },
+);
+
+test.each([401, 403, 409, 410])(
+  'outcomes withhold cached data and reject the refetch caller after authority/stale refusal %s',
+  async (status) => {
+    transport.mockImplementation(async (input) => {
+      if (String(input).endsWith(`/recipient-candidates/${id}`))
+        return Response.json(metadata());
+      if (fail)
+        return Response.json(
+          { error: { code: 'private_usage_sync_required' } },
+          { status: fail },
+        );
+      return Response.json({
+        data: {
+          protocol: 'station-private-operational-outcomes/v1',
+          operationalConsent: 'terminal-outcomes/v1',
+          groupBy: 'engine',
+          highWater: 10,
+          observedTurns: 3,
+          rows: [{ key: 'codex', completed: 1, aborted: 1, failed: 1 }],
+          sourceAuthority: 'not-verified-by-storage',
+          coverage: {
+            state: 'unknown',
+            reason: 'retained-terminal-observations-only',
+            retentionDays: 7,
+          },
+          recipientId: id,
+          asOf: {
+            stationId: 'source-a',
+            streamEpoch: 'epoch-a',
+            highWater: 10,
+            sourceRevision: 0,
+          },
+        },
+      });
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const hook = renderHook(
+      () =>
+        usePrivateOutcomesResult(
+          scope,
+          id,
+          { from: '2026-10-01', to: '2026-10-14', groupBy: 'engine' },
+          'selection',
+        ),
+      { wrapper: wrapper(client) },
+    );
+    await settle();
+    expect(hook.result.current.data?.observedTurns).toBe(3);
+    fail = status;
+    await act(async () => {
+      await expect(
+        hook.result.current.refetch({ throwOnError: true }),
+      ).rejects.toThrow();
+    });
+    await settle();
+    expect(hook.result.current.data).toBeUndefined();
+    hook.unmount();
+    client.clear();
   },
 );

@@ -5,12 +5,17 @@ import {
   parseAnalyticsViewDefinition,
 } from '@kontourai/station-contracts/analytics-views';
 import {
+  type PrivateOperationalOutcomeGroupBy,
+  type PrivateOperationalOutcomeSummary,
   type PrivateUsageReceiptPage,
   type PrivateUsageReceiptQuery,
+  parsePrivateOperationalOutcomeSummary,
   parsePrivateUsageReceiptPage,
 } from '@kontourai/station-contracts/usage-export';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { z } from 'zod';
+import { hasCapability } from '../capability';
+import { fetchPublicStationCapabilities } from '../publicStationCapabilities';
 import { envelopeError } from './api-error-message';
 import {
   type ApiRequestScope,
@@ -36,6 +41,7 @@ export interface PrivateInsightsSource {
   ready: boolean;
   credentialRevision?: number;
   retainedCopy: boolean;
+  operationalConsent?: 'terminal-outcomes/v1';
   sync?: {
     operationId: string;
     from: string;
@@ -61,6 +67,7 @@ const uuid = z.string().uuid();
 const sourceSchema = z.object({
   sourceIntent: z.object({
     sourceStationId: z.string().min(1),
+    operationalConsent: z.literal('terminal-outcomes/v1').optional(),
     retention: z.object({ mode: z.enum(['live-mirror', 'retained-copy']) }),
   }),
   candidate: z.object({ claims: z.object({ recipientId: uuid }) }),
@@ -88,6 +95,9 @@ function source(value: unknown): PrivateInsightsSource {
   const v = sourceSchema.parse(value);
   return {
     id: v.candidate.claims.recipientId,
+    ...(v.sourceIntent.operationalConsent
+      ? { operationalConsent: v.sourceIntent.operationalConsent }
+      : {}),
     stationId: v.sourceIntent.sourceStationId,
     ...(v.sourceConfirmation ? { origin: v.sourceConfirmation.origin } : {}),
     retainedCopy: v.sourceIntent.retention.mode === 'retained-copy',
@@ -418,4 +428,77 @@ export async function syncPrivateInsightsWindow(
       );
   }
   return { phase: 'facts-captured' as const, pages };
+}
+
+export interface PrivateOutcomesQuery {
+  from: string;
+  to: string;
+  groupBy: PrivateOperationalOutcomeGroupBy;
+}
+export interface PrivateOutcomesResult
+  extends PrivateOperationalOutcomeSummary {
+  recipientId: string;
+  asOf: {
+    stationId: string;
+    streamEpoch: string;
+    highWater: number;
+    sourceRevision: number;
+  };
+}
+export async function fetchPrivateOutcomes(
+  scope: ApiRequestScope,
+  recipientId: string,
+  input: PrivateOutcomesQuery,
+  signal?: AbortSignal,
+): Promise<PrivateOutcomesResult> {
+  if (
+    !hasCapability(
+      await fetchPublicStationCapabilities(scope.apiBase),
+      'privateOperationalOutcomes',
+    )
+  )
+    throw new Error(
+      'This host does not support private terminal outcomes. Update the host to use this measure.',
+    );
+  const id = uuid.parse(recipientId);
+  const metadata = source(
+    await request(
+      scope,
+      `/api/analytics/recipient-candidates/${id}`,
+      'GET',
+      undefined,
+      signal,
+    ),
+  );
+  const raw = await request(
+    scope,
+    `/api/analytics/recipient-candidates/${id}/outcomes`,
+    'POST',
+    input,
+    signal,
+    true,
+  );
+  const header = z
+    .object({
+      recipientId: z.literal(id),
+      asOf: z
+        .object({
+          stationId: z.literal(metadata.stationId),
+          streamEpoch: z.string().min(1),
+          highWater: z.number().int().nonnegative(),
+          sourceRevision: z.number().int().nonnegative(),
+        })
+        .strict(),
+    })
+    .passthrough()
+    .parse(raw);
+  const { recipientId: received, asOf, ...summary } = header;
+  return {
+    ...parsePrivateOperationalOutcomeSummary(summary, {
+      ...input,
+      highWater: asOf.highWater,
+    }),
+    recipientId: received,
+    asOf,
+  };
 }

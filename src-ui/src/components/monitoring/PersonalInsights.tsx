@@ -13,6 +13,7 @@ import {
   usePrivateInsightsInventory,
   usePrivateInsightsResult,
   usePrivateInsightsSyncWindow,
+  usePrivateOutcomesResult,
   useSavedAnalyticsViewMutation,
 } from '@kontourai/station-sdk/private-insights-query';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
@@ -27,6 +28,8 @@ import { AnalyticsSourceSetup } from './AnalyticsSourceSetup';
 
 function errorText(error: unknown) {
   if (error instanceof StationHttpError) {
+    if (error.code === 'private_usage_operational_consent_required')
+      return 'This grant permits usage only. Create and approve a new grant with optional terminal outcome permission.';
     if (error.code === 'private_usage_provision_required')
       return 'An operator must prepare private storage before this source can sync.';
     if (error.code === 'private_usage_sync_required')
@@ -41,12 +44,16 @@ function errorText(error: unknown) {
     : 'This request could not be completed.';
 }
 const groupLabels: Record<AnalyticsViewDefinition['groupBy'], string> = {
+  engine: 'Engine',
   day: 'Day',
   provider: 'Provider',
   model: 'Model',
   station: 'Station',
 };
 const measureLabels: Record<AnalyticsViewDefinition['measure'], string> = {
+  completed: 'Completed turns',
+  aborted: 'Aborted turns',
+  failed: 'Failed turns',
   inputTokens: 'Input tokens',
   outputTokens: 'Output tokens',
   cacheReadTokens: 'Cache read tokens',
@@ -68,7 +75,13 @@ function value(
   row: UsageRollupRow | undefined,
   measure: AnalyticsViewDefinition['measure'],
 ) {
-  if (!row) return '—';
+  if (
+    !row ||
+    measure === 'completed' ||
+    measure === 'aborted' ||
+    measure === 'failed'
+  )
+    return '—';
   if (measure === 'reportedCost' || measure === 'estimatedCost') {
     const single = row[measure];
     if (single)
@@ -88,7 +101,87 @@ function value(
   }
   return row[measure] === undefined ? '—' : row[measure]!.toLocaleString();
 }
-function WindowResult({
+function WindowResult(props: Parameters<typeof UsageWindowResult>[0]) {
+  return props.definition.kind === 'outcomes' ? (
+    <OutcomeWindowResult {...props} />
+  ) : (
+    <UsageWindowResult {...props} />
+  );
+}
+function OutcomeWindowResult({
+  scope,
+  source,
+  window,
+  definition,
+  selection,
+  label,
+}: Parameters<typeof UsageWindowResult>[0]) {
+  const result = usePrivateOutcomesResult(
+    scope,
+    source.recipientId,
+    { ...window, groupBy: definition.groupBy === 'day' ? 'day' : 'engine' },
+    selection,
+  );
+  const data = result.data;
+  return (
+    <section className="personal-insights-result" aria-label={label}>
+      <h5>
+        {label} · {window.from} – {window.to} UTC
+      </h5>
+      <p>
+        Independent source population. Retained terminal observations only;
+        coverage unknown. Counts are not full reliability or error rates.
+      </p>
+      {result.error ? (
+        <>
+          <p role="alert">
+            {errorText(result.error)} Current access and coverage are not
+            verified; stale, offline or withdrawn data is withheld.
+          </p>
+          <Button onClick={() => void result.refetch()}>Retry outcomes</Button>
+        </>
+      ) : !data ? (
+        <SkeletonBlock count={1} label="Private terminal outcomes" />
+      ) : (
+        <>
+          <p>
+            Observed turns (denominator): {data.observedTurns.toLocaleString()}{' '}
+            · retained for {data.coverage.retentionDays} days
+          </p>
+          {!data.rows.length ? (
+            <p>
+              No retained terminal observations. Missing observations are not
+              zero.
+            </p>
+          ) : null}
+          <table>
+            <thead>
+              <tr>
+                <th>{groupLabels[definition.groupBy]}</th>
+                <th>{measureLabels[definition.measure]}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.rows.map((row) => (
+                <tr key={row.key}>
+                  <th>{row.key}</th>
+                  <td>
+                    {definition.measure === 'completed'
+                      ? row.completed
+                      : definition.measure === 'aborted'
+                        ? row.aborted
+                        : row.failed}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+    </section>
+  );
+}
+function UsageWindowResult({
   scope,
   source,
   window,
@@ -119,7 +212,7 @@ function WindowResult({
     {
       ...window,
       mode: 'summary',
-      groupBy: definition.groupBy,
+      groupBy: definition.groupBy === 'engine' ? undefined : definition.groupBy,
       provider: source.provider,
       model: source.model,
       accountKey: source.accountKey,
@@ -289,7 +382,7 @@ function SourceResults({
   const receiptPage =
     receiptCursor?.selection === receiptSelection ? receiptCursor : undefined;
   const receipt = usePrivateInsightsResult(
-    drill && !paused ? scope : undefined,
+    drill && !paused && definition.kind !== 'outcomes' ? scope : undefined,
     source.recipientId,
     {
       ...windows.primary,
@@ -409,41 +502,43 @@ function SourceResults({
               />
             </>
           ) : null}
-          <ActionRow
-            overflowLabel="More receipt actions"
-            primary={
-              <Button variant="ghost" onClick={() => setDrill(!drill)}>
-                {drill ? 'Hide receipts' : 'View receipts'}
-              </Button>
-            }
-            secondary={
-              drill && receipt.data?.nextAfter ? (
-                <Button
-                  onClick={() =>
-                    setReceiptCursor({
-                      selection: receiptSelection,
-                      indexId: receipt.data!.indexId,
-                      after: receipt.data!.nextAfter!,
-                    })
-                  }
-                >
-                  More receipts
+          {definition.kind !== 'outcomes' ? (
+            <ActionRow
+              overflowLabel="More receipt actions"
+              primary={
+                <Button variant="ghost" onClick={() => setDrill(!drill)}>
+                  {drill ? 'Hide receipts' : 'View receipts'}
                 </Button>
-              ) : undefined
-            }
-            overflow={
-              drill && receiptPage
-                ? [
-                    {
-                      key: 'first',
-                      label: 'First receipts',
-                      onSelect: () => setReceiptCursor(undefined),
-                    },
-                  ]
-                : []
-            }
-          />
-          {drill ? (
+              }
+              secondary={
+                drill && receipt.data?.nextAfter ? (
+                  <Button
+                    onClick={() =>
+                      setReceiptCursor({
+                        selection: receiptSelection,
+                        indexId: receipt.data!.indexId,
+                        after: receipt.data!.nextAfter!,
+                      })
+                    }
+                  >
+                    More receipts
+                  </Button>
+                ) : undefined
+              }
+              overflow={
+                drill && receiptPage
+                  ? [
+                      {
+                        key: 'first',
+                        label: 'First receipts',
+                        onSelect: () => setReceiptCursor(undefined),
+                      },
+                    ]
+                  : []
+              }
+            />
+          ) : null}
+          {drill && definition.kind !== 'outcomes' ? (
             <div className="personal-insights-table">
               {receipt.error ? (
                 <p role="alert">Receipt access could not be refreshed.</p>
@@ -548,7 +643,18 @@ export function PersonalInsights() {
     });
   const valid = (() => {
     try {
-      return parseAnalyticsViewDefinition(draft);
+      const checked = parseAnalyticsViewDefinition(draft);
+      const identities = checked.sources.map(
+        (source) =>
+          inventory.sources.data?.find((item) => item.id === source.recipientId)
+            ?.stationId,
+      );
+      if (
+        identities.some((id) => !id) ||
+        new Set(identities).size !== identities.length
+      )
+        return undefined;
+      return checked;
     } catch {
       return undefined;
     }
@@ -718,6 +824,31 @@ export function PersonalInsights() {
               </>
             ) : null}
             <label>
+              Data population
+              <select
+                value={draft.kind ?? 'usage'}
+                onChange={(e) =>
+                  change({
+                    ...draft,
+                    kind: e.target.value === 'outcomes' ? 'outcomes' : 'usage',
+                    measure:
+                      e.target.value === 'outcomes'
+                        ? 'completed'
+                        : 'reportedCost',
+                    groupBy: e.target.value === 'outcomes' ? 'engine' : 'model',
+                    sources: draft.sources.map((s) => ({
+                      recipientId: s.recipientId,
+                    })),
+                  })
+                }
+              >
+                <option value="usage">Usage receipts</option>
+                <option value="outcomes">
+                  Terminal outcomes (requires optional consent)
+                </option>
+              </select>
+            </label>
+            <label>
               Group by
               <select
                 value={draft.groupBy}
@@ -729,7 +860,10 @@ export function PersonalInsights() {
                   })
                 }
               >
-                {['day', 'provider', 'model', 'station'].map((v) => (
+                {(draft.kind === 'outcomes'
+                  ? ['engine', 'day']
+                  : ['day', 'provider', 'model', 'station']
+                ).map((v) => (
                   <option key={v} value={v}>
                     {groupLabels[v as AnalyticsViewDefinition['groupBy']]}
                   </option>
@@ -748,14 +882,17 @@ export function PersonalInsights() {
                   })
                 }
               >
-                {[
-                  'inputTokens',
-                  'outputTokens',
-                  'cacheReadTokens',
-                  'cacheWriteTokens',
-                  'reportedCost',
-                  'estimatedCost',
-                ].map((v) => (
+                {(draft.kind === 'outcomes'
+                  ? ['completed', 'aborted', 'failed']
+                  : [
+                      'inputTokens',
+                      'outputTokens',
+                      'cacheReadTokens',
+                      'cacheWriteTokens',
+                      'reportedCost',
+                      'estimatedCost',
+                    ]
+                ).map((v) => (
                   <option key={v} value={v}>
                     {measureLabels[v as AnalyticsViewDefinition['measure']]}
                   </option>
@@ -874,9 +1011,12 @@ export function PersonalInsights() {
                         ? new URL(item.origin).hostname
                         : 'Unconfirmed address'}{' '}
                       · {item.stationId}
+                      {item.operationalConsent
+                        ? ' · terminal outcomes permitted'
+                        : ' · usage only'}
                       {!item.ready ? ' · needs confirmation' : ''}
                     </label>
-                    {selected ? (
+                    {selected && draft.kind !== 'outcomes' ? (
                       <>
                         <label>
                           Provider attribution
@@ -947,9 +1087,19 @@ export function PersonalInsights() {
               })
             )}
           </fieldset>
+          {!valid && draft.sources.length > 1 ? (
+            <p role="status">
+              This selection cannot be applied. Check source availability and
+              choose at most one connection per source Station identity.
+            </p>
+          ) : null}
           <p>
-            Project and engine filters are unavailable without producer
-            attribution. Missing dimensions and measurements are not guessed.
+            Connections advertising the same Station identity cannot be
+            combined. Independent identities stay separate and may overlap;
+            clones with different identities cannot be detected. No cross-source
+            deduplication is performed. Project and engine filters are
+            unavailable without producer attribution. Missing dimensions and
+            measurements are not guessed.
           </p>
           <ActionRow
             className="personal-insights-actions"

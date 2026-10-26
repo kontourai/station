@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseHostedTenantRegistry } from '@kontourai/station-contracts/tenancy';
@@ -5,7 +6,11 @@ import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
 import { readStreamUntil } from '../../__test-utils__/sse-helpers.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { RecipientStore } from '../../analytics/recipient-store.js';
+import type { EnrollmentActor } from '../../analytics/source-enrollment-store.js';
+import { SourceEnrollmentStore } from '../../analytics/source-enrollment-store.js';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
+import { createRecipientCandidateRoutes } from '../../routes/operations/recipient-candidates.js';
 import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../runtime/bootstrap/hosted-tenant-mode.js';
 import { resolveRuntimeWebPushEnabled } from '../../runtime/routes/runtime-route-support.js';
@@ -56,6 +61,103 @@ const CONSUMED_FLAGS: Record<
   string,
   (deployment: Deployment) => Promise<boolean>
 > = {
+  privateOperationalOutcomes: async ({ hosted }) => {
+    const actor: EnrollmentActor = {
+      sourceStationId: 'receiver',
+      userId: 'alice',
+      mode: hosted ? 'hosted' : 'personal',
+      tenantId: hosted ? 'alpha' : null,
+      ownerIds: ['alice'],
+      assertCurrent: async () => {},
+    };
+    const store = new RecipientStore(makeTempDir('outcomes-capability-'));
+    const source = new SourceEnrollmentStore(
+      makeTempDir('outcomes-capability-source-'),
+    );
+    const intent = await source.prepare(
+      { ...actor, sourceStationId: 'source' },
+      {
+        operationId: randomUUID(),
+        proposedDestination: {
+          stationId: 'receiver',
+          origin: 'https://receiver.example.test',
+        },
+        scope: 'individual',
+        operationalConsent: 'terminal-outcomes/v1',
+        expiresAt: new Date(Date.now() + 86400000).toISOString(),
+        retention: { mode: 'live-mirror' },
+      },
+    );
+    const id = randomUUID();
+    await store.prepare(actor, {
+      operationId: id,
+      proposedSourceOrigin: 'https://source.example.test',
+      sourceIntent: intent,
+    });
+    const read = vi.spyOn(store, 'queryOperationalOutcomes').mockResolvedValue({
+      data: {
+        protocol: 'station-private-operational-outcomes/v1',
+        operationalConsent: 'terminal-outcomes/v1',
+        groupBy: 'engine',
+        highWater: 1,
+        observedTurns: 1,
+        rows: [{ key: 'codex', completed: 1, aborted: 0, failed: 0 }],
+        sourceAuthority: 'not-verified-by-storage',
+        coverage: {
+          state: 'unknown',
+          reason: 'retained-terminal-observations-only',
+          retentionDays: 7,
+        },
+        recipientId: id,
+        asOf: {
+          stationId: 'source',
+          streamEpoch: 'epoch',
+          highWater: 1,
+          sourceRevision: 1,
+        },
+      },
+      assertCurrent: actor.assertCurrent,
+    });
+    // Target capture is an owner dependency; the probe never invokes its storage methods.
+    const routes = createRecipientCandidateRoutes({
+      store,
+      capture: async () => actor,
+      captureSyncTarget: async () => ({
+        installationId: 'receiver',
+        custody: 'custody',
+        assertCurrent: actor.assertCurrent,
+        provision: async () => {
+          throw new Error('unused');
+        },
+        checkpoint: async () => null,
+        receipt: async () => null,
+        invalidationReceipt: async () => null,
+        applyInvalidations: async () => {
+          throw new Error('unused');
+        },
+        queryReceipts: async () => {
+          throw new Error('unused');
+        },
+        commit: async () => {
+          throw new Error('unused');
+        },
+        queryOperationalOutcomes: async () => {
+          throw new Error('unused');
+        },
+      }),
+    });
+    const response = await routes.request(`/${id}/outcomes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: '2026-10-01',
+        to: '2026-10-02',
+        groupBy: 'engine',
+      }),
+    });
+    read.mockRestore();
+    return response.status === 200;
+  },
   // GET /sessions/:threadId/event-window answers a bounded window.
   sessionEventWindow: async (deployment) => {
     const routes = orchestrationRoutes(deployment, {
@@ -174,6 +276,7 @@ describe('consumed capability flags match what their routes serve', () => {
   // together (withdrawing a flag everywhere, or serving hosted reads without
   // a tenant reader) still reds.
   const EXPECTED: Record<string, Record<'personal' | 'hosted', boolean>> = {
+    privateOperationalOutcomes: { personal: true, hosted: true },
     sessionEventWindow: { personal: true, hosted: true },
     sessionInventoryInputRead: { personal: true, hosted: false },
     eventStreamResume: { personal: true, hosted: true },

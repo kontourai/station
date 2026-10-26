@@ -5805,3 +5805,15 @@ Owners: [review routes](../../src-server/routes/orchestration/task-review.ts),
 [contracts](../../packages/contracts/src/task-review.ts). The
 [runtime route tests](../../src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts)
 exercise the composed runtime and plan editing.
+
+### Private operational outcomes
+
+`POST /api/analytics/recipient-candidates/:recipientId/outcomes` is a read-only
+data POST. Body: `{ "from": "2026-10-01", "to": "2026-10-14", "groupBy": "engine" }`
+(`day` is also supported). It requires current verified-person ownership and the
+immutable optional `terminal-outcomes/v1` grant. Missing consent returns 403
+`private_usage_operational_consent_required`; stale private capture returns 409
+`private_usage_sync_required`. The `privateOperationalOutcomes` handshake flag
+advertises the route in personal and hosted mode; it grants no authority.
+The response includes retained terminal counts, `observedTurns`, unknown coverage
+and source revision fences. Queued response release checks current authority.

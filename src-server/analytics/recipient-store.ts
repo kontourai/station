@@ -1537,19 +1537,25 @@ export class RecipientStore {
   async assertViewSources(actor: EnrollmentActor, ids: readonly string[]) {
     await actor.assertCurrent();
     const file = this.read(actor);
-    if (
-      ids.some(
-        (id) =>
-          !file.records.some(
-            (row) =>
-              this.owned(actor, row) && row.candidate.claims.recipientId === id,
-          ),
-      )
-    )
-      throw new RecipientCandidateRejected(
-        'recipient_candidate_not_found',
-        404,
+    const identities = new Set<string>();
+    for (const id of ids) {
+      const record = file.records.find(
+        (row) =>
+          this.owned(actor, row) && row.candidate.claims.recipientId === id,
       );
+      if (!record)
+        throw new RecipientCandidateRejected(
+          'recipient_candidate_not_found',
+          404,
+        );
+      const identity = record.sourceIntent.sourceStationId;
+      if (identities.has(identity))
+        throw new RecipientCandidateRejected(
+          'recipient_duplicate_source_identity',
+          409,
+        );
+      identities.add(identity);
+    }
     await actor.assertCurrent();
   }
   async list(actor: EnrollmentActor) {

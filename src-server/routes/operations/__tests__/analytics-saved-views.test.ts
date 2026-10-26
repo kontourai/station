@@ -19,7 +19,7 @@ import { AuthorityObservationRejected } from '../../../services/identity/authori
 import { createAnalyticsSavedViewRoutes } from '../analytics-saved-views.js';
 
 const temporary = trackTempDirs();
-async function fixture() {
+async function fixture(sameIdentity = false) {
   const home = temporary('saved-views-'),
     sources = new RecipientStore(home);
   let user = 'alice',
@@ -39,7 +39,10 @@ async function fixture() {
   });
   const ids: string[] = [];
   for (let i = 0; i < 2; i++) {
-    const sourceActor = { ...actor(), sourceStationId: `source-${i}` };
+    const sourceActor = {
+      ...actor(),
+      sourceStationId: `source-${sameIdentity ? 0 : i}`,
+    };
     const source = new SourceEnrollmentStore(temporary('saved-view-source-'));
     const intent = await source.prepare(sourceActor, {
       operationId: randomUUID(),
@@ -257,4 +260,71 @@ test('lost person authority between source validation and commit leaves no saved
   ).toBe(403);
   h.live(true);
   expect((await app.request(`/${id}`)).status).toBe(404);
+});
+
+test('combined clone identities are refused while separate single-source views remain listable and deletable', async () => {
+  const h = await fixture(true);
+  const app = h.make();
+  const combined = await send(app, 'POST', '/', {
+    operationId: randomUUID(),
+    definition: h.definition,
+  });
+  expect(combined.status).toBe(403);
+  const ids = [randomUUID(), randomUUID()];
+  for (let i = 0; i < 2; i++) {
+    expect(
+      (
+        await send(app, 'POST', '/', {
+          operationId: ids[i],
+          definition: { ...h.definition, sources: [h.definition.sources[i]] },
+        })
+      ).status,
+    ).toBe(201);
+  }
+  expect((await app.request('/')).status).toBe(200);
+  expect(
+    (
+      await send(app, 'PUT', `/${ids[0]}`, {
+        expectedRevision: 1,
+        definition: h.definition,
+      })
+    ).status,
+  ).toBe(403);
+  expect(
+    (await send(app, 'DELETE', `/${ids[0]}`, { expectedRevision: 1 })).status,
+  ).toBe(200);
+});
+test('saved outcome views reject attribution filters and keep legacy usage definitions readable', async () => {
+  const h = await fixture();
+  const app = h.make();
+  const definition = {
+    ...h.definition,
+    kind: 'outcomes',
+    groupBy: 'engine',
+    measure: 'failed',
+    sources: [{ recipientId: h.ids[0] }],
+  };
+  expect(
+    (await send(app, 'POST', '/', { operationId: randomUUID(), definition }))
+      .status,
+  ).toBe(201);
+  expect(
+    (
+      await send(app, 'POST', '/', {
+        operationId: randomUUID(),
+        definition: {
+          ...definition,
+          sources: [{ recipientId: h.ids[0], provider: 'codex' }],
+        },
+      })
+    ).status,
+  ).toBe(400);
+  expect(
+    (
+      await send(app, 'POST', '/', {
+        operationId: randomUUID(),
+        definition: h.definition,
+      })
+    ).status,
+  ).toBe(201);
 });

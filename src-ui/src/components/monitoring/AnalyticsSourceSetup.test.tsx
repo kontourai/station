@@ -108,3 +108,36 @@ test('source review opens a detached trusted page and never renders an approve d
   ).toBeNull();
   expect(close).not.toHaveBeenCalled();
 });
+
+test.each([false, true])(
+  'source offer includes optional immutable operational consent only when selected: %s',
+  async (enabled) => {
+    h.mutate.mockResolvedValue({});
+    render(<AnalyticsSourceSetup scope={scope} sources={[]} />);
+    fireEvent.click(screen.getByText('Connect or manage private sources'));
+    fireEvent.click(screen.getByRole('button', { name: 'Share this Station' }));
+    fireEvent.change(screen.getByLabelText('Receiving Station ID'), {
+      target: { value: 'receiver' },
+    });
+    fireEvent.change(screen.getByLabelText('Receiving Station address'), {
+      target: { value: 'https://receiver.example.test' },
+    });
+    const checkbox = screen.getByRole('checkbox', {
+      name: /Include content-free terminal/,
+    });
+    expect(checkbox).toHaveProperty('checked', false);
+    if (enabled) fireEvent.click(checkbox);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Create public offer' }),
+    );
+    await waitFor(() => expect(h.mutate).toHaveBeenCalledOnce());
+    if (enabled)
+      expect(h.mutate.mock.calls[0][0].operationalConsent).toBe(
+        'terminal-outcomes/v1',
+      );
+    else
+      expect(h.mutate.mock.calls[0][0]).not.toHaveProperty(
+        'operationalConsent',
+      );
+  },
+);

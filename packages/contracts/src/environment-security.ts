@@ -1204,6 +1204,8 @@ export interface EnvironmentSecurityRecord {
  * or the service.
  */
 export interface StationCapabilityFlags {
+  /** Consented private terminal outcome reads. */
+  privateOperationalOutcomes?: boolean;
   /** SSH environment management (`src-server/services/ssh/`, `/api/ssh-environments`). */
   sshEnvironments?: boolean;
   /**

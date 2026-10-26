@@ -5796,3 +5796,16 @@ returns `{thread}` and invalidates both the Task's list and thread-detail querie
 responses also throw `StationHttpError`, preserving the HTTP status. The SDK re-exports
 these request types, `TaskReviewThreadSummary`, `TaskReviewThreadView` and `TaskReviewView` from the
 [review contract](../../packages/contracts/src/task-review.ts).
+
+### Private terminal outcomes
+
+The private Insights client exports `fetchPrivateOutcomes(scope, recipientId,
+{ from, to, groupBy }, signal)` and its principal-scoped
+`usePrivateOutcomesResult(scope, recipientId, query, selection)` hook through the
+existing private Insights query surface. The reader checks
+`privateOperationalOutcomes` with `hasCapability` and provides an explicit host
+update remedy when absent, then validates source identity and the bounded summary.
+The hook hides cached outcome rows during refresh, errors, lost principal authority
+and source validation denial; stale or revoked data is not retained for display.
+Source inventory includes optional `operationalConsent` from the source intent.
+These APIs report private retained observations and do not join product telemetry.
