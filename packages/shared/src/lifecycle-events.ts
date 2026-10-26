@@ -391,6 +391,13 @@ type GuardInspection = LockInspection & {
   };
 };
 
+type LockDeletionProgress = {
+  guard?: GuardInspection;
+  lockRemoved?: boolean;
+  quarantine?: string;
+  guardQuarantine?: string;
+};
+
 type ClaimInspection = {
   path: string;
   owner: {
@@ -597,7 +604,18 @@ function publishGuard(
   }
 }
 
-function deleteGuard(path: string, observed: GuardInspection): void {
+function deleteGuard(
+  path: string,
+  observed: GuardInspection,
+  progress?: LockDeletionProgress,
+): void {
+  if (progress?.guardQuarantine) {
+    if (!sameGuard(inspectGuard(progress.guardQuarantine), observed))
+      throw new Error('lock guard cleanup ownership was lost');
+    rmSync(progress.guardQuarantine, { force: true });
+    delete progress.guardQuarantine;
+    return;
+  }
   if (!sameGuard(inspectGuard(path), observed)) return;
   const quarantine = `${path}.stale-${randomUUID()}`;
   renameSync(path, quarantine);
@@ -606,7 +624,9 @@ function deleteGuard(path: string, observed: GuardInspection): void {
       renameSync(quarantine, path);
     throw new Error('lock guard changed during compare-delete');
   }
+  if (progress) progress.guardQuarantine = quarantine;
   rmSync(quarantine, { force: true });
+  if (progress) delete progress.guardQuarantine;
 }
 
 function* reclaimOrphanGuardGen(
@@ -762,6 +782,7 @@ function* guardedDeleteLockGen(
   lock: string,
   observed: LockInspection,
   options: FileMutationLockOptions,
+  progress?: LockDeletionProgress,
 ): LockGen<boolean> {
   if ((yield* activeClaimsGen(lock, undefined)).length > 0) return false;
   // Own-pid, fail-closed: retry spurious lookup failures (#1057). Injected
@@ -771,6 +792,7 @@ function* guardedDeleteLockGen(
   const guardPath = `${lock}.guard`;
   const guard = publishGuard(lock, observed, birth);
   if (!guard) return false;
+  if (progress) progress.guard = guard;
   try {
     options.hooks?.afterGuardAcquired?.(lock, observed);
     if (!sameGuard(inspectGuard(guardPath), guard)) return false;
@@ -783,10 +805,16 @@ function* guardedDeleteLockGen(
         renameSync(quarantine, lock);
       throw new Error('journal lock changed during compare-delete');
     }
+    if (progress) {
+      progress.lockRemoved = true;
+      progress.quarantine = quarantine;
+    }
     rmSync(quarantine, { force: true });
+    if (progress) delete progress.quarantine;
     return true;
   } finally {
-    deleteGuard(guardPath, guard);
+    deleteGuard(guardPath, guard, progress);
+    if (progress) delete progress.guard;
   }
 }
 
@@ -1045,6 +1073,7 @@ export async function acquireFileMutationLeaseAsync(
   let active = true;
   let released = false;
   let releasing: Promise<void> | undefined;
+  const progress: LockDeletionProgress = {};
   return Object.freeze({
     [fileMutationLeaseBrand]: true as const,
     assertCurrent(): undefined {
@@ -1057,11 +1086,29 @@ export async function acquireFileMutationLeaseAsync(
       if (released) return Promise.resolve();
       if (releasing) return releasing;
       releasing = (async () => {
+        if (progress.lockRemoved) {
+          if (progress.quarantine) {
+            if (!sameLock(inspectLock(progress.quarantine), owned))
+              throw new Error('file mutation lease cleanup ownership was lost');
+            rmSync(progress.quarantine, { force: true });
+            delete progress.quarantine;
+          }
+          if (progress.guard) {
+            deleteGuard(`${lock}.guard`, progress.guard, progress);
+            delete progress.guard;
+          }
+          released = true;
+          return;
+        }
+        if (progress.guard) {
+          deleteGuard(`${lock}.guard`, progress.guard, progress);
+          delete progress.guard;
+        }
         if (!sameLock(inspectLock(lock), owned))
           throw new Error('file mutation lease ownership was lost');
         if (
           !(await runLockGenAsync(
-            guardedDeleteLockGen(lock, owned, options),
+            guardedDeleteLockGen(lock, owned, options, progress),
             options,
           ))
         )

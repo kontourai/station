@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import {
   existsSync,
   mkdtempSync,
@@ -5,6 +6,7 @@ import {
   readFileSync,
   rmSync,
 } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -145,6 +147,45 @@ describe('acquireFileMutationLockAsync (#2646 event-loop yield)', () => {
 });
 
 describe('held file mutation leases', () => {
+  it.each(['rename', 'remove'] as const)(
+    'retries owned guard cleanup after a post-lock-deletion %s failure',
+    async (failure) => {
+      const lock = temporaryLockPath();
+      const lease = await acquireFileMutationLeaseAsync(lock);
+      const rename = fs.renameSync;
+      const remove = fs.rmSync;
+      const fault =
+        failure === 'rename'
+          ? vi.spyOn(fs, 'renameSync').mockImplementation((source, target) => {
+              if (String(source) === `${lock}.guard`)
+                throw new Error('injected guard cleanup failure');
+              rename(source, target);
+            })
+          : vi.spyOn(fs, 'rmSync').mockImplementation((path, options) => {
+              if (String(path).startsWith(`${lock}.guard.stale-`))
+                throw new Error('injected guard cleanup failure');
+              remove(path, options);
+            });
+      syncBuiltinESMExports();
+      try {
+        await expect(lease.release()).rejects.toThrow(
+          'injected guard cleanup failure',
+        );
+        expect(existsSync(lock)).toBe(false);
+        expect(() => lease.assertCurrent()).toThrow('lease is not current');
+      } finally {
+        fault.mockRestore();
+        syncBuiltinESMExports();
+      }
+      await lease.release();
+      const successor = await acquireFileMutationLeaseAsync(lock);
+      await lease.release();
+      expect(successor.assertCurrent()).toBeUndefined();
+      await successor.release();
+      expect(readdirSync(join(lock, '..'))).toEqual([]);
+    },
+  );
+
   it('excludes existing lock callers until release and invalidates the released capability', async () => {
     const lock = temporaryLockPath();
     const lease = await acquireFileMutationLeaseAsync(lock);
