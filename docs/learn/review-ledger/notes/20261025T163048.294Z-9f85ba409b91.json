@@ -1,0 +1,9 @@
+{
+  "revision": "05ff06ef1b9fd1838e7504358ee0406104cbe3d2",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the public API/SDK routing table against the capture scope repair. The linked references now require orchestration:operate for persistent Browser captures while session listing and image content remain reads. The integration guide still directs consumers to those actual authentication contracts and does not claim hosted, PostgreSQL, native or provider qualification. No change to this routing guide is required.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed the SDK instruction to document public changes in the canonical SDK reference and include consumer tests. The capture reference now states operate scope; the merged list, item and thread-detail APIs remain alongside capture exports. SDK hooks/public barrel tests and SDK typechecking passed; this instruction remains accurate and grants no runtime or release qualification.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "d3869c176b6092a9afd96d920ddb603197c6c07b",
+
+  "notes": [
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed the capture fixture delta after merging #4158: createTaskReviewRoutes now requires TaskReviewSend, so the fixture constructs the real send owner using its real review store and Task reader, with no lead or inbox available. Browser capture operations, caller authority, dirty-workspace refusal, immutable bytes and session picker behavior remain as documented; only composition and import ordering changed. The capture baseline passes 30 tests. Removing the production clean-pin check fails the dirty-workspace refusal assertion (ok:true rather than workspace-changed), with 29 other tests passing. Production bytes restored exactly before recording; real Chromium/provider behavior is still not established by the CDP double.","inputs":["docs/guides/browser-workspace.md","src-server/routes/__tests__/browser-agent-capture.test.ts"]}
+  ]
+}

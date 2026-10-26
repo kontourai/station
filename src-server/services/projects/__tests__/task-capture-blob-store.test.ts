@@ -31,6 +31,21 @@ vi.mock('node:fs/promises', async (importOriginal) => ({
   ...(await importOriginal<typeof import('node:fs/promises')>()),
 }));
 
+// Compile-only contract: metadata publication must finish before the home lock releases.
+function synchronousCommitContract(store: TaskCaptureBlobStore, bytes: Buffer) {
+  // @ts-expect-error Async metadata publication escapes rollback and the home lock.
+  store.put(bytes, 'image/png', async (blob) => blob.digest);
+  // @ts-expect-error A returned thenable also escapes synchronous publication.
+  store.put(bytes, 'image/png', (blob) => Promise.resolve(blob.digest));
+  const committed: Promise<string> = store.put(
+    bytes,
+    'image/png',
+    (blob) => blob.digest,
+  );
+  return committed;
+}
+void synchronousCommitContract;
+
 const temporary = trackTempDirs();
 const PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6PCEAAAAASUVORK5CYII=',

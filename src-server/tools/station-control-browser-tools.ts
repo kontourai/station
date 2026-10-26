@@ -301,6 +301,22 @@ export function registerBrowserTools(registry: StationControlToolRegistry) {
   );
 
   registry.tool(
+    'browser_capture_to_task',
+    'Save a Screen in the bound Task, pinned to its clean workspace commit. Commit changes first; submodules are refused. Omit browserSessionId only with one live session in your Project profile. Returns captureId, commit, digest and the image.',
+    {
+      browserSessionId: sessionId.optional(),
+      label: z.string().min(1).max(120).optional(),
+    },
+    async (args) =>
+      callBrowser('capture-to-task', {
+        ...(args.browserSessionId !== undefined
+          ? { browserSessionId: args.browserSessionId }
+          : {}),
+        ...(args.label !== undefined ? { label: args.label } : {}),
+      }),
+  );
+
+  registry.tool(
     'browser_snapshot',
     'Read the page as an accessibility outline with element refs (e.g. [ref=e12]) for click/type/scroll. Bounded (very large pages may time out instead); optional viewport screenshot.',
     {

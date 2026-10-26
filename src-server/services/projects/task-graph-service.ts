@@ -1651,7 +1651,11 @@ export function readTaskGraphForIsolatedSearch(
 const TASK_GRAPH_READ_CACHE_MAX_CHARS = 2 * 1024 * 1024;
 
 export class TaskGraphService {
-  private readCache?: { text: string; data: TaskGraphStoreData };
+  private readCache?: {
+    text: string;
+    data: TaskGraphStoreData;
+    workspaceRoots?: readonly string[];
+  };
   private readonly storePath: string;
   private readonly store: JsonFileStore<TaskGraphStoreData>;
   private readonly acquireMutationLock: FileMutationLock;
@@ -1889,6 +1893,32 @@ export class TaskGraphService {
     return tasks
       .filter((task) => !projectId || task.projectId === projectId)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
+
+  /** Cache derived roots only after the owner has read and validated current bytes. */
+  listWorkspaceRoots(): readonly string[] {
+    const data = this.readStore();
+    if (this.readCache?.workspaceRoots) return this.readCache.workspaceRoots;
+    const roots = Object.freeze([
+      ...new Set(
+        data.tasks.flatMap((task) => {
+          const binding = task.workspaceBinding;
+          return [
+            typeof binding?.workingDirectory === 'string'
+              ? resolve(expandTilde(binding.workingDirectory))
+              : undefined,
+            typeof binding?.repoRoot === 'string'
+              ? resolve(expandTilde(binding.repoRoot))
+              : undefined,
+            typeof binding?.worktreePath === 'string'
+              ? resolve(expandTilde(binding.worktreePath))
+              : undefined,
+          ].filter((path): path is string => typeof path === 'string');
+        }),
+      ),
+    ]);
+    if (this.readCache) this.readCache.workspaceRoots = roots;
+    return roots;
   }
 
   /**
