@@ -3257,14 +3257,14 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // comments and transitions use operate standing. Send starts an agent turn
     // through the lead conversation inbox.
     { method: 'GET', path: '/api/tasks/:taskId/review' },
-    { method: 'GET', path: '/api/tasks/:taskId/review/items/:kind/:id' },
-    { method: 'GET', path: '/api/tasks/:taskId/review/threads/:threadId' },
     { method: 'GET', path: '/api/tasks/:taskId/review/capture-sessions' },
     { method: 'POST', path: '/api/tasks/:taskId/review/captures' },
     {
       method: 'GET',
       path: '/api/tasks/:taskId/review/captures/:captureId/content',
     },
+    { method: 'GET', path: '/api/tasks/:taskId/review/items/:kind/:id' },
+    { method: 'GET', path: '/api/tasks/:taskId/review/threads/:threadId' },
     { method: 'POST', path: '/api/tasks/:taskId/review/threads' },
     { method: 'POST', path: '/api/tasks/:taskId/review/send' },
     {

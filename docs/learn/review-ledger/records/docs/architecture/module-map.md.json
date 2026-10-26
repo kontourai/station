@@ -40,8 +40,6 @@
 
     "packages/connect/src/core/pendingPairingCompletionLoader.ts",
 
-    "packages/connect/src/core/pendingPairingExchangeJournal.ts",
-
     "packages/contracts/src/__tests__/learning-review.test.ts",
 
     "packages/contracts/src/catalog.ts",
@@ -61,8 +59,6 @@
     "packages/contracts/src/plugin-telemetry.ts",
 
     "packages/contracts/src/project-task-room-browser.ts",
-
-    "packages/contracts/src/required-slots.ts",
 
     "packages/contracts/src/scheduler.ts",
 
@@ -88,8 +84,6 @@
 
     "packages/monument/src/session-message-delivery.ts",
 
-    "packages/sdk/src/__tests__/task-review-hooks.test.tsx",
-
     "packages/sdk/src/client/application-session-native.ts",
 
     "packages/sdk/src/client/http.ts",
@@ -107,8 +101,6 @@
     "packages/sdk/src/client/workspace-pane-host-actions.ts",
 
     "packages/sdk/src/mobile-device.ts",
-
-    "packages/sdk/src/query-domains/taskReview.ts",
 
     "packages/sdk/src/query-domains/taskRoomWork.ts",
 
@@ -256,8 +248,6 @@
 
     "src-desktop/src/startup_readiness.rs",
 
-    "src-server/adapters/file-terminal-history-store.ts",
-
     "src-server/adapters/file/memory-adapter-conversations.ts",
 
     "src-server/analytics/usage-export-reader.ts",
@@ -281,8 +271,6 @@
     "src-server/domain/migrations/015-turn-dedup-input-digest.ts",
 
     "src-server/domain/migrations/019-positive-turn-start-index.ts",
-
-    "src-server/domain/migrations/023-task-review.ts",
 
     "src-server/domain/project-file-transactions.ts",
 
@@ -356,8 +344,6 @@
 
     "src-server/providers/resolver.ts",
 
-    "src-server/routes/__tests__/browser-agent-capture.test.ts",
-
     "src-server/routes/agents/__tests__/invoke.routes.test.ts",
 
     "src-server/routes/agents/agents.ts",
@@ -372,13 +358,7 @@
 
     "src-server/routes/browser.ts",
 
-    "src-server/routes/chat/__tests__/chat-primary-stream.dedup.test.ts",
-
-    "src-server/routes/chat/__tests__/chat-turn-dedup-crash.process.test.ts",
-
     "src-server/routes/chat/chat-primary-stream.ts",
-
-    "src-server/routes/chat/chat-turn-dedup.ts",
 
     "src-server/routes/chat/chat.ts",
 
@@ -428,21 +408,11 @@
 
     "src-server/routes/orchestration/project-task-rooms.ts",
 
-    "src-server/routes/orchestration/task-review-captures.ts",
-
-    "src-server/routes/orchestration/task-review-station-control.ts",
-
-    "src-server/routes/orchestration/task-review.ts",
-
     "src-server/routes/orchestration/tasks.ts",
 
     "src-server/routes/orchestration/workspace-pane-host-actions.ts",
 
-    "src-server/routes/outside-agent/consent-routes.ts",
-
     "src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts",
-
-    "src-server/routes/plugins/__tests__/required-slots.test.ts",
 
     "src-server/routes/plugins/plugin-config-routes.ts",
 
@@ -463,8 +433,6 @@
     "src-server/routes/projects/project-s3-source-routes.ts",
 
     "src-server/routes/projects/projects.ts",
-
-    "src-server/routes/projects/terminal-session-routes.ts",
 
     "src-server/routes/search.ts",
 
@@ -496,8 +464,6 @@
 
     "src-server/runtime/bootstrap/station-runtime.ts",
 
-    "src-server/runtime/consent/consent-listener.ts",
-
     "src-server/runtime/conversation/native-execution-workspace.ts",
 
     "src-server/runtime/conversation/native-foreground-invocation.ts",
@@ -528,10 +494,6 @@
 
     "src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts",
-
-    "src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts",
-
     "src-server/runtime/routes/project-room-access.ts",
 
     "src-server/runtime/routes/runtime-route-support.ts",
@@ -549,8 +511,6 @@
     "src-server/security/coding-authority.ts",
 
     "src-server/security/native-device-request-authority.ts",
-
-    "src-server/security/outside-agent-release-guard.ts",
 
     "src-server/security/pairing-route-scopes.ts",
 
@@ -614,15 +574,11 @@
 
     "src-server/services/connections/connection-service.ts",
 
-    "src-server/services/connections/lan-discovery.ts",
-
     "src-server/services/connections/native-v2-pion-application-adapter.ts",
 
     "src-server/services/connections/runtime-auth-health-monitor.ts",
 
     "src-server/services/connections/virtual-application.ts",
-
-    "src-server/services/consent/consent-transactions.ts",
 
     "src-server/services/devices/device-access.ts",
 
@@ -705,8 +661,6 @@
     "src-server/services/identity/native-device-replay-store.ts",
 
     "src-server/services/identity/native-relay-enrollment-service.ts",
-
-    "src-server/services/identity/operator-sessions.ts",
 
     "src-server/services/infra/__tests__/resource-posture.test.ts",
 
@@ -794,15 +748,9 @@
 
     "src-server/services/orchestration/__tests__/session-turn-boundary.test.ts",
 
-    "src-server/services/orchestration/__tests__/task-review-send.test.ts",
-
-    "src-server/services/orchestration/__tests__/task-review-store.test.ts",
-
     "src-server/services/orchestration/__tests__/turn-dedup-crash.process.test.ts",
 
     "src-server/services/orchestration/__tests__/voice-turn-runs.test.ts",
-
-    "src-server/services/orchestration/adapter-retirement.ts",
 
     "src-server/services/orchestration/adoption-ledger.ts",
 
@@ -886,10 +834,6 @@
 
     "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
 
-    "src-server/services/orchestration/task-review-send.ts",
-
-    "src-server/services/orchestration/task-review-store.ts",
-
     "src-server/services/orchestration/thread-inbox.ts",
 
     "src-server/services/orchestration/transcript-search-queries.ts",
@@ -901,8 +845,6 @@
     "src-server/services/orchestration/voice-turn-runs.ts",
 
     "src-server/services/orchestration/workspace-identity.ts",
-
-    "src-server/services/outside-agent/consent-service.ts",
 
     "src-server/services/plugin-telemetry-service.ts",
 
@@ -950,8 +892,6 @@
 
     "src-server/services/plugins/registry-trust-policy.ts",
 
-    "src-server/services/plugins/required-slot-service.ts",
-
     "src-server/services/plugins/tool-library-service.ts",
 
     "src-server/services/plugins/workspace-pane-host-actions.ts",
@@ -959,10 +899,6 @@
     "src-server/services/plugins/workspace-pane-host-admission.ts",
 
     "src-server/services/plugins/workspace-pane-host-contributions.ts",
-
-    "src-server/services/projects/__tests__/task-capture-blob-store-factory.test.ts",
-
-    "src-server/services/projects/__tests__/task-review-module.test.ts",
 
     "src-server/services/projects/operator-setup-service.ts",
 
@@ -996,21 +932,11 @@
 
     "src-server/services/projects/task-basis-runtime-composition.ts",
 
-    "src-server/services/projects/task-browser-capture.ts",
-
-    "src-server/services/projects/task-capture-blob-store-factory.ts",
-
-    "src-server/services/projects/task-capture-blob-store.ts",
-
     "src-server/services/projects/task-dispatch-composition.ts",
 
     "src-server/services/projects/task-dispatcher.ts",
 
     "src-server/services/projects/task-graph-service.ts",
-
-    "src-server/services/projects/task-review-evidence.ts",
-
-    "src-server/services/projects/task-review-module.ts",
 
     "src-server/services/projects/task-room-context.ts",
 
@@ -1064,21 +990,9 @@
 
     "src-server/services/spatial-board/spatial-board-store.ts",
 
-    "src-server/services/ssh/device-pairing-service.ts",
-
     "src-server/services/ssh/native-device-proof-binding-service.ts",
 
     "src-server/services/starter-work/starter-registry.ts",
-
-    "src-server/services/terminal/__tests__/terminal-sessions.process.test.ts",
-
-    "src-server/services/terminal/shell-host.ts",
-
-    "src-server/services/terminal/terminal-journal.ts",
-
-    "src-server/services/terminal/terminal-output-sanitizer.ts",
-
-    "src-server/services/terminal/terminal-sessions.ts",
 
     "src-server/services/turn-idempotency.ts",
 
@@ -1100,8 +1014,6 @@
 
     "src-server/tools/station-control-policy.ts",
 
-    "src-server/tools/station-control-task-thread-tools.ts",
-
     "src-server/utils/path-containment.ts",
 
     "src-server/utils/process-group-exec.ts",
@@ -1117,10 +1029,6 @@
     "src-shared/collaborative-edit-limits.ts",
 
     "src-shared/extension-notification-bindings.ts",
-
-    "src-ui/src/__tests__/ChatDockColdChatHydration.test.tsx",
-
-    "src-ui/src/__tests__/HomeView.test.tsx",
 
     "src-ui/src/__tests__/deliveryFeed.nativeConsumer.test.ts",
 
@@ -1286,23 +1194,7 @@
 
     "src-ui/src/views/settings/utils.ts",
 
-    "src-ui/src/views/task-workspace/TaskOutputsSection.tsx",
-
     "src-ui/src/views/task-workspace/TaskRoomPage.tsx",
-
-    "src-ui/src/views/task-workspace/review/ReviewCommentsRail.tsx",
-
-    "src-ui/src/views/task-workspace/review/ReviewDocumentView.tsx",
-
-    "src-ui/src/views/task-workspace/review/ReviewImageView.tsx",
-
-    "src-ui/src/views/task-workspace/review/ReviewThreadCard.tsx",
-
-    "src-ui/src/views/task-workspace/review/TaskReviewLayout.css",
-
-    "src-ui/src/views/task-workspace/review/TaskReviewTab.tsx",
-
-    "src-ui/src/views/task-workspace/review/__tests__/TaskReviewTab.test.tsx",
 
     "src-ui/src/workspace-panes/BasisMcpWorkspacePane.tsx",
 
@@ -1318,21 +1210,13 @@
 
     "src-ui/src/workspace-panes/ProjectTaskRoomPresence.tsx",
 
-    "src-ui/src/workspace-panes/RequiredSlotHost.tsx",
-
     "src-ui/src/workspace-panes/SpatialBoardWorkspacePane.tsx",
 
     "src-ui/src/workspace-panes/TaskRoomComposer.tsx",
 
     "src-ui/src/workspace-panes/TaskRoomEditorPane.tsx",
 
-    "src-ui/src/workspace-panes/WorkspacePaneFrame.tsx",
-
-    "src-ui/src/workspace-panes/WorkspacePaneHost.tsx",
-
     "src-ui/src/workspace-panes/WorkspacePaneHostActions.tsx",
-
-    "src-ui/src/workspace-panes/__tests__/RequiredSlotHost.test.tsx",
 
     "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
 
@@ -1344,13 +1228,129 @@
 
     "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
 
-    "src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx",
-
-    "src-ui/src/workspace-panes/requiredSlotRecovery.tsx",
-
     "tests/helpers/fixture-audit.ts",
 
     "tests/helpers/journey-profile.ts",
+
+    "packages/connect/src/core/pendingPairingExchangeJournal.ts",
+
+    "src-server/services/connections/lan-discovery.ts",
+
+    "src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx",
+
+    "src-server/services/orchestration/adapter-retirement.ts",
+
+    "src-server/services/consent/consent-transactions.ts",
+
+    "src-server/runtime/consent/consent-listener.ts",
+
+    "src-server/services/identity/operator-sessions.ts",
+
+    "src-server/services/ssh/device-pairing-service.ts",
+
+    "src-server/services/outside-agent/consent-service.ts",
+
+    "src-server/routes/outside-agent/consent-routes.ts",
+
+    "src-server/security/outside-agent-release-guard.ts",
+
+    "src-server/domain/migrations/023-task-review.ts",
+
+    "src-server/services/orchestration/task-review-store.ts",
+
+    "src-server/services/projects/task-review-module.ts",
+
+    "src-server/routes/orchestration/task-review.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts",
+
+    "src-server/services/orchestration/__tests__/task-review-store.test.ts",
+
+    "packages/sdk/src/query-domains/taskReview.ts",
+
+    "packages/sdk/src/__tests__/task-review-hooks.test.tsx",
+
+    "src-server/services/projects/__tests__/task-review-module.test.ts",
+
+    "src-server/services/terminal/shell-host.ts",
+
+    "src-server/services/terminal/terminal-sessions.ts",
+
+    "src-server/services/terminal/terminal-journal.ts",
+
+    "src-server/services/terminal/terminal-output-sanitizer.ts",
+
+    "src-server/adapters/file-terminal-history-store.ts",
+
+    "src-server/routes/projects/terminal-session-routes.ts",
+
+    "src-server/services/terminal/__tests__/terminal-sessions.process.test.ts",
+
+    "packages/contracts/src/required-slots.ts",
+
+    "src-server/services/plugins/required-slot-service.ts",
+
+    "src-ui/src/workspace-panes/RequiredSlotHost.tsx",
+
+    "src-server/routes/plugins/__tests__/required-slots.test.ts",
+
+    "src-ui/src/workspace-panes/__tests__/RequiredSlotHost.test.tsx",
+
+    "src-ui/src/workspace-panes/requiredSlotRecovery.tsx",
+
+    "src-ui/src/workspace-panes/WorkspacePaneFrame.tsx",
+
+    "src-ui/src/workspace-panes/WorkspacePaneHost.tsx",
+
+    "src-ui/src/__tests__/ChatDockColdChatHydration.test.tsx",
+
+    "src-ui/src/__tests__/HomeView.test.tsx",
+
+    "src-server/routes/chat/chat-turn-dedup.ts",
+
+    "src-server/routes/chat/__tests__/chat-primary-stream.dedup.test.ts",
+
+    "src-server/routes/chat/__tests__/chat-turn-dedup-crash.process.test.ts",
+
+    "src-server/services/projects/task-browser-capture.ts",
+
+    "src-server/routes/orchestration/task-review-captures.ts",
+
+    "src-server/routes/__tests__/browser-agent-capture.test.ts",
+
+    "src-server/services/projects/task-capture-blob-store.ts",
+
+    "src-server/services/projects/task-capture-blob-store-factory.ts",
+
+    "src-server/services/projects/__tests__/task-capture-blob-store-factory.test.ts",
+
+    "src-server/services/orchestration/task-review-send.ts",
+
+    "src-server/routes/orchestration/task-review-station-control.ts",
+
+    "src-server/services/projects/task-review-evidence.ts",
+
+    "src-server/tools/station-control-task-thread-tools.ts",
+
+    "src-server/services/orchestration/__tests__/task-review-send.test.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts",
+
+    "src-ui/src/views/task-workspace/TaskOutputsSection.tsx",
+
+    "src-ui/src/views/task-workspace/review/ReviewCommentsRail.tsx",
+
+    "src-ui/src/views/task-workspace/review/ReviewDocumentView.tsx",
+
+    "src-ui/src/views/task-workspace/review/ReviewImageView.tsx",
+
+    "src-ui/src/views/task-workspace/review/ReviewThreadCard.tsx",
+
+    "src-ui/src/views/task-workspace/review/TaskReviewLayout.css",
+
+    "src-ui/src/views/task-workspace/review/TaskReviewTab.tsx",
+
+    "src-ui/src/views/task-workspace/review/__tests__/TaskReviewTab.test.tsx",
 
     "tests/task-review.spec.ts"
   ],

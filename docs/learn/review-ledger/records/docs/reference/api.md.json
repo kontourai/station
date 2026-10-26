@@ -16,8 +16,6 @@
 
     "packages/cli/src/commands/surfaces.ts",
 
-    "packages/cli/src/commands/telemetry.ts",
-
     "packages/connect/src/react/DevicePairingPanel.tsx",
 
     "packages/contracts/src/agent.ts",
@@ -35,8 +33,6 @@
     "packages/contracts/src/fleet-contribution.ts",
 
     "packages/contracts/src/fleet-inference.ts",
-
-    "packages/contracts/src/plugin-telemetry.ts",
 
     "packages/contracts/src/principal.ts",
 
@@ -56,21 +52,9 @@
 
     "packages/contracts/src/starter-work.ts",
 
-    "packages/contracts/src/system-status.ts",
-
-    "packages/contracts/src/task-graph.ts",
-
-    "packages/contracts/src/telemetry-delivery.ts",
-
-    "packages/contracts/src/tool-library.ts",
-
     "packages/contracts/src/tool.ts",
 
-    "packages/contracts/src/usage-export.ts",
-
     "packages/contracts/src/usage-rollup.ts",
-
-    "packages/contracts/src/usage-stats.ts",
 
     "packages/sdk/src/api-core.ts",
 
@@ -78,13 +62,9 @@
 
     "packages/sdk/src/client/index.ts",
 
-    "packages/sdk/src/client/plugin-telemetry.ts",
-
     "packages/sdk/src/client/reviews.ts",
 
     "packages/sdk/src/client/scheduler.ts",
-
-    "packages/sdk/src/personal-board.ts",
 
     "packages/sdk/src/queries.ts",
 
@@ -94,13 +74,9 @@
 
     "packages/sdk/src/query-domains/scheduler.ts",
 
-    "packages/sdk/src/query-domains/telemetryDelivery.ts",
-
     "packages/sdk/src/query-domains/workspaceConnections.ts",
 
     "packages/shared/src/client-protocol.ts",
-
-    "packages/shared/src/plugin-telemetry.ts",
 
     "packages/shared/src/runtime-path-resolver.ts",
 
@@ -116,17 +92,9 @@
 
     "src-desktop/src/native_relay_redemption.rs",
 
-    "src-server/adapters/file-terminal-history-store.ts",
-
-    "src-server/adapters/file/memory-adapter-messages.ts",
-
-    "src-server/analytics/__tests__/usage-observation-projection.test.ts",
-
     "src-server/analytics/usage-aggregator-state.ts",
 
     "src-server/analytics/usage-aggregator.ts",
-
-    "src-server/analytics/usage-export-reader.ts",
 
     "src-server/analytics/usage-rollup-service.ts",
 
@@ -140,17 +108,9 @@
 
     "src-server/domain/file-storage-adapter.ts",
 
-    "src-server/domain/file-storage-schemas.ts",
-
     "src-server/domain/layout-owner-storage.ts",
 
-    "src-server/domain/telemetry-configuration.ts",
-
-    "src-server/knowledge-store/knowledge-write-authority.ts",
-
     "src-server/monitoring/emitter.ts",
-
-    "src-server/monitoring/otlp-receiver.ts",
 
     "src-server/providers/adapters/acp-adapter.ts",
 
@@ -176,8 +136,6 @@
 
     "src-server/providers/registries/registry-source-manager.ts",
 
-    "src-server/routes/__tests__/browser-agent-capture.test.ts",
-
     "src-server/routes/agents/agent-tools.ts",
 
     "src-server/routes/agents/agents.ts",
@@ -196,8 +154,6 @@
 
     "src-server/routes/chat/bounded-response.ts",
 
-    "src-server/routes/chat/chat-primary-stream.ts",
-
     "src-server/routes/chat/chat-request-preparation.ts",
 
     "src-server/routes/chat/chat.ts",
@@ -214,11 +170,7 @@
 
     "src-server/routes/inference/fleet-inference.ts",
 
-    "src-server/routes/knowledge/knowledge-document-import-routes.ts",
-
     "src-server/routes/me/personal-layouts.ts",
-
-    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts",
 
     "src-server/routes/operations/analytics.ts",
 
@@ -228,31 +180,13 @@
 
     "src-server/routes/operations/scheduler.ts",
 
-    "src-server/routes/operations/telemetry-events.ts",
-
-    "src-server/routes/operations/usage-telemetry-disclosure.ts",
-
     "src-server/routes/orchestration/attachments.ts",
 
     "src-server/routes/orchestration/events.ts",
 
     "src-server/routes/orchestration/orchestration.ts",
 
-    "src-server/routes/orchestration/project-task-rooms.ts",
-
     "src-server/routes/orchestration/runs.ts",
-
-    "src-server/routes/orchestration/task-relationships.ts",
-
-    "src-server/routes/orchestration/task-review-captures.ts",
-
-    "src-server/routes/orchestration/task-review-station-control.ts",
-
-    "src-server/routes/orchestration/task-review.ts",
-
-    "src-server/routes/orchestration/task-room-attachment-http.ts",
-
-    "src-server/routes/orchestration/tasks.ts",
 
     "src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts",
 
@@ -286,19 +220,9 @@
 
     "src-server/routes/projects/layouts.ts",
 
-    "src-server/routes/projects/operator-setup-routes.ts",
-
     "src-server/routes/projects/project-layout-admission.ts",
 
-    "src-server/routes/projects/project-room-routes.ts",
-
-    "src-server/routes/projects/project-s3-source-routes.ts",
-
     "src-server/routes/projects/projects.ts",
-
-    "src-server/routes/projects/repository-acquisition-routes.ts",
-
-    "src-server/routes/projects/terminal-session-routes.ts",
 
     "src-server/routes/projects/ui-commands.ts",
 
@@ -330,8 +254,6 @@
 
     "src-server/routes/system/native-device-proof-self-receipt-routes.ts",
 
-    "src-server/routes/system/resource-posture-routes.ts",
-
     "src-server/routes/system/self-update-restart-state.ts",
 
     "src-server/routes/system/self-update-watchdog.ts",
@@ -341,10 +263,6 @@
     "src-server/routes/system/system-update-routes.ts",
 
     "src-server/routes/system/system.ts",
-
-    "src-server/routes/telemetry-producers.ts",
-
-    "src-server/routes/tool-library.ts",
 
     "src-server/runtime/__tests__/client-protocol-admission.test.ts",
 
@@ -360,27 +278,13 @@
 
     "src-server/runtime/bootstrap/station-runtime.ts",
 
-    "src-server/runtime/consent/consent-listener.ts",
-
     "src-server/runtime/conversation/conversation-manager.ts",
 
     "src-server/runtime/conversation/runtime-event-log.ts",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-project-task-room-principal.test.ts",
-
-    "src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts",
-
-    "src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts",
-
     "src-server/runtime/routes/runtime-routes.ts",
 
-    "src-server/runtime/routes/task-relationship-authority.ts",
-
-    "src-server/runtime/routes/tool-library-runtime.ts",
-
     "src-server/security/client-protocol-admission.ts",
-
-    "src-server/security/coding-authority.ts",
 
     "src-server/security/pairing-route-scopes.ts",
 
@@ -400,8 +304,6 @@
 
     "src-server/services/connections/launchable-model-inventory.ts",
 
-    "src-server/services/consent/consent-transactions.ts",
-
     "src-server/services/evidence/git-review-workspace-source.ts",
 
     "src-server/services/evidence/orchestration-review-executor.ts",
@@ -410,19 +312,11 @@
 
     "src-server/services/evidence/review-receipt-store.ts",
 
-    "src-server/services/identity/operator-sessions.ts",
-
     "src-server/services/identity/principal-resolver.ts",
 
     "src-server/services/inference/fleet-inference-service.ts",
 
-    "src-server/services/knowledge/knowledge-document-import-service.ts",
-
     "src-server/services/layouts/layout-pane-reference.ts",
-
-    "src-server/services/layouts/personal-board-authoring.ts",
-
-    "src-server/services/layouts/personal-layout-operation.ts",
 
     "src-server/services/layouts/personal-layout-service.ts",
 
@@ -438,14 +332,6 @@
 
     "src-server/services/orchestration/session-transcript-reads.ts",
 
-    "src-server/services/orchestration/task-review-send.ts",
-
-    "src-server/services/orchestration/task-review-store.ts",
-
-    "src-server/services/plugin-telemetry-service.ts",
-
-    "src-server/services/plugins/install-registry-integration.ts",
-
     "src-server/services/plugins/mcp-service.ts",
 
     "src-server/services/plugins/plugin-grant-reconciliation.ts",
@@ -456,39 +342,11 @@
 
     "src-server/services/plugins/plugin-runtime-artifact.ts",
 
-    "src-server/services/plugins/plugin-telemetry-admission.ts",
-
     "src-server/services/plugins/plugin-update-check.ts",
 
     "src-server/services/plugins/plugin-visibility-service.ts",
 
-    "src-server/services/plugins/tool-library-catalog.ts",
-
-    "src-server/services/plugins/tool-library-service.ts",
-
     "src-server/services/projects/layout-service.ts",
-
-    "src-server/services/projects/operator-setup-service.ts",
-
-    "src-server/services/projects/project-creation-service.ts",
-
-    "src-server/services/projects/project-room-agent-module.ts",
-
-    "src-server/services/projects/project-room-agent-publication.ts",
-
-    "src-server/services/projects/project-room-store.ts",
-
-    "src-server/services/projects/project-s3-sources.ts",
-
-    "src-server/services/projects/repository-acquisition-service.ts",
-
-    "src-server/services/projects/repository-provider-catalog.ts",
-
-    "src-server/services/projects/task-browser-capture.ts",
-
-    "src-server/services/projects/task-graph-service.ts",
-
-    "src-server/services/projects/task-review-module.ts",
 
     "src-server/services/projects/task-room-context.ts",
 
@@ -514,29 +372,9 @@
 
     "src-server/services/starter-work/starter-work-module.ts",
 
-    "src-server/services/telemetry-producers/telemetry-producer-store.ts",
-
-    "src-server/services/terminal/__tests__/terminal-sessions.process.test.ts",
-
-    "src-server/services/terminal/shell-host.ts",
-
-    "src-server/services/terminal/terminal-journal.ts",
-
-    "src-server/services/terminal/terminal-output-sanitizer.ts",
-
-    "src-server/services/terminal/terminal-sessions.ts",
-
-    "src-server/services/usage-telemetry-service.ts",
-
-    "src-server/telemetry-delivery-state.ts",
-
     "src-server/tools/station-control-delegation.ts",
 
-    "src-server/utils/git-exec.ts",
-
     "src-server/utils/path-access-failure.ts",
-
-    "src-server/utils/process-group-exec.ts",
 
     "src-shared/monitoring-keys.ts",
 
@@ -545,10 +383,6 @@
     "src-ui/src/components/chat-dock/retry-attachments.ts",
 
     "src-ui/src/components/chat/FilePartPreview.tsx",
-
-    "src-ui/src/components/chat/TaskProposalCard.tsx",
-
-    "src-ui/src/components/chat/TaskShapingComposer.tsx",
 
     "src-ui/src/components/home/StarterScheduledCheckCard.tsx",
 
@@ -562,27 +396,193 @@
 
     "src-ui/src/contexts/ModelCapabilitiesContext.tsx",
 
-    "src-ui/src/contexts/active-chats-state.ts",
-
-    "src-ui/src/hooks/useProjectCreationRecovery.ts",
-
     "src-ui/src/hooks/useToolApproval.ts",
 
     "src-ui/src/layouts/index.tsx",
 
     "src-ui/src/lib/branding-theme.ts",
 
-    "src-ui/src/lib/project-onboarding-recovery.ts",
-
-    "src-ui/src/lib/task-shaping.ts",
-
     "src-ui/src/views/agent-editor/useAgentsViewModel.ts",
 
     "src-ui/src/views/layout-workspace-shape.ts",
 
+    "packages/contracts/src/usage-stats.ts",
+
+    "src-server/analytics/__tests__/usage-observation-projection.test.ts",
+
+    "src-server/adapters/file/memory-adapter-messages.ts",
+
+    "src-server/routes/system/resource-posture-routes.ts",
+
+    "packages/contracts/src/system-status.ts",
+
+    "src-ui/src/lib/task-shaping.ts",
+
+    "src-ui/src/components/chat/TaskShapingComposer.tsx",
+
+    "src-ui/src/components/chat/TaskProposalCard.tsx",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-project-task-room-principal.test.ts",
+
+    "packages/contracts/src/task-graph.ts",
+
+    "src-server/routes/orchestration/tasks.ts",
+
+    "src-ui/src/contexts/active-chats-state.ts",
+
+    "src-server/routes/operations/usage-telemetry-disclosure.ts",
+
+    "src-server/services/usage-telemetry-service.ts",
+
+    "src-server/telemetry-delivery-state.ts",
+
+    "packages/contracts/src/telemetry-delivery.ts",
+
+    "packages/sdk/src/query-domains/telemetryDelivery.ts",
+
+    "packages/contracts/src/usage-export.ts",
+
+    "src-server/analytics/usage-export-reader.ts",
+
+    "src-server/services/layouts/personal-board-authoring.ts",
+
+    "src-server/services/layouts/personal-layout-operation.ts",
+
+    "packages/sdk/src/personal-board.ts",
+
+    "src-server/security/coding-authority.ts",
+
+    "packages/contracts/src/tool-library.ts",
+
+    "src-server/routes/tool-library.ts",
+
+    "src-server/runtime/routes/tool-library-runtime.ts",
+
+    "src-server/services/plugins/install-registry-integration.ts",
+
+    "src-server/services/plugins/tool-library-catalog.ts",
+
+    "src-server/services/plugins/tool-library-service.ts",
+
+    "src-server/domain/telemetry-configuration.ts",
+
+    "packages/cli/src/commands/telemetry.ts",
+
+    "src-server/monitoring/otlp-receiver.ts",
+
+    "src-server/routes/telemetry-producers.ts",
+
+    "src-server/services/telemetry-producers/telemetry-producer-store.ts",
+
+    "packages/contracts/src/plugin-telemetry.ts",
+
+    "packages/shared/src/plugin-telemetry.ts",
+
+    "src-server/services/plugin-telemetry-service.ts",
+
+    "src-server/services/plugins/plugin-telemetry-admission.ts",
+
+    "src-server/routes/operations/telemetry-events.ts",
+
+    "packages/sdk/src/client/plugin-telemetry.ts",
+
+    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts",
+
+    "src-server/services/projects/repository-acquisition-service.ts",
+
+    "src-server/routes/projects/repository-acquisition-routes.ts",
+
+    "src-server/domain/file-storage-schemas.ts",
+
+    "src-server/services/projects/project-creation-service.ts",
+
+    "src-ui/src/hooks/useProjectCreationRecovery.ts",
+
+    "src-server/services/knowledge/knowledge-document-import-service.ts",
+
+    "src-server/routes/knowledge/knowledge-document-import-routes.ts",
+
+    "src-server/knowledge-store/knowledge-write-authority.ts",
+
+    "src-server/services/projects/project-s3-sources.ts",
+
+    "src-server/routes/projects/project-s3-source-routes.ts",
+
+    "src-server/services/projects/repository-provider-catalog.ts",
+
+    "src-server/services/projects/operator-setup-service.ts",
+
+    "src-server/routes/projects/operator-setup-routes.ts",
+
+    "src-server/utils/process-group-exec.ts",
+
+    "src-ui/src/views/project-settings/ProjectOperatorSetup.tsx",
+
+    "src-server/utils/git-exec.ts",
+
+    "src-server/routes/orchestration/task-relationships.ts",
+
+    "src-server/services/projects/task-graph-service.ts",
+
+    "src-server/runtime/routes/task-relationship-authority.ts",
+
+    "src-server/services/projects/project-room-store.ts",
+
+    "src-server/services/projects/project-room-agent-module.ts",
+
+    "src-server/services/projects/project-room-agent-publication.ts",
+
+    "src-server/routes/projects/project-room-routes.ts",
+
     "src-ui/src/views/project-page/ProjectRoom.tsx",
 
-    "src-ui/src/views/project-settings/ProjectOperatorSetup.tsx"
+    "src-ui/src/lib/project-onboarding-recovery.ts",
+
+    "src-server/routes/orchestration/task-room-attachment-http.ts",
+
+    "src-server/routes/orchestration/project-task-rooms.ts",
+
+    "src-server/services/consent/consent-transactions.ts",
+
+    "src-server/runtime/consent/consent-listener.ts",
+
+    "src-server/services/identity/operator-sessions.ts",
+
+    "src-server/routes/chat/chat-primary-stream.ts",
+
+    "src-server/routes/orchestration/task-review.ts",
+
+    "src-server/services/projects/task-review-module.ts",
+
+    "src-server/services/orchestration/task-review-store.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts",
+
+    "src-server/services/terminal/shell-host.ts",
+
+    "src-server/services/terminal/terminal-sessions.ts",
+
+    "src-server/services/terminal/terminal-journal.ts",
+
+    "src-server/services/terminal/terminal-output-sanitizer.ts",
+
+    "src-server/adapters/file-terminal-history-store.ts",
+
+    "src-server/routes/projects/terminal-session-routes.ts",
+
+    "src-server/services/terminal/__tests__/terminal-sessions.process.test.ts",
+
+    "src-server/services/projects/task-browser-capture.ts",
+
+    "src-server/routes/orchestration/task-review-captures.ts",
+
+    "src-server/routes/__tests__/browser-agent-capture.test.ts",
+
+    "src-server/services/orchestration/task-review-send.ts",
+
+    "src-server/routes/orchestration/task-review-station-control.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts"
   ],
 
   "checks": [

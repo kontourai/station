@@ -13,7 +13,6 @@ import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import * as lifecycle from '@kontourai/station-shared/lifecycle-events';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
-import { readJson } from '../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
   createStationControlCallerRecordResolver,
@@ -371,7 +370,7 @@ async function harness(
     token = bound,
     body: unknown = { browserSessionId: browser.browserSessionId },
   ) =>
-    readJson(
+    (
       await app.request('/api/browser-agent/capture-to-task', {
         method: 'POST',
         headers: {
@@ -380,8 +379,8 @@ async function harness(
           [STATION_CONTROL_CALLER_TOKEN_HEADER]: token,
         },
         body: JSON.stringify(body),
-      }),
-    );
+      })
+    ).json();
   const person = (path: string, body?: unknown, token = 'person') =>
     app.request(`/api/tasks/${path}`, {
       method: body === undefined ? 'GET' : 'POST',

@@ -252,25 +252,6 @@ export function useReopenReviewThreadMutation(taskId: string) {
   );
 }
 
-export function useSendReviewThreadsMutation(taskId: string) {
-  return useApiMutation(
-    async (input: TaskReviewSendRequest) =>
-      result<Extract<TaskReviewSendResponse, { success: true }>['data']>(
-        await authenticatedFetch(await path(taskId, '/send'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(input),
-        }),
-      ),
-    {
-      invalidateKeys: [
-        [...taskReviewQueryKey(taskId)],
-        ['task-review-thread', taskId],
-      ],
-    },
-  );
-}
-
 /** A live Browser session the person may capture in the Task's Project. */
 export interface TaskCaptureBrowserSession {
   browserSessionId: string;
@@ -334,3 +315,22 @@ export type {
   TaskCapture,
   TaskReviewCreateCaptureRequest,
 } from '@kontourai/station-contracts/task-review';
+
+export function useSendReviewThreadsMutation(taskId: string) {
+  return useApiMutation(
+    async (input: TaskReviewSendRequest) =>
+      result<Extract<TaskReviewSendResponse, { success: true }>['data']>(
+        await authenticatedFetch(await path(taskId, '/send'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(input),
+        }),
+      ),
+    {
+      invalidateKeys: [
+        [...taskReviewQueryKey(taskId)],
+        ['task-review-thread', taskId],
+      ],
+    },
+  );
+}

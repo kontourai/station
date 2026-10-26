@@ -1230,6 +1230,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Task binding mounts the real renderer over a public diff route and real Git fixture.
   'src-ui/src/__tests__/TaskWorkspaceView.test.tsx',
   'src-server/services/projects/__tests__/workspace-diff-service.test.ts',
+  // Capture primitives exercise real Git repositories, including storage exclusion.
   'src-server/routes/__tests__/browser-agent-capture.test.ts',
   // Capture pinning uses real Git, including an index with >16 MiB of staged output.
   'src-server/services/projects/__tests__/workspace-commit-pin.test.ts',
