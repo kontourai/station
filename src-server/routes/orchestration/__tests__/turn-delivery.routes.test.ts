@@ -15,6 +15,10 @@ import {
 import type { TurnDeliveryInspection } from '@kontourai/station-contracts/orchestration';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import {
+  sendExecutionMessage,
+  sentTurnKey,
+} from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -515,6 +519,67 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
     );
     expect(response.status).toBe(500);
     expect(await response.text()).toBe('Internal Server Error');
+  });
+
+  test('#3567: the public SDK recovers a lost response key, replays once and refuses changed input', async () => {
+    const { adapter, app } = station();
+    const lost = Object.freeze(
+      new TypeError('The accepted response was lost.'),
+    );
+    let loseResponse = true;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (request, init) => {
+        const response = await app.request(
+          request instanceof Request ? request : String(request),
+          init,
+        );
+        if (loseResponse) {
+          loseResponse = false;
+          throw lost;
+        }
+        return response;
+      }),
+    );
+    try {
+      const input = {
+        conversationId: 'conversation:sdk-key',
+        message: 'Original input',
+        target: { agent: AGENT },
+      };
+      const caught = await sendExecutionMessage(
+        'http://delivery.station',
+        input,
+      ).catch((error: unknown) => error);
+      expect(caught).toBe(lost);
+      expect(adapter.turns).toHaveLength(1);
+      const clientTurnId = sentTurnKey(caught);
+      expect(clientTurnId).toEqual(expect.any(String));
+      if (!clientTurnId)
+        throw new Error('The SDK did not retain its chosen key');
+      const replay = await sendExecutionMessage('http://delivery.station', {
+        ...input,
+        clientTurnId,
+      });
+      expect(replay).toMatchObject({
+        clientTurnId,
+        providerTurnId: 'delivery-turn-1',
+      });
+      expect(adapter.turns).toHaveLength(1);
+      await expect(
+        sendExecutionMessage('http://delivery.station', {
+          ...input,
+          clientTurnId,
+          message: 'Changed input',
+        }),
+      ).rejects.toMatchObject({
+        status: 409,
+        code: 'client_turn_input_conflict',
+      });
+      expect(adapter.turns).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   test('#3567: concurrent changed intent conflicts while identical intent joins the one adapter invocation', async () => {

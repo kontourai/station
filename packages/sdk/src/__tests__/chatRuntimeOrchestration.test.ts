@@ -319,6 +319,17 @@ describe('chatRuntimeOrchestration', () => {
     );
   });
 
+  it('does not replace an explicitly blank turn key with a generated key', async () => {
+    await expect(
+      sendOrchestrationTurn({
+        threadId: 'thread-key',
+        text: 'hello',
+        clientTurnId: '',
+      }),
+    ).rejects.toThrow(TypeError);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('interrupts a running task without stopping its resumable session', async () => {
     mockJsonResponse({ success: true, data: null });
 
