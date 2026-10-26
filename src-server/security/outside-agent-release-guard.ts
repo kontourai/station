@@ -49,8 +49,10 @@ export function outsideAgentConsentStore(
   return {
     get: (tenantId, id) =>
       hidden(tenantId, id) ? undefined : store.get(tenantId, id),
+    // Unknown IDs have no requester-only policy. Preserve that same admission
+    // for hidden IDs; renderReview and decide still refuse them without effects.
     allowsDecisionAuthority: (tenantId, id, authority) =>
-      !hidden(tenantId, id) &&
+      hidden(tenantId, id) ||
       store.allowsDecisionAuthority(tenantId, id, authority),
     verifyDecisionSession: (tenantId, id, candidate) =>
       !hidden(tenantId, id) &&
