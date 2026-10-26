@@ -258,7 +258,13 @@ export function runtimeEventContentText(
   if (isRuntimeEventContentRef(value))
     return { text: value.preview, complete: false, bytes: value.bytes };
   if (isRuntimeEventContentUnavailable(value))
-    return { text: '', complete: false, bytes: value.bytes };
+    return {
+      text:
+        value.unavailable === 'exceeds-ceiling'
+          ? '[content too large for Station to keep]'
+          : '[content not available]',
+      complete: false,
+    };
   return undefined;
 }
 
@@ -273,6 +279,7 @@ export function runtimeEventContentDisplayText(
   const text = runtimeEventContentText(value);
   if (!text) return undefined;
   if (text.complete) return text.text;
+  if (isRuntimeEventContentUnavailable(value)) return text.text;
   const note = runtimeEventContentOmissionNote(text.bytes);
   return text.text ? `${text.text}\n${note}` : note;
 }

@@ -61,6 +61,7 @@ import {
   isRuntimeEventContentRef,
   type RuntimeEventContentBody,
   resolveRuntimeEventContent,
+  runtimeEventContentForDisplay,
 } from '@kontourai/station-contracts/runtime-event-content';
 import {
   type CanonicalRuntimeEvent,
@@ -1961,6 +1962,13 @@ function decodeEventWindowCursor(
 }
 
 /** Cuts one snapshot text field to its ceiling and reports whether it cut. */
+/** An output as an excerpt shows it: text as is, references as previews. */
+function displayedSnapshotOutput(output: unknown): string {
+  if (typeof output === 'string') return output;
+  const shown = runtimeEventContentForDisplay(output);
+  return typeof shown === 'string' ? shown : JSON.stringify(shown);
+}
+
 function sliceSnapshotText(value: unknown): { text: string; cut: boolean } {
   const text = String(value);
   return {
@@ -2056,16 +2064,15 @@ function snapshotEvent(
       typeof payload.error === 'string'
         ? sliceSnapshotText(payload.error)
         : undefined;
+    // A nested reference (an MCP `{content:[{text: ref}]}`) or an
+    // unavailable marker shows in the excerpt as its marked preview text,
+    // never as the raw reference object.
     const output =
       payload.output === undefined ||
       payload.output === null ||
       isRuntimeEventContentRef(payload.output)
         ? undefined
-        : sliceSnapshotText(
-            typeof payload.output === 'string'
-              ? payload.output
-              : JSON.stringify(payload.output),
-          );
+        : sliceSnapshotText(displayedSnapshotOutput(payload.output));
     outputCut = Boolean(error?.cut) || Boolean(output?.cut);
     // Page references are bounded display metadata, like attachment refs.
     // Keep them outside the ordinary 84-character tool-output excerpt.

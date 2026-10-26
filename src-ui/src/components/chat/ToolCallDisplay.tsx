@@ -238,6 +238,8 @@ function ToolCallRow({
           ...toolCall,
           args: runtimeEventContentForDisplay(toolCall.args),
           output: runtimeEventContentForDisplay(toolCall.output),
+          result: runtimeEventContentForDisplay(toolCall.result),
+          error: runtimeEventContentForDisplay(toolCall.error),
         },
   );
   const toolName = display.toolName;

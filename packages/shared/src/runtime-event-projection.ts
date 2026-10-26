@@ -5,6 +5,7 @@ import {
   isRuntimeEventContentRef,
   isRuntimeEventContentUnavailable,
   runtimeEventContentDisplayText,
+  runtimeEventContentForDisplay,
 } from '@kontourai/station-contracts/runtime-event-content';
 import {
   type CanonicalRuntimeEvent,
@@ -633,7 +634,9 @@ export function projectRuntimeEventsToMessages(
       return spillableDisplayText(output);
     if (output != null) {
       try {
-        return JSON.stringify(output);
+        // A reference at any depth shows as its marked preview.
+        const shown = runtimeEventContentForDisplay(output);
+        return typeof shown === 'string' ? shown : JSON.stringify(shown);
       } catch {
         return String(output);
       }

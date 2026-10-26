@@ -5,6 +5,7 @@ import {
   isRuntimeEventContentRef,
 } from '@kontourai/station-contracts/runtime-event-content';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { mapServerRequestToEvent } from '../../../providers/adapters/codex-adapter-events.js';
@@ -455,6 +456,66 @@ describe('EventStore event content spill', () => {
     expect((resolved!.payload as { arguments?: unknown }).arguments).toEqual(
       args,
     );
+  });
+
+  test('excerpts and transcripts show nested references as previews', () => {
+    store.appendEvent({
+      eventId: 'turn-n',
+      provider: 'claude',
+      threadId: 'thread-n',
+      turnId: 'turn-1',
+      createdAt: T0,
+      method: 'turn.started',
+      prompt: 'read',
+    } as CanonicalRuntimeEvent);
+    store.appendEvent({
+      eventId: 'mcp-n',
+      provider: 'claude',
+      threadId: 'thread-n',
+      turnId: 'turn-1',
+      createdAt: T0,
+      method: 'tool.completed',
+      toolCallId: 'c1',
+      toolName: 'mcp__docs__read',
+      status: 'success',
+      output: { content: [{ type: 'text', text: big(40_000, 'doc ') }] },
+    } as CanonicalRuntimeEvent);
+    const marked = store.markContentUnavailable({
+      eventId: 'huge-n',
+      provider: 'claude',
+      threadId: 'thread-n',
+      turnId: 'turn-1',
+      createdAt: T0,
+      method: 'tool.completed',
+      toolCallId: 'c2',
+      toolName: 'read_file',
+      status: 'success',
+      output: 'never stored',
+    } as CanonicalRuntimeEvent)!;
+    store.appendEvent(marked);
+    const window = store.listEventWindowByTurn('thread-n', { turnLimit: 1 });
+    const excerpt = (id: string) =>
+      String(
+        (
+          window.events.find((e) => e.id === id)!.payload as {
+            output?: unknown;
+          }
+        ).output,
+      );
+    expect(excerpt('mcp-n')).not.toContain('$stationContent');
+    expect(excerpt('mcp-n')).toContain('doc ');
+    expect(excerpt('huge-n')).toBe('[content too large for Station to keep]');
+    const messages = projectRuntimeEventsToMessages(
+      store.listEvents('thread-n').map((e) => e.payload),
+    );
+    // `output` keeps the reference (a surface loads it on demand); the
+    // display `result` never shows it raw.
+    const results = messages
+      .flatMap((m) => m.parts)
+      .map((part) => (part as { result?: string }).result ?? '');
+    expect(results.join('\n')).not.toContain('$stationContent');
+    expect(results.join('\n')).toContain('bytes of content not inlined');
+    expect(results).toContain('[content too large for Station to keep]');
   });
 
   test('every stored reference has its row', () => {
