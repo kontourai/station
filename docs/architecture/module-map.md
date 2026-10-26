@@ -5295,6 +5295,10 @@ They cover durable reopening, append-only enforcement, idempotency, capacity
 refusals, incarnation isolation, plan editing, unavailable working state and
 review writes preserving room content, history and revision evidence. They do
 not qualify a real provider, browser capture, a UI journey or a release.
+[Capture route tests](../../src-server/routes/__tests__/browser-agent-capture.test.ts)
+exercise real Git, SQLite, room binding authority and blob storage with a CDP
+double, including restart, Task isolation, digest corruption and region bounds.
+They do not qualify a real Chromium or provider run.
 
 [TaskReviewSend](../../src-server/services/orchestration/task-review-send.ts)
 implements the person's `POST /api/tasks/:taskId/review/send`. It refuses a
