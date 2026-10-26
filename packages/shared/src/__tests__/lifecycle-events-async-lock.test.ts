@@ -1,5 +1,4 @@
-import fs from 'node:fs';
-import {
+import fs, {
   existsSync,
   mkdtempSync,
   readdirSync,
@@ -168,15 +167,17 @@ describe('held file mutation leases', () => {
                   throw new Error('injected guard cleanup failure');
                 remove(path, options);
               })
-            : vi.spyOn(fs, 'openSync').mockImplementation((path, flags, mode) => {
-                const prefix =
-                  failure === 'read-lock'
-                    ? `${lock}.stale-`
-                    : `${lock}.guard.stale-`;
-                if (String(path).startsWith(prefix))
-                  throw new Error('injected guard cleanup failure');
-                return open(path, flags, mode);
-              });
+            : vi
+                .spyOn(fs, 'openSync')
+                .mockImplementation((path, flags, mode) => {
+                  const prefix =
+                    failure === 'read-lock'
+                      ? `${lock}.stale-`
+                      : `${lock}.guard.stale-`;
+                  if (String(path).startsWith(prefix))
+                    throw new Error('injected guard cleanup failure');
+                  return open(path, flags, mode);
+                });
       syncBuiltinESMExports();
       try {
         await expect(lease.release()).rejects.toThrow(
@@ -193,7 +194,8 @@ describe('held file mutation leases', () => {
           ? undefined
           : await acquireFileMutationLeaseAsync(lock);
       await lease.release();
-      const successor = competing ?? (await acquireFileMutationLeaseAsync(lock));
+      const successor =
+        competing ?? (await acquireFileMutationLeaseAsync(lock));
       await lease.release();
       expect(successor.assertCurrent()).toBeUndefined();
       await successor.release();
