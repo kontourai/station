@@ -47,7 +47,11 @@ Independent source review approved the slice after historical-read and replay
 findings were repaired. Pre-payment and signed-turn custody mutations fail their
 owning integration assertions; restoration checks are retained separately.
 
-The branch merged main through `1ab221bf3d9` normally at `7ae6707ed56`.
+The branch merged main through `dd13acebd62` normally at `cb6ea219951`.
+Both resource-manifest additions were retained and the generated documentation
+artifact was rebuilt. The 57 manifest/MCP-doc controls and 163 pairing-route
+controls pass after this merge.
+
 Upstream Flow 5.3.0 and Dispatch 0.8.0 are now published: registry integrity and
 installed runtime files were checked against their release builds. Flow adds
 exact-head evaluation/retry under a host-held lease, and Dispatch adds actual
@@ -59,18 +63,21 @@ original-epoch dual-ledger recovery and checked Flow continuation admission. The
 combined source and aligned coordinator closure migration are source-approved;
 67 rounds/runtime cases pass. Full qualification is still open. A broad run
 failed two kit-custody controls under load; the four-worker candidate at
-`75fbae3c` preserves the full corpus, assertions and protected 20-minute limit
-and is under readiness verification. It is not yet published or adopted by
-Station; Station still consumes Flow Agents 9.7.0.
+`75fbae3c` preserves the full corpus, assertions and protected 20-minute limit.
+Its Mac readiness run timed out at that limit, with no assertion failures in
+the captured unit-test fragment. An isolated Linux run of the same
+source is still under readiness verification. The contract is not yet published
+or adopted by Station; Station still consumes Flow Agents 9.7.0.
 
 Station captures original approved pricing evidence at `51b3764882d` and
 re-audits complete raw-response usage against it at `8f8732aaddc`, without
 reactivating execution capabilities or consulting the current registry. The
 contract and actual SDK-retention/persistence checks pass 133 cases, and
-server-test typechecking passes. Independent source review approved the verifier; its persisted-caller
-mutation fails all four provider/protocol cases with 72 controls passing. The
-source is restored byte-exact and all 76 caller-file cases pass again. The historical-reconciliation draft
-still addresses only authority accounting and is neither mounted nor fully
+server-test typechecking passes. Independent source review approved the verifier.
+Its persisted-caller mutation fails all four provider/protocol cases with 72
+controls passing; byte-exact restoration passes all 76 caller-file cases.
+The historical-reconciliation draft still addresses only authority accounting
+and is neither mounted nor fully
 qualified. Unknown and above-capacity usage remain holds.
 
 Evaluation-only serving, reappraisal/retry authorization, complete historical
