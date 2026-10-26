@@ -284,6 +284,7 @@ describe('daily-driver real conversation agreement qualification (#3912/#3409/#3
             : 'shared',
         }),
         getProviderAdapter: (provider) => service.getProviderAdapter(provider),
+        readInitialConversationContext: async () => undefined,
         readSessionBinding: async (_access, id) => latestBinding(store, id),
         resolveConversationSession: async (_access, id, requested) =>
           service.resolveConversationContinuation(
@@ -629,6 +630,7 @@ describe('daily-driver real conversation agreement qualification (#3912/#3409/#3
           getProject: vi.fn(),
           getProviderAdapter: (provider) =>
             service.getProviderAdapter(provider),
+          readInitialConversationContext: async () => undefined,
           readSessionBinding: async () => null,
           startSession: vi.fn(),
           sendTurn: vi.fn(),

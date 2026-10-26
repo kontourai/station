@@ -133,6 +133,20 @@ import {
   withPluginPublicationContext,
   withPluginRetirementScope,
 } from './plugin-install-publication.js';
+import { ensurePluginInstallTrustMigration } from './plugin-install-trust-migration.js';
+import {
+  defaultPluginInstallTrustPolicy,
+  type PluginInstallTrustPolicy,
+  pluginTrustRecordFor,
+  preparePluginInstallTrust,
+} from './plugin-install-trust-recording.js';
+import {
+  PluginTrustRecordNewerError,
+  pluginTrustForInstalledBytes,
+  pluginTrustMigrationWitness,
+  readPluginTrustRecord,
+  writePluginTrustRecord,
+} from './plugin-install-trust-store.js';
 import {
   captureLocalPluginActivation,
   captureLocalPluginInstallation,
@@ -157,6 +171,7 @@ import {
   hasGrant,
   isPluginInstallAuthorityRecord,
   observePluginGrantRevisions,
+  PluginContentUnavailableError,
   type PluginDependencyOwnershipEntry,
   type PluginDependencyOwnershipHandoff,
   type PluginGrantMutationScope,
@@ -471,6 +486,8 @@ export interface PluginInstallTransactionDeps {
   activationSession?: PluginActivationSession;
   installationHost?: PluginInstallationHost;
   registryTrustPolicyAuthority?: RegistryTrustPolicyAuthority;
+  /** Install trust pins, lock and verifier; production uses the default. */
+  installTrust?: PluginInstallTrustPolicy;
   packageMcpJournal?: PackageMcpAdmissionJournal;
   agentsDir: string;
   eventBus?: PluginLifecycleEventBus;
@@ -3220,6 +3237,16 @@ async function installPluginFromSourceUnderContext(
     kind: 'no-operator-decision',
     caller: 'this caller',
   };
+  // #2998: freeze the pre-d1 migration set before this install can create
+  // anything, dependencies included, so nothing it adds is grandfathered.
+  await ensurePluginInstallTrustMigration({
+    projectHomeDir,
+    ...(deps.packageMcpJournal
+      ? { packageMcpJournal: deps.packageMcpJournal }
+      : {}),
+    logger,
+  });
+  const trustWitness = pluginTrustMigrationWitness(deps.packageMcpJournal);
   const skipSet = new Set<string>(skip || []);
   // Populated by `installPluginDependency` as it creates trees, and read only
   // by this function's rollback. Identity of what WE created, never a listing
@@ -3784,6 +3811,18 @@ async function installPluginFromSourceUnderContext(
         )
           throw new RegistryAcquisitionRefused('stale-review');
       }
+    // #2998: decide install trust from THIS acquisition's own verification,
+    // before any effect (the migration ran at entry).
+    const installTrust = await preparePluginInstallTrust({
+      projectHomeDir,
+      pluginName,
+      manifestName: manifest.name,
+      sourceDigest:
+        recovery?.originalSourceDigest ?? consentBasis.contentDigest,
+      registrySigner: registryAcquisition?.signer ?? null,
+      policy: deps.installTrust ?? defaultPluginInstallTrustPolicy(),
+      ...(trustWitness ? { witness: trustWitness } : {}),
+    });
     let permissionArtifact: CapturedPluginPermissionArtifact | undefined;
     let managedLifecycle:
       | Awaited<ReturnType<NonNullable<typeof installationService>['install']>>
@@ -3841,6 +3880,11 @@ async function installPluginFromSourceUnderContext(
     // releases. The lock is taken here rather than at the top of the function
     // because the plugin's NAME is not known until its manifest is read.
     return await withPluginContentLock(pluginsDir, pluginName, async () => {
+      // #2998: the bytes installed under this name, read under the lock.
+      const trustBytesBefore = computePluginContentDigest(
+        pluginsDir,
+        pluginName,
+      );
       try {
         const installBackupRoot = createStationTempDirSync('plugin-install');
         backupRoot = installBackupRoot;
@@ -4407,6 +4451,39 @@ async function installPluginFromSourceUnderContext(
           });
         });
         pluginInstalls.add(1, { plugin: pluginName });
+
+        // #2998: the last fallible step, so a failed write rolls the whole
+        // install back and an install never lands without its record.
+        const trustedDigest =
+          permissionArtifact?.digest ??
+          computePluginContentDigest(dirname(pluginDir), basename(pluginDir));
+        if (!trustedDigest) throw new PluginContentUnavailableError(pluginName);
+        // Decided from what this content lock saw: the record read now, and
+        // whether it described the bytes installed when the lock was taken.
+        // A record that survived an uninstall, or bytes placed by hand, is
+        // not an installation this record describes.
+        const previousTrust = readPluginTrustRecord(
+          projectHomeDir,
+          pluginName,
+          trustWitness,
+        );
+        if (previousTrust.state === 'unreadable')
+          throw new PluginTrustRecordNewerError(pluginName);
+        await writePluginTrustRecord(
+          projectHomeDir,
+          pluginName,
+          pluginTrustRecordFor(
+            { ...installTrust, previous: previousTrust },
+            trustedDigest,
+            new Date(),
+            {
+              installedBefore:
+                pluginTrustForInstalledBytes(previousTrust, trustBytesBefore)
+                  .state === 'recorded',
+            },
+          ),
+          trustWitness,
+        );
 
         dependencyLifecycle.commit?.();
         commitRemovedDependencies(retiredDependencyBackups);

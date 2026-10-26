@@ -67,10 +67,7 @@ import {
 import { parseStationControlRefusal } from '@kontourai/station-contracts/station-control-refusal';
 import { parseTenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
-import {
-  AUTHORED_INPUT_SQL_FUNCTION,
-  isAuthoredInputContent,
-} from '@kontourai/station-shared/authored-input';
+import { isAuthoredInputContent } from '@kontourai/station-shared/authored-input';
 import { htmlReplyReference } from '@kontourai/station-shared/html-reply-document';
 import { isSuccessfulMcpResult } from '@kontourai/station-shared/mcp-app-result';
 import {
@@ -112,6 +109,7 @@ import { ensureProjectTaskRoomRevisionAttributionColumn } from '../../domain/mig
 import { CONVERSATION_SESSION_LINEAGE_MIGRATION } from '../../domain/migrations/010-conversation-session-lineage.js';
 import {
   CONVERSATION_HANDOFF_MIGRATION,
+  ensureConversationHandoffContextSeedColumn,
   ensureConversationHandoffExecutionAgentColumn,
   ensureConversationHandoffMessageDigestColumn,
   ensureConversationHandoffNativeReturnColumn,
@@ -131,14 +129,18 @@ import {
   POSITIVE_TURN_START_INDEX,
   POSITIVE_TURN_START_SQL,
 } from '../../domain/migrations/019-positive-turn-start-index.js';
+import { CONVERSATION_FORK_CONTEXT_MIGRATION } from '../../domain/migrations/020-conversation-fork-context.js';
 import { TASK_MEMORY_MIGRATION } from '../../domain/migrations/020-task-memory.js';
+import { CONVERSATION_START_CONTEXT_MIGRATION } from '../../domain/migrations/021-conversation-start-context.js';
 import { TASK_LEARNING_DISMISSALS_MIGRATION } from '../../domain/migrations/021-task-learning-dismissals.js';
 import { TASK_LEARNING_PROMOTIONS_MIGRATION } from '../../domain/migrations/022-task-learning-promotions.js';
+import { TASK_REVIEW_MIGRATION } from '../../domain/migrations/023-task-review.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
   RevisionEvidenceModule,
 } from '../../domain/revision-bound-evidence.js';
+import { NATIVE_TURN_IDENTITY_METADATA_KEY } from '../../providers/adapters/native-resume-binding.js';
 import { PROVIDER_PROVEN_FINISH_REASONS } from '../../providers/finish-reason-authority.js';
 import { appendToolOutputNote } from '../../providers/tool-output-projection.js';
 import type { NativeOutputTerminalAdmission } from '../../runtime/native-output-declaration.js';
@@ -216,10 +218,23 @@ import {
   createConversationContextBoundaryModule,
 } from './conversation-context-boundary-module.js';
 import {
+  type ConversationSeedWitness,
+  createConversationSeedWitness,
+  readConversationSeedWitness,
+} from './conversation-context-seed-witness.js';
+import {
+  ConversationForkContextError,
+  type ConversationForkContextReference,
+  type ConversationForkContextSnapshot,
+  readConversationForkContext,
+} from './conversation-fork-context.js';
+import {
   ConversationHandoffConflictError,
   type ConversationHandoffMarker,
   type ConversationHandoffModule,
+  conversationHandoffClientTurnId,
   createConversationHandoffModule,
+  readConversationContextSeedPin,
 } from './conversation-handoff-module.js';
 import {
   type ConversationSessionLineage,
@@ -229,6 +244,10 @@ import {
   createConversationSessionLineageModule,
   isSameConversationSessionLineage,
 } from './conversation-session-lineage.js';
+import {
+  ConversationStartContextError,
+  readConversationStartSeedCarrier,
+} from './conversation-start-context.js';
 import { derivedConversationTitle } from './conversation-title.js';
 import {
   type CredentialApplicationHandle,
@@ -334,6 +353,10 @@ import {
   createSqliteTaskMemoryStore,
   type TaskMemoryStore,
 } from './task-memory-store.js';
+import {
+  createSqliteTaskReviewStore,
+  type TaskReviewStore,
+} from './task-review-store.js';
 import {
   createSqliteThreadInboxStore,
   type ThreadInboxStore,
@@ -790,6 +813,151 @@ function hasBoundedDescriptorText(
     }
   }
   return true;
+}
+
+/** SQLite function: whether the exact input read would serve this row. */
+const READABLE_USER_INPUT_SQL_FUNCTION = 'station_is_readable_user_input';
+
+/**
+ * The descriptor fields of one `orchestration_events` row, in the argument
+ * order `parseUserInputDescriptorFields` takes. The Session inventory listing
+ * and the exact input read select exactly this, so the two cannot disagree on
+ * what a stored input looks like. Attachments arrive as one compact
+ * `[type, kind, name, mimeType, size]` tuple per entry: never `dataUrl` bytes,
+ * and never built for an array over the count limit (that alone refuses).
+ */
+const USER_INPUT_DESCRIPTOR_FIELD_EXPRESSIONS = [
+  'id',
+  'thread_id',
+  'turn_id',
+  'json_valid(payload)',
+  "CASE WHEN json_valid(payload) THEN json_type(payload, '$.turnId') END",
+  `CASE WHEN json_valid(payload) AND json_type(payload, '$.turnId') = 'text'
+        THEN json_extract(payload, '$.turnId') END`,
+  "CASE WHEN json_valid(payload) THEN json_type(payload, '$.prompt') END",
+  `CASE WHEN json_valid(payload) AND json_type(payload, '$.prompt') = 'text'
+        THEN json_extract(payload, '$.prompt') END`,
+  "CASE WHEN json_valid(payload) THEN json_type(payload, '$.inputKind') END",
+  `CASE WHEN json_valid(payload) AND json_type(payload, '$.inputKind') = 'text'
+        THEN json_extract(payload, '$.inputKind') END`,
+  "CASE WHEN json_valid(payload) THEN json_type(payload, '$.attachments') END",
+  `CASE WHEN json_valid(payload) AND json_type(payload, '$.attachments') = 'array'
+        THEN json_array_length(payload, '$.attachments') END`,
+  `CASE WHEN json_valid(payload) AND json_type(payload, '$.attachments') = 'array'
+          AND json_array_length(payload, '$.attachments') BETWEEN 1 AND ${CHAT_ATTACHMENT_MAX_COUNT}
+        THEN (
+          SELECT json_group_array(json_array(
+            attachment.type,
+            CASE WHEN attachment.type = 'object' AND json_type(attachment.value, '$.kind') = 'text'
+                 THEN json_extract(attachment.value, '$.kind') END,
+            CASE WHEN attachment.type = 'object' AND json_type(attachment.value, '$.name') = 'text'
+                 THEN json_extract(attachment.value, '$.name') END,
+            CASE WHEN attachment.type = 'object' AND json_type(attachment.value, '$.mimeType') = 'text'
+                 THEN json_extract(attachment.value, '$.mimeType') END,
+            CASE WHEN attachment.type = 'object' AND json_type(attachment.value, '$.size') IN ('integer', 'real')
+                 THEN json_extract(attachment.value, '$.size') END
+          ))
+          FROM (SELECT key, type, value FROM json_each(payload, '$.attachments') ORDER BY key) AS attachment
+        ) END`,
+] as const;
+/** The fields as SQL function arguments (the listing's filter). */
+const USER_INPUT_DESCRIPTOR_FIELDS_SQL =
+  USER_INPUT_DESCRIPTOR_FIELD_EXPRESSIONS.join(',\n  ');
+/** The same fields as named columns `f0`… (the exact read). */
+const USER_INPUT_DESCRIPTOR_COLUMNS_SQL =
+  USER_INPUT_DESCRIPTOR_FIELD_EXPRESSIONS.map(
+    (expression, index) => `${expression} AS f${index}`,
+  ).join(',\n  ');
+
+type UserInputDescriptorFields = Omit<UserInputEventDescriptor, 'method'>;
+
+/**
+ * The one rule for whether a stored turn start is an input the exact read
+ * serves (#4182). `userInputEventById` refuses whatever this refuses, and the
+ * Session inventory listing calls it as a SQLite function, so a listed input
+ * is always one its drill-down can read: no prompt over CHAT_INPUT_MAX_CHARS,
+ * no malformed or over-count attachment descriptor, nothing authored-empty,
+ * and a turn id the read reports exactly as the listing does.
+ */
+function parseUserInputDescriptorFields(
+  id: unknown,
+  threadId: unknown,
+  turnId: unknown,
+  validJson: unknown,
+  payloadTurnIdType: unknown,
+  payloadTurnId: unknown,
+  promptType: unknown,
+  prompt: unknown,
+  inputKindType: unknown,
+  inputKind: unknown,
+  attachmentsType: unknown,
+  attachmentCount: unknown,
+  attachmentsJson: unknown,
+): UserInputDescriptorFields | undefined {
+  if (
+    validJson !== 1 ||
+    !hasBoundedDescriptorText(id, MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES) ||
+    !hasBoundedDescriptorText(threadId, MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES) ||
+    (turnId !== null &&
+      !hasBoundedDescriptorText(turnId, MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES)) ||
+    // The listing names `payload.turnId ?? turn_id`; the read answers with
+    // `turn_id`. A payload id that disagrees would be listed and then refused.
+    (payloadTurnIdType !== null &&
+      payloadTurnIdType !== 'null' &&
+      payloadTurnId !== turnId) ||
+    (promptType !== null && promptType !== 'null' && promptType !== 'text') ||
+    (typeof prompt === 'string' && prompt.length > CHAT_INPUT_MAX_CHARS) ||
+    (inputKindType !== null &&
+      (inputKindType !== 'text' || inputKind !== 'steer')) ||
+    (attachmentsType !== null && attachmentsType !== 'array')
+  )
+    return undefined;
+  const count = attachmentCount === null ? 0 : Number(attachmentCount);
+  if (!Number.isSafeInteger(count) || count > CHAT_ATTACHMENT_MAX_COUNT)
+    return undefined;
+  const attachments: Array<{ name: string; mimeType: string; size: number }> =
+    [];
+  if (count > 0) {
+    let tuples: unknown;
+    try {
+      tuples = JSON.parse(String(attachmentsJson));
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(tuples) || tuples.length !== count) return undefined;
+    for (const tuple of tuples) {
+      if (!Array.isArray(tuple)) return undefined;
+      const [type, kind, name, mimeType, size] = tuple as unknown[];
+      if (
+        type !== 'object' ||
+        typeof kind !== 'string' ||
+        typeof name !== 'string' ||
+        typeof mimeType !== 'string' ||
+        typeof size !== 'number'
+      )
+        return undefined;
+      const descriptor = {
+        kind: kind as PersistedChatAttachment['kind'],
+        name,
+        mimeType: mimeType as PersistedChatAttachment['mimeType'],
+        size,
+      };
+      if (validatePersistedChatAttachmentDescriptor(descriptor))
+        return undefined;
+      attachments.push({ name, mimeType, size });
+    }
+  }
+  if (!isAuthoredInputContent(prompt, attachments.length)) return undefined;
+  return {
+    eventId: id as string,
+    threadId: threadId as string,
+    ...(typeof turnId === 'string' && turnId ? { turnId } : {}),
+    ...(inputKindType === null
+      ? { inputKind: 'initial' as const }
+      : { inputKind: 'steer' as const }),
+    ...(typeof prompt === 'string' ? { prompt } : {}),
+    attachments,
+  };
 }
 
 /** The descriptor query never materializes a window aggregate just to count. */
@@ -1306,6 +1474,7 @@ export interface UserInputEventDescriptor {
   threadId: string;
   turnId?: string;
   method: string;
+  inputKind?: 'initial' | 'steer';
   prompt?: string;
   attachments: ReadonlyArray<{ name: string; mimeType: string; size: number }>;
 }
@@ -1338,6 +1507,53 @@ export interface ConversationForkProvenance {
   branchPointTurnId?: string;
   sourceSessionId?: string;
   continuation?: 'native' | 'replay-seed';
+}
+
+interface ForkContextReferenceRow {
+  target_conversation_id: string;
+  fork_event_id: string;
+  source_conversation_id: string;
+  source_agent: string;
+  target_agent: string;
+  owner_user_id: string;
+  tenant_key: string;
+  project_slug: string | null;
+  requested_project_slug: string | null;
+  requested_branch_point_turn_id: string | null;
+  idempotency_key: string | null;
+  context_digest: string;
+  state: ConversationForkContextReference['state'];
+  created_at: string;
+}
+const FORK_CONTEXT_REFERENCE_COLUMNS = `target_conversation_id, fork_event_id, source_conversation_id,
+  source_agent, target_agent, owner_user_id, tenant_key, project_slug, requested_project_slug,
+  requested_branch_point_turn_id, idempotency_key, context_digest, state, created_at`;
+
+function forkContextReference(
+  row: ForkContextReferenceRow,
+): ConversationForkContextReference {
+  return {
+    targetConversationId: row.target_conversation_id,
+    forkEventId: row.fork_event_id,
+    sourceConversationId: row.source_conversation_id,
+    sourceAgent: row.source_agent,
+    targetAgent: row.target_agent,
+    ownerUserId: row.owner_user_id,
+    ...(row.tenant_key ? { tenantId: row.tenant_key } : {}),
+    ...(row.project_slug !== null ? { projectSlug: row.project_slug } : {}),
+    ...(row.requested_project_slug !== null
+      ? { requestedProjectSlug: row.requested_project_slug }
+      : {}),
+    ...(row.requested_branch_point_turn_id !== null
+      ? { requestedBranchPointTurnId: row.requested_branch_point_turn_id }
+      : {}),
+    ...(row.idempotency_key !== null
+      ? { idempotencyKey: row.idempotency_key }
+      : {}),
+    digest: row.context_digest,
+    state: row.state,
+    createdAt: row.created_at,
+  };
 }
 
 const LIFECYCLE_METHODS = [
@@ -2181,6 +2397,7 @@ export class EventStore {
   private delegationResults?: DelegationResultStore;
   private threadInbox?: ThreadInboxStore;
   private taskMemory?: TaskMemoryStore;
+  private taskReview?: TaskReviewStore;
   private agentSchedule?: AgentScheduleStore;
   private resumeChoices?: UsageLimitResumeChoices;
   private mcpAppResourceResolver?: (toolRef: string) => string | undefined;
@@ -2249,13 +2466,43 @@ export class EventStore {
     const connection = new DatabaseSync(dbPath, {
       timeout: SQLITE_BUSY_TIMEOUT_MS,
     });
-    // The listing query and the exact input read share one authored-input
-    // rule; SQLite's trim() alone would disagree with it on "\n".
+    // The listing query and the exact input read share one readability rule
+    // (#4182); a listed input is one its drill-down can read.
     connection.function(
-      AUTHORED_INPUT_SQL_FUNCTION,
+      READABLE_USER_INPUT_SQL_FUNCTION,
       { deterministic: true },
-      (prompt, attachmentCount) =>
-        isAuthoredInputContent(prompt, Number(attachmentCount ?? 0)) ? 1 : 0,
+      (
+        id,
+        threadId,
+        turnId,
+        validJson,
+        payloadTurnIdType,
+        payloadTurnId,
+        promptType,
+        prompt,
+        inputKindType,
+        inputKind,
+        attachmentsType,
+        attachmentCount,
+        attachmentsJson,
+      ) =>
+        parseUserInputDescriptorFields(
+          id,
+          threadId,
+          turnId,
+          validJson,
+          payloadTurnIdType,
+          payloadTurnId,
+          promptType,
+          prompt,
+          inputKindType,
+          inputKind,
+          attachmentsType,
+          attachmentCount,
+          attachmentsJson,
+        )?.turnId
+          ? 1
+          : 0,
     );
     this.db = watchForSqliteCorruption(connection, {
       onCorruptionObserved: (error) => {
@@ -2362,11 +2609,14 @@ export class EventStore {
       this.ensureObservedAtColumn();
       this.ensureUsageReceiptIndex();
       this.db.exec(CONVERSATION_SESSION_LINEAGE_MIGRATION);
+      this.db.exec(CONVERSATION_START_CONTEXT_MIGRATION);
+      this.db.exec(CONVERSATION_FORK_CONTEXT_MIGRATION);
       this.db.exec(CONVERSATION_HANDOFF_MIGRATION);
       this.db.exec(NATIVE_SESSION_OWNERSHIP_MIGRATION);
       ensureConversationHandoffMessageDigestColumn(this.db);
       ensureConversationHandoffNativeReturnColumn(this.db);
       ensureConversationHandoffExecutionAgentColumn(this.db);
+      ensureConversationHandoffContextSeedColumn(this.db);
       this.db.exec(CONVERSATION_CONTEXT_BOUNDARY_MIGRATION);
       ensureConversationContextBoundaryColumns(this.db);
       this.db.exec(SESSION_WORK_ITEM_ASSOCIATIONS_MIGRATION);
@@ -2445,6 +2695,7 @@ export class EventStore {
       this.db.exec(TASK_LEARNING_DISMISSALS_MIGRATION);
       // #4003 layer 4: the store each promoted record version went to.
       this.db.exec(TASK_LEARNING_PROMOTIONS_MIGRATION);
+      this.db.exec(TASK_REVIEW_MIGRATION);
       this.db
         .prepare(
           `INSERT OR IGNORE INTO orchestration_stream_identity(singleton, high_water)
@@ -2851,18 +3102,15 @@ export class EventStore {
            WHERE thread_id = ?
              AND sequence <= ?
              AND method IN (${placeholders})
-             -- A turn recorded with no prompt text and no attachments (an
-             -- imported Codex turn without a user message) authored nothing,
-             -- and the exact input read (userInputEventById) refuses it by
-             -- the same rule. Filtered here, not after the read, so a page
-             -- and its "at least" count hold only listable inputs.
+             -- A turn start the exact input read (userInputEventById) would
+             -- refuse is not listed: nothing authored (an imported Codex turn
+             -- without a user message), a prompt over the chat limit, or a
+             -- malformed attachment descriptor (#4182). Filtered here, not
+             -- after the read, so a page and its "at least" count hold only
+             -- inputs the drill-down can open.
              AND (
                method <> 'turn.started'
-               OR ${AUTHORED_INPUT_SQL_FUNCTION}(
-                 CASE WHEN json_type(payload, '$.prompt') = 'text'
-                      THEN json_extract(payload, '$.prompt') END,
-                 coalesce(json_array_length(payload, '$.attachments'), 0)
-               ) = 1
+               OR ${READABLE_USER_INPUT_SQL_FUNCTION}(${USER_INPUT_DESCRIPTOR_FIELDS_SQL}) = 1
              )
              AND (
                ? IS NULL
@@ -4132,6 +4380,231 @@ export class EventStore {
     const observed = this.sessionTurnBoundaries.observe(event);
     if (observed.kind !== 'applied')
       throw new Error('Invocation terminal observation unavailable.');
+    if (event.method !== 'turn.completed' || !event.turnId) return;
+    this.db.exec('SAVEPOINT context_seed_witness_projection');
+    try {
+      this.projectConversationSeedWitness(event);
+      this.db.exec('RELEASE SAVEPOINT context_seed_witness_projection');
+    } catch {
+      // Derived proof cannot erase a provider fact. Roll back any partial
+      // witness so a projection failure leaves context delivery unverified.
+      this.db.exec(
+        'ROLLBACK TO SAVEPOINT context_seed_witness_projection; RELEASE SAVEPOINT context_seed_witness_projection',
+      );
+      logger.warn(
+        'Context delivery projection failed; witness update rolled back.',
+        {
+          threadId: event.threadId,
+          invocationId: event.invocationId,
+        },
+      );
+    }
+  }
+
+  private projectConversationSeedWitness(event: CanonicalRuntimeEvent): void {
+    if (
+      event.method !== 'turn.completed' ||
+      !event.invocationId ||
+      !event.turnId
+    )
+      return;
+    const handoffKey = this.db
+      .prepare(`SELECT conversation_id, idempotency_key FROM orchestration_conversation_handoffs
+      WHERE session_id = ? AND context_seed_json IS NOT NULL`)
+      .get(event.threadId) as
+      | { conversation_id: string; idempotency_key: string }
+      | undefined;
+    const reference = this.conversationForkContextReference(event.threadId);
+    const startSeed = this.conversationStartContext(event.threadId);
+    if (!handoffKey && reference?.state !== 'ready' && !startSeed) return;
+    const capturedKey = this.db
+      .prepare(`SELECT client_turn_id FROM orchestration_prepared_turns
+      WHERE thread_id = ? AND invocation_id = ?`)
+      .get(event.threadId, event.invocationId) as
+      | { client_turn_id: string | null }
+      | undefined;
+    const clientTurnId = capturedKey?.client_turn_id;
+    if (!clientTurnId) return;
+    let context:
+      | {
+          kind: ConversationSeedWitness['kind'];
+          contextId: string;
+          contextDigest: string;
+          seed: import('./conversation-handoff-module.js').ConversationContextSeedPin;
+        }
+      | undefined;
+    if (
+      handoffKey &&
+      clientTurnId ===
+        conversationHandoffClientTurnId(
+          handoffKey.conversation_id,
+          handoffKey.idempotency_key,
+        )
+    ) {
+      const handoff = this.conversationHandoffForSession(event.threadId);
+      if (!handoff?.contextSeed) return;
+      context = {
+        kind: 'handoff',
+        contextId: handoff.sessionId,
+        contextDigest: handoff.contextSeed.pinDigest,
+        seed: handoff.contextSeed,
+      };
+    } else {
+      const start = this.latestEventByMethod(event.threadId, 'session.started');
+      const metadata =
+        start?.payload.method === 'session.started'
+          ? start.payload.metadata
+          : undefined;
+      const startCarrier = startSeed
+        ? readConversationStartSeedCarrier(metadata, startSeed)
+        : undefined;
+      if (startSeed && startCarrier?.clientTurnId === clientTurnId)
+        context = {
+          kind: 'boundary',
+          contextId: event.threadId,
+          contextDigest: startSeed.pinDigest,
+          seed: startSeed,
+        };
+      const carrier = metadata?.forkSeedCarrier;
+      if (
+        reference?.state === 'ready' &&
+        carrier &&
+        typeof carrier === 'object' &&
+        'clientTurnId' in carrier &&
+        carrier.clientTurnId === clientTurnId &&
+        'contextDigest' in carrier &&
+        carrier.contextDigest === reference.digest
+      ) {
+        const snapshot = this.conversationForkContextSnapshot(event.threadId);
+        if (!snapshot) return;
+        context = {
+          kind: 'fork',
+          contextId: reference.forkEventId,
+          contextDigest: reference.digest,
+          seed: readConversationContextSeedPin(snapshot.seedPinJson),
+        };
+      }
+    }
+    if (!context) return;
+    const prepared = this.readPreparedTurnIntent(
+      event.threadId,
+      event.invocationId,
+    );
+    if (!prepared || prepared.capture.clientTurnId !== clientTurnId) return;
+    const terminal = this.readInvocationTerminal(
+      event.threadId,
+      event.invocationId,
+      event.turnId,
+    );
+    if (
+      terminal.kind !== 'found' ||
+      terminal.fact.terminalEventId !== event.eventId
+    )
+      return;
+    if (
+      !context ||
+      !prepared.capture.adapterInput.ambientContext?.includes(context.seed.text)
+    )
+      return;
+    const capturedNativeIdentity =
+      prepared.capture.resumeGuard.binding.nativeIdentityKey;
+    const reportedNativeIdentity =
+      event.metadata?.[NATIVE_TURN_IDENTITY_METADATA_KEY];
+    if (
+      capturedNativeIdentity !== undefined &&
+      (typeof capturedNativeIdentity !== 'string' ||
+        !/^[a-f0-9]{64}$/.test(capturedNativeIdentity))
+    )
+      return;
+    if (
+      reportedNativeIdentity !== undefined &&
+      (typeof reportedNativeIdentity !== 'string' ||
+        !/^[a-f0-9]{64}$/.test(reportedNativeIdentity))
+    )
+      return;
+    if (
+      capturedNativeIdentity &&
+      reportedNativeIdentity &&
+      capturedNativeIdentity !== reportedNativeIdentity
+    )
+      return;
+    // A first identity can arrive after preparation. Only its engine terminal
+    // may fill that gap; the mutable carrier binding cannot attest delivery.
+    const native = capturedNativeIdentity ?? reportedNativeIdentity;
+    const witness = createConversationSeedWitness({
+      kind: context.kind,
+      contextId: context.contextId,
+      contextDigest: context.contextDigest,
+      threadId: event.threadId,
+      clientTurnId,
+      seedDigest: context.seed.seedDigest,
+      invocationId: event.invocationId,
+      providerTurnId: event.turnId,
+      terminalEventId: event.eventId,
+      ...(native ? { nativeIdentityKey: native } : {}),
+    });
+    this.db
+      .prepare(`INSERT OR IGNORE INTO orchestration_context_seed_witnesses
+      (thread_id, client_turn_id, context_kind, context_id, context_digest, native_identity_key, witness_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(
+        event.threadId,
+        clientTurnId,
+        witness.kind,
+        witness.contextId,
+        witness.contextDigest,
+        witness.nativeIdentityKey ?? null,
+        JSON.stringify(witness),
+      );
+    if (
+      this.conversationSeedWitness(event.threadId, clientTurnId)?.digest !==
+      witness.digest
+    )
+      throw new Error(
+        'Context delivery evidence conflicts with its completed invocation.',
+      );
+  }
+
+  conversationSeedWitness(
+    threadId: string,
+    clientTurnId: string,
+  ): ConversationSeedWitness | undefined {
+    const row = this.db
+      .prepare(`SELECT context_kind, context_id, context_digest, native_identity_key, witness_json
+      FROM orchestration_context_seed_witnesses WHERE thread_id = ? AND client_turn_id = ?`)
+      .get(threadId, clientTurnId) as
+      | {
+          context_kind: string;
+          context_id: string;
+          context_digest: string;
+          native_identity_key: string | null;
+          witness_json: string;
+        }
+      | undefined;
+    if (!row) return undefined;
+    const witness = readConversationSeedWitness(row.witness_json);
+    if (
+      witness.threadId !== threadId ||
+      witness.clientTurnId !== clientTurnId ||
+      witness.kind !== row.context_kind ||
+      witness.contextId !== row.context_id ||
+      witness.contextDigest !== row.context_digest ||
+      (witness.nativeIdentityKey ?? null) !== row.native_identity_key
+    )
+      throw new Error('Context delivery evidence is unavailable.');
+    return witness;
+  }
+
+  contextSeedWitnessHasCurrentNativeBinding(
+    witness: ConversationSeedWitness,
+  ): boolean {
+    return (
+      witness.nativeIdentityKey !== undefined &&
+      this.db
+        .prepare(`SELECT 1 FROM orchestration_native_session_bindings
+      WHERE session_id = ? AND identity_key = ?`)
+        .get(witness.threadId, witness.nativeIdentityKey) !== undefined
+    );
   }
 
   /**
@@ -4566,6 +5039,233 @@ export class EventStore {
    * through any projection ensure/rehydrate path: detail reads must never
    * mutate the event store.
    */
+  conversationForkContextReference(
+    conversationId: string,
+  ): ConversationForkContextReference | undefined {
+    const row = this.db
+      .prepare(`SELECT ${FORK_CONTEXT_REFERENCE_COLUMNS}
+      FROM orchestration_conversation_fork_context WHERE target_conversation_id = ?`)
+      .get(conversationId) as ForkContextReferenceRow | undefined;
+    return row ? forkContextReference(row) : undefined;
+  }
+
+  conversationForkContextForRequest(
+    sourceConversationId: string,
+    idempotencyKey: string,
+    ownerUserId: string,
+    tenantId?: string,
+  ): ConversationForkContextReference | undefined {
+    const row = this.db
+      .prepare(`SELECT ${FORK_CONTEXT_REFERENCE_COLUMNS}
+      FROM orchestration_conversation_fork_context
+      WHERE source_conversation_id = ? AND idempotency_key = ? AND owner_user_id = ? AND tenant_key = ?`)
+      .get(sourceConversationId, idempotencyKey, ownerUserId, tenantId ?? '') as
+      | ForkContextReferenceRow
+      | undefined;
+    return row ? forkContextReference(row) : undefined;
+  }
+
+  conversationForkContextSnapshot(
+    conversationId: string,
+  ): ConversationForkContextSnapshot | undefined {
+    const row = this.db
+      .prepare(`SELECT ${FORK_CONTEXT_REFERENCE_COLUMNS}, snapshot_json
+      FROM orchestration_conversation_fork_context WHERE target_conversation_id = ? AND state != 'deleted'`)
+      .get(conversationId) as
+      | (ForkContextReferenceRow & { snapshot_json: string | null })
+      | undefined;
+    if (!row) return undefined;
+    if (row.snapshot_json === null)
+      throw new ConversationForkContextError(
+        'Saved fork context is unavailable.',
+      );
+    const snapshot = readConversationForkContext(row.snapshot_json);
+    if (
+      snapshot.digest !== row.context_digest ||
+      snapshot.targetConversationId !== row.target_conversation_id ||
+      snapshot.forkEventId !== row.fork_event_id ||
+      snapshot.sourceConversationId !== row.source_conversation_id ||
+      snapshot.sourceAgent !== row.source_agent ||
+      snapshot.targetAgent !== row.target_agent ||
+      snapshot.ownerUserId !== row.owner_user_id ||
+      (snapshot.tenantId ?? '') !== row.tenant_key ||
+      (snapshot.projectSlug ?? null) !== row.project_slug ||
+      (snapshot.requestedProjectSlug ?? null) !== row.requested_project_slug ||
+      (snapshot.requestedBranchPointTurnId ?? null) !==
+        row.requested_branch_point_turn_id ||
+      (snapshot.idempotencyKey ?? null) !== row.idempotency_key ||
+      snapshot.createdAt !== row.created_at
+    )
+      throw new ConversationForkContextError(
+        'Saved fork context is unavailable.',
+      );
+    return snapshot;
+  }
+
+  reserveConversationForkContext(
+    input: ConversationForkContextSnapshot,
+  ): ConversationForkContextReference {
+    const snapshot = readConversationForkContext(JSON.stringify(input));
+    this.db.exec('SAVEPOINT reserve_fork_context');
+    try {
+      this.reserveEventAppendWriter();
+      const existing = snapshot.idempotencyKey
+        ? this.conversationForkContextForRequest(
+            snapshot.sourceConversationId,
+            snapshot.idempotencyKey,
+            snapshot.ownerUserId,
+            snapshot.tenantId,
+          )
+        : this.conversationForkContextReference(snapshot.targetConversationId);
+      if (existing) {
+        if (
+          existing.state === 'deleted' ||
+          existing.sourceAgent !== snapshot.sourceAgent ||
+          existing.targetAgent !== snapshot.targetAgent ||
+          existing.requestedProjectSlug !== snapshot.requestedProjectSlug ||
+          existing.requestedBranchPointTurnId !==
+            snapshot.requestedBranchPointTurnId
+        )
+          throw new ConversationForkContextError(
+            'The fork key already names another request or a deleted fork.',
+          );
+        this.db.exec('RELEASE SAVEPOINT reserve_fork_context');
+        return existing;
+      }
+      const effect = this.sessionTurnBoundaries.hasPossibleEffect(
+        snapshot.targetConversationId,
+      );
+      if (
+        this.readSessionByThread(snapshot.targetConversationId) ||
+        effect.kind !== 'available' ||
+        effect.active
+      )
+        throw new ConversationForkContextError(
+          'The fork identity already has a possible provider start.',
+        );
+      this.db
+        .prepare(`INSERT INTO orchestration_conversation_fork_context (
+        target_conversation_id, fork_event_id, source_conversation_id, source_agent, target_agent,
+        owner_user_id, tenant_key, project_slug, requested_project_slug, requested_branch_point_turn_id,
+        idempotency_key, context_digest, state, snapshot_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'prepared', ?, ?)`)
+        .run(
+          snapshot.targetConversationId,
+          snapshot.forkEventId,
+          snapshot.sourceConversationId,
+          snapshot.sourceAgent,
+          snapshot.targetAgent,
+          snapshot.ownerUserId,
+          snapshot.tenantId ?? '',
+          snapshot.projectSlug ?? null,
+          snapshot.requestedProjectSlug ?? null,
+          snapshot.requestedBranchPointTurnId ?? null,
+          snapshot.idempotencyKey ?? null,
+          snapshot.digest,
+          JSON.stringify(snapshot),
+          snapshot.createdAt,
+        );
+      const reference = this.conversationForkContextReference(
+        snapshot.targetConversationId,
+      );
+      if (!reference)
+        throw new ConversationForkContextError(
+          'The fork reservation is unavailable.',
+        );
+      this.db.exec('RELEASE SAVEPOINT reserve_fork_context');
+      return reference;
+    } catch (error) {
+      this.db.exec(
+        'ROLLBACK TO SAVEPOINT reserve_fork_context; RELEASE SAVEPOINT reserve_fork_context',
+      );
+      throw error;
+    }
+  }
+
+  publishConversationForkContext(
+    event: CanonicalRuntimeEvent,
+    digest: string,
+  ): boolean {
+    if (event.method !== 'conversation.forked')
+      throw new ConversationForkContextError('A fork fact is required.');
+    this.db.exec('SAVEPOINT publish_fork_context');
+    try {
+      this.reserveEventAppendWriter();
+      const reference = this.conversationForkContextReference(
+        event.targetConversationId,
+      );
+      const snapshot = this.conversationForkContextSnapshot(
+        event.targetConversationId,
+      );
+      if (
+        !reference ||
+        reference.state === 'deleted' ||
+        !snapshot ||
+        snapshot.digest !== digest ||
+        event.contextDigest !== digest ||
+        event.eventId !== snapshot.forkEventId ||
+        event.sourceConversationId !== snapshot.sourceConversationId ||
+        event.targetAgent !== snapshot.targetAgent ||
+        event.branchPointTurnId !== snapshot.branchPointTurnId ||
+        event.sourceSessionId !== snapshot.sourceSessionId
+      )
+        throw new ConversationForkContextError(
+          'The fork publication does not match its reserved context.',
+        );
+      if (reference.state === 'ready') {
+        if (!this.hasEventId(event.eventId))
+          throw new ConversationForkContextError(
+            'The fork fact is unavailable.',
+          );
+        this.db.exec('RELEASE SAVEPOINT publish_fork_context');
+        return false;
+      }
+      if (this.hasEventId(event.eventId))
+        throw new ConversationForkContextError(
+          'The fork fact predates its context reservation.',
+        );
+      this.db
+        .prepare(`UPDATE orchestration_conversation_fork_context SET state = 'ready'
+        WHERE target_conversation_id = ? AND state = 'prepared' AND context_digest = ?`)
+        .run(snapshot.targetConversationId, digest);
+      this.appendEvent(event);
+      this.db.exec('RELEASE SAVEPOINT publish_fork_context');
+      return true;
+    } catch (error) {
+      this.db.exec(
+        'ROLLBACK TO SAVEPOINT publish_fork_context; RELEASE SAVEPOINT publish_fork_context',
+      );
+      throw error;
+    }
+  }
+
+  deleteUnstartedConversationForkContext(conversationId: string): void {
+    this.db.exec('SAVEPOINT delete_fork_context');
+    try {
+      this.reserveEventAppendWriter();
+      const effect =
+        this.sessionTurnBoundaries.hasPossibleEffect(conversationId);
+      if (
+        this.readSessionByThread(conversationId) ||
+        effect.kind !== 'available' ||
+        effect.active
+      )
+        throw new ConversationForkContextError(
+          'The fork has a possible provider start and cannot be deleted as an unstarted fork.',
+        );
+      this.db
+        .prepare(`UPDATE orchestration_conversation_fork_context SET state = 'deleted', snapshot_json = NULL
+        WHERE target_conversation_id = ?`)
+        .run(conversationId);
+      this.db.exec('RELEASE SAVEPOINT delete_fork_context');
+    } catch (error) {
+      this.db.exec(
+        'ROLLBACK TO SAVEPOINT delete_fork_context; RELEASE SAVEPOINT delete_fork_context',
+      );
+      throw error;
+    }
+  }
+
   readConversationForkProvenance(conversationId: string): {
     forkedFrom?: ConversationForkProvenance;
     forkedTo: ConversationForkProvenance[];
@@ -8385,115 +9085,25 @@ export class EventStore {
   userInputEventById(eventId: string): UserInputEventDescriptor | undefined {
     if (!hasBoundedDescriptorText(eventId, MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES))
       return undefined;
-    const rows = this.db
+    const row = this.db
       .prepare(
-        `SELECT e.id, e.thread_id, e.turn_id, e.method,
-                json_valid(e.payload) AS valid_json,
-                CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.prompt') END AS prompt,
-                CASE WHEN json_valid(e.payload) THEN json_type(e.payload, '$.inputKind') END AS input_kind_type,
-                CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.inputKind') END AS input_kind,
-                CASE WHEN json_valid(e.payload) THEN json_type(e.payload, '$.attachments') END AS attachments_type,
-                a.key AS attachment_key,
-                json_type(a.value) AS attachment_type,
-                json_extract(a.value, '$.kind') AS attachment_kind,
-                json_extract(a.value, '$.name') AS attachment_name,
-                json_extract(a.value, '$.mimeType') AS attachment_mime_type,
-                json_extract(a.value, '$.size') AS attachment_size
-           FROM orchestration_events e
-           LEFT JOIN json_each(CASE WHEN json_valid(e.payload) THEN e.payload ELSE '[]' END, '$.attachments') a
-             ON true
-          WHERE e.id = ?
-          LIMIT ?`,
+        `SELECT method, ${USER_INPUT_DESCRIPTOR_COLUMNS_SQL}
+           FROM orchestration_events
+          WHERE id = ?`,
       )
-      .all(eventId, CHAT_ATTACHMENT_MAX_COUNT + 1) as Array<{
-      id: string;
-      thread_id: string;
-      turn_id: string | null;
-      method: string;
-      valid_json: unknown;
-      prompt: unknown;
-      input_kind_type: unknown;
-      input_kind: unknown;
-      attachments_type: unknown;
-      attachment_key: unknown;
-      attachment_type: unknown;
-      attachment_kind: unknown;
-      attachment_name: unknown;
-      attachment_mime_type: unknown;
-      attachment_size: unknown;
-    }>;
-    const first = rows[0];
-    if (!first) return undefined;
-    if (
-      rows.length > CHAT_ATTACHMENT_MAX_COUNT ||
-      first.valid_json !== 1 ||
-      !hasBoundedDescriptorText(
-        first.id,
-        MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES,
-      ) ||
-      !hasBoundedDescriptorText(
-        first.thread_id,
-        MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES,
-      ) ||
-      (first.turn_id !== null &&
-        !hasBoundedDescriptorText(
-          first.turn_id,
-          MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES,
-        )) ||
-      (first.attachments_type !== null && first.attachments_type !== 'array') ||
-      (first.input_kind_type !== null &&
-        (first.input_kind_type !== 'text' || first.input_kind !== 'steer')) ||
-      (first.prompt !== null && typeof first.prompt !== 'string') ||
-      (typeof first.prompt === 'string' &&
-        first.prompt.length > CHAT_INPUT_MAX_CHARS)
-    )
-      throw new Error('Invalid user-input event descriptor');
-    const attachments = [] as Array<{
-      name: string;
-      mimeType: string;
-      size: number;
-    }>;
-    for (const row of rows) {
-      // A `LEFT JOIN` emits one key-less row only for an empty/missing array.
-      if (row.attachment_key === null) continue;
-      if (
-        row.attachment_type !== 'object' ||
-        typeof row.attachment_kind !== 'string' ||
-        typeof row.attachment_name !== 'string' ||
-        typeof row.attachment_mime_type !== 'string' ||
-        typeof row.attachment_size !== 'number'
-      )
-        throw new Error('Invalid user-input attachment descriptor');
-      const descriptor = {
-        kind: row.attachment_kind as PersistedChatAttachment['kind'],
-        name: row.attachment_name,
-        mimeType:
-          row.attachment_mime_type as PersistedChatAttachment['mimeType'],
-        size: row.attachment_size,
-      };
-      if (validatePersistedChatAttachmentDescriptor(descriptor))
-        throw new Error('Invalid user-input attachment descriptor');
-      attachments.push({
-        name: descriptor.name,
-        mimeType: descriptor.mimeType,
-        size: descriptor.size,
-      });
-    }
-    if (!isAuthoredInputContent(first.prompt, attachments.length))
-      throw new Error('Invalid user-input event descriptor');
-    return {
-      eventId: first.id,
-      threadId: first.thread_id,
-      ...(first.turn_id ? { turnId: first.turn_id } : {}),
-      method: first.method,
-      ...(first.input_kind_type === null
-        ? { inputKind: 'initial' as const }
-        : first.input_kind_type === 'text' && first.input_kind === 'steer'
-          ? { inputKind: 'steer' as const }
-          : {}),
-      ...(typeof first.prompt === 'string' ? { prompt: first.prompt } : {}),
-      attachments,
-    };
+      .get(eventId) as Record<string, unknown> | undefined;
+    if (!row) return undefined;
+    const fields = USER_INPUT_DESCRIPTOR_FIELD_EXPRESSIONS.map(
+      (_expression, index) => row[`f${index}`],
+    );
+    const method = row.method;
+    // The same rule the inventory listing filters by, so whatever the listing
+    // offers this serves, and whatever this refuses was never listed.
+    const descriptor = parseUserInputDescriptorFields(
+      ...(fields as Parameters<typeof parseUserInputDescriptorFields>),
+    );
+    if (!descriptor) throw new Error('Invalid user-input event descriptor');
+    return { ...descriptor, method: method as string };
   }
 
   /**
@@ -10513,6 +11123,65 @@ export class EventStore {
     return this.conversationDraftFactsForThreads([threadId]).get(threadId)!;
   }
 
+  conversationStartContext(
+    sessionId: string,
+  ):
+    | import('./conversation-handoff-module.js').ConversationContextSeedPin
+    | undefined {
+    const row = this.db
+      .prepare(
+        'SELECT seed_pin_json FROM orchestration_conversation_start_context WHERE session_id = ?',
+      )
+      .get(sessionId) as { seed_pin_json: string } | undefined;
+    return row ? readConversationContextSeedPin(row.seed_pin_json) : undefined;
+  }
+
+  reserveConversationStartContext(
+    sessionId: string,
+    pin: import('./conversation-handoff-module.js').ConversationContextSeedPin,
+  ): import('./conversation-handoff-module.js').ConversationContextSeedPin {
+    const validated = readConversationContextSeedPin(JSON.stringify(pin));
+    this.db.exec('SAVEPOINT reserve_start_context');
+    try {
+      this.reserveEventAppendWriter();
+      const existing = this.conversationStartContext(sessionId);
+      if (existing) {
+        this.db.exec('RELEASE SAVEPOINT reserve_start_context');
+        return existing;
+      }
+      const lineage = this.conversationForSession(sessionId);
+      if (!lineage?.predecessorSessionId || this.readSessionByThread(sessionId))
+        throw new ConversationStartContextError(
+          'Continuation context must be reserved before its child starts.',
+        );
+      for (const cutoff of validated.sourceCutoffs) {
+        const source = this.conversationForSession(cutoff.sessionId);
+        if (
+          !source ||
+          source.conversationId !== lineage.conversationId ||
+          source.ordinal >= lineage.ordinal ||
+          this.readSessionInventoryHighWater(cutoff.sessionId) !==
+            cutoff.throughSequence
+        )
+          throw new ConversationStartContextError(
+            'Conversation context changed before its continuation reservation.',
+          );
+      }
+      this.db
+        .prepare(
+          'INSERT INTO orchestration_conversation_start_context(session_id, seed_pin_json) VALUES (?, ?)',
+        )
+        .run(sessionId, JSON.stringify(validated));
+      this.db.exec('RELEASE SAVEPOINT reserve_start_context');
+      return validated;
+    } catch (error) {
+      this.db.exec(
+        'ROLLBACK TO SAVEPOINT reserve_start_context; RELEASE SAVEPOINT reserve_start_context',
+      );
+      throw error;
+    }
+  }
+
   reserveNextConversationSession(input: {
     conversationId: string;
     predecessorSessionId: string;
@@ -10556,6 +11225,16 @@ export class EventStore {
     }
   }
 
+  /** Opaque identity recorded in the invocation binding before the provider effect. */
+  nativeSessionBindingIdentity(sessionId: string): string | undefined {
+    const row = this.db
+      .prepare(
+        'SELECT identity_key FROM orchestration_native_session_bindings WHERE session_id = ?',
+      )
+      .get(sessionId) as { identity_key: string } | undefined;
+    return row?.identity_key;
+  }
+
   nativeSessionOwnedBy(sessionId: string): boolean {
     const row = this.db
       .prepare(`SELECT 1 FROM orchestration_native_session_bindings binding
@@ -10583,6 +11262,31 @@ export class EventStore {
           targetSessionId,
         ) !== undefined
     );
+  }
+
+  /**
+   * Completion witnesses pin the identity that accepted the literal seed; a
+   * carrier may later rebind profiles. Keys stay private and callers authorize
+   * the Conversation.
+   */
+  nativeContextDeliverySessions(
+    conversationId: string,
+    sessionId: string,
+  ): readonly string[] {
+    const rows = this.db
+      .prepare(`SELECT handoff.session_id
+      FROM orchestration_native_session_bindings own
+      JOIN orchestration_conversation_handoffs handoff ON handoff.conversation_id = ?
+      JOIN orchestration_context_seed_witnesses witness
+        ON witness.thread_id = handoff.session_id AND witness.context_kind = 'handoff'
+        AND witness.native_identity_key = own.identity_key
+      JOIN orchestration_conversation_sessions lineage ON lineage.session_id = handoff.session_id
+      WHERE own.session_id = ? AND lineage.conversation_id = ?
+      ORDER BY lineage.ordinal ASC`)
+      .all(conversationId, sessionId, conversationId) as Array<{
+      session_id: string;
+    }>;
+    return rows.map((row) => row.session_id);
   }
 
   claimNativeSessionIdentity(
@@ -11244,26 +11948,29 @@ export class EventStore {
       ...(row.native_return_source_event_id
         ? { nativeReturnSourceEventId: row.native_return_source_event_id }
         : {}),
+      ...(row.context_seed_json !== null && row.context_seed_json !== undefined
+        ? { contextSeed: readConversationContextSeedPin(row.context_seed_json) }
+        : {}),
       createdAt: row.created_at,
     });
     const byKey = this.db.prepare(
       `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
               target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at
+              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, context_seed_json, created_at
        FROM orchestration_conversation_handoffs
        WHERE conversation_id = ? AND idempotency_key = ?`,
     );
     const byPredecessor = this.db.prepare(
       `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
               target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at
+              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, context_seed_json, created_at
        FROM orchestration_conversation_handoffs
        WHERE predecessor_session_id = ?`,
     );
     const byConversation = this.db.prepare(
       `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
               target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at
+              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, context_seed_json, created_at
        FROM orchestration_conversation_handoffs
        WHERE conversation_id = ?
        ORDER BY created_at ASC, session_id ASC`,
@@ -11285,8 +11992,8 @@ export class EventStore {
       `INSERT INTO orchestration_conversation_handoffs
         (conversation_id, predecessor_session_id, session_id, idempotency_key,
          target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-         target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, context_seed_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const sameTarget = (
       left: ConversationHandoffMarker,
@@ -11301,7 +12008,8 @@ export class EventStore {
       left.targetModelId === right.targetModelId &&
       left.messageDigest === right.messageDigest &&
       left.nativeReturnSourceSessionId === right.nativeReturnSourceSessionId &&
-      left.nativeReturnSourceEventId === right.nativeReturnSourceEventId;
+      left.nativeReturnSourceEventId === right.nativeReturnSourceEventId &&
+      JSON.stringify(left.contextSeed) === JSON.stringify(right.contextSeed);
     return createConversationHandoffModule({
       persistence: {
         listByConversation: (conversationId) =>
@@ -11322,6 +12030,18 @@ export class EventStore {
               }
               this.db.exec('COMMIT');
               return { marker: existing, outcome: 'existing' as const };
+            }
+            // The cutoffs precede projection. Under the write transaction,
+            // reject any intervening append rather than acknowledge text
+            // against a different event snapshot.
+            for (const cutoff of input.contextSeed?.sourceCutoffs ?? []) {
+              if (
+                this.readSessionInventoryHighWater(cutoff.sessionId) !==
+                cutoff.throughSequence
+              )
+                throw new Error(
+                  'Conversation context changed before its handoff reservation.',
+                );
             }
             const predecessor = lineage.get(input.predecessorSessionId) as
               | { conversation_id: string; ordinal: number }
@@ -11371,6 +12091,13 @@ export class EventStore {
               input.messageDigest,
               input.nativeReturnSourceSessionId ?? null,
               input.nativeReturnSourceEventId ?? null,
+              input.contextSeed
+                ? JSON.stringify(
+                    readConversationContextSeedPin(
+                      JSON.stringify(input.contextSeed),
+                    ),
+                  )
+                : null,
               input.createdAt,
             );
             if (input.nativeReturnSourceSessionId) {
@@ -11415,7 +12142,7 @@ export class EventStore {
             .prepare(
               `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
                       target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
-                      target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at
+                      target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, context_seed_json, created_at
                FROM orchestration_conversation_handoffs WHERE session_id = ?`,
             )
             .get(sessionId);
@@ -12903,6 +13630,11 @@ export class EventStore {
     return this.taskMemory;
   }
 
+  taskReviewStore(): TaskReviewStore {
+    this.taskReview ??= createSqliteTaskReviewStore(this.db);
+    return this.taskReview;
+  }
+
   /** #3157: a person's resume choice per usage-limit stop. */
   usageLimitResumeChoices(): UsageLimitResumeChoices {
     this.resumeChoices ??= createSqliteUsageLimitResumeChoices(this.db);
@@ -13675,6 +14407,16 @@ export class EventStore {
     try {
       this.createSkillExperienceSnapshots().deleteThread(threadId);
       this.db
+        .prepare(
+          'DELETE FROM orchestration_conversation_start_context WHERE session_id = ?',
+        )
+        .run(threadId);
+      this.db
+        .prepare(
+          'DELETE FROM orchestration_context_seed_witnesses WHERE thread_id = ?',
+        )
+        .run(threadId);
+      this.db
         .prepare('DELETE FROM orchestration_prepared_turns WHERE thread_id = ?')
         .run(threadId);
       this.htmlReplyPages().deleteThread(threadId);
@@ -13884,6 +14626,9 @@ export class EventStore {
   }
   releaseChatTurn(clientTurnId: string): void {
     this.turnIdempotence.release(chatTurnDedupKey(clientTurnId));
+  }
+  retainChatTurn(clientTurnId: string): void {
+    this.turnIdempotence.retain(chatTurnDedupKey(clientTurnId));
   }
   awaitChatTurn(
     clientTurnId: string,

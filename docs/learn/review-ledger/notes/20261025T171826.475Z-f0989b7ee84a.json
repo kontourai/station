@@ -1,0 +1,11 @@
+{
+  "revision": "43fcf3d5aaf692a64a8929e08fda996fda31711a",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the cited inherited task-graph delta: isWellFormedUnicode is exported for the Task review parser, with its implementation and Task graph DTOs unchanged. This does not change composer dispatch, continuation, Task attachment or mobile interaction policy. Retained dated design/capture status; this is a source-delta review and not a new browser or device qualification.","inputs":["docs/design/chat-composer.md","packages/contracts/src/task-graph.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the cited inherited task-graph delta: exporting the existing Unicode predicate for Task review introduces no change to Task identity, chat start, Project/Agent selection, Add to Task or setup behavior described here. The Review increment is documented in its canonical API and module map. This is a source-delta review only; no onboarding journey was rerun.","inputs":["docs/user/getting-started.md","packages/contracts/src/task-graph.ts"]},
+
+    {"path":"packages/contracts/README.md","note":"Reviewed the export-map delta adding ./task-review -> ./src/task-review.ts. The README correctly makes package.json the authoritative subpath inventory and routes domain descriptions to the contracts reference, which now documents task-review. Source distribution, direct subpath imports, pure helpers and publication limits remain accurate. No npm publication is established by this review.","inputs":["packages/contracts/README.md","packages/contracts/package.json#/exports"]}
+  ]
+}

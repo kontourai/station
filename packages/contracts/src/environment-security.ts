@@ -111,6 +111,8 @@ export const PAIRING_SCOPE_ORCHESTRATION_READ = 'orchestration:read' as const;
 export const PAIRING_SCOPE_ORCHESTRATION_OPERATE =
   'orchestration:operate' as const;
 export const PAIRING_SCOPE_TERMINAL_OPERATE = 'terminal:operate' as const;
+/** Watch terminal output; never grants input or lifecycle operations. */
+export const PAIRING_SCOPE_TERMINAL_OBSERVE = 'terminal:observe' as const;
 /** Pairing/device management (creating offers, confirming/denying requests, revoking devices). */
 export const PAIRING_SCOPE_ACCESS_MANAGE = 'access:manage' as const;
 /**
@@ -293,6 +295,7 @@ export const PAIRING_SCOPES = [
   PAIRING_SCOPE_ORCHESTRATION_READ,
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   PAIRING_SCOPE_TERMINAL_OPERATE,
+  PAIRING_SCOPE_TERMINAL_OBSERVE,
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_ACCESS_DEVICES,
   PAIRING_SCOPE_INFERENCE_INVOKE,
@@ -456,6 +459,7 @@ export const PAIRING_SCOPE_GRANT_PATHS: Record<
   [PAIRING_SCOPE_ORCHESTRATION_READ]: ['preset', 'default-grant'],
   [PAIRING_SCOPE_ORCHESTRATION_OPERATE]: ['preset', 'default-grant'],
   [PAIRING_SCOPE_TERMINAL_OPERATE]: ['preset', 'default-grant'],
+  [PAIRING_SCOPE_TERMINAL_OBSERVE]: ['operator-promotion'],
   // The recorded historical exception: in the frozen default grant, in no
   // preset, and deliberately never added to one — elevation at pairing time
   // grants the most to the least-known device. See archive#1883.
@@ -512,6 +516,11 @@ export const PAIRING_SCOPE_DESCRIPTIONS: Record<
   [PAIRING_SCOPE_ORCHESTRATION_OPERATE]: {
     label: 'Operate',
     summary: 'Can start, continue and steer chats and Agent work.',
+  },
+  [PAIRING_SCOPE_TERMINAL_OBSERVE]: {
+    label: 'Watch terminals',
+    summary:
+      'Takes effect with remote watch: view terminal output without typing or changing sessions.',
   },
   [PAIRING_SCOPE_TERMINAL_OPERATE]: {
     label: 'Terminal',
@@ -1187,7 +1196,10 @@ export interface EnvironmentSecurityRecord {
 export interface StationCapabilityFlags {
   /** SSH environment management (`src-server/services/ssh/`, `/api/ssh-environments`). */
   sshEnvironments?: boolean;
-  /** Web Push subscribe/unsubscribe (`src-server/routes/operations/push-routes.ts`). */
+  /**
+   * Web Push subscribe/unsubscribe (`src-server/routes/operations/push-routes.ts`).
+   * Absent on hosted deployments, whose push routes all answer 404 (#4177).
+   */
   webPushNotifications?: boolean;
   /**
    * The `/api/orchestration/events` (+ per-session) SSE stream honors a
@@ -1203,7 +1215,8 @@ export interface StationCapabilityFlags {
    * `GET /api/orchestration/sessions/:threadId/inputs/:eventId` serves the
    * exact authored input behind a Session inventory row. A host without it
    * answers that path 404 like a denied read, so a client gates the read on
-   * this flag and names "update the host" instead of a failed read.
+   * this flag instead of reporting a failed read. Absent on hosted
+   * deployments, whose route refuses every read (#4177).
    */
   sessionInventoryInputRead?: boolean;
   /**

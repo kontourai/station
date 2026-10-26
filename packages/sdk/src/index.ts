@@ -1,3 +1,5 @@
+export { sentTurnKey } from './client/sent-turn-key';
+
 // Re-export all types
 
 export type {
@@ -1438,6 +1440,39 @@ export type {
   SetupImportPreview,
   SetupImportReceipt,
 } from './query-domains/setupImports';
+export {
+  fetchTaskCaptureContent,
+  fetchTaskCaptureSessions,
+  fetchTaskReview,
+  fetchTaskReviewItem,
+  fetchTaskReviewThread,
+  TASK_REVIEW_OPENING_PREVIEW_CHARS,
+  type TaskCapture,
+  type TaskCaptureBrowserSession,
+  type TaskReviewArtifactKind,
+  type TaskReviewCreateCaptureRequest,
+  type TaskReviewCreateThreadRequest,
+  type TaskReviewItem,
+  type TaskReviewReopenRequest,
+  type TaskReviewReplyRequest,
+  type TaskReviewResolveRequest,
+  type TaskReviewThreadSummary,
+  type TaskReviewThreadView,
+  type TaskReviewView,
+  taskReviewItemQueryKey,
+  taskReviewQueryKey,
+  taskReviewThreadQueryKey,
+  useCaptureToTaskMutation,
+  useCreateReviewThreadMutation,
+  useReopenReviewThreadMutation,
+  useReplyReviewThreadMutation,
+  useResolveReviewThreadMutation,
+  useSendReviewThreadsMutation,
+  useTaskCaptureSessionsQuery,
+  useTaskReviewItemQuery,
+  useTaskReviewQuery,
+  useTaskReviewThreadQuery,
+} from './query-domains/taskReview';
 export {
   checkTelemetryConnection,
   fetchTelemetryDeliveryStatus,

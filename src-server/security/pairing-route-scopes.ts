@@ -66,6 +66,7 @@ import {
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   PAIRING_SCOPE_ORCHESTRATION_READ,
   PAIRING_SCOPE_RELAY_MANAGE,
+  PAIRING_SCOPE_TERMINAL_OBSERVE,
   PAIRING_SCOPE_TERMINAL_OPERATE,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts';
@@ -219,6 +220,8 @@ export function pairingScopeSatisfiesHttpRoute(
 ): boolean {
   return (
     pairingScopeIncludes(grantedScope, requiredScope) ||
+    (requiredScope === PAIRING_SCOPE_TERMINAL_OBSERVE &&
+      pairingScopeIncludes(grantedScope, PAIRING_SCOPE_TERMINAL_OPERATE)) ||
     (requiredScope === PAIRING_SCOPE_ORCHESTRATION_OPERATE &&
       isProjectAccessManagementLeaf(request) &&
       pairingScopeIncludes(grantedScope, PAIRING_SCOPE_RELAY_MANAGE)) ||
@@ -584,6 +587,26 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     }),
   ),
 
+  // Issuing or revoking external bearer custody is access administration.
+  // Native file-proven operator enforcement also remains inside both handlers.
+  {
+    id: '/api/orchestration/station-control/external-clients:issue',
+    method: 'POST',
+    prefix: '/api/orchestration/station-control/external-clients',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+    personalTokens: 'refused',
+  },
+  {
+    id: '/api/orchestration/station-control/external-clients/:leaseId:revoke',
+    method: 'DELETE',
+    prefix: '/api/orchestration/station-control/external-clients/:leaseId',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+    personalTokens: 'refused',
+  },
   {
     id: '/api/home-authority/channels/:channelId/owner:administration',
     method: 'POST',
@@ -732,6 +755,15 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     method: 'POST',
     prefix: '/api/usage-telemetry/connection-checks',
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  // Retaining a capture persists Task data and requires operate scope.
+  {
+    id: '/api/tasks/:taskId/review/captures:operate',
+    method: 'POST',
+    prefix: '/api/tasks/:taskId/review/captures',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
   },
   // The preview request uses POST only so the selected file path and line
@@ -992,6 +1024,47 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
   },
+  ...[
+    '/api/projects/:slug/terminal-sessions',
+    '/api/projects/:slug/terminal-sessions/:terminalId',
+  ].flatMap((prefix) =>
+    READ_METHODS.map(
+      (method): PairingScopeRouteRule => ({
+        id: `${prefix}:${method}:terminal-observe`,
+        method,
+        prefix,
+        exact: true,
+        scope: PAIRING_SCOPE_TERMINAL_OBSERVE,
+        origin: 'explicit',
+      }),
+    ),
+  ),
+  ...(
+    [
+      { method: 'POST', prefix: '/api/projects/:slug/terminal-sessions' },
+      {
+        method: 'POST',
+        prefix: '/api/projects/:slug/terminal-sessions/:terminalId/input',
+      },
+      {
+        method: 'POST',
+        prefix: '/api/projects/:slug/terminal-sessions/:terminalId/resize',
+      },
+      {
+        method: 'DELETE',
+        prefix: '/api/projects/:slug/terminal-sessions/:terminalId',
+      },
+    ] as const
+  ).map(
+    ({ method, prefix }): PairingScopeRouteRule => ({
+      id: `${prefix}:${method}:terminal-operate`,
+      method,
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+      origin: 'explicit',
+    }),
+  ),
   // Terminal termination kills a PTY process. It must match the dedicated
   // terminal WebSocket's `terminal:operate` authority rather than silently
   // inheriting the broader project mutation tier.
@@ -3050,6 +3123,15 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // bounded Task-memory revision or record version.
     { method: 'POST', path: '/api/orchestration/station-control/task-summary' },
     { method: 'POST', path: '/api/orchestration/station-control/task-record' },
+    { method: 'GET', path: '/api/orchestration/station-control/task-threads' },
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/task-thread-reply',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/task-thread-resolve',
+    },
     // `schedule_wake_up`, `list_wake_ups`, `cancel_wake_up` and `propose_job`:
     // internal-only at the route (404 to anything the runtime boundary did not
     // accept as Station's own internal principal), acting only on the
@@ -3190,6 +3272,33 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // No station-control tool names either route.
     { method: 'POST', path: '/api/tasks/from-work-item' },
     { method: 'GET', path: '/api/tasks/:taskId/work-item' },
+    // Task review exposes Task content and personal comments: sensitive to the
+    // exact room/Project authority. Reads use read standing; append-only person
+    // comments and transitions use operate standing. Send starts an agent turn
+    // through the lead conversation inbox.
+    { method: 'GET', path: '/api/tasks/:taskId/review' },
+    { method: 'GET', path: '/api/tasks/:taskId/review/capture-sessions' },
+    { method: 'POST', path: '/api/tasks/:taskId/review/captures' },
+    {
+      method: 'GET',
+      path: '/api/tasks/:taskId/review/captures/:captureId/content',
+    },
+    { method: 'GET', path: '/api/tasks/:taskId/review/items/:kind/:id' },
+    { method: 'GET', path: '/api/tasks/:taskId/review/threads/:threadId' },
+    { method: 'POST', path: '/api/tasks/:taskId/review/threads' },
+    { method: 'POST', path: '/api/tasks/:taskId/review/send' },
+    {
+      method: 'POST',
+      path: '/api/tasks/:taskId/review/threads/:threadId/replies',
+    },
+    {
+      method: 'POST',
+      path: '/api/tasks/:taskId/review/threads/:threadId/resolve',
+    },
+    {
+      method: 'POST',
+      path: '/api/tasks/:taskId/review/threads/:threadId/reopen',
+    },
     // #4003 Task memory from the Task workspace: the summary and records of
     // the exact Task the paired caller's room authority resolves, read at
     // the read tier and written (one bounded revision or record version,

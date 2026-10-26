@@ -910,6 +910,10 @@ export async function initializeRuntime(
   // inputs is the archive#1588/#3063 reload-loop anti-pattern.
   await materializeBuiltinIntegrations(deps.configLoader);
 
+  // First-run engine adoption persists AppConfig; finish that owned write before
+  // fencing agent construction against subsequent configuration changes.
+  const builtinEngineBinding =
+    await deps.resolveBuiltinEngineBinding?.(appConfig);
   const registryPolicyApplication =
     await deps.registryTrustPolicyAuthority?.captureApplication();
   const configurationBefore = deps.captureAgentConfigurationRevisions?.();
@@ -919,8 +923,7 @@ export async function initializeRuntime(
     bootstrapDefaultAgent: async () =>
       (await bootstrapRuntimeDefaultAgent({
         appConfig,
-        builtinEngineBinding:
-          await deps.resolveBuiltinEngineBinding?.(appConfig),
+        builtinEngineBinding,
         configLoader: deps.configLoader as any,
         framework,
         logger,

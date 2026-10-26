@@ -20,6 +20,7 @@ import {
   PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS,
   PAIRING_SCOPE_FAMILY_INHERITED_LEAVES,
   PAIRING_WS_SCOPES,
+  pairingScopeSatisfiesHttpRoute,
   requiredExternalSurfaceCapability,
   requiredPairingScope,
 } from '../pairing-route-scopes.js';
@@ -1215,6 +1216,40 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     ).toBe('orchestration:read');
   });
 
+  test('terminal session ingress requires observe for reads and operate for writes without generic Project grants', () => {
+    const base = '/api/projects/alpha/terminal-sessions';
+    for (const [method, path, expected] of [
+      ['GET', base, 'terminal:observe'],
+      ['HEAD', base, 'terminal:observe'],
+      ['GET', `${base}/terminal-id`, 'terminal:observe'],
+      ['HEAD', `${base}/terminal-id`, 'terminal:observe'],
+      ['POST', base, 'terminal:operate'],
+      ['POST', `${base}/terminal-id/input`, 'terminal:operate'],
+      ['POST', `${base}/terminal-id/resize`, 'terminal:operate'],
+      ['DELETE', `${base}/terminal-id`, 'terminal:operate'],
+    ] as const) {
+      const scope = requiredPairingScope(method, path);
+      expect(scope).toBe(expected);
+      expect(matchPairingScopeRule(method, path)?.origin).toBe('explicit');
+      for (const grant of ['orchestration:read', 'orchestration:operate'])
+        expect(
+          pairingScopeSatisfiesHttpRoute(grant, scope!, { method, path }),
+        ).toBe(false);
+      expect(
+        pairingScopeSatisfiesHttpRoute('terminal:observe', scope!, {
+          method,
+          path,
+        }),
+      ).toBe(expected === 'terminal:observe');
+      expect(
+        pairingScopeSatisfiesHttpRoute('terminal:operate', scope!, {
+          method,
+          path,
+        }),
+      ).toBe(true);
+    }
+  });
+
   test('gives project terminal termination the explicit terminal-operate scope', () => {
     expect(
       matchPairingScopeRule(
@@ -1913,4 +1948,25 @@ test('declares exact inventory input inspection at the read tier', () => {
   const path = '/api/orchestration/sessions/:threadId/inputs/:eventId';
   expect(isLeafScopeDeclared('GET', path)).toBe(true);
   expect(requiredPairingScope('GET', path)).toBe('orchestration:read');
+});
+
+test('Task capture and review comments require operate scope; capture reads use read scope', () => {
+  expect(
+    requiredPairingScope('POST', '/api/tasks/task-a/review/captures'),
+  ).toBe('orchestration:operate');
+  expect(
+    requiredPairingScope('GET', '/api/tasks/task-a/review/capture-sessions'),
+  ).toBe('orchestration:read');
+  expect(
+    requiredPairingScope(
+      'GET',
+      '/api/tasks/task-a/review/captures/capture-a/content',
+    ),
+  ).toBe('orchestration:read');
+  expect(requiredPairingScope('POST', '/api/tasks/task-a/review/threads')).toBe(
+    'orchestration:operate',
+  );
+  expect(
+    requiredPairingScope('POST', '/api/tasks/task-a/review/captures/extra'),
+  ).toBe('orchestration:operate');
 });

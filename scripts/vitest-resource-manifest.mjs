@@ -47,6 +47,9 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
 // changes the system under test or turns their correctness bound into a
 // scheduler-contention measurement.
 export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // #4204 measures main-thread approval latency while a real room worker
+  // holds SQLite's write lock; overlapping suites would distort that bound.
+  'src-server/services/orchestration/__tests__/project-task-room-revision-evidence-bridge.test.ts',
   // Disposable Chromium boots retain 15s render/3s policy deadlines; keep
   // sibling runtime boots out of this lifecycle measurement (#4022).
   'src-server/services/__tests__/html-reply-preview.process.test.ts',
@@ -136,6 +139,17 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Real bounded Node children exercise failure receipts without running another corpus.
+  'scripts/__tests__/run-vitest-corpus.test.ts',
+  // Real private Git fixtures and hardened cat-file verification through the MCP route.
+  'src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts',
+  // Small loopback responses exercise dependency stream ownership in naturally exiting children.
+  'scripts/__tests__/dependency-http-availability.process.test.ts',
+  'src-server/runtime/frameworks/__tests__/voltagent-stream-finish-flush.process.test.ts',
+  // Loads node-pty with a fake PTY and mocked child-process observations.
+  'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+  // Real node-pty shells in isolated homes; no shared ports or host state.
+  'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
   // Two disposable workers contend on private SQLite connections; no shared host output or timing assertion.
   'src-server/services/outside-agent/__tests__/oauth-concurrency.test.ts',
   // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.
@@ -145,6 +159,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Tiny disposable user-service/scope budgets exercise actual OOM containment.
   'src-server/services/infra/__tests__/workload-resources.process.test.ts',
   'scripts/__tests__/run-biome.process.test.ts',
+  'scripts/__tests__/component-style-hygiene.process.test.ts',
   // Real second-process Task/share writers contend with the publication fence.
   'src-server/services/projects/project-room-agent-task-context.test.ts',
   // Reviewed setup launches real bounded commands and verifies durable outcomes.
@@ -153,6 +168,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/projects/__tests__/repository-acquisition-service.test.ts',
   'src-server/routes/projects/__tests__/project-working-directory-authority.test.ts',
   'packages/agent-runtime/src/__tests__/body-process.test.ts',
+  // Immutable Git extraction and one private SQLite runner; no shared output or timing assertion.
+  'packages/agent-runtime/src/__tests__/sqlite-compatibility.test.ts',
   'src-server/runtime/mcp/__tests__/mcp-ui-network.process.test.ts',
   // Real temporary Git repositories; isolated home per case.
   'src-server/services/pull-requests/__tests__/pull-request-review-guide.test.ts',
@@ -219,6 +236,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/routes/plugins/__tests__/plugin-preview-untrusted-manifest.test.ts',
   // Creates a FIFO, a listening unix socket and git repos to prove a plugin with special files can be updated and removed.
   'src-server/routes/plugins/__tests__/plugin-special-files-lifecycle.test.ts',
+  // #2998: builds disposable git origins and clones; the update route runs git pull.
+  'src-server/routes/plugins/__tests__/plugin-install-trust-legacy-update.test.ts',
   // Resolves real Git roots through bounded child processes in temporary repositories.
   'src-server/services/orchestration/__tests__/workspace-identity.test.ts',
   // Runs the source CLI twice against one private SQLite root to prove init recovery.
@@ -608,6 +627,17 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // point as one bounded single-shot node child; everything else in the file
   // exercises pure decision composition.
   'scripts/__tests__/gate-for.test.ts',
+  // Runs gate:for as a bounded node child on UI and non-UI paths to prove the
+  // gallery screen routing it prints.
+  'scripts/__tests__/gallery-screen-coverage.test.ts',
+  // Runs the gallery findings judge as bounded node children against
+  // throwaway galleries and Git repositories, so verdicts are exit codes.
+  'scripts/__tests__/gallery-ui-findings.test.ts',
+  // Runs the PR workflow's allowlist-ceiling step under bash against
+  // disposable Git repositories (fetch, judge child).
+  'scripts/__tests__/gallery-allowlist-ceiling.test.ts',
+  // Launches one headless Chromium for the gallery audit's fixture pages.
+  'scripts/__tests__/gallery-ui-audit.browser.test.ts',
   'scripts/__tests__/code-hygiene.test.ts',
   // Runs the component/style gate as a child against disposable Git trees.
   'scripts/__tests__/component-style-hygiene.test.ts',
@@ -1202,6 +1232,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Task binding mounts the real renderer over a public diff route and real Git fixture.
   'src-ui/src/__tests__/TaskWorkspaceView.test.tsx',
   'src-server/services/projects/__tests__/workspace-diff-service.test.ts',
+  // Capture primitives exercise real Git repositories, including storage exclusion.
+  'src-server/routes/__tests__/browser-agent-capture.test.ts',
   // Capture pinning uses real Git, including an index with >16 MiB of staged output.
   'src-server/services/projects/__tests__/workspace-commit-pin.test.ts',
   // Six independent tsx publishers race against one real home's five-blob cap.

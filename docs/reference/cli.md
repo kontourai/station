@@ -915,6 +915,48 @@ the UI and REST API. Payload-bearing commands accept JSON via:
 - `--file=/absolute/or/relative/path.json`
 - piped stdin
 
+### `mcp-clients`
+
+Expose a bounded set of Station tools to an existing external MCP client on the
+same host. This is the opposite direction from `tools` connecting Station to
+external MCP servers. It does not start an engine or transfer Session execution.
+
+```bash
+station mcp-clients authorize --station=<installed-local-profile>
+station mcp-clients create --station=<installed-local-profile> --session=<existing-session-id> --tools=read_conversation,board_read,board_pin --ttl-seconds=300 --output=/absolute/private/path/station-client.json
+station mcp-clients revoke <lease-id> --station=<installed-local-profile>
+```
+
+`authorize` explicitly uses the existing local owner-home proof and OS credential
+store. It neither starts a service nor prints the resulting device credential.
+Issuance requires that file-proven local device, `access:manage`, and a real
+operator-owned Session with a recorded, current Project identity. Browser
+bootstrap grants, ordinary pairing, personal access tokens and internal process
+credentials cannot substitute. The target must be an IP-literal loopback profile.
+
+`create` requires explicit tools and a TTL from 60 through 3600 seconds. The
+initial tools are only `read_conversation`, `board_read`, and `board_pin`; omitted,
+empty, duplicate or other selections refuse. Output must be a new absolute file.
+The CLI creates it with mode 0600 and prints metadata only. Initial private-file
+creation is POSIX-only; Windows creation explicitly refuses instead of claiming
+unverified ACL protection. No existing file is overwritten.
+
+Creating a lease does not rotate runtime tokens or another client lease.
+`revoke` targets its exact ID. Expiry, Session revocation and server restart also
+invalidate it. A disconnect is not revocation. Issuance is not automatically
+retried after an uncertain response. Failed file storage attempts revocation and
+reports whether it was confirmed; a partial private file may remain. See the
+[external-client recipe](session-api.md#external-clients-using-station-tools)
+for client configuration, mutation approval and qualification limits.
+
+Each HTTP request uses the normal CLI deadline (30 seconds by default), including
+the separate compensating revoke after a file-write failure. There is no
+independent deadline for the entire create-and-compensate command. Setting
+`STATION_REQUEST_TIMEOUT_MS=0` disables the request deadline and can leave either
+request waiting without a wall-clock bound. A timeout remains an unknown outcome,
+not proof that issuance or revocation failed; the CLI does not automatically
+retry it.
+
 ### `agents`
 
 ```
@@ -2452,10 +2494,50 @@ on a `service PATH` line:
 `{ position, unit, current }` with `position` counted from 0 within the shared
 directories. Drift is advice and does not change `healthy` or the exit code.
 The comparison reads the unit file Station wrote, not systemd drop-ins or the
-loaded job, and uses the environment of the shell that runs `status`. A
-reinstall command is prefixed with `STATION_ROOT=…` when the registration's
-recorded root differs from the one a shell without `STATION_ROOT` would
-derive.
+loaded job, and uses the environment of the shell that runs `status`.
+
+On macOS and Linux the reinstall command (here, for stale scheduling, and in
+`station upgrade` guidance) repeats the installed unit's own `service run`
+arguments: instance, home, ports, host, features and allowed origins. The
+unit is named by instance alone, so a manifest in the home `status` read can
+describe an earlier install. On Windows the command comes from the manifest
+beside the task's wrapper. A service that runs an installer-owned archive is
+reinstalled through that install's channel launcher (`station`,
+`station-beta`, or `station-nightly`); the launcher sets `STATION_ROOT`
+itself, so when the unit records another root no command is given. Otherwise
+the command is prefixed with `STATION_ROOT=…` when the unit's recorded root
+differs from the one a shell without `STATION_ROOT` would derive. When no
+command can be given, the explanation names the installed unit file to
+inspect.
+
+If the installed unit's `--base` is another home than the one `status` read,
+this home's manifest is left over from an earlier install. Two spellings of
+one home (a symlinked parent, or macOS `/tmp` and `/private/tmp`) are not
+stale: a manifest is stale only when it is a different file, by device and
+inode, from the one in the unit's home. `status` prints a
+`manifest       stale` line naming that manifest, the unit file, and the
+`--base` to use. It also prints an `rm -- <manifest>` command that removes
+only the leftover manifest, offered only while the unit's home holds its own
+readable manifest. When that manifest is missing, or its `service/` directory
+cannot be listed, `status` says so and offers no removal. A manifest file that
+exists but cannot be read (for example mode `0000`) is unsafe rather than
+unreadable: `status` refuses with the same "expected owned mode 0600" error it
+gives for the home it read. Station never runs the command, and
+`service uninstall` would remove the installed unit instead. An unsafe or
+invalid manifest in the unit's home refuses `status`, as it does in the home
+`status` read. The remaining lines (manifest, registry, origins, instance
+health and update) are read from the unit's home, and the origins are the
+unit's own `--allowed-origin` flags. `--json` carries the same facts as
+`staleManifest: { path, removeCommand, unitHome, unitManifest, unitPath }`,
+where `unitManifest` is `present`, `absent`, or `unreadable` (with
+`unitManifestReason`) and `removeCommand` is null when no removal is offered.
+`service start`, `stop`, and `uninstall` from such a home act on nothing,
+exit 1, and name the `--base` that addresses the installed service. When the
+unit's home has no readable manifest, `start` and `stop` there cannot converge
+either, so the refusal instead names the two commands that resolve it:
+`service install --instance=<id>` from this home, which rewrites the unit to
+run from it, or `service uninstall --instance=<id> --base=<unit home>`, which
+removes the installed unit and reports it as uninstalled.
 
 `service start` and `service stop` require the private service manifest that
 `service install` creates; they never infer a service registration from a

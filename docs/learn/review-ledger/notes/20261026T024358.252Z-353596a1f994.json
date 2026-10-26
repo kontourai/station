@@ -1,0 +1,7 @@
+{
+  "revision": "8651db0da140509498d2a0711efc5882a32dcc0b",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed the incoming generated deploy-ledger dependency only: all JSON records satisfy the current schema, and rendering them with scripts/deploy-ledger.mjs exactly reproduces the checked-in Markdown. Preserved the explicitly qualified historical entries, immutable artifact/source/workflow fields and caveats. R4 changes no release record or publishing behavior. This is local schema/projection consistency, not fresh package, delivery, installation or hosted-run verification; no deployment success is inferred for PR #4173.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

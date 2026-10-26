@@ -50,6 +50,12 @@
 
     "scripts/sigstore-trusted-root-snapshot.mjs",
 
+    "src-server/services/plugins/plugin-install-trust-store.ts",
+
+    "src-server/services/plugins/plugin-install-trust-recording.ts",
+
+    "src-server/services/plugins/plugin-install-trust-migration.ts",
+
     "src-ui/src/workspace-panes/requiredSlotRecovery.tsx",
 
     "src-ui/src/workspace-panes/WorkspacePaneFrame.tsx",

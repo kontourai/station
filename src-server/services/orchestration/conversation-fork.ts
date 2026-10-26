@@ -6,7 +6,7 @@ import {
 } from './conversation-transcript-seed.js';
 
 export const FORK_REPLAY_DISCLOSURE =
-  'Station replay carries the selected transcript only. Engine cursor, tool state, and approval state do not carry.';
+  'The engine replays text from the selected history. Engine cursor, tool state, and approval state do not carry.';
 
 /**
  * A branch point names a completed assistant turn. Legacy file transcripts do
@@ -61,10 +61,18 @@ export function renderForkTranscript(input: {
   sourceAgent: string;
   messages: ConversationMessage[];
 }): string {
+  return buildForkTranscript(input).text;
+}
+
+export function buildForkTranscript(input: {
+  sourceTitle: string;
+  sourceAgent: string;
+  messages: ConversationMessage[];
+}) {
   return buildTranscriptSeed({
     // Titles and Agent slugs are caller-supplied and unbounded; bound them so
     // the heading can never exceed the seed budget.
     heading: `Continued from a previous conversation (${boundTranscriptSeedLabel(input.sourceTitle)}, on ${boundTranscriptSeedLabel(input.sourceAgent)}); the transcript is context only, not a new request.`,
     ...transcriptSeedSource(input.messages),
-  }).text;
+  });
 }

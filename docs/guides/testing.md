@@ -13,6 +13,16 @@ rerunning a failed gate to recover its output. Capture limits still apply;
 truncated diagnostics do not establish a complete failure inventory. The JSON
 format does not change readiness requirements or promotion evidence.
 
+For a failed Vitest corpus, the runner prints the child exit status and signal.
+The failed full-regression artifact also retains `receipt.json`, `stdout.log`
+and `stderr.log` in a unique directory for each failed group invocation under
+`vitest-corpus/` (from the runner’s temporary directory). The receipt names that
+invocation, so a later write cannot mix its logs with an older receipt.
+These logs preserve the capture already bounded by the runner, including
+diagnostics before the printed tails; they do not recover bytes lost to an
+output-limit refusal. A receipt reports cancellation and capture truncation
+separately from a test failure.
+
 The [documentation maintenance workflow](documentation.md) and its
 [repository skill](../../.agents/skills/documentation-audit/SKILL.md) apply to
 instructions and diagrams too. Structural gates check named patterns and
@@ -1288,7 +1298,9 @@ not a slug or whose file resolves outside the gallery directory, because for a
 fork PR the artifact is produced by the fork's code. A capture that did not
 complete is reported separately and must not be re-baselined. The check compares
 each PR head against its own baseline and checks combinations again on the
-merge-queue candidate. Gallery is advisory visual evidence, not a required exact-pixel merge gate.
+merge-queue candidate. Exact pixels are advisory visual evidence, not a required exact-pixel merge gate;
+the product assertions below fail the job. Gallery is not a required status
+check in the `main` ruleset, so a red Gallery job does not hold a PR on its own.
 `Main: Health` tracks failed `Nightly: Gallery` capture/comparison integrity;
 intentional pixel changes alone do not open a main incident. Skipping the
 optional API image review does not hide the comparison report.
@@ -1313,6 +1325,91 @@ Two consequences worth stating plainly:
   pin, verify the published tag's OCI index and selected platform manifest and
   config against their content digests. That registry check is separate from
   an actual container/browser run and Gallery pixel review.
+
+#### Gallery product assertions
+
+Every captured screen also runs three product checks against the state it
+photographed, recorded per screen as `uiAudit` in `gallery/capture.json`
+(`tests/helpers/gallery-ui-audit.ts`):
+
+- hit targets (`tests/helpers/hit-target-audit.ts`): controls a clip hides
+  on screen, overlapping targets that both centres can confirm (a pair with
+  a pinned control, in a fixed or sticky layer, counts unless a covering
+  sheet is on top: `aria-modal`, a modal `<dialog>`, or the expanded chat
+  dock. Content behind, or partly under, a covering sheet, including the
+  non-modal expanded chat dock, is cleared; a user can still tap the visible
+  part of such content, which this check accepts. Scroll position is not
+  credited, so content a user could scroll clear of a bar is still reported
+  (conservative by design);
+  controls the UA does not render, inside a closed `<details>`, are
+  skipped; accepted limitation: the sheet test trusts markup, so a bar that
+  carries `aria-modal="true"` or the `chat-dock` class is treated as a
+  sheet), and, at the touch layout (600px wide or less), targets under 44px. Desktop is exempt from
+  the 44px rule: about 1,370 of 1,672 desktop controls measured under 44px
+  when it was introduced, so it would measure the desktop design, not defects;
+- horizontal overflow: the document scrolling sideways, and elements that
+  cross the viewport edge without an on-screen scroller or a narrower clip;
+- blocking (serious/critical) axe violations, through
+  `getBlockingAccessibilityViolations`.
+
+`node scripts/gallery-ui-findings.mjs` judges
+them against `tests/gallery-ui-findings.allowlist.json`, keyed by screen
+name plus a finding identity. The identity names the element by its stable
+anchor (`tests/helpers/stable-anchor.ts`): the nearest `data-testid`, else its
+tag and first stable class, a form control's `type` and `name`, and its
+accessible name (including an associated `<label>`) or role; an element left
+with only its tag is scoped by its nearest classed ancestor. It is not axe's
+shortest-unique selector, which moves when unrelated DOM is added, and digit
+runs and React ids are masked, so no measurement, position, count or
+generated id reaches it. Identical controls share one identity. An unlisted
+finding, an audit that threw, or a missing audit fails. A listed finding that
+no longer occurs never fails: it prints `RESOLVED`, and
+`node scripts/gallery-ui-findings.mjs prune` removes it after a full capture.
+Pass `--screens=` to judge a targeted capture.
+
+Existing screens only shrink. The PR workflow's `allowlist-ceiling` job
+fetches the base commit (from this repository, for forks too), fails when it
+cannot resolve it, and runs that base commit's judge in `growth` mode. An
+entry added for a screen the base already had fails: fix the finding instead
+of listing it. Both screen maps are read as data
+(`tests/gallery-screen-sources.json`), never executed. A screen in the head
+map but not the base map is new coverage, and it may arrive with the findings
+it inherits from shared components listed. A listed screen missing from the
+head map fails, and a change that both removes a base screen and adds one
+fails (`REMOVED SCREEN`): land a rename as a removal, then an addition. Each
+accepted new screen is a `::warning::` annotation on the PR, and its listed
+findings are printed in the run summary. Accepted gap: a rename that keeps a
+stub of the old screen, or a removal and an addition landed as two PRs,
+passes the ceiling; those annotations and the removal's own diff are what
+make it visible to review.
+
+An intended accessible-name change rekeys a name-bearing finding (for
+example axe `label-content-name-mismatch`). The ceiling pairs it as
+`REKEY old → new` when the screen already existed and the rule and anchor
+match once each anchor's trailing name segment is set aside. Each added key
+consumes one removed key of its shape, so a shape never ends with more keys
+than the base had; that one-to-one pairing is the count guard. Each REKEY is a
+`::warning::` annotation on the allowlist file and is counted in the run
+summary's heading; `check` prints `LIKELY REKEY` for the pair. Accepted gap:
+fixing one finding and adding an unrelated defect of the same shape pairs as
+a REKEY, which the annotation puts in front of review. The allowlist may not
+list a key twice. Replace
+the key in the allowlist rather than reverting the copy. Names stay in keys
+because, without them, 143 of 257 entries shared a key when this was measured.
+To add
+a screen: add it to `SCREENS` and the screen map, capture it, run
+`node scripts/gallery-ui-findings.mjs adopt --screens=<name>`, and review the
+listed findings in the PR.
+
+`npm run gate:for` names the gallery screens whose module graph loads each
+changed `.tsx`/`.css` under `src-ui/src` or `packages/*-pane/src`, and prints
+the `--screens=` capture, diff and assertion commands. Coverage is the import
+closure (`scripts/lib/ui-module-graph.mjs`) of each screen's entry modules in
+`tests/gallery-screen-sources.json`; the shell's eager closure counts as every
+screen. A path no screen loads prints "no gallery screen covers this path,
+add one". The capture refuses to start when that map and `SCREENS` disagree.
+Loading a module does not prove it renders on that screen. UI PRs attach the
+before/after PNGs they inspected.
 
 ### Region grid parity (`scripts/region-grid-parity.mjs`)
 

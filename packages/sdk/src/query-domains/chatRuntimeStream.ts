@@ -1,8 +1,10 @@
 import { FOREGROUND_MESSAGE_INDETERMINATE_CODE } from '@kontourai/station-contracts/orchestration';
 import { readWithStallWatchdog } from '@kontourai/station-contracts/stall-watchdog';
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { StationHttpError } from '../client/api-error-message';
 import { ChatHttpError } from '../client/chatHttpError';
+import { rememberSentTurnKey } from '../client/sent-turn-key';
 import { isStationAnswer } from '../client/station-envelope';
 import { resolveApiBase } from '../query-core';
 import type {
@@ -203,8 +205,12 @@ export function mapConversationMessages(
 export function buildConversationTurnInput(
   content: string,
   attachments?: ChatAttachmentInput[],
+  clientTurnId?: string,
 ) {
-  if (!attachments || attachments.length === 0) {
+  if (
+    clientTurnId === undefined &&
+    (!attachments || attachments.length === 0)
+  ) {
     return content;
   }
 
@@ -219,7 +225,7 @@ export function buildConversationTurnInput(
     parts.push({ type: 'text', text: content });
   }
 
-  for (const attachment of attachments) {
+  for (const attachment of attachments ?? []) {
     parts.push({
       type: 'file',
       url: attachment.data,
@@ -229,7 +235,7 @@ export function buildConversationTurnInput(
 
   return [
     {
-      id: `msg-${Date.now()}`,
+      id: `msg-${clientTurnId ?? Date.now()}`,
       role: 'user',
       parts,
     },
@@ -244,6 +250,7 @@ export function buildConversationTurnPayload(input: {
   attachments?: ChatAttachmentInput[];
   projectSlug?: string;
   chatOptions?: Record<string, unknown>;
+  clientTurnId?: string;
   /**
    * Ambient, model-facing context (timezone, geolocation, …) delivered
    * out-of-band (#685). The server composes it into the model input only;
@@ -252,10 +259,17 @@ export function buildConversationTurnPayload(input: {
   ambientContext?: string;
 }) {
   return {
-    input: buildConversationTurnInput(input.content, input.attachments),
+    input: buildConversationTurnInput(
+      input.content,
+      input.attachments,
+      input.clientTurnId,
+    ),
     ...(input.ambientContext ? { ambientContext: input.ambientContext } : {}),
     options: {
       ...(input.chatOptions ?? {}),
+      ...(input.clientTurnId === undefined
+        ? {}
+        : { clientTurnId: input.clientTurnId }),
       ...(input.conversationId ? { conversationId: input.conversationId } : {}),
       ...(input.title ? { title: input.title } : {}),
       ...(input.model ? { model: input.model } : {}),
@@ -311,8 +325,8 @@ export const CHAT_STREAM_STALL_TIMEOUT_MS = 45_000;
 /**
  * Thrown when the stream has gone silent for `CHAT_STREAM_STALL_TIMEOUT_MS`.
  * Deliberately never thrown for a user/client abort (see the `aborted` /
- * `input.signal?.aborted` checks below) — those still resolve to `{}` the
- * same as before this change — so this can only mean the transport died
+ * `input.signal?.aborted` checks below) — those resolve with the turn key —
+ * so this can only mean the transport died
  * quietly with the turn still in flight. Callers translate this into a
  * clear "connection stalled" message with Retry instead of leaving the turn
  * spinning forever (`translateChatError`'s stall pattern).
@@ -328,7 +342,7 @@ export class ChatStreamStallError extends Error {
   }
 }
 
-export async function streamConversationTurn(input: {
+type ConversationTurnInput = {
   agentSlug: string;
   conversationId?: string;
   content: string;
@@ -343,8 +357,41 @@ export async function streamConversationTurn(input: {
   /** Ambient, model-facing context delivered out-of-band (#685). */
   ambientContext?: string;
   apiBase?: string;
-}): Promise<{ conversationId?: string; finishReason?: string }> {
-  const payload = buildConversationTurnPayload(input);
+};
+
+type ConversationTurnResult = {
+  clientTurnId: string;
+  conversationId?: string;
+  finishReason?: string;
+};
+
+export async function streamConversationTurn(
+  input: ConversationTurnInput,
+): Promise<ConversationTurnResult> {
+  const suppliedKey = input.chatOptions?.clientTurnId;
+  if (
+    suppliedKey !== undefined &&
+    (typeof suppliedKey !== 'string' ||
+      !suppliedKey.trim() ||
+      suppliedKey.length > 200)
+  )
+    throw new TypeError(
+      'clientTurnId must be a non-empty string of at most 200 characters',
+    );
+  const clientTurnId = suppliedKey ?? randomCorrelationId();
+  try {
+    return await streamKeyedConversationTurn(input, clientTurnId);
+  } catch (error) {
+    rememberSentTurnKey(error, clientTurnId);
+    throw error;
+  }
+}
+
+async function streamKeyedConversationTurn(
+  input: ConversationTurnInput,
+  clientTurnId: string,
+): Promise<ConversationTurnResult> {
+  const payload = buildConversationTurnPayload({ ...input, clientTurnId });
   const headers = buildAbortAwareHeaders(input.signal);
   const resolvedApiBase = await resolveApiBase(input.apiBase);
   const response = await authenticatedFetch(
@@ -446,9 +493,9 @@ export async function streamConversationTurn(input: {
     if (
       aborted ||
       input.signal?.aborted ||
-      (error as Error).name === 'AbortError'
+      (error instanceof Error && error.name === 'AbortError')
     ) {
-      return {};
+      return { clientTurnId };
     }
     if (error instanceof ChatStreamStallError) {
       // Best-effort: stop consuming a stream that's already gone silent.
@@ -465,7 +512,7 @@ export async function streamConversationTurn(input: {
     } catch {}
   }
 
-  return { conversationId, finishReason };
+  return { clientTurnId, conversationId, finishReason };
 }
 
 import { authenticatedFetch } from '../client/http';
