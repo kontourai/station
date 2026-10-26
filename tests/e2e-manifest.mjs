@@ -327,11 +327,6 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
       journey:
         'Chat inventory item drill-down at 390x844: a real authored input read back and measured on a phone',
     },
-    {
-      path: 'tests/task-review.spec.ts',
-      journey:
-        'Credential-free Task review comment, Outdated, Send refusal without a live lead, resolve/reopen, and real Chromium capture/pin; live Claude reply stays opt-in.',
-    },
   ],
 };
 
@@ -1794,7 +1789,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Selected by the required PR browser-smoke contract in default credential-free mode: isolated Station comment, relocation, Send refusal, resolve/reopen and real Chromium capture/pin journeys. A separate live-Claude text-reply/commit-verification test is explicitly skipped as NOT_QUALIFIED unless STATION_REVIEW_USE_CLAUDE=1 and signed-in Claude are supplied; there is no ACP fallback. Missing Chromium is explicitly NOT_VERIFIED.',
+      'Credential-free isolated Station comment, relocation, Send refusal, resolve/reopen and real Chromium capture/pin journeys. Required PR-smoke promotion awaits qualification of the room revision-publication prerequisite and three clean lane runs under the existing budget. A separate live-Claude text-reply/commit-verification test is explicitly skipped as NOT_QUALIFIED unless STATION_REVIEW_USE_CLAUDE=1 and signed-in Claude are supplied; there is no ACP fallback. Missing Chromium is explicitly NOT_VERIFIED.',
     exceptions: [],
   },
   {
