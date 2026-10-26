@@ -593,6 +593,7 @@
     "packages/contracts/src/ensemble.ts",
 
     "packages/sdk/src/client/cli-session-groups.ts",
+
     "src-server/services/projects/task-browser-capture.ts",
 
     "src-server/routes/orchestration/task-review-captures.ts",
