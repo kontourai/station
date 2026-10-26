@@ -920,7 +920,7 @@
 }
 /* A multi-line text argument (a file body) reads like a command block. */
 .tool-call__code--text {
-  font-family: var(--font-mono);
+  font-family: var(--k-font-mono);
   font-size: 0.85em;
 }
 /* Focus moves to the loaded content when its button unmounts; a pointer
