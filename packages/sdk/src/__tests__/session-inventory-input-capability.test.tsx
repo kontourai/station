@@ -199,7 +199,7 @@ describe('session inventory input read against hosts of different versions', () 
     client.clear();
   });
 
-  test('Check again on a host that is still old shows a pending check, then says it is still old', async () => {
+  test('Check again on a host that still lacks the read shows a pending check, then says so', async () => {
     const host = station(HOST_WITHOUT_INPUT_READ);
     const { observer, client } = mountInput();
     await waitFor(() =>

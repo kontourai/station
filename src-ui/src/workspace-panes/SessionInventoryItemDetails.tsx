@@ -120,18 +120,16 @@ function InputDetails({
     requestScope,
   );
   if (query.hostSupport === 'unsupported') {
-    const stillOld = query.hostRecheck === 'still-unsupported';
+    // Unsupported is not proof of an old host: a hosted deployment never
+    // serves this read (#4177). The recheck result says only what it saw.
+    const stillUnsupported = query.hostRecheck === 'still-unsupported';
     return (
       <ReadFailure
-        title={
-          stillOld
-            ? 'Station is still on an older version'
-            : 'Update Station to see this input'
-        }
+        title="This Station can't show input details"
         description={
-          stillOld
-            ? "Station checked the host again just now, and it still runs a version that can't show input details. Update Station on the host and check again, or open the session to read the message in the conversation."
-            : "The Station host this app is connected to runs an older version that can't show input details. Update Station on the host and check again, or open the session to read the message in the conversation."
+          stillUnsupported
+            ? "Checked again just now: the Station host this app is connected to still doesn't offer input details. If it runs an older version, update Station on the host and check again. You can also open the session to read the message in the conversation."
+            : "The Station host this app is connected to doesn't offer input details. It may run an older version: update Station on the host and check again. You can also open the session to read the message in the conversation."
         }
         retry={{
           label: 'Check again',

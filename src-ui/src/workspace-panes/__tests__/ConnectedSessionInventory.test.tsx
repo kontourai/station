@@ -415,8 +415,10 @@ describe('ConnectedSessionInventory', () => {
     const recheckHost = vi.fn();
     openInputDetails({ ...UNSUPPORTED_HOST_INPUT, recheckHost });
     const failure = screen.getByRole('alert');
-    expect(failure.textContent).toContain('Update Station to see this input');
-    expect(failure.textContent).toContain('Update Station on the host');
+    expect(failure.textContent).toContain(
+      "This Station can't show input details",
+    );
+    expect(failure.textContent).toContain('update Station on the host');
     // Not a retry of the read: a re-ask of the host, for after it updates.
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     expect(
@@ -427,7 +429,7 @@ describe('ConnectedSessionInventory', () => {
     expect(screen.queryByText('Recorded origin')).toBeNull();
   });
 
-  test('Check again shows a pending check, and a host that is still old says so', () => {
+  test('Check again shows a pending check, then says the host still lacks input details', () => {
     const view = openInputDetails({
       ...UNSUPPORTED_HOST_INPUT,
       recheckHost: vi.fn(),
@@ -447,9 +449,14 @@ describe('ConnectedSessionInventory', () => {
     view.rerender(<ConnectedSessionInventory sessionId="session" />);
     const failure = screen.getByRole('alert');
     expect(failure.textContent).toContain(
-      'Station is still on an older version',
+      "This Station can't show input details",
     );
-    expect(failure.textContent).toContain('checked the host again just now');
+    expect(failure.textContent).toContain(
+      "Checked again just now: the Station host this app is connected to still doesn't offer input details.",
+    );
+    // A hosted deployment never serves the read; the result must not call
+    // the host outdated.
+    expect(failure.textContent).not.toMatch(/still on an older version/i);
     const again = screen.getByRole('button', { name: 'Check again' });
     expect(again.getAttribute('aria-busy')).toBeNull();
     expect((again as HTMLButtonElement).disabled).toBe(false);

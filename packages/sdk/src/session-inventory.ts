@@ -273,8 +273,9 @@ export async function fetchSessionInventoryInputCapability(
 /**
  * - `checking`: the host's handshake has not answered yet; no read is sent.
  * - `supported`: the host advertises the read.
- * - `unsupported`: the host answered without it. It predates the read, so
- *   every attempt would 404 like a denial; none is sent.
+ * - `unsupported`: the host answered without it. It predates the read or is
+ *   a deployment that doesn't serve it (hosted, #4177), so every attempt
+ *   would 404 like a denial; none is sent.
  * - `unknown`: the handshake could not be read. The read is still attempted;
  *   its own outcome is the only evidence left.
  */
@@ -289,7 +290,8 @@ export type SessionInventoryInputHostSupport =
  * - `idle`: not rechecked, or the recheck found the host now serves the read
  *   (or could not tell, so the read is attempted and reports for itself).
  * - `checking`: the host is being asked again.
- * - `still-unsupported`: it answered, and still predates the read.
+ * - `still-unsupported`: it answered, and still does not serve the read
+ *   (an older host, or a deployment that never serves it).
  */
 export type SessionInventoryInputHostRecheck =
   | 'idle'
@@ -361,7 +363,7 @@ export function useSessionInventoryInput(
   // neighbours, so a host updated while the app stays open would keep reading
   // as unsupported. Rechecking drops this host's cached handshake and asks
   // again; a supported answer then enables the read. `hostRecheck` reports
-  // the press itself, so a host that is still old says so instead of the
+  // the press itself, so a host that still lacks it says so instead of the
   // screen staying exactly as it was. It is keyed to the host it asked.
   const { refetch: refetchCapability } = capability;
   const [recheck, setRecheck] = useState<{
