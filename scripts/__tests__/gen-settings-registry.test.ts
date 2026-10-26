@@ -303,6 +303,10 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'personal-knowledge-store': 'station',
   // #3557: groups and personal access tokens are stored on the Station.
   people: 'station',
+  // Settings → About: build facts and links, nothing written.
+  'app-version': 'informational',
+  'open-source-licenses': 'informational',
+  legal: 'informational',
 };
 
 describe('published write authority', () => {

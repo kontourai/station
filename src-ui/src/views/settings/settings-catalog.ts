@@ -438,25 +438,6 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'diagnostics',
     keywords: ['health logs download'],
   },
-  // ── About ───────────────────────────────────────────────────────────────
-  {
-    id: 'app-version',
-    title: 'Version',
-    section: 'about',
-    keywords: ['build', 'release', 'channel', 'commit'],
-  },
-  {
-    id: 'open-source-licenses',
-    title: 'Open source licenses',
-    section: 'about',
-    keywords: ['third party', 'notices', 'attribution', 'oss'],
-  },
-  {
-    id: 'legal',
-    title: 'Legal',
-    section: 'about',
-    keywords: ['privacy policy', 'license', 'support', 'terms'],
-  },
   // ── Permissions (#2182) ─────────────────────────────────────────────────
   // What agents may do without asking. `approval-guardian` is an always-on
   // screener rather than a fallback, which is why the Control group's caption
@@ -772,6 +753,25 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'My knowledge store',
     section: 'knowledge',
     keywords: ['personal project obsidian adapter root vault'],
+  },
+  // ── About ── appended last so earlier rows keep their order.
+  {
+    id: 'app-version',
+    title: 'Version',
+    section: 'about',
+    keywords: ['build', 'release', 'channel', 'commit'],
+  },
+  {
+    id: 'open-source-licenses',
+    title: 'Open source licenses',
+    section: 'about',
+    keywords: ['third party', 'notices', 'attribution', 'oss'],
+  },
+  {
+    id: 'legal',
+    title: 'Legal',
+    section: 'about',
+    keywords: ['privacy policy', 'license', 'support', 'terms'],
   },
 ] as const satisfies readonly Omit<SettingsCatalogEntry, 'scope'>[];
 
