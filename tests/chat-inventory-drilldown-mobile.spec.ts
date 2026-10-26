@@ -87,6 +87,26 @@ function overflowingElements(page: Page, selector: string) {
   );
 }
 
+/**
+ * #4176: the reader names itself once, and its header never sits over its
+ * content: the body is the scroll box under the header, and at rest the
+ * first row of the inventory (its description and Scope) is wholly inside it.
+ */
+async function expectOneTitleAndNoOverlap(reader: Locator) {
+  await expect(reader.getByText('Chat inventory', { exact: true })).toHaveCount(
+    1,
+  );
+  const body = reader.locator('.station-dialog__body');
+  await body.evaluate((node) => {
+    node.scrollTop = 0;
+  });
+  const headerBox = await box(reader.locator('.station-dialog__header'));
+  const bodyBox = await box(body);
+  expect(headerBox.y + headerBox.height).toBeLessThanOrEqual(bodyBox.y + 0.5);
+  const firstRow = await box(reader.locator('.session-inventory__header'));
+  expect(firstRow.y).toBeGreaterThanOrEqual(bodyBox.y - 0.5);
+}
+
 test.describe('Chat inventory item drill-down on a phone', () => {
   let fixtureServer: Server | null = null;
   let suspended: LlmConnection[] = [];
@@ -285,6 +305,14 @@ test.describe('Chat inventory item drill-down on a phone', () => {
     await reader.screenshot({
       path: testInfo.outputPath(`inventory-drilldown-${WIDTH}.png`),
     });
+
+    // #4176: one title per surface. The dialog chrome names the reader, and
+    // the inventory inside it does not repeat that name under it.
+    await expectOneTitleAndNoOverlap(reader);
+    // The same reader at desktop width still carries one title.
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(reader).toBeVisible();
+    await expectOneTitleAndNoOverlap(reader);
     browserHealth.assertHealthy();
   });
 });
