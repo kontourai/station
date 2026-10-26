@@ -1020,13 +1020,10 @@ export async function acquireFileMutationLockAsync(
   lock: string,
   options: FileMutationLockOptions = {},
 ): Promise<() => Promise<void>> {
-  const owned = await runLockGenAsync(acquireGen(lock, options), options);
+  const lease = await acquireFileMutationLeaseAsync(lock, options);
   return async () => {
     try {
-      await runLockGenAsync(
-        guardedDeleteLockGen(lock, owned, options),
-        options,
-      );
+      await lease.release();
     } catch {}
   };
 }
