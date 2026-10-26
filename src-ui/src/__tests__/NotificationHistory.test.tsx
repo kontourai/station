@@ -247,7 +247,7 @@ describe('NotificationHistory', () => {
 
     const headings = screen.getAllByRole('heading', { level: 2 });
     // archive#3222: the section names the badge's own number, so a reader
-    // arriving from "Notifications (1 need attention)" is shown one row and
+    // arriving from "Notifications, 1 need attention" is shown one row and
     // told that is all of them.
     expect(headings.map((heading) => heading.textContent?.trim())).toEqual([
       'Needs attention (1)',
