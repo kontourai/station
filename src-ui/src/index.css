@@ -1299,7 +1299,7 @@ button:hover {
   display: block;
   inline-size: 36px;
   block-size: 4px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--k-radius-sm);
   background: var(--k-text-muted);
   opacity: 0.5;
 }
