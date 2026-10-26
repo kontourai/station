@@ -5,8 +5,8 @@ import {
   execFileSync,
   spawn,
 } from 'node:child_process';
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { basename, resolve } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
@@ -651,8 +651,10 @@ export function emitResult(result, { diagnosticDirectory } = {}) {
       `[vitest-corpus] ${result.name} stderr tail:\n${tail(result.stderr ?? '') || '<empty>'}\n`,
     );
     if (diagnosticDirectory) {
-      const directory = resolve(diagnosticDirectory, result.name);
-      mkdirSync(directory, { recursive: true });
+      mkdirSync(diagnosticDirectory, { recursive: true });
+      const directory = mkdtempSync(
+        resolve(diagnosticDirectory, `${result.name}-`),
+      );
       writeFileSync(resolve(directory, 'stdout.log'), result.stdout ?? '');
       writeFileSync(resolve(directory, 'stderr.log'), result.stderr ?? '');
       writeFileSync(
@@ -660,6 +662,7 @@ export function emitResult(result, { diagnosticDirectory } = {}) {
         JSON.stringify(
           {
             schemaVersion: 1,
+            invocationId: basename(directory),
             group: result.name,
             passed: false,
             status: result.status ?? null,

@@ -1,5 +1,11 @@
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
@@ -364,11 +370,17 @@ process.stdout.write('EARLY_PREVIEW_DIAGNOSTIC\\n' + noise, () => {
   });
 });`,
       );
-      const result = await runVitestGroup(
-        VITEST_CORPUS_GROUPS[1],
-        ['early.test.ts'],
-        { root },
-      );
+      const runChild = () =>
+        process.platform === 'win32'
+          ? runWindowsSerializedCorpus({
+              root,
+              groupName: 'process-heavy',
+              groups: { ...GROUPS, processHeavy: ['early.test.ts'] },
+            })
+          : runVitestGroup(VITEST_CORPUS_GROUPS[1], ['early.test.ts'], {
+              root,
+            });
+      const result = await runChild();
       expect(result.passed).toBe(status === 0);
       expect(result.status).toBe(status);
       const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
@@ -384,37 +396,29 @@ process.stdout.write('EARLY_PREVIEW_DIAGNOSTIC\\n' + noise, () => {
           return;
         }
         expect(
-          existsSync(
-            resolve(diagnosticDirectory, 'process-heavy/receipt.json'),
-          ),
+          existsSync(diagnosticDirectory),
           'a failed corpus must retain its terminal receipt',
         ).toBe(true);
+        const [invocationId] = readdirSync(diagnosticDirectory);
+        const directory = resolve(diagnosticDirectory, invocationId);
         const report = JSON.parse(
-          readFileSync(
-            resolve(diagnosticDirectory, 'process-heavy/receipt.json'),
-            'utf8',
-          ),
+          readFileSync(resolve(directory, 'receipt.json'), 'utf8'),
         );
         expect(report).toMatchObject({
           schemaVersion: 1,
+          invocationId,
           group: 'process-heavy',
           passed: false,
           status,
           signal,
           outputTruncated: false,
         });
-        expect(
-          readFileSync(
-            resolve(diagnosticDirectory, 'process-heavy/stdout.log'),
-            'utf8',
-          ),
-        ).toBe(result.stdout);
-        expect(
-          readFileSync(
-            resolve(diagnosticDirectory, 'process-heavy/stderr.log'),
-            'utf8',
-          ),
-        ).toBe(result.stderr);
+        expect(readFileSync(resolve(directory, 'stdout.log'), 'utf8')).toBe(
+          result.stdout,
+        );
+        expect(readFileSync(resolve(directory, 'stderr.log'), 'utf8')).toBe(
+          result.stderr,
+        );
         expect(result.stdout).toContain('EARLY_PREVIEW_DIAGNOSTIC');
         expect(result.stderr).toContain('EARLY_SUITE_FAILURE');
         const emitted = stderr.mock.calls.flat().join('');
@@ -424,6 +428,22 @@ process.stdout.write('EARLY_PREVIEW_DIAGNOSTIC\\n' + noise, () => {
         expect(emitted).toContain('FAIL early.test.ts');
         expect(stdout.mock.calls.flat().join('')).not.toContain(
           'EARLY_PREVIEW_DIAGNOSTIC',
+        );
+        const next = await runChild();
+        emitResult(next, { diagnosticDirectory });
+        const invocations = readdirSync(diagnosticDirectory);
+        expect(invocations).toHaveLength(2);
+        const nextId = invocations.find((id) => id !== invocationId)!;
+        expect(
+          JSON.parse(
+            readFileSync(
+              resolve(diagnosticDirectory, nextId, 'receipt.json'),
+              'utf8',
+            ),
+          ),
+        ).toMatchObject({ invocationId: nextId, status, signal });
+        expect(readFileSync(resolve(directory, 'stdout.log'), 'utf8')).toBe(
+          result.stdout,
         );
       } finally {
         stdout.mockRestore();
