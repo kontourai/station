@@ -3815,19 +3815,22 @@ are also exported from `@kontourai/station-sdk/client`.
 They reopen the exact authored prompt and attachment metadata through
 `GET /api/orchestration/sessions/:sessionId/inputs/:eventId?turnId=...`.
 The route uses the existing input owner, refuses mismatched identities or
-revoked authority, caps its JSON result at 256 KiB, and sends private/no-store.
+revoked authority, caps the serialized data object at 256 KiB, and sends private/no-store.
 Hosted mode is unavailable until a tenant-scoped input owner exists. The hook
 partitions by captured authority, reauthorizes when mounted and tombstones the
 selected input on access refusal. It does not hydrate a whole transcript.
-Before reading, the hook checks the host's public handshake for the
+For automatic reads, the hook checks the host's public handshake for the
 `sessionInventoryInputRead` capability (`fetchSessionInventoryInputCapability`)
 and returns `hostSupport`: `checking`, `supported`, `unsupported` (an older host
-without the route; no read is sent) or `unknown` (the handshake could not be
-read; the read is still attempted). `recheckHost()` drops that host's cached
-handshake and asks again, for after the host is updated. A read whose prompt is
-empty or whitespace with no attachments is refused (status 200), by the same
-`isAuthoredInputContent` rule (`@kontourai/station-shared/authored-input`) the
-server uses to list and read inputs.
+without the route; automatic reads are disabled) or `unknown` (the handshake
+could not be read; an automatic read is still attempted). An explicit
+`query.refetch()` can call the route even when automatic reads are disabled.
+Use `recheckHost()` after a host update to drop its cached handshake and ask
+again. The server treats an empty or whitespace-only prompt without attachments
+as not found, using `isAuthoredInputContent`
+(`@kontourai/station-shared/authored-input`). The SDK also refuses malformed
+successful responses, including those with no authored content, while retaining
+the observed HTTP status (usually 200).
 
 - `useSessionInventoryQuery` returns the same captured current-answer Basis
   projection when that scope is selected. Consumers render its standing from
@@ -5532,10 +5535,13 @@ The React-free client entry exports `getAccountPreferences(apiBase, options)`
 and `patchAccountPreferences(apiBase, patch, options, onlyMissing?)` for
 `/api/me/preferences`. Use captured request authority in `options.requestScope`.
 The server derives the owner; callers never supply an account or tenant id.
-The returned `revision` is supplied as `If-Match` when replacing model-picker
-preferences. A stale composite update returns 409. Omitted fields stay unchanged; null resets a field. Engine defaults merge by
-engine, and null for one engine removes only that engine's default. Import uses
-`onlyMissing: true` (the fourth argument) to fill unset fields atomically.
+Send the returned `revision` as `If-Match` when replacing
+`modelPickerPreferences`; a stale replacement returns 409. Omitted fields stay
+unchanged and null resets a field. `interactiveApprovalModes` merges by supported
+engine (`codex`, `claude`, `muse`); null removes only that engine's mode. Import
+passes `onlyMissing: true` as the fourth argument to fill absent fields under
+each backing document's lock. Main and appearance files are updated separately;
+a patch spanning them is not one atomic transaction.
 
 These preferences follow one person across devices connected to the same
 Station. They grant no execution permissions and do not provide cross-Station
