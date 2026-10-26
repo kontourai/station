@@ -1,22 +1,12 @@
-/* Settings → About: app version, open source notices and legal links. */
+/* Settings → About. Row spacing comes from PageRow; only the list styles live here. */
 
 .about__links,
 .about__legal {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--k-space-2);
-  margin: var(--k-space-2) 0 0;
-}
-
-.about__legal {
-  flex-direction: column;
+  gap: var(--k-space-2) var(--k-space-4);
   padding: 0;
   list-style: none;
-}
-
-.about__legal a,
-.about__license-source a {
-  color: var(--k-action);
 }
 
 .about__legal a {
@@ -26,8 +16,9 @@
   font-size: var(--k-text-md);
 }
 
-.about__licenses {
-  margin-top: var(--k-space-2);
+.about__legal a,
+.about__license-source a {
+  color: var(--k-action);
 }
 
 .about__licenses-filter {

@@ -81,7 +81,7 @@ function OpenSourceLicenses() {
   return (
     <PageRow
       {...settingsRow('open-source-licenses')}
-      description="Station is built on open source software. These are the packages included in this app, with the license each one is used under."
+      description="Packages bundled in this app and their licenses."
     >
       <DisclosureToggle
         expanded={expanded}
@@ -101,7 +101,7 @@ function OpenSourceLicenses() {
             <ErrorState
               variant="compact"
               title="License list unavailable"
-              description="This build did not include its license list. Release builds always include it."
+              description="Only release builds include it."
               action={
                 <button
                   type="button"
@@ -118,7 +118,7 @@ function OpenSourceLicenses() {
               <input
                 type="search"
                 className="about__licenses-filter"
-                placeholder="Filter by package or license"
+                placeholder="Filter packages"
                 aria-label="Filter open source packages"
                 value={filter}
                 onChange={(event) => setFilter(event.target.value)}
@@ -154,8 +154,7 @@ function OpenSourceLicenses() {
                           </pre>
                         ) : (
                           <p className="settings__field-hint">
-                            This package does not ship a license file; it
-                            declares {entry.license} in its manifest.
+                            No license file included.
                           </p>
                         )}
                       </details>
@@ -171,11 +170,7 @@ function OpenSourceLicenses() {
   );
 }
 
-/**
- * Settings → About: what this installed app is and the notices a store
- * release must carry. Everything here is local to the app build; nothing is
- * read from the connected Station.
- */
+/** App version, open source notices and legal links. Local to this build. */
 export function AboutSection({
   onOpenSection,
 }: {
@@ -190,7 +185,7 @@ export function AboutSection({
         description={
           verifiedBuildLabel
             ? `${platform.productName ?? 'Station'} ${buildInfo.version}${channel ? ` · ${channel}` : ''} · commit ${buildInfo.commit}`
-            : 'Development build: no release version is stamped on it.'
+            : 'Development build'
         }
       >
         {platform.isTauri && (
@@ -205,7 +200,7 @@ export function AboutSection({
             className="settings__secondary-btn"
             onClick={() => onOpenSection('system')}
           >
-            Updates and build details
+            Build details
           </button>
           <button
             type="button"
@@ -217,7 +212,7 @@ export function AboutSection({
         </div>
       </PageRow>
       <OpenSourceLicenses />
-      <PageRow {...settingsRow('legal')} description="Station by Kontour AI.">
+      <PageRow {...settingsRow('legal')}>
         <ul className="about__legal" aria-label="Legal links">
           <li>
             <ExternalLink href={PRIVACY_POLICY_URL}>
@@ -226,7 +221,7 @@ export function AboutSection({
           </li>
           <li>
             <ExternalLink href={STATION_LICENSE_URL}>
-              Station license (Apache 2.0)
+              License (Apache 2.0)
             </ExternalLink>
           </li>
           <li>

@@ -73,9 +73,7 @@ describe('Settings → About', () => {
       expect.anything(),
     );
     expect(screen.getByText('MIT License — react')).toBeTruthy();
-    expect(
-      screen.getByText(/does not ship a license file; it declares ISC/),
-    ).toBeTruthy();
+    expect(screen.getByText('No license file included.')).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('Filter open source packages'), {
       target: { value: 'isc' },

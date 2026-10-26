@@ -373,7 +373,7 @@
    `#section-<id>` anchor, its focus outline and its scroll margin stay on the
    outer element, so deep links land and pulse exactly where they did. */
 .settings__section {
-  margin-bottom: var(--k-space-5);
+  margin-bottom: var(--k-space-6);
 }
 .settings__section.page-section {
   overflow: visible;
