@@ -422,6 +422,44 @@ export function resolveBoundedApiProviderContract(
   str(id, 'invalid_contract');
   const record = owner.read(id);
   if (!record) fail('untrusted_contract');
+  const { facts, revision, evidenceDigest } = readQualifiedFacts(
+    id,
+    expected,
+    record,
+    nowMs,
+  );
+  const handle = Object.freeze({
+    id,
+    revision,
+    contractSha256: record.contractSha256,
+    evidenceDigest,
+  });
+  contracts.set(handle, {
+    facts,
+    owner,
+    registryDigest: evidenceDigest,
+    qualification: {
+      serializedContract: record.serializedContract,
+      contractSha256: record.contractSha256,
+      authorityKind: record.authorityKind,
+      authorityRef: record.authorityRef,
+      evidenceRevision: record.evidenceRevision,
+      sourceSha256s: [...record.sourceSha256s],
+      validFromMs: record.validFromMs,
+      expiresAtMs: record.expiresAtMs,
+    },
+  });
+  return handle;
+}
+
+function readQualifiedFacts(
+  id: string,
+  expected: Readonly<BoundedApiProviderBinding>,
+  record: NonNullable<ReturnType<BoundedApiQualificationRegistryOwner['read']>>,
+  nowMs: number,
+) {
+  integer(nowMs, 'invalid_contract');
+  str(id, 'invalid_contract');
   digest(record.contractSha256, 'untrusted_contract');
   if (record.authorityKind !== 'provider-public-contract')
     fail('untrusted_contract');
@@ -635,28 +673,7 @@ export function resolveBoundedApiProviderContract(
     expiresAt: record.expiresAtMs,
   };
   const evidenceDigest = registryDigest(record);
-  const handle = Object.freeze({
-    id,
-    revision,
-    contractSha256: record.contractSha256,
-    evidenceDigest,
-  });
-  contracts.set(handle, {
-    facts,
-    owner,
-    registryDigest: evidenceDigest,
-    qualification: {
-      serializedContract: record.serializedContract,
-      contractSha256: record.contractSha256,
-      authorityKind: record.authorityKind,
-      authorityRef: record.authorityRef,
-      evidenceRevision: record.evidenceRevision,
-      sourceSha256s: [...record.sourceSha256s],
-      validFromMs: record.validFromMs,
-      expiresAtMs: record.expiresAtMs,
-    },
-  });
-  return handle;
+  return { facts, revision, evidenceDigest };
 }
 
 function current(
@@ -697,6 +714,157 @@ export function captureBoundedApiHistoricalPricing(
   });
   if (Buffer.byteLength(serialized, 'utf8') > 128 * 1024) fail('usage_unknown');
   return serialized;
+}
+
+/** Re-audits caller-authenticated private evidence; this does not authenticate its provenance
+ * or register a contract/quote for execution. Current registry state is deliberately unused. */
+export function priceBoundedApiHistoricalRawUsage(
+  historicalPricingJson: string,
+  expectedQuote: BoundedApiAttemptQuote,
+  completeResponseJson: string,
+) {
+  try {
+    const historical = closed(
+      parse(historicalPricingJson, 128 * 1024, 'usage_unknown'),
+      ['version', 'qualification', 'pricedAtMs', 'quote', 'thinkingDisabled'],
+      [],
+      'usage_unknown',
+    );
+    if (
+      historical.version !== 1 ||
+      typeof historical.thinkingDisabled !== 'boolean'
+    )
+      fail('usage_unknown');
+    const rawQuote = closed(
+      historical.quote,
+      [
+        'contractId',
+        'contractRevision',
+        'contractSha256',
+        'evidenceDigest',
+        'wireSha256',
+        'inputUpperBoundTokens',
+        'outputUpperBoundTokens',
+        'costMicros',
+        'currency',
+      ],
+      [],
+      'usage_unknown',
+    );
+    if (
+      canonical(rawQuote) !==
+        canonical(
+          parse(JSON.stringify(expectedQuote), 8192, 'usage_unknown'),
+        ) ||
+      rawQuote.currency !== 'USD'
+    )
+      fail('usage_unknown');
+    const quote: BoundedApiAttemptQuote = {
+      contractId: str(rawQuote.contractId, 'usage_unknown'),
+      contractRevision: str(rawQuote.contractRevision, 'usage_unknown'),
+      contractSha256: digest(rawQuote.contractSha256, 'usage_unknown'),
+      evidenceDigest: digest(rawQuote.evidenceDigest, 'usage_unknown'),
+      wireSha256: digest(rawQuote.wireSha256, 'usage_unknown'),
+      inputUpperBoundTokens: integer(
+        rawQuote.inputUpperBoundTokens,
+        'usage_unknown',
+      ),
+      outputUpperBoundTokens: integer(
+        rawQuote.outputUpperBoundTokens,
+        'usage_unknown',
+      ),
+      costMicros: integer(rawQuote.costMicros, 'usage_unknown'),
+      currency: 'USD',
+    };
+    const rawRecord = closed(
+      historical.qualification,
+      [
+        'serializedContract',
+        'contractSha256',
+        'authorityKind',
+        'authorityRef',
+        'evidenceRevision',
+        'sourceSha256s',
+        'validFromMs',
+        'expiresAtMs',
+      ],
+      [],
+      'usage_unknown',
+    );
+    if (
+      typeof rawRecord.serializedContract !== 'string' ||
+      rawRecord.authorityKind !== 'provider-public-contract'
+    )
+      fail('usage_unknown');
+    const record: NonNullable<
+      ReturnType<BoundedApiQualificationRegistryOwner['read']>
+    > = {
+      serializedContract: rawRecord.serializedContract,
+      contractSha256: digest(rawRecord.contractSha256, 'usage_unknown'),
+      authorityKind: rawRecord.authorityKind,
+      authorityRef: str(rawRecord.authorityRef, 'usage_unknown'),
+      evidenceRevision: str(rawRecord.evidenceRevision, 'usage_unknown'),
+      sourceSha256s: list(rawRecord.sourceSha256s, 'usage_unknown', 1, 16).map(
+        (value) => digest(value, 'usage_unknown'),
+      ),
+      validFromMs: integer(rawRecord.validFromMs, 'usage_unknown'),
+      expiresAtMs: integer(rawRecord.expiresAtMs, 'usage_unknown'),
+    };
+    const serialized = closed(
+      parse(record.serializedContract, 65536, 'usage_unknown'),
+      ['schema', 'id', 'revision', 'binding', 'evidence', 'limits', 'tariff'],
+      [],
+      'usage_unknown',
+    );
+    const rawBinding = closed(
+      serialized.binding,
+      BINDING_KEYS,
+      [],
+      'usage_unknown',
+    );
+    const binding: BoundedApiProviderBinding = {
+      provider:
+        rawBinding.provider === 'anthropic'
+          ? 'anthropic'
+          : rawBinding.provider === 'google'
+            ? 'google'
+            : fail('usage_unknown'),
+      endpointUrl: str(rawBinding.endpointUrl, 'usage_unknown'),
+      apiVersion: str(rawBinding.apiVersion, 'usage_unknown'),
+      modelId: str(rawBinding.modelId, 'usage_unknown'),
+      modelRevision: str(rawBinding.modelRevision, 'usage_unknown'),
+      connectionId: str(rawBinding.connectionId, 'usage_unknown'),
+      connectionRevision: str(rawBinding.connectionRevision, 'usage_unknown'),
+      credentialRevision: str(rawBinding.credentialRevision, 'usage_unknown'),
+      principalId: str(rawBinding.principalId, 'usage_unknown'),
+      tenantId: str(rawBinding.tenantId, 'usage_unknown'),
+      sourceId: str(rawBinding.sourceId, 'usage_unknown'),
+      sourceRevision: str(rawBinding.sourceRevision, 'usage_unknown'),
+      optionsSha256: digest(rawBinding.optionsSha256, 'usage_unknown'),
+      sdkPackage: str(rawBinding.sdkPackage, 'usage_unknown'),
+      sdkVersion: str(rawBinding.sdkVersion, 'usage_unknown'),
+    };
+    const { facts, revision, evidenceDigest } = readQualifiedFacts(
+      quote.contractId,
+      binding,
+      record,
+      integer(historical.pricedAtMs, 'usage_unknown'),
+    );
+    if (
+      revision !== quote.contractRevision ||
+      record.contractSha256 !== quote.contractSha256 ||
+      evidenceDigest !== quote.evidenceDigest
+    )
+      fail('usage_unknown');
+    return priceRawUsage(
+      facts,
+      quote,
+      historical.thinkingDisabled,
+      completeResponseJson,
+    );
+  } catch {
+    return fail('usage_unknown');
+  }
 }
 
 /** Complete bounded JSON only; duplicate fields never become executable arguments. */
@@ -1480,7 +1648,24 @@ export function priceBoundedApiProviderRawUsage(
   try {
     const quoted = quotes.get(quote);
     if (quoted?.contract !== contract) fail('usage_unknown');
-    const facts = current(contract, nowMs);
+    return priceRawUsage(
+      current(contract, nowMs),
+      quote,
+      quoted.thinkingDisabled,
+      completeResponseJson,
+    );
+  } catch {
+    return fail('usage_unknown');
+  }
+}
+
+function priceRawUsage(
+  facts: Facts,
+  quote: BoundedApiAttemptQuote,
+  thinkingDisabled: boolean,
+  completeResponseJson: string,
+) {
+  try {
     const response = closed(
       parse(completeResponseJson, 8 * 1024 * 1024, 'usage_unknown'),
       facts.binding.provider === 'anthropic'
@@ -1509,7 +1694,7 @@ export function priceBoundedApiProviderRawUsage(
     let unknownWriteSplit = 0;
     let unknownCacheSplit = false;
     if (facts.binding.provider === 'anthropic') {
-      anthropicResponseScope(response, facts, quoted.thinkingDisabled);
+      anthropicResponseScope(response, facts, thinkingDisabled);
       const usage = closed(
         response.usage,
         [
@@ -1584,15 +1769,11 @@ export function priceBoundedApiProviderRawUsage(
           'usage_unknown',
         );
         const thoughts = integer(details.thinking_tokens, 'usage_unknown');
-        if (thoughts > output || (quoted.thinkingDisabled && thoughts > 0))
+        if (thoughts > output || (thinkingDisabled && thoughts > 0))
           fail('usage_unknown');
       }
     } else {
-      const candidate = googleResponseScope(
-        response,
-        facts,
-        quoted.thinkingDisabled,
-      );
+      const candidate = googleResponseScope(response, facts, thinkingDisabled);
       const usage = closed(
         response.usageMetadata,
         ['promptTokenCount', 'totalTokenCount'],
@@ -1623,7 +1804,7 @@ export function priceBoundedApiProviderRawUsage(
       output = total - input; // Documented total = prompt + tool + thoughts + candidates.
       const text = optionalCount(usage.candidatesTokenCount);
       const thoughts = optionalCount(usage.thoughtsTokenCount);
-      if (quoted.thinkingDisabled && thoughts !== undefined && thoughts > 0)
+      if (thinkingDisabled && thoughts !== undefined && thoughts > 0)
         fail('usage_unknown');
       if (
         (text !== undefined && text > output) ||
@@ -1663,7 +1844,7 @@ export function priceBoundedApiProviderRawUsage(
         candidateDetail,
         candidateCount,
         thoughts === undefined ? undefined : output - thoughts,
-        quoted.thinkingDisabled ? output : undefined,
+        thinkingDisabled ? output : undefined,
       ].filter((count): count is number => count !== undefined);
       if (
         candidateCounts.some(

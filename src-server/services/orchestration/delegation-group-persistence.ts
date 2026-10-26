@@ -50,6 +50,7 @@ import { readInputRequestResponse } from '@kontourai/station-shared/input-reques
 import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { z } from 'zod/v3';
+import { priceBoundedApiHistoricalRawUsage } from '../../runtime/conversation/bounded-api-provider-contract.js';
 import type { ReservedProviderEvidence } from '../../runtime/conversation/reserved-provider-fetch.js';
 import {
   assertReportInputTransition,
@@ -1308,12 +1309,22 @@ export class StationDelegationPersistence {
                   root: z.object({ id: reportObservationId }).passthrough(),
                 })
                 .passthrough(),
+              historicalPricingJson: z
+                .string()
+                .max(128 * 1024)
+                .optional(),
+              rawResponseJson: z
+                .string()
+                .max(8 * 1024 * 1024)
+                .optional(),
               quote: z
                 .object({
                   contractId: z.string(),
                   contractRevision: z.string(),
                   contractSha256: z.string(),
                   evidenceDigest: z.string(),
+                  wireSha256: z.string(),
+                  currency: z.literal('USD'),
                   inputUpperBoundTokens: z.number().int().nonnegative().safe(),
                   outputUpperBoundTokens: z.number().int().nonnegative().safe(),
                   costMicros: z.number().int().nonnegative().safe(),
@@ -1354,6 +1365,24 @@ export class StationDelegationPersistence {
       if (scope.executionIntent) {
         const { binding, modelReceipt } = scope.executionIntent;
         const quote = record.evidence.quote;
+        const { historicalPricingJson, rawResponseJson } = record.evidence;
+        requirePersistence(
+          quote !== undefined &&
+            historicalPricingJson !== undefined &&
+            rawResponseJson !== undefined,
+          'delegation_provider_evidence_pricing_unavailable',
+        );
+        requirePersistence(
+          same(
+            priceBoundedApiHistoricalRawUsage(
+              historicalPricingJson,
+              quote,
+              rawResponseJson,
+            ),
+            record.evidence.usage,
+          ),
+          'delegation_provider_evidence_pricing_mismatch',
+        );
         requirePersistence(
           quote !== undefined &&
             same(

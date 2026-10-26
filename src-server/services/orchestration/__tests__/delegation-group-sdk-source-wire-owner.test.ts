@@ -11,12 +11,15 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { startRun } from '@kontourai/flow';
+import { canonicalJson } from '@kontourai/relay';
 import { RESERVED_SOURCE_EXECUTION_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { onTestFinished, test, vi } from 'vitest';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
+import { quoteBoundedApiProviderAttempt } from '../../../runtime/conversation/bounded-api-provider-contract.js';
 import { reportInputToolDefinition } from '../../../runtime/conversation/report-input-profile.js';
 import { reservedStationSessionRecipient } from '../../../runtime/conversation/reserved-station-turn.js';
 import { RoundsFinalFetchLaunchFence } from '../delegation-group-launch-fence.js';
+import { StationDelegationPersistence } from '../delegation-group-persistence.js';
 import {
   createContextSyncSdkSourceWireOwner,
   createPreparedSdkSourceWireOwner,
@@ -1559,6 +1562,22 @@ for (const [provider, protocol] of [
       f.sdkOwner,
     );
     const { wire } = inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+    const quoted = quoteBoundedApiProviderAttempt(
+      f.configuration.contract,
+      {
+        ...wire,
+        headers: Object.fromEntries(wire.headers),
+        redirect: 'error',
+        requestOrdinal: 1,
+      },
+      {
+        inputTokens: 1000,
+        outputTokens: 1000,
+        costMicros: 100000,
+        currency: 'USD',
+      },
+      1000,
+    );
     const driver = await publicFenceFixture(
       f,
       prepared.source,
@@ -1569,6 +1588,11 @@ for (const [provider, protocol] of [
       {
         provider,
         protocol,
+        allocation: {
+          inputTokens: quoted.inputUpperBoundTokens,
+          outputTokens: quoted.outputUpperBoundTokens,
+          costMicros: quoted.costMicros,
+        },
         contract: f.configuration.contract,
         now: () => 1000,
       },
@@ -1628,6 +1652,83 @@ for (const [provider, protocol] of [
       (await driver.ledger()).invocations[0].invocationId,
     );
     const firstReference = await driver.retainAgain(retained);
+    const store = new StationDelegationPersistence(f.root);
+    const scope = {
+      groupId: retained.intent.groupId,
+      rootId: retained.intent.root.id,
+      invocationId: retained.intent.invocationId,
+      executionId: retained.intent.executionId,
+      usage: retained.usage,
+      executionIntent: {
+        binding: {
+          controller: retained.intent.controller,
+          seatId: retained.intent.seatId,
+          root: retained.intent.root,
+          envelope: retained.intent.envelope,
+          effect: retained.intent.effect,
+          allocation: retained.intent.allocation,
+          executionBindingDigest: retained.intent.executionBindingDigest,
+          principalDigest: retained.intent.principalDigest,
+          subjectDigest: retained.intent.subjectDigest,
+          finalWireDigest: retained.intent.finalWireDigest,
+        },
+        modelReceipt: {
+          id: retained.quote.contractId,
+          domain: 'station.provider-public-contract.v1',
+          digest: `sha256:${createHash('sha256')
+            .update(
+              canonicalJson({
+                id: retained.quote.contractId,
+                revision: retained.quote.contractRevision,
+                contractSha256: retained.quote.contractSha256,
+                evidenceDigest: retained.quote.evidenceDigest,
+              }),
+            )
+            .digest('hex')}`,
+        },
+      },
+    };
+    await store.assertProviderEvidenceReference(
+      firstReference,
+      scope,
+      () => {},
+    );
+    const evidenceFile = join(
+      driver.evidenceDirectory,
+      `${firstReference.id}.json`,
+    );
+    const originalEvidenceBytes = readFileSync(evidenceFile);
+    try {
+      const altered = JSON.parse(originalEvidenceBytes.toString('utf8'));
+      delete altered.evidence.historicalPricingJson;
+      writeFileSync(evidenceFile, JSON.stringify(altered));
+      await assert.rejects(
+        store.assertProviderEvidenceReference(
+          driver.retainedReference(),
+          scope,
+          () => {},
+        ),
+        { code: 'delegation_provider_evidence_pricing_unavailable' },
+      );
+      altered.evidence.historicalPricingJson = retained.historicalPricingJson;
+      altered.evidence.rawResponseJson = '{}';
+      writeFileSync(evidenceFile, JSON.stringify(altered));
+      await assert.rejects(
+        store.assertProviderEvidenceReference(
+          driver.retainedReference(),
+          scope,
+          () => {},
+        ),
+        { code: 'usage_unknown' },
+      );
+    } finally {
+      writeFileSync(evidenceFile, originalEvidenceBytes);
+    }
+    await store.assertProviderEvidenceReference(
+      firstReference,
+      scope,
+      () => {},
+    );
     assert.deepEqual(await driver.retainAgain(retained), firstReference);
     await assert.rejects(
       () =>

@@ -10,6 +10,7 @@ import {
   type BoundedApiQualificationRegistryOwner,
   boundedApiWireOptionsSha256,
   captureBoundedApiHistoricalPricing,
+  priceBoundedApiHistoricalRawUsage,
   priceBoundedApiProviderRawUsage,
   quoteBoundedApiProviderAttempt,
   resolveBoundedApiProviderContract,
@@ -1412,3 +1413,91 @@ test('historical pricing retains the original qualification after revocation wit
     'untrusted_contract',
   );
 });
+
+for (const provider of ['anthropic', 'google'] as const)
+  test(`historical ${provider} usage uses the original qualified tariff after registry replacement and refuses changed evidence`, () => {
+    const f = fixture(provider);
+    const contract = f.resolve();
+    const quote = quoteBoundedApiProviderAttempt(
+      contract,
+      f.wire,
+      remaining,
+      NOW,
+    );
+    const raw = JSON.stringify(
+      provider === 'anthropic' ? anthropicResponse() : googleResponse(),
+    );
+    const expected = priceBoundedApiProviderRawUsage(contract, quote, raw, NOW);
+    const historical = captureBoundedApiHistoricalPricing(contract, quote, NOW);
+    f.raw.tariff.fixedFee = rate('99999');
+    f.publishFixture();
+    assert.deepEqual(
+      priceBoundedApiHistoricalRawUsage(historical, quote, raw),
+      expected,
+    );
+    f.revoke();
+    assert.deepEqual(
+      priceBoundedApiHistoricalRawUsage(historical, quote, raw),
+      expected,
+    );
+    for (const mutate of [
+      (value: {
+        pricedAtMs: number;
+        qualification: { serializedContract: string };
+        quote: { costMicros: number };
+        thinkingDisabled: boolean;
+      }) => {
+        value.pricedAtMs = 1100;
+      },
+      (value: {
+        pricedAtMs: number;
+        qualification: { serializedContract: string };
+        quote: { costMicros: number };
+        thinkingDisabled: boolean;
+      }) => {
+        value.qualification.serializedContract = '{}';
+      },
+      (value: {
+        pricedAtMs: number;
+        qualification: { serializedContract: string };
+        quote: { costMicros: number };
+        thinkingDisabled: boolean;
+      }) => {
+        value.quote.costMicros += 1;
+      },
+      (value: {
+        pricedAtMs: number;
+        qualification: { serializedContract: string };
+        quote: { costMicros: number };
+        thinkingDisabled: boolean;
+      }) => {
+        value.thinkingDisabled = true;
+      },
+    ]) {
+      const changed = JSON.parse(historical);
+      mutate(changed);
+      refused(
+        () =>
+          priceBoundedApiHistoricalRawUsage(
+            JSON.stringify(changed),
+            quote,
+            raw,
+          ),
+        'usage_unknown',
+      );
+    }
+    refused(
+      () => priceBoundedApiHistoricalRawUsage(historical, quote, '{}'),
+      'usage_unknown',
+    );
+    refused(
+      () =>
+        quoteBoundedApiProviderAttempt(
+          JSON.parse(historical).quote,
+          f.wire,
+          remaining,
+          NOW,
+        ),
+      'untrusted_contract',
+    );
+  });
