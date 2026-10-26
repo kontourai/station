@@ -18,7 +18,9 @@
 
     "src-server/services/orchestration/project-task-room-revision-evidence-bridge.ts",
 
-    "src-server/services/orchestration/sqlite-revision-evidence-persistence.ts"
+    "src-server/services/orchestration/sqlite-revision-evidence-persistence.ts",
+
+    "src-server/domain/__fixtures__/shared-working-state-v1.json"
   ],
 
   "checks": [
