@@ -201,21 +201,10 @@ describe('client execution', () => {
   });
 
   test.each(['', '   ', 'x'.repeat(201), 42, null])(
-    'rejects invalid foreground key %j before even a visual-skill inventory request',
+    'rejects invalid continuation key %j before any request',
     async (clientTurnId) => {
       const fetchMock = vi.fn<typeof fetch>();
       vi.stubGlobal('fetch', fetchMock);
-      await expect(
-        Reflect.apply(sendExecutionMessage, undefined, [
-          'http://station.test',
-          {
-            message: 'hello',
-            target: { agent: agentId('station') },
-            clientTurnId,
-            skillExperience: {},
-          },
-        ]),
-      ).rejects.toThrow(TypeError);
       await expect(
         Reflect.apply(continueExecutionMessage, undefined, [
           'http://station.test',

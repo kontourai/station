@@ -5,9 +5,11 @@ vi.mock('../api', () => ({
 }));
 
 import { COOPERATIVE_STOP_BUDGET_MS } from '@kontourai/station-contracts/orchestration';
+import { _getApiBase } from '../api';
 import { ChatHttpError } from '../client/chatHttpError';
 import { StationRequestTimeoutError } from '../client/http';
 import { inspectSteerInput, steerTurn } from '../client/orchestration';
+import { sentTurnKey } from '../client/sent-turn-key';
 import {
   cleanupTerminalProcess,
   dispatchOrchestrationCommand,
@@ -325,6 +327,37 @@ describe('chatRuntimeOrchestration', () => {
         }),
       }),
     );
+  });
+
+  it('returns the generated wrapper key that reaches the continuation request', async () => {
+    mockJsonResponse({
+      success: true,
+      data: {
+        conversationId: 'thread-key',
+        sessionId: 'thread-key',
+        providerTurnId: 'turn-key',
+      },
+    });
+    const receipt = await sendOrchestrationTurn({
+      threadId: 'thread-key',
+      text: 'hello',
+    });
+    const body = JSON.parse(String(vi.mocked(fetch).mock.calls[0][1]?.body));
+    expect(body.clientTurnId).toEqual(expect.any(String));
+    expect(receipt.clientTurnId).toBe(body.clientTurnId);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('retains its chosen key when API-base resolution rejects before a request', async () => {
+    const failure = Object.freeze(new Error('The API base is unavailable.'));
+    vi.mocked(_getApiBase).mockRejectedValueOnce(failure);
+    const caught = await sendOrchestrationTurn({
+      threadId: 'thread-key',
+      text: 'hello',
+    }).catch((error: unknown) => error);
+    expect(caught).toBe(failure);
+    expect(sentTurnKey(caught)).toEqual(expect.any(String));
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('does not replace an explicitly blank turn key with a generated key', async () => {
