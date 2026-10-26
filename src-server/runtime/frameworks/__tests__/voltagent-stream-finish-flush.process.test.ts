@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import {
   captureOwnedProcessOutput,
-  executeOwnedProcess,
+  executeOwnedCommand,
   terminateSuiteExecution,
   waitForSuiteSettlement,
 } from '../../../../scripts/lib/owned-process.mjs';
@@ -22,7 +22,7 @@ describe.sequential('native Volt stream finish flush', () => {
   test.each(cases)(
     '%s %s settles before consumer EOF',
     async (format, mode) => {
-      const execution = executeOwnedProcess(
+      const execution = executeOwnedCommand(
         process.execPath,
         [fixture, format, mode],
         spawn,
@@ -56,7 +56,12 @@ describe.sequential('native Volt stream finish flush', () => {
             );
           }),
         ]);
-        naturalSettlement = await waitForSuiteSettlement(execution, 1_000);
+        // Windows retains its owned launcher until the completed Job is acknowledged.
+        naturalSettlement =
+          'completionRequiresCleanup' in execution &&
+          execution.completionRequiresCleanup
+            ? result.status === 0
+            : await waitForSuiteSettlement(execution, 1_000);
       } catch (error) {
         failure = error;
       } finally {
