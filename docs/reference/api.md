@@ -5261,11 +5261,40 @@ require `orchestration:operate`. Every mutation carries a stable `operationId`.
   operationId}`.
 - `POST /api/tasks/:taskId/review/threads/:threadId/resolve` and `/reopen` take
   `{reason?, operationId}`. Resolve records a default reason when omitted.
+- `POST /api/tasks/:taskId/review/send` takes `{threadIds, operationId,
+  mode: 'send'|'send-and-resolve'}` (omitted mode defaults to `send`). It
+  returns `{deliveryKey, status: 'queued'|'unconfirmed'|'failed', threads,
+  reason?}`. Only the live lead receives it. The sending principal must equal
+  the lead's recorded owner; otherwise `sender-not-task-owner` (409) refuses
+  before Sent. A lead without a recorded owner returns `unavailable` (503).
+  The inbox actor is that actual sender. Multiplayer send is
+  deferred to #4136. A stopped lead returns `no-live-agent` (409).
+  Send + Resolve appends resolution only after queue acceptance. Reusing an
+  operation with another mode returns `operation-conflict`; a fresh operation
+  still checks recovery when its requested mode differs. Modes persist in opaque
+  delivery keys. Legacy keys without a mode cannot replay confirmed delivery,
+  but can recover known non-delivery or report uncertain delivery.
+  Quoted bodies and excerpts are capped at 800 UTF-16 code units after quoting,
+  with a cut marker. The complete frame fits 190,000 units including metadata.
+  When needed, it omits older replies, keeps each opening comment and the latest
+  replies, and reports how many earlier replies were omitted. Only a selection
+  whose minimal per-thread content cannot fit returns `message-too-large` (409)
+  before Sent; select fewer threads and send separate batches. The frame
+  identifies review data and forbids following instructions in it.
+  Retrying a refused entry, or one cancelled while still queued, appends keyed
+  `send-failed` and returns the thread to Open. Send again with a new operation
+  id for a fresh delivery key. Dismissing an unconfirmed entry does not prove
+  non-delivery. A missing key, including one pruned after settled retention,
+  also stays `unconfirmed` (**Send unconfirmed**), as does an unavailable inbox
+  service. These intents are never resubmitted automatically. A person can
+  explicitly reply to set `pendingFollowUp` and send that follow-up with a new
+  operation id. The inbox owns restart delivery.
 
-Success returns `{success:true,data:...}`; mutations return `data.thread`.
+Success returns `{success:true,data:...}`. Thread edits return `data.thread`;
+send returns the delivery key, status and selected threads.
 Refusals include `invalid-request` and `invalid-event` (400), `not-found` (404),
-`anchor-mismatch`, `invalid-transition`, `operation-conflict`, `thread-limit`
-and `event-limit` (409),
+`anchor-mismatch`, `invalid-transition`, `operation-conflict`, `thread-limit`,
+`event-limit`, `message-too-large`, `no-live-agent` and `sender-not-task-owner` (409),
 and `artifact-unavailable` or `unavailable` (503). Another Task incarnation's
 thread, a cross-Project thread and a revoked person grant are not found.
 Oversize request bodies are refused with 413.
@@ -5315,8 +5344,24 @@ freshness and remain visible through `currentRevision`, following the shared
 contract. Review
 reads plan working state and never writes the room document, room history,
 Task status or revision-bound evidence. Capture metadata primitives exist in
-the store; send, capture HTTP routes, agent tools and the Review UI are separate
-increments.
+the store; capture HTTP routes and the Review UI are separate increments.
+
+The internal-only station-control routes are `GET
+/api/orchestration/station-control/task-threads?state=open|outdated|resolved`,
+`POST /api/orchestration/station-control/task-thread-reply` and
+`POST /api/orchestration/station-control/task-thread-resolve`. Their closed
+request shapes are the contract's `TaskThread*Request` types. Task authority
+comes from the verified caller's lead Session binding, never arguments.
+Unbound/non-lead Sessions get `no_task_binding`; a thread on another Task
+gets `not-found`. Reply evidence is nested under `evidence`; verification
+fields are server-owned. Replies require the `deliveryKey` returned by Send or
+list; a stale key is refused. A reply to a resolved delivery keeps it resolved.
+Resolve never changes Task status. `commitVerified` means the exact object
+exists in the Task workspace and has type `commit`; it does not prove branch
+reachability or that the review was addressed. Tags and blobs remain claims.
+`gateVerified` requires every supplied reference to be linked to this Task and
+resolve to the exact current passing evaluation. A passing gate linked only
+to another Task stays claimed. Receipt references remain claims.
 
 Owners: [review routes](../../src-server/routes/orchestration/task-review.ts),
 [artifact resolution](../../src-server/services/projects/task-review-module.ts),

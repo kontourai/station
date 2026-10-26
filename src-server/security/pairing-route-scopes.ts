@@ -3114,6 +3114,15 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // bounded Task-memory revision or record version.
     { method: 'POST', path: '/api/orchestration/station-control/task-summary' },
     { method: 'POST', path: '/api/orchestration/station-control/task-record' },
+    { method: 'GET', path: '/api/orchestration/station-control/task-threads' },
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/task-thread-reply',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/task-thread-resolve',
+    },
     // `schedule_wake_up`, `list_wake_ups`, `cancel_wake_up` and `propose_job`:
     // internal-only at the route (404 to anything the runtime boundary did not
     // accept as Station's own internal principal), acting only on the
@@ -3256,11 +3265,13 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/tasks/:taskId/work-item' },
     // Task review exposes Task content and personal comments: sensitive to the
     // exact room/Project authority. Reads use read standing; append-only person
-    // comments and transitions use operate standing. No external send occurs.
+    // comments and transitions use operate standing. Send starts an agent turn
+    // through the lead conversation inbox.
     { method: 'GET', path: '/api/tasks/:taskId/review' },
     { method: 'GET', path: '/api/tasks/:taskId/review/items/:kind/:id' },
     { method: 'GET', path: '/api/tasks/:taskId/review/threads/:threadId' },
     { method: 'POST', path: '/api/tasks/:taskId/review/threads' },
+    { method: 'POST', path: '/api/tasks/:taskId/review/send' },
     {
       method: 'POST',
       path: '/api/tasks/:taskId/review/threads/:threadId/replies',

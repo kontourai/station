@@ -242,6 +242,7 @@ interface IssuedEditPlan {
   readonly scope: { projectId: string; taskId: string; documentId: string };
   readonly principal: RequestPrincipal;
   readonly issuedAt: number;
+  readonly onlyIfEmpty?: true;
 }
 interface LiveMaterialAuthority {
   readonly principal: RequestPrincipal;
@@ -1007,15 +1008,45 @@ export class ProjectTaskRoomRuntime {
     return this.#personTaskAccess(input.taskId, input.request);
   }
 
-  sessionTaskReviewAccess(sessionId: string) {
-    return this.#sessionTaskAccess(sessionId);
+  async sessionTaskReviewAccess(sessionId: string) {
+    const access = await this.#sessionTaskAccess(sessionId);
+    if (access.kind !== 'granted') return access;
+    const workspace = JSON.stringify(
+      this.#deps.taskGraph.readTaskView(access.write.taskId)?.workspaceBinding,
+    );
+    const isLead = () => {
+      const task = this.#deps.taskGraph.readTaskView(access.write.taskId);
+      return (
+        task?.sessionId === sessionId &&
+        JSON.stringify(task.workspaceBinding) === workspace
+      );
+    };
+    if (!isLead()) return { kind: 'no-task' as const };
+    return {
+      ...access,
+      write: {
+        ...access.write,
+        beforeCommit: () => isLead() && access.write.beforeCommit(),
+      },
+    };
   }
 
   async readPlanForReview(taskId: string, request: Request) {
     const access = await this.#personTaskAccess(taskId, request);
     if (access.kind !== 'granted') return { kind: 'unavailable' as const };
-    const result = await this.readTaskDocumentForBrief(taskId);
-    const scope = this.#scope(taskId);
+    return this.#readReviewPlan(access);
+  }
+
+  async readPlanForSessionReview(taskId: string, sessionId: string) {
+    const access = await this.sessionTaskReviewAccess(sessionId);
+    if (access.kind !== 'granted' || access.write.taskId !== taskId)
+      return { kind: 'unavailable' as const };
+    return this.#readReviewPlan(access);
+  }
+
+  async #readReviewPlan(access: TaskReviewAccess) {
+    const result = await this.readTaskDocumentForBrief(access.write.taskId);
+    const scope = this.#scope(access.write.taskId);
     if (!access.write.beforeCommit() || !scope || result.kind !== 'available')
       return { kind: 'unavailable' as const };
     return { ...result, documentId: documentIdFor(scope) };
@@ -1991,10 +2022,11 @@ export class ProjectTaskRoomRuntime {
     const current = await this.#principal(input.request);
     if (!current || !samePrincipal(current, plan.principal))
       return { kind: 'not-found' as const };
-    const result = await this.#deps.working.settle({
+    const settlement = {
       scope,
       intentId: input.intentId,
       intentDigest: input.intentDigest,
+      ...(plan.onlyIfEmpty ? { onlyIfEmpty: true } : {}),
       actorId: actorIdFor(plan.principal),
       actorLabel: plan.principal.operatorId,
       publicationPrincipal: {
@@ -2011,7 +2043,37 @@ export class ProjectTaskRoomRuntime {
           scope,
           plan.principal,
         ),
-    });
+    } as const;
+    let result = await this.#deps.working.settle(settlement);
+    if (
+      result.kind === 'rejected' &&
+      result.reason === 'revision-publication-pending'
+    ) {
+      if (
+        !(await this.#sameAuthorizedDocument(
+          input.taskId,
+          input.request,
+          scope,
+          plan.principal,
+        ))
+      )
+        return { kind: 'not-found' } as const;
+      await this.#drainRevisionPublication({
+        taskId: input.taskId,
+        request: input.request,
+        scope,
+      });
+      if (
+        !(await this.#sameAuthorizedDocument(
+          input.taskId,
+          input.request,
+          scope,
+          plan.principal,
+        ))
+      )
+        return { kind: 'not-found' } as const;
+      result = await this.#deps.working.settle(settlement);
+    }
     // Do not accept or publish a result that crossed an asynchronous worker
     // boundary after its initiating paired-device grant was revoked.
     if (
@@ -2258,6 +2320,7 @@ export class ProjectTaskRoomRuntime {
       scope,
       principal,
       issuedAt: Date.now(),
+      ...(input.onlyIfEmpty ? { onlyIfEmpty: true } : {}),
     });
     return {
       kind: 'planned' as const,
