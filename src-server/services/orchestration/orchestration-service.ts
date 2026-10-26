@@ -6047,6 +6047,18 @@ export class OrchestrationService {
     return this.sessionEventReads.readSessionEventPage(threadId, options);
   }
 
+  readSessionTurnCompleted(
+    threadId: string,
+    turnId: string,
+    authority: SessionReadScope,
+  ) {
+    return this.sessionEventReads.readSessionTurnCompleted(
+      threadId,
+      turnId,
+      authority,
+    );
+  }
+
   readSessionEventById(
     threadId: string,
     eventId: string,

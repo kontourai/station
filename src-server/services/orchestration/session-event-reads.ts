@@ -232,6 +232,38 @@ export class SessionEventReads {
     };
   }
 
+  readSessionTurnCompleted(
+    threadId: string,
+    turnId: string,
+    authority: SessionReadScope,
+  ) {
+    const persisted = this.deps.eventStore?.readSessionByThread(threadId);
+    if (persisted) this.deps.hydratePersistedTenantContexts([persisted]);
+    if (
+      (!persisted && !this.deps.loadedSessionForThread(threadId)) ||
+      !this.deps.canReadSession(threadId, authority)
+    )
+      return null;
+    const events = this.deps.eventStore?.listTurnEventsByMethods(
+      threadId,
+      turnId,
+      ['turn.completed'],
+      2,
+    );
+    const event = events?.[0];
+    if (
+      !events ||
+      events.length !== 1 ||
+      event?.payload.method !== 'turn.completed' ||
+      event.method !== event.payload.method ||
+      event.payload.threadId !== threadId ||
+      event.payload.turnId !== turnId ||
+      !this.deps.canReadSession(threadId, authority)
+    )
+      return null;
+    return structuredClone(event.payload);
+  }
+
   readSessionEventById(
     threadId: string,
     eventId: string,

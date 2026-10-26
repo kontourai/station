@@ -141,6 +141,16 @@ const reportObservationSchema = z
   })
   .strict();
 export type StationReportObservation = z.infer<typeof reportObservationSchema>;
+const reportObservationFile = (
+  groupId: string,
+  invocationId: string,
+  kind: StationReportObservation['observation']['kind'],
+) =>
+  address(
+    `observation:${createHash('sha256')
+      .update(canonicalJson([groupId, invocationId, kind]))
+      .digest('hex')}`,
+  );
 
 export type DelegationPersistenceFinalizer = () => undefined;
 const AUTHORITY_MAX_BYTES = 16 * 1024 * 1024;
@@ -644,16 +654,10 @@ export class StationDelegationPersistence {
   ) {
     const record = reportObservationSchema.parse(value);
     const domain = this.#reportObservations;
-    const file = address(
-      `observation:${createHash('sha256')
-        .update(
-          canonicalJson([
-            record.groupId,
-            record.invocationId,
-            record.observation.kind,
-          ]),
-        )
-        .digest('hex')}`,
+    const file = reportObservationFile(
+      record.groupId,
+      record.invocationId,
+      record.observation.kind,
     );
     return domain.locked(finalizeCurrent, async () => {
       const bytes = readBytes(join(domain.directory, file), 2 * 1024 * 1024);
@@ -683,6 +687,34 @@ export class StationDelegationPersistence {
         id: file.slice(0, -5),
         digest: `sha256:${createHash('sha256').update(canonicalJson(record)).digest('hex')}`,
       };
+    });
+  }
+
+  async readReportResultByInvocation(
+    groupId: string,
+    invocationId: string,
+    current: DelegationPersistenceFinalizer,
+  ) {
+    reportObservationId.parse(groupId);
+    reportObservationId.parse(invocationId);
+    return this.#reportObservations.locked(current, async () => {
+      const bytes = readBytes(
+        join(
+          this.#reportObservations.directory,
+          reportObservationFile(groupId, invocationId, 'result'),
+        ),
+        2 * 1024 * 1024,
+      );
+      requirePersistence(bytes !== null, 'report_observation_missing');
+      const record = reportObservationSchema.parse(JSON.parse(bytes));
+      requirePersistence(
+        record.groupId === groupId &&
+          record.invocationId === invocationId &&
+          record.observation.kind === 'result',
+        'report_observation_reference_mismatch',
+      );
+      assertCurrent(current);
+      return record;
     });
   }
 
@@ -1218,6 +1250,22 @@ export class StationDelegationPersistence {
       invocationId: string;
       executionId: string;
       usage: { inputTokens: number; outputTokens: number; costMicros: number };
+      executionIntent?: {
+        binding: Pick<
+          ReservedProviderEvidence['intent'],
+          | 'controller'
+          | 'seatId'
+          | 'root'
+          | 'envelope'
+          | 'effect'
+          | 'allocation'
+          | 'executionBindingDigest'
+          | 'principalDigest'
+          | 'subjectDigest'
+          | 'finalWireDigest'
+        >;
+        modelReceipt: { id: string; domain: string; digest: string };
+      };
       inputIntent?: {
         seatId: string;
         root: { id: string; authority_epoch: number; digest: string };
@@ -1260,6 +1308,18 @@ export class StationDelegationPersistence {
                   root: z.object({ id: reportObservationId }).passthrough(),
                 })
                 .passthrough(),
+              quote: z
+                .object({
+                  contractId: z.string(),
+                  contractRevision: z.string(),
+                  contractSha256: z.string(),
+                  evidenceDigest: z.string(),
+                  inputUpperBoundTokens: z.number().int().nonnegative().safe(),
+                  outputUpperBoundTokens: z.number().int().nonnegative().safe(),
+                  costMicros: z.number().int().nonnegative().safe(),
+                })
+                .passthrough()
+                .optional(),
               usage: z
                 .object({
                   inputTokens: z.number().int().nonnegative().safe(),
@@ -1291,6 +1351,39 @@ export class StationDelegationPersistence {
               ))),
         'delegation_provider_evidence_mismatch',
       );
+      if (scope.executionIntent) {
+        const { binding, modelReceipt } = scope.executionIntent;
+        const quote = record.evidence.quote;
+        requirePersistence(
+          quote !== undefined &&
+            same(
+              Object.fromEntries(
+                Object.keys(binding).map((key) => [
+                  key,
+                  record.evidence.intent[key],
+                ]),
+              ),
+              binding,
+            ) &&
+            quote.inputUpperBoundTokens === binding.allocation.inputTokens &&
+            quote.outputUpperBoundTokens === binding.allocation.outputTokens &&
+            quote.costMicros === binding.allocation.costMicros &&
+            modelReceipt.domain === 'station.provider-public-contract.v1' &&
+            modelReceipt.id === quote.contractId &&
+            modelReceipt.digest ===
+              `sha256:${createHash('sha256')
+                .update(
+                  canonicalJson({
+                    id: quote.contractId,
+                    revision: quote.contractRevision,
+                    contractSha256: quote.contractSha256,
+                    evidenceDigest: quote.evidenceDigest,
+                  }),
+                )
+                .digest('hex')}`,
+          'delegation_provider_evidence_epoch_mismatch',
+        );
+      }
       assertCurrent(finalizeCurrent);
     });
   }

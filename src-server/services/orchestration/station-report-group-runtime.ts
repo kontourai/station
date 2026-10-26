@@ -190,6 +190,7 @@ export class StationReportGroupRuntime {
   readonly #retainedTurns: StationReportRetainedTurns;
   readonly #renewal: StationReportGroupRenewal;
   readonly #dispatch: FileAuthorizationLedger;
+  readonly #wireIntents: FileFinalWireIntentStore;
   constructor(
     private readonly owners: {
       runtime: RuntimeFencedCredentialObservationOwners;
@@ -222,6 +223,7 @@ export class StationReportGroupRuntime {
       sourcesRoot,
     );
     const wireIntents = new FileFinalWireIntentStore(root);
+    this.#wireIntents = wireIntents;
     this.#retainedTurns = new StationReportRetainedTurns({
       runtime: owners.runtime,
       sources,
@@ -337,6 +339,23 @@ export class StationReportGroupRuntime {
     const historical = await this.#custody.inspectForMutation(context, groupId);
     if (!historical) throw new StationReportCustodyUnavailable();
     return { replayed: result.replayed, group: view(historical) };
+  }
+
+  async reconcileUsage(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    input: { seatId: string; invocationId: string },
+  ) {
+    await this.#custody.reconcileUsage(
+      context,
+      groupId,
+      input,
+      this.owners.orchestration,
+      this.#wireIntents,
+    );
+    const historical = await this.#custody.inspectForMutation(context, groupId);
+    if (!historical) throw new StationReportCustodyUnavailable();
+    return { ...input, group: view(historical) };
   }
 
   async report(
