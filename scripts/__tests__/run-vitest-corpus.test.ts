@@ -1,5 +1,8 @@
 import { EventEmitter } from 'node:events';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   buildVitestCommand,
   buildWindowsSerializedCommand,
@@ -18,6 +21,8 @@ import {
   VITEST_CORPUS_GROUPS,
   withoutQuarantinedFiles,
 } from '../run-vitest-corpus.mjs';
+
+const makeTempDir = trackTempDirs();
 
 const GROUPS = {
   ordinary: ['ordinary.test.ts'],
@@ -337,6 +342,95 @@ describe('Vitest corpus runner', () => {
       stderr.mockRestore();
     }
   });
+
+  it.each([
+    { status: 0, signal: null },
+    { status: 7, signal: null },
+    ...(process.platform === 'win32'
+      ? []
+      : [{ status: null, signal: 'SIGTERM' }]),
+  ])(
+    'retains the real child terminal result and early diagnostics after noisy output: $status/$signal',
+    async ({ status, signal }) => {
+      const root = makeTempDir('corpus-failure-');
+      const vitest = resolve(root, 'node_modules/vitest');
+      mkdirSync(vitest, { recursive: true });
+      writeFileSync(
+        resolve(vitest, 'vitest.mjs'),
+        `const noise = 'later passing output\\n'.repeat(5000);
+process.stdout.write('EARLY_PREVIEW_DIAGNOSTIC\\n' + noise, () => {
+  process.stderr.write('FAIL early.test.ts\\nError: EARLY_SUITE_FAILURE\\n' + noise, () => {
+                ${signal ? "process.kill(process.pid, 'SIGTERM');" : `process.exit(${status});`}
+  });
+});`,
+      );
+      const result = await runVitestGroup(
+        VITEST_CORPUS_GROUPS[1],
+        ['early.test.ts'],
+        { root },
+      );
+      expect(result.passed).toBe(status === 0);
+      expect(result.status).toBe(status);
+      const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+      const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+      const diagnosticDirectory = resolve(root, 'diagnostics');
+      try {
+        emitResult(result, { diagnosticDirectory });
+        if (status === 0) {
+          expect(existsSync(diagnosticDirectory)).toBe(false);
+          expect(stdout.mock.calls.flat().join('')).toContain(
+            'process-heavy: PASS;',
+          );
+          return;
+        }
+        expect(
+          existsSync(
+            resolve(diagnosticDirectory, 'process-heavy/receipt.json'),
+          ),
+          'a failed corpus must retain its terminal receipt',
+        ).toBe(true);
+        const report = JSON.parse(
+          readFileSync(
+            resolve(diagnosticDirectory, 'process-heavy/receipt.json'),
+            'utf8',
+          ),
+        );
+        expect(report).toMatchObject({
+          schemaVersion: 1,
+          group: 'process-heavy',
+          passed: false,
+          status,
+          signal,
+          outputTruncated: false,
+        });
+        expect(
+          readFileSync(
+            resolve(diagnosticDirectory, 'process-heavy/stdout.log'),
+            'utf8',
+          ),
+        ).toBe(result.stdout);
+        expect(
+          readFileSync(
+            resolve(diagnosticDirectory, 'process-heavy/stderr.log'),
+            'utf8',
+          ),
+        ).toBe(result.stderr);
+        expect(result.stdout).toContain('EARLY_PREVIEW_DIAGNOSTIC');
+        expect(result.stderr).toContain('EARLY_SUITE_FAILURE');
+        const emitted = stderr.mock.calls.flat().join('');
+        expect(emitted).toContain(
+          `status=${status ?? 'null'}; signal=${signal ?? 'none'}`,
+        );
+        expect(emitted).toContain('FAIL early.test.ts');
+        expect(stdout.mock.calls.flat().join('')).not.toContain(
+          'EARLY_PREVIEW_DIAGNOSTIC',
+        );
+      } finally {
+        stdout.mockRestore();
+        stderr.mockRestore();
+      }
+    },
+  );
 
   it('reports a signal-cancelled group as CANCELLED, never as a test failure', () => {
     const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);

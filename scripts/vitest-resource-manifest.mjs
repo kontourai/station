@@ -139,6 +139,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Real bounded Node children exercise failure receipts without running another corpus.
+  'scripts/__tests__/run-vitest-corpus.test.ts',
   // Small loopback responses exercise dependency stream ownership in naturally exiting children.
   'scripts/__tests__/dependency-http-availability.process.test.ts',
   'src-server/runtime/frameworks/__tests__/voltagent-stream-finish-flush.process.test.ts',

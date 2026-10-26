@@ -13,6 +13,14 @@ rerunning a failed gate to recover its output. Capture limits still apply;
 truncated diagnostics do not establish a complete failure inventory. The JSON
 format does not change readiness requirements or promotion evidence.
 
+For a failed Vitest corpus, the runner prints the child exit status and signal.
+The failed full-regression artifact also retains `receipt.json`, `stdout.log`
+and `stderr.log` per group under `vitest-corpus/` (from the runner’s temporary directory).
+These logs preserve the capture already bounded by the runner, including
+diagnostics before the printed tails; they do not recover bytes lost to an
+output-limit refusal. A receipt reports cancellation and capture truncation
+separately from a test failure.
+
 The [documentation maintenance workflow](documentation.md) and its
 [repository skill](../../.agents/skills/documentation-audit/SKILL.md) apply to
 instructions and diagrams too. Structural gates check named patterns and
