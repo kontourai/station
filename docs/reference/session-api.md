@@ -586,7 +586,9 @@ An approval of any size is delivered whole. When its content is too large
 to keep inside the event, Station stores it out of line and the event carries
 `spilledContent` plus a reference in place of each large value
 ([design](../design/event-content-spill.md)). Allowing such a request needs
-`viewedContentDigest`: the `sha256-` digest of the stored request event, which
+`viewedContentDigest`: the `sha256-` digest of the stored request event (and,
+when the tool call it gates holds spilled arguments, of their references:
+a Codex file change's diff lives only in its `tool.started`), which
 a client computes only after loading every reference through
 `GET /api/orchestration/sessions/:threadId/content/:ref`. Without it the
 server answers 409 `request_content_not_loaded`. Declining never needs it,

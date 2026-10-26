@@ -22,5 +22,7 @@ Since out-of-line event content (see the
 the 16 KiB stored-event target travels as a reference. The heavy turn's
 outputs are therefore 15 KiB, so the turn stays heavy on the wire and the
 replay-budget fallback phase is still exercised; the final pair's output is
-48 KiB, so the short replay proves it travels as a reference. The live
+48 KiB and travels as a reference (the budget integration test asserts it;
+the shared scenario also accepts an inline output, because the gate runs it
+against the merge-base server too). The live
 figure above predates that change. The policy ceilings are unchanged.
