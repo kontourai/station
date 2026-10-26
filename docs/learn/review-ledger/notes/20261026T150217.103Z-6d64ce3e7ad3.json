@@ -1,0 +1,7 @@
+{
+  "revision": "e41a26f62f935d58a8a75a12d955357eb24f8ebf",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the corpus failure path from the CLI callback through owned child completion/capture, emitResult, RUNNER_TEMP/vitest-corpus receipts and the three reusable full-regression artifact uploads. New receipt/log description matches the real CLI control and real-child exit7/SIGTERM tests, early diagnostics beyond16KiBtails, passing-child no-artifact control and clean-commit mutation/exact restoration. Existing capture limits, worker classification, cancellation/failure verdicts, deadlines and promotion gates remain unchanged. The changed test is classified process-heavy for its new private child fixtures. Documentation describes retained captured bytes only, not recovery after a capture cap, a historical failure cause or hosted qualification. Scope is this five-path receipt change; no blanket review of unrelated documentation or deployment/claim records.","inputs":["docs/guides/testing.md",".github/workflows/full-regression.yml","scripts/__tests__/run-vitest-corpus.test.ts","scripts/run-vitest-corpus.mjs","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

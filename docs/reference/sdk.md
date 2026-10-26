@@ -5692,6 +5692,19 @@ responses also throw `StationHttpError`, preserving the HTTP status. The SDK re-
 these request types, `TaskReviewThreadSummary`, `TaskReviewThreadView` and `TaskReviewView` from the
 [review contract](../../packages/contracts/src/task-review.ts).
 
+`useCaptureToTaskMutation(taskId)` takes `TaskReviewCreateCaptureRequest` with
+`sourceKind:'browser'`, `sourceSessionId`, optional `label` and a stable
+`operationId`. It requires `orchestration:operate`, returns `{capture}` and
+invalidates the Task review query.
+`fetchTaskCaptureSessions(taskId, signal?)` and
+`useTaskCaptureSessionsQuery(taskId, options?)` supply live, view-authorized
+Browser sessions for the picker. `fetchTaskCaptureContent(taskId, captureId,
+signal?)` returns an image `Blob`; callers own any object URL they create and
+must revoke it. Content stays Task-scoped, uses authenticated fetch and throws
+`StationHttpError` on refusals. These functions and `TaskCapture`,
+`TaskReviewCreateCaptureRequest` and `TaskCaptureBrowserSession` are exported
+from both the root and query barrels.
+
 `useSendReviewThreadsMutation(taskId)` takes the shared `TaskReviewSendRequest`
 `{threadIds, operationId, mode}`, where `mode` is `send` or `send-and-resolve`. It returns `{deliveryKey, status,
 threads, reason?}` and invalidates the review list and thread detail queries.
