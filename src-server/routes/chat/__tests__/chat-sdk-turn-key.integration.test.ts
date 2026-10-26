@@ -5,11 +5,11 @@ import { getRequestListener } from '@hono/node-server';
 import {
   ChatHttpError,
   sentTurnKey,
-  streamConversationTurn,
-} from '@kontourai/station-sdk';
-import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
+  setClientCredentialResolver,
+} from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import type { streamConversationTurn as StreamConversationTurn } from '../../../../packages/sdk/src/query-domains/chatRuntimeStream.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
 import type {
@@ -20,6 +20,11 @@ import type {
 import { FeedbackService } from '../../../services/feedback/feedback-service.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { createChatRoutes } from '../chat.js';
+
+// Exercise the public root at runtime; its React types use the SDK's JSX typecheck.
+const { streamConversationTurn } = await vi.importActual<{
+  streamConversationTurn: typeof StreamConversationTurn;
+}>('@kontourai/station-sdk');
 
 const temp = trackTempDirs();
 const cleanup: Array<() => void | Promise<void>> = [];
