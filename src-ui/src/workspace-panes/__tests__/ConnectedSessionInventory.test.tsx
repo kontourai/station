@@ -491,6 +491,42 @@ describe('ConnectedSessionInventory', () => {
     },
   );
 
+  test.each([
+    ['pane', 1],
+    ['host', 0],
+  ] as const)(
+    'with the title owned by the %s, the inventory shows %i title of its own',
+    (titleOwner, ownTitles) => {
+      configure();
+      hooks.inventory.mockReturnValue({
+        data: inputInventory,
+        isLoading: false,
+        error: null,
+      });
+      render(
+        <ConnectedSessionInventory
+          sessionId="session"
+          titleOwner={titleOwner}
+        />,
+      );
+      expect(
+        screen.queryAllByRole('heading', { level: 2, name: 'Chat inventory' }),
+      ).toHaveLength(ownTitles);
+      // Named either way, and the description and Scope stay.
+      expect(
+        screen.getByRole('region', { name: 'Chat inventory' }),
+      ).toBeTruthy();
+      expect(
+        screen.getByText(
+          'A navigable record of what Station is authorized to show.',
+        ),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole('group', { name: 'Inventory scope' }),
+      ).toBeTruthy();
+    },
+  );
+
   test('the drill-down cue says what a press will do, and a second press closes it', () => {
     openInputDetails(SUCCESS_INPUT);
     const open = screen.getByRole('button', {
