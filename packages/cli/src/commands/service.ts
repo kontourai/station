@@ -61,7 +61,7 @@ import {
   type ServicePathDrift,
 } from './service-path.js';
 import {
-  resolveServiceInstallRemedy,
+  resolveInstalledServiceRemedy,
   type ServiceInstallRemedy,
 } from './service-remedy.js';
 import { superviseService } from './service-run.js';
@@ -1832,8 +1832,9 @@ export async function runServiceCommand(
         run,
       })
     : null;
+  // From the installed unit, not this home's manifest (#4189).
   const remedy = existing
-    ? resolveServiceInstallRemedy(existing, lifecycle.baseDir)
+    ? resolveInstalledServiceRemedy(existing, lifecycle.baseDir, { fs, run })
     : null;
   renderStatus(
     observed,
