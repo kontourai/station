@@ -17,11 +17,13 @@ import {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { useDeveloperFeatures } from '../hooks/useDeveloperFeatures';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useMobileVisualViewport } from '../hooks/useMobileVisualViewport';
 import { useDialogHistoryHost } from './DialogHistoryHost';
 import { registerDialogHistory } from './dialog-history';
 import { type OverlayLayer, OverlayLayerContext } from './overlay-layer';
+import { useResponsiveSheetGesture } from './useResponsiveSheetGesture';
 
 const FOCUSABLE =
   'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])';
@@ -238,6 +240,7 @@ export function ResponsiveDialogSurface({
   historyMode = 'entry',
   anchorRef,
 }: ResponsiveDialogSurfaceProps) {
+  const overlayRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   // What this surface is to anything floating inside it — see overlay-layer.
   // Linked to the overlay this one was opened from, which a body portal hides
@@ -257,6 +260,18 @@ export function ResponsiveDialogSurface({
   const isMobile = useIsMobile();
 
   onCloseRef.current = onClose;
+
+  // Drag the sheet up to expand it, down to close it (Sheet gestures device
+  // preview). Only a dismissible, ordinary dialog on a phone: an alertdialog
+  // asks for a decision a stray swipe must not make for the user.
+  const { sheetGestures } = useDeveloperFeatures();
+  const sheetGesture = useResponsiveSheetGesture({
+    enabled:
+      sheetGestures && isMobile && open && dismissible && role === 'dialog',
+    overlayRef,
+    panelRef,
+    onDismiss: () => onCloseRef.current(),
+  });
 
   useEffect(() => {
     if (
@@ -443,6 +458,7 @@ export function ResponsiveDialogSurface({
   // component tree, and no listener in the dock is bound to a dock ELEMENT.
   return createPortal(
     <div
+      ref={overlayRef}
       className={`${overlayClassName} responsive-surface-overlay`.trim()}
       style={{
         ...visualViewport.style,
@@ -506,6 +522,11 @@ export function ResponsiveDialogSurface({
         ) : (
           <div {...panelProps} role="dialog">
             {children}
+          </div>
+        )}
+        {sheetGesture.showHandle && (
+          <div {...sheetGesture.handleProps}>
+            <span className="responsive-sheet-handle__grip" />
           </div>
         )}
       </OverlayLayerContext.Provider>

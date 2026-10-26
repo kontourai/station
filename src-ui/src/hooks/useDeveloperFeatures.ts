@@ -14,6 +14,7 @@ function developerFeatures(
     | 'experimentalFlowEnabled'
     | 'experimentalReadinessEnabled'
     | 'experimentalTrustEnabled'
+    | 'experimentalSheetGesturesEnabled'
   >,
 ) {
   return {
@@ -26,6 +27,9 @@ function developerFeatures(
     trust:
       settings.developerToolsEnabled &&
       settings.experimentalTrustEnabled === true,
+    sheetGestures:
+      settings.developerToolsEnabled &&
+      settings.experimentalSheetGesturesEnabled === true,
   };
 }
 

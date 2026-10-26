@@ -86,6 +86,22 @@ export interface ChatDockMobileOverflowActions {
   onOpenSessionContext?: (returnFocus: HTMLElement | null) => void;
   /** The chat's ladder line, named on the row ("This chat — Running"). */
   sessionContextStatus?: string;
+  /**
+   * The composer's context meter, again as a row of this sheet. On a phone
+   * the meter is the last chip of a row that scrolls sideways with its
+   * scrollbar hidden, and that row is hidden altogether while typing on a
+   * short screen, so it is easy never to see. The row names the share used
+   * and opens the same Conversation stats panel the meter does. Absent: no
+   * row (ChatDock offers it exactly where it shows the meter).
+   */
+  conversationStats?: {
+    agentSlug: string;
+    conversationId: string;
+    apiBase: string;
+    messageCount?: number;
+    liveUsage?: { contextTokens?: number; contextWindowTokens?: number };
+    onOpen: () => void;
+  };
 }
 
 export interface ChatDockMobileProjectSwitcher {

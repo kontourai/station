@@ -33,6 +33,43 @@ function contextPercentage(
   return Math.round((contextTokens / contextWindowTokens) * 10_000) / 100;
 }
 
+interface ContextPercentageSource {
+  agentSlug: string;
+  conversationId: string;
+  apiBase: string;
+  messageCount?: number;
+  liveUsage?: ContextPercentageProps['liveUsage'];
+}
+
+/**
+ * The share of the context window a conversation uses, or `null` while it is
+ * unknown: a current provider observation first, then the stats read (which
+ * refetches as messages arrive). One derivation for the composer's meter and
+ * the phone's Actions sheet, so the two can never disagree.
+ */
+export function useContextPercentage({
+  agentSlug,
+  conversationId,
+  apiBase,
+  messageCount,
+  liveUsage,
+}: ContextPercentageSource): number | null {
+  const { stats, refetch } = useStats(agentSlug, conversationId, apiBase, true);
+  useEffect(() => {
+    if (messageCount !== undefined && messageCount > 0) {
+      refetch();
+    }
+  }, [messageCount, refetch]);
+  return (
+    contextPercentage(
+      liveUsage?.contextTokens,
+      liveUsage?.contextWindowTokens,
+    ) ??
+    contextPercentage(stats?.contextWindowPercentage, 100) ??
+    null
+  );
+}
+
 /**
  * The composer's context meter: a short track and the rounded share of the
  * context window used. It sits in the composer's meta row beside the model it
@@ -50,20 +87,13 @@ export function ContextPercentage({
   liveUsage,
   onClick,
 }: ContextPercentageProps) {
-  const { stats, refetch } = useStats(agentSlug, conversationId, apiBase, true);
-  const percentage =
-    contextPercentage(
-      liveUsage?.contextTokens,
-      liveUsage?.contextWindowTokens,
-    ) ??
-    contextPercentage(stats?.contextWindowPercentage, 100) ??
-    null;
-
-  useEffect(() => {
-    if (messageCount !== undefined && messageCount > 0) {
-      refetch();
-    }
-  }, [messageCount, refetch]);
+  const percentage = useContextPercentage({
+    agentSlug,
+    conversationId,
+    apiBase,
+    messageCount,
+    liveUsage,
+  });
 
   if (percentage === null) return null;
 
