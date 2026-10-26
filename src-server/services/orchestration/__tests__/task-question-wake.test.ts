@@ -238,6 +238,7 @@ function boot(
       }),
     working: store.createProjectTaskRoomWorkingState(),
     requestAuthority: {
+      isCurrent: () => true,
       resolve: async () => ({
         kind: 'granted' as const,
         operatorId: 'owner-1',

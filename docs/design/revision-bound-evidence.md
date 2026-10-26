@@ -126,6 +126,20 @@ receive one bounded restore/retry; the retry's exact inserted count determines
 `duplicate` versus `imported`. A live peer miss refreshes from SQLite before
 returning.
 
+The SQLite write batch temporarily sets its connection's busy timeout to zero,
+then restores the prior value. A room worker may hold `BEGIN IMMEDIATE` while
+waiting for main-thread authorization; synchronously waiting for that lock
+would prevent the authorization from running ([#4204](https://github.com/kontourai/station/issues/4204)).
+Contention therefore returns unavailable immediately and leaves the room's
+durable publication outbox intact. When a later person or agent save encounters
+`revision-publication-pending`, the runtime drains that publication and retries
+the exact settlement once, rechecking authority across the asynchronous work.
+Proposal seed plans retain their empty-document precondition, which the worker
+rechecks inside the write transaction so concurrent acceptance cannot duplicate
+the brief during a retry.
+Persistent publication failures can still refuse a save; they do not require
+a restart to retry.
+
 `reader().resolve({ scope, revisionId })` is the later room/SDK seam. It
 projects text, parents, actor, and correlation only after exact scope matching;
 canonical snapshots, opaque attestations, storage metadata, and local paths

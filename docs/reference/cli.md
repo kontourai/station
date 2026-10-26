@@ -2479,7 +2479,38 @@ reinstalled through that install's channel launcher (`station`,
 `station-beta`, or `station-nightly`); the launcher sets `STATION_ROOT`
 itself, so when the unit records another root no command is given. Otherwise
 the command is prefixed with `STATION_ROOT=…` when the unit's recorded root
-differs from the one a shell without `STATION_ROOT` would derive.
+differs from the one a shell without `STATION_ROOT` would derive. When no
+command can be given, the explanation names the installed unit file to
+inspect.
+
+If the installed unit's `--base` is another home than the one `status` read,
+this home's manifest is left over from an earlier install. Two spellings of
+one home (a symlinked parent, or macOS `/tmp` and `/private/tmp`) are not
+stale: a manifest is stale only when it is a different file, by device and
+inode, from the one in the unit's home. `status` prints a
+`manifest       stale` line naming that manifest, the unit file, and the
+`--base` to use. It also prints an `rm -- <manifest>` command that removes
+only the leftover manifest, offered only while the unit's home holds its own
+readable manifest. When that manifest is missing, or its `service/` directory
+cannot be listed, `status` says so and offers no removal. A manifest file that
+exists but cannot be read (for example mode `0000`) is unsafe rather than
+unreadable: `status` refuses with the same "expected owned mode 0600" error it
+gives for the home it read. Station never runs the command, and
+`service uninstall` would remove the installed unit instead. An unsafe or
+invalid manifest in the unit's home refuses `status`, as it does in the home
+`status` read. The remaining lines (manifest, registry, origins, instance
+health and update) are read from the unit's home, and the origins are the
+unit's own `--allowed-origin` flags. `--json` carries the same facts as
+`staleManifest: { path, removeCommand, unitHome, unitManifest, unitPath }`,
+where `unitManifest` is `present`, `absent`, or `unreadable` (with
+`unitManifestReason`) and `removeCommand` is null when no removal is offered.
+`service start`, `stop`, and `uninstall` from such a home act on nothing,
+exit 1, and name the `--base` that addresses the installed service. When the
+unit's home has no readable manifest, `start` and `stop` there cannot converge
+either, so the refusal instead names the two commands that resolve it:
+`service install --instance=<id>` from this home, which rewrites the unit to
+run from it, or `service uninstall --instance=<id> --base=<unit home>`, which
+removes the installed unit and reports it as uninstalled.
 
 `service start` and `service stop` require the private service manifest that
 `service install` creates; they never infer a service registration from a

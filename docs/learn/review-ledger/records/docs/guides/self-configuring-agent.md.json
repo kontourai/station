@@ -186,7 +186,13 @@
 
     "src-server/routes/orchestration/session-project-activity.ts",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-station-control-project-activity.test.ts"
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-project-activity.test.ts",
+
+    "src-server/routes/orchestration/task-review-station-control.ts",
+
+    "src-server/tools/station-control-task-thread-tools.ts",
+
+    "src-server/services/projects/task-review-evidence.ts"
   ],
 
   "checks": [
