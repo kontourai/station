@@ -373,6 +373,8 @@ test.skipIf(process.platform === 'win32')(
       authority,
       new AbortController().signal,
     );
+    if (!target.acquireReleaseLease)
+      throw new Error('Managed private target must expose its release lease');
     const lease = await target.acquireReleaseLease();
     const installationId = randomUUID();
     const installations = join(home, 'telemetry-companion/installations');
