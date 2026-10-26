@@ -65,6 +65,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'systemRuntime',
   'taskGraph',
   'taskMemory',
+  'taskReview',
   'taskRoomWork',
   'telemetryDelivery',
   'trustBundles',

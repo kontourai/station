@@ -1,0 +1,13 @@
+{
+  "revision": "0469d378f5fa188b64cd4ba2c26858bd918d1aec",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"PR #4153 round-4 corrective merge review. The first resolution wrongly selected the whole lane document, dropping nonconflicting main layout prose; docs:learn:build caught seven missing #personal-project-layouts-2996 anchors. Reconstructed the original three-way merge, retained the lane in its four review conflicts, and preserved every nonconflicting main addition. The restored Personal Project layouts section and layout table row are byte-equal to main parent 17b366c0983. Review source/test bytes are unchanged. Prior failed build and review notes are retained; no new layout behavior or runtime qualification is claimed.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/glossary.md","note":"PR #4153 round-4 corrective merge review. Restored main's existing contracts reference section on independently owned personal layouts and Project subjects; subjects grant no Project/plugin/file/execution access. The glossary ownership and authority vocabulary remains accurate. The edit restores upstream prose only.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"PR #4153 round-4 corrective merge review. Restoring the main-parent Personal Project layouts contracts section repairs its local cross-references and changes no hosting, SaaS, tenant storage, ingress or deployment claim. This guide remains a delivery target with its existing local/source evidence qualifications.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"PR #4153 round-4 corrective merge review. The contracts-reference repair restores main's existing layout owner/subject and authority descriptions. No contract implementation or API was changed by this prose restoration; the task-review superset remains pure and environment-free. Existing package-boundary and consumer-test guidance remains accurate.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}
