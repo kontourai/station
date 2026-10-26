@@ -3,7 +3,7 @@ import {
   parseBrowserPairingLink,
   parsePairingDeepLink,
 } from '@kontourai/station-connect/pairing-deep-link';
-import { useEffect } from 'react';
+import { useEffect, useEffectEvent } from 'react';
 import { nativePlatformPromise } from '../platform/native';
 
 interface UsePairingDeepLinkOptions {
@@ -22,6 +22,9 @@ export function usePairingDeepLink({
   onPairingPayload,
   onError,
 }: UsePairingDeepLinkOptions): void {
+  const deliverNativePayload = useEffectEvent(onPairingPayload);
+  const reportNativeError = useEffectEvent(onError);
+
   useEffect(() => {
     const parsed = parseBrowserPairingLink(window.location.href);
     if (!parsed) return;
@@ -56,19 +59,20 @@ export function usePairingDeepLink({
               clientChannel,
               devScheme,
             });
-            if (parsed.status === 'ok') onPairingPayload(parsed.payload);
-            else onError(parsed.message);
+            if (parsed.status === 'ok') deliverNativePayload(parsed.payload);
+            else reportNativeError(parsed.message);
           },
-          (error) => onError(error.message),
+          (error) => reportNativeError(error.message),
         );
         disposeSubscription = () => subscription.dispose();
       })
       .catch(() => {
-        if (!disposed) onError('Station could not initialize pairing links.');
+        if (!disposed)
+          reportNativeError('Station could not initialize pairing links.');
       });
     return () => {
       disposed = true;
       disposeSubscription?.();
     };
-  }, [clientChannel, devScheme, enabled, onError, onPairingPayload]);
+  }, [clientChannel, devScheme, enabled]);
 }

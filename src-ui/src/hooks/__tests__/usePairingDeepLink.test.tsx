@@ -15,6 +15,7 @@ import { usePairingDeepLink } from '../usePairingDeepLink';
 const nativePairingDeepLinkMock = vi.hoisted(() => ({
   deliver: undefined as undefined | ((event: { url: string }) => void),
   subscribe: vi.fn(),
+  deliverError: undefined as undefined | ((error: { message: string }) => void),
 }));
 
 vi.mock('../../platform/native', () => ({
@@ -22,8 +23,10 @@ vi.mock('../../platform/native', () => ({
     capability: () => ({ state: 'enabled' }),
     subscribeToPairingDeepLinks: (
       listener: (event: { url: string }) => void,
+      onError: (error: { message: string }) => void,
     ) => {
       nativePairingDeepLinkMock.subscribe(listener);
+      nativePairingDeepLinkMock.deliverError = onError;
       nativePairingDeepLinkMock.deliver = listener;
       return { dispose: () => undefined };
     },
@@ -51,7 +54,58 @@ function PairingDeepLinkHarness({
 describe('usePairingDeepLink', () => {
   beforeEach(() => {
     nativePairingDeepLinkMock.deliver = undefined;
+    nativePairingDeepLinkMock.deliverError = undefined;
     nativePairingDeepLinkMock.subscribe.mockReset();
+  });
+
+  test('callback changes do not replay a retained native invitation and later deliveries use current callbacks', async () => {
+    const payload = encodeDevicePairingPayload({
+      protocolVersion: 1,
+      environmentId: 'environment-link',
+      offerId: 'retained-launch',
+      challenge: 'challenge-link',
+      manualCode: 'ABCDE12345',
+      endpoint: 'https://station.example.test',
+      scope: 'orchestration:read',
+      expiresAt: 4_102_444_800_000,
+    });
+    const url = encodePairingDeepLink({ payload, clientChannel: 'stable' });
+    nativePairingDeepLinkMock.subscribe.mockImplementation((listener) =>
+      listener({ url }),
+    );
+    const firstPayload = vi.fn();
+    const firstError = vi.fn();
+    const nextPayload = vi.fn();
+    const nextError = vi.fn();
+    const { rerender } = render(
+      <PairingDeepLinkHarness
+        onPairingPayload={firstPayload}
+        onError={firstError}
+      />,
+    );
+    await waitFor(() =>
+      expect(firstPayload).toHaveBeenCalledExactlyOnceWith(payload),
+    );
+
+    rerender(
+      <PairingDeepLinkHarness
+        onPairingPayload={nextPayload}
+        onError={nextError}
+      />,
+    );
+    await act(async () => {});
+    expect(firstPayload).toHaveBeenCalledOnce();
+    expect(nextPayload).not.toHaveBeenCalled();
+
+    act(() => nativePairingDeepLinkMock.deliver?.({ url }));
+    expect(nextPayload).toHaveBeenCalledExactlyOnceWith(payload);
+    act(() =>
+      nativePairingDeepLinkMock.deliverError?.({
+        message: 'Native listener failed',
+      }),
+    );
+    expect(nextError).toHaveBeenCalledExactlyOnceWith('Native listener failed');
+    expect(firstError).not.toHaveBeenCalled();
   });
 
   test('retains a valid review payload when the next native delivery is malformed', async () => {
