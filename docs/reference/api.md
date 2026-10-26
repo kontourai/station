@@ -5236,9 +5236,14 @@ Comment mutations require a stable `operationId`.
   is the latest sent, send-failed or agent-reply even after a later resolve or
   person reply. If the delivery-status port fails, a Sent thread stays available
   with `deliveryStatus: 'unconfirmed'` and a distinct warning. A corrupt thread returns
-  `{status:"unavailable", state:"unavailable", threadId, ordinal, eventCount}`,
+  `{status:"unavailable", state:"unavailable", threadId, ordinal, eventCount}`
+  with an optional validated `artifact` reference,
   is logged once per thread/event count while retained in the module's bounded
-  warning cache, and stays visible in every filter; aggregate counts omit it. Open includes sent and agent-replied threads with no Outdated overlay.
+  warning cache, and stays visible in every filter of its own item; aggregate
+  counts omit it. Rows without a valid artifact cannot be assigned to an item.
+  The optional `authors` projection supplies display names for preview authors
+  and recorded agent starters within the authorized Task read. Open includes
+  sent and agent-replied threads with no Outdated overlay.
 - `GET /api/tasks/:taskId/review/threads/:threadId` returns `{thread}` with full
   events and current derived state. A corrupt thread returns 503; another Task
   or incarnation returns 404.
@@ -5338,7 +5343,7 @@ plan/summary anchors retain no body quote; changed revisions have unknown
 freshness and remain visible through `currentRevision`, following the shared
 contract. Review
 reads plan working state and never writes the room document, room history,
-Task status or revision-bound evidence. The Review UI is a separate increment.
+Task status or revision-bound evidence.
 
 The internal-only station-control routes are `GET
 /api/orchestration/station-control/task-threads?state=open|outdated|resolved`,
@@ -5347,7 +5352,11 @@ The internal-only station-control routes are `GET
 request shapes are the contract's `TaskThread*Request` types. Task authority
 comes from the verified caller's lead Session binding, never arguments.
 Unbound/non-lead Sessions get `no_task_binding`; a thread on another Task
-gets `not-found`. Reply evidence is nested under `evidence`; verification
+gets `not-found`. The agent list excludes corrupt thread entries and returns
+healthy complete histories from one store batch and one artifact snapshot.
+The additive `unavailableThreadCount` reports corrupt entries omitted from both
+`threads` and the healthy state counts, independently of the requested filter.
+Reply evidence is nested under `evidence`; verification
 fields are server-owned. Replies require the `deliveryKey` returned by Send or
 list; a stale key is refused. A reply to a resolved delivery keeps it resolved.
 Resolve never changes Task status. `commitVerified` means the exact object
