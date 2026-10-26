@@ -286,7 +286,15 @@
 
     "packages/contracts/src/__tests__/task-review.test.ts",
 
-    "packages/contracts/src/task-review-matcher.ts"
+    "packages/contracts/src/task-review-matcher.ts",
+
+    "packages/contracts/src/project-task-room.ts",
+
+    "packages/contracts/src/task-approval.ts",
+
+    "packages/contracts/src/__tests__/project-task-room.test.ts",
+
+    "packages/contracts/src/__tests__/task-approval.test.ts"
   ],
 
   "checks": [
