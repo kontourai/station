@@ -39,6 +39,11 @@ const retainedInputSchema = z
             ]),
             size: z.number().int().nonnegative(),
             dataUrl: z.string(),
+            // Envelopes retained before staged-attachment hydration stopped
+            // leaking the composer handle carry it. They must keep decoding:
+            // the digests cover these exact bytes, so a refusal here strands
+            // the turn's boundary retirement. New captures never contain it.
+            clientAttachmentId: z.string().optional(),
           })
           .strict(),
       )
