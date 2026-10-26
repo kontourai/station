@@ -1525,6 +1525,26 @@ export type ConversationHandoffEffectStatus =
   | 'indeterminate';
 
 /** Authorized durable effect truth; never re-resolves mutable Agent setup. */
+export interface ConversationContextSeedReceipt {
+  seedDigest: string;
+  /** Session-local sequence intervals; never compare across Sessions. */
+  sourceCutoffs: readonly {
+    sessionId: string;
+    afterSequence: number;
+    throughSequence: number;
+  }[];
+  omission: {
+    totalMessages: number;
+    includedMessages: number;
+    omittedMessages: number;
+    newestShortened: boolean;
+    nonTextMessages: number;
+  };
+}
+
+export const CONVERSATION_CONTEXT_UNAVAILABLE_CODE =
+  'conversation-context-unavailable';
+
 export interface ConversationHandoffStatusProjection {
   conversationId: string;
   currentSessionId: string;
@@ -1532,6 +1552,16 @@ export interface ConversationHandoffStatusProjection {
   marker: ConversationHandoffProjection;
   providerTurnId?: string;
   nativeResumeIdentity?: import('./provider.js').NativeResumeIdentityStatus;
+  /** A pinned handoff seed, not proof of provider transcript retention. */
+  contextDelivery?: ConversationContextSeedReceipt & {
+    status: ConversationHandoffEffectStatus;
+    mode?: 'seed-text' | 'native-memory';
+    nativeBinding?: 'matched' | 'changed' | 'unavailable';
+    /** Complete text projection only; omitted/shortened history is never acknowledged. */
+    acceptedTextThrough?: ConversationContextSeedReceipt['sourceCutoffs'];
+  };
+  /** Completed literal-seed ranges witnessed for this matched native identity. */
+  nativeAcceptedTextThrough?: ConversationContextSeedReceipt['sourceCutoffs'];
 }
 
 /**
@@ -1902,6 +1932,20 @@ export interface ConversationOpenExecution {
 }
 
 export type ConversationOpenResolution =
+  | {
+      /** A saved, authorized fork with no provider Session until first send. */
+      status: 'fork-ready';
+      conversation: ConversationListItem;
+      transcript: {
+        available: true;
+        owner: 'fork-context';
+        messageCount: number;
+      };
+      canContinue: boolean;
+      continuationPending?: boolean;
+      answerability: RequestAnswerability;
+      recoveryActions: readonly [];
+    }
   | {
       status: 'resolved';
       conversation: ConversationListItem;

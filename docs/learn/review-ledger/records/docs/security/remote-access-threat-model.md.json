@@ -140,6 +140,16 @@
 
     "src-server/services/telemetry-producers/telemetry-producer-store.ts",
 
+    "src-server/routes/mcp/station-control-external-client-routes.ts",
+
+    "src-server/runtime/mcp/station-control-mcp-token.ts",
+
+    "src-server/runtime/mcp/station-control-caller.ts",
+
+    "src-server/routes/mcp/station-control-mcp-route.ts",
+
+    "packages/contracts/src/station-control-external-client.ts",
+
     "packages/connect/src/core/pendingPairingExchangeJournal.ts",
 
     "src-server/services/connections/lan-discovery.ts",

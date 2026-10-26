@@ -37,7 +37,6 @@ import {
   observedConfinementRecord,
 } from '../../../security/confinement/confinement-provider.js';
 import { createSeatbeltConfinementProvider } from '../../../security/confinement/seatbelt.js';
-import type { CredentialProfileRecovery } from '../credential-profile-recovery.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -750,11 +749,7 @@ describe('#2494: a start resolves its confinement before the engine is touched',
     expect(persistedRecord('codex-credential')).toMatchObject({
       posture: 'confined',
     });
-    await (
-      service as unknown as {
-        credentialProfileRecovery: CredentialProfileRecovery;
-      }
-    ).credentialProfileRecovery.restartRecoverySession({
+    await service['credentialProfileRecovery'].restartRecoverySession({
       threadId: 'codex-credential',
       input: 'retry',
       modelOptions: { approvalMode: 'ask' },
