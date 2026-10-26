@@ -246,6 +246,8 @@
 
     "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts",
 
+    "packages/contracts/src/station-control-external-client.ts",
+
     "packages/contracts/src/project.ts",
 
     "packages/contracts/src/knowledge-store.ts",

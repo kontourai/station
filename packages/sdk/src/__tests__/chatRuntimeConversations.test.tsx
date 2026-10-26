@@ -682,3 +682,38 @@ test('conversation open accepts a boolean or absent nextTurnStartsSession and re
     vi.unstubAllGlobals();
   }
 });
+
+test('fork-ready opening accepts saved context and refuses invented runtime bindings', async () => {
+  const data = {
+    status: 'fork-ready',
+    conversation: { id: 'fork', title: 'Saved fork', agentSlug: 'codex' },
+    transcript: { available: true, owner: 'fork-context', messageCount: 2 },
+    canContinue: true,
+    answerability: { answerable: true },
+    recoveryActions: [],
+  };
+  try {
+    for (const extra of [
+      {},
+      { currentSessionId: 'invented' },
+      { execution: { sessionId: 'invented' } },
+    ]) {
+      const response = { ...data, ...extra };
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(Response.json({ success: true, data: response })),
+      );
+      const opened = resolveConversationOpen('fork', 'https://station.example');
+      if (Object.keys(extra).length === 0)
+        await expect(opened).resolves.toEqual(data);
+      else
+        await expect(opened).rejects.toMatchObject({
+          kind: 'invalid-response',
+        });
+    }
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
