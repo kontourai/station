@@ -94,6 +94,40 @@ export function spillableRootsFor(
   return SPILLABLE_ROOTS[method] ?? [];
 }
 
+/**
+ * The residual case (docs/design/event-content-spill.md#residual-refusal):
+ * the event with every present spillable root replaced by an
+ * `exceeds-ceiling` marker, so it can still be stored. Undefined when the
+ * method has no spillable root present (nothing to mark).
+ */
+export function withUnavailableContent<T extends { method: string }>(
+  event: T,
+): T | undefined {
+  let changed = false;
+  const copy = { ...(event as Record<string, unknown>) };
+  for (const path of spillableRootsFor(event.method)) {
+    let node: Record<string, unknown> = copy;
+    for (let index = 0; index < path.length - 1; index += 1) {
+      const next = node[path[index]!];
+      if (!next || typeof next !== 'object' || Array.isArray(next)) {
+        node = undefined as never;
+        break;
+      }
+      const cloned = { ...(next as Record<string, unknown>) };
+      node[path[index]!] = cloned;
+      node = cloned;
+    }
+    const key = path[path.length - 1]!;
+    if (!node || !Object.hasOwn(node, key)) continue;
+    node[key] = {
+      [RUNTIME_EVENT_CONTENT_KEY]: 1,
+      unavailable: 'exceeds-ceiling',
+    };
+    changed = true;
+  }
+  return changed ? (copy as unknown as T) : undefined;
+}
+
 export interface PlannedSpill {
   digest: string;
   kind: RuntimeEventContentKind;
@@ -299,8 +333,12 @@ function setChild(
  * Plan the stored form of a data-only canonical event. Never throws for
  * size: the caller's backstop decides whether the result can persist.
  */
-export function planEventContentSpill(event: JsonRecord): SpillPlan {
+export function planEventContentSpill(
+  event: JsonRecord,
+  options: { trustedUnavailableRoots?: boolean } = {},
+): SpillPlan {
   const payload = escapeRoot(event);
+  if (options.trustedUnavailableRoots) restoreUnavailableRoots(payload);
   const method = typeof event.method === 'string' ? event.method : '';
   const target =
     method === 'tool.completed' && typeof event.mcpAppResourceUri === 'string'
@@ -412,6 +450,31 @@ export function planEventContentSpill(event: JsonRecord): SpillPlan {
       ? { spilledToolResult: { output: event.output, error: event.error } }
       : {}),
   };
+}
+
+/**
+ * An event EventStore itself marked for the residual case carries
+ * `exceeds-ceiling` markers at its spillable roots. Escaping wrapped them as
+ * engine data; for that event only, they are restored as markers.
+ */
+function restoreUnavailableRoots(payload: JsonRecord): void {
+  const method = typeof payload.method === 'string' ? payload.method : '';
+  for (const path of spillableRootsFor(method)) {
+    const at = resolveRoot(payload, path);
+    if (!at) continue;
+    const value = at.parent[at.key];
+    const inner =
+      isRecord(value) && Object.keys(value).length === 1
+        ? value[RUNTIME_EVENT_CONTENT_LITERAL_KEY]
+        : undefined;
+    if (
+      isRecord(inner) &&
+      inner[RUNTIME_EVENT_CONTENT_KEY] === 1 &&
+      inner.unavailable === 'exceeds-ceiling' &&
+      Object.keys(inner).length === 2
+    )
+      setChild(at.parent, at.key, inner);
+  }
 }
 
 function isSpilledRef(value: Json): boolean {

@@ -381,4 +381,99 @@ describe('oversized event content through the live adapter loop', () => {
       );
     });
   });
+
+  describe('residual refusal keeps the stream running', () => {
+    const warnings = () =>
+      stored()
+        .map((e) => e.payload)
+        .filter((e) => e.method === 'runtime.warning')
+        .map((e) => (e as { code?: string }).code);
+    const pushNext = () =>
+      adapter.events.push({
+        eventId: 'next-event',
+        provider: 'claude',
+        threadId,
+        turnId: 'turn-1',
+        itemId: 'item-next',
+        createdAt: at(),
+        method: 'content.text-delta',
+        delta: 'still here',
+      } as CanonicalRuntimeEvent);
+
+    test('an approval over the per-event ceiling is declined, not stranded', async () => {
+      adapter.events.push({
+        eventId: 'open-huge',
+        provider: 'claude',
+        threadId,
+        turnId: 'turn-1',
+        createdAt: at(),
+        requestId: 'req-huge',
+        method: 'request.opened',
+        requestType: 'approval',
+        title: 'Allow Write',
+        payload: {
+          toolName: 'Write',
+          toolInput: { file_path: '/x', content: 'z'.repeat(17 * 1024 * 1024) },
+        },
+      } as CanonicalRuntimeEvent);
+      pushNext();
+      await vi.waitFor(() =>
+        expect(stored().some((e) => e.id === 'next-event')).toBe(true),
+      );
+      expect(adapter.respondToRequest).toHaveBeenCalledWith(
+        threadId,
+        'req-huge',
+        'decline',
+      );
+      expect(warnings()).toContain('request-too-large-to-show');
+      expect(warnings()).not.toContain('adapter-event-stream-interrupted');
+      expect(stored().some((e) => e.id === 'open-huge')).toBe(false);
+    });
+
+    test('a reply over the ceiling keeps its turn terminal, marked unavailable', async () => {
+      adapter.events.push({
+        eventId: 'done-huge',
+        provider: 'claude',
+        threadId,
+        turnId: 'turn-1',
+        createdAt: at(),
+        method: 'turn.completed',
+        status: 'completed',
+        outputText: 'r'.repeat(17 * 1024 * 1024),
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(() =>
+        expect(stored().some((e) => e.id === 'done-huge')).toBe(true),
+      );
+      const terminal = stored().find((e) => e.id === 'done-huge')!;
+      expect((terminal.payload as { outputText?: unknown }).outputText).toEqual(
+        {
+          $stationContent: 1,
+          unavailable: 'exceeds-ceiling',
+        },
+      );
+      expect(warnings()).toContain('event-content-too-large');
+    });
+
+    test('an adapter field over the backstop is skipped with a warning', async () => {
+      adapter.events.push({
+        eventId: 'odd-event',
+        provider: 'claude',
+        threadId,
+        turnId: 'turn-1',
+        createdAt: at(),
+        method: 'tool.completed',
+        toolCallId: 'c1',
+        toolName: 'x',
+        status: 'success',
+        output: 'ok',
+        adapterNote: 'n'.repeat(100_000),
+      } as CanonicalRuntimeEvent);
+      pushNext();
+      await vi.waitFor(() =>
+        expect(stored().some((e) => e.id === 'next-event')).toBe(true),
+      );
+      expect(warnings()).toContain('event-not-stored');
+      expect(warnings()).not.toContain('adapter-event-stream-interrupted');
+    });
+  });
 });

@@ -348,11 +348,12 @@ import {
 } from './dispatch-cwd-admission.js';
 import type { EventBus } from './event-bus.js';
 import { storedEventDigest } from './event-content-spill.js';
-import type {
-  CommandRefusalPhase,
-  ConversationForkProvenance,
-  EventStore,
-  PersistedRuntimeEvent,
+import {
+  type CommandRefusalPhase,
+  type ConversationForkProvenance,
+  type EventStore,
+  EventStoreIngressError,
+  type PersistedRuntimeEvent,
 } from './event-store.js';
 import {
   type ExecutionWorkspaceBinding,
@@ -10940,6 +10941,8 @@ export class OrchestrationService {
         try {
           return this.offerOrPublishEvent(attempt);
         } catch (error) {
+          if (error instanceof EventStoreIngressError)
+            return await this.publishResidualRefusal(attempt, adapter, error);
           if (
             delayMs === undefined ||
             !this.isRetryablePublishFailure(admitted, error)
@@ -10984,6 +10987,109 @@ export class OrchestrationService {
         this.deltaCoalescer.resumeRetained(admitted.threadId);
       }
     }
+  }
+
+  /**
+   * docs/design/event-content-spill.md#residual-refusal: an event EventStore
+   * still cannot store after spilling (content over the per-event ceiling, a
+   * hostile shape, or adapter-built fields over the backstop). It is handled
+   * here, per event, so the adapter stream keeps running:
+   *
+   * - a `request.opened` is declined to the engine with a warning, so no
+   *   approval waits invisibly;
+   * - another event whose content roots were over the ceiling is stored with
+   *   those roots marked unavailable, so a turn terminal is never lost;
+   * - anything else is skipped with a warning naming it.
+   *
+   * The refusal must be about THIS event. A coalescer flush ahead of it can
+   * surface a different event's refusal; that one is reported, and this
+   * event is offered once more, never declined on the other's account.
+   */
+  private async publishResidualRefusal(
+    event: CanonicalRuntimeEvent,
+    adapter: ProviderAdapterShape,
+    error: EventStoreIngressError,
+    reoffered = false,
+  ): Promise<boolean> {
+    const warn = (code: string, message: string) => {
+      this.options.logger.warn('Runtime event could not be stored', {
+        provider: adapter.provider,
+        threadId: event.threadId,
+        method: error.subject.method,
+        eventId: error.subject.eventId,
+        error: error.message,
+      });
+      try {
+        this.projectAndPublishEvent({
+          eventId: crypto.randomUUID(),
+          provider: adapter.provider,
+          threadId: event.threadId,
+          createdAt: new Date().toISOString(),
+          method: 'runtime.warning',
+          severity: 'warning',
+          code,
+          message,
+        });
+      } catch (surfacingError) {
+        this.options.logger.warn('Failed to surface an unstorable event', {
+          threadId: event.threadId,
+          error: errorMessage(surfacingError),
+        });
+      }
+    };
+    if (error.subject.eventId !== event.eventId) {
+      warn(
+        'event-not-stored',
+        'Station could not store part of this agent’s output, and skipped it.',
+      );
+      if (reoffered) return true;
+      try {
+        return this.offerOrPublishEvent(event);
+      } catch (retryError) {
+        if (retryError instanceof EventStoreIngressError)
+          return this.publishResidualRefusal(event, adapter, retryError, true);
+        throw retryError;
+      }
+    }
+    if (event.method === 'request.opened') {
+      warn(
+        'request-too-large-to-show',
+        'The agent asked for approval of something too large for Station to show in full, so Station declined it and told the agent.',
+      );
+      try {
+        await adapter.respondToRequest(
+          event.threadId,
+          event.requestId,
+          'decline',
+        );
+      } catch (declineError) {
+        this.options.logger.warn('Could not decline an unstorable request', {
+          threadId: event.threadId,
+          requestId: event.requestId,
+          error: errorMessage(declineError),
+        });
+      }
+      return true;
+    }
+    const reduced = this.options.eventStore?.markContentUnavailable(event);
+    if (reduced && !reoffered) {
+      try {
+        const published = this.offerOrPublishEvent(reduced);
+        warn(
+          'event-content-too-large',
+          'Part of this agent output was too large for Station to keep; it is marked as unavailable.',
+        );
+        return published;
+      } catch (reducedError) {
+        if (!(reducedError instanceof EventStoreIngressError))
+          throw reducedError;
+      }
+    }
+    warn(
+      'event-not-stored',
+      'Station could not store part of this agent’s output, and skipped it.',
+    );
+    return true;
   }
 
   /**

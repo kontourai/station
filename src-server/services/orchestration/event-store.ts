@@ -257,6 +257,7 @@ import {
   MAX_EVENT_CONTENT_DEPTH,
   type PlannedSpill,
   planEventContentSpill,
+  withUnavailableContent,
 } from './event-content-spill.js';
 import { createHtmlReplyPages } from './html-reply-pages.js';
 import {
@@ -4045,6 +4046,7 @@ export class EventStore {
       persisted.payload as unknown as Parameters<
         typeof planEventContentSpill
       >[0],
+      { trustedUnavailableRoots: this.residualEvents.has(event) },
     );
     if (plan.spilledToolResult) {
       // `snapshotEvent` derives these from the output; a reference cannot
@@ -4087,6 +4089,26 @@ export class EventStore {
       serializedPayload: JSON.stringify(persistedPayload),
       spills: plan.spills,
     };
+  }
+
+  /**
+   * Events this store marked for the residual case (see
+   * {@link markContentUnavailable}). Identity, never content, decides it.
+   */
+  private readonly residualEvents = new WeakSet<object>();
+
+  /**
+   * docs/design/event-content-spill.md#residual-refusal: a copy of `event`
+   * whose spillable roots are replaced by `exceeds-ceiling` markers, which
+   * this store keeps as markers (any other inbound marker is engine data and
+   * is escaped). Undefined when the event has no spillable root to mark.
+   */
+  markContentUnavailable<T extends CanonicalRuntimeEvent>(
+    event: T,
+  ): T | undefined {
+    const marked = withUnavailableContent(event);
+    if (marked) this.residualEvents.add(marked);
+    return marked;
   }
 
   /**
@@ -8884,6 +8906,27 @@ export class EventStore {
    * already unique, so a thread-scoped point lookup is both complete and
    * bounded.
    */
+  /**
+   * The stored, reference-only form of one event: what the live bus and SSE
+   * carry (out-of-line content stays a reference, attachments stay blob
+   * references). For publishers that appended a raw event and must emit what
+   * was stored, never the raw value.
+   */
+  storedLiveEvent(
+    threadId: string,
+    eventId: string,
+  ): CanonicalRuntimeEvent | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
+         FROM orchestration_events
+         WHERE thread_id = ? AND id = ?
+         LIMIT 1`,
+      )
+      .get(threadId, eventId) as any;
+    return row ? this.mapEventRow(row, false).payload : undefined;
+  }
+
   eventById(
     threadId: string,
     eventId: string,
