@@ -394,8 +394,11 @@ Its private constructor also checks a runtime factory key. Registry mutations
 enter a synchronous span before fresh read, validation and clone derivation;
 the publisher checks that span and the raw-byte preimage before rename.
 Environment initialization, rotation and reset take the home hold before their
-legacy environment lock. A synchronous contender refuses busy rather than
-waiting or probing another process. Filesystem calls themselves remain synchronous.
+legacy environment lock. Public handshake and proof reads initialize until the
+service has completed initialization successfully. Later reads validate the retained
+home identity and read the current atomic environment record without taking the
+writer hold or caching credentials across rotation. A synchronous contender
+refuses busy rather than waiting or probing another process. Filesystem calls themselves remain synchronous.
 
 Complete synchronous authority checks share a validated pairing-registry snapshot
 under that home hold. The outer check re-reads its retained bytes before returning;

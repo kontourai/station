@@ -229,6 +229,7 @@ export class EnvironmentSecurityService {
   readonly #hosted: boolean;
   #devicePairingService?: DevicePairingService;
   #homeWriter?: HomeWriterOwner;
+  #initialized = false;
   readonly #groups: StationGroupsService;
 
   constructor(options: EnvironmentSecurityServiceOptions) {
@@ -341,6 +342,7 @@ export class EnvironmentSecurityService {
       await this.#seedGroups(this.#devicePairingService, owner, lease);
       return current;
     });
+    this.#initialized = true;
     return record;
   }
 
@@ -794,8 +796,18 @@ export class EnvironmentSecurityService {
     return this.#devicePairingService;
   }
 
+  async #readPublicRecord(): Promise<EnvironmentSecurityRecord> {
+    if (!this.#initialized) return this.initialize();
+    if (!this.#homeWriter)
+      throw new HomeWriterUnavailableError('identity-unavailable');
+    this.#homeWriter.assertCurrent();
+    const record = this.#readRecord();
+    this.#homeWriter.assertCurrent();
+    return record;
+  }
+
   async getPublicHandshake(): Promise<PublicStationHandshake> {
-    const { environmentId } = await this.initialize();
+    const { environmentId } = await this.#readPublicRecord();
     return {
       schemaVersion: PUBLIC_HANDSHAKE_SCHEMA_VERSION,
       environmentId,
@@ -819,7 +831,7 @@ export class EnvironmentSecurityService {
   }
 
   async createPublicProof(nonce: string): Promise<PublicStationProofResponse> {
-    const { environmentId, credential } = await this.initialize();
+    const { environmentId, credential } = await this.#readPublicRecord();
     const signature = createHmac('sha256', Buffer.from(credential, 'base64url'))
       .update(buildStationProofMessage(environmentId, nonce))
       .digest('base64url');
