@@ -423,6 +423,40 @@ describe('EventStore event content spill', () => {
     expect(rendered.elided).not.toBe('byte_limit');
   });
 
+  test('a whole-field spill drops the bodies it swallowed', () => {
+    const args = {
+      big: big(2_000, 'B'),
+      items: Array.from({ length: 200 }, (_, i) => big(100, `i${i}`)),
+    };
+    store.appendEvent({
+      eventId: 'tool-swallow',
+      provider: 'codex',
+      threadId: 'thread-s',
+      createdAt: T0,
+      method: 'tool.started',
+      toolCallId: 'c1',
+      toolName: 'x',
+      arguments: args,
+    } as CanonicalRuntimeEvent);
+    const { payload } = storedPayload('tool-swallow');
+    expect(isRuntimeEventContentRef(payload.arguments)).toBe(true);
+    const written = rows(
+      'SELECT digest, bytes FROM orchestration_event_content WHERE thread_id = ?',
+      'thread-s',
+    );
+    expect(written).toHaveLength(1);
+    expect(written[0]!.digest).toBe(payload.arguments.ref);
+    expect(payload.spilledContent).toEqual({
+      v: 1,
+      count: 1,
+      bytes: written[0]!.bytes,
+    });
+    const [resolved] = store.resolveEventContent(store.listEvents('thread-s'));
+    expect((resolved!.payload as { arguments?: unknown }).arguments).toEqual(
+      args,
+    );
+  });
+
   test('every stored reference has its row', () => {
     store.appendEvent(claudeWriteApproval('thread-z', big(300 * 1024)));
     const [event] = store.listEvents('thread-z');

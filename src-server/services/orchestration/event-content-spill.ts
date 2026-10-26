@@ -64,19 +64,7 @@ type JsonRecord = { [key: string]: Json };
 const SPILLABLE_ROOTS: Readonly<
   Record<string, readonly (readonly string[])[]>
 > = {
-  'request.opened': [
-    ['description'],
-    ['payload', 'toolInput'],
-    ['payload', 'toolArgs'],
-    ['payload', 'rawInput'],
-    ['payload', 'arguments'],
-    ['payload', 'args'],
-    // Codex sends its raw app-server params as the payload.
-    ['payload', 'changes'],
-    ['payload', 'command'],
-    ['payload', 'message'],
-    ['payload', '_meta'],
-  ],
+  // request.opened's roots are computed per event: see requestOpenedRoots.
   'turn.started': [['prompt'], ['ambientContext']],
   'turn.completed': [['outputText']],
   'tool.started': [['arguments']],
@@ -86,7 +74,55 @@ const SPILLABLE_ROOTS: Readonly<
   'extension.notification': [['payload']],
 };
 
-function spillableRootsFor(method: string): readonly (readonly string[])[] {
+/**
+ * Payload fields a surface reads from the STORED request, before it has
+ * loaded anything: whether it is a form and what the form asks, the tool it
+ * names and the call it binds to, and the grant options. They are never
+ * spilled. Everything else in an approval payload (tool arguments, Codex's
+ * `command`, `commandActions`, `changes`, `permissions`, elicitation `_meta`
+ * including `tool_params` and `tool_params_display`, ACP `rawInput` and
+ * `content`, and any field a future engine adds) may be, because no surface
+ * offers Allow before it has loaded the whole request.
+ */
+const REQUEST_DECISION_FIELDS = new Set([
+  'inputRequest',
+  'mcpElicitation',
+  'questionnaire',
+  'requestedSchema',
+  'toolName',
+  'tool',
+  'toolCallId',
+  'suggestions',
+  'claudeAsk',
+  'permissionMode',
+  'options',
+  'agentId',
+  // Codex: what kind of approval this is and the amendments a grant applies.
+  'kind',
+  'networkApprovalContext',
+  'proposedExecpolicyAmendment',
+  'proposedNetworkPolicyAmendments',
+]);
+
+function requestOpenedRoots(event: JsonRecord): string[][] {
+  const payload = event.payload;
+  return [
+    ['description'],
+    ...(isRecord(payload)
+      ? Object.keys(payload)
+          .filter((key) => !REQUEST_DECISION_FIELDS.has(key))
+          .sort()
+          .map((key) => ['payload', key])
+      : []),
+  ];
+}
+
+function spillableRootsFor(
+  method: string,
+  event?: JsonRecord,
+): readonly (readonly string[])[] {
+  if (method === 'request.opened')
+    return event ? requestOpenedRoots(event) : [];
   return SPILLABLE_ROOTS[method] ?? [];
 }
 
@@ -101,7 +137,10 @@ export function withUnavailableContent<T extends { method: string }>(
 ): T | undefined {
   let changed = false;
   const copy = { ...(event as Record<string, unknown>) };
-  for (const path of spillableRootsFor(event.method)) {
+  for (const path of spillableRootsFor(
+    event.method,
+    isRecord(event) ? event : undefined,
+  )) {
     let node: Record<string, unknown> = copy;
     for (let index = 0; index < path.length - 1; index += 1) {
       const next = node[path[index]!];
@@ -341,7 +380,13 @@ export function planEventContentSpill<T extends object>(
     method === 'tool.completed' && typeof event.mcpAppResourceUri === 'string'
       ? MCP_APP_STORED_TARGET_BYTES
       : EVENT_STORED_TARGET_BYTES;
-  const spills = new Map<string, PlannedSpill>();
+  // Each planned body with the stored paths that reference it, so a body
+  // whose every reference was later swallowed by a whole-field spill is
+  // dropped rather than written unreferenced.
+  const spills = new Map<
+    string,
+    { planned: PlannedSpill; paths: Set<string> }
+  >();
   let total = jsonBytes(payload);
   let spilledToolOutput = false;
   const spill = (candidate: Candidate, original?: Json): number => {
@@ -354,7 +399,18 @@ export function planEventContentSpill<T extends object>(
       original ?? (unescapeRuntimeEventContent(candidate.value) as Json),
     );
     setChild(candidate.parent, candidate.key, ref);
-    if (!spills.has(planned.digest)) spills.set(planned.digest, planned);
+    for (const [digest, entry] of spills) {
+      for (const path of entry.paths)
+        if (
+          path.startsWith(`${candidate.path}.`) ||
+          path.startsWith(`${candidate.path}[`)
+        )
+          entry.paths.delete(path);
+      if (entry.paths.size === 0) spills.delete(digest);
+    }
+    const entry = spills.get(planned.digest) ?? { planned, paths: new Set() };
+    entry.paths.add(candidate.path);
+    spills.set(planned.digest, entry);
     if (
       candidate.path.startsWith('$."output"') ||
       candidate.path.startsWith('$."error"')
@@ -363,7 +419,7 @@ export function planEventContentSpill<T extends object>(
     return before - jsonBytes(ref);
   };
 
-  const roots = spillableRootsFor(method)
+  const roots = spillableRootsFor(method, event)
     .map((path) => ({ path, at: resolveRoot(payload, path) }))
     .filter(
       (
@@ -437,14 +493,17 @@ export function planEventContentSpill<T extends object>(
     payload.spilledContent = {
       v: SPILL_PLANNER_VERSION,
       count: spills.size,
-      bytes: [...spills.values()].reduce((sum, item) => sum + item.bytes, 0),
+      bytes: [...spills.values()].reduce(
+        (sum, item) => sum + item.planned.bytes,
+        0,
+      ),
     };
   }
   return {
     // The stored form keeps the event's shape: only content values became
     // references and reserved-key objects became literals.
     payload: payload as T,
-    spills: [...spills.values()],
+    spills: [...spills.values()].map((entry) => entry.planned),
     ...(spilledToolOutput && method === 'tool.completed'
       ? { spilledToolResult: { output: event.output, error: event.error } }
       : {}),
@@ -458,7 +517,7 @@ export function planEventContentSpill<T extends object>(
  */
 function restoreUnavailableRoots(payload: JsonRecord): void {
   const method = typeof payload.method === 'string' ? payload.method : '';
-  for (const path of spillableRootsFor(method)) {
+  for (const path of spillableRootsFor(method, payload)) {
     const at = resolveRoot(payload, path);
     if (!at) continue;
     const value = at.parent[at.key];

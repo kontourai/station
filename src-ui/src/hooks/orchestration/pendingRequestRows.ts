@@ -1,3 +1,7 @@
+import {
+  isRuntimeEventContentRef,
+  type RuntimeEventContentRef,
+} from '@kontourai/station-contracts/runtime-event-content';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
 import {
@@ -86,9 +90,9 @@ function openApprovalRequests(
  * command there. Only `command` is read, as a string or an argv array, and
  * only for a plain command approval.
  */
-function commandOnlyArgs(
+export function commandOnlyArgs(
   payload: Record<string, unknown> | undefined,
-): { command: string | string[] } | undefined {
+): { command: string | string[] | RuntimeEventContentRef } | undefined {
   // A network prompt or a stdin write is not a request to run the command:
   // its title says what it is ("network access to …", "input to a running
   // command"), and a "Run …" label would misstate it.
@@ -96,6 +100,9 @@ function commandOnlyArgs(
     return undefined;
   const command = payload?.command;
   if (typeof command === 'string' && command.trim()) return { command };
+  // A long command stored out of line shows as its marked preview until
+  // the card has loaded it (docs/design/event-content-spill.md).
+  if (isRuntimeEventContentRef(command)) return { command };
   if (
     Array.isArray(command) &&
     command.length > 0 &&

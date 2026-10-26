@@ -8,6 +8,7 @@ import {
 } from '@kontourai/station-shared/tool-request-preview';
 import { type ReactNode, useEffect, useState } from 'react';
 import { recordViewedContentDigest } from '../../hooks/orchestration/answerRequest';
+import { commandOnlyArgs } from '../../hooks/orchestration/pendingRequestRows';
 import type { ToolCallData } from './ToolCallDisplay';
 
 /**
@@ -105,7 +106,10 @@ function ApprovalContentLoader({
       status: 'ready',
       allowable: true,
       args:
-        data.args ?? toolRequestFromPayload(payload).toolInput ?? toolCall.args,
+        data.args ??
+        toolRequestFromPayload(payload).toolInput ??
+        commandOnlyArgs(payload) ??
+        toolCall.args,
       sessionGrant: toolRequestSessionGrantFromPayload(payload),
       serverGrant: toolRequestServerGrantFromPayload(payload),
       retry,
