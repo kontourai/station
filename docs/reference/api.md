@@ -2542,8 +2542,8 @@ native executable at launch, and witnesses bounded local auth/config files,
 including their absence. It does not travel in JSON or grant permission. Guarded
 Codex app-server starts use the observed member cwd; its session tool/confinement
 overrides may not change authentication configuration. Claude checks the SDK's
-actual process launch before confinement wrapping and permits only the authored
-speed-mode settings at that argument layer. Native bookkeeping changes do not
+actual process launch before confinement wrapping. At the `--settings` argument
+layer it permits only `fastMode` as a boolean and `disableAutoMode: "disable"`. Native bookkeeping changes do not
 invalidate an unchanged authentication projection.
 
 These checks support local file/env authentication only. Implicit Claude macOS
@@ -2756,8 +2756,9 @@ identifiers across
 restart. Re-running supervision never re-sends that seat. Cancellation is durable,
 and synchronous checks also fence the initial adapter start and turn after
 asynchronous setup. Interrupted supervision can re-observe accepted members;
-it does not manufacture a completion or a stop proof. Requests are bounded to
-256 KiB; the runtime retains at most 128 groups across all credential owners without automatic eviction.
+it does not manufacture a completion or a stop proof. Creation and context-sync
+request bodies are bounded to 256 KiB. The runtime retains at most 128 groups
+across all credential owners without automatic eviction.
 
 ## Ensemble preparation observations
 
