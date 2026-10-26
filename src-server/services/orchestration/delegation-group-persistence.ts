@@ -76,6 +76,7 @@ import {
   parseStationReportGroupInput,
   REPORT_INTENT_DOMAIN,
 } from './station-report-group-input.js';
+import { reportTerminalWitnessSchema } from './station-report-terminal-witness.js';
 
 const reportObservationId = z
   .string()
@@ -128,6 +129,7 @@ const reportObservationSchema = z
           sessionId: reportObservationId,
           turnId: reportObservationId,
           eventId: reportObservationId,
+          witness: reportTerminalWitnessSchema.optional(),
           recipient: z
             .object({
               id: reportObservationId,
@@ -140,7 +142,26 @@ const reportObservationSchema = z
         .strict(),
     ]),
   })
-  .strict();
+  .strict()
+  .superRefine((record, context) => {
+    const observation = record.observation;
+    if (observation.kind !== 'terminal' || !observation.witness) return;
+    const witness = observation.witness.data;
+    if (
+      witness.groupId !== record.groupId ||
+      witness.seatId !== record.seatId ||
+      witness.invocationId !== record.invocationId ||
+      canonicalJson(witness.evidence) !== canonicalJson(observation.evidence) ||
+      witness.terminal.conversationId !== observation.taskId ||
+      witness.terminal.sessionId !== observation.sessionId ||
+      witness.terminal.turnId !== observation.turnId ||
+      witness.terminal.terminalEventId !== observation.eventId
+    )
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Report terminal witness identity mismatch',
+      });
+  });
 export type StationReportObservation = z.infer<typeof reportObservationSchema>;
 const reportObservationFile = (
   groupId: string,

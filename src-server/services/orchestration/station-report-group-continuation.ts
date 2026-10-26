@@ -4,7 +4,11 @@ import { createHash } from 'node:crypto';
 import type { AuthorizationLedger } from '@kontourai/dispatch';
 import { loadRun, withRunMutationLock } from '@kontourai/flow';
 import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
-import type { DelegationEnvelopeV2 } from '@kontourai/flow-agents/delegation-envelope-v2';
+import {
+  type DelegationEnvelopeV2,
+  delegationEnvelopeDigestV2,
+  rootAuthorityReferenceV2,
+} from '@kontourai/flow-agents/delegation-envelope-v2';
 import { assertDelegationFlowRuntime } from '@kontourai/flow-agents/delegation-flow-runtime';
 import {
   createDelegationRoundsController,
@@ -19,6 +23,7 @@ import type {
 } from '@kontourai/station-contracts/report-group';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { z } from 'zod/v3';
+import type { EnvironmentSecurityService } from '../ssh/environment-security-service.js';
 import type { PreparedReservedFinalFetchOwners } from './delegation-group-launch-fence.js';
 import type { StationDelegationPersistence } from './delegation-group-persistence.js';
 import type { RuntimeSourceRequestContext } from './delegation-group-source-admission.js';
@@ -27,6 +32,10 @@ import type { OrchestrationService } from './orchestration-service.js';
 import type { StationReportGroupCustody } from './station-report-group-custody.js';
 import { StationReportPreparationUnavailable } from './station-report-group-input.js';
 import type { StationReportRetainedTurns } from './station-report-retained-turn.js';
+import {
+  captureReportTerminalWitness,
+  verifyReportTerminalWitness,
+} from './station-report-terminal-witness.js';
 
 const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
 function refuse(): never {
@@ -58,6 +67,7 @@ export class StationReportGroupContinuation {
       orchestration: OrchestrationService;
       dispatchLedger: AuthorizationLedger;
       wireIntents: FileFinalWireIntentStore;
+      environment: EnvironmentSecurityService;
       authorize(context: RuntimeSourceRequestContext): Promise<() => void>;
     },
   ) {
@@ -568,6 +578,14 @@ export class StationReportGroupContinuation {
             record.observation.sessionId !== member.reservedTaskId
           )
             return null;
+          if (
+            record.observation.witness &&
+            !verifyReportTerminalWitness(
+              record.observation.witness,
+              this.owners.environment,
+            )
+          )
+            return null;
           if (!record.observation.recipient) return null;
           const recipient = await persistence.readReportFlowObservation(
             groupId,
@@ -621,6 +639,33 @@ export class StationReportGroupContinuation {
         current();
         if (!terminal || !same(observeRecipient(), initialRecipient))
           return null;
+        const witness = captureReportTerminalWitness(
+          { environment: this.owners.environment, orchestration, current },
+          {
+            groupId,
+            seatId: input.seatId,
+            invocationId: attempt.invocationId,
+            root: rootAuthorityReferenceV2(root),
+            envelope: {
+              id: envelope.envelope_id,
+              generation: envelope.generation,
+              digest: delegationEnvelopeDigestV2(envelope),
+            },
+            evidence,
+            ownerId: root.authenticated_principal_ref.id,
+            turn: {
+              conversationId: member.reservedTaskId,
+              sessionId,
+              clientTurnId: value.dispatched.clientTurnId,
+              turnId,
+            },
+          },
+        );
+        if (
+          !witness ||
+          witness.data.terminal.terminalEventId !== terminal.event.eventId
+        )
+          return null;
         const recipientRef = await persistence.retainReportFlowObservation(
           groupId,
           'recipient',
@@ -639,6 +684,7 @@ export class StationReportGroupContinuation {
               sessionId,
               turnId,
               eventId: terminal.event.eventId,
+              witness,
               recipient: recipientRef,
             },
           },

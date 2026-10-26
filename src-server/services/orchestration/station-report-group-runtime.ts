@@ -242,6 +242,7 @@ export class StationReportGroupRuntime {
       authorize: (context) => this.authorizeResponse(context),
     });
     this.#continuation = new StationReportGroupContinuation({
+      environment: owners.runtime.environmentSecurityService,
       custody: this.#custody,
       persistence,
       orchestration: owners.orchestration,

@@ -8,10 +8,16 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
+import { StationDelegationPersistence } from '../delegation-group-persistence.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import { SessionEventReads } from '../session-event-reads.js';
+import {
+  captureReportTerminalWitness,
+  verifyReportTerminalWitness,
+} from '../station-report-terminal-witness.js';
 
 const directories: string[] = [];
 
@@ -100,6 +106,116 @@ function seedHistoricalTurn(store: EventStore): void {
 }
 
 describe('historical report terminal snapshots', () => {
+  test('retains an authenticated original-turn witness after Session deletion and refuses altered identities', async () => {
+    const home = historicalHomes('report-terminal-witness-');
+    const environment = new EnvironmentSecurityService({ homeDir: home });
+    await environment.initialize();
+    const persistence = new StationDelegationPersistence(home);
+    const store = createStore();
+    const orchestration = new OrchestrationService({
+      eventStore: store,
+      eventBus: new EventBus(),
+      adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
+      logger: { debug() {}, warn() {} },
+    });
+    const current = (): undefined => undefined;
+    const input = {
+      groupId: 'report-group',
+      seatId: 'reviewer',
+      invocationId: 'report-invocation',
+      root: {
+        id: 'report-root',
+        authority_epoch: 0,
+        digest: `sha256:${'1'.repeat(64)}`,
+      },
+      envelope: {
+        id: 'report-envelope',
+        generation: 0,
+        digest: `sha256:${'2'.repeat(64)}`,
+      },
+      evidence: {
+        id: 'physical-evidence',
+        domain: 'station.provider-evidence' as const,
+        digest: `sha256:${'3'.repeat(64)}`,
+      },
+      turn: historicalTurn,
+      ownerId: 'report-owner',
+    };
+    try {
+      seedHistoricalTurn(store);
+      expect(
+        captureReportTerminalWitness(
+          { environment, orchestration, current },
+          { ...input, ownerId: 'foreign-owner' },
+        ),
+      ).toBeNull();
+      const witness = captureReportTerminalWitness(
+        { environment, orchestration, current },
+        input,
+      );
+      expect(witness).not.toBeNull();
+      if (!witness) throw new Error('Expected actual terminal witness');
+      const observation = {
+        groupId: input.groupId,
+        seatId: input.seatId,
+        invocationId: input.invocationId,
+        observation: {
+          kind: 'terminal' as const,
+          evidence: input.evidence,
+          taskId: historicalTurn.conversationId,
+          sessionId: historicalTurn.sessionId,
+          turnId: historicalTurn.turnId,
+          eventId: 'report-terminal',
+          witness,
+        },
+      };
+      const reference = await persistence.retainReportObservation(
+        observation,
+        current,
+      );
+      await expect(
+        persistence.retainReportObservation(
+          { ...observation, invocationId: 'foreign-invocation' },
+          current,
+        ),
+      ).rejects.toThrow('Report terminal witness identity mismatch');
+      store.deleteThread(historicalTurn.sessionId);
+      expect(
+        orchestration.readHistoricalReportTurn(
+          historicalTurn,
+          historicalAuthority,
+        ),
+      ).toBeNull();
+      const retained = await new StationDelegationPersistence(
+        home,
+      ).readReportObservation(
+        input.groupId,
+        input.invocationId,
+        reference,
+        current,
+      );
+      if (
+        retained.observation.kind !== 'terminal' ||
+        !retained.observation.witness
+      )
+        throw new Error('Expected retained witness');
+      expect(
+        verifyReportTerminalWitness(retained.observation.witness, environment),
+      ).toBe(true);
+      const changed = structuredClone(retained.observation.witness);
+      changed.data.terminal.turnId = 'foreign-turn';
+      expect(verifyReportTerminalWitness(changed, environment)).toBe(false);
+      const other = new EnvironmentSecurityService({
+        homeDir: historicalHomes('foreign-terminal-witness-'),
+      });
+      await other.initialize();
+      expect(verifyReportTerminalWitness(witness, other)).toBe(false);
+    } finally {
+      await orchestration.shutdown();
+      store.close();
+    }
+  });
+
   test('refuses corrupt tenant storage instead of interpreting parsed absence as personal', () => {
     const file = join(
       historicalHomes('report-tenant-storage-'),

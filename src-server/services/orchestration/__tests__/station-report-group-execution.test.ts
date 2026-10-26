@@ -30,6 +30,10 @@ import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
 import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
+import {
+  reportTerminalWitnessSchema,
+  verifyReportTerminalWitness,
+} from '../station-report-terminal-witness.js';
 import { createReportFlow } from './delegation-source-fixtures/flow.js';
 import {
   installControl,
@@ -309,6 +313,24 @@ test.each(['independent', 'flow', 'mixed'] as const)(
           ),
         );
         assert.ok(terminal.observation.recipient);
+        const witness = reportTerminalWitnessSchema.parse(
+          terminal.observation.witness,
+        );
+        assert.equal(
+          verifyReportTerminalWitness(witness, h.f.environment),
+          true,
+        );
+        assert.equal(witness.data.groupId, result.group.groupId);
+        assert.equal(
+          witness.data.invocationId,
+          member.attempts[0].invocationId,
+        );
+        assert.equal(witness.data.terminal.sessionId, member.taskId);
+        assert.equal(witness.data.terminal.clientTurnId, member.clientTurnId);
+        assert.equal(
+          witness.data.terminal.terminalEventId,
+          terminal.observation.eventId,
+        );
         const receipt = JSON.parse(
           readFileSync(
             join(

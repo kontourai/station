@@ -440,8 +440,9 @@ read, validation and publication, including card/alert bookkeeping and tombstone
 The home hold replaces the prior separate token-file mutation lock; older builds
 that do not participate are not excluded by this protocol. The multi-file hold
 provides exclusion, not an atomic transaction across registry and sidecars.
-Complete historical recovery still requires signed retained intent/terminal
-evidence and the checked Dispatch/Flow path. No native/device/provider qualification follows.
+Complete historical recovery still requires retained recovery intent and the
+checked Dispatch/Flow path. Signed terminal capture alone does not supply that
+held recovery host. No native/device/provider qualification follows.
 
 ## VirtualApplicationIngress
 
@@ -2054,10 +2055,12 @@ block historical reads or replay. Current operator authority is checked through
 awaits and again before HTTP release. Independent advisory and explicitly selected
 Flow-run topology share this custody. The source owner privately supplies the
 workspace, definition and actor; published Flow rounds own readiness, claims,
-joins and evaluation. The concurrent HTTP composition remains unqualified.
-Earlier Flow Agents 9.5.1 and direct Flow 5.2.2 used different runtime bindings.
-Published Flow Agents 9.7.0 is now installed, and the actual Flow references pass
-its public same-realm assertion. Profiling identified repeated durability and
+joins and evaluation. Published Flow Agents 9.8.0, Flow 5.3.0 and Dispatch 0.8.0
+are installed byte-exact from their registry tarballs and resolve to shared
+module instances. The controlled composed consumer suites pass 40 cases at the
+merged source; positive execution uses a 240-second input. The earlier 120-second
+Flow input exhausted its deadline, so this is functional qualification rather
+than performance recovery. Profiling identified repeated durability and
 prepared-source checks at storage boundaries. Current request authority now
 fences storage, with preparation checks around transaction bodies/publication
 and the final wire. Distinct round checkpoints preserve Flow admission. The
@@ -2085,10 +2088,18 @@ tenant storage refuses, including malformed metadata. The existing
 [turn-dedup persistence owner](../../src-server/services/orchestration/sqlite-turn-dedup-persistence.ts)
 joins that same active connection through Monument's workspace module contract;
 it neither claims a turn nor runs retention. The result contains detached
-identities, not transcript text or a grant. Custody still performs its existing
-live confirmations. Signed durable terminal witnesses, their deletion semantics,
-the complete host exclusion layer, dual-ledger settlement and a mounted recovery
-endpoint remain unfinished.
+identities, not transcript text or a grant.
+
+[Terminal witnesses](../../src-server/services/orchestration/station-report-terminal-witness.ts)
+sign that coherent observation together with the group, seat, physical invocation,
+root/epoch, envelope and provider-evidence reference. Initial execution and new
+continuation completions retain the witness inside the private terminal
+observation; its joins are checked by the observation schema. It survives Session
+deletion as accounting metadata, without transcript or prompt text. Legacy
+terminal observations remain readable without a witness and are not backfilled.
+Continuation confirmation rejects an invalid retained signature. Custody still
+performs its existing live confirmations; retained recovery intent, complete host
+exclusion, dual-ledger settlement and a mounted recovery endpoint remain unfinished.
 
 ## CliSessionGroups
 

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   flowRunHead,
@@ -19,6 +19,10 @@ import { createSessionAgentResolver } from '../session-agent-resolution.js';
 import { StationReportGroupCustody } from '../station-report-group-custody.js';
 import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
 import { StationReportRetainedTurns } from '../station-report-retained-turn.js';
+import {
+  reportTerminalWitnessSchema,
+  verifyReportTerminalWitness,
+} from '../station-report-terminal-witness.js';
 import {
   installControl,
   NOW,
@@ -164,6 +168,30 @@ test('returning report sync and paid cancellation keep exact same-Session invoca
       command,
     );
     assert.equal(result.replayed, false);
+    const terminalReference =
+      result.group.contextSyncs?.[0].attempts?.[0].terminal;
+    assert.ok(terminalReference);
+    const terminalRecord = JSON.parse(
+      readFileSync(
+        join(
+          h.f.home,
+          'report-groups',
+          'station-report-observations-v1',
+          `${terminalReference.id}.json`,
+        ),
+        'utf8',
+      ),
+    );
+    const witness = reportTerminalWitnessSchema.parse(
+      terminalRecord.observation.witness,
+    );
+    assert.equal(verifyReportTerminalWitness(witness, h.f.environment), true);
+    assert.equal(witness.data.terminal.sessionId, member.taskId);
+    assert.notEqual(witness.data.terminal.clientTurnId, member.clientTurnId);
+    assert.equal(
+      witness.data.terminal.turnId,
+      terminalRecord.observation.turnId,
+    );
     assert.equal(h.rawFetch.mock.calls.length, 2);
     assert.equal(starts.mock.calls.length, 1);
     assert.equal(relay.mock.calls.length, 0);

@@ -3,7 +3,11 @@ import { createHash } from 'node:crypto';
 import type { AuthorizationLedger } from '@kontourai/dispatch';
 import { loadRun, withRunMutationLock } from '@kontourai/flow';
 import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
-import type { DelegationEnvelopeV2 } from '@kontourai/flow-agents/delegation-envelope-v2';
+import {
+  type DelegationEnvelopeV2,
+  delegationEnvelopeDigestV2,
+  rootAuthorityReferenceV2,
+} from '@kontourai/flow-agents/delegation-envelope-v2';
 import { assertDelegationFlowRuntime } from '@kontourai/flow-agents/delegation-flow-runtime';
 import {
   createDelegationRoundsController,
@@ -31,6 +35,7 @@ import {
   type PreparedStationReportGroup,
   type StationReportGroupPreparation,
 } from './station-report-group-preparation.js';
+import { captureReportTerminalWitness } from './station-report-terminal-witness.js';
 
 const same = (left: unknown, right: unknown) =>
   canonicalJson(left) === canonicalJson(right);
@@ -577,6 +582,41 @@ export class StationReportGroupExecution {
             if (!same(observed, value.recipient())) refuse();
             return undefined;
           };
+          const member = prepared.members.find(
+            (candidate) => candidate.seatId === attempt.seatId,
+          );
+          if (!member) refuse();
+          const witness = captureReportTerminalWitness(
+            {
+              environment: this.owners.environment,
+              orchestration,
+              current: terminalCurrent,
+            },
+            {
+              groupId,
+              seatId: attempt.seatId,
+              invocationId: attempt.invocationId,
+              root: rootAuthorityReferenceV2(prepared.root),
+              envelope: {
+                id: envelope.envelope_id,
+                generation: envelope.generation,
+                digest: delegationEnvelopeDigestV2(envelope),
+              },
+              evidence: value.attempt.evidenceReference,
+              ownerId: prepared.root.authenticated_principal_ref.id,
+              turn: {
+                conversationId: value.task.taskId,
+                sessionId: value.task.sessionId,
+                clientTurnId: member.clientTurnId,
+                turnId: value.task.initialTurnId,
+              },
+            },
+          );
+          if (
+            !witness ||
+            witness.data.terminal.terminalEventId !== terminal.event.eventId
+          )
+            return null;
           const recipientReference =
             await persistence.retainReportFlowObservation(
               groupId,
@@ -599,6 +639,7 @@ export class StationReportGroupExecution {
                 sessionId: value.task.sessionId,
                 turnId: value.task.initialTurnId,
                 eventId: terminal.event.eventId,
+                witness,
                 recipient: recipientReference,
               },
             },

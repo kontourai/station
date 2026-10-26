@@ -2297,3 +2297,27 @@ deadline and refuses at the exact deadline without a provider call. The sync
 case retains all receipt, replay, cancellation and accounting assertions with
 an explicit60-second test guard; its six-case file passes. Production timing
 and expiry checks are unchanged. Final execution on this fixture remains pending.
+
+### Merged consumer qualification and retained terminal witnesses
+
+Normal merge `64a6911bd36` integrates `main@b3901a5ddc0`; the only conflict was
+the process-resource manifest, resolved by retaining both lanes' classifications.
+Managed install, dependency checks and lint pass. Resource-manifest, SDK stream
+and canonical direct-chat turn-key owners pass 67 cases. The five composed
+report execution, preparation, lock admission, sync recovery and exact-expiry
+suites pass 40 cases on that clean head. Registry tarball bytes and shared
+Flow/Dispatch module identity were reverified after installation. This qualifies
+controlled functional execution at the disclosed 240-second input, not live
+provider/device behavior or the earlier 120-second bound.
+
+The next increment captures a host-signed terminal witness from the existing
+coherent personal-turn read. It binds group, seat, invocation, original root and
+envelope, physical evidence and the exact owner/conversation/Session/client-turn/
+provider-turn/completion tuple. Initial and continuation terminal producers retain
+it within the private observation. Storage rejects a witness attached to another
+observation; a retained signed witness can still be verified after Session
+deletion. Legacy unsigned observations are accepted without reconstruction.
+Owner/storage suites pass 33 cases and server-test types pass; composed producer
+qualification is pending. This supplies retained accounting metadata, not a
+recovery grant. Durable recovery intent, held recovery authority, checked
+Dispatch/Flow settlement and public recovery serving remain open.
