@@ -270,6 +270,13 @@ describe('Session inventory authored inputs', () => {
           attachments,
         } as never),
       );
+      // The store's listing over every row (the module's first page holds
+      // only two), then the projection a client receives.
+      const listed = store.listSessionInventoryEvents(threadId, {
+        group: 'inputs',
+      });
+      expect(listed.continuation).toBeUndefined();
+      expect(listed.events.map((event) => event.id)).toEqual(['att-good']);
       const inputs = await listInputs(store, threadId);
       expect(inputs.map((item) => item.eventId)).toEqual(['att-good']);
       expect(inputs[0]?.attachmentDescriptors).toEqual([
