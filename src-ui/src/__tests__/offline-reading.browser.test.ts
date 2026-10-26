@@ -18,6 +18,7 @@ declare global {
     reconnectOnlineObserved?: boolean;
     reading: typeof import('../lib/offlineReading');
     openWarm: () => Promise<{ decoder: string }>;
+    persistRequests?: number;
   }
 }
 
@@ -65,7 +66,7 @@ beforeAll(async () => {
   // A lazy surface the worker warms, with a hashed binary it must keep offline.
   writeFileSync(
     path.join(root, 'warm-surface.ts'),
-    "export const decoder = new URL('./decoder.wasm', import.meta.url).href;",
+    "import decoderUrl from './decoder.wasm?url'; export const decoder = new URL(decoderUrl, location.href).href;",
   );
   writeFileSync(path.join(root, 'decoder.wasm'), Buffer.alloc(8192, 7));
   const fixturePath = path.join(root, 'connection-fixture.ts');
@@ -181,6 +182,15 @@ test('opt-in text survives an offline reload under CSP, stays read-only, and cle
   context.setDefaultTimeout(5000);
   try {
     await context.addInitScript(() => {
+      // Count the opt-in's storage-persistence requests; the browser's
+      // own answer on a test origin is not under test.
+      window.persistRequests = 0;
+      Object.defineProperty(navigator.storage, 'persist', {
+        value: async () => {
+          window.persistRequests = (window.persistRequests ?? 0) + 1;
+          return false;
+        },
+      });
       window.addEventListener(
         'online',
         (event) => {
@@ -208,10 +218,12 @@ test('opt-in text survives an offline reload under CSP, stays read-only, and cle
     expect(await page.getByRole('switch').getAttribute('aria-checked')).toBe(
       'false',
     );
+    expect(await page.evaluate(() => window.persistRequests)).toBe(0);
     await page.getByRole('switch').click();
     await expect
       .poll(() => page.getByRole('switch').getAttribute('aria-checked'))
       .toBe('true');
+    expect(await page.evaluate(() => window.persistRequests)).toBe(1);
     await page.evaluate(async () => {
       const reading = (window as any).reading;
       await reading.saveOfflineReading(
@@ -366,6 +378,16 @@ test('the worker warms named chunks without credentials and keeps hashed binarie
     const page = await context.newPage();
     await page.goto(origin);
     await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+    // Chromium's own install check: manifest, icons and a fetch-handling worker.
+    const cdp = await context.newCDPSession(page);
+    expect(
+      (await cdp.send('Page.getAppManifest')).errors.map(
+        (error) => error.message,
+      ),
+    ).toEqual([]);
+    expect(
+      (await cdp.send('Page.getInstallabilityErrors')).installabilityErrors,
+    ).toEqual([]);
     const cached = () =>
       page.evaluate(async () =>
         (

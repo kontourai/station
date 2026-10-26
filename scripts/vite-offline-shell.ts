@@ -17,6 +17,33 @@ interface OfflineShellOptions {
   warmModules?: readonly string[];
 }
 
+/**
+ * The installable web app. Native shells and the dev server load the same
+ * index.html under a policy without `manifest-src`, so only this web build
+ * links it. `background_color` is Station's default (dark) `--k-bg` page
+ * canvas, which the launch splash paints before the app; Station sets no
+ * theme colour for its own theme (see startup-theme.js), so neither does this.
+ */
+const WEB_APP_MANIFEST = {
+  id: '/',
+  name: 'Station',
+  short_name: 'Station',
+  start_url: '/',
+  scope: '/',
+  display: 'standalone',
+  background_color: '#0a0e13',
+  icons: [
+    { src: '/favicon.png', sizes: '192x192', type: 'image/png' },
+    { src: '/icons/station-512.png', sizes: '512x512', type: 'image/png' },
+    {
+      src: '/icons/station-maskable-512.png',
+      sizes: '512x512',
+      type: 'image/png',
+      purpose: 'maskable',
+    },
+  ],
+};
+
 /** A chunk's static import graph and the stylesheets each chunk loads. */
 function collectChunkGraph(
   bundle: Rollup.OutputBundle,
@@ -39,6 +66,23 @@ export function offlineShell(options: OfflineShellOptions = {}): Plugin {
   return {
     name: 'station-offline-shell',
     apply: 'build',
+    transformIndexHtml: () => [
+      {
+        tag: 'link',
+        attrs: { rel: 'manifest', href: '/manifest.webmanifest' },
+        injectTo: 'head',
+      },
+      {
+        // iOS fills transparency with black, so the home screen gets the
+        // opaque square and applies its own mask.
+        tag: 'link',
+        attrs: {
+          rel: 'apple-touch-icon',
+          href: '/icons/station-maskable-512.png',
+        },
+        injectTo: 'head',
+      },
+    ],
     generateBundle: {
       order: 'post',
       handler(_options, bundle) {
@@ -52,6 +96,7 @@ export function offlineShell(options: OfflineShellOptions = {}): Plugin {
           .replace(/<script\b(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/gi, '')
           .replace(/\snonce="[^"]*"/g, '');
         const files = new Set<string>([
+          '/manifest.webmanifest',
           '/offline-shell.json',
           '/startup-theme.js',
           '/favicon.png',
@@ -93,13 +138,26 @@ export function offlineShell(options: OfflineShellOptions = {}): Plugin {
         const csp = uiDocumentContentSecurityPolicy();
         const version = createHash('sha256')
           .update(html)
-          .update(JSON.stringify({ precache, warm, immutable, csp }))
+          .update(
+            JSON.stringify({
+              precache,
+              warm,
+              immutable,
+              csp,
+              manifest: WEB_APP_MANIFEST,
+            }),
+          )
           .digest('hex')
           .slice(0, 20);
         const worker = readFileSync(
           path.resolve(import.meta.dirname, '../src-ui/public/sw.js'),
           'utf8',
         );
+        this.emitFile({
+          type: 'asset',
+          fileName: 'manifest.webmanifest',
+          source: `${JSON.stringify(WEB_APP_MANIFEST, null, 2)}\n`,
+        });
         this.emitFile({
           type: 'asset',
           fileName: 'offline-shell.json',

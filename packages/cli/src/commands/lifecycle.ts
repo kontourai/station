@@ -195,6 +195,8 @@ export const UI_MIME_TYPES: Record<string, string> = {
   '.woff': 'font/woff',
   '.ttf': 'font/ttf',
   '.map': 'application/json',
+  '.wasm': 'application/wasm',
+  '.webmanifest': 'application/manifest+json',
 };
 
 export { UI_PROXY_BACKEND_PREFIXES };
