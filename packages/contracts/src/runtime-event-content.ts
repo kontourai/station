@@ -277,6 +277,27 @@ export function runtimeEventContentDisplayText(
   return text.text ? `${text.text}\n${note}` : note;
 }
 
+/**
+ * A stored value prepared for display: every reference becomes its marked
+ * preview text and literals are unwrapped, so a surface showing an unresolved
+ * event never prints a reference object as if it were data.
+ */
+export function runtimeEventContentForDisplay<T>(value: T): T {
+  const visit = (node: unknown): unknown => {
+    if (
+      isRuntimeEventContentRef(node) ||
+      isRuntimeEventContentUnavailable(node)
+    )
+      return runtimeEventContentDisplayText(node);
+    if (Array.isArray(node)) return node.map(visit);
+    if (!isPlainRecord(node)) return node;
+    if (isRuntimeEventContentLiteral(node))
+      return mapRecord(node.$stationLiteral, visit);
+    return mapRecord(node, visit);
+  };
+  return visit(value) as T;
+}
+
 /** Marker appended where a reader shows a preview instead of a value. */
 export function runtimeEventContentOmissionNote(
   bytes: number | undefined,

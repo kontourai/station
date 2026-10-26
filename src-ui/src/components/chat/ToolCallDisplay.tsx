@@ -1,3 +1,4 @@
+import { runtimeEventContentForDisplay } from '@kontourai/station-contracts/runtime-event-content';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   parseStationControlRefusal,
@@ -228,10 +229,16 @@ function ToolCallRow({
     toolCall,
     isToolCallAwaitingApproval(toolCall) && Boolean(onApprove),
   );
+  // Until then, any reference shows as its marked preview, never as a
+  // reference object.
   const display = toolDisplayView(
     contentGate.args !== undefined
       ? { ...toolCall, args: contentGate.args }
-      : toolCall,
+      : {
+          ...toolCall,
+          args: runtimeEventContentForDisplay(toolCall.args),
+          output: runtimeEventContentForDisplay(toolCall.output),
+        },
   );
   const toolName = display.toolName;
   const originalName = toolCall.originalName;
