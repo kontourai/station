@@ -1323,8 +1323,18 @@ photographed, recorded per screen as `uiAudit` in `gallery/capture.json`
 (`tests/helpers/gallery-ui-audit.ts`):
 
 - hit targets (`tests/helpers/hit-target-audit.ts`): controls a clip hides
-  on screen, overlapping targets that both centres can confirm, and, at the
-  touch layout (600px wide or less), targets under 44px. Desktop is exempt from
+  on screen, overlapping targets that both centres can confirm (a pair with
+  a pinned control, in a fixed or sticky layer, counts unless a covering
+  sheet is on top: `aria-modal`, a modal `<dialog>`, or the expanded chat
+  dock. Content behind, or partly under, a covering sheet, including the
+  non-modal expanded chat dock, is cleared; a user can still tap the visible
+  part of such content, which this check accepts. Scroll position is not
+  credited, so content a user could scroll clear of a bar is still reported
+  (conservative by design);
+  controls the UA does not render, inside a closed `<details>`, are
+  skipped; accepted limitation: the sheet test trusts markup, so a bar that
+  carries `aria-modal="true"` or the `chat-dock` class is treated as a
+  sheet), and, at the touch layout (600px wide or less), targets under 44px. Desktop is exempt from
   the 44px rule: about 1,370 of 1,672 desktop controls measured under 44px
   when it was introduced, so it would measure the desktop design, not defects;
 - horizontal overflow: the document scrolling sideways, and elements that
@@ -1361,7 +1371,22 @@ accepted new screen is a `::warning::` annotation on the PR, and its listed
 findings are printed in the run summary. Accepted gap: a rename that keeps a
 stub of the old screen, or a removal and an addition landed as two PRs,
 passes the ceiling; those annotations and the removal's own diff are what
-make it visible to review. To add
+make it visible to review.
+
+An intended accessible-name change rekeys a name-bearing finding (for
+example axe `label-content-name-mismatch`). The ceiling pairs it as
+`REKEY old → new` when the screen already existed and the rule and anchor
+match once each anchor's trailing name segment is set aside. Each added key
+consumes one removed key of its shape, so a shape never ends with more keys
+than the base had; that one-to-one pairing is the count guard. Each REKEY is a
+`::warning::` annotation on the allowlist file and is counted in the run
+summary's heading; `check` prints `LIKELY REKEY` for the pair. Accepted gap:
+fixing one finding and adding an unrelated defect of the same shape pairs as
+a REKEY, which the annotation puts in front of review. The allowlist may not
+list a key twice. Replace
+the key in the allowlist rather than reverting the copy. Names stay in keys
+because, without them, 143 of 257 entries shared a key when this was measured.
+To add
 a screen: add it to `SCREENS` and the screen map, capture it, run
 `node scripts/gallery-ui-findings.mjs adopt --screens=<name>`, and review the
 listed findings in the PR.
