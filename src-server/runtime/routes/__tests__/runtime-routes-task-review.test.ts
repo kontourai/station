@@ -571,6 +571,12 @@ describe('Task review through configureRuntimeRoutes', () => {
     expect(e.evidence()).toEqual(evidenceBefore);
     await e.edit('Intro.\nFirst plan\nDetails.');
     let read = await e.asOperator('GET', e.reviewPath);
+    const planItem = read.json.data.items.find(
+      (item: { kind: string }) => item.kind === 'plan',
+    );
+    expect(planItem.revisionOrdinals[thread.artifact.revision]).toBe(1);
+    expect(planItem.revisionOrdinals[planItem.artifact.revision]).toBe(2);
+
     expect(read.json.data.threads[0]).toMatchObject({
       state: 'open',
       outdated: false,

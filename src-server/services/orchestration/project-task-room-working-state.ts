@@ -32,6 +32,7 @@ export interface ProjectTaskRoomWorkingState {
   read(input: {
     scope: { projectId: string; taskId: string; documentId: string };
     after?: string;
+    includeRevisionOrdinals?: boolean;
   }): Promise<WorkingProjection>;
   settle(input: {
     scope: { projectId: string; taskId: string; documentId: string };
@@ -123,6 +124,7 @@ export interface WorkingProjection {
   readonly revision?: string;
   readonly text?: string;
   readonly floor?: string;
+  readonly revisionOrdinals?: Readonly<Record<string, number>>;
 }
 export interface WorkingSettlement {
   readonly kind:

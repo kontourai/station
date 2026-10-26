@@ -496,7 +496,26 @@ describe('project task room working state', () => {
       kind: 'gap',
       text: 'onetwothree',
     });
+    const retained = await working.read({
+      scope,
+      includeRevisionOrdinals: true,
+    });
+    expect(retained.revisionOrdinals).toEqual({
+      [second.revision]: 2,
+      [retained.revision!]: 3,
+    });
     await working.close();
+    const restarted = createProjectTaskRoomWorkingState(path, {
+      maxRetainedOperations: 1,
+    });
+    try {
+      expect(
+        (await restarted.read({ scope, includeRevisionOrdinals: true }))
+          .revisionOrdinals,
+      ).toEqual(retained.revisionOrdinals);
+    } finally {
+      await restarted.close();
+    }
   });
 
   test('observes a committed change from a second worker only while watched', async () => {

@@ -1361,7 +1361,10 @@ describe('text relocation and freshness', () => {
                 counted(pattern.length, 2 * pattern.length),
               ),
             );
-          const descriptors = new Map<string, PropertyDescriptor>();
+          const prepared = review.prepareTaskReviewDocument(text);
+          if (!prepared) throw new Error('Expected prepared document');
+          const descriptors = new Map<PropertyKey, PropertyDescriptor>();
+          const regexDescriptors = new Map<PropertyKey, PropertyDescriptor>();
           const nativePatterns: number[] = [];
           for (const method of [
             'indexOf',
@@ -1371,6 +1374,11 @@ describe('text relocation and freshness', () => {
             'lastIndexOf',
             'search',
             'match',
+            'slice',
+            'substring',
+            'substr',
+            'at',
+            'codePointAt',
           ] as const) {
             const descriptor = Object.getOwnPropertyDescriptor(
               String.prototype,
@@ -1394,6 +1402,25 @@ describe('text relocation and freshness', () => {
               },
             });
           }
+          for (const method of ['exec', 'test', Symbol.match, Symbol.search]) {
+            const descriptor = Object.getOwnPropertyDescriptor(
+              RegExp.prototype,
+              method,
+            );
+            if (!descriptor)
+              throw new Error(`missing RegExp.${String(method)}`);
+            regexDescriptors.set(method, descriptor);
+            Object.defineProperty(RegExp.prototype, method, {
+              ...descriptor,
+              value: function (this: RegExp, ...args: unknown[]) {
+                if (String(args[0]).length === size)
+                  throw new Error(
+                    `unmetered document RegExp.${String(method)}`,
+                  );
+                return Reflect.apply(descriptor.value, this, args);
+              },
+            });
+          }
           let result: unknown;
           try {
             result =
@@ -1404,12 +1431,14 @@ describe('text relocation and freshness', () => {
                       anchor: { kind: 'block', startLine: 2, endLine: 2 },
                       quote: anchor.exact,
                     },
-                    { ...currentPlan, text },
+                    { ...currentPlan, text, preparedDocument: prepared },
                   )
-                : relocateTextQuote(text, anchor);
+                : prepared.relocateTextQuote(anchor);
           } finally {
             for (const [method, descriptor] of descriptors)
               Object.defineProperty(String.prototype, method, descriptor);
+            for (const [method, descriptor] of regexDescriptors)
+              Object.defineProperty(RegExp.prototype, method, descriptor);
             findSpy.mockRestore();
             atSpy.mockRestore();
           }
@@ -1775,5 +1804,39 @@ describe('thread views, filters and counts', () => {
         revision: 2,
       }).currentRevision,
     ).toBe(2);
+  });
+});
+
+describe('summarizeThreadView', () => {
+  test('retains list metadata and delivery evidence while bounding every preview without partial surrogates', () => {
+    const history = [
+      { ...event('comment', 1), body: `${'o'.repeat(499)}🧭opening` },
+      event('sent', 2),
+      { ...event('agent-reply', 3), body: 'a'.repeat(501) },
+      { ...event('reply', 4), body: 'last reply' },
+    ];
+    const detail = review.deriveThreadView(
+      thread('plan', history),
+      currentPlan,
+    );
+    const summary = review.summarizeThreadView(detail);
+    expect(summary).toMatchObject({
+      threadId: detail.threadId,
+      artifact: detail.artifact,
+      state: detail.state,
+      status: 'available',
+      eventCount: 4,
+      openingEvent: { kind: 'comment', body: 'o'.repeat(499) },
+      lastDeliveryEvent: { kind: 'agent-reply', body: 'a'.repeat(500) },
+      lastEvent: { kind: 'reply', body: 'last reply' },
+    });
+    expect(summary).not.toHaveProperty('events');
+    expect(detail.events[0]).toHaveProperty(
+      'body',
+      `${'o'.repeat(499)}🧭opening`,
+    );
+    expect(() =>
+      review.summarizeThreadView({ ...detail, events: [history[1]] }),
+    ).toThrow('Missing opening comment');
   });
 });

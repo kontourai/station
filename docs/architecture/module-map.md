@@ -5197,7 +5197,11 @@ lists metadata and counts for the plan, Task summary (Brief), kept outputs,
 linked answers and captures. List threads are summaries with state, anchor,
 event count, opening-comment preview and latest delivery event alongside the
 last event; a separate thread-detail GET supplies full history. Summary event
-bodies are capped at 500 UTF-16 code units without partial surrogates.
+bodies are capped at 500 UTF-16 code units without partial surrogates by the
+shared contracts `summarizeThreadView` projection. Plan item metadata includes
+`revisionOrdinals` from the retained working-state revision sequence, so the
+Review chip can show ordinal transitions for digest revisions. The retained
+floor also has its original ordinal; pruned revisions have no invented version.
 Corrupt rows are logged once per thread/event count within the bounded warning
 cache and projected as unavailable entries while healthy
 threads remain readable. Unavailable entries are omitted from aggregate counts.

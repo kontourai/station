@@ -410,6 +410,25 @@ function retainedFloor(scope: any, fallback: string) {
     .get(...key(scope)) as { prior_revision?: string } | undefined;
   return row?.prior_revision ?? fallback;
 }
+function revisionOrdinals(scope: any, currentRevision: string) {
+  const rows = db
+    .prepare(
+      'SELECT prior_revision,revision,ordinal FROM project_task_room_working_revisions WHERE project_id=? AND task_id=? AND document_id=? ORDER BY ordinal ASC',
+    )
+    .all(...key(scope)) as Array<{
+    prior_revision: string;
+    revision: string;
+    ordinal: number;
+  }>;
+  return Object.fromEntries(
+    rows.length
+      ? [
+          [rows[0].prior_revision, rows[0].ordinal - 1],
+          ...rows.map((row) => [row.revision, row.ordinal]),
+        ]
+      : [[currentRevision, 0]],
+  );
+}
 function canResume(scope: any, after: string, revision: string) {
   if (after === revision) return true;
   let cursor = after;
@@ -454,6 +473,9 @@ async function handle(message: any) {
       const state = load(value.scope);
       if (!state) return send(id, { kind: 'unavailable' });
       const snapshot = state.snapshot();
+      const versions = value.includeRevisionOrdinals
+        ? { revisionOrdinals: revisionOrdinals(value.scope, snapshot.revision) }
+        : {};
       const resync =
         value.after && canResume(value.scope, value.after, snapshot.revision)
           ? { outcome: 'delta' as const }
@@ -462,12 +484,14 @@ async function handle(message: any) {
         id,
         resync.outcome === 'snapshot'
           ? {
+              ...versions,
               kind: value.after ? 'gap' : 'snapshot',
               revision: snapshot.revision,
               text: state.text(),
               floor: retainedFloor(value.scope, snapshot.revision),
             }
           : {
+              ...versions,
               kind: 'delta',
               revision: snapshot.revision,
               text: state.text(),

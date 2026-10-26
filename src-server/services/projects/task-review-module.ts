@@ -7,8 +7,8 @@ import {
   normalizeTaskReviewText,
   parseTaskReviewQuote,
   prepareTaskReviewDocument,
+  summarizeThreadView,
   TASK_REVIEW_LIMITS,
-  TASK_REVIEW_OPENING_PREVIEW_CHARS,
   TASK_REVIEW_VERSION,
   type TaskReviewArtifactRef,
   type TaskReviewAuthor,
@@ -16,7 +16,6 @@ import {
   type TaskReviewCreateThreadRequest,
   type TaskReviewCurrentArtifact,
   type TaskReviewDocument,
-  type TaskReviewEvent,
   type TaskReviewFailure,
   type TaskReviewFilter,
   type TaskReviewItem,
@@ -65,7 +64,13 @@ interface Dependencies {
     taskId: string,
     request: Request,
   ): Promise<
-    | { kind: 'available'; documentId: string; revision: string; text: string }
+    | {
+        kind: 'available';
+        documentId: string;
+        revision: string;
+        text: string;
+        revisionOrdinals?: Readonly<Record<string, number>>;
+      }
     | { kind: 'unavailable' }
   >;
   /** Optional selector confines mutation/item reads to one structured answer identity. */
@@ -96,17 +101,6 @@ function boundedText(text: string): string {
       `Review text exceeds the ${TASK_REVIEW_ITEM_MAX_BYTES}-byte limit.`,
     );
   return normalizeTaskReviewText(text);
-}
-
-function previewEvent<T extends TaskReviewEvent>(event: T): T {
-  return 'body' in event
-    ? {
-        ...event,
-        body: event.body
-          .slice(0, TASK_REVIEW_OPENING_PREVIEW_CHARS)
-          .replace(/[\uD800-\uDBFF]$/, ''),
-      }
-    : event;
 }
 
 /** Bounded retained payload estimates include UTF-16 strings and numeric line offsets. */
@@ -314,31 +308,7 @@ export class TaskReviewModule {
           const current = artifacts.get(
             key(thread.artifact.kind, artifactId(thread.artifact)),
           )?.current ?? { status: 'unavailable' as const };
-          const { events, ...view } = this.derive(thread, current);
-          const openingEvent = events[0];
-          if (openingEvent?.kind !== 'comment')
-            throw new TypeError('Missing opening comment');
-          const lastDeliveryEvent = [...events]
-            .reverse()
-            .find(
-              (event) =>
-                event.kind === 'sent' ||
-                event.kind === 'send-failed' ||
-                event.kind === 'agent-reply',
-            );
-          return {
-            ...view,
-            status: 'available' as const,
-            eventCount: events.length,
-            openingEvent: previewEvent({
-              ...openingEvent,
-              kind: 'comment' as const,
-            }),
-            lastDeliveryEvent: lastDeliveryEvent
-              ? previewEvent(lastDeliveryEvent)
-              : undefined,
-            lastEvent: previewEvent(events.at(-1)!),
-          };
+          return summarizeThreadView(this.derive(thread, current));
         } catch (error) {
           return this.unavailable(
             { ...thread, eventCount: thread.events.length },
@@ -387,6 +357,7 @@ export class TaskReviewModule {
             kind: 'plan',
             id: plan.documentId,
             label: 'Plan',
+            revisionOrdinals: plan.revisionOrdinals,
             status: 'available',
             counts: emptyCounts(),
             ...(content ? { text: boundedText(plan.text) } : {}),

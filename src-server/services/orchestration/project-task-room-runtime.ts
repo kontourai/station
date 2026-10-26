@@ -735,11 +735,15 @@ export class ProjectTaskRoomRuntime {
    * admitted dispatch, or a Session's immutable room execution binding).
    * Hosted mode and a closed runtime have no document to read.
    */
-  async readTaskDocumentForBrief(taskId: string): Promise<
+  async readTaskDocumentForBrief(
+    taskId: string,
+    includeRevisionOrdinals = false,
+  ): Promise<
     | {
         readonly kind: 'available';
         readonly revision: string;
         readonly text: string;
+        readonly revisionOrdinals?: Readonly<Record<string, number>>;
       }
     | { readonly kind: 'unavailable'; readonly reason: string }
   > {
@@ -748,7 +752,10 @@ export class ProjectTaskRoomRuntime {
     const scope = this.#scope(taskId);
     if (!scope) return { kind: 'unavailable', reason: 'the Task has no room' };
     const document = { ...scope, documentId: documentIdFor(scope) };
-    const result = await this.#deps.working.read({ scope: document });
+    const result = await this.#deps.working.read({
+      scope: document,
+      includeRevisionOrdinals,
+    });
     const current = this.#scope(taskId);
     if (
       !current ||
@@ -770,7 +777,12 @@ export class ProjectTaskRoomRuntime {
         kind: 'unavailable',
         reason: 'the Task document is unavailable',
       };
-    return { kind: 'available', revision: result.revision, text: result.text };
+    return {
+      kind: 'available',
+      revision: result.revision,
+      text: result.text,
+      revisionOrdinals: result.revisionOrdinals,
+    };
   }
 
   /**
@@ -1045,7 +1057,10 @@ export class ProjectTaskRoomRuntime {
   }
 
   async #readReviewPlan(access: TaskReviewAccess) {
-    const result = await this.readTaskDocumentForBrief(access.write.taskId);
+    const result = await this.readTaskDocumentForBrief(
+      access.write.taskId,
+      true,
+    );
     const scope = this.#scope(access.write.taskId);
     if (!access.write.beforeCommit() || !scope || result.kind !== 'available')
       return { kind: 'unavailable' as const };
