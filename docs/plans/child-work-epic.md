@@ -2131,8 +2131,9 @@ be allowed by that persisted scope. Existing request binding, security checks an
 host signing-key comparisons remain required.
 
 The original observer accepted a credential revoked through a second pairing
-service. The repaired observer refuses external revocation and scope narrowing,
-and refuses missing or malformed registry bytes without repairing them. The
+service. The repaired observer refuses external revocation and scope narrowing
+that removes permission for the current route, and refuses missing or malformed
+registry bytes without repairing them. The
 observer and three pairing/environment suites pass 152 cases; server-test types
 pass. These are controlled local results. A fresh observation is not exclusion:
 whole-file writers still need joined ownership and stale-write protection before
