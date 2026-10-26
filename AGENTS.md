@@ -4,7 +4,7 @@
 
 - GitHub owns live work state. Check `git status -sb` against `origin/main`.
 - Work only in a sibling worktree (`../station-worktrees/<lane>`), never the primary checkout or a nested worktree. Preserve intentional changes; never use `git stash`; after review begins, integrate upstream with `git merge origin/main`, not rebase.
-- Cloud sessions get one fresh checkout and no `gh`: work there on the assigned branch, match `.nvmrc` and `packageManager` before `dependencies:ci`, unshallow history before trusting local docs-freshness results, and arm auto-merge through the GitHub connector.
+- In a fresh environment, match `.nvmrc` and `packageManager` before `dependencies:ci`, and unshallow history before trusting local docs-freshness results. If it hands you a single checkout and branch, work there; without `gh`, arm auto-merge through the GitHub connector.
 - Use an isolated Station home, instance name, and non-default ports. Ports 3141 and 3000 belong to the user.
 - Hand a running instance to the operator through a freshly minted `station open --print` sign-in link (single-use), never a bare `localhost` URL. Mint it at handoff, not at start; see [development](docs/guides/development.md).
 - Run `npm run dependencies:ci` to arm hooks; managed installs use pinned pnpm and `npm run` is the script interface, so never run raw npm installs. Before editing, run `npm run gate:for -- <paths...>`, then `npm run test:focused -- <file...>`, not ad-hoc `npx vitest`.
