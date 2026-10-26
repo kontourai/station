@@ -244,6 +244,34 @@ export class HomeWriterOwner {
     return this.#span(holder.lease, body);
   }
 
+  async runExclusive<T>(body: () => T, within?: HomeWriterLease): Promise<T> {
+    const lease = within ?? (await this.acquire());
+    let ran = false;
+    let outcome: { ok: true; value: T } | { ok: false; error: unknown };
+    try {
+      outcome = {
+        ok: true,
+        value: this.runWithLease(lease, () => {
+          ran = true;
+          return body();
+        }),
+      };
+    } catch (error) {
+      outcome = { ok: false, error };
+    }
+    if (!within) {
+      try {
+        await lease.release();
+      } catch (error) {
+        throw new HomeWriterUnavailableError('cleanup-required', ran, {
+          cause: error,
+        });
+      }
+    }
+    if (!outcome.ok) throw outcome.error;
+    return outcome.value;
+  }
+
   async acquire(signal?: AbortSignal): Promise<HomeWriterLease> {
     this.assertCurrent();
     signal?.throwIfAborted();
@@ -254,7 +282,12 @@ export class HomeWriterOwner {
       if (!holder.active) {
         await releaseHolder(holder);
       }
-    const base = await acquireFileMutationLeaseAsync(this.#core.lock);
+    let base: FileMutationLease;
+    try {
+      base = await acquireFileMutationLeaseAsync(this.#core.lock);
+    } catch (error) {
+      throw new HomeWriterUnavailableError('busy', false, { cause: error });
+    }
     const holder: Holder = { core: this.#core, lease: base, active: true };
     this.#core.holders.add(holder);
     const lease: HomeWriterLease = Object.freeze({

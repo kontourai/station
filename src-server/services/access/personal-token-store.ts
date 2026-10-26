@@ -7,7 +7,7 @@
  *
  * Secrets are never stored: each record keeps the sha256 of its secret,
  * compared in constant time. Writes are atomic (temp file, fsync, rename),
- * owner-only, and made under a cross-process lock from a fresh read, so a
+ * owner-only, and made under the canonical home hold from a fresh read, so a
  * second Station process on the same home never writes a stale view back
  * (which could resurrect a revoked token). Reads follow the file: a change
  * another process made is seen on the next lookup. Revoked and expired
@@ -33,7 +33,10 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import type { DevicePrincipalBinding } from '@kontourai/station-contracts/environment-security';
-import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import type {
+  HomeWriterLease,
+  HomeWriterOwner,
+} from '../ssh/home-writer-owner.js';
 
 export const PERSONAL_TOKENS_FILE = 'personal-tokens.json';
 const RECORD_VERSION = 1;
@@ -108,39 +111,41 @@ interface LoadedTokens {
 
 export class PersonalTokenStore {
   readonly #path: string;
+  readonly #writer: HomeWriterOwner;
   readonly #now: () => number;
   #cache: { key: string; loaded: LoadedTokens } | undefined;
 
-  constructor(options: { securityDir: string; now?: () => number }) {
-    this.#path = join(options.securityDir, PERSONAL_TOKENS_FILE);
+  constructor(options: { writer: HomeWriterOwner; now?: () => number }) {
+    options.writer.assertCurrent();
+    this.#writer = options.writer;
+    this.#path = join(options.writer.homeDir, 'security', PERSONAL_TOKENS_FILE);
     this.#now = options.now ?? Date.now;
   }
 
   /** The active token whose secret is `candidate`, compared in constant time. */
   find(candidate: string): StoredPersonalToken | undefined {
-    const candidateHash = digest(candidate);
-    let match: StoredPersonalToken | undefined;
-    for (const token of this.#active(this.#current().tokens)) {
-      const stored = Buffer.from(token.credentialHash, 'base64url');
-      if (
-        stored.length === candidateHash.length &&
-        timingSafeEqual(candidateHash, stored)
-      )
-        match = token;
-    }
-    return match;
+    return this.#writer.runSynchronous(() => {
+      const candidateHash = digest(candidate);
+      let match: StoredPersonalToken | undefined;
+      for (const token of this.#active(this.#current().tokens)) {
+        const stored = Buffer.from(token.credentialHash, 'base64url');
+        if (
+          stored.length === candidateHash.length &&
+          timingSafeEqual(candidateHash, stored)
+        )
+          match = token;
+      }
+      return match;
+    });
   }
 
   /** Every active token (not revoked, not expired). */
   list(): StoredPersonalToken[] {
-    return this.#active(this.#current().tokens).map((token) =>
-      structuredClone(token),
-    );
-  }
-
-  /** Whether the file can be trusted (a mint or revoke would be refused). */
-  usable(): boolean {
-    return this.#current().usable;
+    return this.#writer.runSynchronous(() => {
+      return this.#active(this.#current().tokens).map((token) =>
+        structuredClone(token),
+      );
+    });
   }
 
   /**
@@ -185,12 +190,21 @@ export class PersonalTokenStore {
   }
 
   /** Revokes one token; `false` when it is unknown or no longer active. */
-  async revoke(id: string, assertCurrent?: () => void): Promise<boolean> {
+  async revoke(
+    id: string,
+    assertCurrent?: () => void,
+    ownerPrincipalId?: string,
+  ): Promise<boolean> {
     let found = false;
     await this.#mutate((tokens) => {
       assertCurrent?.();
       return tokens.filter((token) => {
-        if (token.id !== id) return true;
+        if (
+          token.id !== id ||
+          (ownerPrincipalId !== undefined &&
+            token.ownerPrincipalId !== ownerPrincipalId)
+        )
+          return true;
         found = true;
         return false;
       });
@@ -202,28 +216,33 @@ export class PersonalTokenStore {
    * Revokes every token (an environment reset), including whatever an
    * untrusted file held: a reset discards it rather than refusing.
    */
-  async clear(): Promise<void> {
-    const release = await acquireFileMutationLockAsync(
-      `${this.#path}.mutation`,
-    );
-    try {
-      if (existsSync(this.#path)) this.#write([]);
-    } finally {
-      await release();
-      this.#cache = undefined;
-    }
+  async clear(within?: HomeWriterLease): Promise<void> {
+    await this.#writer.runExclusive(() => {
+      try {
+        if (existsSync(this.#path)) this.#write([]);
+      } finally {
+        this.#cache = undefined;
+      }
+    }, within);
   }
 
-  /**
-   * Bookkeeping on use; touches only that token's record. Never awaited on
-   * the request path: a contended lock must not hold up authentication.
-   */
-  async touch(id: string, at: number): Promise<void> {
-    await this.#mutate((tokens) =>
-      tokens.map((token) =>
-        token.id === id ? { ...token, lastUsedAt: at } : token,
-      ),
-    );
+  /** Best-effort synchronous bookkeeping; never leaves a deferred writer. */
+  touch(id: string, at: number): void {
+    this.#writer.runSynchronous(() => {
+      const loaded = this.#load();
+      if (!loaded.usable) throw new PersonalTokenUnavailableError();
+      const tokens = this.#active(loaded.tokens);
+      if (!tokens.some((token) => token.id === id)) return;
+      try {
+        this.#write(
+          tokens.map((token) =>
+            token.id === id ? { ...token, lastUsedAt: at } : token,
+          ),
+        );
+      } finally {
+        this.#cache = undefined;
+      }
+    });
   }
 
   #active(tokens: readonly StoredPersonalToken[]): StoredPersonalToken[] {
@@ -281,20 +300,19 @@ export class PersonalTokenStore {
   async #mutate(
     update: (tokens: StoredPersonalToken[]) => StoredPersonalToken[],
   ): Promise<void> {
-    const release = await acquireFileMutationLockAsync(
-      `${this.#path}.mutation`,
-    );
-    try {
-      const loaded = this.#load();
-      if (!loaded.usable) throw new PersonalTokenUnavailableError();
-      this.#write(this.#active(update(loaded.tokens)));
-    } finally {
-      await release();
-      this.#cache = undefined;
-    }
+    await this.#writer.runExclusive(() => {
+      try {
+        const loaded = this.#load();
+        if (!loaded.usable) throw new PersonalTokenUnavailableError();
+        this.#write(this.#active(update(loaded.tokens)));
+      } finally {
+        this.#cache = undefined;
+      }
+    });
   }
 
   #write(tokens: StoredPersonalToken[]): void {
+    this.#writer.assertSynchronous();
     const record: StoredTokens = { version: RECORD_VERSION, tokens };
     const candidate = `${this.#path}.${randomUUID()}.tmp`;
     let descriptor: number | undefined;
@@ -304,6 +322,7 @@ export class PersonalTokenStore {
       fsyncSync(descriptor);
       closeSync(descriptor);
       descriptor = undefined;
+      this.#writer.assertSynchronous();
       renameSync(candidate, this.#path);
     } finally {
       if (descriptor !== undefined) closeSync(descriptor);

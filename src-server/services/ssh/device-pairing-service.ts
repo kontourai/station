@@ -64,7 +64,6 @@ import { renameFileSyncRetrying } from '@kontourai/station-shared/fs-windows-com
 import { RelayManagementApproval } from '../../security/relay-management-authority.js';
 import {
   PersonalTokenStore,
-  PersonalTokenUnavailableError,
   type StoredPersonalToken,
 } from '../access/personal-token-store.js';
 import type { AccountDirectory } from '../identity/account-directory.js';
@@ -1176,21 +1175,17 @@ export class DevicePairingService {
     within?: HomeWriterLease,
   ): Promise<DevicePairingService> {
     const owner = await HomeWriterOwner.forHome(options.homeDir);
-    const lease = within ?? (await owner.acquire());
-    try {
-      return owner.runWithLease(
-        lease,
-        () =>
-          new DevicePairingService(
-            { ...options, homeDir: owner.homeDir },
-            pairingConstructionKey,
-            owner,
-          ),
-      );
-    } finally {
-      if (!within) await lease.release();
-    }
+    return await owner.runExclusive(
+      () =>
+        new DevicePairingService(
+          { ...options, homeDir: owner.homeDir },
+          pairingConstructionKey,
+          owner,
+        ),
+      within,
+    );
   }
+
   readonly #registryPath: string;
   readonly #writer: HomeWriterOwner;
   #registrySpanDepth = 0;
@@ -1233,14 +1228,13 @@ export class DevicePairingService {
     writer.assertSynchronous();
     this.#capScope = options.capScope ?? ((device) => device.scope);
     this.#tokens = new PersonalTokenStore({
-      securityDir: join(options.homeDir, 'security'),
+      writer,
       ...(options.now ? { now: options.now } : {}),
     });
     this.#registryPath = join(options.homeDir, 'security', REGISTRY_FILE);
-    this.#nativePush = new NativePushRegistrationStore(options.homeDir);
-    this.#nativePushIos = new NativePushIosRegistrationStore(
-      options.homeDir,
-      () => this.#now(),
+    this.#nativePush = new NativePushRegistrationStore(writer);
+    this.#nativePushIos = new NativePushIosRegistrationStore(writer, () =>
+      this.#now(),
     );
     this.#environmentId = options.environmentId;
     this.#now = options.now ?? Date.now;
@@ -2982,37 +2976,39 @@ export class DevicePairingService {
     request: NativePushRegistrationRequest,
     stationKey: string,
   ): NativePushRegistration {
-    if (!isValidNativePushRequest(request))
-      throw new DevicePairingError('invalid_request');
-    if (!this.#activeDeviceIds().has(deviceId))
-      throw new DevicePairingError('device_not_found');
-    // One registration per device: a device that registers on one platform
-    // leaves the other's file. Best effort: an unreadable file for the other
-    // platform must not block this one; should both ever hold the device,
-    // the listing serves the newer registration.
-    if (request.platform === 'ios') {
+    return this.#withRegistrySpan(() => {
+      if (!isValidNativePushRequest(request))
+        throw new DevicePairingError('invalid_request');
+      if (!this.#activeDeviceIds().has(deviceId))
+        throw new DevicePairingError('device_not_found');
+      // One registration per device: a device that registers on one platform
+      // leaves the other's file. Best effort: an unreadable file for the other
+      // platform must not block this one; should both ever hold the device,
+      // the listing serves the newer registration.
+      if (request.platform === 'ios') {
+        try {
+          this.#nativePush.delete(deviceId);
+        } catch {}
+        return this.#nativePushIos.upsert(
+          deviceId,
+          request,
+          stationKey,
+          this.#now(),
+        );
+      }
+      let retired = false;
       try {
-        this.#nativePush.delete(deviceId);
+        retired = this.#nativePushIos.delete(deviceId);
       } catch {}
-      return this.#nativePushIos.upsert(
+      const registration = this.#nativePush.upsert(
         deviceId,
         request,
         stationKey,
         this.#now(),
       );
-    }
-    let retired = false;
-    try {
-      retired = this.#nativePushIos.delete(deviceId);
-    } catch {}
-    const registration = this.#nativePush.upsert(
-      deviceId,
-      request,
-      stationKey,
-      this.#now(),
-    );
-    if (retired) this.#notifyNativePushRetired();
-    return registration;
+      if (retired) this.#notifyNativePushRetired();
+      return registration;
+    });
   }
 
   /**
@@ -3022,14 +3018,16 @@ export class DevicePairingService {
    * device from both platforms' files.
    */
   clearNativePush(deviceId: string, expectedToken?: string): boolean {
-    try {
-      return onBothNativePushFiles([
-        () => this.#nativePush.delete(deviceId, expectedToken),
-        () => this.#nativePushIos.delete(deviceId, expectedToken),
-      ]).some(Boolean);
-    } finally {
-      this.#notifyNativePushRetired();
-    }
+    return this.#withRegistrySpan(() => {
+      try {
+        return onBothNativePushFiles([
+          () => this.#nativePush.delete(deviceId, expectedToken),
+          () => this.#nativePushIos.delete(deviceId, expectedToken),
+        ]).some(Boolean);
+      } finally {
+        this.#notifyNativePushRetired();
+      }
+    });
   }
 
   /**
@@ -3040,20 +3038,22 @@ export class DevicePairingService {
    * the phone register again over a registration that still exists.
    */
   nativePushRegistrationId(deviceId: string): string | null {
-    if (!this.#activeDeviceIds().has(deviceId)) return null;
-    const [android, ios] = onBothNativePushFiles<
-      NativePushRegistration | undefined
-    >([
-      () => this.#nativePush.list().get(deviceId),
-      () => this.#nativePushIos.list().get(deviceId),
-    ]);
-    const current =
-      android && ios
-        ? ios.updatedAt > android.updatedAt
-          ? ios
-          : android
-        : (android ?? ios);
-    return current?.registrationId ?? null;
+    return this.#withRegistrySpan(() => {
+      if (!this.#activeDeviceIds().has(deviceId)) return null;
+      const [android, ios] = onBothNativePushFiles<
+        NativePushRegistration | undefined
+      >([
+        () => this.#nativePush.list().get(deviceId),
+        () => this.#nativePushIos.list().get(deviceId),
+      ]);
+      const current =
+        android && ios
+          ? ios.updatedAt > android.updatedAt
+            ? ios
+            : android
+          : (android ?? ios);
+      return current?.registrationId ?? null;
+    });
   }
 
   /**
@@ -3206,41 +3206,43 @@ export class DevicePairingService {
     }>;
     unreadable: Array<{ platform: 'android' | 'ios'; error: unknown }>;
   } {
-    const active = this.#activeDeviceIds();
-    const unreadable: Array<{ platform: 'android' | 'ios'; error: unknown }> =
-      [];
-    const byDevice = new Map<string, NativePushRegistration>();
-    for (const [platform, store] of [
-      ['android', this.#nativePush],
-      ['ios', this.#nativePushIos],
-    ] as const) {
-      let entries: Map<string, NativePushRegistration>;
-      try {
-        entries = store.list();
-      } catch (error) {
-        unreadable.push({ platform, error });
-        continue;
+    return this.#withRegistrySpan(() => {
+      const active = this.#activeDeviceIds();
+      const unreadable: Array<{ platform: 'android' | 'ios'; error: unknown }> =
+        [];
+      const byDevice = new Map<string, NativePushRegistration>();
+      for (const [platform, store] of [
+        ['android', this.#nativePush],
+        ['ios', this.#nativePushIos],
+      ] as const) {
+        let entries: Map<string, NativePushRegistration>;
+        try {
+          entries = store.list();
+        } catch (error) {
+          unreadable.push({ platform, error });
+          continue;
+        }
+        for (const [deviceId, registration] of entries) {
+          if (!active.has(deviceId)) continue;
+          const other = byDevice.get(deviceId);
+          // Both files hold the device only after a best-effort clear failed:
+          // the newer registration is the phone's current one. Edge: until
+          // that stale record is cleared, a later re-registration on its own
+          // platform (newer again) revives it over the other one — the phone
+          // really did register there last, so this serves it, but the other
+          // record lingers until the device is cleared or revoked.
+          if (!other || registration.updatedAt > other.updatedAt)
+            byDevice.set(deviceId, registration);
+        }
       }
-      for (const [deviceId, registration] of entries) {
-        if (!active.has(deviceId)) continue;
-        const other = byDevice.get(deviceId);
-        // Both files hold the device only after a best-effort clear failed:
-        // the newer registration is the phone's current one. Edge: until
-        // that stale record is cleared, a later re-registration on its own
-        // platform (newer again) revives it over the other one — the phone
-        // really did register there last, so this serves it, but the other
-        // record lingers until the device is cleared or revoked.
-        if (!other || registration.updatedAt > other.updatedAt)
-          byDevice.set(deviceId, registration);
-      }
-    }
-    return {
-      registrations: [...byDevice].map(([deviceId, registration]) => ({
-        deviceId,
-        registration,
-      })),
-      unreadable,
-    };
+      return {
+        registrations: [...byDevice].map(([deviceId, registration]) => ({
+          deviceId,
+          registration,
+        })),
+        unreadable,
+      };
+    });
   }
 
   #activeDeviceIds(): Set<string> {
@@ -3395,34 +3397,31 @@ export class DevicePairingService {
 
   /** #3557: the active token for `candidate`, touching its last use. */
   #resolveToken(candidate: string): StoredPersonalToken | undefined {
-    const token = this.#tokens.find(candidate);
-    if (!token) return undefined;
-    if (!this.#accountStandingCurrent(token.binding, token.createdAt))
-      return undefined;
-    const now = this.#now();
-    if (
-      token.lastUsedAt === null ||
-      now - token.lastUsedAt >= LAST_USED_WRITE_INTERVAL_MS
-    ) {
-      // Bookkeeping only, as for devices: never refuse over a timestamp,
-      // and never wait on the file lock to answer a request.
-      if (!this.#touching.has(token.id)) {
-        this.#touching.add(token.id);
-        void this.#tokens
-          .touch(token.id, now)
-          .catch(() => undefined)
-          .finally(() => this.#touching.delete(token.id));
+    return this.#writer.runSynchronous(() => {
+      const token = this.#tokens.find(candidate);
+      if (!token) return undefined;
+      if (!this.#accountStandingCurrent(token.binding, token.createdAt))
+        return undefined;
+      const now = this.#now();
+      if (
+        token.lastUsedAt === null ||
+        now - token.lastUsedAt >= LAST_USED_WRITE_INTERVAL_MS
+      ) {
+        // Bookkeeping only, as for devices: never refuse over a timestamp,
+        // and never wait on the file lock to answer a request.
+        try {
+          this.#tokens.touch(token.id, now);
+        } catch {
+          // Timestamp failure cannot turn a current credential into an invalid one.
+        }
       }
-    }
-    return token;
+      return token;
+    });
   }
 
-  /** #3557: tokens whose last-use write is in flight. */
-  readonly #touching = new Set<string>();
-
   /** #3557: revokes every personal access token (an environment reset). */
-  async clearPersonalTokens(): Promise<void> {
-    await this.#tokens.clear();
+  async clearPersonalTokens(within?: HomeWriterLease): Promise<void> {
+    await this.#tokens.clear(within);
   }
 
   /**
@@ -3494,16 +3493,7 @@ export class DevicePairingService {
     ownerPrincipalId?: string,
     assertCurrent?: () => void,
   ): Promise<boolean> {
-    if (!this.#tokens.usable()) throw new PersonalTokenUnavailableError();
-    const target = this.#tokens
-      .list()
-      .find(
-        (token) =>
-          token.id === id &&
-          (ownerPrincipalId === undefined ||
-            token.ownerPrincipalId === ownerPrincipalId),
-      );
-    return target ? await this.#tokens.revoke(id, assertCurrent) : false;
+    return await this.#tokens.revoke(id, assertCurrent, ownerPrincipalId);
   }
 
   #tokenView(token: StoredPersonalToken): PersonalAccessToken {

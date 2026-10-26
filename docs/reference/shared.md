@@ -47,8 +47,9 @@ ownership of waiting and reclamation.
 
 The server's [HomeWriterOwner](../../src-server/services/ssh/home-writer-owner.ts)
 adopts this contract for canonical-home identity, mandatory pairing construction
-and registry mutation spans. Token and native-push writer closure and accounting
-recovery remain separate unfinished work. Its file operations remain synchronous;
+and registry, token and native-push mutation spans. Async token operations acquire
+the same hold; their synchronous lookup touch leaves no deferred writer. Accounting
+recovery remains unfinished. Its file operations remain synchronous;
 no guarantee is made about latency on a stalled filesystem.
 
 The [export map](../../packages/shared/package.json) selects source files, mostly

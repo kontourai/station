@@ -63,7 +63,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [SecretBindingAdministration and IntegrationSecretResolver](#secretbindingadministration-and-integrationsecretresolver) | Keep binding metadata authority separate from one child-establishment materialization capability. | `src-server/services/secrets/secret-binding-administration.ts` |
 | [ExtensionNotificationBindings](#extensionnotificationbindings) | Bind exact observed extension tuples to functional consumers without promoting vendor semantics. | `src-shared/extension-notification-bindings.ts` |
 | [JsonFileMutationAuthority](#jsonfilemutationauthority) | Serialize bounded JSON read/derive/publish work without blocking the server event loop. | `src-server/domain/file-storage-helpers.ts` |
-| [HomeWriterOwner](#homewriterowner) | Bind pairing registry spans and explicit held borrowing to one existing Station home. | `src-server/services/ssh/home-writer-owner.ts` |
+| [HomeWriterOwner](#homewriterowner) | Bind environment, pairing, token and native-push writers to one existing Station home. | `src-server/services/ssh/home-writer-owner.ts` |
 | [LocalSkillMutationAuthority and SetupImportEffectJournal](#localskillmutationauthority-and-setupimporteffectjournal) | Serialize every local Skill mutation and retain each reviewed import effect through recovery. | `src-server/services/agents/skill-service.ts`, `src-server/services/setup/existing-agent-setup-import.ts` |
 | [SkillExperienceRuntime](#skillexperienceruntime) | Admit one pinned Skill selection at canonical turn boundaries and project immutable Session presentation history. | `src-server/services/orchestration/skill-experience-runtime.ts` |
 | [AgentPluginLoader](#agentpluginloader) | Consume one installed Agent Plugins package without copying portable components or widening failure boundaries. | `src-server/services/plugins/agent-plugin-loader.ts` |
@@ -401,17 +401,23 @@ waiting or probing another process. Filesystem calls themselves remain synchrono
 span. Thenables refuse; the span invalidates before return, so a late async
 descendant cannot borrow it. Cleanup retains exact handles and can be retried by
 explicit async acquisition without replaying the callback. The HTTP boundary
-returns503 before callback admission or409 when an operation outcome is
+returns 503 before callback admission or 409 when an operation outcome is
 unconfirmed. Registry publication uncertainty fences that service instance;
 reconstruction is required before further registry use.
 
 **Evidence and limits.** [Owner and composed pairing tests](../../src-server/services/ssh/__tests__/home-writer-owner.test.ts)
 exercise actual locks, alias/directory custody, short-span borrowing, contention
 and cleanup. [Persistence-fault tests](../../src-server/services/ssh/__tests__/device-pairing-persistence-fault.test.ts)
-exercise publication and replay fences. Personal-token and native-push sidecar
-writers are not yet closed under this owner. Complete historical recovery still
-requires those participants, signed retained intent/terminal evidence and the
-checked Dispatch/Flow path. No native/device/provider qualification follows.
+exercise publication and replay fences. Personal-token mint, revoke and clear acquire
+the same home hold; reset explicitly lends its live lease to both clears. Token
+lookup uses a synchronous best-effort activity touch and leaves no deferred writer.
+Native-push Android/iOS stores require the prepared owner and hold it across
+read, validation and publication, including card/alert bookkeeping and tombstones.
+The home hold replaces the prior separate token-file mutation lock; older builds
+that do not participate are not excluded by this protocol. The multi-file hold
+provides exclusion, not an atomic transaction across registry and sidecars.
+Complete historical recovery still requires signed retained intent/terminal
+evidence and the checked Dispatch/Flow path. No native/device/provider qualification follows.
 
 ## VirtualApplicationIngress
 

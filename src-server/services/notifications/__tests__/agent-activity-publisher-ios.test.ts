@@ -28,6 +28,7 @@ import { verifyStationRequest } from '../../../../deploy/push-gateway/src/statio
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { DevicePairingService } from '../../ssh/device-pairing-service.js';
+import { HomeWriterOwner } from '../../ssh/home-writer-owner.js';
 import {
   type AgentActivitySessionRow,
   resolvePushGatewayConfig,
@@ -1082,7 +1083,7 @@ describe('agent-activity publisher: iOS review regressions', () => {
     const h = await harness();
     await h.registerIos(); // the push key
     const old = new NativePushIosRegistrationStore(
-      h.homeDir,
+      await HomeWriterOwner.forHome(h.homeDir),
       () => START - 25 * HOUR,
     );
     const token = 'ef'.repeat(40);

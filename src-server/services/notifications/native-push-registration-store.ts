@@ -29,6 +29,7 @@ import {
   type NativePushRegistrationRequest,
 } from '@kontourai/station-contracts/native-push';
 import { isRecord } from '../../utils/is-record.js';
+import type { HomeWriterOwner } from '../ssh/home-writer-owner.js';
 import {
   readPrivateJsonFile,
   writePrivateJsonFileSync,
@@ -468,6 +469,7 @@ interface RegistrationFileSpec<R extends NativePushRegistration, Q> {
  */
 class RegistrationFileStore<R extends NativePushRegistration, Q> {
   readonly #path: string;
+  protected readonly writer: HomeWriterOwner;
   readonly #spec: RegistrationFileSpec<R, Q>;
   /**
    * The last good read or write, and the file identity it was taken from.
@@ -488,11 +490,13 @@ class RegistrationFileStore<R extends NativePushRegistration, Q> {
   droppedTombstones = 0;
 
   constructor(
-    homeDir: string,
+    writer: HomeWriterOwner,
     spec: RegistrationFileSpec<R, Q>,
     now: () => number = Date.now,
   ) {
-    this.#path = join(homeDir, 'security', spec.fileName);
+    writer.assertCurrent();
+    this.writer = writer;
+    this.#path = join(writer.homeDir, 'security', spec.fileName);
     this.#spec = spec;
     this.#now = now;
   }
@@ -596,6 +600,7 @@ class RegistrationFileStore<R extends NativePushRegistration, Q> {
       ...(max > 0 && bounded.length > 0 ? { tombstones: bounded } : {}),
     };
     this.#cache = undefined;
+    this.writer.assertSynchronous();
     writePrivateJsonFileSync(
       this.#path,
       file,
@@ -618,7 +623,9 @@ class RegistrationFileStore<R extends NativePushRegistration, Q> {
   }
 
   list(): Map<string, R> {
-    return this.read();
+    return this.writer.runSynchronous(() => {
+      return this.read();
+    });
   }
 
   /**
@@ -628,29 +635,31 @@ class RegistrationFileStore<R extends NativePushRegistration, Q> {
    * make every card in flight during a rotation unreadable.
    */
   upsert(deviceId: string, request: Q, stationKey: string, now: number): R {
-    const registrations = this.read();
-    const existing = registrations.get(deviceId);
-    const registration = this.#spec.build(
-      request,
-      {
-        registrationId:
-          existing?.registrationId ??
-          randomBytes(RANDOM_ID_BYTES).toString('base64url'),
-        payloadKey:
-          existing?.payloadKey ??
-          randomBytes(PAYLOAD_KEY_BYTES).toString('base64url'),
-        stationKey,
-        updatedAt: now,
-        // The phone keeps its own alert history across token rotation, and
-        // so does this record; a new registration starts empty on both sides.
-        ...(existing?.alerted ? { alerted: [...existing.alerted] } : {}),
-      },
-      existing,
-    );
-    if (!this.#spec.isValid(registration)) throw this.#error();
-    registrations.set(deviceId, registration);
-    this.write(registrations);
-    return clone(registration);
+    return this.writer.runSynchronous(() => {
+      const registrations = this.read();
+      const existing = registrations.get(deviceId);
+      const registration = this.#spec.build(
+        request,
+        {
+          registrationId:
+            existing?.registrationId ??
+            randomBytes(RANDOM_ID_BYTES).toString('base64url'),
+          payloadKey:
+            existing?.payloadKey ??
+            randomBytes(PAYLOAD_KEY_BYTES).toString('base64url'),
+          stationKey,
+          updatedAt: now,
+          // The phone keeps its own alert history across token rotation, and
+          // so does this record; a new registration starts empty on both sides.
+          ...(existing?.alerted ? { alerted: [...existing.alerted] } : {}),
+        },
+        existing,
+      );
+      if (!this.#spec.isValid(registration)) throw this.#error();
+      registrations.set(deviceId, registration);
+      this.write(registrations);
+      return clone(registration);
+    });
   }
 
   /**
@@ -662,20 +671,22 @@ class RegistrationFileStore<R extends NativePushRegistration, Q> {
     registrationId: string,
     alertIds: readonly string[],
   ): void {
-    if (alertIds.length === 0) return;
-    const registrations = this.read();
-    const current = registrations.get(deviceId);
-    if (!current || current.registrationId !== registrationId) return;
-    const known = current.alerted ?? [];
-    const added = alertIds.filter(
-      (id) => ALERT_ID_PATTERN.test(id) && !known.includes(id),
-    );
-    if (added.length === 0) return;
-    registrations.set(deviceId, {
-      ...current,
-      alerted: [...known, ...added].slice(-ALERTED_MAX),
+    this.writer.runSynchronous(() => {
+      if (alertIds.length === 0) return;
+      const registrations = this.read();
+      const current = registrations.get(deviceId);
+      if (!current || current.registrationId !== registrationId) return;
+      const known = current.alerted ?? [];
+      const added = alertIds.filter(
+        (id) => ALERT_ID_PATTERN.test(id) && !known.includes(id),
+      );
+      if (added.length === 0) return;
+      registrations.set(deviceId, {
+        ...current,
+        alerted: [...known, ...added].slice(-ALERTED_MAX),
+      });
+      this.write(registrations);
     });
-    this.write(registrations);
   }
 
   /**
@@ -683,30 +694,40 @@ class RegistrationFileStore<R extends NativePushRegistration, Q> {
    * the stored one.
    */
   delete(deviceId: string, expectedToken?: string): boolean {
-    const registrations = this.read();
-    const current = registrations.get(deviceId);
-    if (
-      !current ||
-      (expectedToken !== undefined && current.token !== expectedToken)
-    )
-      return false;
-    const { tombstones } = this.readAll();
-    registrations.delete(deviceId);
-    this.writeAll(registrations, [...tombstones, ...this.#retired([current])]);
-    return true;
+    return this.writer.runSynchronous(() => {
+      const registrations = this.read();
+      const current = registrations.get(deviceId);
+      if (
+        !current ||
+        (expectedToken !== undefined && current.token !== expectedToken)
+      )
+        return false;
+      const { tombstones } = this.readAll();
+      registrations.delete(deviceId);
+      this.writeAll(registrations, [
+        ...tombstones,
+        ...this.#retired([current]),
+      ]);
+      return true;
+    });
   }
 
   /** Drops every registration whose device is not in `keep`. */
   retain(keep: ReadonlySet<string>): void {
-    const { registrations, tombstones } = this.readAll();
-    const removed: R[] = [];
-    for (const [deviceId, registration] of [...registrations])
-      if (!keep.has(deviceId)) {
-        registrations.delete(deviceId);
-        removed.push(registration);
-      }
-    if (removed.length > 0)
-      this.writeAll(registrations, [...tombstones, ...this.#retired(removed)]);
+    this.writer.runSynchronous(() => {
+      const { registrations, tombstones } = this.readAll();
+      const removed: R[] = [];
+      for (const [deviceId, registration] of [...registrations])
+        if (!keep.has(deviceId)) {
+          registrations.delete(deviceId);
+          removed.push(registration);
+        }
+      if (removed.length > 0)
+        this.writeAll(registrations, [
+          ...tombstones,
+          ...this.#retired(removed),
+        ]);
+    });
   }
 }
 
@@ -715,8 +736,8 @@ export class NativePushRegistrationStore extends RegistrationFileStore<
   NativePushAndroidRegistration,
   NativePushAndroidRegistrationRequest
 > {
-  constructor(homeDir: string) {
-    super(homeDir, {
+  constructor(writer: HomeWriterOwner) {
+    super(writer, {
       fileName: ANDROID_FILE_NAME,
       label: ANDROID_LABEL,
       isValid: isValidAndroidRegistration,
@@ -741,13 +762,15 @@ export class NativePushRegistrationStore extends RegistrationFileStore<
     registrationId: string,
     shown: boolean,
   ): void {
-    const registrations = this.read();
-    const current = registrations.get(deviceId);
-    if (!current || current.registrationId !== registrationId) return;
-    if ((current.cardShown === true) === shown) return;
-    const { cardShown: _previous, ...rest } = current;
-    registrations.set(deviceId, shown ? { ...rest, cardShown: true } : rest);
-    this.write(registrations);
+    this.writer.runSynchronous(() => {
+      const registrations = this.read();
+      const current = registrations.get(deviceId);
+      if (!current || current.registrationId !== registrationId) return;
+      if ((current.cardShown === true) === shown) return;
+      const { cardShown: _previous, ...rest } = current;
+      registrations.set(deviceId, shown ? { ...rest, cardShown: true } : rest);
+      this.write(registrations);
+    });
   }
 }
 
@@ -763,9 +786,9 @@ export class NativePushIosRegistrationStore extends RegistrationFileStore<
   NativePushIosRegistration,
   NativePushIosRegistrationRequest
 > {
-  constructor(homeDir: string, now: () => number = Date.now) {
+  constructor(writer: HomeWriterOwner, now: () => number = Date.now) {
     super(
-      homeDir,
+      writer,
       {
         fileName: IOS_FILE_NAME,
         label: IOS_LABEL,
@@ -820,18 +843,22 @@ export class NativePushIosRegistrationStore extends RegistrationFileStore<
    * meanwhile keeps it. Returns whether it dropped one.
    */
   clearAlertToken(deviceId: string, expectedAlertToken: string): boolean {
-    const registrations = this.read();
-    const current = registrations.get(deviceId);
-    if (!current || current.alertToken !== expectedAlertToken) return false;
-    const { alertToken: _dropped, ...rest } = current;
-    registrations.set(deviceId, rest);
-    this.write(registrations);
-    return true;
+    return this.writer.runSynchronous(() => {
+      const registrations = this.read();
+      const current = registrations.get(deviceId);
+      if (!current || current.alertToken !== expectedAlertToken) return false;
+      const { alertToken: _dropped, ...rest } = current;
+      registrations.set(deviceId, rest);
+      this.write(registrations);
+      return true;
+    });
   }
 
   /** Retired registrations still to be ended or cleaned up, oldest first. */
   listTombstones(): NativePushIosTombstone[] {
-    return this.readAll().tombstones as NativePushIosTombstone[];
+    return this.writer.runSynchronous(() => {
+      return this.readAll().tombstones as NativePushIosTombstone[];
+    });
   }
 
   /** Replaces (or, with null, removes) the tombstone for `registrationId`. */
@@ -839,14 +866,16 @@ export class NativePushIosRegistrationStore extends RegistrationFileStore<
     registrationId: string,
     next: NativePushIosTombstone | null,
   ): void {
-    const { registrations, tombstones } = this.readAll();
-    const current = tombstones as NativePushIosTombstone[];
-    if (!current.some((entry) => entry.registrationId === registrationId))
-      return;
-    const updated = current.flatMap((entry) =>
-      entry.registrationId !== registrationId ? [entry] : next ? [next] : [],
-    );
-    this.writeAll(registrations, updated);
+    this.writer.runSynchronous(() => {
+      const { registrations, tombstones } = this.readAll();
+      const current = tombstones as NativePushIosTombstone[];
+      if (!current.some((entry) => entry.registrationId === registrationId))
+        return;
+      const updated = current.flatMap((entry) =>
+        entry.registrationId !== registrationId ? [entry] : next ? [next] : [],
+      );
+      this.writeAll(registrations, updated);
+    });
   }
 
   /**
@@ -858,35 +887,37 @@ export class NativePushIosRegistrationStore extends RegistrationFileStore<
    * a rollover's — and only its channel still needs deleting.
    */
   retireLiveActivity(tombstone: NativePushIosTombstone): void {
-    const { registrations, tombstones } = this.readAll();
-    const current = tombstones as NativePushIosTombstone[];
-    const existing = current.find(
-      (entry) => entry.registrationId === tombstone.registrationId,
-    );
-    if (!existing) {
-      this.writeAll(registrations, [...current, tombstone]);
-      return;
-    }
-    const ended = existing.activity;
-    const merged: NativePushIosTombstone = {
-      ...existing,
-      ...(tombstone.activity ? { activity: tombstone.activity } : {}),
-    };
-    if (ended && tombstone.activity)
-      merged.channelDeletes = [
-        ...(existing.channelDeletes ?? []),
-        {
-          bundleId: existing.bundleId,
-          environment: existing.environment,
-          channelId: ended.channelId,
-          channelAuth: ended.channelAuth,
-          deleteAt: tombstone.retiredAt,
-        },
-      ].slice(-CHANNEL_DELETES_MAX);
-    this.writeAll(
-      registrations,
-      current.map((entry) => (entry === existing ? merged : entry)),
-    );
+    this.writer.runSynchronous(() => {
+      const { registrations, tombstones } = this.readAll();
+      const current = tombstones as NativePushIosTombstone[];
+      const existing = current.find(
+        (entry) => entry.registrationId === tombstone.registrationId,
+      );
+      if (!existing) {
+        this.writeAll(registrations, [...current, tombstone]);
+        return;
+      }
+      const ended = existing.activity;
+      const merged: NativePushIosTombstone = {
+        ...existing,
+        ...(tombstone.activity ? { activity: tombstone.activity } : {}),
+      };
+      if (ended && tombstone.activity)
+        merged.channelDeletes = [
+          ...(existing.channelDeletes ?? []),
+          {
+            bundleId: existing.bundleId,
+            environment: existing.environment,
+            channelId: ended.channelId,
+            channelAuth: ended.channelAuth,
+            deleteAt: tombstone.retiredAt,
+          },
+        ].slice(-CHANNEL_DELETES_MAX);
+      this.writeAll(
+        registrations,
+        current.map((entry) => (entry === existing ? merged : entry)),
+      );
+    });
   }
 
   /**
@@ -900,32 +931,35 @@ export class NativePushIosRegistrationStore extends RegistrationFileStore<
     registrationId: string,
     update: NativePushLiveActivityUpdate,
   ): NativePushIosRegistration | undefined {
-    const registrations = this.read();
-    const current = registrations.get(deviceId);
-    if (!current || current.registrationId !== registrationId) return undefined;
-    if (
-      update.expectedRunId !== undefined &&
-      current.activity?.runId !== update.expectedRunId
-    )
-      return undefined;
-    const next: NativePushIosRegistration = { ...current };
-    if (update.activity === null) delete next.activity;
-    else if (update.activity !== undefined) next.activity = update.activity;
-    let deletes = (current.channelDeletes ?? []).filter(
-      (entry) => entry.channelId !== update.dropChannelDelete,
-    );
-    if (update.queueChannelDelete)
-      deletes = [
-        ...deletes.filter(
-          (entry) => entry.channelId !== update.queueChannelDelete?.channelId,
-        ),
-        update.queueChannelDelete,
-      ].slice(-CHANNEL_DELETES_MAX);
-    if (deletes.length > 0) next.channelDeletes = deletes;
-    else delete next.channelDeletes;
-    registrations.set(deviceId, next);
-    this.write(registrations);
-    return clone(next);
+    return this.writer.runSynchronous(() => {
+      const registrations = this.read();
+      const current = registrations.get(deviceId);
+      if (!current || current.registrationId !== registrationId)
+        return undefined;
+      if (
+        update.expectedRunId !== undefined &&
+        current.activity?.runId !== update.expectedRunId
+      )
+        return undefined;
+      const next: NativePushIosRegistration = { ...current };
+      if (update.activity === null) delete next.activity;
+      else if (update.activity !== undefined) next.activity = update.activity;
+      let deletes = (current.channelDeletes ?? []).filter(
+        (entry) => entry.channelId !== update.dropChannelDelete,
+      );
+      if (update.queueChannelDelete)
+        deletes = [
+          ...deletes.filter(
+            (entry) => entry.channelId !== update.queueChannelDelete?.channelId,
+          ),
+          update.queueChannelDelete,
+        ].slice(-CHANNEL_DELETES_MAX);
+      if (deletes.length > 0) next.channelDeletes = deletes;
+      else delete next.channelDeletes;
+      registrations.set(deviceId, next);
+      this.write(registrations);
+      return clone(next);
+    });
   }
 }
 

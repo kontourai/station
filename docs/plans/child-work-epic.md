@@ -2199,7 +2199,16 @@ pre-effect503 unavailability from409 unconfirmed operation outcome. A registry
 publication that may have changed disk before failing fences that service
 instance until reconstruction, so its old offer cannot silently mint again.
 
-This is registry and environment-writer integration, not complete historical
-recovery. Personal-token writers, detached token touches, native-push sidecar
-writers, signed terminal/intent retention and dual-ledger serving remain open.
-No live provider, browser/native/device, release or full-epic acceptance follows.
+The home hold now also covers personal-token mint/revoke/clear and native-push
+sidecar mutation, including alert/card bookkeeping and iOS tombstones. Store
+construction requires the prepared home owner. Token-file mutation uses the home
+hold instead of its former separate lock; older nonparticipating builds are not
+excluded. Reset passes its live lease to both token clears. A competing authorized
+mint rechecks its caller after the hold, so a reset-revoked credential cannot mint.
+Token lookup performs a synchronous best-effort timestamp touch, with no detached
+write left to run after the request. Multi-file exclusion does not provide atomic
+rollback across identity, registry and sidecars.
+
+This is participating-writer integration, not complete historical recovery.
+Signed terminal/intent retention and dual-ledger serving remain open. No live
+provider, browser/native/device, release or full-epic acceptance follows.

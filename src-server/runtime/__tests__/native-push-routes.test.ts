@@ -27,6 +27,7 @@ import {
   DevicePairingError,
   DevicePairingService,
 } from '../../services/ssh/device-pairing-service.js';
+import { HomeWriterOwner } from '../../services/ssh/home-writer-owner.js';
 import type { Logger } from '../../utils/logger.js';
 import { configureRuntimeHttp } from '../bootstrap/runtime-http.js';
 
@@ -591,7 +592,9 @@ describe('native push routes', () => {
     const paired = await pairDevice(harness);
     harness.pairing.revokeDevice(paired.device.id, 'operator-credential');
     // As if dropping it had failed: the entry is still in the sidecar.
-    new NativePushRegistrationStore(harness.homeDir).upsert(
+    new NativePushRegistrationStore(
+      await HomeWriterOwner.forHome(harness.homeDir),
+    ).upsert(
       paired.device.id,
       androidBody(TOKEN_A) as NativePushAndroidRegistrationRequest,
       'k'.repeat(43),

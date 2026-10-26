@@ -74,7 +74,11 @@ import { sleep } from '../../utils/sleep.js';
 import { principalForDeviceBinding } from '../access/device-binding-principal.js';
 import { StationGroupsService } from '../access/station-groups-service.js';
 import { DevicePairingService } from './device-pairing-service.js';
-import { type HomeWriterLease, HomeWriterOwner } from './home-writer-owner.js';
+import {
+  type HomeWriterLease,
+  HomeWriterOwner,
+  HomeWriterUnavailableError,
+} from './home-writer-owner.js';
 
 const SECURITY_DIRECTORY = 'security';
 const RECORD_FILE = 'environment.json';
@@ -378,7 +382,7 @@ export class EnvironmentSecurityService {
       const pairing = this.#devicePairingService;
       // #3557: personal access tokens go first, so a reset that cannot
       // revoke them fails before changing anything.
-      await pairing.clearPersonalTokens();
+      await pairing.clearPersonalTokens(lease);
       const reset = owner.runWithLease(lease, () => {
         const reset = createRecord();
         const resetKeyPath = this.#revisionEvidenceKeyPath(reset.environmentId);
@@ -402,7 +406,7 @@ export class EnvironmentSecurityService {
       });
       // Again, for a token minted while the reset ran. A mint finishing after
       // this can still survive, but its person's devices are gone by then.
-      await pairing.clearPersonalTokens();
+      await pairing.clearPersonalTokens(lease);
       return reset;
     });
   }
@@ -851,13 +855,28 @@ export class EnvironmentSecurityService {
   ): Promise<T> {
     const owner = await HomeWriterOwner.forHome(this.#homeDir);
     const lease = await owner.acquire();
+    let operationRan = false;
+    let outcome: { ok: true; value: T } | { ok: false; error: unknown };
     try {
-      return await this.#withLegacyEnvironmentLock(() =>
-        operation(lease, owner),
-      );
-    } finally {
-      await lease.release();
+      outcome = {
+        ok: true,
+        value: await this.#withLegacyEnvironmentLock(() => {
+          operationRan = true;
+          return operation(lease, owner);
+        }),
+      };
+    } catch (error) {
+      outcome = { ok: false, error };
     }
+    try {
+      await lease.release();
+    } catch (error) {
+      throw new HomeWriterUnavailableError('cleanup-required', operationRan, {
+        cause: error,
+      });
+    }
+    if (!outcome.ok) throw outcome.error;
+    return outcome.value;
   }
 
   async #withLegacyEnvironmentLock<T>(operation: () => Promise<T>): Promise<T> {

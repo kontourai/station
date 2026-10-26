@@ -292,3 +292,31 @@ for (const mode of ['direct', 'borrowed'] as const) {
     },
   );
 }
+
+test('async exclusive cleanup failure retains the completed callback outcome until settlement', async () => {
+  const owner = await HomeWriterOwner.forHome(home());
+  const remove = fs.rmSync;
+  const fault = vi.spyOn(fs, 'rmSync').mockImplementation((path, options) => {
+    if (String(path).includes('.home-writer.mutation.guard.stale-'))
+      throw new Error('injected exclusive cleanup failure');
+    return remove(path, options);
+  });
+  syncBuiltinESMExports();
+  let calls = 0;
+  try {
+    await expect(owner.runExclusive(() => ++calls)).rejects.toMatchObject({
+      reason: 'cleanup-required',
+      operationRan: true,
+    });
+    expect(calls).toBe(1);
+    expect(() => owner.runSynchronous(() => ++calls)).toThrow(
+      HomeWriterUnavailableError,
+    );
+  } finally {
+    fault.mockRestore();
+    syncBuiltinESMExports();
+  }
+  const lease = await owner.acquire();
+  expect(calls).toBe(1);
+  await lease.release();
+});
