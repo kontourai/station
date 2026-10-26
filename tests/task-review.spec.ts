@@ -60,10 +60,26 @@ async function shots(page: Page, testInfo: TestInfo, prefix: string) {
   for (const theme of ['dark', 'light']) {
     const reviewUrl = page.url();
     await page.goto(new URL('/appearance', reviewUrl).href);
-    await page
-      .getByRole('radiogroup', { name: 'Mode', exact: true })
-      .getByText(theme === 'dark' ? 'Dark' : 'Light', { exact: true })
-      .click();
+    const mode = page.getByRole('radiogroup', { name: 'Mode', exact: true });
+    const label = theme === 'dark' ? 'Dark' : 'Light';
+    if (
+      !(await mode.getByRole('radio', { name: label, exact: true }).isChecked())
+    ) {
+      const [saved] = await Promise.all([
+        page.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname === '/api/me/preferences' &&
+            response.request().method() === 'PATCH' &&
+            response.request().postDataJSON()?.theme === theme,
+        ),
+        mode.getByText(label, { exact: true }).click(),
+      ]);
+      expect(saved.ok()).toBe(true);
+      expect(await saved.json()).toMatchObject({
+        success: true,
+        data: { values: { theme } },
+      });
+    }
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
     const [reviewResponse] = await Promise.all([
       page.waitForResponse(
