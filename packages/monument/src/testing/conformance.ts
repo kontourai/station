@@ -660,6 +660,105 @@ const turnDedup: KernelConformanceCase[] = [
       ),
   },
   {
+    name: 'turn dedup: applies the all-row cap until the resolved floor is reached',
+    areas: ['turnDedup'],
+    run: (harness) => {
+      const limits = { turnDedupMaxEntries: 3, turnDedupMinResolvedEntries: 1 };
+      return withSession(
+        harness,
+        async (session) => {
+          const owner = session.processes.spawn();
+          await settleDedup(session, owner, 'r1', 1);
+          await settleDedup(session, owner, 'r2', 2);
+          await session.run(claim('pending-a', owner, 3));
+          assert.equal((await dedupRecord(session, 'r1'))?.value, 'v-r1');
+          assert.equal((await dedupRecord(session, 'r2'))?.value, 'v-r2');
+          await session.run(claim('pending-b', owner, 4));
+          assert.deepEqual(
+            await session.run({ type: 'turnDedup.read', key: 'r1' }),
+            { kind: 'expired', expiredAt: 4 },
+          );
+          await session.run(claim('pending-c', owner, 5));
+          assert.equal((await dedupRecord(session, 'r2'))?.value, 'v-r2');
+          for (const key of ['pending-a', 'pending-b', 'pending-c'])
+            assert.equal((await dedupRecord(session, key))?.value, null);
+        },
+        { limits },
+      );
+    },
+  },
+  {
+    name: 'turn dedup: a resolved floor preserves replay under unresolved pressure',
+    areas: ['turnDedup'],
+    run: (harness) => {
+      const limits = { turnDedupMaxEntries: 2, turnDedupMinResolvedEntries: 2 };
+      return withSession(
+        harness,
+        async (session) => {
+          const live = session.processes.spawn();
+          const begun = session.processes.spawn();
+          const pending = session.processes.spawn();
+          const next = session.processes.spawn();
+          await session.run(claim('live', live, 1));
+          await session.run(claim('begun', begun, 2));
+          await session.run({
+            type: 'turnDedup.beginInvocation',
+            key: 'begun',
+            ownerId: begun.id,
+            now: 2,
+          });
+          await session.run(claim('pending-dead', pending, 3));
+          session.processes.kill(begun);
+          session.processes.kill(pending);
+          await settleDedup(session, live, 'r1', 4);
+          await settleDedup(session, live, 'r2', 5);
+          assert.equal((await dedupRecord(session, 'r1'))?.value, 'v-r1');
+          assert.equal((await dedupRecord(session, 'r2'))?.value, 'v-r2');
+          await settleDedup(session, live, 'r3', 6);
+          assert.deepEqual(
+            await session.run({ type: 'turnDedup.read', key: 'r1' }),
+            { kind: 'expired', expiredAt: 6 },
+          );
+          assert.equal((await dedupRecord(session, 'r2'))?.value, 'v-r2');
+          assert.equal((await dedupRecord(session, 'r3'))?.value, 'v-r3');
+          assert.deepEqual(await session.run(claim('live', next, 7)), {
+            kind: 'contended',
+          });
+          assert.deepEqual(await session.run(claim('begun', next, 7)), {
+            kind: 'indeterminate',
+          });
+          assert.deepEqual(await session.run(claim('pending-dead', next, 7)), {
+            kind: 'claimed',
+            reclaimed: true,
+          });
+          await session.store.reopen();
+          assert.deepEqual(await session.run(claim('r1', next, 8)), {
+            kind: 'expired',
+          });
+          assert.deepEqual(await session.run(claim('r2', next, 8)), {
+            kind: 'resolved',
+            value: 'v-r2',
+          });
+          assert.deepEqual(await session.run(claim('r3', next, 8)), {
+            kind: 'resolved',
+            value: 'v-r3',
+          });
+          assert.deepEqual(await session.run(claim('live', next, 8)), {
+            kind: 'contended',
+          });
+          assert.deepEqual(await session.run(claim('begun', next, 8)), {
+            kind: 'indeterminate',
+          });
+          assert.equal(
+            (await dedupRecord(session, 'pending-dead'))?.owner?.id,
+            next.id,
+          );
+        },
+        { limits },
+      );
+    },
+  },
+  {
     name: 'turn dedup: an evicted key answers expired, and only that key',
     areas: ['turnDedup'],
     run: (harness) =>

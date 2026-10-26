@@ -86,6 +86,8 @@ export interface ProjectRepositorySource {
 }
 
 export interface ProjectConfig {
+  personalLayouts?: 'off' | 'project-panes' | 'allowed-plugins';
+  personalLayoutAllowedPlugins?: string[];
   id: string;
   name: string;
   slug: string;

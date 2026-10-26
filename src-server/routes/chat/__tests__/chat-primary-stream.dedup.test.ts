@@ -9,8 +9,10 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { createNativeForegroundRelay } from '../../../runtime/conversation/native-foreground-invocation.js';
 import { captureRuntimeConfigurationLease } from '../../../runtime/plugins/runtime-configuration-lease.js';
 import { streamPrimaryAgentChat } from '../chat-primary-stream.js';
 import { ChatTurnDedupStore } from '../chat-turn-dedup.js';
@@ -33,6 +35,14 @@ function buildAgent(streamText: ReturnType<typeof vi.fn>) {
 
 async function* emptyStream() {
   /* no chunks — the turn produces no assistant output for this test */
+}
+
+async function* finishedStream() {
+  yield {
+    type: 'finish',
+    finishReason: 'stop',
+    totalUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+  };
 }
 
 function buildCtx(options: {
@@ -131,7 +141,7 @@ describe('streamPrimaryAgentChat client-turn dedup (station#1224 offline slice 2
 
   test('two /chat requests with the SAME clientTurnId execute the agent only once', async () => {
     const streamText = vi.fn(async () => ({
-      fullStream: emptyStream(),
+      fullStream: finishedStream(),
       text: Promise.resolve(''),
       usage: Promise.resolve(undefined),
       finishReason: Promise.resolve('stop'),
@@ -264,31 +274,221 @@ describe('streamPrimaryAgentChat client-turn dedup (station#1224 offline slice 2
     expect(streamText).toHaveBeenCalledTimes(2);
   });
 
-  test('a failed turn releases its claim so a retry with the same clientTurnId genuinely re-executes', async () => {
-    const streamText = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('boom'))
-      .mockImplementationOnce(async () => ({
-        fullStream: emptyStream(),
-        text: Promise.resolve(''),
-        usage: Promise.resolve(undefined),
-        finishReason: Promise.resolve('stop'),
-      }));
+  test.each([
+    'throw',
+    'error-part',
+    'abort',
+    'graceful-abort',
+    'configuration',
+  ] as const)(
+    'an invoked turn ending with %s retains its key and never re-executes',
+    async (ending) => {
+      const abort = new AbortController();
+      let revision = 0;
+      const streamText = vi.fn(async () => {
+        if (ending === 'throw') throw new Error('boom');
+        return {
+          fullStream: (async function* () {
+            if (ending === 'abort') abort.abort();
+            if (ending === 'graceful-abort') {
+              abort.abort();
+              return;
+            }
+            if (ending === 'configuration') revision++;
+            if (ending === 'error-part')
+              yield { type: 'error', error: new Error('boom') };
+            else yield { type: 'text-delta', text: 'observed' };
+          })(),
+          text: Promise.resolve(''),
+          usage: Promise.resolve(undefined),
+          finishReason: Promise.resolve('stop'),
+        };
+      });
+      const agent = buildAgent(streamText);
+      const ctx = buildCtx({ memoryAdapter, dedupStore });
+      ctx.getAgentConfigurationRevision = () => revision;
+      const app = buildApp(ctx, agent, dedupStore);
+
+      const r1 = await app.request('/chat?clientTurnId=turn-retry', {
+        method: 'POST',
+        signal: abort.signal,
+      });
+      await r1.text();
+      const r2 = await app.request('/chat?clientTurnId=turn-retry', {
+        method: 'POST',
+      });
+      expect(r2.status).toBe(409);
+      expect(await r2.json()).toMatchObject({
+        code: 'foreground_message_indeterminate',
+        outcome: 'indeterminate',
+      });
+      expect(streamText).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  test('an already aborted request releases its uninvoked claim for a live retry', async () => {
+    const abort = new AbortController();
+    abort.abort();
+    const streamText = vi.fn(async () => ({
+      fullStream: finishedStream(),
+      text: Promise.resolve(''),
+      usage: Promise.resolve(undefined),
+      finishReason: Promise.resolve('stop'),
+    }));
     const agent = buildAgent(streamText);
     const ctx = buildCtx({ memoryAdapter, dedupStore });
     const app = buildApp(ctx, agent, dedupStore);
-
-    const r1 = await app.request('/chat?clientTurnId=turn-retry', {
+    const stopped = await app.request('/chat?clientTurnId=before-call', {
+      method: 'POST',
+      signal: abort.signal,
+    });
+    await stopped.text();
+    expect(streamText).not.toHaveBeenCalled();
+    const retried = await app.request('/chat?clientTurnId=before-call', {
       method: 'POST',
     });
-    await r1.text();
-    const r2 = await app.request('/chat?clientTurnId=turn-retry', {
-      method: 'POST',
-    });
-    await r2.text();
-
-    expect(streamText).toHaveBeenCalledTimes(2);
+    expect(readSSEEvents(await retried.text())).toContainEqual(
+      expect.objectContaining({ type: 'finish', finishReason: 'stop' }),
+    );
+    expect(streamText).toHaveBeenCalledTimes(1);
   });
+
+  test('a failed resolution after invocation retains the key instead of polling', async () => {
+    let failed = false;
+    class FailedResolutionStore extends ChatTurnDedupStore {
+      override resolve(): void {
+        failed = true;
+        throw new Error('injected replay persistence failure');
+      }
+    }
+    const store = new FailedResolutionStore(
+      join(dir, 'failed-resolution.sqlite'),
+    );
+    const streamText = vi.fn(async () => ({
+      fullStream: emptyStream(),
+      text: Promise.resolve(''),
+      usage: Promise.resolve(undefined),
+      finishReason: Promise.resolve('stop'),
+    }));
+    const agent = buildAgent(streamText);
+    const ctx = buildCtx({ memoryAdapter, dedupStore: store });
+    const app = buildApp(ctx, agent, store);
+    const first = await app.request('/chat?clientTurnId=resolution', {
+      method: 'POST',
+    });
+    await first.text();
+    expect(failed).toBe(true);
+    expect(store.claim('resolution')).toEqual({
+      claimed: false,
+      outcome: 'indeterminate',
+    });
+    const retried = await app.request('/chat?clientTurnId=resolution', {
+      method: 'POST',
+    });
+    expect(retried.status).toBe(409);
+    expect(await retried.json()).toMatchObject({ outcome: 'indeterminate' });
+    expect(streamText).toHaveBeenCalledTimes(1);
+  });
+
+  test.each(['complete', 'throw'] as const)(
+    'a real native foreground guard refusal leaves an uninvoked key retryable before %s',
+    async (outcome) => {
+      const spec = { name: 'Assistant', prompt: 'Answer the user.' };
+      const events: string[] = [];
+      class RecordingStore extends ChatTurnDedupStore {
+        override beginInvocation(key: string): void {
+          events.push('begin');
+          super.beginInvocation(key);
+        }
+      }
+      const nativeStore = new RecordingStore(
+        join(dir, 'native-foreground.sqlite'),
+      );
+      const streamText = vi.fn(async () => {
+        events.push('call');
+        if (outcome === 'throw') throw new Error('native invoked failure');
+        return {
+          fullStream: finishedStream(),
+          text: Promise.resolve(''),
+          usage: Promise.resolve(undefined),
+          finishReason: Promise.resolve('stop'),
+        };
+      });
+      const agent = buildAgent(streamText);
+      const ctx = buildCtx({ memoryAdapter, dedupStore: nativeStore });
+      ctx.agentSpecs.set('assistant', spec);
+      ctx.activeAgents = new Map();
+      const app = new Hono();
+      app.post('/chat', (c) => {
+        const nativeForeground = createNativeForegroundRelay(
+          {
+            agentId: agentId('assistant'),
+            agentSpec: spec,
+            project: {
+              id: 'project',
+              slug: 'project',
+              name: 'Project',
+              createdAt: '2026-10-25T00:00:00.000Z',
+              updatedAt: '2026-10-25T00:00:00.000Z',
+            },
+            workspaceIsolationMode: 'shared',
+            message: 'hello',
+            invoke: async (_phase, _actual, effect) => {
+              events.push('guard');
+              return effect();
+            },
+          },
+          { threadId: 'foreground-thread', userId: 'owner' },
+        );
+        return streamPrimaryAgentChat({
+          c,
+          ctx,
+          slug: 'assistant',
+          plugin: '',
+          input: 'hello',
+          restOptions: { clientTurnId: 'foreground-refusal' },
+          injectContext: null,
+          ragContext: null,
+          agent,
+          configurationLease: captureRuntimeConfigurationLease(ctx)!,
+          dedupStore: nativeStore,
+          nativeForeground,
+          nativeRuntimeAgent: agent,
+        });
+      });
+      const refused = await app.request('/chat', { method: 'POST' });
+      expect(readSSEEvents(await refused.text())).toContainEqual(
+        expect.objectContaining({ type: 'error' }),
+      );
+      expect(streamText).not.toHaveBeenCalled();
+      expect(events).toEqual(['guard']);
+      events.length = 0;
+      ctx.activeAgents.set('assistant', agent);
+      const retried = await app.request('/chat', { method: 'POST' });
+      expect(readSSEEvents(await retried.text())).toContainEqual(
+        expect.objectContaining(
+          outcome === 'throw'
+            ? { type: 'error' }
+            : { type: 'finish', finishReason: 'stop' },
+        ),
+      );
+      expect(events).toEqual(['guard', 'begin', 'call']);
+      expect(streamText).toHaveBeenCalledTimes(1);
+      const replay = await app.request('/chat', { method: 'POST' });
+      if (outcome === 'throw') {
+        expect(replay.status).toBe(409);
+        expect(await replay.json()).toMatchObject({ outcome: 'indeterminate' });
+      } else {
+        expect(readSSEEvents(await replay.text())).toContainEqual(
+          expect.objectContaining({
+            type: 'finish',
+            finishReason: 'completed',
+          }),
+        );
+      }
+      expect(streamText).toHaveBeenCalledTimes(1);
+    },
+  );
 
   // #3581: the durable invocation point precedes the agent call.
   test('records invocation before the agent call, and runs nothing when that record fails', async () => {
@@ -335,6 +535,50 @@ describe('streamPrimaryAgentChat client-turn dedup (station#1224 offline slice 2
       'beginInvocation',
       'streamText',
     ]);
+  });
+
+  test('retained invoked failures do not consume the successful replay budget', async () => {
+    const store = new ChatTurnDedupStore(
+      join(dir, 'retained-budget.sqlite'),
+      2,
+    );
+    const streamText = vi.fn(
+      async (_input: string, options: { clientTurnId?: string }) => {
+        if (options.clientTurnId?.startsWith('failed-'))
+          throw new Error('uncertain invoked outcome');
+        return {
+          fullStream: finishedStream(),
+          text: Promise.resolve(''),
+          usage: Promise.resolve(undefined),
+          finishReason: Promise.resolve('stop'),
+        };
+      },
+    );
+    const agent = buildAgent(streamText);
+    const ctx = buildCtx({ memoryAdapter, dedupStore: store });
+    const app = buildApp(ctx, agent, store);
+    for (const id of ['failed-a', 'failed-b', 'successful']) {
+      const response = await app.request(`/chat?clientTurnId=${id}`, {
+        method: 'POST',
+      });
+      await response.text();
+    }
+    expect(streamText).toHaveBeenCalledTimes(3);
+    const replay = await app.request('/chat?clientTurnId=successful', {
+      method: 'POST',
+    });
+    expect(replay.status).toBe(200);
+    expect(readSSEEvents(await replay.text())).toContainEqual(
+      expect.objectContaining({ type: 'finish', finishReason: 'completed' }),
+    );
+    for (const id of ['failed-a', 'failed-b']) {
+      const refusal = await app.request(`/chat?clientTurnId=${id}`, {
+        method: 'POST',
+      });
+      expect(refusal.status).toBe(409);
+      expect(await refusal.json()).toMatchObject({ outcome: 'indeterminate' });
+    }
+    expect(streamText).toHaveBeenCalledTimes(3);
   });
 
   // #3559: retention must never turn an old key back into a new one.

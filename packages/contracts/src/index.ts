@@ -61,6 +61,7 @@ export * from './proposed-change.js';
 export * from './provider.js';
 export * from './pull-request-provider.js';
 export * from './registry-lifecycle.js';
+export * from './required-slots.js';
 export * from './review-evidence.js';
 export * from './runs.js';
 export * from './runtime.js';

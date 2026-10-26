@@ -1765,6 +1765,155 @@ describe('project guest administration over the production composition', () => {
     expect(pairing.listDevices()).toHaveLength(before);
   });
 
+  test('layout management and personal subjects compose through real account credentials without sharing personal records', async () => {
+    const h = await setup();
+    const { scope, guest } = await h.shareWithGuestAdmin('lenses', 'Lenses');
+    const send = (method: string, body: unknown) => ({
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const create = await h.request(
+      '/api/projects/lenses/layouts',
+      guest(send('POST', { slug: 'shared', name: 'Shared', config: {} })),
+    );
+    expect(create.status, await create.clone().text()).toBe(201);
+    const cloned = await h.request(
+      '/api/me/layouts/clone-project',
+      guest(
+        send('POST', {
+          projectSlug: 'lenses',
+          layoutSlug: 'shared',
+          slug: 'mine',
+        }),
+      ),
+    );
+    expect(cloned.status, await cloned.clone().text()).toBe(201);
+    expect((await h.request('/api/me/layouts/mine', guest())).status).toBe(200);
+    expect(
+      (
+        await h.request(
+          '/api/projects/lenses/layouts/shared',
+          guest(send('PUT', { name: 'Renamed' })),
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await h.request(
+          '/api/projects/lenses/layout-policy',
+          guest(send('PUT', { personalLayouts: 'off' })),
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await h.request(
+          '/api/projects/lenses/layout-policy',
+          h.ownerHeaders(send('PUT', { personalLayouts: 'off' })),
+        )
+      ).status,
+    ).toBe(200);
+    expect((await h.request('/api/me/layouts/mine', guest())).status).toBe(404);
+    expect(
+      (
+        await h.request(
+          '/api/projects/lenses/layout-policy',
+          h.ownerHeaders(send('PUT', { personalLayouts: 'project-panes' })),
+        )
+      ).status,
+    ).toBe(200);
+    expect((await h.request('/api/me/layouts/mine', guest())).status).toBe(200);
+
+    const invited = await h.request(
+      '/api/projects/lenses/access/invitations',
+      h.ownerHeaders(
+        send('POST', {
+          scope,
+          email: null,
+          role: 'contributor',
+          expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        }),
+      ),
+    );
+    expect(invited.status).toBe(200);
+    const token = (await readJson<{ data: { token: string } }>(invited)).data
+      .token;
+    const peerDevice = h.pairAccountBound(
+      'lens-peer',
+      GUEST_GRANT,
+      PEER_SUBJECT,
+    );
+    const peer = h.guestHeaders(peerDevice.credential, 'fixture_account=peer');
+    expect(
+      (
+        await h.request(
+          '/api/account-auth/accept-invitation',
+          peer(send('POST', { token })),
+        )
+      ).status,
+    ).toBe(200);
+    expect((await h.request('/api/projects/lenses', peer())).status).toBe(200);
+    expect(
+      (
+        await readJson<{ data: unknown[] }>(
+          await h.request('/api/me/layouts', peer()),
+        )
+      ).data,
+    ).toEqual([]);
+    for (const [method, suffix, body] of [
+      ['GET', '', undefined],
+      ['PUT', '', { name: 'Stolen' }],
+      ['DELETE', '', undefined],
+      ['POST', '/clone', { slug: 'stolen' }],
+    ] as const) {
+      const init = body === undefined ? { method } : send(method, body);
+      const exists = await h.request(
+        `/api/me/layouts/mine${suffix}`,
+        peer(init),
+      );
+      const missing = await h.request(
+        `/api/me/layouts/absent${suffix}`,
+        peer(init),
+      );
+      expect(exists.status).toBe(404);
+      expect(await exists.text()).toBe(await missing.text());
+    }
+    expect(
+      (
+        await h.request(
+          '/api/projects/lenses/layouts',
+          peer(send('POST', { slug: 'denied', name: 'Denied' })),
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await h.request(
+          '/api/projects/lenses/layouts/shared',
+          peer(send('PUT', { name: 'Denied' })),
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await h.request(
+          '/api/projects/lenses/layouts/shared',
+          peer({ method: 'DELETE' }),
+        )
+      ).status,
+    ).toBe(403);
+    expect((await h.request('/api/me/layouts/mine', guest())).status).toBe(200);
+    expect(
+      (
+        await h.request(
+          '/api/projects/lenses/layouts/shared',
+          guest({ method: 'DELETE' }),
+        )
+      ).status,
+    ).toBe(200);
+  });
+
   test('enable-sharing stays operator-only and generic project mutation stays banned', async () => {
     const h = await setup();
     const { guest } = await h.shareWithGuestAdmin('locked', 'Locked');

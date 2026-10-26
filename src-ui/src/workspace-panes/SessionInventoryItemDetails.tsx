@@ -4,18 +4,121 @@ import type {
   ThreadToolResultRow,
 } from '@kontourai/station-contracts/session-inventory';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
-import { useSessionInventoryInput } from '@kontourai/station-sdk/session-inventory';
-import { useSessionToolResultQuery } from '@kontourai/station-sdk/task-tool-results';
+import {
+  SessionInventoryRequestError,
+  useSessionInventoryInput,
+} from '@kontourai/station-sdk/session-inventory';
+import {
+  TaskToolResultRequestError,
+  useSessionToolResultQuery,
+} from '@kontourai/station-sdk/task-tool-results';
+import type { ReactNode } from 'react';
 import { Button } from '../components/Button';
-import { SkeletonBlock } from '../components/state';
+import { ErrorState, SkeletonBlock } from '../components/state';
 import { useShowSurface } from '../contexts/useShowSurface';
+
+/**
+ * What a failed body read can honestly tell the user, and whether trying
+ * again could change it. The read routes answer a missing, denied or
+ * stale-principal read alike (404, non-disclosing), and 401/403 come from
+ * authentication; retrying any of those gets the same answer. A 2xx the
+ * client refused is a contract mismatch, also not fixed by retrying. Only an
+ * outage (503) or no response at all (status 0) is worth another try.
+ */
+export function describeItemReadFailure(
+  error: unknown,
+  noun: 'input' | 'tool result',
+): { title: string; description: string; retryable: boolean } {
+  // Both clients throw only their own typed error; `0` is "no response".
+  const status =
+    error instanceof SessionInventoryRequestError ||
+    error instanceof TaskToolResultRequestError
+      ? error.status
+      : 0;
+  if (status === 401 || status === 403 || status === 404)
+    return {
+      title: `This ${noun} isn't available`,
+      description:
+        'It may have been removed, or this device may no longer have access to this session.',
+      retryable: false,
+    };
+  if (status >= 200 && status < 300)
+    return {
+      title: `This ${noun} couldn't be shown`,
+      description:
+        'Station sent a response this app could not read. Update this app or the Station host so both run the same version.',
+      retryable: false,
+    };
+  return {
+    title: `This ${noun} didn't load`,
+    description:
+      status === 0
+        ? 'Station could not be reached. Check the connection, then try again.'
+        : 'Station could not read it just now. Try again in a moment.',
+    retryable: true,
+  };
+}
+
+function ReadFailure({
+  title,
+  description,
+  retry,
+  fallback,
+}: {
+  title: string;
+  description: ReactNode;
+  retry?: {
+    label: string;
+    onRetry(): void;
+    pending?: boolean;
+  };
+  fallback?: ReactNode;
+}) {
+  return (
+    <ErrorState
+      variant="default"
+      className="session-inventory__item-failure"
+      title={title}
+      description={description}
+      action={
+        retry || fallback ? (
+          <div className="session-inventory__item-details-actions">
+            {retry ? (
+              // A pending check keeps the button focusable (busy, not
+              // `disabled` as ActionControl's `pending` would make it):
+              // disabling the focused control drops focus to the page and
+              // takes Escape and keyboard travel with it. Same spinner.
+              <Button
+                variant="primary"
+                className={retry.pending ? 'is-pending' : undefined}
+                onClick={retry.pending ? undefined : retry.onRetry}
+                aria-busy={retry.pending || undefined}
+                aria-disabled={retry.pending || undefined}
+              >
+                {retry.pending ? (
+                  <span className="button__spinner" aria-hidden="true" />
+                ) : null}
+                {retry.label}
+              </Button>
+            ) : null}
+            {fallback}
+          </div>
+        ) : undefined
+      }
+    />
+  );
+}
 
 function InputDetails({
   row,
   requestScope,
+  footer,
+  fallback,
 }: {
   row: ThreadAuthoredInputRow;
   requestScope: ApiRequestScope;
+  footer: ReactNode;
+  fallback: ReactNode;
 }) {
   const query = useSessionInventoryInput(
     row.sessionId,
@@ -23,24 +126,53 @@ function InputDetails({
     row.turnId,
     requestScope,
   );
-  if (query.error)
+  if (query.hostSupport === 'unsupported') {
+    // Unsupported is not proof of an old host: a hosted deployment never
+    // serves this read (#4177). The recheck result says only what it saw.
+    const stillUnsupported = query.hostRecheck === 'still-unsupported';
     return (
-      <p role="alert">
-        This input could not be read.{' '}
-        <Button onClick={() => void query.refetch()}>Retry input</Button>
-      </p>
+      <ReadFailure
+        title={
+          stillUnsupported
+            ? "This Station still can't show input details"
+            : "This Station can't show input details"
+        }
+        description={
+          stillUnsupported
+            ? "Checked again just now: the Station host this app is connected to still doesn't offer input details. If it runs an older version, update Station on the host and check again. You can also open the session to read the message in the conversation."
+            : "The Station host this app is connected to doesn't offer input details. It may run an older version: update Station on the host and check again. You can also open the session to read the message in the conversation."
+        }
+        retry={{
+          label: 'Check again',
+          onRetry: () => void query.recheckHost(),
+          pending: query.hostRecheck === 'checking',
+        }}
+        fallback={fallback}
+      />
     );
+  }
+  if (query.error) {
+    const failure = describeItemReadFailure(query.error, 'input');
+    return (
+      <ReadFailure
+        title={failure.title}
+        description={failure.description}
+        retry={
+          failure.retryable
+            ? { label: 'Try again', onRetry: () => void query.refetch() }
+            : undefined
+        }
+        fallback={fallback}
+      />
+    );
+  }
   if (!query.data)
     return <SkeletonBlock count={2} label="Loading input details" />;
+  // The row's own title already names the input kind; the body is its text.
   return (
     <>
-      <h4>
-        {row.inputKind === 'steer'
-          ? 'Follow-up instruction'
-          : 'Authored message'}
-      </h4>
       {query.data.prompt ? (
-        <pre>{query.data.prompt}</pre>
+        <pre className="session-inventory__input-text">{query.data.prompt}</pre>
       ) : (
         <p>This input contains attachments only.</p>
       )}
@@ -54,6 +186,7 @@ function InputDetails({
           ))}
         </ul>
       ) : null}
+      {footer}
     </>
   );
 }
@@ -61,26 +194,38 @@ function InputDetails({
 function ToolDetails({
   row,
   requestScope,
+  footer,
+  fallback,
 }: {
   row: ThreadToolResultRow;
   requestScope: ApiRequestScope;
+  footer: ReactNode;
+  fallback: ReactNode;
 }) {
   const query = useSessionToolResultQuery(row.sessionId, row.eventId, {
     requestScope,
   });
-  if (query.error)
+  if (query.error) {
+    const failure = describeItemReadFailure(query.error, 'tool result');
     return (
-      <p role="alert">
-        This tool result could not be read.{' '}
-        <Button onClick={() => void query.refetch()}>Retry result</Button>
-      </p>
+      <ReadFailure
+        title={failure.title}
+        description={failure.description}
+        retry={
+          failure.retryable
+            ? { label: 'Try again', onRetry: () => void query.refetch() }
+            : undefined
+        }
+        fallback={fallback}
+      />
     );
+  }
   if (!query.data)
     return <SkeletonBlock count={2} label="Loading tool result" />;
   const result = query.data;
+  // The row's own title already names the tool.
   return (
     <>
-      <h4>{result.name}</h4>
       <p>Status: {result.terminalStatus}</p>
       {result.content.map((part, index) =>
         part.type === 'text' ? (
@@ -98,6 +243,7 @@ function ToolDetails({
           This recorded result is truncated. Some content was omitted.
         </p>
       ) : null}
+      {footer}
     </>
   );
 }
@@ -126,16 +272,70 @@ export function SessionInventoryItemDetails({
       : 'provenanceSessionId' in row
         ? row.provenanceSessionId
         : undefined;
+  const openSessionButton = sessionId ? (
+    <Button onClick={() => openSession(sessionId)}>Open session</Button>
+  ) : null;
+  // The recorded origin describes a body that was read. Under a failed read
+  // it is noise between the failure and what to do next, so the body owns
+  // whether it appears; Open session moves into the failure as its way out.
+  const footer = (
+    <div className="session-inventory__item-details-footer">
+      <details>
+        <summary>Recorded origin</summary>
+        <dl>
+          <dt>Owner</dt>
+          <dd>{row.owner.owner}</dd>
+          {sessionId ? (
+            <>
+              <dt>Session</dt>
+              <dd>{sessionId}</dd>
+            </>
+          ) : null}
+          {'turnId' in row && row.turnId ? (
+            <>
+              <dt>Turn</dt>
+              <dd>{row.turnId}</dd>
+            </>
+          ) : null}
+          {'eventId' in row ? (
+            <>
+              <dt>Event</dt>
+              <dd>{row.eventId}</dd>
+            </>
+          ) : null}
+          <dt>Relationship</dt>
+          <dd>{row.relations.join(', ')}</dd>
+        </dl>
+      </details>
+      {openSessionButton ? (
+        <div className="session-inventory__item-details-actions">
+          {openSessionButton}
+        </div>
+      ) : null}
+    </div>
+  );
+  const bodyOwnsFooter =
+    row.kind === 'thread-authored-input' || row.kind === 'thread-tool-result';
   return (
     <section
       className="session-inventory__item-details"
       aria-label={`${item.label} details`}
     >
       {row.kind === 'thread-authored-input' ? (
-        <InputDetails row={row} requestScope={requestScope} />
+        <InputDetails
+          row={row}
+          requestScope={requestScope}
+          footer={footer}
+          fallback={openSessionButton}
+        />
       ) : null}
       {row.kind === 'thread-tool-result' ? (
-        <ToolDetails row={row} requestScope={requestScope} />
+        <ToolDetails
+          row={row}
+          requestScope={requestScope}
+          footer={footer}
+          fallback={openSessionButton}
+        />
       ) : null}
       {row.kind === 'station-request-decision' ? (
         <>
@@ -233,36 +433,7 @@ export function SessionInventoryItemDetails({
           </p>
         </>
       ) : null}
-      <details>
-        <summary>Recorded origin</summary>
-        <dl>
-          <dt>Owner</dt>
-          <dd>{row.owner.owner}</dd>
-          {sessionId ? (
-            <>
-              <dt>Session</dt>
-              <dd>{sessionId}</dd>
-            </>
-          ) : null}
-          {'turnId' in row && row.turnId ? (
-            <>
-              <dt>Turn</dt>
-              <dd>{row.turnId}</dd>
-            </>
-          ) : null}
-          {'eventId' in row ? (
-            <>
-              <dt>Event</dt>
-              <dd>{row.eventId}</dd>
-            </>
-          ) : null}
-          <dt>Relationship</dt>
-          <dd>{row.relations.join(', ')}</dd>
-        </dl>
-      </details>
-      {sessionId ? (
-        <Button onClick={() => openSession(sessionId)}>Open session</Button>
-      ) : null}
+      {bodyOwnsFooter ? null : footer}
     </section>
   );
 }

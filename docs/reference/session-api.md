@@ -139,7 +139,11 @@ read as the calling Session's owner within the caller's Project.
 The response is a foreground handle containing `conversationId`, `sessionId`,
 `providerTurnId`, the
 resolved Agent target, and an `ExecutionResolutionReceipt` describing the Environment,
-Agent, engine kind, provider, and honest model launch plan. A validated continuation
+Agent, engine kind, provider, and honest model launch plan. When the send started
+its Session (a new conversation, a successor, or a handoff target), the handle also
+carries `sessionStarted: true`, and the receipt's engine is that Session's. A turn
+sent to an already-running Session omits it: the receipt then describes the Agent's
+current binding, which can differ from the engine that Session runs on. A validated continuation
 without an owned-worktree binding reports its server-read bound directory rather
 than the Project's current default, including an accepted-key retry. Owned-worktree
 bindings retain the existing repository-root receipt form. Changing the default
@@ -1279,6 +1283,22 @@ or refused inputs return the same 404. An unavailable owner or JSON result
 over 256 KiB returns 503. Every response is private/no-store. Hosted mode is
 unavailable until it has a tenant-scoped input reader. This read neither loads
 the full transcript nor changes an inventory descriptor or a kept reference.
+
+A host that serves this read advertises `capabilities.sessionInventoryInputRead:
+true` on its public handshake; a hosted deployment omits it, because its route
+refuses every read. A host built before the read answers the path 404, the same
+as a refused read, so a client checks the flag before reading and, when it is
+absent, says the host can't show input details and suggests updating it as one
+remedy. A whole-Session inventory lists an
+authored input only when this read would serve it: the listing and the read
+apply one readability rule in the event store (#4182). It refuses a
+`turn.started` with neither non-whitespace prompt text nor attachments
+(`isAuthoredInputContent`; for example an imported Codex turn without a user
+message), a prompt over `CHAT_INPUT_MAX_CHARS`, a malformed or over-count
+attachment descriptor, or a payload turn id that disagrees with the stored one.
+A turn the engine opened on its own is not listed either. Such an input stays in
+the conversation transcript; the inventory does not list it, rather than adding
+a row the published row contract has no state for.
 
 ### Bounded session detail
 

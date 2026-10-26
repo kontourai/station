@@ -1,0 +1,7 @@
+{
+  "revision": "aed88445c660e051c0562106a65bbd0c2d499a8a",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"ChatDock now reads the existing ACP connections query (useACPConnections); no API route, request or response shape changed.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

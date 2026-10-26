@@ -1,0 +1,7 @@
+{
+  "revision": "aed88445c660e051c0562106a65bbd0c2d499a8a",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"chat.css adds a narrow-composer rule (container <=640px) swapping the engine chip hint to a short variant, following the existing #3050 route-drop precedent; ChatDock change is data-only. No responsive guidance claim affected.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

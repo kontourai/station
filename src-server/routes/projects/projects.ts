@@ -1755,6 +1755,38 @@ export function createProjectRoutes(
     }
   });
 
+  // This leaf is authorized as manage-extensions by the runtime Project guard.
+  app.put(
+    '/:slug/layout-policy',
+    validate(
+      z
+        .object({
+          personalLayouts: z.enum(['off', 'project-panes', 'allowed-plugins']),
+          personalLayoutAllowedPlugins: z.array(z.string().min(1)).optional(),
+        })
+        .strict(),
+    ),
+    async (c) => {
+      try {
+        const slug = param(c, 'slug');
+        assertSafeLayoutPathSegment('project slug', slug);
+        const revision = storageAdapter.projectRevision(slug);
+        const updated = {
+          ...revision.value,
+          ...getBody(c),
+          updatedAt: new Date().toISOString(),
+        };
+        await revision.replace(updated);
+        return c.json({ success: true, data: updated });
+      } catch (error) {
+        return c.json(
+          { success: false, error: projectMutationMessage(error) },
+          projectMutationStatus(error),
+        );
+      }
+    },
+  );
+
   // Create layout
   app.post('/:slug/layouts', validate(projectLayoutCreateSchema), async (c) => {
     try {
@@ -2418,8 +2450,8 @@ export function createProjectRoutes(
  */
 function withoutClientLayoutOwner<T extends Record<string, unknown>>(
   value: T,
-): Omit<T, 'owner'> {
-  const { owner: _owner, ...withoutOwner } = value;
+): Omit<T, 'owner' | 'subject'> {
+  const { owner: _owner, subject: _subject, ...withoutOwner } = value;
   return withoutOwner;
 }
 

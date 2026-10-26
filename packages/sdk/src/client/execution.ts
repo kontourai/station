@@ -84,6 +84,13 @@ export interface ForegroundMessageReceipt {
   providerTurnId: string;
   target: { kind: 'agent'; id: AgentId };
   resolution: ExecutionResolutionReceipt;
+  /**
+   * #4162: this send started `sessionId`, so `resolution.engine` is the engine
+   * that Session runs on. Absent when the turn went to an already-running
+   * Session (its engine may differ from the Agent's current binding) and from
+   * Stations that predate the field.
+   */
+  sessionStarted?: true;
   handoff?: ConversationHandoffReceipt;
   /**
    * #2436: what became of the approval pick the send carried. Absent when it

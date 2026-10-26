@@ -98,11 +98,12 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header, input events, control lease, stream params, their strict wire parsers and the length-prefixed binary record envelope |
 | `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state with a selected server-owned session and optional ordered list of up to twelve session IDs, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads |
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
-| `@kontourai/station-contracts/layout` | Layout definitions, tabs, skills, templates, and repository workspace binding (`workspaceBinding: 'repository'`); legacy Coding records retain their repository binding. The layout contract fields `primary`, `presentation` and `drillIns` (#2995): `parseLayoutPresentationDeclaration` refuses unknown values and unresolvable drill-ins with `InvalidLayoutDeclarationError`; `layoutPresentationDeclaration`, `layoutClaimsPrimaryChat`, `layoutPresentsAsStack` and `findPrimaryChatLayout` (built-in Coding first, then the lowest `id`) read a layout read's stated declaration (a withheld read declares nothing; a stored built-in Coding record that states nothing reads as `BUILTIN_CODING_LAYOUT`'s declaration until slice j). `LAYOUT_PRIMARY_CHAT_PERMISSION` names the plugin permission a contributed `primary: 'chat'` needs. A catalog contribution's optional, server-issued `lifecycleGeneration` is identity only, never a permission; a reinstall or an enablement change replaces it and it never repeats. `null` is history the server cannot vouch for, under which a host admits nothing |
+| `@kontourai/station-contracts/layout` | `layoutOwner` derives ownership and `layoutSubject` derives the optional Project subject. Project ownership implies its Project; principal ownership without a subject remains a Board or reusable template. Personal records never inherit Coding's implicit primary Chat claim. Layout definitions, tabs, skills, templates, and repository workspace binding (`workspaceBinding: 'repository'`); legacy Coding records retain their repository binding. The layout contract fields `primary`, `presentation` and `drillIns` (#2995): `parseLayoutPresentationDeclaration` refuses unknown values and unresolvable drill-ins with `InvalidLayoutDeclarationError`; `layoutPresentationDeclaration`, `layoutClaimsPrimaryChat`, `layoutPresentsAsStack` and `findPrimaryChatLayout` (built-in Coding first, then the lowest `id`) read a layout read's stated declaration (a withheld read declares nothing; a stored built-in Coding record that states nothing reads as `BUILTIN_CODING_LAYOUT`'s declaration until slice j). `LAYOUT_PRIMARY_CHAT_PERMISSION` names the plugin permission a contributed `primary: 'chat'` needs. A catalog contribution's optional, server-issued `lifecycleGeneration` is identity only, never a permission; a reinstall or an enablement change replaces it and it never repeats. `null` is history the server cannot vouch for, under which a host admits nothing |
 | `@kontourai/station-contracts/personal-board` | Declarative dashboard sections, saved/proposed Board document and revisioned authoring inputs |
 | `@kontourai/station-contracts/local-accounts` | Operator-only account projections, sign-in/session actions and one-time recovery results |
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
 | `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes. A session event window may carry `latestTool: { turnId, name }` independently of its transcript caps, bounded to a 256-byte UTF-8 name and 4096-byte turn ID at the snapshot watermark. `null` means no usable current-turn tool; only an absent field permits older-server event fallback. A new turn clears the fact; steering the same turn preserves it. No arguments or inferred tool-running state are included. |
+| `@kontourai/station-contracts/required-slots` | Required Home and shared Inbox/Chat default identities, non-empty assignment parser, default mutation refusal and pure override/default/safe-mode resolution; declarations grant no execution or role authority. See [required slots](../guides/plugins.md#required-home-and-inboxchat-slots) |
 | `@kontourai/station-contracts/plugin` | Plugin manifests, previews, overrides, conflicts, install outcomes and current permission status |
 | `@kontourai/station-contracts/plugin-foreground-work` | Bounded foreground-work declarations, start intents, effect depth, run states, and safe public outcomes. Published ahead of a server implementation: Station does not admit or list plugin foreground runs yet |
 | `@kontourai/station-contracts/project` | Project config and metadata, and `projectIconProblem`: the one rule for a stored project icon (a short glyph, or a PNG/JPEG/WebP/ICO data URL of at most 128 KiB whose bytes match its type) that the create and update routes, the icon pickers and the renderer share |
@@ -116,7 +117,7 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, update-provenance issue codes, and service and server update state |
 | `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, explicit engine/model/options digest identity, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
 | `@kontourai/station-contracts/task-memory` | Task memory (#4003): the Task summary revision and keyed record shapes, limits, default importance, the stateless write check (`checkTaskRecordWrite`, `taskSummaryRefusal`), refusal wording, the person's views, `taskAwaitsAnswer` for the Tasks list's `openQuestionCount`, and the Learning shapes (`TaskLearningView`, candidates, promotion and dismissal input, limits) for a done Task's promotion candidates. Every bound is a refusal |
-| `@kontourai/station-contracts/task-review` | Task review thread, event, evidence and capture shapes; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Published ahead of server, SDK and UI integration |
+| `@kontourai/station-contracts/task-review` | Task review thread, event, evidence and capture shapes; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Person routes, SQLite persistence and SDK hooks use this contract; agent delivery, captures and UI are separate increments |
 | `@kontourai/station-contracts/work-claims` | A Session's work claim as Station's routes answer it (#3413): information, not a lock. The view shape, its parser and the subject labels the Session-row chip uses |
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
 | `@kontourai/station-contracts/tool-library` | Safe source metadata, Project policy, requests, access summaries and Project agent drafts; [SDK client](sdk.md#project-tool-library) |
@@ -125,7 +126,8 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/workspace-pane-host-contract` | The transport-independent Pane-host capability interface: navigation, notices, confirmation, device facts, the optional Skill experience and the optional, occurrence-bound related-pane capability (`PaneRelatedPanesHost`, see [Related panes](sdk.md#related-panes)) |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
 
-The `task-review` subpath defines contracts ahead of route/tool integration.
+The `task-review` subpath defines the [Task review API](api.md#task-review-threads)
+and its SDK types; agent delivery and capture routes are separate increments.
 All `parseTaskReview*Request` and `parseTaskThread*Request` helpers, plus
 `parseTaskReviewArtifactRef`, `parseTaskReviewEvent`,
 `parseTaskReviewEvidenceInput`, `parseTaskReviewAnchor`, `parseTaskReviewQuote`
@@ -259,15 +261,15 @@ exact and block cases include `a^1000 + b + a^999`. A generous two-second
 per-call wall-time ceiling is a separate backstop; step counts own the bound.
 
 Store/read owners should normalize and validate once per artifact revision.
-`prepareTaskReviewDocument(rawText)` returns `null` for malformed or oversized
-raw input, or an immutable handle with normalized `text` and
-`relocateTextQuote(anchor)`. Cache that handle by artifact identity and revision,
-including invalidation when either changes, then reuse it for each quote. Block
-owners can compare its normalized lines to the retained quote before using the
-same relocation method. The existing `relocateTextQuote(text, anchor)` remains
-the one-shot interface. `deriveOutdated` prepares once per call and reuses its
-handle internally; it does not cache across a thread list. This contracts lane
-does not implement the store's revision cache.
+`prepareTaskReviewDocument(rawText)` returns null for malformed or oversized
+raw input, or a frozen handle with normalized `text`, frozen `lineStarts` offsets
+and `relocateTextQuote(anchor)`. Cache it by exact artifact identity and revision.
+Plan/summary `TaskReviewCurrentArtifact.preparedDocument` may carry that handle
+or null; omitting it lets `deriveOutdated` prepare the text on demand. Supplied
+handles avoid repeated validation, normalization and block-line scans across
+threads. The caller must prepare the current revision's actual text. The
+contracts module holds no cache; the server owns bounded revision caches.
+`relocateTextQuote(text, anchor)` remains the one-shot interface.
 
 A revision change alone does not mean Outdated. Text-quote anchors are Outdated
 only when missing or ambiguous in the changed revision. Block anchors first
@@ -324,6 +326,19 @@ Task or Session authority and do not establish server, SDK, UI or capture
 behavior. The existing `isWellFormedUnicode` export from `task-graph` is
 intentional: Task review reuses its pure predicate. Its root-barrel exposure
 is retained for compatibility; no export is removed or renamed.
+
+The review list's `TaskReviewView.threads` now contains
+`TaskReviewThreadSummary`: available entries omit `events` and include
+`eventCount`, `openingEvent`, optional `lastDeliveryEvent` and `lastEvent`.
+Summary event bodies use `TASK_REVIEW_OPENING_PREVIEW_CHARS` (500 UTF-16 units),
+removing any trailing partial surrogate; detail retains full bodies.
+`lastDeliveryEvent` is the latest sent, send-failed or agent-reply, independent
+of a later person event. Unavailable entries carry only status/state,
+thread ID, ordinal and event count. Thread-detail and mutation responses retain
+`TaskReviewThreadView` with full history. Unavailable entries stay visible
+through list filters and are excluded from counts. This changes the draft list
+response; consumers must fetch expanded-card detail through the SDK.
+
 
 `ProviderSendTurnInput` and `CanonicalRuntimeEventBase` may carry an optional
 `invocationId`. Station assigns it to requested work, and producers retain it
@@ -1635,3 +1650,71 @@ previews. HTML requires Station's distinct-origin frame viewer; the contract
 carries display data and does not confer workspace-read authority. The server
 reuses Project/Session admission and confines reads to that workspace or a
 verified Git worktree of the same repository.
+
+## Personal Project layouts (#2996)
+
+`LayoutConfig.subject?: { kind: 'project'; projectSlug: string }` describes what
+an independently owned layout looks at. It grants no Project, plugin, file or
+execution access. `layoutSubject()` is the derivation authority. Contradictory
+Project owner/subject pairs and subjects on instance-owned Boards are refused
+by the storage parser. The migration is additive on read: existing Project
+records derive their subject, and today's principal-owned Board records without
+`subject` retain their stored shape, contents and ownership. No rewrite is needed.
+
+The authenticated `/api/me/layouts` family stores personal Project layouts in
+its existing principal-keyed directory. Create accepts `subject`; update may
+change it after admission. List, detail, update, clone and Board-authoring
+leaves withhold a subject-bearing record when Project access, policy or plugin
+visibility no longer admits it. Missing and withheld records use the same 404
+body, including across principals. The Project's shared listing remains shared
+only; personal layouts are listed through `/api/me/layouts`. Owners can delete
+their own hidden records; deletion still resolves the authenticated principal
+and cannot address another person’s storage.
+
+- `POST /api/me/layouts/clone-project` accepts `projectSlug`, `layoutSlug`, a new
+  `slug`, optional `name`, and optional `asTemplate`. It copies an admitted
+  shared layout to the caller, with a new id and the source Project as subject.
+- `POST /api/me/layouts/:layoutSlug/clone` copies the caller's admitted layout.
+  `asTemplate: true` clears the subject (the API operation behind “Save as my
+  layout”). A subject-free Board can also serve as a reusable template.
+- `GET /api/me/layouts/:layoutSlug/open?projectSlug=P` returns an admitted view
+  bound to P. It writes neither the template nor P. The bound view confers
+  only the caller's current Project access.
+- Promotion remains `POST .../:layoutSlug/promote`, a move preserving identity.
+  It requires the destination's `manage-layouts` action: Project owners and
+  admins; contributors and viewers are refused. Missing authorization wiring
+  refuses promotion. Malformed, missing, other-person and policy-hidden source
+  slugs all return the same 404 before destination authorization.
+
+Project layout creation, update, deletion and catalog apply use the same
+`manage-layouts` action. `PUT /api/projects/:slug/layout-policy` takes
+`personalLayouts: 'off' | 'project-panes' | 'allowed-plugins'` and optional
+`personalLayoutAllowedPlugins: string[]`; changing it requires
+`manage-extensions`. The omitted policy defaults to `project-panes`. The default
+admits only component references already in the Project's layouts. A personal
+layout with a subject and a non-`custom` type must also match a type already in
+the Project's layouts, on both writes and reads. For a built-in whole-view
+surface (`chat`, `tasks`, `review` or
+`session-board`), a matching label is insufficient: a Project record must
+actually select that renderer through `resolveProjectLayoutRendererKind`, shared
+by the server policy and UI. Plugin/MCP contributions, `config.plugin` bindings
+and stack presentations do not expose those built-in renderers. Removing the
+shared surface hides personal copies and refuses template opening against that
+Project.
+`allowed-plugins` additionally admits panes attributed to one currently visible
+plugin in that list. Primary and alternative renderers are both checked;
+unknown or ambiguous plugin components are refused. Tightening hides records
+without deleting them, and loosening can reveal them again.
+
+The implementations are [personal routes](../../src-server/routes/me/personal-layouts.ts),
+[policy admission](../../src-server/services/layouts/personal-layout-policy.ts),
+[shared routes](../../src-server/routes/projects/projects.ts), and
+[runtime authority wiring](../../src-server/runtime/routes/runtime-routes.ts).
+The [route tests](../../src-server/routes/me/__tests__/personal-layout-subject.routes.test.ts)
+cover stored legacy shapes, write/read policy and principal isolation; the
+[credential composition tests](../../src-server/runtime/routes/__tests__/runtime-routes-project-guest-admin.test.ts)
+cover the real paired-account ingress and membership gates. These are local
+route evidence; Board UX remains #2997, and release/browser/device qualification
+is separate. Personal reads do not issue a primary Chat declaration, including
+when a caller names the Coding type; clone preserves server-issued catalog
+attribution but does not manufacture a declaration from client input.
