@@ -1378,6 +1378,11 @@ test('disabled-thinking quotes reject positive residual thoughts and explicit th
 
 test('historical pricing retains the original qualification after revocation without restoring execution authority', () => {
   const f = fixture();
+  const original = structuredClone(f.owner.read(f.raw.id));
+  f.replaceRecord((record) => ({
+    ...record,
+    internalMetadata: 'private-sentinel',
+  }));
   const contract = f.resolve();
   const quote = quoteBoundedApiProviderAttempt(
     contract,
@@ -1385,8 +1390,8 @@ test('historical pricing retains the original qualification after revocation wit
     remaining,
     NOW,
   );
-  const original = structuredClone(f.owner.read(contract.id));
   const serialized = captureBoundedApiHistoricalPricing(contract, quote, NOW);
+  assert.ok(!serialized.includes('private-sentinel'));
   f.revoke();
   const retained = JSON.parse(serialized);
   assert.deepEqual(retained.qualification, original);

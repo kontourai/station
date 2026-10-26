@@ -645,7 +645,16 @@ export function resolveBoundedApiProviderContract(
     facts,
     owner,
     registryDigest: evidenceDigest,
-    qualification: structuredClone(record),
+    qualification: {
+      serializedContract: record.serializedContract,
+      contractSha256: record.contractSha256,
+      authorityKind: record.authorityKind,
+      authorityRef: record.authorityRef,
+      evidenceRevision: record.evidenceRevision,
+      sourceSha256s: [...record.sourceSha256s],
+      validFromMs: record.validFromMs,
+      expiresAtMs: record.expiresAtMs,
+    },
   });
   return handle;
 }

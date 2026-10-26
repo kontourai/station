@@ -2036,3 +2036,20 @@ and historical-epoch reconciliation remain open. The ACK alone cannot authorize
 a second paid report. Documentation freshness, final combined source qualification,
 provider/accounting and browser/native/device acceptance also remain open. No
 combined Station pull request or full-epic completion is claimed.
+
+### Original pricing evidence for historical accounting
+
+The response observer now retains the original approved qualification record,
+including the complete serialized tariff, alongside its quote, thinking mode
+and pricing timestamp. The record stays in private provider evidence; reading
+it grants no execution capability and cannot revive a revoked qualification.
+Existing evidence without this field remains readable. Historical tariff
+verification and dual-ledger recovery still need to refuse missing evidence
+rather than reconstruct it from the current registry.
+
+The initial capture increment passes 131 controlled contract and SDK-retention
+cases. Omitting the producer field fails all four provider/protocol retention
+assertions with 72 controls passing. Source review requested an explicit
+qualification-field projection to exclude undeclared owner metadata; that
+repair passes the same 131 cases. No historical verification, published
+Flow Agents adoption, live billing or full-epic acceptance follows from capture.
