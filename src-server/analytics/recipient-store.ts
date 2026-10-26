@@ -454,6 +454,7 @@ export class RecipientStore {
       value.recipientBindingSha256 !== claims.recipientBindingSha256 ||
       value.expiresAt !== record.sourceIntent.expiresAt ||
       value.scope !== record.sourceIntent.scope ||
+      value.operationalConsent !== record.sourceIntent.operationalConsent ||
       JSON.stringify(value.retention) !==
         JSON.stringify(record.sourceIntent.retention)
     )

@@ -40,6 +40,7 @@ export const sourceEnrollmentInput = z
       .object({ stationId: enrollmentIdentity, origin: analyticsOriginSchema })
       .strict(),
     scope: z.enum(['individual', 'personal-account']),
+    operationalConsent: z.literal('terminal-outcomes/v1').optional(),
     expiresAt: z
       .string()
       .datetime()

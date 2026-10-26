@@ -58,6 +58,7 @@ const approvalSchema = z
     recipientId: enrollmentOperationId,
     recipientPrincipalId: enrollmentIdentity,
     scope: z.enum(['individual', 'personal-account']),
+    operationalConsent: enrollmentIntentSchema.shape.operationalConsent,
     expiresAt: z.string().datetime(),
     retention: enrollmentIntentSchema.shape.retention,
     phase: z.enum(['approved', 'revoked']),
@@ -266,6 +267,7 @@ export class SourceGrantApprovalStore {
       fingerprint !== record.targetSha256 ||
       view.sourceOperationId !== intent.operationId ||
       view.scope !== intent.scope ||
+      view.operationalConsent !== intent.operationalConsent ||
       view.expiresAt !== intent.expiresAt ||
       JSON.stringify(view.retention) !== JSON.stringify(intent.retention) ||
       view.destinationStationId !== intent.proposedDestination.stationId ||
@@ -496,6 +498,9 @@ export class SourceGrantApprovalStore {
               revision,
               expiresAt: record.view.expiresAt,
               scope: record.view.scope,
+              ...(record.view.operationalConsent
+                ? { operationalConsent: record.view.operationalConsent }
+                : {}),
               retention: record.view.retention,
               credential,
             },
@@ -588,6 +593,9 @@ export class SourceGrantApprovalStore {
             recipientPrincipalId:
               input.recipientCandidate.claims.recipientPrincipalId,
             scope: intent.scope,
+            ...(intent.operationalConsent
+              ? { operationalConsent: intent.operationalConsent }
+              : {}),
             expiresAt: intent.expiresAt,
             retention: intent.retention,
             phase: 'approved',

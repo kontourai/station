@@ -5695,6 +5695,17 @@ state and process-local run status without a forge snapshot.
 or false reuses a completed guide for the current head.
 
 
+### Analytics enrollment consent preparation
+
+`performAnalyticsSetup(authority, {kind:"offer", ...})` accepts optional
+`operationalConsent:"terminal-outcomes/v1"` and preserves it in the strict public
+offer decoder. Omit it for usage-only enrollment. Consent is immutable for an
+operation ID and is bound to the receiving candidate, source requester approval
+and encrypted credential; rotation cannot expand it. Older strict servers or
+SDKs may reject this optional profile, so use matching versions. The profile
+only records consent preparation: operational export, PG summaries and visible
+outcome measures are not implemented, and the setup UI offers no such opt-in.
+
 ### Private enrolled Insights and saved views
 
 The lazy `@kontourai/station-sdk/private-insights-query` entry exposes the scoped

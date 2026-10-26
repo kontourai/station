@@ -23,6 +23,7 @@ export const sourceCredentialPayloadSchema = z
     revision: z.number().int().positive().refine(Number.isSafeInteger),
     expiresAt: z.string().datetime(),
     scope: z.enum(['individual', 'personal-account']),
+    operationalConsent: enrollmentIntentSchema.shape.operationalConsent,
     retention: enrollmentIntentSchema.shape.retention,
     credential: z.string().regex(/^stax_[A-Za-z0-9_-]{43}$/),
   })

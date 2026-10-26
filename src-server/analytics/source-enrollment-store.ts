@@ -153,6 +153,9 @@ export class SourceEnrollmentStore {
           operationId: existing.view.operationId,
           proposedDestination: existing.view.proposedDestination,
           scope: existing.view.scope,
+          ...(existing.view.operationalConsent
+            ? { operationalConsent: existing.view.operationalConsent }
+            : {}),
           expiresAt: existing.view.expiresAt,
           retention: existing.view.retention,
         });

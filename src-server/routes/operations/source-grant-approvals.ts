@@ -165,6 +165,12 @@ export function createSourceGrantApprovalRoutes(deps: {
             detail: `${intent.scope}; ${actor.ownerIds.length} source owners`,
           },
           {
+            label: 'Operational consent',
+            detail: intent.operationalConsent
+              ? 'Content-free terminal outcomes only (summaries not available yet); no prompts, tool content, errors or paths'
+              : 'Not granted; usage receipts only',
+          },
+          {
             label: 'Receiving Station',
             detail: `${intent.proposedDestination.stationId} at ${intent.proposedDestination.origin}`,
           },

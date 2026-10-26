@@ -615,6 +615,11 @@ export function parsePrivateUsageCommit(value: unknown): PrivateUsageCommit {
   return value;
 }
 
+/** Reserved, explicit consent for the content-free terminal outcome allowlist.
+ * Absence is usage-only; existing enrollment and credential records retain their bytes.
+ */
+export type AnalyticsOperationalConsent = 'terminal-outcomes/v1';
+
 /** A saved proposal only. It grants no export, ingestion or destination access. */
 export interface AnalyticsSourceEnrollmentIntent {
   protocol: 'station-analytics-source-enrollment-intent/v1';
@@ -623,6 +628,7 @@ export interface AnalyticsSourceEnrollmentIntent {
   proposedDestination: { stationId: string; origin: string };
   destinationVerified: false;
   scope: UsageExportScope;
+  operationalConsent?: AnalyticsOperationalConsent;
   expiresAt: string;
   retention: { mode: 'live-mirror' } | { mode: 'retained-copy'; days: number };
   phase: 'prepared' | 'cancelled';
@@ -689,6 +695,7 @@ export interface AnalyticsSourceApproval {
   recipientId: string;
   recipientPrincipalId: string;
   scope: UsageExportScope;
+  operationalConsent?: AnalyticsOperationalConsent;
   expiresAt: string;
   retention: AnalyticsSourceEnrollmentIntent['retention'];
   phase: 'approved' | 'revoked';

@@ -433,6 +433,27 @@ route validation, actual enrollment and encrypted credential routes, and the
 separate address review. It does not establish Rust compilation, OS-dialog,
 real two-Station TLS, installed-shell or deployment behavior.
 
+### Operational outcome consent preparation
+
+The source enrollment API and SDK can reserve the explicit consent profile
+`operationalConsent:"terminal-outcomes/v1"`. Existing intents and credentials
+without this field remain usage-only. Changing consent requires a new enrollment,
+receiving candidate and source approval; retry and rotation cannot widen it.
+The source requester review names the consent choice, the candidate signs the
+exact intent digest, delivery seals the choice, and receiving custody checks it
+against the enrolled intent. No prompts, tool input/output, error strings or
+paths are authorized by this profile.
+
+This is an incomplete implementation checkpoint for #3460/#3463. The current
+exporter still selects only canonical usage receipts. No operational observation
+model, PG operational index/summary, saved operational measure or mounted
+Personal Insights outcome display is implemented. The UI therefore does not
+offer this opt-in yet. Future operational readers must require this exact
+consent, reuse current owner/tenant and revision/restore fences, and withdraw
+live-mirror facts and derived caches on deletion, revocation and retention.
+Product/fleet incidents remain independent. Source inspection and authored,
+unexecuted controls do not qualify that future path.
+
 ### Source enrollment proposals
 
 `/api/analytics/source-enrollments` now records a verified person's explicit

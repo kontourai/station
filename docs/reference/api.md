@@ -2486,7 +2486,12 @@ UUIDv4), `proposedDestination:{stationId,origin}`, `scope` (`individual` or
 `personal-account`), canonical ISO `expiresAt` within 30 days, and `retention`
 (`{mode:"live-mirror"}` or `{mode:"retained-copy",days:1..90}`). The origin must
 be canonical HTTPS or HTTP loopback and is not contacted. The body is bounded to
-4 KiB. The current verified person and server-derived owner/tenant policy bind
+4 KiB. Optional `operationalConsent:"terminal-outcomes/v1"` records a separate,
+immutable opt-in for content-free terminal outcomes. Omission remains usage-only;
+booleans, unknown profiles and changing consent under an existing operation ID
+are refused. This is consent preparation only: the current exporter still emits
+usage receipts, and operational storage/query/summary/UI delivery is not implemented.
+The current verified person and server-derived owner/tenant policy bind
 the record; callers cannot supply those identities or authority flags.
 
 GET on the collection returns the latest 20 own records. GET `/<operationId>`

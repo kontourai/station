@@ -81,74 +81,98 @@ function fixture(home = temporary('source-enrollment-')) {
   };
 }
 
-test('enrollment proposals persist without export authority, recover the same intent and remain scoped to the verified person and tenant', async () => {
-  const h = fixture();
-  expect(requiredPairingScope('POST', base)).toBe('orchestration:read');
-  expect(requiredPairingScope('DELETE', `${base}/${operationId}`)).toBe(
-    'orchestration:read',
-  );
-  for (const extra of [
-    { userId: 'foreign' },
-    { tenantId: 'foreign' },
-    { exportAuthority: true },
-    { destinationVerified: true },
-  ])
-    expect((await h.post({ ...input, ...extra })).status).toBe(400);
-  const created = await h.post();
-  expect(created.status).toBe(200);
-  expect(created.headers.get('cache-control')).toBe('no-store');
-  const receipt = await created.json();
-  expect(receipt).toMatchObject({
-    data: {
-      protocol: 'station-analytics-source-enrollment-intent/v1',
-      sourceStationId: 'source-station',
-      phase: 'prepared',
-      exportAuthority: false,
-      destinationVerified: false,
-    },
-  });
-  expect(receipt).not.toHaveProperty('data.credential');
-  expect(
-    (
-      await h.post({
-        ...input,
-        proposedDestination: {
-          stationId: 'different',
-          origin: input.proposedDestination.origin,
-        },
-      })
-    ).status,
-  ).toBe(409);
-  const second = fixture(h.home);
-  expect(await (await second.post()).json()).toEqual(receipt);
-  expect(await (await second.app.request(base)).json()).toEqual({
-    data: [expect.objectContaining({ operationId })],
-  });
-  h.setUser('human:tailscale:bob');
-  expect((await h.app.request(`${base}/${operationId}`)).status).toBe(404);
-  expect(await (await h.app.request(base)).json()).toEqual({ data: [] });
-  h.setUser('human:tailscale:alice');
-  h.setTenant('tenant-b');
-  expect((await h.app.request(`${base}/${operationId}`)).status).toBe(404);
-  expect(
-    (await h.app.request(`${base}/${operationId}`, { method: 'DELETE' }))
-      .status,
-  ).toBe(404);
-  h.setTenant('tenant-a');
-  expect((await h.app.request(`${base}/${operationId}`)).status).toBe(200);
-  const cancelled = await second.app.request(`${base}/${operationId}`, {
-    method: 'DELETE',
-  });
-  expect(await cancelled.json()).toMatchObject({
-    data: { phase: 'cancelled', exportAuthority: false },
-  });
-  expect(
-    await (await h.app.request(`${base}/${operationId}`)).json(),
-  ).toMatchObject({ data: { phase: 'cancelled' } });
-  expect(await (await h.post()).json()).toMatchObject({
-    data: { phase: 'cancelled' },
-  });
-});
+test.each([undefined, 'terminal-outcomes/v1'] as const)(
+  'enrollment consent (%s) is immutable across retries, restart, owner changes and cancellation',
+  async (operationalConsent) => {
+    const h = fixture();
+    expect(requiredPairingScope('POST', base)).toBe('orchestration:read');
+    expect(requiredPairingScope('DELETE', `${base}/${operationId}`)).toBe(
+      'orchestration:read',
+    );
+    for (const extra of [
+      { userId: 'foreign' },
+      { tenantId: 'foreign' },
+      { exportAuthority: true },
+      { destinationVerified: true },
+    ])
+      expect((await h.post({ ...input, ...extra })).status).toBe(400);
+    const requested = {
+      ...input,
+      ...(operationalConsent ? { operationalConsent } : {}),
+    };
+    for (const invalid of [true, false, 'all', { terminalOutcomes: true }])
+      expect(
+        (await h.post({ ...input, operationalConsent: invalid })).status,
+      ).toBe(400);
+    const created = await h.post(requested);
+    expect(created.status).toBe(200);
+    expect(created.headers.get('cache-control')).toBe('no-store');
+    const receipt = await created.json();
+    expect(receipt).toMatchObject({
+      data: {
+        protocol: 'station-analytics-source-enrollment-intent/v1',
+        sourceStationId: 'source-station',
+        phase: 'prepared',
+        exportAuthority: false,
+        destinationVerified: false,
+      },
+    });
+    expect(receipt).not.toHaveProperty('data.credential');
+    if (operationalConsent)
+      expect(receipt).toMatchObject({ data: { operationalConsent } });
+    else expect(receipt).not.toHaveProperty('data.operationalConsent');
+    expect(
+      (
+        await h.post({
+          ...input,
+          ...(operationalConsent
+            ? {}
+            : { operationalConsent: 'terminal-outcomes/v1' }),
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await h.post({
+          ...input,
+          proposedDestination: {
+            stationId: 'different',
+            origin: input.proposedDestination.origin,
+          },
+        })
+      ).status,
+    ).toBe(409);
+    const second = fixture(h.home);
+    expect(await (await second.post(requested)).json()).toEqual(receipt);
+    expect(await (await second.app.request(base)).json()).toEqual({
+      data: [expect.objectContaining({ operationId })],
+    });
+    h.setUser('human:tailscale:bob');
+    expect((await h.app.request(`${base}/${operationId}`)).status).toBe(404);
+    expect(await (await h.app.request(base)).json()).toEqual({ data: [] });
+    h.setUser('human:tailscale:alice');
+    h.setTenant('tenant-b');
+    expect((await h.app.request(`${base}/${operationId}`)).status).toBe(404);
+    expect(
+      (await h.app.request(`${base}/${operationId}`, { method: 'DELETE' }))
+        .status,
+    ).toBe(404);
+    h.setTenant('tenant-a');
+    expect((await h.app.request(`${base}/${operationId}`)).status).toBe(200);
+    const cancelled = await second.app.request(`${base}/${operationId}`, {
+      method: 'DELETE',
+    });
+    expect(await cancelled.json()).toMatchObject({
+      data: { phase: 'cancelled', exportAuthority: false },
+    });
+    expect(
+      await (await h.app.request(`${base}/${operationId}`)).json(),
+    ).toMatchObject({ data: { phase: 'cancelled' } });
+    expect(await (await h.post(requested)).json()).toMatchObject({
+      data: { phase: 'cancelled' },
+    });
+  },
+);
 
 test('queued proposal reads stop after authority loss and corrupt private records are retained instead of reset', async () => {
   const h = fixture();

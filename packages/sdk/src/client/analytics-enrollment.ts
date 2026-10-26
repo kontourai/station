@@ -49,6 +49,7 @@ const intent = z
     proposedDestination: z.object({ stationId: identity, origin }).strict(),
     destinationVerified: z.literal(false),
     scope: z.enum(['individual', 'personal-account']),
+    operationalConsent: z.literal('terminal-outcomes/v1').optional(),
     expiresAt: z.iso.datetime(),
     retention,
     phase: z.enum(['prepared', 'cancelled']),
@@ -136,6 +137,7 @@ export type AnalyticsSetupAction =
       destinationStationId: string;
       destinationOrigin: string;
       scope: 'individual' | 'personal-account';
+      operationalConsent?: 'terminal-outcomes/v1';
       expiresAt: string;
       retention: z.infer<typeof retention>;
     }
@@ -226,6 +228,9 @@ export async function performAnalyticsSetup(
               origin: input.destinationOrigin,
             },
             scope: input.scope,
+            ...(input.operationalConsent
+              ? { operationalConsent: input.operationalConsent }
+              : {}),
             expiresAt: input.expiresAt,
             retention: input.retention,
           }),

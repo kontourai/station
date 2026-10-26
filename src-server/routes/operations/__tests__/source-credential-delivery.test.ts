@@ -31,6 +31,7 @@ import { RecipientStore } from '../../../analytics/recipient-store.js';
 import {
   sourceCredentialDeliverySchema,
   sourceCredentialHash,
+  sourceCredentialPayloadSchema,
 } from '../../../analytics/source-credential.js';
 import { SourceEnrollmentStore } from '../../../analytics/source-enrollment-store.js';
 import { sourceDeliveryProofSchema } from '../../../analytics/source-export-proof.js';
@@ -83,6 +84,7 @@ const now = Date.parse('2026-10-24T00:00:00.000Z');
 const defaults = { sourceId, recipientId, approvalId, now };
 async function fixture(
   options: {
+    operationalConsent?: 'terminal-outcomes/v1';
     sourceStationId?: string;
     sourceOrigin?: string;
     sources?: Map<string, Hono>;
@@ -159,6 +161,9 @@ async function fixture(
       origin: 'https://receiving.example.test',
     },
     scope: 'individual',
+    ...(options.operationalConsent
+      ? { operationalConsent: options.operationalConsent }
+      : {}),
     expiresAt: new Date(now + 86400000).toISOString(),
     retention: { mode: 'live-mirror' },
   });
@@ -546,97 +551,127 @@ async function fixture(
   };
 }
 
-test('approved source delivers ciphertext idempotently and only the receiving owner stores plaintext without releasing it', async () => {
-  const h = await fixture();
-  expect((await h.delivery()).status).toBe(404);
-  await h.approve();
-  h.sourceSignout();
-  expect((await h.delivery()).status).toBe(403);
-  h.sourceSignin();
-  const first = await h.delivery();
-  expect(first.status).toBe(200);
-  const wire = z
-    .object({ data: sourceCredentialDeliverySchema })
-    .parse(await first.json()).data;
-  expect(wire.exportAuthority).toBe(false);
-  expect(wire.envelope.split('.')).toHaveLength(5);
-  const again = z
-    .object({ data: sourceCredentialDeliverySchema })
-    .parse(await (await h.delivery()).json()).data;
-  expect(again.envelope).toBe(wire.envelope);
-  h.receiverUser('human:tailscale:bob');
-  expect((await h.materialize(wire)).status).toBe(404);
-  h.receiverUser('human:tailscale:alice');
-  h.receiverTenant('tenant-b');
-  expect((await h.materialize(wire)).status).toBe(404);
-  h.receiverTenant('tenant-a');
-  expect(
-    (
-      await h.materialize({
-        ...wire,
-        sourceApprovalId: '31234567-89ab-4cde-8fab-0123456789ab',
-      })
-    ).status,
-  ).toBe(400);
-  const stored = await h.materialize(wire);
-  expect(stored.status).toBe(200);
-  const receipt: unknown = await stored.json();
-  expect(receipt).toMatchObject({
-    data: {
-      sourceApprovalId: approvalId,
-      credentialStored: true,
-      sourceVerified: false,
-      exportAuthority: false,
-      revision: 1,
-    },
-  });
-  expect(await (await h.materialize(wire)).json()).toEqual(receipt);
-  const receiver = z
-    .object({
-      records: z.array(
-        z.object({
-          sourceCredential: z.object({
-            payload: z.object({ credential: z.string() }),
-          }),
-        }),
-      ),
-    })
-    .parse(
-      JSON.parse(
-        await readFile(
-          join(h.receivingHome, 'security/analytics-recipients.json'),
-          'utf8',
+test.each([undefined, 'terminal-outcomes/v1'] as const)(
+  'approved source preserves explicit operational consent (%s) through ciphertext and owner-only custody',
+  async (operationalConsent) => {
+    const h = await fixture({ operationalConsent });
+    expect((await h.delivery()).status).toBe(404);
+    await h.approve();
+    h.sourceSignout();
+    expect((await h.delivery()).status).toBe(403);
+    h.sourceSignin();
+    const first = await h.delivery();
+    expect(first.status).toBe(200);
+    const wire = z
+      .object({ data: sourceCredentialDeliverySchema })
+      .parse(await first.json()).data;
+    expect(wire.exportAuthority).toBe(false);
+    expect(wire.envelope.split('.')).toHaveLength(5);
+    const again = z
+      .object({ data: sourceCredentialDeliverySchema })
+      .parse(await (await h.delivery()).json()).data;
+    expect(again.envelope).toBe(wire.envelope);
+    h.receiverUser('human:tailscale:bob');
+    expect((await h.materialize(wire)).status).toBe(404);
+    h.receiverUser('human:tailscale:alice');
+    h.receiverTenant('tenant-b');
+    expect((await h.materialize(wire)).status).toBe(404);
+    h.receiverTenant('tenant-a');
+    expect(
+      (
+        await h.materialize({
+          ...wire,
+          sourceApprovalId: '31234567-89ab-4cde-8fab-0123456789ab',
+        })
+      ).status,
+    ).toBe(400);
+    const stored = await h.materialize(wire);
+    expect(stored.status).toBe(200);
+    const receipt: unknown = await stored.json();
+    expect(receipt).toMatchObject({
+      data: {
+        sourceApprovalId: approvalId,
+        credentialStored: true,
+        sourceVerified: false,
+        exportAuthority: false,
+        revision: 1,
+      },
+    });
+    expect(await (await h.materialize(wire)).json()).toEqual(receipt);
+    const receiver = z
+      .object({
+        records: z.array(
+          z
+            .object({
+              sourceCredential: z
+                .object({
+                  payload: sourceCredentialPayloadSchema,
+                })
+                .passthrough(),
+            })
+            .passthrough(),
         ),
-      ),
-    );
-  const credential = receiver.records[0]?.sourceCredential.payload.credential;
-  if (!credential) throw new Error('Credential was not privately stored');
-  expect(credential).toMatch(/^stax_[A-Za-z0-9_-]{43}$/);
-  const sourceBytes = await readFile(
-    join(h.sourceHome, 'security/analytics-source-approvals.json'),
-    'utf8',
-  );
-  expect(sourceBytes).toContain(sourceCredentialHash(credential));
-  expect(sourceBytes).not.toContain(credential);
-  expect(JSON.stringify(wire)).not.toContain(credential);
-  expect(JSON.stringify(receipt)).not.toContain(credential);
-  expect(
-    await (await h.receiving.request(`${recipientBase}/${recipientId}`)).json(),
-  ).toMatchObject({
-    data: {
-      phase: 'credential-stored',
-      storedCredential: { credentialStored: true, exportAuthority: false },
-    },
-  });
-  expect(
-    (
-      await h.source.request(`${sourceBase}/${approvalId}`, {
-        method: 'DELETE',
       })
-    ).status,
-  ).toBe(200);
-  expect((await h.delivery()).status).toBe(409);
-});
+      .passthrough()
+      .parse(
+        JSON.parse(
+          await readFile(
+            join(h.receivingHome, 'security/analytics-recipients.json'),
+            'utf8',
+          ),
+        ),
+      );
+    const payload = receiver.records[0]?.sourceCredential.payload;
+    expect(payload?.operationalConsent).toBe(operationalConsent);
+    if (operationalConsent === undefined)
+      expect(payload).not.toHaveProperty('operationalConsent');
+    const credential = payload?.credential;
+    if (!credential) throw new Error('Credential was not privately stored');
+    expect(credential).toMatch(/^stax_[A-Za-z0-9_-]{43}$/);
+    const sourceBytes = await readFile(
+      join(h.sourceHome, 'security/analytics-source-approvals.json'),
+      'utf8',
+    );
+    expect(sourceBytes).toContain(sourceCredentialHash(credential));
+    expect(sourceBytes).not.toContain(credential);
+    expect(JSON.stringify(wire)).not.toContain(credential);
+    expect(JSON.stringify(receipt)).not.toContain(credential);
+    expect(
+      await (
+        await h.receiving.request(`${recipientBase}/${recipientId}`)
+      ).json(),
+    ).toMatchObject({
+      data: {
+        phase: 'credential-stored',
+        storedCredential: { credentialStored: true, exportAuthority: false },
+      },
+    });
+    expect(
+      (
+        await h.source.request(`${sourceBase}/${approvalId}`, {
+          method: 'DELETE',
+        })
+      ).status,
+    ).toBe(200);
+    expect((await h.delivery()).status).toBe(409);
+    const custodyFile = join(
+      h.receivingHome,
+      'security/analytics-recipients.json',
+    );
+    const originalBytes = await readFile(custodyFile);
+    if (!payload) throw new Error('Missing receiving payload');
+    if (operationalConsent) delete payload.operationalConsent;
+    else payload.operationalConsent = 'terminal-outcomes/v1';
+    await writeFile(custodyFile, JSON.stringify(receiver), { mode: 0o600 });
+    expect(
+      (await h.receiving.request(`${recipientBase}/${recipientId}`)).status,
+    ).toBe(503);
+    await writeFile(custodyFile, originalBytes, { mode: 0o600 });
+    expect(
+      (await h.receiving.request(`${recipientBase}/${recipientId}`)).status,
+    ).toBe(200);
+  },
+);
 
 test('a cancelled receiving slot refuses delivery even after source approval', async () => {
   const h = await fixture();
@@ -2081,8 +2116,11 @@ test('Core current query fences source revocation before queued receipt bytes ar
   }
 });
 
-test('onboarding SDK transports the real public proof and encrypted delivery through requester-only source and address reviews', async () => {
-  const h = await fixture({ now: Date.now() });
+test('onboarding SDK transports explicit consent, real public proof and encrypted delivery through requester-only reviews', async () => {
+  const h = await fixture({
+    now: Date.now(),
+    operationalConsent: 'terminal-outcomes/v1',
+  });
   let scope = {
     apiBase: 'http://127.0.0.1:4320',
     authorityKey: 'source-owner',
@@ -2119,6 +2157,9 @@ test('onboarding SDK transports the real public proof and encrypted delivery thr
       authorityKey: 'receiving-owner',
     };
     const original = await fetchAnalyticsRecipientSetup(scope, recipientId);
+    expect(original.sourceIntent.operationalConsent).toBe(
+      'terminal-outcomes/v1',
+    );
     const received = await performAnalyticsSetup(scope, {
       kind: 'receive',
       operationId: recipientId,
