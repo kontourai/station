@@ -98,7 +98,15 @@
 
     "src-ui/src/views/settings/SettingRowStatus.tsx",
 
-    "src-ui/src/views/settings/SettingsScopeBadge.tsx"
+    "src-ui/src/views/settings/SettingsScopeBadge.tsx",
+
+    "src-ui/src/components/project-sidebar/ProjectSidebarFooter.tsx",
+
+    "src-ui/src/components/project-sidebar/ProjectSidebarFooter.css",
+
+    "src-ui/src/components/project-sidebar/SidebarAccountControl.tsx",
+
+    "src-ui/src/__tests__/ProjectSidebarPresenceTray.test.tsx"
   ],
 
   "checks": [
