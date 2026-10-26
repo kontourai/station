@@ -1171,7 +1171,7 @@ test('comparison windows keep independent derived indexes and refuse a cursor fr
 const thirdKey = `stai_${'c'.repeat(43)}`;
 function consented(): PrivateUsageCommit {
   const input = batch();
-  const time = input.page.observations[0].receipts[0].observedAt;
+  const time = `${input.query.from}T12:00:00.000Z`;
   const terminal = (
     globalSequence: number,
     fact: Omit<
