@@ -1,6 +1,5 @@
-import { runtimeEventContentDisplayText } from '@kontourai/station-contracts/runtime-event-content';
 import { activeChatsStore } from '../../contexts/active-chats-store';
-import type { PlanArtifact } from '../../utils/planArtifacts';
+import { canonicalPlanArtifact } from '../../utils/planArtifacts';
 import type { OrchestrationEvent } from './types';
 
 /**
@@ -22,21 +21,14 @@ export function handlePlanUpdatedEvent(
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
 
-  // A plan too large for one event arrives as a reference to its entries
-  // (docs/design/event-content-spill.md): show its preview, marked partial,
-  // rather than steps it does not carry.
-  const entries = Array.isArray(event.entries) ? event.entries : undefined;
-  const planArtifact: PlanArtifact = {
-    source: 'canonical',
-    rawText: entries
-      ? entries.map((entry) => entry.content).join('\n')
-      : (runtimeEventContentDisplayText(event.entries) ?? ''),
-    steps: (entries ?? []).map((entry) => ({
-      content: entry.content,
-      status: entry.status,
-    })),
-    updatedAt: event.createdAt,
-  };
+  // A plan too large for one event arrives as a reference to its entries,
+  // or with an entry's text referenced (docs/design/event-content-spill.md):
+  // show the previews, marked partial, with the rest loadable on request.
+  const planArtifact = canonicalPlanArtifact(
+    event.entries,
+    event.createdAt,
+    event.threadId,
+  );
 
   activeChatsStore.updateChat(event.threadId, { planArtifact });
 }

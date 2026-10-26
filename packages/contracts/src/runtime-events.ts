@@ -1226,7 +1226,9 @@ export interface WorkflowStateChangedEvent extends CanonicalRuntimeEventBase {
 export type PlanEntryStatus = 'pending' | 'in_progress' | 'completed';
 
 export interface PlanEntry {
-  content: string;
+  /** A single entry too large to keep inline is stored out of line
+   * (docs/design/event-content-spill.md). */
+  content: SpillableText;
   status: PlanEntryStatus;
 }
 

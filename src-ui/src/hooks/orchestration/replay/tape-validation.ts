@@ -126,7 +126,8 @@ function runtimeEvent(value: unknown, elided = false): boolean {
       value.entries,
       (entry) =>
         record(entry) &&
-        typeof entry.content === 'string' &&
+        (typeof entry.content === 'string' ||
+          isRuntimeEventContentRef(entry.content)) &&
         typeof entry.status === 'string',
     );
   if (value.method === 'policy.stop-verdict')
