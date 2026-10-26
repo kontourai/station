@@ -437,6 +437,14 @@ moment someone added one. `PROJECT_OVERRIDE_FIELD_ALIASES` records the one
 name the two sides spell differently; neither side is being renamed, because
 a rename on either is a stored-data migration.
 
+A Project's new-chat selections (`defaultModelSelection`,
+`defaultApprovalMode`, `defaultApprovalModeSelection`;
+`packages/contracts/src/project-chat-defaults.ts`) are Project fields edited in
+Project settings → New chats, not entries in this list. A `last-used` choice
+has no Station-scope equivalent, so `GET /config/app?project=<slug>` reports
+`defaultApprovalMode` with its Station provenance even when a Project sets its
+own; the Project's answer is `GET /api/projects/:slug/chat-defaults`.
+
 `defaultWorkspaceIsolation` is new in this slice — a Station-scope setting for
 the workspace a new project chat starts in. Resolution is
 `project.defaultWorkspaceIsolation -> AppConfig.defaultWorkspaceIsolation ->

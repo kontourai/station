@@ -105,6 +105,90 @@ See [account preference contracts](contracts.md#account-preferences) and
 - Readiness, health, catalog discovery, and a completed model turn are distinct
   observations. Response fields and receipts state which one was observed.
 
+## Project new-chat defaults
+
+A Project chooses how a person's new chat in it starts. `PUT /api/projects/:slug`
+(and `POST /api/projects`) accept three fields; `null` drops each:
+
+- `defaultModelSelection`: `fixed` (absent) starts a new chat on the Project's
+  `defaultProviderId`/`defaultModel`. Station-engine Agents always use that
+  pair. An Agent app uses it, ahead of your last pick for that app on this
+  device and the model the app reports, only when the app's catalog lists
+  that exact model; otherwise its usual chain applies. `last-used` starts on the
+  model the caller's last chat in this Project started with for the same
+  Agent, while it is still offered, then falls back to the `fixed` chain. A
+  model picked in the composer always wins for that chat.
+- `defaultApprovalMode`: `ask`, `auto` or `never`. A new chat here starts in it
+  when its Agent sets no default of its own. It sits above the Station's
+  `defaultApprovalMode` and above the person's per-engine default hint (see
+  below), and applies to every session start in the
+  Project, as the Station default does. Raising it to `never` needs the grant
+  raising the Station default needs (the operator in person or
+  `approval:full-access`), checked against the Project revision the update
+  replaces; without it the write is 403 and nothing is saved. Resending a
+  stored `never` is not a raise.
+- `defaultApprovalModeSelection`: `fixed` (absent) applies
+  `defaultApprovalMode`; `last-used` applies the mode the caller's last chat
+  here started in. A recorded full access is reapplied only to a start whose
+  caller may grant it; otherwise the fixed mode applies. The value is
+  Project-wide rather than per Agent: it is how the person chose to work in
+  this Project, every approval-capable engine shares the ask/auto/never
+  vocabulary, and an Agent that needs its own posture sets its own default,
+  which wins.
+
+A chat whose first send carries an explicit **Default** pick
+(`connection-default`) records that pick, and it resolves to the Agent's
+default, then the Station's, without the Project layer; the composer shows the
+same.
+
+"Last used" is what a successful start recorded
+(`<home>/project-chat-last-used.json`, per Project id and person); a failed
+start records nothing. Only a person's own interactive chat records or
+inherits it: the `/chat` route marks a request as one unless it may be an
+agent's, comes from a paired Station's delegation credential, carries a
+delegation, or is an automatic replay. A start without that mark (delegations,
+webhooks, scheduled and agent-caused starts) takes the fixed mode. An agent
+that runs `station chat` with a person's own CLI credential cannot be told
+apart from that person. An unreadable record is moved aside to
+`project-chat-last-used.json.corrupt-<time>` and writing starts fresh; a record
+that would exceed its 512 KiB bound drops the oldest entries first.
+
+`GET /api/projects/:slug/chat-defaults` returns the caller's
+`ProjectChatDefaultsView`: both selections, the recorded models (newest first,
+one per Agent), the recorded approval mode, and `approvalMode.resolved`, the
+Project layer resolved for the caller, with `fallback: 'no-history'` or
+`'full-access-not-granted'` when `last-used` could not supply it. A shared
+member admitted to the Project reads it too, with only their own values,
+because the start applies the same approval layer to their chats; any other
+caller gets 404. A member's composer does not see the Project's model fields,
+so for a member `fixed` means the Agent's own model chain; `last-used` still
+uses the member's own recorded model. The composer only displays this view
+("Set when the chat starts" until it is read) and never waits for it to send.
+
+The person's personal per-engine approval default is queued for a chat's
+first send as before (with its account namespace, so offline replay and
+account switches behave as they did). In a Project chat it travels on `/chat`
+as `personalApprovalDefault` (`ask`, `auto` or `never`), a hint rather than a
+pick; outside a Project there is no Project layer and it goes as a carried pick. For a new conversation of a person's own chat the server
+records it as the conversation's decision only when nothing above it decides,
+so the order is: explicit pick, Agent default, Project layer, personal
+default, Station default. A `never` hint that would apply is refused (403
+`approval-full-access-not-granted`) without the caller's full-access grant,
+exactly as a carried pick is; one that would not apply is ignored. A recorded
+hint is reported in the response's `approvalMode`; a hint not applied is
+spent with that send. An agent's station-control call that carries the hint
+(on `/chat`, its continue route or a handoff) is refused with 403
+`station_control_posture_not_allowed`, as a carried pick is. When this route answered 404 (a Station that may
+predate the hint), the composer sends the default as the pick it used to be;
+with no Project layer the order is the same. Accepted gap: a Station that
+predates the hint and whose chat-defaults read this composer never made (or
+has not answered) ignores the hint, so that first chat starts in its Agent or
+Station default instead of the personal default. That is never looser than
+the person chose; detecting it would need a capability flag the client does
+not read today.
+
+See [project chat defaults](contracts.md).
+
 ## Durable Project creation
 
 `POST /api/projects` optionally accepts a UUID `creationRequestId` alongside an

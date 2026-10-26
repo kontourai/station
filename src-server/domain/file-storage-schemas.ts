@@ -11,6 +11,10 @@ import {
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
+import {
+  PROJECT_CHAT_APPROVAL_POSTURES,
+  PROJECT_CHAT_DEFAULT_SELECTIONS,
+} from '@kontourai/station-contracts/project-chat-defaults';
 import { isSafeToolServerId } from '@kontourai/station-contracts/tool';
 import { z } from 'zod';
 import type { ConversationRecord, DocumentRecord } from './storage-adapter.js';
@@ -74,6 +78,11 @@ const projectSchema = z
       .optional(),
     defaultProviderId: optionalString,
     defaultModel: optionalString,
+    defaultModelSelection: z.enum(PROJECT_CHAT_DEFAULT_SELECTIONS).optional(),
+    defaultApprovalMode: z.enum(PROJECT_CHAT_APPROVAL_POSTURES).optional(),
+    defaultApprovalModeSelection: z
+      .enum(PROJECT_CHAT_DEFAULT_SELECTIONS)
+      .optional(),
     defaultAgent: z.string().regex(CLEAN_ID_PATTERN).optional(),
     defaultEmbeddingProviderId: optionalString,
     defaultEmbeddingModel: optionalString,
