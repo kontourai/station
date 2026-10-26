@@ -1,0 +1,19 @@
+{
+  "revision": "e5a0a42792152c411f783952754d24b131172207",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"testing.md delta: notes the accepted limitation that the sheet test trusts aria-modal and chat-dock markup. Guidance unchanged.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"testing.md delta: notes the accepted limitation that the sheet test trusts aria-modal and chat-dock markup. Guidance unchanged.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Added the accepted markup-trust limitation for the sheet rule (S1/S2). Rule text still matches hit-target-audit.ts pinnedOver after the free-band and pinned-content fixes.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"testing.md delta: notes the accepted limitation that the sheet test trusts aria-modal and chat-dock markup. Guidance unchanged.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"testing.md delta: notes the accepted limitation that the sheet test trusts aria-modal and chat-dock markup. Guidance unchanged.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"testing.md delta: notes the accepted limitation that the sheet test trusts aria-modal and chat-dock markup. Guidance unchanged.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"testing.md delta: notes the accepted limitation that the sheet test trusts aria-modal and chat-dock markup. Guidance unchanged.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

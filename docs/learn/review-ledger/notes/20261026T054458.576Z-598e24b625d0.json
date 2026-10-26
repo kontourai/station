@@ -1,0 +1,23 @@
+{
+  "revision": "7affa5aca131e1525d9b19d1538c43ba428f76f5",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"testing.md delta: hit-target bullet now states the pinned-layer rule (scroll clearance or a covering sheet) and that closed-details content is skipped. No operations vocabulary changed.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/design/motion.md","note":"screenshots.spec.ts delta updates the inventory older-host screens to #4197's title; reduced-motion screens unchanged.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"testing.md delta: hit-target bullet now states the pinned-layer rule (scroll clearance or a covering sheet) and that closed-details content is skipped. The gate:for sentence and link remain accurate.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Rewrote the hit-target bullet for the corrected pinned-layer rule and unrendered-control skip; screenshots.spec.ts delta is the older-host title. Checked against hit-target-audit.ts pinnedOver/SHEET and the browser fixtures (F1, F3-F7 reported; scroll, sheet, closed details cleared).","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"screenshots.spec.ts delta updates the inventory older-host screens to #4197's title; telemetry scenes unchanged.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]},
+
+    {"path":"scripts/AGENTS.md","note":"testing.md delta: hit-target bullet now states the pinned-layer rule (scroll clearance or a covering sheet) and that closed-details content is skipped. Scope rules unchanged.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"testing.md delta: hit-target bullet now states the pinned-layer rule (scroll clearance or a covering sheet) and that closed-details content is skipped. Server guidance unchanged.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"testing.md delta: hit-target bullet now states the pinned-layer rule (scroll clearance or a covering sheet) and that closed-details content is skipped. UI guidance unchanged.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"testing.md delta: hit-target bullet now states the pinned-layer rule (scroll clearance or a covering sheet) and that closed-details content is skipped. Fixture and journey rules unchanged.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}
