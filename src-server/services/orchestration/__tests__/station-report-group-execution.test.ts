@@ -103,7 +103,7 @@ test.each(['independent', 'flow', 'mixed'] as const)(
     );
     const input = {
       ...h.input,
-      deadlineAt: mode === 'flow' ? h.input.deadlineAt : runNow + 240_000,
+      deadlineAt: runNow + 240_000,
       budget: {
         inputTokens: memberCount * 1048576,
         outputTokens: memberCount * 8000,

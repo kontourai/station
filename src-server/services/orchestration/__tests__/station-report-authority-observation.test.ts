@@ -49,6 +49,22 @@ test('a report roster observation shares one home hold and revalidates authority
   }
 });
 
+test('a prepared report remains readable before its deadline and refuses at the exact deadline', async () => {
+  const h = await setup();
+  const handle = await h.owner.prepare(h.f.context(), h.input);
+  try {
+    vi.mocked(Date.now).mockReturnValue(h.input.deadlineAt - 1);
+    assert.equal(h.owner.read(handle, h.f.req).members.length, 2);
+    vi.mocked(Date.now).mockReturnValue(h.input.deadlineAt);
+    assert.throws(() => h.owner.read(handle, h.f.req), {
+      code: 'group_preparation_unavailable',
+    });
+    assert.equal(h.rawFetch.mock.calls.length, 0);
+  } finally {
+    h.owner.close(handle);
+  }
+});
+
 test('the Flow source admission guard uses one home hold and refuses authority changed before the next check', async () => {
   const f = await fixture();
   const run = await createReportFlow(f, 'coherent-flow-check', [

@@ -2284,3 +2284,16 @@ operation nesting, preserving the cadence and failure/retry behavior; the four
 owner suites pass48 cases after repair. The final byte comparison was
 disabled in a local mutation: the callback-tamper assertion failed alone, then
 all15 credential-owner cases passed after exact restoration.
+
+At `c0d427f26b0`, all20 preparation cases and all7 Flow-lock admission cases
+passed in the combined consumer run; independent and mixed execution also
+passed. Flow still exhausted its120-second input deadline, and the complete
+sync-recovery case hit its inherited30-second test guard. Those failures remain
+part of the evidence. The positive execution fixture now uses240 seconds for
+every mode, within the unchanged300-second product maximum. This is functional
+qualification at a different supported input, not recovery of120-second
+performance. A real prepared handle remains readable one millisecond before its
+deadline and refuses at the exact deadline without a provider call. The sync
+case retains all receipt, replay, cancellation and accounting assertions with
+an explicit60-second test guard; its six-case file passes. Production timing
+and expiry checks are unchanged. Final execution on this fixture remains pending.

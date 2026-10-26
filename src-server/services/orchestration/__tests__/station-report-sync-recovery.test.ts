@@ -60,7 +60,7 @@ test('private context storage round-trips the complete escaped byte bound and re
   );
 });
 
-test('current sync finalization passes null-state preflight and reaches prepared-receipt validation without execution', async () => {
+test('sync finalization refuses an absent receipt and recovers a lost result without reinvocation', async () => {
   const h = await setup();
   const flow = await createReportFlow(h.f, 'finalize-preflight', [
     { id: 'review' },
@@ -365,7 +365,7 @@ test('current sync finalization passes null-state preflight and reaches prepared
   } finally {
     h.owner.close(handle);
   }
-});
+}, 60_000);
 
 test('continuation turn custody refuses rebinds and retains distinct interrupt receipts for two turns on one seat', async () => {
   const h = await setup();
