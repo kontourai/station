@@ -557,12 +557,8 @@ function assertSymlinkTarget(target: unknown): asserts target is string {
     fail('backup contains an unusable symbolic link target');
 }
 
-function restoreDirectories(
-  root: string,
-  directories: readonly string[][],
-): void {
-  for (const segments of directories) {
-    const path = pathFor(root, segments);
+function restoreDirectories(paths: readonly string[]): void {
+  for (const path of paths) {
     mkdirSync(path, { recursive: true, mode: 0o700 });
     const stats = lstatSync(path);
     if (!stats.isDirectory() || stats.isSymbolicLink())
@@ -595,6 +591,7 @@ function collectEntries(
     checkpointSqlite?: boolean;
     kind: BackupKind;
     includeDirectories?: boolean;
+    expectedDirectories?: ReadonlySet<string>;
   },
 ): {
   files: StationHomeBackupFile[];
@@ -606,15 +603,27 @@ function collectEntries(
   const files: StationHomeBackupFile[] = [];
   const symlinks: StationHomeBackupSymlink[] = [];
   const directories: string[][] = [];
+  let archivedEntries = 0;
+  let visitedEntries = 0;
+  const traversalLimit = Math.min(
+    Number.MAX_SAFE_INTEGER,
+    limits.maxFiles + DEFAULT_STATION_HOME_UPDATE_BACKUP_MAX_FILES,
+  );
   const reserveEntry = () => {
-    if (files.length + symlinks.length + directories.length >= limits.maxFiles)
+    if (archivedEntries >= limits.maxFiles)
       fail('Station home exceeds the archive file-count limit');
+    archivedEntries += 1;
   };
   let totalBytes = 0;
   const visit = (directory: string, parentSegments: string[]): void => {
     for (const entry of readdirSync(directory, { withFileTypes: true }).sort(
       (left, right) => left.name.localeCompare(right.name),
     )) {
+      if (
+        options.expectedDirectories !== undefined &&
+        ++visitedEntries > traversalLimit
+      )
+        fail('update restore verification exceeds its traversal limit');
       const segments = [...parentSegments, entry.name];
       if (isTransient(segments)) continue;
       assertSegment(entry.name);
@@ -641,7 +650,11 @@ function collectEntries(
       }
       if (stats.isDirectory()) {
         if (options.includeDirectories !== false) {
-          reserveEntry();
+          const preservedContainer =
+            options.expectedDirectories !== undefined &&
+            !options.expectedDirectories.has(JSON.stringify(segments)) &&
+            containsExternalStationHomePath(segments);
+          if (!preservedContainer) reserveEntry();
           directories.push(segments);
         }
         visit(path, segments);
@@ -1046,7 +1059,7 @@ function createBackup(
       fail('backup staging root is unsafe');
     const contentRoot = join(staging, 'home');
     mkdirSync(contentRoot, { mode: 0o700 });
-    restoreDirectories(contentRoot, directories);
+    restoreDirectories(directories.map((path) => pathFor(contentRoot, path)));
     for (const file of files) {
       const source = pathFor(homeDir, file.path);
       const target = pathFor(contentRoot, file.path);
@@ -1175,7 +1188,9 @@ export function restoreStationHomeBackup(
     const stagingStats = lstatSync(staging);
     if (!stagingStats.isDirectory() || stagingStats.isSymbolicLink())
       fail('restore staging root is unsafe');
-    restoreDirectories(staging, manifest.directories ?? []);
+    restoreDirectories(
+      (manifest.directories ?? []).map((path) => pathFor(staging, path)),
+    );
     for (const file of manifest.files) {
       const source = pathFor(contentRoot, file.path);
       const target = pathFor(staging, file.path);
@@ -1508,6 +1523,9 @@ export function restoreStationHomeUpdateBackup(
       link,
       path: pathFor(homeDir, link.path),
     }));
+    const directoryPaths = (directories ?? []).map((path) =>
+      pathFor(homeDir, path),
+    );
     const targets = new Set<string>();
     const directoryTargets = new Set(
       (directories ?? []).map(updateRestorePathKey),
@@ -1542,7 +1560,7 @@ export function restoreStationHomeUpdateBackup(
     removeUpdateState(homeDir, []);
     fsyncDirectorySync(homeDir);
     options.afterRemove?.();
-    restoreDirectories(homeDir, directories ?? []);
+    restoreDirectories(directoryPaths);
     for (const { file, source, target } of files) {
       mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
       copyFileSync(source, target, constants.COPYFILE_EXCL);
@@ -1553,13 +1571,14 @@ export function restoreStationHomeUpdateBackup(
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
       symlinkSync(link.target, path, symlinkType(link));
     }
-    const restored = collectEntries(homeDir, limits, {
-      kind: 'update',
-      includeDirectories: directories !== undefined,
-    });
     const expectedDirectories = new Set(
       directories?.map((path) => JSON.stringify(path)),
     );
+    const restored = collectEntries(homeDir, limits, {
+      kind: 'update',
+      includeDirectories: directories !== undefined,
+      ...(directories === undefined ? {} : { expectedDirectories }),
+    });
     // Trial-created ancestors of external work survive with that work.
     assertDirectories(
       directories,
