@@ -38,7 +38,6 @@ import { createToolLibraryRoutes } from '../../routes/tool-library.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
   isOperatorInPersonNotAgent,
-  mayGrantFullAccess,
   mayRunCommandsOnHostCurrently,
 } from '../../security/coding-authority.js';
 import {
@@ -7088,16 +7087,11 @@ export function configureRuntimeRoutes(
       {
         // The caller's id is the one a chat start records under
         // (`resolveActorPrincipal` reads this same resolver).
-        chatDefaults: (c, project) =>
+        chatDefaults: (c, project, options) =>
           projectChatDefaults.view(
             project,
             resolveOrchestrationRequestPrincipal(c).id,
-            {
-              mayGrantFullAccess: mayGrantFullAccess(
-                c.req.raw,
-                grantedPairingScope(c as unknown as PairingScopeContextStore),
-              ),
-            },
+            options,
           ),
         identityMutationCurrent: (request, choosingDirectory) => {
           return (

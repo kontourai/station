@@ -32,6 +32,11 @@ describe('project-settings utils', () => {
       // shared checkout. Seeding 'shared' here is what made an unrelated
       // save pin the project away from the Station default.
       defaultWorkspaceIsolation: 'inherit',
+      // A record that names no new-chat choices keeps today's behavior:
+      // the fixed chain, and no Project approval mode of its own.
+      defaultModelSelection: 'fixed',
+      defaultApprovalModeSelection: 'fixed',
+      defaultApprovalMode: 'inherit',
       defaultEnvironment: { kind: 'current' },
       workingDirectory: '',
       agents: undefined,
@@ -54,6 +59,9 @@ describe('project-settings utils', () => {
         description: '',
         defaultModel: '',
         defaultWorkspaceIsolation: 'inherit',
+        defaultModelSelection: 'fixed',
+        defaultApprovalModeSelection: 'fixed',
+        defaultApprovalMode: 'inherit',
         workingDirectory: '',
         agents: undefined,
       } as never),
@@ -66,6 +74,11 @@ describe('project-settings utils', () => {
       // JSON.stringify would drop an `undefined` and leave a previously
       // stored mode in place (#2144 slice 2).
       defaultWorkspaceIsolation: null,
+      // The same `null`-drops rule: `fixed` and `'inherit'` are what an
+      // absent stored value means, so a save clears any stored choice.
+      defaultModelSelection: null,
+      defaultApprovalModeSelection: null,
+      defaultApprovalMode: null,
       defaultEnvironment: { kind: 'current' },
       workingDirectory: undefined,
       agents: null,

@@ -8,8 +8,7 @@
  * the real `ProjectChatDefaultsService` over a temporary home, and an engine
  * that records what each start asked it for.
  */
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
@@ -17,11 +16,12 @@ import type {
   ApprovalMode,
   ProviderSessionStartInput,
 } from '@kontourai/station-contracts/provider';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import {
   createGateTestRegistry,
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { ProviderAdapterMetadata } from '../../../providers/adapter-shape.js';
 import {
   type FullAccessGrant,
@@ -90,18 +90,13 @@ function operatorGrant(): FullAccessGrant {
   return grant;
 }
 
-const roots: string[] = [];
-afterEach(() => {
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
 function createHarness(input: {
   project: Partial<ProjectConfig>;
   stationDefault?: ApprovalMode;
 }) {
-  const root = mkdtempSync(join(tmpdir(), 'station-project-chat-defaults-'));
-  roots.push(root);
+  const root = makeTempDir('station-project-chat-defaults-');
   const project: ProjectConfig = {
     id: 'project-id-1',
     name: 'Alpha',

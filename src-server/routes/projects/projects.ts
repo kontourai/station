@@ -361,6 +361,8 @@ interface ProjectRouteDeps {
   chatDefaults?: (
     c: Context,
     project: ProjectConfig,
+    /** The caller's own full-access proof, decided by this route. */
+    options: { mayGrantFullAccess: boolean },
   ) => ProjectChatDefaultsView | Promise<ProjectChatDefaultsView>;
 }
 
@@ -1361,7 +1363,9 @@ export function createProjectRoutes(
         );
       return c.json({
         success: true,
-        data: await deps.chatDefaults(c, project),
+        data: await deps.chatDefaults(c, project, {
+          mayGrantFullAccess: mayRaiseFullAccessDefault(c),
+        }),
       });
     } catch (error: unknown) {
       const failure = projectReadFailure(error, 'Project');

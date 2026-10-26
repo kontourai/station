@@ -2623,6 +2623,12 @@ export function createOrchestrationRoutes(
       // #2377 slice C3b: an agent sends without an approval posture.
       const postureRefused = refuseCarriedPosture(c, [
         { path: 'setApprovalMode', value: body.setApprovalMode, kind: 'pick' },
+        // A person's approval hint is theirs to send; an agent sends none.
+        {
+          path: 'personalApprovalDefault',
+          value: body.personalApprovalDefault,
+          kind: 'pick',
+        },
         {
           path: 'target.model.options',
           value: body.target.model?.options,
@@ -3172,6 +3178,12 @@ export function createOrchestrationRoutes(
             kind: 'pick',
           },
           {
+            path: 'personalApprovalDefault',
+            value: (body as { personalApprovalDefault?: unknown })
+              .personalApprovalDefault,
+            kind: 'pick',
+          },
+          {
             path: 'target.model.options',
             value: body.target.model?.options,
             kind: 'options',
@@ -3579,6 +3591,12 @@ export function createOrchestrationRoutes(
           {
             path: 'setApprovalMode',
             value: body.setApprovalMode,
+            kind: 'pick',
+          },
+          {
+            path: 'personalApprovalDefault',
+            value: (body as { personalApprovalDefault?: unknown })
+              .personalApprovalDefault,
             kind: 'pick',
           },
           {

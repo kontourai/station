@@ -1,16 +1,14 @@
 import {
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
-  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   fitDocument,
   isPersonChatRequest,
@@ -18,11 +16,7 @@ import {
   ProjectChatDefaultsService,
 } from '../project-chat-defaults.js';
 
-const roots: string[] = [];
-afterEach(() => {
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
 /** The read bound the service enforces (`MAX_DOCUMENT_BYTES`), pinned. */
 const READ_BOUND = 512 * 1024;
@@ -99,8 +93,7 @@ describe('fitDocument', () => {
 
 describe('ProjectChatDefaultsService record', () => {
   test('many people and Agents never grow the file past what it can read back', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-chat-defaults-fit-'));
-    roots.push(root);
+    const root = makeTempDir('station-chat-defaults-fit-');
     const projects = new Map<string, ProjectConfig>();
     const service = new ProjectChatDefaultsService({
       homeDir: root,
@@ -147,8 +140,7 @@ describe('ProjectChatDefaultsService record', () => {
 
 describe('ProjectChatDefaultsService unusable records', () => {
   const setup = () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-chat-defaults-read-'));
-    roots.push(root);
+    const root = makeTempDir('station-chat-defaults-read-');
     const project: ProjectConfig = {
       id: 'id-1',
       slug: 'alpha',

@@ -822,9 +822,12 @@ describe('Project Routes', () => {
         const res = await app.request('/atlas/chat-defaults');
         expect(res.status).toBe(200);
         expect((await json(res)).data).toEqual(view);
+        // The route decides the caller's full-access proof (no principal
+        // here, so none) and hands it to the composed view.
         expect(chatDefaults).toHaveBeenCalledWith(
           expect.anything(),
           expect.objectContaining({ slug: 'atlas' }),
+          { mayGrantFullAccess: false },
         );
         expect((await app.request('/missing/chat-defaults')).status).toBe(404);
       });
