@@ -1,5 +1,50 @@
 [
   {
+    "timestampUtc": "2026-10-26T01:12:13Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2489.2",
+    "sha": "8fa16170bedd4c86fc127a194f1bb8b4e44f87f4",
+    "artifactBuiltAt": "2026-10-25T23:55:40.557Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40245274028",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40245274028)"
+    ],
+    "changelog": {
+      "previousSha": "8930cc98aadd87c5dee1e1b1c19c0e91bcb27e77",
+      "groups": {
+        "feat": [
+          "[#4160](https://github.com/kontourai/station/pull/4160) feat(layouts): required Home and Inbox/Chat slots with pane recovery",
+          "[#4152](https://github.com/kontourai/station/pull/4152) feat(ui): add task review presentation components (L3a)",
+          "[#4155](https://github.com/kontourai/station/pull/4155) feat(layouts): personal layout subjects, templates, clone, and promotion",
+          "[#4151](https://github.com/kontourai/station/pull/4151) feat(contracts): add task review threads and anchors",
+          "[#4154](https://github.com/kontourai/station/pull/4154) feat(mcp): outside-agent OAuth server endpoints (R3, inert)",
+          "[#4150](https://github.com/kontourai/station/pull/4150) feat(projects): add workspace pins and capture blob primitives",
+          "[#4095](https://github.com/kontourai/station/pull/4095) feat(browser-device): add Browser tabs and host-qualified Agent reveal"
+        ],
+        "fix": [
+          "[#4184](https://github.com/kontourai/station/pull/4184) fix(monument): preserve resolved replay under unresolved pressure",
+          "[#4161](https://github.com/kontourai/station/pull/4161) fix(chat): name the live session's engine on the composer chip",
+          "[#4171](https://github.com/kontourai/station/pull/4171) fix(agent-runtime): preserve verified coordinator entry custody",
+          "[#4180](https://github.com/kontourai/station/pull/4180) fix(consent): hide guarded outside-agent transactions from native review routes",
+          "[#4169](https://github.com/kontourai/station/pull/4169) fix(inventory): explain unreadable inputs and fix the phone drill-down layout",
+          "[#4168](https://github.com/kontourai/station/pull/4168) fix(agent-runtime): own verified memory body bytes",
+          "[#4159](https://github.com/kontourai/station/pull/4159) fix(mcp): isolate outside-agent budgets and consent refusals"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4163](https://github.com/kontourai/station/pull/4163) chore(ui): add a UI definition of done and reject hand-rolled alert retries"
+        ]
+      },
+      "note": null,
+      "commitCount": 15
+    }
+  },
+  {
     "timestampUtc": "2026-10-26T01:12:08Z",
     "channel": "nightly-android",
     "version": "0.1.11-nightly.2489.2",
