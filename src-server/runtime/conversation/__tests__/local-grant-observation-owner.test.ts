@@ -5,6 +5,7 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
@@ -19,6 +20,7 @@ import {
   isRuntimeRequestPrincipalCurrent,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
+import { DevicePairingService } from '../../../services/ssh/device-pairing-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import { captureEnvironmentLocalGrantObservationOwner } from '../local-grant-observation-owner.js';
 import {
@@ -246,6 +248,66 @@ test('actual credential revocation invalidates already captured finalizers and r
     );
   }
 });
+test.each(['revoke', 'narrow'] as const)(
+  'another registry owner can %s a captured grant without a stale observer restoring it',
+  async (change) => {
+    const h = await setup();
+    const owner = await captureEnvironmentLocalGrantObservationOwner(
+      h.request,
+      h.environment,
+      h.environment,
+    );
+    const lease = owner.requireCurrentLocalGrant(h.request);
+    const other = new DevicePairingService({
+      homeDir: h.home,
+      environmentId: h.record.environmentId,
+    });
+    if (change === 'revoke')
+      other.revokeDevice(h.paired.device.id, 'operator-credential');
+    else
+      other.setDeviceScope(h.paired.device.id, ['orchestration:read'], {
+        kind: 'presented-credential',
+      });
+    const path = join(h.home, 'security', 'paired-devices.json');
+    const persisted = readFileSync(path);
+    denied(lease.assertCurrent);
+    await deniedAsync(() =>
+      captureEnvironmentLocalGrantObservationOwner(
+        h.request,
+        h.environment,
+        h.environment,
+      ),
+    );
+    assert.deepEqual(readFileSync(path), persisted);
+  },
+);
+test.each(['missing', 'corrupt'] as const)(
+  'unavailable durable registry (%s) refuses observation without repairing the file',
+  async (mode) => {
+    const h = await setup();
+    const owner = await captureEnvironmentLocalGrantObservationOwner(
+      h.request,
+      h.environment,
+      h.environment,
+    );
+    const lease = owner.requireCurrentLocalGrant(h.request);
+    const path = join(h.home, 'security', 'paired-devices.json');
+    if (mode === 'missing') rmSync(path);
+    else writeFileSync(path, 'invalid registry');
+    const before = readdirSync(join(h.home, 'security')).sort();
+    denied(lease.assertCurrent);
+    await deniedAsync(() =>
+      captureEnvironmentLocalGrantObservationOwner(
+        h.request,
+        h.environment,
+        h.environment,
+      ),
+    );
+    assert.deepEqual(readdirSync(join(h.home, 'security')).sort(), before);
+    if (mode === 'corrupt')
+      assert.equal(readFileSync(path, 'utf8'), 'invalid registry');
+  },
+);
 test('a current read-only GET request cannot supply the observation mutation owner', async () => {
   const h = await setup('local-grant', 'orchestration:read');
   {

@@ -2117,3 +2117,24 @@ witness, changed deletion/retention contract, held recovery authority, Dispatch
 settlement or recovery endpoint is supplied by this observation. Those remain
 required before historical dual-ledger recovery is qualified. Evaluation/retry
 serving and live/provider/device acceptance remain separate open work.
+
+### Fresh local-grant registry observation
+
+The private local-grant observer now checks the persisted paired-device registry
+before consulting the existing request-security owner. A descriptor-bound read
+checks the file identity and metadata around decoding, then validates the existing
+registry schema and environment identity. It neither updates the cache nor writes
+activity or migrations. Only an active parent credential minted by local-grant
+with home possession and no person/account binding can supply this scope; aliases
+and other identities need their own authority owners. The current route must also
+be allowed by that persisted scope. Existing request binding, security checks and
+host signing-key comparisons remain required.
+
+The original observer accepted a credential revoked through a second pairing
+service. The repaired observer refuses external revocation and scope narrowing,
+and refuses missing or malformed registry bytes without repairing them. The
+observer and three pairing/environment suites pass 152 cases; server-test types
+pass. These are controlled local results. A fresh observation is not exclusion:
+whole-file writers still need joined ownership and stale-write protection before
+the historical recovery host gate can be qualified. No recovery route or live
+provider/device acceptance follows from this change.

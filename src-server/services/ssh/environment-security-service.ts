@@ -458,6 +458,12 @@ export class EnvironmentSecurityService {
     return this.#devicePairingService?.credentialMintKind(candidate);
   }
 
+  readCurrentUnboundLocalGrantScope(candidate: string): string | undefined {
+    return this.#devicePairingService?.readCurrentUnboundLocalGrantScope(
+      candidate,
+    );
+  }
+
   /**
    * The space-delimited {@link PairingScope} string granted to a credential
    * (archive#1098), or `undefined` when the credential is invalid/revoked.

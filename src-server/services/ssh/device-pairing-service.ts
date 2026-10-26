@@ -9,6 +9,7 @@ import {
   constants,
   existsSync,
   fchmodSync,
+  fstatSync,
   fsyncSync,
   lstatSync,
   openSync,
@@ -3462,6 +3463,27 @@ export class DevicePairingService {
       : undefined;
   }
 
+  /** Fresh, no-touch authority for an unbound local grant. Other identity
+   * bindings require their own current owners and are refused here. */
+  readCurrentUnboundLocalGrantScope(candidate: string): string | undefined {
+    try {
+      const registry = validateRegistry(
+        this.#readRegistryValue(),
+        this.#environmentId,
+      );
+      const match = this.#findActiveCredential(registry, candidate);
+      return match &&
+        !match.alias &&
+        !match.device.principalBinding &&
+        match.device.locality === 'home-possession' &&
+        match.device.mintKind === 'local-grant'
+        ? match.device.scope
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   /** Host-issued browser sessions may manage device access, never native consent. */
   credentialMayManagePairing(candidate: string): boolean {
     return (
@@ -3700,19 +3722,7 @@ export class DevicePairingService {
         devices: [],
       };
     }
-    const status = lstatSync(this.#registryPath);
-    if (
-      !status.isFile() ||
-      status.isSymbolicLink() ||
-      status.nlink !== 1 ||
-      (process.platform !== 'win32' &&
-        (status.mode & 0o777) !== PRIVATE_FILE_MODE)
-    ) {
-      throw new Error('Unsafe paired-device registry');
-    }
-    const parsed: unknown = JSON.parse(
-      readFileSync(this.#registryPath, 'utf8'),
-    );
+    const parsed = this.#readRegistryValue();
     const registry = validateRegistry(parsed, this.#environmentId);
     const rawDevices = Array.isArray((parsed as { devices?: unknown })?.devices)
       ? ((parsed as { devices: Array<{ scope?: unknown }> }).devices ?? [])
@@ -3728,6 +3738,54 @@ export class DevicePairingService {
       // unrelated write.
       rawDevices.some((device) => Object.hasOwn(device, 'nativePush'));
     return registry;
+  }
+
+  #readRegistryValue(): unknown {
+    const status = lstatSync(this.#registryPath);
+    if (
+      !status.isFile() ||
+      status.isSymbolicLink() ||
+      status.nlink !== 1 ||
+      (process.platform !== 'win32' &&
+        (status.mode & 0o777) !== PRIVATE_FILE_MODE)
+    ) {
+      throw new Error('Unsafe paired-device registry');
+    }
+    const descriptor = openSync(
+      this.#registryPath,
+      constants.O_RDONLY |
+        (constants.O_NOFOLLOW ?? 0) |
+        (constants.O_NONBLOCK ?? 0),
+    );
+    try {
+      const opened = fstatSync(descriptor);
+      if (
+        !opened.isFile() ||
+        opened.dev !== status.dev ||
+        opened.ino !== status.ino
+      )
+        throw new Error('Paired-device registry changed before read');
+      const bytes = readFileSync(descriptor, 'utf8');
+      for (const current of [
+        fstatSync(descriptor),
+        lstatSync(this.#registryPath),
+      ])
+        if (
+          !current.isFile() ||
+          current.isSymbolicLink() ||
+          current.dev !== status.dev ||
+          current.ino !== status.ino ||
+          current.nlink !== status.nlink ||
+          current.mode !== status.mode ||
+          current.size !== status.size ||
+          current.mtimeMs !== status.mtimeMs ||
+          current.ctimeMs !== status.ctimeMs
+        )
+          throw new Error('Paired-device registry changed during read');
+      return JSON.parse(bytes);
+    } finally {
+      closeSync(descriptor);
+    }
   }
 
   #persistRegistry(registry: DeviceRegistry = this.#registry): void {

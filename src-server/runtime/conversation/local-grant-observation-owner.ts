@@ -91,11 +91,17 @@ async function captureExistingLocalGrant(
     if (!principal || principal.kind === 'internal') refuse();
     const credential = principal.credential;
     const requirePrincipal = () => {
+      const scope = environment.readCurrentUnboundLocalGrantScope(credential);
       if (
         getRuntimeAuthenticatedRequestPrincipal(boundRequest) !== principal ||
         !isBoundLocalGrantMintedOperator(boundRequest) ||
         principal.locality !== 'home-possession' ||
         principal.mintKind !== 'local-grant' ||
+        scope === undefined ||
+        !isRuntimeRequestPrincipalCurrent(boundRequest, {
+          authorizeCredential: (candidate) => candidate === credential,
+          resolveGrantedScope: () => scope,
+        }) ||
         environment.credentialLocality(credential) !== 'home-possession' ||
         environment.credentialMintKind(credential) !== 'local-grant' ||
         !isRuntimeRequestPrincipalCurrent(boundRequest, security)
