@@ -900,6 +900,29 @@ not create an arbitrary model binding. The response is SSE; failures before
 stream creation use HTTP errors, while failures during a stream must be handled
 as stream outcomes.
 
+`options.clientTurnId` is an optional retry key. A resolved key replays
+`conversation-started` with the original conversation ID and a `finish`
+frame whose `finishReason` is `completed`, without running the Agent or
+replaying its output. Read the conversation for the answer. Station resolves
+only a stream it drained without aborting; the model's finish reason does
+not decide replay eligibility.
+
+After the Agent may have been invoked, a failed, cancelled or disconnected
+attempt retains its key. A new request in the owning process receives HTTP
+409 with `code: "foreground_message_indeterminate"` and
+`outcome: "indeterminate"` while its local retention marker remains. Any
+process gives that refusal after the owner dies past invocation, or when the
+key has expired. A contended request instead waits in the stream for up to
+five minutes, then replays a resolved conversation or ends with an error
+frame. A pre-invocation refusal releases the key for retry.
+
+The key is not bound to the caller, Agent, conversation or input
+([#3567](https://github.com/kontourai/station/issues/3567)). Inspect the
+conversation after an uncertain send; do not automatically send again with a
+new key. A new key means a deliberate new request. Retention, legacy-writer
+and tombstone limits are detailed under
+[TurnDeduplicator](../architecture/module-map.md#turndeduplicator).
+
 `start-step` and `finish-step` frames carry only their type. Provider request
 and response bodies, headers, metadata and nested errors are not sent in these
 frames. Text and successful tool frames retain their contracts. Failed VoltAgent
