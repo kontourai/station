@@ -351,21 +351,23 @@ export class StationReportGroupRuntime {
     return { replayed: result.replayed, group: view(historical) };
   }
 
-  async reconcileUsage(
+  // UNWIRED(#91): the public accounting-recovery transport is not mounted yet.
+  async recoverAccounting(
     context: RuntimeSourceRequestContext,
     groupId: string,
-    input: { seatId: string; invocationId: string },
+    input: { seatId: string; invocationId: string; operationKey: string },
   ) {
-    await this.#custody.reconcileUsage(
+    const recovered = await this.#custody.recoverAccounting(
       context,
       groupId,
       input,
       this.owners.orchestration,
       this.#wireIntents,
+      this.#dispatch,
     );
     const historical = await this.#custody.inspectForMutation(context, groupId);
     if (!historical) throw new StationReportCustodyUnavailable();
-    return { ...input, group: view(historical) };
+    return { ...input, recovered, group: view(historical) };
   }
 
   async report(

@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto';
-import type { AuthorizationLedger } from '@kontourai/dispatch';
+import type {
+  AuthorizationLedger,
+  RecoverableAuthorizationLedger,
+} from '@kontourai/dispatch';
+import { recoverAuthorizedDelegationAccountingV1 } from '@kontourai/flow-agents/delegation-accounting-recovery';
 import {
   createDelegationAuthorityServiceV3,
   type DelegationAuthorityHostV3,
@@ -32,6 +36,10 @@ import {
   runtimeRequestPrincipalMayAccessHttpRoute,
 } from '../../security/runtime-request-security.js';
 import type { EnvironmentSecurityService } from '../ssh/environment-security-service.js';
+import {
+  HomeWriterOwner,
+  HomeWriterUnavailableError,
+} from '../ssh/home-writer-owner.js';
 import type { StationDelegationPersistence } from './delegation-group-persistence.js';
 import type { RuntimeSourceRequestContext } from './delegation-group-source-admission.js';
 import {
@@ -39,6 +47,10 @@ import {
   wireIdentityDigest,
 } from './delegation-group-wire-intent-store.js';
 import type { OrchestrationService } from './orchestration-service.js';
+import {
+  type ReportAccountingRecoveryIntent,
+  signReportAccountingRecoveryIntent,
+} from './station-report-accounting-recovery.js';
 import {
   reportAdmissionData,
   reportAdmissionSignature,
@@ -58,6 +70,10 @@ import type {
   PreparedStationReportGroup,
   StationReportGroupPreparation,
 } from './station-report-group-preparation.js';
+import {
+  captureReportTerminalWitness,
+  verifyReportTerminalWitness,
+} from './station-report-terminal-witness.js';
 
 type ReadContext = {
   lease: Awaited<ReturnType<typeof captureEnvironmentLocalGrantReadOwner>>;
@@ -274,213 +290,380 @@ export class StationReportGroupCustody {
     return { ...after, intent: validateReportIntent(after.admission, intent) };
   }
 
-  async reconcileUsage(
+  async recoverAccounting(
     context: RuntimeSourceRequestContext,
     groupId: string,
-    command: { seatId: string; invocationId: string },
+    command: { seatId: string; invocationId: string; operationKey: string },
     orchestration: OrchestrationService,
     wireIntents: FileFinalWireIntentStore,
+    dispatchLedger: RecoverableAuthorizationLedger,
   ) {
     id(command.seatId);
     id(command.invocationId);
-    const authorized = await this.#context(context, 'POST');
-    const before = await this.#inspect(authorized, groupId);
-    const authority = before?.authority;
-    const currentEpoch = authority?.epochs.at(-1);
-    const origin = authority?.origins.find(
-      (entry) => entry.invocationId === command.invocationId,
+    id(command.operationKey);
+    const authority = await this.#context(context, 'POST');
+    const writer = await HomeWriterOwner.forHome(
+      this.owners.environment.getProjectHomeDir(),
     );
-    const epoch = origin && authority?.epochs[origin.epoch];
-    const invocation = authority?.invocations.find(
-      (entry) => entry.invocationId === command.invocationId,
-    );
-    const seat = before?.group?.spec.seats.find(
-      (entry) => entry.seatId === command.seatId,
-    );
-    const member = before?.admission.members.find(
-      (entry) => entry.seatId === command.seatId,
-    );
-    const envelope = epoch?.envelopes.find(
-      (entry) => entry.envelope_id === seat?.envelope.id,
-    );
-    if (
-      !before?.group ||
-      !authority ||
-      !currentEpoch ||
-      !epoch ||
-      !invocation ||
-      !seat ||
-      !member ||
-      !envelope ||
-      invocation.envelopeId !== envelope.envelope_id ||
-      envelope.execution_id !== member.reservedTaskId
-    )
-      refuse();
-    const record = await this.owners.persistence.readReportResultByInvocation(
-      groupId,
-      invocation.invocationId,
-      authorized.current,
-    );
-    if (
-      record.seatId !== member.seatId ||
-      record.observation.kind !== 'result' ||
-      record.observation.modelId !== member.requestedModelId
-    )
-      refuse();
-    const result = record.observation;
-    const usage = {
-      inputTokens: result.inputTokens,
-      outputTokens: result.outputTokens,
-      costMicros: result.costMicros,
+    const hold = await writer.acquire(context.req.raw.signal);
+    let released = false,
+      operationRan = false;
+    const release = async () => {
+      if (released) return;
+      try {
+        await hold.release();
+        released = true;
+      } catch (error) {
+        throw new HomeWriterUnavailableError('cleanup-required', operationRan, {
+          cause: error,
+        });
+      }
     };
-    const initial =
-      before.group.attempts.find((entry) => entry.seatId === member.seatId)
-        ?.invocationId === invocation.invocationId;
-    const delivery = await this.#delivery(
-      authorized,
-      groupId,
-      member.seatId,
-      orchestration,
-      initial ? undefined : invocation.invocationId,
-    );
-    if (delivery?.outcome !== 'started') refuse();
-    const scope = sessionReadAuthorityFromRequest(
-      authorized.principal.id,
-      undefined,
-      undefined,
-    );
-    const snapshot = orchestration.readHistoricalReportTurn(
-      {
-        conversationId: member.reservedTaskId,
-        sessionId: delivery.sessionId,
-        clientTurnId: delivery.clientTurnId,
-        turnId: delivery.turnId,
-      },
-      scope,
-    );
-    if (!snapshot) refuse();
-    const wire = await wireIntents.lookup(
-      epoch.root.authority_id,
-      invocation.invocationId,
-      authorized.current,
-    );
-    if (
-      !wire ||
-      (wire.effect !== seat.effect && wire.effect !== 'context-sync') ||
-      (wire.effect === 'context-sync' &&
-        envelope.execution_authority.allowed_tools.length !== 0)
-    )
-      refuse();
-    const binding = {
-      controller: before.group.spec.controller,
-      seatId: member.seatId,
-      root: rootAuthorityReferenceV2(epoch.root),
-      envelope: {
+    const current = (): undefined =>
+      writer.runWithLease(hold, authority.current);
+    const authorized = { ...authority, current };
+    try {
+      current();
+      const before = await this.#inspect(authorized, groupId);
+      const ledger = before?.authority;
+      const origin = ledger?.origins.find(
+        (entry) => entry.invocationId === command.invocationId,
+      );
+      const epoch = origin && ledger?.epochs[origin.epoch];
+      const invocation = ledger?.invocations.find(
+        (entry) => entry.invocationId === command.invocationId,
+      );
+      const seat = before?.group?.spec.seats.find(
+        (entry) => entry.seatId === command.seatId,
+      );
+      const member = before?.admission.members.find(
+        (entry) => entry.seatId === command.seatId,
+      );
+      const envelope = epoch?.envelopes.find(
+        (entry) => entry.envelope_id === invocation?.envelopeId,
+      );
+      if (
+        !before?.group ||
+        !ledger ||
+        !origin ||
+        !epoch ||
+        !invocation ||
+        !seat ||
+        !member ||
+        !envelope ||
+        seat.envelope.id !== envelope.envelope_id ||
+        envelope.execution_id !== member.reservedTaskId
+      )
+        refuse();
+      const group = before.group;
+      const root = rootAuthorityReferenceV2(epoch.root);
+      const envelopeRef = {
         id: envelope.envelope_id,
         generation: envelope.generation,
         digest: delegationEnvelopeDigestV2(envelope),
-      },
-      effect: wire.effect,
-      allocation: invocation.allocation,
-      executionBindingDigest: wireIdentityDigest(envelope.execution_binding),
-      principalDigest: epoch.root.authenticated_principal_ref.digest,
-      subjectDigest: epoch.root.authenticated_subject_ref.digest,
-      finalWireDigest: wire.finalWireDigest,
-    };
-    const confirm: NonNullable<
-      DelegationAuthorityHostV3['confirmHistoricalReconciliation']
-    > = async (candidate, candidateRoot, candidateEnvelope) => {
-      authorized.current();
-      if (
-        !same(candidateRoot, epoch.root) ||
-        !same(candidateEnvelope, envelope) ||
-        candidate.invocationId !== invocation.invocationId ||
-        candidate.envelopeId !== envelope.envelope_id ||
-        !same(candidate.allocation, invocation.allocation) ||
-        !candidate.terminal ||
-        !same(candidate.usage, usage)
-      )
-        return false;
-      await this.owners.persistence.assertProviderEvidenceReference(
-        result.evidence,
+      };
+      let intent: ReportAccountingRecoveryIntent | null = null;
+      const confirm: NonNullable<
+        DelegationAuthorityHostV3['confirmHistoricalReconciliation']
+      > = async (candidate, candidateRoot, candidateEnvelope) => {
+        current();
+        const usage = intent?.data.accounting;
+        return (
+          !!usage &&
+          same(candidateRoot, epoch.root) &&
+          same(candidateEnvelope, envelope) &&
+          candidate.invocationId === invocation.invocationId &&
+          candidate.envelopeId === envelope.envelope_id &&
+          same(candidate.allocation, invocation.allocation) &&
+          candidate.terminal &&
+          same(candidate.usage, {
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            costMicros: usage.costMicros,
+          })
+        );
+      };
+      const service = createDelegationAuthorityServiceV3(
+        this.owners.persistence.roundsAuthorityStore(current),
         {
-          groupId,
-          rootId: epoch.root.authority_id,
-          invocationId: invocation.invocationId,
-          executionId: member.reservedTaskId,
-          usage,
-          executionIntent: {
-            binding,
-            modelReceipt: envelope.execution_binding.runtime.model_receipt_ref,
+          now: () => new Date().toISOString(),
+          authorize: async (action, candidate, child) => {
+            current();
+            return (
+              (action === 'inspect' ||
+                (action === 'reconcile' &&
+                  intent !== null &&
+                  intent.data.accounting !== null)) &&
+              same(candidate, ledger.epochs.at(-1)!.root) &&
+              (child === null ||
+                same(
+                  child,
+                  ledger.epochs
+                    .at(-1)!
+                    .envelopes.find(
+                      (entry) => entry.envelope_id === envelope.envelope_id,
+                    ),
+                ))
+            );
+          },
+          confirmExecution: async () => false,
+          confirmReconciliation: (candidate, candidateRoot) =>
+            confirm(candidate, candidateRoot, envelope),
+          confirmHistoricalReconciliation: confirm,
+          authenticateRenewal: async () => null,
+        },
+        { maxRenewals: ledger.maxRenewals },
+      );
+      let replayed = false;
+      const result = await recoverAuthorizedDelegationAccountingV1({
+        authorityId: epoch.root.authority_id,
+        invocationId: invocation.invocationId,
+        service,
+        dispatchLedger,
+        host: {
+          admitRecovery: async (observed) => {
+            current();
+            if (
+              observed.authorityId !== epoch.root.authority_id ||
+              observed.invocationId !== invocation.invocationId ||
+              observed.originEpoch !== origin.epoch ||
+              !same(observed.root, epoch.root) ||
+              !same(observed.envelope, envelope) ||
+              !same(observed.invocation.allocation, invocation.allocation)
+            )
+              refuse();
+            const {
+              authorizationId,
+              invocationId,
+              reservationId,
+              limits,
+              capacity,
+            } = observed.reservation;
+            const header = {
+              version: 1 as const,
+              groupId,
+              seatId: command.seatId,
+              operationKey: command.operationKey,
+              authorityId: observed.authorityId,
+              invocationId: observed.invocationId,
+              ownerId: authorized.principal.id,
+              originEpoch: observed.originEpoch,
+              root,
+              envelope: envelopeRef,
+              reservationProtocol: observed.reservationProtocol,
+              reservation: {
+                authorizationId,
+                invocationId,
+                reservationId,
+                limits,
+                capacity,
+              },
+            };
+            const retained =
+              await this.owners.persistence.readReportAccountingRecovery(
+                groupId,
+                command.operationKey,
+                current,
+              );
+            if (retained) {
+              if (
+                !same(
+                  Object.fromEntries(
+                    Object.keys(header).map((key) => [
+                      key,
+                      Reflect.get(retained.data, key),
+                    ]),
+                  ),
+                  header,
+                )
+              )
+                refuse();
+              replayed = true;
+            }
+            const wire = await wireIntents.lookup(
+              epoch.root.authority_id,
+              invocation.invocationId,
+              current,
+            );
+            const terminalRecord =
+              await this.owners.persistence.findReportObservationByInvocation(
+                groupId,
+                invocation.invocationId,
+                'terminal',
+                current,
+              );
+            const resultRecord =
+              await this.owners.persistence.findReportObservationByInvocation(
+                groupId,
+                invocation.invocationId,
+                'result',
+                current,
+              );
+            let terminal =
+              retained?.data.terminal ??
+              (terminalRecord?.observation.kind === 'terminal'
+                ? (terminalRecord.observation.witness ?? null)
+                : null);
+            const evidence =
+              terminal?.data.evidence ??
+              (resultRecord?.observation.kind === 'result'
+                ? resultRecord.observation.evidence
+                : null);
+            let accounting: ReportAccountingRecoveryIntent['data']['accounting'] =
+              null;
+            if (evidence && wire) {
+              if (wire.effect !== seat.effect && wire.effect !== 'context-sync')
+                refuse();
+              if (
+                wire.effect === 'context-sync' &&
+                envelope.execution_authority.allowed_tools.length !== 0
+              )
+                refuse();
+              const continuation =
+                await this.owners.persistence.readReportContinuationTurn(
+                  groupId,
+                  invocation.invocationId,
+                  current,
+                );
+              const clientTurnId = continuation
+                ? (
+                    await this.#continuationTurn(
+                      authorized,
+                      before,
+                      command.seatId,
+                      invocation.invocationId,
+                    )
+                  ).clientTurnId
+                : member.reservedClientTurnId;
+              if (!terminal) {
+                const delivery = await this.#delivery(
+                  authorized,
+                  groupId,
+                  command.seatId,
+                  orchestration,
+                  continuation ? invocation.invocationId : undefined,
+                );
+                if (delivery?.outcome === 'started')
+                  terminal = writer.runWithLease(hold, () =>
+                    captureReportTerminalWitness(
+                      {
+                        environment: this.owners.environment,
+                        orchestration,
+                        current,
+                      },
+                      {
+                        groupId,
+                        seatId: command.seatId,
+                        invocationId: invocation.invocationId,
+                        root,
+                        envelope: envelopeRef,
+                        evidence,
+                        ownerId: authorized.principal.id,
+                        turn: {
+                          conversationId: member.reservedTaskId,
+                          sessionId: delivery.sessionId,
+                          clientTurnId,
+                          turnId: delivery.turnId,
+                        },
+                      },
+                    ),
+                  );
+              }
+              if (terminal) {
+                if (
+                  !verifyReportTerminalWitness(
+                    terminal,
+                    this.owners.environment,
+                  ) ||
+                  terminal.data.groupId !== groupId ||
+                  terminal.data.seatId !== command.seatId ||
+                  terminal.data.invocationId !== invocation.invocationId ||
+                  !same(terminal.data.root, root) ||
+                  !same(terminal.data.envelope, envelopeRef) ||
+                  !same(terminal.data.evidence, evidence) ||
+                  terminal.data.terminal.conversationId !==
+                    member.reservedTaskId ||
+                  terminal.data.terminal.sessionId !== member.reservedTaskId ||
+                  terminal.data.terminal.clientTurnId !== clientTurnId ||
+                  terminal.data.terminal.ownerId !== authorized.principal.id
+                )
+                  refuse();
+                if (observed.reservationProtocol !== 'retained-tariff-v1')
+                  refuse();
+                const priced =
+                  (await this.owners.persistence.assertProviderEvidenceReference(
+                    evidence,
+                    {
+                      groupId,
+                      rootId: epoch.root.authority_id,
+                      invocationId: invocation.invocationId,
+                      executionId: member.reservedTaskId,
+                      ...(resultRecord?.observation.kind === 'result'
+                        ? { usage: resultRecord.observation }
+                        : {}),
+                      executionIntent: {
+                        binding: {
+                          controller: group.spec.controller,
+                          seatId: member.seatId,
+                          root,
+                          envelope: envelopeRef,
+                          effect: wire.effect,
+                          allocation: invocation.allocation,
+                          executionBindingDigest: wireIdentityDigest(
+                            envelope.execution_binding,
+                          ),
+                          principalDigest:
+                            epoch.root.authenticated_principal_ref.digest,
+                          subjectDigest:
+                            epoch.root.authenticated_subject_ref.digest,
+                          finalWireDigest: wire.finalWireDigest,
+                        },
+                        modelReceipt:
+                          envelope.execution_binding.runtime.model_receipt_ref,
+                      },
+                    },
+                    current,
+                  )) ?? refuse();
+                accounting = {
+                  inputTokens: priced.inputTokens,
+                  outputTokens: priced.outputTokens,
+                  costMicros: priced.costMicros,
+                  costBasis: priced.costBasis,
+                };
+              }
+            }
+            const candidate = writer.runWithLease(hold, () =>
+              signReportAccountingRecoveryIntent(
+                {
+                  ...header,
+                  terminal,
+                  wireIntentDigest: wire ? wireIdentityDigest(wire) : null,
+                  accounting,
+                },
+                this.owners.environment,
+              ),
+            );
+            if (retained && !same(retained, candidate)) refuse();
+            intent = retained ?? candidate;
+            operationRan = true;
+            const receipt =
+              await this.owners.persistence.retainReportAccountingRecovery(
+                intent,
+                current,
+              );
+            current();
+            return {
+              accounting: intent.data.accounting,
+              receipt,
+              lease: { assertCurrent: current, release },
+            };
           },
         },
-        authorized.current,
-      );
-      if (
-        !same(
-          await wireIntents.lookup(
-            epoch.root.authority_id,
-            invocation.invocationId,
-            authorized.current,
-          ),
-          wire,
-        )
-      )
-        return false;
-      const actual = orchestration.inspectTurnDelivery(
-        member.reservedTaskId,
-        delivery.clientTurnId,
-        scope,
-      );
-      const terminal = orchestration.readSessionEventById(
-        delivery.sessionId,
-        snapshot.terminalEventId,
-        scope,
-      );
-      authorized.current();
-      return (
-        actual?.outcome === 'started' &&
-        actual.turnId === delivery.turnId &&
-        actual.sessionId === delivery.sessionId &&
-        terminal?.method === 'turn.completed' &&
-        terminal.eventId === snapshot.terminalEventId &&
-        terminal.threadId === delivery.sessionId &&
-        terminal.turnId === delivery.turnId
-      );
-    };
-    const service = createDelegationAuthorityServiceV3(
-      this.owners.persistence.roundsAuthorityStore(authorized.current),
-      {
-        now: () => new Date().toISOString(),
-        authorize: async (action, candidate, child) => {
-          authorized.current();
-          return (
-            (action === 'inspect' || action === 'reconcile') &&
-            same(candidate, currentEpoch.root) &&
-            (child === null ||
-              same(
-                child,
-                currentEpoch.envelopes.find(
-                  (entry) => entry.envelope_id === envelope.envelope_id,
-                ),
-              ))
-          );
-        },
-        confirmExecution: async () => false,
-        confirmReconciliation: (candidate, candidateRoot) =>
-          confirm(candidate, candidateRoot, envelope),
-        confirmHistoricalReconciliation: confirm,
-        authenticateRenewal: async () => null,
-      },
-      { maxRenewals: authority.maxRenewals },
-    );
-    await service.reconcileInvocation(
-      epoch.root.authority_id,
-      invocation.invocationId,
-      usage,
-      true,
-    );
-    authorized.current();
+      });
+      return { replayed, operationKey: command.operationKey, ...result };
+    } finally {
+      await release();
+    }
   }
 
   async revokeExecutionAuthority(

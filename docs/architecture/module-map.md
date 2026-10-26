@@ -440,9 +440,12 @@ read, validation and publication, including card/alert bookkeeping and tombstone
 The home hold replaces the prior separate token-file mutation lock; older builds
 that do not participate are not excluded by this protocol. The multi-file hold
 provides exclusion, not an atomic transaction across registry and sidecars.
-Complete historical recovery still requires retained recovery intent and the
-checked Dispatch/Flow path. Signed terminal capture alone does not supply that
-held recovery host. No native/device/provider qualification follows.
+Private report accounting recovery uses an explicit home lease and short
+synchronous borrowing for each current-authority check. After acquisition it
+reads through the existing domain locks, draining earlier publishers before
+admission. This distinction matters across processes: the home hold alone does
+not cover a writer already between its final check and physical rename.
+No native/device/provider qualification follows.
 
 ## VirtualApplicationIngress
 
@@ -2097,9 +2100,22 @@ continuation completions retain the witness inside the private terminal
 observation; its joins are checked by the observation schema. It survives Session
 deletion as accounting metadata, without transcript or prompt text. Legacy
 terminal observations remain readable without a witness and are not backfilled.
-Continuation confirmation rejects an invalid retained signature. Custody still
-performs its existing live confirmations; retained recovery intent, complete host
-exclusion, dual-ledger settlement and a mounted recovery endpoint remain unfinished.
+Continuation confirmation rejects an invalid retained signature.
+
+The private `recoverAccounting` method authenticates the original epoch,
+invocation, signed terminal, final-wire intent and raw historical tariff evidence.
+When the terminal is still observable it can capture that actual coherent read;
+it does not reconstruct a deleted unsigned completion. A bounded signed recovery
+intent retains the exact operation, reservation tuple and accounting proof before
+calling published `recoverAuthorizedDelegationAccountingV1`. Replay revalidates
+the proof and compares the complete newly signed intent with the retained bytes.
+The home hold excludes participating Station authority changes; checked Dispatch
+settlement separately handles its mutable reservation under its own lock. A partial
+Dispatch commit can resume Flow reconciliation without invoking or reserving again.
+Unknown usage stays held. A `held` result does not promise no writes: the published
+contract can record known overrun accounting while retaining unavailable capacity.
+There is no public recovery route, SDK or CLI surface yet, and full joined recovery
+qualification remains open.
 
 ## CliSessionGroups
 

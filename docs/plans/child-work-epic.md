@@ -2321,3 +2321,36 @@ Owner/storage suites pass 33 cases and server-test types pass; composed producer
 qualification is pending. This supplies retained accounting metadata, not a
 recovery grant. Durable recovery intent, held recovery authority, checked
 Dispatch/Flow settlement and public recovery serving remain open.
+
+The witness producer suites subsequently pass all four cases at `d06f8e73231`:
+three execution modes and returning continuation capture. Both independent source
+reviews accept the bounded witness delta. These remain controlled local results.
+
+### Private published accounting-recovery host
+
+The private runtime now calls published `recoverAuthorizedDelegationAccountingV1`.
+It acquires an explicit home lease, borrows it only for synchronous currentness
+checks, then reads through the real admission/group/authority/evidence/wire locks
+before recovery admission. Those reads drain any earlier publisher that passed
+its final check before the home hold. Dispatch remains independently mutable;
+its checked settlement revalidates the exact reservation under its own lock.
+
+An immutable signed intent binds operation key, original epoch/envelope,
+invocation, reservation tuple, terminal witness, final-wire digest and accounting.
+It is retained before settlement; replay reauthenticates raw tariff evidence and
+compares the complete signed candidate with retained bytes. An unsigned terminal
+can only acquire new evidence from a still-observable coherent original turn;
+missing deleted history is never reconstructed. No runtime preparation,
+invocation, reservation, release or refund occurs in this recovery method.
+
+The composed owner test begins with deliberately lost ordinary settlement and
+Flow publication, verifies a retained unknown group, then loses Flow publication
+after recovery commits Dispatch. A returning runtime completes the same intent
+after Session deletion without another model/Session/turn/reservation. Signature
+and raw-evidence tampering refuse. Grant revocation is excluded during the hold
+and refuses later replay after release. A separate unknown-response case retains
+the exact reserved capacity across recovery/replay with zero settlement/release
+calls. The recovery/persistence/coherent-read owner run passes35 cases and
+server-test types pass. Final review and mutations are pending. The public
+HTTP/SDK/CLI recovery surface is not mounted, and broader/provider/device/hosted
+qualification remains open.

@@ -60,6 +60,10 @@ import {
   reportInputRecordSchema,
 } from './report-input-ledger.js';
 import {
+  type ReportAccountingRecoveryIntent,
+  reportAccountingRecoveryIntentSchema,
+} from './station-report-accounting-recovery.js';
+import {
   type StationReportAdmission,
   validateStationReportAdmission,
 } from './station-report-group-admission.js';
@@ -173,6 +177,16 @@ const reportObservationFile = (
       .update(canonicalJson([groupId, invocationId, kind]))
       .digest('hex')}`,
   );
+const reportRecoveryFile = (groupId: string, operationKey: string) =>
+  `${createHash('sha256')
+    .update(
+      canonicalJson([
+        'station.report-accounting-recovery.v1',
+        groupId,
+        operationKey,
+      ]),
+    )
+    .digest('hex')}.json`;
 
 export type DelegationPersistenceFinalizer = () => undefined;
 const AUTHORITY_MAX_BYTES = 16 * 1024 * 1024;
@@ -379,6 +393,7 @@ export class StationDelegationPersistence {
   readonly #reportInterrupts: PrivateDomain;
   readonly #reportContinuationTurns: PrivateDomain;
   readonly #reportObservations: PrivateDomain;
+  readonly #reportRecoveries: PrivateDomain;
   readonly #flowObservations: PrivateDomain;
   readonly #reportInputs: PrivateDomain;
   constructor(privateRoot: string) {
@@ -417,6 +432,10 @@ export class StationDelegationPersistence {
     this.#reportObservations = new PrivateDomain(
       root,
       'station-report-observations-v1',
+    );
+    this.#reportRecoveries = new PrivateDomain(
+      root,
+      'station-report-accounting-recoveries-v1',
     );
     this.#flowObservations = new PrivateDomain(
       root,
@@ -712,27 +731,115 @@ export class StationDelegationPersistence {
     });
   }
 
+  async retainReportAccountingRecovery(
+    value: ReportAccountingRecoveryIntent,
+    current: DelegationPersistenceFinalizer,
+  ) {
+    const record = reportAccountingRecoveryIntentSchema.parse(value);
+    const file = reportRecoveryFile(
+      record.data.groupId,
+      record.data.operationKey,
+    );
+    const domain = this.#reportRecoveries;
+    return domain.locked(current, async () => {
+      const previous = readBytes(join(domain.directory, file), 128 * 1024);
+      if (previous !== null)
+        requirePersistence(
+          same(
+            reportAccountingRecoveryIntentSchema.parse(JSON.parse(previous)),
+            record,
+          ),
+          'report_recovery_intent_conflict',
+        );
+      else {
+        requirePersistence(
+          domain.files().length < MAX_FILES,
+          'report_recovery_capacity',
+        );
+        await domain.publish(file, record, 128 * 1024, current);
+      }
+      const bytes = readBytes(join(domain.directory, file), 128 * 1024);
+      requirePersistence(
+        bytes !== null &&
+          same(
+            reportAccountingRecoveryIntentSchema.parse(JSON.parse(bytes)),
+            record,
+          ),
+        'report_recovery_intent_unconfirmed',
+      );
+      return {
+        id: file.slice(0, -5),
+        domain: 'station.report-accounting-recovery.v1',
+        digest: `sha256:${createHash('sha256').update(canonicalJson(record)).digest('hex')}`,
+      };
+    });
+  }
+
+  async readReportAccountingRecovery(
+    groupId: string,
+    operationKey: string,
+    current: DelegationPersistenceFinalizer,
+  ): Promise<ReportAccountingRecoveryIntent | null> {
+    reportObservationId.parse(groupId);
+    reportObservationId.parse(operationKey);
+    return this.#reportRecoveries.locked(current, async () => {
+      const bytes = readBytes(
+        join(
+          this.#reportRecoveries.directory,
+          reportRecoveryFile(groupId, operationKey),
+        ),
+        128 * 1024,
+      );
+      if (bytes === null) return null;
+      const record = reportAccountingRecoveryIntentSchema.parse(
+        JSON.parse(bytes),
+      );
+      requirePersistence(
+        record.data.groupId === groupId &&
+          record.data.operationKey === operationKey,
+        'report_recovery_intent_mismatch',
+      );
+      return record;
+    });
+  }
+
   async readReportResultByInvocation(
     groupId: string,
     invocationId: string,
     current: DelegationPersistenceFinalizer,
   ) {
+    const record = await this.findReportObservationByInvocation(
+      groupId,
+      invocationId,
+      'result',
+      current,
+    );
+    requirePersistence(record !== null, 'report_observation_missing');
+    return record;
+  }
+
+  async findReportObservationByInvocation(
+    groupId: string,
+    invocationId: string,
+    kind: StationReportObservation['observation']['kind'],
+    current: DelegationPersistenceFinalizer,
+  ): Promise<StationReportObservation | null> {
     reportObservationId.parse(groupId);
     reportObservationId.parse(invocationId);
     return this.#reportObservations.locked(current, async () => {
       const bytes = readBytes(
         join(
           this.#reportObservations.directory,
-          reportObservationFile(groupId, invocationId, 'result'),
+          reportObservationFile(groupId, invocationId, kind),
         ),
         2 * 1024 * 1024,
       );
-      requirePersistence(bytes !== null, 'report_observation_missing');
+      if (bytes === null) return null;
       const record = reportObservationSchema.parse(JSON.parse(bytes));
       requirePersistence(
         record.groupId === groupId &&
           record.invocationId === invocationId &&
-          record.observation.kind === 'result',
+          record.observation.kind === kind,
         'report_observation_reference_mismatch',
       );
       assertCurrent(current);
@@ -1271,7 +1378,7 @@ export class StationDelegationPersistence {
       rootId: string;
       invocationId: string;
       executionId: string;
-      usage: { inputTokens: number; outputTokens: number; costMicros: number };
+      usage?: { inputTokens: number; outputTokens: number; costMicros: number };
       executionIntent?: {
         binding: Pick<
           ReservedProviderEvidence['intent'],
@@ -1307,7 +1414,7 @@ export class StationDelegationPersistence {
         /^sha256:[a-f0-9]{64}$/.test(ref.digest),
       'delegation_provider_evidence_mismatch',
     );
-    await this.#providerEvidence.locked(finalizeCurrent, async () => {
+    return this.#providerEvidence.locked(finalizeCurrent, async () => {
       const bytes = readBytes(
         join(this.#providerEvidence.directory, `${expectedId}.json`),
         20 * 1024 * 1024,
@@ -1371,9 +1478,10 @@ export class StationDelegationPersistence {
           record.evidence.intent.root.id === scope.rootId &&
           record.evidence.intent.invocationId === scope.invocationId &&
           record.evidence.intent.executionId === scope.executionId &&
-          record.evidence.usage.inputTokens === scope.usage.inputTokens &&
-          record.evidence.usage.outputTokens === scope.usage.outputTokens &&
-          record.evidence.usage.costMicros === scope.usage.costMicros &&
+          (scope.usage === undefined ||
+            (record.evidence.usage.inputTokens === scope.usage.inputTokens &&
+              record.evidence.usage.outputTokens === scope.usage.outputTokens &&
+              record.evidence.usage.costMicros === scope.usage.costMicros)) &&
           (!scope.inputIntent ||
             (record.evidence.intent.seatId === scope.inputIntent.seatId &&
               same(record.evidence.intent.root, scope.inputIntent.root) &&
@@ -1383,6 +1491,9 @@ export class StationDelegationPersistence {
               ))),
         'delegation_provider_evidence_mismatch',
       );
+      let accounting:
+        | ReturnType<typeof priceBoundedApiHistoricalRawUsage>
+        | undefined;
       if (scope.executionIntent) {
         const { binding, modelReceipt } = scope.executionIntent;
         const quote = record.evidence.quote;
@@ -1393,15 +1504,13 @@ export class StationDelegationPersistence {
             rawResponseJson !== undefined,
           'delegation_provider_evidence_pricing_unavailable',
         );
+        accounting = priceBoundedApiHistoricalRawUsage(
+          historicalPricingJson,
+          quote,
+          rawResponseJson,
+        );
         requirePersistence(
-          same(
-            priceBoundedApiHistoricalRawUsage(
-              historicalPricingJson,
-              quote,
-              rawResponseJson,
-            ),
-            record.evidence.usage,
-          ),
+          same(accounting, record.evidence.usage),
           'delegation_provider_evidence_pricing_mismatch',
         );
         requirePersistence(
@@ -1435,6 +1544,7 @@ export class StationDelegationPersistence {
         );
       }
       assertCurrent(finalizeCurrent);
+      return accounting;
     });
   }
 
