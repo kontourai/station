@@ -525,12 +525,30 @@ describe('Session inventory commands with no recorded result (#4178)', () => {
       tempRoot('station-inventory-unresolved-'),
       'orchestration.sqlite',
     );
-    // An existing store from before the index: the migration builds it.
+    const hasIndex = () => {
+      const probe = new DatabaseSync(path);
+      try {
+        return (
+          probe
+            .prepare(
+              "SELECT 1 FROM sqlite_schema WHERE type = 'index' AND name = ?",
+            )
+            .get(TOOL_CALL_LIFECYCLE_INDEX) !== undefined
+        );
+      } finally {
+        probe.close();
+      }
+    };
+    // A new store gets the index.
     new EventStore(path).close?.();
+    expect(hasIndex()).toBe(true);
+    // An existing store from before the index: opening it builds the index.
     const legacy = new DatabaseSync(path);
     legacy.exec(`DROP INDEX ${TOOL_CALL_LIFECYCLE_INDEX}`);
     legacy.close();
+    expect(hasIndex()).toBe(false);
     const store = new EventStore(path);
+    expect(hasIndex()).toBe(true);
     try {
       seedCrashedTurn(store);
       const db = (
