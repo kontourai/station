@@ -522,7 +522,9 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
    sits in the composer's meta row beside the model picker it measures (2026-10-20:
    it had moved to the dock header, where it crowded the chat's identity); the dock
    header holds session identity only (see placement.md, "What the dock header
-   holds").
+   holds"). On a phone the meta row scrolls sideways and hides while typing on a
+   short screen, so the dock's Actions sheet (⋯) repeats the meter as a
+   Conversation stats row naming the share used; it opens the same stats panel.
 
 ### 3.1 Provider and model picker
 
