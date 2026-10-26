@@ -324,9 +324,10 @@ test.skipIf(!tools).each(['probe', 'scene', 'all-scenes'])(
   45_000,
 );
 
-test.skipIf(!tools)(
-  'real H264 eight-second GOP recording retains cuts between keyframes',
-  async () => {
+test.skipIf(!tools).each([8, 2.7])(
+  'real H264 %s-second GOP recording retains cuts between keyframes',
+  async (gop) => {
+    const firstCut = gop === 8 ? 3 : 1;
     const home = makeHome('station-h264-cuts-');
     const path = await fixture(home, 'cuts.mp4', [
       '-f',
@@ -334,13 +335,13 @@ test.skipIf(!tools)(
       '-i',
       'color=c=red:size=160x90:rate=60:duration=24',
       '-vf',
-      "drawbox=color=blue:t=fill:enable='gte(t,3)',drawbox=color=white:t=fill:enable='gte(t,13)',drawbox=color=black:t=fill:enable='gte(t,14)'",
+      `drawbox=color=blue:t=fill:enable='gte(t,${firstCut})',drawbox=color=white:t=fill:enable='gte(t,13)',drawbox=color=black:t=fill:enable='gte(t,14)'`,
       '-c:v',
       'libx264',
       '-preset',
       'ultrafast',
       '-x264-params',
-      'keyint=480:min-keyint=480:scenecut=0',
+      `keyint=${gop * 60}:min-keyint=${gop * 60}:scenecut=0`,
       '-threads',
       '1',
     ]);
@@ -348,7 +349,7 @@ test.skipIf(!tools)(
     const cuts = manifest.events.filter(
       (e) => e.kind === 'frame' && e.reasons.includes('scene-change'),
     );
-    expect(cuts.map((cut) => cut.tMs)).toEqual([3000, 13000, 14000]);
+    expect(cuts.map((cut) => cut.tMs)).toEqual([firstCut * 1000, 13000, 14000]);
   },
   45_000,
 );

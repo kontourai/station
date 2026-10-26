@@ -697,11 +697,14 @@ export class WalkthroughService {
         // Enrichment cannot erase the completed keyframe-only baseline.
       }
     }
-    // fps places a cheap cut just before keyframe K. A precise cut in its
-    // preceding GOP supersedes that estimate, even beyond the 500ms cluster.
+    // A precise cut in the preceding GOP supersedes the cheap estimate at K,
+    // even beyond the 500ms cluster. Match the 5 fps grid: a cheap cut can
+    // round up to 100ms after its source keyframe.
     const sceneTimes = [
       ...cheapScenes.filter((time) => {
-        const index = keyframes.findIndex((keyframe) => keyframe >= time);
+        const index = keyframes.findIndex(
+          (keyframe) => Math.round(keyframe / 200) * 200 >= time,
+        );
         if (index < 0) return true;
         const previous = keyframes[index - 1] ?? 0;
         return !preciseScenes.some(
