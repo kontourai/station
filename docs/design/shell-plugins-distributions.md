@@ -1660,9 +1660,10 @@ its layout phase as amended by #3894, and the target depends on #3875. The
 caller's own `terminal:operate` / `terminal:observe` grants gate every open.
 The Coding plugin opens the target or renders `TerminalView`; it adds no
 terminal code or grant of its own. j depends on this slice with no interim
-(OPEN-12, answered 2026-10-20). terminal.md's own status line reads
-"Proposal — unscheduled; no tracking issue as of 2026-10-20", so j cannot
-be scheduled until those phases are.
+(OPEN-12, answered 2026-10-20). The terminal plan now tracks #3994: its scoped
+in-process foundation is implemented, while replacement transport, SDK runtime
+and Ghostty surface remain proposed. That foundation does not deliver the SDK
+and layout phases this slice needs; coordinate j with those remaining phases.
 
 ### SDK-6. Plugin device state
 
