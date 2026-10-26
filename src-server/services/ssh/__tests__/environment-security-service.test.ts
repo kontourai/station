@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto';
-import {
+import fs, {
   chmodSync,
   existsSync,
   linkSync,
@@ -13,6 +13,7 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -20,7 +21,7 @@ import {
   STATION_HOME_SCHEMA_FILE,
   STATION_HOME_SCHEMA_VERSION,
 } from '@kontourai/station-shared/station-home-schema';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const ENVIRONMENT_SECURITY_RECORD_RELATIVE_PATH = 'security/environment.json';
 
@@ -696,26 +697,95 @@ describe('EnvironmentSecurityService', () => {
   test('concurrent first use converges on one complete record', async () => {
     const homeDir = makeHome();
     const EnvironmentSecurityService = await loadEnvironmentSecurityService();
-    const snapshots = await Promise.all(
-      Array.from({ length: 12 }, () =>
-        new EnvironmentSecurityService({ homeDir }).initialize(),
-      ),
-    );
-
-    expect(
-      new Set(snapshots.map(({ environmentId }) => environmentId)),
-    ).toEqual(new Set([snapshots[0].environmentId]));
-    expect(new Set(snapshots.map(({ credential }) => credential))).toEqual(
-      new Set([snapshots[0].credential]),
-    );
-    expect(() =>
-      JSON.parse(
-        readFileSync(
-          join(homeDir, ENVIRONMENT_SECURITY_RECORD_RELATIVE_PATH),
-          'utf8',
+    const lockPath = join(homeDir, 'security/.environment.lock');
+    const observations: Record<string, unknown>[] = [];
+    const identities = new Map<string, string>();
+    let total = 0;
+    const record = (entry: Record<string, unknown>) => {
+      total++;
+      if (observations.length === 128) observations.shift();
+      observations.push({ order: total, ...entry });
+    };
+    const lstat = fs.lstatSync;
+    const spy = vi.spyOn(fs, 'lstatSync').mockImplementation(function (
+      this: typeof fs,
+      ...args
+    ) {
+      try {
+        const status = lstat.apply(this, args);
+        if (args[0] === lockPath && status) {
+          const identity = `${status.dev}:${status.ino}`;
+          if (!identities.has(identity) && identities.size < 32)
+            identities.set(identity, `opaque-${identities.size + 1}`);
+          record({
+            event: 'canonical-lock-stat',
+            identity: identities.get(identity) ?? 'overflow',
+            regular: status.isFile(),
+            symbolic: status.isSymbolicLink(),
+            nlink: Number(status.nlink),
+            privateMode: (Number(status.mode) & 0o077) === 0,
+          });
+        }
+        return status;
+      } catch (error) {
+        if (args[0] === lockPath)
+          record({
+            event: 'canonical-lock-stat-rejected',
+            code:
+              error &&
+              typeof error === 'object' &&
+              'code' in error &&
+              ['ENOENT', 'EEXIST', 'EPERM', 'EACCES'].includes(
+                String(error.code),
+              )
+                ? String(error.code)
+                : 'other',
+          });
+        throw error;
+      }
+    });
+    syncBuiltinESMExports();
+    try {
+      const snapshots = await Promise.all(
+        Array.from({ length: 12 }, () =>
+          new EnvironmentSecurityService({ homeDir }).initialize(),
         ),
-      ),
-    ).not.toThrow();
+      );
+
+      expect(
+        new Set(snapshots.map(({ environmentId }) => environmentId)),
+      ).toEqual(new Set([snapshots[0].environmentId]));
+      expect(new Set(snapshots.map(({ credential }) => credential))).toEqual(
+        new Set([snapshots[0].credential]),
+      );
+      expect(() =>
+        JSON.parse(
+          readFileSync(
+            join(homeDir, ENVIRONMENT_SECURITY_RECORD_RELATIVE_PATH),
+            'utf8',
+          ),
+        ),
+      ).not.toThrow();
+      expect(
+        observations.length,
+        'the observer must reach actual lock stats',
+      ).toBeGreaterThan(0);
+    } catch (error) {
+      if (error instanceof Error && Object.isExtensible(error))
+        Object.defineProperty(error, 'environmentLockObservation', {
+          value: JSON.stringify({
+            observations,
+            total,
+            truncated: total > 128,
+          }),
+          enumerable: true,
+          configurable: true,
+        });
+      throw error;
+    } finally {
+      spy.mockRestore();
+      syncBuiltinESMExports();
+    }
   });
 
   test('recovers an aged crash lock only after proving its owner is dead', async () => {
