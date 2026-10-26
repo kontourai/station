@@ -607,12 +607,7 @@ function collectEntries(
   const symlinks: StationHomeBackupSymlink[] = [];
   const directories: string[][] = [];
   const reserveEntry = () => {
-    if (
-      files.length +
-        symlinks.length +
-        (options.includeDirectories === false ? 0 : directories.length) >=
-      limits.maxFiles
-    )
+    if (files.length + symlinks.length + directories.length >= limits.maxFiles)
       fail('Station home exceeds the archive file-count limit');
   };
   let totalBytes = 0;
