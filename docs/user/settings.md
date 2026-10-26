@@ -20,9 +20,12 @@ switch, a name and a description of what turning it on does. A preview is listed
 only when this Station's build can run it; if none is, the section says
 "No previews are currently offered". Previews start off.
 
-**Fleet consumer probes**: before routing work to a
-model that another Station contributes, Station sends a test request to it.
-That test can spend a completion on the other Station.
+| ID | Name | What turning it on does | Notable cost/risk |
+| --- | --- | --- | --- |
+| `fleet-consumer-probes` | Fleet consumer probes | Sends a test request to a peer-contributed model before routing work to it. | Can spend a completion on another Station. |
+| `walkthroughs` | Walkthroughs | Imports narrated screen recordings into transcripts and frames agents can read, using local processing. | One-time consented media/speech tool download; CPU use; recordings may contain private information. |
+| `local-speech` | Local speech | Offers Station (local) in Voice → Speech-to-text: record a message, then transcribe it on this Station. | One-time consented tool/model download; English batch dictation only; microphone permission; shares one recognizer and a bounded wait queue with Walkthroughs. |
+| `task-review` | Task review | Adds a Review tab to Tasks for anchored comments on plans, outputs, answers and Screens, which can be sent to the lead agent. | Sending starts or queues a lead-agent turn; Screen capture needs a committed workspace. |
 
 **Task review** (`task-review`): turn this on in **Settings → Advanced →
 Feature previews**, then open a Task and choose **Review**, after Conversation.
@@ -39,6 +42,15 @@ Task's authorized image route. Turning the preview off hides Review; a
 `taskView=review` link then opens Overview.
 
 Turning a preview on affects everyone who uses this Station.
+
+For **Local speech**, choose **Station (local)** in **Settings → Voice →
+Speech-to-text** after enabling the preview. Click the composer microphone to
+record and click again to stop; final text appears after transcription. Missing
+tools require the Station operator’s explicit `station media-tools download
+--yes` consent against this instance; there is no download settings panel yet.
+Disabling the preview removes the provider when the UI observes the change and
+cancels pending client dictation. See [local speech](https://github.com/kontourai/station/blob/main/docs/guides/local-speech.md)
+for requirements, limits and error recovery.
 
 ## Developer tools
 

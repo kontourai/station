@@ -19,6 +19,34 @@ authorities. The [runtime composition](../../src-server/runtime/routes/runtime-r
 mounts handlers and their request boundaries. A handler existing in source does
 not mean every deployment mounts or admits it.
 
+## Local speech and media tools
+
+Personal hosts mount these Project-independent routes; hosted deployments do
+not. All requests require current authentication. See [local speech](../guides/local-speech.md)
+for limits and the implementation/evidence owners. **Local speech** and
+**Walkthroughs** are default-off Feature Previews enabled in Settings → Advanced
+→ Feature previews. Transcription requires Local speech; media-tools requires
+either switch. Off routes return HTTP 404 with `success:false`,
+`code:'feature_preview_disabled'`, `previewId`, and `settingsPath`.
+
+| Route | Authority | Response |
+| --- | --- | --- |
+| `GET /api/media-tools/status` | Operator; paired scope `orchestration:read` | `{ success: true, data: { components } }`, including version, bytes, resolution and active byte progress/failure |
+| `POST /api/media-tools/download` | Operator; paired scope `terminal:operate` | 202 status; body `{ "consent": true, "components": ["ffmpeg", "speech-runtime", "speech-model"] }` (components optional) |
+| `POST /api/transcription` | Current authenticated principal; paired scope `orchestration:operate` | `{ success: true, data: TranscriptionResult }`; raw binary browser audio body, no host path |
+
+Download requests without literal `true` return 400. Read status until each
+required component is ready; acceptance does not mean installed. Transcription
+rejects uploads above 32 MiB with 413, including chunked requests. Receive time is bounded to 60 seconds. Inputs
+use the browser container/audio-codec policy in the [guide](../guides/local-speech.md);
+playlist and virtual inputs are refused. Transcription
+failure/unavailability is a typed result, never a fabricated empty transcript.
+Queue overflow instead returns HTTP 503 with `{success:false, code:"busy", error}`
+and `Retry-After: 5`; one recognition runs while at most four requests wait FIFO.
+The 15-minute transcription deadline includes waiting, and queued aborts leave
+the queue.
+The server checks principal freshness before and after processing.
+
 ## Project tool defaults
 
 Project create and update bodies accept optional `toolDefaults` with
@@ -5224,6 +5252,20 @@ Invited/public result reads currently omit output feedback: their human-history
 projection includes conversation messages only. Invited/public participation,
 browser acceptance and installed delivery require separate evidence from these
 source contracts.
+
+## Project Walkthroughs
+
+The personal-host [Walkthrough routes](../../src-server/routes/walkthroughs.ts)
+mount at `/api/projects/:projectSlug/walkthroughs` with the shared runtime
+media resolution and transcription. All leaves require the default-off
+**Walkthroughs** Feature Preview. Off returns the typed HTTP 404 refusal
+`feature_preview_disabled`; enable it in Settings → Advanced → Feature previews. `POST /import?filename=<plain-name>`
+accepts raw video bytes with UUID header `x-walkthrough-request-id`, returning
+202 with an `ActionOperation` and optional typed terminal outcome. Read status
+at `GET /imports/:requestId`, list at `GET /`, read a manifest at `GET /:id`,
+and read JPEG bytes at `GET /:id/frames/:frameId`. Import needs Project drive;
+reads need view. [The guide](../guides/walkthroughs.md#rest-and-sdk) owns bounds,
+authorization, failure, privacy and preview lifecycle limits.
 
 ## Task review threads
 
