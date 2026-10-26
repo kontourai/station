@@ -4,10 +4,12 @@ import {
   parseTaskReviewReopenRequest,
   parseTaskReviewReplyRequest,
   parseTaskReviewResolveRequest,
+  parseTaskReviewSendRequest,
 } from '@kontourai/station-contracts/task-review';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import type { ProjectTaskRoomRuntime } from '../../services/orchestration/project-task-room-runtime.js';
+import type { TaskReviewSend } from '../../services/orchestration/task-review-send.js';
 import {
   TaskReviewError,
   type TaskReviewModule,
@@ -29,10 +31,12 @@ const create = requestSchema(parseTaskReviewCreateThreadRequest);
 const reply = requestSchema(parseTaskReviewReplyRequest);
 const resolve = requestSchema(parseTaskReviewResolveRequest);
 const reopen = requestSchema(parseTaskReviewReopenRequest);
+const send = requestSchema(parseTaskReviewSendRequest);
 
 export function createTaskReviewRoutes(deps: {
   runtime: ProjectTaskRoomRuntime;
   module: TaskReviewModule;
+  send: TaskReviewSend;
   logger: { warn(message: string, meta?: Record<string, unknown>): void };
 }) {
   const app = new Hono();
@@ -118,6 +122,24 @@ export function createTaskReviewRoutes(deps: {
         param(c, 'threadId'),
       ),
     })),
+  );
+  app.post(
+    '/:taskId/review/send',
+    validate(send, {
+      maxBodyBytes: 512 * 1024,
+      refusal: () => ({
+        code: 'invalid-request',
+        error: 'Invalid review send.',
+      }),
+    }),
+    (c) =>
+      run(c, async (access) => {
+        const input = getBody(c) as z.infer<typeof send>;
+        const result = await deps.send.send(access.write, input);
+        if (!result.success)
+          throw new TaskReviewError(result.code, result.error);
+        return result.data;
+      }),
   );
   app.post(
     '/:taskId/review/threads',

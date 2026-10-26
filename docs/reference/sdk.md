@@ -5639,7 +5639,6 @@ responses also throw `StationHttpError`, preserving the HTTP status. The SDK re-
 these request types, `TaskReviewThreadSummary`, `TaskReviewThreadView` and `TaskReviewView` from the
 [review contract](../../packages/contracts/src/task-review.ts).
 
-
 `useCaptureToTaskMutation(taskId)` takes `TaskReviewCreateCaptureRequest` with
 `sourceKind:'browser'`, `sourceSessionId`, optional `label` and a stable
 `operationId`. It requires `orchestration:operate`, returns `{capture}` and
@@ -5652,3 +5651,17 @@ must revoke it. Content stays Task-scoped, uses authenticated fetch and throws
 `StationHttpError` on refusals. These functions and `TaskCapture`,
 `TaskReviewCreateCaptureRequest` and `TaskCaptureBrowserSession` are exported
 from both the root and query barrels.
+
+`useSendReviewThreadsMutation(taskId)` takes the shared `TaskReviewSendRequest`
+`{threadIds, operationId, mode}`, where `mode` is `send` or `send-and-resolve`. It returns `{deliveryKey, status,
+threads, reason?}` and invalidates the review list and thread detail queries.
+`unconfirmed` carries "Send unconfirmed" for uncertain inbox evidence, including
+dismissed unconfirmed entries and missing keys after retention. Only a refused
+entry or one withdrawn while queued is recorded failed on retry and reopens
+Sent; use a new operation id to send again. For uncertain delivery, explicitly
+reply to set `pendingFollowUp` before sending a fresh follow-up. The second mode resolves only after
+queue acceptance. Retry with the same operation id, selection and mode to avoid
+another send; changing the mode on that same operation is a conflict. Only the recorded
+lead owner may send until multiplayer is supported. Older replies are omitted from oversized messages while preserving the opening
+and latest comments with an omitted count. Only selections whose minimal content
+cannot fit fail with `message-too-large` before Sent; select fewer threads.

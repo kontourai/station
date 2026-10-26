@@ -857,6 +857,7 @@ export {
   useReopenReviewThreadMutation,
   useReplyReviewThreadMutation,
   useResolveReviewThreadMutation,
+  useSendReviewThreadsMutation,
   useTaskCaptureSessionsQuery,
   useTaskReviewItemQuery,
   useTaskReviewQuery,
