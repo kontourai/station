@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -413,6 +419,53 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
     expect(restarted.listDevices()[0]?.lastUsedAt).toBe(lastUsedBeforeFault);
     expect(restarted.verifyCredential(paired.credential)).toBe(true);
   });
+
+  test("a stale bookkeeping writer cannot overwrite another owner's committed revocation", () => {
+    const paired = pair('Casey phone').result;
+    const other = new DevicePairingService({
+      homeDir,
+      environmentId: ENVIRONMENT_ID,
+      now: () => clock,
+    });
+    other.revokeDevice(paired.device.id, 'operator-credential');
+    const revoked = registryContents();
+    advanceClock(LAST_USED_WRITE_INTERVAL_MS * 2);
+
+    // The legacy no-throw verification contract does not turn a failed
+    // bookkeeping publication into a successful registry replacement.
+    service.verifyCredential(paired.credential);
+    expect(registryContents()).toBe(revoked);
+    expect(() => service.recordCredentialActivity(paired.credential)).toThrow(
+      'Paired-device registry revision changed',
+    );
+    expect(registryContents()).toBe(revoked);
+    const restarted = new DevicePairingService({
+      homeDir,
+      environmentId: ENVIRONMENT_ID,
+    });
+    expect(restarted.verifyCredential(paired.credential)).toBe(false);
+  });
+
+  test.each(['created', 'deleted'] as const)(
+    'a registry %s after this owner loaded cannot be reset from its stale preimage',
+    (change) => {
+      const originalEmptyOwner = new DevicePairingService({
+        homeDir,
+        environmentId: ENVIRONMENT_ID,
+        now: () => clock,
+      });
+      pair('Casey phone');
+      const path = join(homeDir, 'security', 'paired-devices.json');
+      const persisted = registryContents();
+      if (change === 'deleted') rmSync(path);
+      const stale = change === 'created' ? originalEmptyOwner : service;
+      expect(() => stale.resetEnvironment(ENVIRONMENT_ID)).toThrow(
+        'Paired-device registry revision changed',
+      );
+      if (change === 'deleted') expect(existsSync(path)).toBe(false);
+      else expect(registryContents()).toBe(persisted);
+    },
+  );
 
   test('the fault seam is armed only on demand, so an unarmed write persists', () => {
     // Without this, every assertion above could pass against a service that

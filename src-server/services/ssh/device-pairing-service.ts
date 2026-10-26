@@ -1182,6 +1182,7 @@ export class DevicePairingService {
   #accountDirectory: AccountDirectory | undefined;
   readonly #offers = new Map<string, PairingOfferState>();
   #registry: DeviceRegistry;
+  #registryPreimage: string | null = null;
   #pendingRegistryMigrationPersist = false;
   /** Native push registrations: sidecars, never a registry field. */
   readonly #nativePush: NativePushRegistrationStore;
@@ -3468,7 +3469,7 @@ export class DevicePairingService {
   readCurrentUnboundLocalGrantScope(candidate: string): string | undefined {
     try {
       const registry = validateRegistry(
-        this.#readRegistryValue(),
+        this.#readRegistrySnapshot().value,
         this.#environmentId,
       );
       const match = this.#findActiveCredential(registry, candidate);
@@ -3722,8 +3723,10 @@ export class DevicePairingService {
         devices: [],
       };
     }
-    const parsed = this.#readRegistryValue();
+    const snapshot = this.#readRegistrySnapshot();
+    const parsed = snapshot.value;
     const registry = validateRegistry(parsed, this.#environmentId);
+    this.#registryPreimage = snapshot.sha256;
     const rawDevices = Array.isArray((parsed as { devices?: unknown })?.devices)
       ? ((parsed as { devices: Array<{ scope?: unknown }> }).devices ?? [])
       : [];
@@ -3740,7 +3743,7 @@ export class DevicePairingService {
     return registry;
   }
 
-  #readRegistryValue(): unknown {
+  #readRegistrySnapshot(): { value: unknown; sha256: string } {
     const status = lstatSync(this.#registryPath);
     if (
       !status.isFile() ||
@@ -3782,13 +3785,17 @@ export class DevicePairingService {
           current.ctimeMs !== status.ctimeMs
         )
           throw new Error('Paired-device registry changed during read');
-      return JSON.parse(bytes);
+      return {
+        value: JSON.parse(bytes),
+        sha256: digest(bytes).toString('hex'),
+      };
     } finally {
       closeSync(descriptor);
     }
   }
 
   #persistRegistry(registry: DeviceRegistry = this.#registry): void {
+    const serialized = `${JSON.stringify(registry)}\n`;
     const temporaryPath = join(
       dirname(this.#registryPath),
       `.${REGISTRY_FILE}.${process.pid}.${randomUUID()}.tmp`,
@@ -3802,11 +3809,21 @@ export class DevicePairingService {
       );
       if (process.platform !== 'win32')
         fchmodSync(descriptor, PRIVATE_FILE_MODE);
-      writeFileSync(descriptor, `${JSON.stringify(registry)}\n`, 'utf8');
+      writeFileSync(descriptor, serialized, 'utf8');
       fsyncSync(descriptor);
       closeSync(descriptor);
       descriptor = undefined;
+      let current: string | null;
+      try {
+        current = this.#readRegistrySnapshot().sha256;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        current = null;
+      }
+      if (current !== this.#registryPreimage)
+        throw new Error('Paired-device registry revision changed');
       renameFileSyncRetrying(temporaryPath, this.#registryPath);
+      this.#registryPreimage = digest(serialized).toString('hex');
     } finally {
       if (descriptor !== undefined) closeSync(descriptor);
       rmSync(temporaryPath, { force: true });

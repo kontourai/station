@@ -2139,3 +2139,23 @@ pass. These are controlled local results. A fresh observation is not exclusion:
 whole-file writers still need joined ownership and stale-write protection before
 the historical recovery host gate can be qualified. No recovery route or live
 provider/device acceptance follows from this change.
+
+### Refuse a stale whole-registry publication
+
+The pairing owner now retains the exact raw-byte digest loaded with its cached
+registry, including the original bytes before schema normalization. Its central
+publisher stages and syncs the replacement, then compares the current descriptor-
+read bytes with that preimage before rename. A changed or deleted registry is
+refused; a new owner that observed absence cannot overwrite a subsequently
+created registry. The digest advances only after successful publication. Fresh
+local-grant reads do not advance the cached writer's preimage.
+
+The original stale activity touch demonstrably restored a second owner's
+committed revocation. The revision check preserves that revocation and makes
+explicit activity writes refuse the stale revision; the legacy verification
+touch still swallows bookkeeping failures. A stale service must be reconstructed
+before it can publish again. This is a pre-publication stale-state check, not an
+atomic compare-and-swap: concurrent writers can still pass the comparison before
+either rename. Participating writer ownership remains required for the complete
+recovery hold, and ordinary cached authentication is not made fresh by this
+publication check.
