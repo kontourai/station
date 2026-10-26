@@ -1323,8 +1323,12 @@ photographed, recorded per screen as `uiAudit` in `gallery/capture.json`
 (`tests/helpers/gallery-ui-audit.ts`):
 
 - hit targets (`tests/helpers/hit-target-audit.ts`): controls a clip hides
-  on screen, overlapping targets that both centres can confirm, and, at the
-  touch layout (600px wide or less), targets under 44px. Desktop is exempt from
+  on screen, overlapping targets that both centres can confirm (a pair with
+  a pinned control, in a fixed or sticky layer, counts only when the other
+  control cannot scroll clear of the layer and is not behind a covering
+  sheet: `aria-modal`, an open `<dialog>`, or the expanded chat dock;
+  controls the UA does not render, inside a closed `<details>`, are
+  skipped), and, at the touch layout (600px wide or less), targets under 44px. Desktop is exempt from
   the 44px rule: about 1,370 of 1,672 desktop controls measured under 44px
   when it was introduced, so it would measure the desktop design, not defects;
 - horizontal overflow: the document scrolling sideways, and elements that
