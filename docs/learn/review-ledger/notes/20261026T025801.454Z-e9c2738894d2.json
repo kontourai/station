@@ -1,0 +1,11 @@
+{
+  "revision": "a72cc347858dedf5d797a6e57d5dd51fc0117a1f",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"screenshots.spec.ts delta pins the New Project layout screen's modal scroller to its end; reduced-motion screens unchanged.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"screenshots.spec.ts delta makes one screen's scroll position deterministic; the gallery capture and assertion descriptions remain accurate.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"screenshots.spec.ts delta touches the New Project layout screen only; telemetry scenes unchanged.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]}
+  ]
+}
