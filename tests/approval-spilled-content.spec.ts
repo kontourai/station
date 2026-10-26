@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { viewedContentPreimage } from '@kontourai/station-contracts/runtime-event-content';
 import { expect, type Page } from '@playwright/test';
 import { test } from './helpers/fixture-audit';
 import {
@@ -18,6 +20,9 @@ import {
  * content and offers Allow, and the allow carries the proof of the load.
  * The event windows are fixtures shaped like EventStore's stored form; the
  * content route and `respondToRequest` are captured at their real paths.
+ * The content binding is what the server's route returns for these stored
+ * events: the request, its bound `tool.started`, and the digest over both
+ * computed with the shared contract definition.
  */
 
 const CONTENT = Array.from(
@@ -112,6 +117,38 @@ async function settled(page: Page) {
     .toBe(true);
 }
 
+/** The session row the chat reads its state from. */
+async function routeReadModel(
+  page: Page,
+  { running, eventCount }: { running: boolean; eventCount: number },
+) {
+  await page.route('**/api/orchestration/sessions/read-model', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        data: [
+          {
+            threadId: 'session-1',
+            provider: 'claude',
+            status: running ? 'running' : 'idle',
+            lifecycleState: running ? 'running' : 'idle',
+            hasActiveTurn: running,
+            controlMode: 'station-owned',
+            answerability: { answerable: true },
+            isLoaded: true,
+            isPersisted: true,
+            eventCount,
+            createdAt: '2026-10-26T12:00:00.000Z',
+            updatedAt: '2026-10-26T12:00:03.000Z',
+          },
+        ],
+      }),
+    }),
+  );
+}
+
 async function openChat(
   page: Page,
   viewport: { width: number; height: number },
@@ -137,31 +174,7 @@ async function openChat(
   await installMockOrchestrationConversationEventWindow(page, (id) =>
     id === 'conv-1' ? ['session-1'] : [],
   );
-  await page.route('**/api/orchestration/sessions/read-model', (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        success: true,
-        data: [
-          {
-            threadId: 'session-1',
-            provider: 'claude',
-            status: 'running',
-            lifecycleState: 'running',
-            hasActiveTurn: true,
-            controlMode: 'station-owned',
-            answerability: { answerable: true },
-            isLoaded: true,
-            isPersisted: true,
-            eventCount: EVENTS.length,
-            createdAt: '2026-10-26T12:00:00.000Z',
-            updatedAt: '2026-10-26T12:00:02.000Z',
-          },
-        ],
-      }),
-    }),
-  );
+  await routeReadModel(page, { running: true, eventCount: EVENTS.length });
   let release!: () => void;
   const released = new Promise<void>((resolve) => {
     release = resolve;
@@ -184,6 +197,25 @@ async function openChat(
       });
     },
   );
+  const [, toolStarted, request] = EVENTS;
+  const binding = {
+    requestEventId: request!.eventId,
+    request,
+    bound: [toolStarted],
+    required: true,
+    viewedContentDigest: `sha256-${createHash('sha256')
+      .update(viewedContentPreimage(request, [toolStarted]))
+      .digest('hex')}`,
+  };
+  await page.route(
+    '**/api/orchestration/sessions/session-1/requests/approval-big/content-binding',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: binding }),
+      }),
+  );
   const posted: Record<string, unknown>[] = [];
   await page.route('**/api/orchestration/commands', async (route) => {
     posted.push(route.request().postDataJSON());
@@ -205,14 +237,14 @@ async function openChat(
     document.documentElement.setAttribute('data-theme', theme);
   }, colorScheme);
   if (viewport.width < 1440) await page.setViewportSize(viewport);
-  return { release, posted, contentReads };
+  return { release, posted, contentReads, binding };
 }
 
 for (const colorScheme of ['light', 'dark'] as const) {
   test(`a spilled approval offers Allow only after loading it whole at 1440 (${colorScheme})`, async ({
     page,
   }, testInfo) => {
-    const { release, posted, contentReads } = await openChat(
+    const { release, posted, contentReads, binding } = await openChat(
       page,
       { width: 1440, height: 900 },
       colorScheme,
@@ -255,7 +287,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       requestId: 'approval-big',
       expectedRequestEventId: 'evt-approval-big',
       decision: 'accept',
-      viewedContentDigest: expect.stringMatching(/^sha256-[0-9a-f]{64}$/),
+      viewedContentDigest: binding.viewedContentDigest,
     });
   });
 
@@ -359,8 +391,13 @@ const HISTORY = [
   },
 ];
 
-for (const colorScheme of ['light', 'dark'] as const) {
-  test(`spilled history loads on request at 1440 (${colorScheme})`, async ({
+for (const [colorScheme, width, height] of [
+  ['light', 1440, 900],
+  ['dark', 1440, 900],
+  ['light', 390, 844],
+  ['dark', 390, 844],
+] as const) {
+  test(`spilled history loads on request at ${width} (${colorScheme})`, async ({
     page,
   }, testInfo) => {
     await seedActiveChats(page, [
@@ -383,6 +420,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await installMockOrchestrationConversationEventWindow(page, (id) =>
       id === 'conv-1' ? ['session-1'] : [],
     );
+    await routeReadModel(page, { running: false, eventCount: HISTORY.length });
     await page.route(
       '**/api/orchestration/sessions/session-1/content/**',
       async (route) => {
@@ -408,12 +446,13 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await page.evaluate((theme) => {
       document.documentElement.setAttribute('data-theme', theme);
     }, colorScheme);
+    if (width < 1440) await page.setViewportSize({ width, height });
     const loads = page.getByRole('button', { name: 'Load full content' });
     await expect(loads.first()).toBeVisible();
     await page.getByText('Read generated.ts').first().click();
     await page.screenshot({
       path: testInfo.outputPath(
-        `spilled-history-preview-1440-${colorScheme}.png`,
+        `spilled-history-preview-${width}-${colorScheme}.png`,
       ),
     });
     const count = await loads.count();
@@ -426,7 +465,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
     ).toBeAttached();
     await page.screenshot({
       path: testInfo.outputPath(
-        `spilled-history-loaded-1440-${colorScheme}.png`,
+        `spilled-history-loaded-${width}-${colorScheme}.png`,
       ),
     });
   });
