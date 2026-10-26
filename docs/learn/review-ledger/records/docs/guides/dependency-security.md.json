@@ -128,7 +128,13 @@
 
     ".github/workflows/release-advisory.yml",
 
-    "scripts/__tests__/release-advisory-gate.test.ts"
+    "scripts/__tests__/release-advisory-gate.test.ts",
+
+    "scripts/__tests__/dependency-availability.test.ts",
+
+    "scripts/__tests__/dependency-http-availability.process.test.ts",
+
+    "scripts/__tests__/fixtures/dependency-http-availability.mjs"
   ],
 
   "checks": [
