@@ -39,6 +39,13 @@ const retainedInputSchema = z
             ]),
             size: z.number().int().nonnegative(),
             dataUrl: z.string(),
+            // Envelopes retained before `captureTurnIntent` projected
+            // attachments carry whatever extra handle their caller left on
+            // them. They must keep decoding: the digests cover these exact
+            // bytes, so a refusal here strands the turn's boundary
+            // retirement. New captures contain neither.
+            clientAttachmentId: z.string().optional(),
+            blobRef: z.string().optional(),
           })
           .strict(),
       )
@@ -166,6 +173,21 @@ export function captureTurnIntent(
     'recoveryCorrelationId',
   ] as const) {
     if (input[key] !== undefined) dto[key] = input[key];
+  }
+  // Callers hand over more than the contract: a staged upload keeps its
+  // composer handle, and an attachment read back from the event log keeps its
+  // blob reference. The retained schema is strict, so project to the contract
+  // here rather than have every caller strip its own extras.
+  if (input.attachments) {
+    dto.attachments = input.attachments.map(
+      ({ kind, name, mimeType, size, dataUrl }) => ({
+        kind,
+        name,
+        mimeType,
+        size,
+        dataUrl,
+      }),
+    );
   }
   const inputJson = canonical(dto);
   const invocationId = randomUUID();

@@ -1,0 +1,7 @@
+{
+  "revision": "5cf6a1ffd472daf242ccf37a40117ed75f99b3fb",
+
+  "notes": [
+    {"path":"packages/monument/CONTEXT.md","note":"Re-checked after captureTurnIntent copies dataUrl unconditionally (an attachment without bytes is refused at capture, as before): no claim here describes capture-time attachment handling beyond the submission digest, which is unchanged.","inputs":["packages/monument/CONTEXT.md","src-server/services/orchestration/prepared-turn-intent.ts"]}
+  ]
+}

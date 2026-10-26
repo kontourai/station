@@ -158,6 +158,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/orchestration/__tests__/delegation-flow-lock-admission.test.ts',
   'src-server/services/orchestration/__tests__/delegation-group-sdk-source-wire-owner.test.ts',
 
+  // Real bounded Node children exercise failure receipts without running another corpus.
+  'scripts/__tests__/run-vitest-corpus.test.ts',
   // Real private Git fixtures and hardened cat-file verification through the MCP route.
   'src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts',
   // Small loopback responses exercise dependency stream ownership in naturally exiting children.
