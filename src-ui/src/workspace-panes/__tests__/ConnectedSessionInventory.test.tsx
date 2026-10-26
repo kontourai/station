@@ -1182,6 +1182,7 @@ describe.skipIf(!chromiumAvailable)(
           const item = page.locator('.session-inventory__item').nth(1);
           const itemBox = await item.boundingBox();
           const badge = item.locator('.session-inventory__item-status');
+          await expectPlaywright(badge).toHaveCount(1);
           const badgeBox = await badge.boundingBox();
           const toggle = item.getByRole('button', {
             name: 'Read View details',
