@@ -90,6 +90,7 @@ import {
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import { CHAT_INPUT_MAX_CHARS } from '../../../src-shared/chat-input-limits.js';
+import { servesSessionInventoryInputRead } from '../../capabilities/station-capability-flags.js';
 import {
   ORCHESTRATION_STREAM_REPLAY_MAX_SERIALIZED_BYTES,
   ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD,
@@ -5752,7 +5753,9 @@ export function createOrchestrationRoutes(
     const unavailable = (status: 404 | 503 = 404) =>
       c.json({ success: false, error: 'Input unavailable' }, status);
     if (
-      deps.hostedTenantRegistry !== undefined ||
+      !servesSessionInventoryInputRead({
+        hosted: deps.hostedTenantRegistry !== undefined,
+      }) ||
       !boundedToolResultId(threadId) ||
       !boundedToolResultId(eventId) ||
       !turnId ||

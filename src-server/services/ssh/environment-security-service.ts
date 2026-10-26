@@ -68,7 +68,8 @@ import {
 export { EnvironmentSecurityRecordError } from '@kontourai/station-shared/environment-security-record';
 
 import packageJson from '../../../package.json' with { type: 'json' };
-import { STATION_CAPABILITY_FLAGS } from '../../capabilities/station-capability-flags.js';
+import { resolveStationCapabilityFlags } from '../../capabilities/station-capability-flags.js';
+import { isHostedTenantExecutionRequired } from '../../runtime/bootstrap/hosted-tenant-mode.js';
 import { sleep } from '../../utils/sleep.js';
 import { principalForDeviceBinding } from '../access/device-binding-principal.js';
 import { StationGroupsService } from '../access/station-groups-service.js';
@@ -132,6 +133,12 @@ interface EnvironmentSecurityServiceOptions {
   now?: () => number;
   isProcessAlive?: (pid: number) => boolean;
   hostIdentity?: string;
+  /**
+   * Deployment environment the handshake's capability flags are resolved
+   * against (#4177). Read once at construction, like the hosted tenant
+   * registry itself; defaults to `process.env`.
+   */
+  environment?: NodeJS.ProcessEnv;
 }
 
 interface EnvironmentSecurityLockRecord {
@@ -210,6 +217,7 @@ export class EnvironmentSecurityService {
   readonly #now: () => number;
   readonly #isProcessAlive: (pid: number) => boolean;
   readonly #hostIdentity: string;
+  readonly #hosted: boolean;
   #devicePairingService?: DevicePairingService;
   readonly #groups: StationGroupsService;
 
@@ -224,6 +232,9 @@ export class EnvironmentSecurityService {
     this.#now = options.now ?? Date.now;
     this.#isProcessAlive = options.isProcessAlive ?? defaultIsProcessAlive;
     this.#hostIdentity = options.hostIdentity ?? resolveHostname();
+    this.#hosted = isHostedTenantExecutionRequired(
+      options.environment ?? process.env,
+    );
     this.#groups = new StationGroupsService({ securityDir: this.#securityDir });
   }
 
@@ -755,9 +766,9 @@ export class EnvironmentSecurityService {
       // clients already parse, so adding this cannot change their behavior.
       compatibility: { ...HOST_STATION_COMPATIBILITY },
       // Additive (archive#1095): same guarantee as `compatibility` above.
-      // STATION_CAPABILITY_FLAGS is the single source of truth — add a flag
-      // there, not here.
-      capabilities: { ...STATION_CAPABILITY_FLAGS },
+      // station-capability-flags.ts is the single source of truth — add a
+      // flag there, not here. It withdraws flags this deployment can't serve.
+      capabilities: resolveStationCapabilityFlags({ hosted: this.#hosted }),
     };
   }
 
