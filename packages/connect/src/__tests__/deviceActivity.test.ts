@@ -266,6 +266,7 @@ describe('describeDeviceScope', () => {
       'access:approve',
       'inference:invoke',
       'access:manage',
+      'terminal:observe',
       'terminal:operate',
       'orchestration:operate',
       'orchestration:read',

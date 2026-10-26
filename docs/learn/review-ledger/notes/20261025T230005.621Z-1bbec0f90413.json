@@ -1,0 +1,7 @@
+{
+  "revision": "d45975b9daa8234b55e6cf9c3af26f908e1cfe16",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Pending-set removal bullet now says the less-trusted guarantee holds while the migration journal is intact (crash between journal and file plus journal loss can re-grandfather), and that an install racing a migration's journal step fails closed with 503 without a retry. Checked against writePluginTrustRecord and the new transaction-level test, which catches the trustWitness-to-undefined revert.","inputs":["docs/design/shell-plugins-distributions.md","src-server/services/plugins/plugin-install-trust-store.ts"]}
+  ]
+}

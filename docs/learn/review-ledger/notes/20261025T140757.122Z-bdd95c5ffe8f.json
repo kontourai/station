@@ -1,0 +1,7 @@
+{
+  "revision": "c85b9e695a54cc9ca67370d3f254fc489130abfd",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Reviewed the added independent memory-byte and per-record UTF-8 cases and the retention fixture completion at shell exit. Whole-segment eviction may retain less than the configured limit; tests no longer require an evicted prompt-adjacent marker. Production code remains identical to the fb4f2d2867a security-reviewed source. Service, journal, migration and observer proof does not qualify Windows, native/remote clients, full VT fidelity or release.","inputs":["docs/design/terminal.md","src-server/services/terminal/__tests__/terminal-sessions.process.test.ts"]}
+  ]
+}

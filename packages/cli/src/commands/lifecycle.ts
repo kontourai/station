@@ -143,8 +143,8 @@ import {
 } from './platform.js';
 import type { CommandRunner } from './service.js';
 import {
-  renderServiceInstallRemedy,
   renderServiceStatusCommand,
+  resolveInstalledServiceRemedy,
 } from './service-remedy.js';
 import { inspectServiceSchedulingPolicy } from './service-scheduling.js';
 import {
@@ -6002,8 +6002,11 @@ function reportSchedulingPolicyUpgradeGuidance(stationHome?: string): void {
         baseDir?: unknown;
         features?: unknown;
         host?: unknown;
+        installRoot?: unknown;
+        kind?: unknown;
         platform?: unknown;
         serverPort?: unknown;
+        stationRoot?: unknown;
         taskName?: unknown;
         uiPort?: unknown;
         unitPath?: unknown;
@@ -6033,11 +6036,25 @@ function reportSchedulingPolicyUpgradeGuidance(stationHome?: string): void {
         console.log(
           `\nService scheduling is stale for ${manifest.instanceId} (${scheduling.observed}, expected ${scheduling.expected}).`,
         );
-        const remedy = renderServiceInstallRemedy(manifest, stationHome);
+        // From the installed unit itself: it is named by instance id
+        // alone, so this home's manifest may not describe it (#4189).
+        const remedy = resolveInstalledServiceRemedy(
+          {
+            ...manifest,
+            platform: manifest.platform,
+            taskName:
+              typeof manifest.taskName === 'string'
+                ? manifest.taskName
+                : undefined,
+            unitPath: manifest.unitPath,
+          },
+          stationHome,
+          { fs: { readFileSync }, run: runServiceProbe },
+        );
         console.log(
-          remedy
-            ? `Run "${remedy}" to update the registration; upgrade does not reinstall services automatically.`
-            : 'The installed registration does not record every setting, so Station will not suggest a reinstall command. Inspect its manifest before reinstalling; upgrade does not reinstall services automatically.',
+          remedy.command
+            ? `Run "${remedy.command}" to update the registration; upgrade does not reinstall services automatically.`
+            : `Station will not suggest a reinstall command: ${remedy.reason} Upgrade does not reinstall services automatically.`,
         );
       } else if (scheduling.status === 'unknown') {
         console.log(

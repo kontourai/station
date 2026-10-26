@@ -25,6 +25,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [WalkthroughService](#walkthroughservice) | Import a local recording into an immutable validated manifest and selected frames. | `src-server/services/walkthroughs/walkthrough-service.ts` |
 | --- | --- | --- |
 | [Local speech and media tools](#local-speech-and-media-tools) | Resolve consented media tools and transcribe bounded local audio/video. | `src-server/services/media-tools/media-tools-resolver.ts` |
+| [TerminalSessions](#terminalsessions) | Authorize Project/binding terminal operations and preserve bounded numbered output across reconnects. | `src-server/services/terminal/terminal-sessions.ts` |
 | [ProductTelemetryReceiver](#producttelemetryreceiver) | Commit and query disclosed product observations with scoped source credentials and explicit delivery coverage. | `packages/telemetry-broker/src/store.ts` |
 | [PluginTelemetryPublisher](#plugintelemetrypublisher) | Validate signed public publisher declarations and deliver kernel-owned, per-publisher counts under notice/consent policy. | `src-server/services/plugin-telemetry-service.ts` |
 | [VirtualApplicationIngress](#virtualapplicationingress) | Dispatch encrypted connector requests into ordinary application authorization without socket or cookie authority. | `src-server/services/connections/virtual-application.ts` |
@@ -5152,3 +5153,24 @@ HTTP fetchers. MCP reads images in bounded pages. The Activity operation row
 shows import progress and reopens the Project; no recording/review UI is added.
 See the [guide](../guides/walkthroughs.md#verification-limits) for evidence owners
 and explicit recognition, hosted and publication limits.
+
+## TerminalSessions
+
+[TerminalSessions](../../src-server/services/terminal/terminal-sessions.ts) owns
+instance UUIDs, durable Project/binding records, cwd confinement and operation
+authority. [ShellHost](../../src-server/services/terminal/shell-host.ts) supplies
+a replaceable process handle; the in-process implementation uses node-pty.
+[TerminalJournal](../../src-server/services/terminal/terminal-journal.ts) owns
+serialized sanitized records, bounded memory and append-only disk segments.
+The [personal-operator control routes](../../src-server/routes/projects/terminal-session-routes.ts)
+are composed by runtime routes and disposed through TerminalService. Hosted,
+account, device, agent and plugin admission is withheld. The legacy Coding
+socket and process projections retain their current owner during migration.
+
+The [design boundary](../design/terminal.md#first-implementation-boundary-3994-part-a)
+separates this foundation from supervisor survival, retention Settings, the
+public observe grant, same-origin transport, SDK runtime and Ghostty. The
+[real PTY suite](../../src-server/services/terminal/__tests__/terminal-sessions.process.test.ts)
+checks durable replay, scope/cwd refusals, service-level observer refusal,
+journal bounds and history migration. It does not qualify Windows, native
+clients, live remote access, or process survival across server restarts.

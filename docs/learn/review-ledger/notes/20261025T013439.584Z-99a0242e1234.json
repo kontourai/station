@@ -1,0 +1,7 @@
+{
+  "revision": "9163ee6767ef4a9add94e5f0788e88dcff2555d6",
+
+  "notes": [
+    {"path":"docs/plans/plugin-core-delivery.md","note":"Install-trust row now states part 1 and part 2a implemented; 2b exposure/decision UI and 2c denylist pending. Checked against the committed modules.","inputs":["docs/plans/plugin-core-delivery.md"]}
+  ]
+}
