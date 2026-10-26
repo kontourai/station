@@ -409,17 +409,14 @@ It claims neither success nor failure; the inventory lists and counts it under
 Execution, and the reader shows it as "No result recorded". Clients of protocol
 3 or lower validate the terminal status exactly, so for them the host omits such
 rows as before (never folding them into `cancelled`). An `unresolved`
-completion is not listed when a later result of the same call id replaces it in
-the transcript (station#1569), by the transcript's own rule: a completion right
-after a start of a compatible turn is that start's result and is skipped, an
-unclaimed completion of another turn is skipped, a later `unresolved`
-completion takes over the replaceable slot, and the first unclaimed completion
-of a compatible turn before that replaces the row. Turns are compatible when
-they are equal or either is absent. The lookup is one index range seek and reads
-only events at or below the read's frozen high-water mark. A page cursor
-records the
-owner events a page read, not the rows it kept, so paging past an omitted row
-resumes at the right event. Inventory
+completion is listed only while the conversation transcript still shows it:
+a later result of the same call can replace that row (station#1569), and the
+transcript projection (`projectRuntimeEventsToMessages`) decides, over the
+thread's events at or below the read's frozen high-water mark. The projection
+runs only when a listing meets an unresolved row, once per thread and
+high-water mark; continuation pages reuse it. A page cursor records the owner
+events a page read, not the rows it kept, so paging past an omitted row resumes
+at the right event. Inventory
 continuations bind the client dialect as well as scope and authority. Output
 pages filter the durable declaration index by the exact turn before paging,
 and their signed cursors cannot be reused for another turn or Whole Session.

@@ -127,8 +127,13 @@ function empty(id: SessionInventoryV2GroupId): SessionInventoryV2Group {
  */
 export function createSessionInventoryModule(input: {
   sessionOutputs: SessionOutputsModule;
-  /** Indexed canonical facts only; never a transcript/event-page replay. */
-  /** Complete, allowlisted historical descriptors for Whole Session only. */
+  /**
+   * Complete, allowlisted historical descriptors for Whole Session only. The
+   * rows are indexed canonical facts; to decide whether an \`unresolved\`
+   * completion still stands, the store runs the transcript projection over
+   * the thread's events once per read (#4178), and only when the page meets
+   * one.
+   */
   readWholeSessionEvents?: (
     sessionId: string,
     frozenHighWater?: number,
