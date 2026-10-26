@@ -141,3 +141,41 @@ test.each([false, true])(
       );
   },
 );
+
+test('receiving source removal remains reachable through the source action menu', async () => {
+  const recipientId = '11234567-89ab-4cde-8fab-0123456789ab';
+  h.mutate.mockResolvedValue({});
+  render(
+    <AnalyticsSourceSetup
+      scope={scope}
+      sources={[
+        {
+          id: recipientId,
+          stationId: 'owned-source',
+          ready: true,
+          retainedCopy: false,
+        },
+      ]}
+    />,
+  );
+  fireEvent.click(screen.getByText('Connect or manage private sources'));
+  fireEvent.change(screen.getByLabelText('Owned receiving slot'), {
+    target: { value: recipientId },
+  });
+  expect(
+    screen.getByRole('button', { name: 'Review source address' }),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Request private storage preparation' }),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'More source actions' }));
+  fireEvent.click(
+    screen.getByRole('menuitem', { name: 'Stop receiving source' }),
+  );
+  await waitFor(() =>
+    expect(h.mutate).toHaveBeenCalledWith({
+      kind: 'cancel-receiver',
+      recipientId,
+    }),
+  );
+});

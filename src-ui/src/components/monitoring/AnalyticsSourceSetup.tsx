@@ -18,6 +18,7 @@ import { useState } from 'react';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { copyToClipboard } from '../../lib/clipboard';
 import { prepareRequesterConsentReview } from '../../platform/native/requesterConsent';
+import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 
 function Packet({ label, value }: { label: string; value: unknown }) {
@@ -501,34 +502,44 @@ export function AnalyticsSourceSetup({
             Store encrypted connection
           </Button>
           <div className="personal-insights-actions">
-            <Button
-              disabled={!recipientId}
-              onClick={() =>
-                void review({ kind: 'address-review', recipientId })
+            <ActionRow
+              overflowLabel="More source actions"
+              primary={
+                <Button
+                  disabled={!recipientId || action.isPending}
+                  onClick={async () => {
+                    const result = await run({
+                      kind: 'storage-preparation',
+                      recipientId,
+                      requestId: randomCorrelationId(),
+                    });
+                    setStoragePreparation(result?.storagePreparation);
+                  }}
+                >
+                  Request private storage preparation
+                </Button>
               }
-            >
-              Review source address
-            </Button>
-            <Button
-              disabled={!recipientId || action.isPending}
-              onClick={async () => {
-                const result = await run({
-                  kind: 'storage-preparation',
-                  recipientId,
-                  requestId: randomCorrelationId(),
-                });
-                setStoragePreparation(result?.storagePreparation);
-              }}
-            >
-              Request private storage preparation
-            </Button>
-            <Button
-              disabled={!recipientId}
-              variant="danger-outline"
-              onClick={() => void run({ kind: 'cancel-receiver', recipientId })}
-            >
-              Stop receiving source
-            </Button>
+              secondary={
+                <Button
+                  disabled={!recipientId}
+                  onClick={() =>
+                    void review({ kind: 'address-review', recipientId })
+                  }
+                >
+                  Review source address
+                </Button>
+              }
+              overflow={[
+                {
+                  key: 'stop-receiving',
+                  label: 'Stop receiving source',
+                  tone: 'danger',
+                  disabled: !recipientId,
+                  onSelect: () =>
+                    void run({ kind: 'cancel-receiver', recipientId }),
+                },
+              ]}
+            />
           </div>
           {storagePreparation &&
           storagePreparation.recipientId === recipientId ? (
