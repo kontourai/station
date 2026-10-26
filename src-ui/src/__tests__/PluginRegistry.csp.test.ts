@@ -23,26 +23,26 @@ function pluginScript(): HTMLScriptElement | null {
   );
 }
 
-/**
- * jsdom leaves an external script inert, so stand in for the browser's load.
- *
- * `evaluate` runs before the load event is dispatched, which is the real
- * order: a classic script's `load` fires after its evaluation, so anything a
- * bundle registers is on the window by the time the browser reports the load.
- */
+async function awaitPluginScript(): Promise<HTMLScriptElement> {
+  return await vi.waitFor(
+    () => {
+      const script = pluginScript();
+      if (!script)
+        throw new Error('no plugin script element was ever appended');
+      return script;
+    },
+    { timeout: 30_000 },
+  );
+}
+
+/** jsdom does not load URL scripts; evaluation precedes the browser's load event. */
 async function completeBundleLoad(
   evaluate?: () => void,
 ): Promise<HTMLScriptElement> {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    const script = pluginScript();
-    if (script) {
-      evaluate?.();
-      script.dispatchEvent(new Event('load'));
-      return script;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
-  throw new Error('no plugin script element was ever appended');
+  const script = await awaitPluginScript();
+  evaluate?.();
+  script.dispatchEvent(new Event('load'));
+  return script;
 }
 
 function stubInventory(bundleBody = 'void 0;') {
@@ -75,6 +75,7 @@ afterEach(() => {
     .forEach((node) => node.remove());
   delete (window as any).__station_ai_plugins;
   delete (window as any).__STATION_CSP_NONCE__;
+  delete (window as any).__STATION_PLUGIN_CAPABILITY__;
   delete (window as any).require;
 });
 
@@ -147,10 +148,7 @@ describe('same-origin plugin bundles', () => {
     const registry = new PluginRegistry();
     registry.setApiBase(SAME_ORIGIN);
     const settled = registry.reload();
-    for (let attempt = 0; attempt < 200 && !pluginScript(); attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    }
-    pluginScript()?.dispatchEvent(new Event('error'));
+    (await awaitPluginScript()).dispatchEvent(new Event('error'));
 
     expect(await settled).toBe('degraded');
     expect(registry.getLoadStatus().failedPluginNames).toEqual(['demo-layout']);
@@ -162,23 +160,170 @@ describe('same-origin plugin bundles', () => {
   });
 });
 
-describe('cross-origin plugin bundles (the desktop shell)', () => {
-  test('still inline the fetched bytes under the shell nonce', async () => {
-    const marker = document.createElement('script');
-    marker.nonce = 'tauri-runtime-nonce';
-    marker.setAttribute('data-station-csp-nonce', '');
-    document.head.appendChild(marker);
-    stubInventory('window.__desktop_bundle_ran = true;');
+describe('Desktop installed plugin delivery', () => {
+  test.each(['station-plugin://localhost', 'http://station-plugin.localhost'])(
+    'loads installed CSS and JavaScript through %s without a nonce',
+    async (protocolOrigin) => {
+      const convertFileSrc = vi.fn(() => `${protocolOrigin}/`);
+      vi.stubGlobal('__TAURI_INTERNALS__', { convertFileSrc });
+      vi.stubGlobal('__STATION_PLUGIN_CAPABILITY__', 'C'.repeat(43));
+      const marker = document.createElement('script');
+      marker.nonce = 'shell-only-nonce';
+      marker.setAttribute('data-station-csp-nonce', '');
+      document.head.appendChild(marker);
+      const fetchMock = stubInventory();
+      const registry = new PluginRegistry(
+        Promise.resolve({ platform: 'tauri' }),
+      );
+      registry.setApiBase('http://127.0.0.1:43123');
+      const settled = registry.reload();
+      const css = await vi.waitFor(() => {
+        const link = document.head.querySelector<HTMLLinkElement>(
+          'link[data-station-plugin]',
+        );
+        if (!link) throw new Error('Desktop stylesheet was not appended');
+        return link;
+      });
+      expect(css.href).toBe(
+        `${protocolOrigin}/api/plugins/demo-layout/bundle.css?port=43123&capability=${'C'.repeat(43)}`,
+      );
+      expect(css.referrerPolicy).toBe('no-referrer');
+      css.dispatchEvent(new Event('load'));
+      const script = await completeBundleLoad(() => {
+        Object.assign(window, {
+          __station_ai_plugins: {
+            'demo-layout': { components: { 'desktop-pane': () => null } },
+          },
+        });
+      });
+      expect(script.src).toBe(
+        `${protocolOrigin}/api/plugins/demo-layout/bundle.js?port=43123&capability=${'C'.repeat(43)}`,
+      );
+      expect(script.referrerPolicy).toBe('no-referrer');
+      expect(script.nonce).toBe('');
+      expect(script.getAttribute('nonce')).toBeNull();
+      expect(script.textContent).toBe('');
+      expect(await settled).toBe('ready');
+      expect(registry.hasLayout('desktop-pane')).toBe(true);
+      expect(convertFileSrc).toHaveBeenCalledWith('', 'station-plugin');
+      expect(fetchMock.mock.calls.map(([input]) => input.toString())).toEqual([
+        'http://127.0.0.1:43123/api/plugins',
+      ]);
+      // Drafts have a different byte/authorization contract and stay refused.
+      expect(await registry.executesBundlesInProcess()).toBe(false);
+    },
+  );
 
+  test.each([undefined, '', 'short', 'x'.repeat(44)])(
+    'refuses installed assets without a valid launch capability (%s)',
+    async (capability) => {
+      vi.stubGlobal('__STATION_PLUGIN_CAPABILITY__', capability);
+      const convertFileSrc = vi.fn(() => 'station-plugin://localhost/');
+      vi.stubGlobal('__TAURI_INTERNALS__', { convertFileSrc });
+      stubInventory();
+      const registry = new PluginRegistry(
+        Promise.resolve({ platform: 'tauri' }),
+      );
+      registry.setApiBase('http://127.0.0.1:43123');
+      expect(await registry.reload()).toBe('degraded');
+      expect(registry.getLoadStatus().failedPluginNames).toEqual([
+        'demo-layout',
+      ]);
+      expect(document.head.querySelector('[data-station-plugin]')).toBeNull();
+      expect(convertFileSrc).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each([
+    [SAME_ORIGIN, false],
+    [SAME_ORIGIN, true],
+    ['http://127.0.0.1:43123', false],
+    ['http://127.0.0.1:43123', true],
+  ] as const)(
+    'refuses Desktop draft execution on %s with remote consent %s before loading assets',
+    async (apiBase, allowRemoteBundles) => {
+      const convertFileSrc = vi.fn(() => 'station-plugin://localhost/');
+      vi.stubGlobal('__TAURI_INTERNALS__', { convertFileSrc });
+      const fetchMock = stubInventory();
+      const registry = new PluginRegistry(
+        Promise.resolve({ platform: 'tauri' }),
+      );
+      registry.setApiBase(apiBase, 'local', {
+        allowRemoteBundles,
+      });
+      await expect(
+        registry.loadDraftBundle({
+          bundleUrl: `${apiBase}/api/plugin-drafts/project/revision/bundle.js`,
+          cssUrl: `${apiBase}/api/plugin-drafts/project/revision/bundle.css`,
+          registrationKey: 'desktop-draft',
+          signal: new AbortController().signal,
+        }),
+      ).rejects.toThrow('Plugin drafts do not run on this connection.');
+      expect(convertFileSrc).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(document.querySelector('[data-station-plugin-draft]')).toBeNull();
+    },
+  );
+
+  test.each(['http://localhost:43123', 'http://127.0.0.1:43123/foreign'])(
+    'does not turn %s into supervised Desktop authority',
+    async (apiBase) => {
+      const convertFileSrc = vi.fn();
+      vi.stubGlobal('__TAURI_INTERNALS__', { convertFileSrc });
+      stubInventory();
+      const registry = new PluginRegistry(
+        Promise.resolve({ platform: 'tauri' }),
+      );
+      registry.setApiBase(apiBase, apiBase, { allowRemoteBundles: true });
+      expect(await registry.reload()).toBe('degraded');
+      expect(convertFileSrc).not.toHaveBeenCalled();
+      expect(pluginScript()).toBeNull();
+    },
+  );
+});
+
+describe('cross-origin plugin bundles', () => {
+  test.each([false, true])(
+    'refuses installed bytes even with remote consent %s and a shell nonce',
+    async (allowRemoteBundles) => {
+      const marker = document.createElement('script');
+      marker.nonce = 'tauri-runtime-nonce';
+      marker.setAttribute('data-station-csp-nonce', '');
+      document.head.appendChild(marker);
+      const fetchMock = stubInventory('window.__desktop_bundle_ran = true;');
+      const registry = new PluginRegistry(
+        Promise.resolve({ platform: 'web' as const }),
+      );
+      registry.setApiBase(CROSS_ORIGIN, 'local', { allowRemoteBundles });
+
+      expect(await registry.reload()).toBe('degraded');
+      expect(registry.getLoadStatus()).toEqual({
+        state: 'degraded',
+        failedPluginNames: ['demo-layout'],
+        failure: 'bundle-load-failure',
+      });
+      expect(pluginScript()).toBeNull();
+      expect(
+        fetchMock.mock.calls.map(([input]) => input.toString()),
+      ).not.toContain(`${CROSS_ORIGIN}/api/plugins/demo-layout/bundle.js`);
+      expect(await registry.executesBundlesInProcess()).toBe(false);
+    },
+  );
+
+  test('refuses a cross-origin draft URL on an otherwise same-origin connection', async () => {
+    stubInventory();
     const registry = new PluginRegistry();
-    registry.setApiBase(CROSS_ORIGIN);
-    await registry.initialize();
-
-    const script = pluginScript();
-    expect(script?.getAttribute('src')).toBe(null);
-    expect(script?.textContent).toContain('window.__desktop_bundle_ran');
-    // Disclosed residual: Tauri's window is its asset origin, so `'self'`
-    // cannot admit the loopback bundle URL and this path still needs a nonce.
-    expect(script?.nonce).toBe('tauri-runtime-nonce');
+    registry.setApiBase(SAME_ORIGIN);
+    expect(await registry.executesBundlesInProcess()).toBe(true);
+    await expect(
+      registry.loadDraftBundle({
+        bundleUrl: `${CROSS_ORIGIN}/draft.js`,
+        registrationKey: 'draft',
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toThrow('Cross-origin plugin bundles are not supported.');
+    expect(
+      document.querySelector('script[data-station-plugin-draft]'),
+    ).toBeNull();
   });
 });

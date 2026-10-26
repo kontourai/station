@@ -54,79 +54,116 @@ describe('PluginRegistry inventory timeout', () => {
     await expect(reloading).resolves.toBe('degraded');
   });
 
-  // The bundle fetches carry the same deadline as the inventory: a Station
-  // that lists a plugin and then never answers for its bytes must degrade the
-  // load, not leave plugin discovery pending forever.
-  test.each([
-    ['CSS', '/bundle.css'],
-    ['JavaScript', '/bundle.js'],
-  ])(
-    'a hung %s bundle fetch degrades the load at its deadline',
-    async (_label, hungPath) => {
-      vi.spyOn(log, 'api').mockImplementation(() => {});
-      const deadlines: AbortController[] = [];
-      vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => {
-        const deadline = new AbortController();
-        deadlines.push(deadline);
-        return deadline.signal;
-      });
-      let hungDeadline: AbortController | undefined;
-      let markHung!: () => void;
-      const hung = new Promise<void>((resolve) => {
-        markHung = resolve;
-      });
+  test('a hung CSS fetch degrades the load at its deadline', async () => {
+    const hungPath = '/bundle.css';
+    vi.spyOn(log, 'api').mockImplementation(() => {});
+    const deadlines: AbortController[] = [];
+    vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => {
+      const deadline = new AbortController();
+      deadlines.push(deadline);
+      return deadline.signal;
+    });
+    let hungDeadline: AbortController | undefined;
+    let markHung!: () => void;
+    const hung = new Promise<void>((resolve) => {
+      markHung = resolve;
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith('/api/plugins')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              plugins: [{ name: 'slow-plugin', hasBundle: true }],
+            }),
+          });
+        }
+        if (url.endsWith(hungPath)) {
+          // The newest deadline issued so far: this request's own, if it
+          // has one.
+          hungDeadline = deadlines.at(-1);
+          markHung();
+          return new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener(
+              'abort',
+              () => reject(new DOMException('Timed out', 'TimeoutError')),
+              { once: true },
+            );
+          });
+        }
+        return Promise.resolve({ ok: true, text: async () => '' });
+      }),
+    );
+
+    const registry = new PluginRegistry();
+    // CSS still uses authenticated fetch; JavaScript uses a script URL.
+    registry.setApiBase('http://127.0.0.1:3141');
+    const reloading = registry.reload();
+
+    await hung;
+    // A bundle fetch without a deadline of its own captured an earlier
+    // request's, whose firing cannot reach this fetch, so the reload stays
+    // pending and the race below reds.
+    hungDeadline?.abort();
+
+    const pending = Symbol('still pending');
+    await expect(
+      Promise.race([
+        reloading,
+        new Promise((resolve) => setTimeout(() => resolve(pending), 100)),
+      ]),
+    ).resolves.toBe('degraded');
+    expect(registry.getLoadStatus()).toMatchObject({
+      state: 'degraded',
+      failedPluginNames: ['slow-plugin'],
+      failure: 'bundle-load-failure',
+    });
+  });
+
+  test('a script URL that never reports load degrades when its deadline elapses', async () => {
+    vi.useFakeTimers();
+    try {
       vi.stubGlobal(
         'fetch',
-        vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-          const url = String(input);
-          if (url.endsWith('/api/plugins')) {
-            return Promise.resolve({
-              ok: true,
-              json: async () => ({
-                plugins: [{ name: 'slow-plugin', hasBundle: true }],
-              }),
+        vi.fn(async (input: RequestInfo | URL) => {
+          if (String(input).endsWith('/api/plugins'))
+            return Response.json({
+              plugins: [{ name: 'slow-plugin', hasBundle: true }],
             });
-          }
-          if (url.endsWith(hungPath)) {
-            // The newest deadline issued so far: this request's own, if it
-            // has one.
-            hungDeadline = deadlines.at(-1);
-            markHung();
-            return new Promise<Response>((_resolve, reject) => {
-              init?.signal?.addEventListener(
-                'abort',
-                () => reject(new DOMException('Timed out', 'TimeoutError')),
-                { once: true },
-              );
-            });
-          }
-          return Promise.resolve({ ok: true, text: async () => '' });
+          return new Response('');
         }),
       );
-
-      const registry = new PluginRegistry();
-      // Loopback, and cross-origin to jsdom, so both bundles are fetched.
-      registry.setApiBase('http://127.0.0.1:3141');
-      const reloading = registry.reload();
-
-      await hung;
-      // A bundle fetch without a deadline of its own captured an earlier
-      // request's, whose firing cannot reach this fetch, so the reload stays
-      // pending and the race below reds.
-      hungDeadline?.abort();
-
-      const pending = Symbol('still pending');
-      await expect(
-        Promise.race([
-          reloading,
-          new Promise((resolve) => setTimeout(() => resolve(pending), 100)),
-        ]),
-      ).resolves.toBe('degraded');
-      expect(registry.getLoadStatus()).toMatchObject({
-        state: 'degraded',
-        failedPluginNames: ['slow-plugin'],
-        failure: 'bundle-load-failure',
+      const registry = new PluginRegistry(Promise.resolve({ platform: 'web' }));
+      registry.setApiBase('http://localhost:3000');
+      let settled: string | undefined;
+      const reloading = registry.reload().then((result) => {
+        settled = result;
+        return result;
       });
-    },
-  );
+      const script = await vi.waitFor(() => {
+        const element = document.head.querySelector<HTMLScriptElement>(
+          'script[data-station-plugin]',
+        );
+        if (!element) throw new Error('Plugin script was not appended.');
+        return element;
+      });
+      expect(script.src).toBe(
+        'http://localhost:3000/api/plugins/slow-plugin/bundle.js',
+      );
+      expect(settled).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS);
+      expect(settled).toBe('degraded');
+      await reloading;
+      expect(registry.getLoadStatus().failedPluginNames).toEqual([
+        'slow-plugin',
+      ]);
+    } finally {
+      document.head
+        .querySelectorAll('[data-station-plugin]')
+        .forEach((node) => node.remove());
+      vi.useRealTimers();
+    }
+  });
 });

@@ -87,6 +87,38 @@ describe('installConsoleCapture', () => {
     ]);
   });
 
+  test.each(['station-plugin://localhost', 'http://station-plugin.localhost'])(
+    'redacts %s asset locations from reportable errors and console messages',
+    (origin) => {
+      console.error = vi.fn();
+      installConsoleCapture();
+      const url = `${origin}/api/plugins/demo/bundle.js?port=43123&capability=${'S'.repeat(43)}`;
+      window.dispatchEvent(
+        new ErrorEvent('error', {
+          message: 'Plugin failed',
+          filename: url,
+          lineno: 7,
+        }),
+      );
+      console.error({ url });
+      const entries = readCapturedConsoleEntries();
+      expect(entries).toHaveLength(2);
+      for (const entry of entries) {
+        expect(entry.message).toContain('/api/plugins/demo/bundle.js');
+        expect(entry.message).not.toContain('capability');
+        expect(entry.message).not.toContain(origin);
+        expect(entry.message).not.toContain('S'.repeat(43));
+      }
+      expect(entries[0]?.message).toContain('Plugin failed');
+      expect(entries[0]?.message).toContain('/api/plugins/demo/bundle.js:7');
+      expect(entries[1]?.message).toContain('bundle.js');
+      console.warn(`at render (${url}#private:12:7)`);
+      expect(readCapturedConsoleEntries().at(-1)?.message).toBe(
+        'at render (/api/plugins/demo/bundle.js:12:7)',
+      );
+    },
+  );
+
   test('formats Error arguments and survives unserializable values', () => {
     console.error = vi.fn();
     installConsoleCapture();

@@ -79,8 +79,8 @@ export const EXPECTED_TAURI_PERMISSIONS = [
 ];
 export const EXPECTED_TAURI_CSP = {
   'default-src': "'none'",
-  'script-src': "'self' 'wasm-unsafe-eval'",
-  'style-src': "'self' 'unsafe-inline'",
+  'script-src': "'self' 'wasm-unsafe-eval' station-plugin:",
+  'style-src': "'self' 'unsafe-inline' station-plugin:",
   'connect-src': "'self' ipc: http://ipc.localhost http: https: ws: wss:",
   'font-src': "'self' data:",
   'img-src': "'self' asset: http://asset.localhost data: blob: http: https:",
@@ -102,6 +102,8 @@ export const TAURI_ADAPTER_FILES = new Set([
   'src-ui/src/platform/native/tauriInvoke.ts',
   // Narrow lazy app-identity read for channel-aware shell labels.
   'src-ui/src/platform/native/productName.ts',
+  // Converts installed bundle paths to the narrow host-authenticated protocol.
+  'src-ui/src/platform/native/pluginBundleUrl.ts',
   // The one host-owned authenticated transport. It is intentionally the only
   // renderer module allowed to create a Tauri IPC channel for HTTP bytes.
   'src-ui/src/platform/native/authenticatedTransport.ts',
@@ -320,7 +322,7 @@ function hasExactTauriCsp(csp) {
   );
 }
 
-export function findTauriCspViolations(content) {
+export function findTauriCspViolations(content, windowsContent) {
   let config;
   try {
     config = JSON.parse(content);
@@ -334,6 +336,28 @@ export function findTauriCspViolations(content) {
   }
 
   const violations = [];
+  if (windowsContent !== undefined) {
+    let windows;
+    try {
+      windows = JSON.parse(windowsContent);
+    } catch {
+      return ['Windows Tauri config is not valid JSON'];
+    }
+    const override = windows?.app?.security?.csp;
+    const expected = {
+      'script-src': "'self' 'wasm-unsafe-eval' http://station-plugin.localhost",
+      'style-src': "'self' 'unsafe-inline' http://station-plugin.localhost",
+    };
+    if (
+      !override ||
+      Object.keys(override).length !== 2 ||
+      Object.entries(expected).some(([key, value]) => override[key] !== value)
+    ) {
+      violations.push(
+        'Windows CSP must admit only the exact installed-plugin protocol alias',
+      );
+    }
+  }
   if (Object.hasOwn(security, 'devCsp')) {
     violations.push(
       'app.security.devCsp must be absent so development inherits csp',
@@ -498,6 +522,7 @@ function main() {
   );
   const cspFindings = findTauriCspViolations(
     readFileSync(TAURI_BASE_CONFIG, 'utf8'),
+    readFileSync('src-desktop/tauri.windows.conf.json', 'utf8'),
   );
   const resourceFindings = findTauriResourceBoundaryViolations(
     readFileSync(TAURI_BASE_CONFIG, 'utf8'),

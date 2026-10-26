@@ -1,4 +1,4 @@
-import { redactSecrets } from '@kontourai/station-shared/redaction';
+import { containsKnownCredential } from '@kontourai/station-shared/redaction';
 
 /**
  * The terminal itself remains an unfiltered rendering of the user's shell.
@@ -7,7 +7,7 @@ import { redactSecrets } from '@kontourai/station-shared/redaction';
  * xterm selection rather than a stream chunk.
  */
 export function selectionContainsCredential(selection: string): boolean {
-  return redactSecrets(selection) !== selection;
+  return containsKnownCredential(selection);
 }
 
 function literalFence(selection: string): string {

@@ -1,0 +1,11 @@
+{
+  "revision": "88f0a59bad482370fbcbe4ac5cff99d1e48c55c8",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Test-label follow-up only: retained the existing Home recovery product-law selector while extending its mounted cases with native asset URL messages. Runtime redaction, recovery actions and all nine recorded fault controls are unchanged. HomeRolePane suite passed (19 tests) and verification:policy:gate passed after restoring the selector. No prose change or new native/Rust/runtime qualification.","inputs":["docs/design/shell-plugins-distributions.md","src-ui/src/views/home/__tests__/HomeRolePane.test.tsx"]},
+
+    {"path":"docs/guides/plugins.md","note":"Test-label follow-up only: retained the existing Home recovery product-law selector while extending its mounted cases with native asset URL messages. Runtime redaction, recovery actions and all nine recorded fault controls are unchanged. HomeRolePane suite passed (19 tests) and verification:policy:gate passed after restoring the selector. No prose change or new native/Rust/runtime qualification.","inputs":["docs/guides/plugins.md","src-ui/src/views/home/__tests__/HomeRolePane.test.tsx"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Test-label follow-up only: retained the existing Home recovery product-law selector while extending its mounted cases with native asset URL messages. Runtime redaction, recovery actions and all nine recorded fault controls are unchanged. HomeRolePane suite passed (19 tests) and verification:policy:gate passed after restoring the selector. No prose change or new native/Rust/runtime qualification.","inputs":["docs/guides/desktop-build.md","src-ui/src/views/home/__tests__/HomeRolePane.test.tsx"]}
+  ]
+}

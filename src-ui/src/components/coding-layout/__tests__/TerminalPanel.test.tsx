@@ -417,6 +417,37 @@ test('scans one selection spanning two PTY reads without redacting the live term
   expect(activeChatsStore.getSnapshot()['chat-a']?.input).toBe('');
 });
 
+test.each([
+  { query: '', blocked: false },
+  { query: '?port=43123&mode=debug#public', blocked: false },
+  { query: `?port=43123&capability=${'C'.repeat(43)}`, blocked: true },
+  { query: '?port=43123&password=private-value', blocked: true },
+])(
+  'native asset selection with query "$query" has credential refusal=$blocked',
+  async ({ query, blocked }) => {
+    renderTerminal();
+    const { terminal } = await connectTerminal();
+    const selection = `http://station-plugin.localhost/api/plugins/demo/bundle.js${query}`;
+    await act(() => terminal.select(selection));
+    fireEvent.click(screen.getByRole('button', { name: 'Send to chat' }));
+    if (blocked) {
+      expect((await screen.findByRole('alert')).textContent).toContain(
+        'Selection contains a credential',
+      );
+      expect(chatDraftsStore.get('chat-a')).toBe('');
+      expect(activeChatsStore.getSnapshot()['chat-a']?.input).toBe('');
+    } else {
+      await waitFor(() =>
+        expect(chatDraftsStore.get('chat-a')).toContain(selection),
+      );
+      expect(activeChatsStore.getSnapshot()['chat-a']?.input).toContain(
+        selection,
+      );
+      expect(screen.queryByRole('alert')).toBeNull();
+    }
+  },
+);
+
 test('appends a fenced live-CWD selection to the real composer draft without dispatching a chat turn', async () => {
   const dispatch = vi.fn();
   vi.stubGlobal('fetch', dispatch);

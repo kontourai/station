@@ -1,0 +1,9 @@
+{
+  "revision": "0ae9d3058a37947e36567dbc19ecf9e95512f743",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Bounded R4a review of the metric-catalog dependency: inspected the observation/completeness section and the regenerated reference. The added outcome-only outside MCP counter changes declarations only. The page still explicitly distinguishes catalog drift checks from recording/export/completeness proof; no observation or release claim is upgraded.","inputs":["docs/architecture/abstraction-review.md","docs/reference/metrics.md"]},
+
+    {"path":"docs/reference/deploy-ledger.md","note":"Bounded source-impact review: inspected the generated ledger header, schema, qualification caveats and latest records against its JSON projection. R4a changes neither ledger artifact, publisher nor release workflow, and is compiled inert. Retained entries keep their original source/run/caveats; this review does not verify publication, availability or qualify R4a as released.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

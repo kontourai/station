@@ -6815,6 +6815,10 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
     const { UI_PROXY_BACKEND_PREFIXES } = await import(
       '../commands/ui-proxy-prefixes.js'
     );
+    // A broader ancestor would forward the protected exact leaf too.
+    expect(
+      UI_PROXY_BACKEND_PREFIXES.some((prefix) => '/mcp'.startsWith(prefix)),
+    ).toBe(false);
     for (const prefix of UI_PROXY_BACKEND_PREFIXES)
       expect([
         '/oauth',

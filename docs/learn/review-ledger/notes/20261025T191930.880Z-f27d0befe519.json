@@ -1,0 +1,9 @@
+{
+  "revision": "e53704de6a1f4ead50fb41c9a526b63e6ffc5b44",
+
+  "notes": [
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Final R4a refusal review at 4144717: localhost alias now receives the same configured-resource hint as R3, with no redirect or authority. Both stateless pre-initialize and established POST paths require JSON Content-Type and both advertised response media types using the pinned SDK predicate. Three caller regressions demonstrably failed before the repair and pass after it. The two real CLI flows still list exactly two reads and call Alpha; actual Claude headers and HTTP 200 server/discover were captured. Existing inert/HTTP-compatibility and single-owner limits remain explicit.","inputs":["docs/reference/outside-agent-oauth.md","src-server/routes/outside-agent/__tests__/mcp-routes.test.ts","src-server/routes/outside-agent/mcp-routes.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r4a-evidence.md","note":"Reviewed final refusal alignment and repeated evidence at 4144717. Baseline/restored transport suite each passed 24 tests; all three named fault variants failed their intended assertions and restored byte-exactly. Both actual pinned clients again completed login/list/get_project, with the real Claude pre-init probe and media headers verified; cleanup and scratch guard restoration passed. Integrated execution passed 792 tests in 14 suites, including existing engine OAuth regressions. Previous failures and their source revisions remain retained; no release/HTTPS/passkey/hosted qualification is added.","inputs":["docs/design/outside-agent-mcp-r4a-evidence.md","src-server/routes/outside-agent/__tests__/mcp-routes.test.ts","src-server/routes/outside-agent/mcp-routes.ts"]}
+  ]
+}

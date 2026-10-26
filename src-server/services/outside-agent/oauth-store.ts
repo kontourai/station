@@ -212,7 +212,13 @@ export class OutsideAgentGrantStore {
   }
   #put<K extends Kind>(kind: K, id: string, data: Records[K]): void {
     recordSchemas[kind].parse(data);
-    if (kind === 'request') this.#requestChanged = true;
+    if (
+      kind === 'request' ||
+      kind === 'grant' ||
+      kind === 'family' ||
+      kind === 'policy'
+    )
+      this.#requestChanged = true;
     this.#db
       .prepare(
         'INSERT INTO outside_oauth_records VALUES(?,?,?) ON CONFLICT(kind,id) DO UPDATE SET data=excluded.data',
@@ -247,7 +253,7 @@ export class OutsideAgentGrantStore {
     if (result instanceof OutsideOAuthRefusal) throw result;
     return result;
   }
-  /** Wake HTTP waiters after a committed request transition, including host/passkey decisions. */
+  /** Wake protocol waiters after committed request, grant, family or policy transitions. */
   onRequestChange(listener: () => void): () => void {
     this.#changes.on('change', listener);
     return () => this.#changes.off('change', listener);
@@ -290,6 +296,7 @@ export class OutsideAgentGrantStore {
         'authorize:global',
         'code:global',
         'refresh:global',
+        'mcp:global',
       ];
       const protectedIds = globalKeys.map((key) => secretHash('budget', key));
       const ordered = [...budgets].sort(
@@ -1126,26 +1133,25 @@ export class OutsideAgentGrantStore {
   }
   /** Returns live selection, including host changes, for existing tokens. R4 must re-admit dispatch/stream work against this version. */
   access(token: string, resource: string): Records['grant'] | undefined {
-    return this.#write(() => {
-      this.#expireLive();
-      const access = this.#get('access', secretHash('access', token));
-      if (
-        !access ||
-        access.resource !== resource ||
-        access.issuer !== this.options.issuer ||
-        access.stationId !== this.options.stationId ||
-        access.expiresAt <= this.#now()
-      )
-        return undefined;
-      const grant = this.#get('grant', access.grantId);
-      const family = this.#get('family', access.familyId);
-      return grant?.state === 'active' &&
-        family?.state === 'active' &&
-        access.version <= grant.version &&
-        grant.familyId === family.id
-        ? grant
-        : undefined;
-    });
+    const access = this.#get('access', secretHash('access', token));
+    if (
+      !access ||
+      access.resource !== resource ||
+      access.issuer !== this.options.issuer ||
+      access.stationId !== this.options.stationId ||
+      access.expiresAt <= this.#now()
+    )
+      return undefined;
+    const grant = this.#get('grant', access.grantId);
+    const family = this.#get('family', access.familyId);
+    return grant?.state === 'active' &&
+      grant.expiresAt > this.#now() &&
+      family?.state === 'active' &&
+      family.lastUsedAt + IDLE_TTL > this.#now() &&
+      access.version <= grant.version &&
+      grant.familyId === family.id
+      ? grant
+      : undefined;
   }
   grants(): Records['grant'][] {
     return this.#write(() => {

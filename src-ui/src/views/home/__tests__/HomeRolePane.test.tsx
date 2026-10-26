@@ -161,34 +161,52 @@ describe('a granted Home that renders', () => {
 });
 
 describe('recovery: a granted Home that throws (station#3122 constraint 3)', () => {
-  test('a renderer that throws on mount lands on the built-in Home with the actual failure text', () => {
+  function renderMountFailure(message: string) {
     registry.trustedLayout = () => {
-      throw new Error('exploded during mount');
+      throw new Error(message);
     };
     const consoleError = vi
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
-    render(
-      <HomeRolePane
-        grant={grantFor()}
-        builtinHome={builtinHome}
-        onRevoke={() => undefined}
-      />,
-    );
-    consoleError.mockRestore();
-    // Never a blank root: the floor renders...
+    try {
+      render(
+        <HomeRolePane
+          grant={grantFor()}
+          builtinHome={builtinHome}
+          onRevoke={() => undefined}
+        />,
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+    return screen.getByRole('status');
+  }
+
+  test('a renderer that throws on mount lands on the built-in Home with the actual failure text', () => {
+    const notice = renderMountFailure('exploded during mount');
     expect(screen.getByTestId('builtin-home')).toBeTruthy();
-    //.with a truthful reason derived from the actual error...
-    const notice = screen.getByRole('status');
     expect(notice.textContent).toContain('Third-party Home');
     expect(notice.textContent).toContain('exploded during mount');
-    //.and a way to retry or step off the grant, instead of a reload that
-    // re-enters the same failure.
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Keep the built-in Home' }),
     ).toBeTruthy();
   });
+
+  test.each(['station-plugin://localhost', 'http://station-plugin.localhost'])(
+    'redacts %s asset locations from the granted Home recovery reason',
+    (origin) => {
+      const notice = renderMountFailure(
+        `asset failed at ${origin}/api/plugins/demo/bundle.js?port=43123&capability=${'C'.repeat(43)}#private`,
+      );
+      expect(notice.textContent).toContain(
+        'Error: asset failed at /api/plugins/demo/bundle.js',
+      );
+      expect(notice.textContent).not.toContain(origin);
+      expect(notice.textContent).not.toContain('capability');
+      expect(notice.textContent).not.toContain('#private');
+    },
+  );
 
   test('a renderer that throws on a LATER render lands the same way, and can retry back', () => {
     let throwNow = false;

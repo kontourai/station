@@ -172,3 +172,23 @@ test('compiled refusal preserves internal MCP, engine proxy, nested resource han
     expect(await response.text()).toBe('existing handler');
   }
 });
+
+test('the release /mcp leaf is guarded or owned by an authenticating router, never anonymous fallthrough', async () => {
+  const app = new Hono();
+  installStationEnvelopeMarker(app);
+  const fallback = vi.fn((c: import('hono').Context) =>
+    c.json({ anonymous: true }),
+  );
+  app.all('/mcp', fallback);
+  const response = await app.request('https://station.test/mcp');
+  if (response.status === 404) {
+    expect(fallback).not.toHaveBeenCalled();
+  } else {
+    // R6 must mount the authenticated router in the same change that removes the guard.
+    expect(response.status).toBe(401);
+    expect(response.headers.get('www-authenticate')).toContain(
+      '/.well-known/oauth-protected-resource/mcp',
+    );
+    expect(fallback).not.toHaveBeenCalled();
+  }
+});

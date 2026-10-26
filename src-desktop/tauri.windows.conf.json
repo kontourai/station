@@ -4,7 +4,9 @@
     "beforeBuildCommand": "npm run build:desktop:resources"
   },
   "bundle": {
-    "externalBin": ["binaries/station-node"],
+    "externalBin": [
+      "binaries/station-node"
+    ],
     "resources": {
       "../dist-desktop-runtime/dist-server": "dist-server",
       "../dist-desktop-runtime/node_modules": "node_modules",
@@ -14,6 +16,14 @@
     "windows": {
       "nsis": {
         "installerHooks": "nsis-hooks.nsh"
+      }
+    }
+  },
+  "app": {
+    "security": {
+      "csp": {
+        "script-src": "'self' 'wasm-unsafe-eval' http://station-plugin.localhost",
+        "style-src": "'self' 'unsafe-inline' http://station-plugin.localhost"
       }
     }
   }

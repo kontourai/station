@@ -38,7 +38,19 @@
 
     "src-server/services/outside-agent/oauth-registration.ts",
 
-    "src-ui/src/__tests__/vite-dev-proxy.test.ts"
+    "src-ui/src/__tests__/vite-dev-proxy.test.ts",
+
+    "src-server/routes/outside-agent/mcp-routes.ts",
+
+    "src-server/services/outside-agent/mcp-dispatch.ts",
+
+    "src-server/security/outside-agent-token-audience.ts",
+
+    "src-server/tools/station-control-project-read-tools.ts",
+
+    "src-server/routes/outside-agent/__tests__/mcp-routes.test.ts",
+
+    "src-server/routes/outside-agent/__tests__/mcp-audience.test.ts"
   ],
 
   "checks": [
