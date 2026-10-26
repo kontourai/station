@@ -16,6 +16,7 @@ For runtime helpers, use explicit subpaths:
 - `@kontourai/station-shared/delegation-files` — coded file-delivery refusals and batch name/size/data checks for CLI preflight and server materialization; validation supplies no staging or execution authority
 - `@kontourai/station-shared/build`
 - `@kontourai/station-shared/git`
+- `@kontourai/station-shared/lifecycle-events` — Node-only journal and cooperative cross-process file locks. `acquireFileMutationLeaseAsync` returns a nominal held capability with synchronous `assertCurrent` and checked asynchronous `release`; the existing lock helpers retain best-effort cleanup. The capability protects only participating writers to that lock, not all host authority or source mutations.
 - `@kontourai/station-shared/mcp`
 - `@kontourai/station-shared/mcp-tool-selection` — browser-safe original/qualified/runtime MCP identities and selection matching
 - `@kontourai/station-shared/thread-usage-tree` — the conversation usage tree fold and the per-engine rules for how a subagent's usage relates to its parent's

@@ -2910,6 +2910,16 @@ its failure does not turn already published bytes into a retryable failed write,
 and the directory-sync helper is a no-op on Windows. This is not a tested
 power-loss guarantee for every filesystem.
 
+The shared lock owner also exposes `acquireFileMutationLeaseAsync` for callers
+that must check held ownership and observe release failures. Its nominal
+capability synchronously compares the original process/token and file identity,
+becomes invalid before release begins, and retains exact guard/quarantine
+ownership for cleanup retries. Completed release is idempotent and cannot
+remove a successor lock. Existing release-function callers keep their
+best-effort cleanup contract through the same owner. This primitive alone does
+not exclude all host authority, capacity or worktree mutations; a complete host
+lease still needs participating owners and protected evaluation inputs.
+
 A caller-supplied `maxBytes` limits the serialized document; there is no default
 byte cap. Serialization happens before that size check. Schema validation,
 path/root authority and appropriate input limits remain with the owning service.
