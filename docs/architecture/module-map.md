@@ -5175,6 +5175,33 @@ Distribution manifests and broker `plugin_daily` acceptance remain separate work
 
 ## TaskReviewThreads
 
+The [Review tab](../../src-ui/src/views/task-workspace/review/TaskReviewTab.tsx)
+is offered by [TaskWorkspaceView](../../src-ui/src/views/TaskWorkspaceView.tsx)
+only while the `task-review` Station feature preview is enabled. A disabled
+preview leaves the ordinary Overview fallback. The tab uses SDK summary
+polling only while visible and Sent, selected-item queries for text, and
+thread-detail queries on expansion or copy-for-agent. Collapsed cards use the
+summary’s bounded opening, latest delivery and last event; anchors in that same
+summary drive highlights and Screen pins without a history read. Rail counts
+come from the selected item’s server projection. Person mutations invalidate the review
+list; Send uses a fresh operation id for each action. The
+[output section](../../src-ui/src/views/task-workspace/TaskOutputsSection.tsx)
+links to the selected Review output through canonical navigation. The capture
+picker lists the operator's Project Browser sessions; authenticated content
+fetches own and revoke image object URLs. Inline refusal messages retain drafts.
+See [enabling and using Review](../user/settings.md#feature-previews).
+
+The capture picker and service resolve the Task's stored Project slug or ID to
+the Browser's opaque Project identity, retaining the original review-store scope.
+The authorized Review list supplies author display labels from the same request
+principal and known-principal directory as the Task room. Agent labels use
+indexed Session engine and recorded-owner reads after Session read admission;
+no full transcript or People-management request is needed. Missing identity
+facts fall back to Teammate or Agent. The local operator's profile name wins;
+when only the OS alias is available, its initial is capitalized for display.
+Opaque working-state plan
+revisions are hidden because the room does not expose ordinal plan history.
+
 Task review keeps anchored comments outside the shared room's document and
 history, and outside revision-bound evidence (#4007, #4055). The
 [review contract](../../packages/contracts/src/task-review.ts) owns shapes,
@@ -5186,6 +5213,13 @@ lead, without requiring Task memory. Its transaction callback rechecks the
 binding, incarnation, lead and workspace. `readPlanForReview` and the caller-bound
 `readPlanForSessionReview` read the same working-state owner. Agent list filters
 and person reads share `TaskReviewModule` artifact resolution and freshness.
+The agent list resolves artifacts once, reads thread histories in one store
+batch, and excludes corrupt entries while preserving healthy threads and counts.
+Its additive `unavailableThreadCount` reports corrupt entries independently of
+the requested state filter, so the agent can distinguish a partial list.
+Unavailable person summaries retain a validated artifact reference when possible,
+so the UI confines each unavailable row to its own item. Expanding a card keeps
+the selected state filter.
 [Runtime composition](../../src-server/runtime/routes/runtime-routes.ts) mounts the routes and resolves linked answers through the canonical turn reader.
 Answer reads are bounded to four at a time and an exact item/mutation selector.
 
@@ -5202,7 +5236,7 @@ Freshness caches use thread ID, event count and current revision/availability;
 normalized text, digest and line offsets are reused per plan/summary revision,
 and immutable answer digests are cached. Owner reads and request authority still
 run on every request. Optional synchronous constructor port
-`deliveryStatusFor(threadId, deliveryKey)` reads owner-proven inbox standing
+`TaskReviewSend.deliveryStatusFor(threadId, deliveryKey)` reads owner-proven inbox standing
 after the freshness-cache lookup on every list/detail/mutation projection;
 omitting it yields unconfirmed. A port failure also yields unconfirmed, with a
 distinct delivery-status warning; it does not mark the thread corrupt. Delivery
@@ -5250,7 +5284,6 @@ SQLite also rejects summary revisions with leading zeros and agent replies
 without an earlier same-thread sent key; active-key retirement remains contract
 admission's responsibility.
 Admission folds full event history, preserving Sent on a person follow-up.
-
 [TaskBrowserCapture](../../src-server/services/projects/task-browser-capture.ts)
 composes `workspace-commit-pin`, the Browser registry's `captureScreenshot`,
 `task-capture-blob-store` and the metadata store. It resolves the Task's stored
@@ -5359,6 +5392,10 @@ use a real Codex URL token and temporary Git repository to cover replies,
 commit verification, resolution without Task status changes, cross-Task
 refusal and unbound/non-lead refusal. This is local protocol and fixture
 engine evidence, ahead of live provider and hosted qualification.
+[Capture route tests](../../src-server/routes/__tests__/browser-agent-capture.test.ts)
+exercise real Git, SQLite, room binding authority and blob storage with a CDP
+double, including restart, Task isolation, digest corruption and region bounds.
+They do not qualify a real Chromium or provider run.
 
 ## TerminalSessions
 

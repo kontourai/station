@@ -1,0 +1,11 @@
+{
+  "revision": "dd16d3d11d27ea7ed6b183298329d5dbfd47a5d1",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"R5 integration delta review: compared the Task-review-only runtime composition and API-reference changes against the personal-operator terminal foundation. TerminalSessions composition, terminal observe/operate standing, ShellHost and in-process lifetime limits are unchanged; the remaining transport/SDK/Ghostty design stays proposed. No terminal, native or remote acceptance is claimed.","inputs":["docs/design/terminal.md","src-server/runtime/routes/runtime-routes.ts","docs/reference/api.md"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"R5 reviewed the new Task review row against tests/task-review.spec.ts and the final extended manifest entry: real isolated comments, relocation, resolution, Send refusal, Chromium capture/keyboard pin and real Appearance controls; live Claude variant explicitly requires login. Full live run passed three tests and all eight PNGs were viewed. Candidate PR-smoke failed one existing approval assertion and the strict receipt rejected the live-only skip, so no PR admission is claimed.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"R5 reviewed the restored eight-spec PR_BROWSER_SMOKE_CONTRACT and strict reporter. Candidate nine-spec lane at 4b150814c1ea15f5ead6e5ff45ec283529028c6e ran one worker and zero retries: 39 passed, one failed approval assertion, one explicit live-only skip; immutable source receipt FAIL. Wall duration 479.743s. Stopped after this first full-lane failure, retained extended, and did not weaken policy. New paragraph names both admission blockers; no three-clean-run or hosted qualification claim.","inputs":["docs/testing/browser-smoke.md","tests/e2e-manifest.mjs"]}
+  ]
+}

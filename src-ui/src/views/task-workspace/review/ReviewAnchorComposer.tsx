@@ -10,6 +10,7 @@ import {
   ResponsiveDialogSurface,
   ResponsiveSurfaceActions,
 } from '../../../components/ResponsiveDialogSurface';
+import { ErrorState } from '../../../components/state';
 import { useCoarsePointer } from '../../../hooks/useCoarsePointer';
 import { useUnsavedGuard } from '../../../hooks/useUnsavedGuard';
 import { useReviewDraft } from './useReviewDraft';
@@ -139,7 +140,7 @@ export function ReviewAnchorComposer({
               <CloseGlyph />
             </Button>
           </ResponsiveSurfaceActions>
-          {error && <p role="alert">{error}</p>}
+          {error && <ErrorState variant="compact" title={error} />}
         </form>
       </ResponsiveDialogSurface>
       <DiscardModal />
