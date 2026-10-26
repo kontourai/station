@@ -25,12 +25,18 @@ import {
   useGitPushMutation,
   useReposQuery,
 } from '@kontourai/station-sdk';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, renderHook, waitFor } from '@testing-library/react';
+import {
+  defaultScheduler,
+  notifyManager,
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query';
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const ORIGIN = 'https://station.example.test';
+const pendingQueryNotifications = new Set<symbol>();
 
 const API_REPO: DiscoveredRepo = {
   root: '/work/acme/api',
@@ -79,14 +85,18 @@ function json(status: number, body: unknown): Response {
   });
 }
 
+const clients: QueryClient[] = [];
+
 function client() {
-  return new QueryClient({
+  const queryClient = new QueryClient({
     defaultOptions: {
       // Seeded reads have no observer; keep them so a test can read their state.
       queries: { retry: false, gcTime: Number.POSITIVE_INFINITY },
       mutations: { retry: false },
     },
   });
+  clients.push(queryClient);
+  return queryClient;
 }
 
 function wrapperFor(queryClient: QueryClient) {
@@ -129,11 +139,40 @@ function expectOnlyFolderRefreshed(queryClient: QueryClient) {
 
 beforeEach(() => {
   _setApiBase(ORIGIN);
+  notifyManager.setScheduler((callback) => {
+    const pending = Symbol();
+    pendingQueryNotifications.add(pending);
+    defaultScheduler(() => {
+      try {
+        callback();
+      } finally {
+        pendingQueryNotifications.delete(pending);
+      }
+    });
+  });
 });
 
-afterEach(() => {
-  setClientCredentialResolver(undefined);
-  vi.unstubAllGlobals();
+afterEach(async () => {
+  try {
+    cleanup();
+    const currentClients = clients.splice(0);
+    await Promise.all(
+      currentClients.map((queryClient) => queryClient.cancelQueries()),
+    );
+    for (const queryClient of currentClients) queryClient.clear();
+    // Unsubscribing cannot retract subscriber callbacks already queued by query-core.
+    await act(async () => {
+      await new Promise<void>((resolve) => notifyManager.schedule(resolve));
+    });
+    expect(
+      pendingQueryNotifications.size,
+      'Git query fixture must settle real subscriber notifications before globals are restored',
+    ).toBe(0);
+  } finally {
+    notifyManager.setScheduler(defaultScheduler);
+    setClientCredentialResolver(undefined);
+    vi.unstubAllGlobals();
+  }
 });
 
 describe('useReposQuery', () => {

@@ -1,0 +1,7 @@
+{
+  "revision": "d4807b05e43a5c865600578e016e6e71ddd7fd1b",
+
+  "notes": [
+    {"path":"docs/design/instance-registry.md","note":"#4196 delta: status now carries the installed unit's home when this home's manifest is stale (service.ts findStaleServiceManifest and the unit-home adapter); stop is unchanged and still carries the resolved home.","inputs":["docs/design/instance-registry.md","packages/cli/src/commands/service.ts"]}
+  ]
+}

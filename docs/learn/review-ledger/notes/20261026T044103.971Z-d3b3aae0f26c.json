@@ -1,0 +1,7 @@
+{
+  "revision": "f8a58862bf8ce5a4f71b61b98fd98926d1912fe2",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"#4200 delta-review round: added the unreadable-file (refuses as unsafe) versus unlistable-directory distinction and the escape commands, checked against findStaleServiceManifest (readdirSync then readManifest; ServiceManifestIntegrityError rethrown), the stale refusal (present vs absent/unreadable wording) and the uninstall message for a unit with no manifest in service.ts; exercised by the delta-review escape test.","inputs":["docs/reference/cli.md","packages/cli/src/commands/service.ts"]}
+  ]
+}

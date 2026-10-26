@@ -67,7 +67,8 @@ Existing installations retain their choice and previously imported history.
 
 ## Inspect what a chat used
 
-Choose **Inventory** in the chat header on desktop or phone. Pick a group,
+Choose **Inventory** in the chat header on desktop, or **⋯** then **Chat
+inventory** in the phone chat header. Pick a group,
 then **View details** on an item to read the authored message, attachment
 metadata, or recorded tool result. **Recorded origin** identifies the Session,
 turn and event; **Open session** opens the surrounding work. Output rows keep

@@ -547,12 +547,18 @@ test('the phone chat actions offer New Task from this and dismiss the sheet befo
   ).toBeNull();
 });
 
-test('opens Inventory directly from the mobile bar without opening Chat actions', () => {
+test('opens Chat inventory from the actions sheet, not a third bar control', async () => {
   const open = vi.fn();
   renderHeader({ onOpenInventory: open });
-  const inventory = screen.getByRole('button', { name: 'Chat inventory' });
-  expect(inventory.textContent).toBe('Inventory');
-  fireEvent.click(inventory);
-  expect(open).toHaveBeenCalledWith(inventory);
-  expect(screen.queryByRole('dialog', { name: 'Chat actions' })).toBeNull();
+  // #4192: a third trailing control wrapped the bar onto a second line.
+  expect(screen.queryByRole('button', { name: 'Chat inventory' })).toBeNull();
+  await openActions();
+  fireEvent.click(
+    await screen.findByRole('menuitem', { name: 'Chat inventory' }),
+  );
+  // Focus returns to ⋯, the control the reader started from.
+  expect(open).toHaveBeenCalledWith(
+    screen.getByRole('button', { name: 'Chat actions' }),
+  );
+  expect(screen.queryByRole('menuitem', { name: 'Chat inventory' })).toBeNull();
 });

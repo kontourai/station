@@ -82,6 +82,20 @@ export function ChatDockMobileOverflowSheet({
               : 'This chat'}
           </button>
         )}
+        {overflow.onOpenInventory && (
+          <button
+            type="button"
+            role="menuitem"
+            className="composer-actions-menu__item"
+            aria-haspopup="dialog"
+            onClick={(event) => {
+              const trigger = returnFocusTarget ?? event.currentTarget;
+              run(() => overflow.onOpenInventory?.(trigger));
+            }}
+          >
+            Chat inventory
+          </button>
+        )}
         {showConnection && <ChatDockMobileConnection showLabel />}
         {/* Desktop More-menu parity first, like the desktop menu's own order:
             identities are occasionally needed for paste, never read

@@ -376,6 +376,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/component-style.spec.ts',
     'tests/server-older-banner.spec.ts',
     'tests/toggle-contrast.spec.ts',
+    'tests/chat-dock-open-helper.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
     'tests/answer-quoting.spec.ts',
     'tests/code-block-actions.spec.ts',
@@ -1423,6 +1424,16 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale: 'Promoted connection reconnect banner lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/chat-dock-open-helper.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      '#4175: the shared ensureChatDockOpen helper against the race the PR smoke trace recorded — the product opens the dock itself between the helper resolving "Show Chat" and its click landing, so the click hits "Hide Chat" and closes the dock. A static page puts that open on the first pointer arrival, deterministically; the helper must still end with the dock open, and must not touch a dock that is already open. No live instance or server.',
     exceptions: [],
   },
   {

@@ -13,6 +13,8 @@ import type {
  * here rather than trusting that manifest.
  */
 export interface InstalledServiceUnit {
+  /** The unit file read, so guidance can name what to inspect. */
+  path: string;
   /**
    * The program and its arguments, unquoted; null when the unit names none,
    * or names it in a form Station never writes (systemd `%` specifiers).
@@ -98,7 +100,7 @@ function readSystemdUnit(
       }
     }
   }
-  return { argv, environment };
+  return { argv, environment, path: registration.unitPath };
 }
 
 function readLaunchdUnit(
@@ -141,7 +143,7 @@ function readLaunchdUnit(
       if (typeof value === 'string') environment[key] = value;
     }
   }
-  return { argv, environment };
+  return { argv, environment, path: registration.unitPath };
 }
 
 /**
