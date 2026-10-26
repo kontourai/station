@@ -73,7 +73,7 @@ vi.mock('../../src-server/services/telemetry-companion.js', () => ({
     architecture: 'arm64',
   }),
 }));
-vi.mock('../../src-server/config/release-manifest-keys.json', () => ({
+vi.mock('../../config/release-manifest-keys.json', () => ({
   default: fixtureKeys,
 }));
 
