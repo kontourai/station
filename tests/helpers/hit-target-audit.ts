@@ -146,18 +146,23 @@ export const HIT_TARGET_AUDIT = `(() => {
   // A pinned control (in a fixed or sticky layer) over a content control is
   // not two targets competing for one press in one case only: the layer is a
   // sheet (aria-modal, an open <dialog>, the expanded chat dock) that covers
-  // the content control's centre, and that control is outside the sheet and
-  // not itself pinned: it is behind the sheet. Scroll position is not
+  // the content control's centre or the part where the two overlap, and that
+  // control is outside the sheet and not itself pinned: it is behind the
+  // sheet. Scroll position is not
   // credited: a bar over content that could scroll clear is still reported,
   // which errs conservative (attempts to model scroll clearance kept hiding
   // real defects). A collapsed chat dock is a bar.
   const SHEET = '[aria-modal="true"], dialog[open], .chat-dock:not(.is-collapsed)';
-  const pinnedOver = (p, c) => {
+  // meet is what a press lands on at the centre of the two targets'
+  // intersection. Content partly behind a sheet (its centre still visible
+  // above an expanded dock) loses only the covered part, where the sheet is
+  // on top; it competes with nothing there.
+  const pinnedOver = (p, c, meet) => {
     if (p.pinned === null || p.pinned.contains(c.el)) return null;
     const sheet = p.el.closest(SHEET);
-    return sheet && !sheet.contains(c.el) && c.pinned === null && c.hit !== null && sheet.contains(c.hit)
-      ? 'sheet'
-      : null;
+    if (!sheet || sheet.contains(c.el) || c.pinned !== null) return null;
+    const covered = (hit) => hit !== null && sheet.contains(hit);
+    return covered(c.hit) || covered(meet) ? 'sheet' : null;
   };
   const overlaps = [];
   const overlapPairs = [];
@@ -171,7 +176,9 @@ export const HIT_TARGET_AUDIT = `(() => {
       // not both pressable here. One control covering the other is not
       // layered: that centre lands on the pair.
       const third = (z) => z.hit !== null && !a.el.contains(z.hit) && !b.el.contains(z.hit);
-      const layeredBy = third(a) || third(b) ? 'third' : pinnedOver(a, b) || pinnedOver(b, a);
+      const mx = (Math.max(a.l, b.l) + Math.min(a.r, b.r)) / 2, my = (Math.max(a.t, b.t) + Math.min(a.b, b.b)) / 2;
+      const meet = mx >= 0 && my >= 0 && mx < innerWidth && my < innerHeight ? document.elementFromPoint(mx, my) : null;
+      const layeredBy = third(a) || third(b) ? 'third' : pinnedOver(a, b, meet) || pinnedOver(b, a, meet);
       overlapPairs.push({
         first: a.name,
         second: b.name,

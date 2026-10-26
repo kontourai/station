@@ -188,11 +188,6 @@
       "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
       "axe:label:input.attachment-input[type=file]",
       "axe:scrollable-region-focusable:div.chat-messages[role=status]",
-      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=chat-dock-mobile-header] button.app-toolbar__icon-btn[Chat actions]",
-      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=chat-dock-mobile-header] button.app-toolbar__icon-btn[Collapse chat]",
-      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=chat-dock-mobile-header] button.app-toolbar__icon-btn[New chat]",
-      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-identity[Chats and tasks — Mismatch demo chat, demo-agent · Project B]",
-      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-project[Switch project — New chats, No project]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "mobile-home": [
