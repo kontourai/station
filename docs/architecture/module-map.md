@@ -2014,6 +2014,19 @@ A cancellation request or receipt does not establish physical stop or refunds.
 Provider responses in the focused HTTP owner test are
 controlled fixtures, not live acceptance or billing qualification.
 
+The private historical-accounting draft initially reads its terminal tuple through
+`readHistoricalReportTurn`. [EventStore](../../src-server/services/orchestration/event-store.ts)
+owns one SQLite snapshot of the personal Session, canonical owner, conversation
+lineage, resolved client/provider turn pair and unique completion. Non-null raw
+tenant storage refuses, including malformed metadata. The existing
+[turn-dedup persistence owner](../../src-server/services/orchestration/sqlite-turn-dedup-persistence.ts)
+joins that same active connection through Monument's workspace module contract;
+it neither claims a turn nor runs retention. The result contains detached
+identities, not transcript text or a grant. Custody still performs its existing
+live confirmations. Signed durable terminal witnesses, their deletion semantics,
+the complete host exclusion layer, dual-ledger settlement and a mounted recovery
+endpoint remain unfinished.
+
 ## CliSessionGroups
 
 [CliSessionGroups](../../src-server/services/orchestration/cli-session-group.ts)

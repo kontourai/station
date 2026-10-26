@@ -2092,3 +2092,28 @@ fails all four provider/protocol cases at the altered-raw-JSON refusal, with
 72 controls passing; byte-exact restoration passes all 76 caller-file cases. This does not wire
 Dispatch settlement, publish the upstream Flow Agents contract, or establish
 live/provider/device acceptance.
+
+### Coherent original-turn observation for accounting recovery
+
+At `2a6259477e3`, the private accounting draft reads the original personal report
+turn through one EventStore SQLite snapshot. It joins fresh persisted owner and
+lineage facts, the resolved client/provider turn pair and exactly one matching
+completion, with row/payload identity checks. Raw tenant storage must be SQL NULL;
+malformed or oversized non-null metadata cannot fall back to personal authority.
+The same-connection resolved read uses Monument's workspace module contract with
+an explicit active host transaction. This is not registry publication evidence.
+
+Thirty focused read/persistence cases and server-test typechecking pass. The
+real OrchestrationService read remains coherent when a second EventStore deletes
+the Session between its component reads; a subsequent read returns unavailable.
+Moving the first read outside the snapshot fails that case with 20 controls
+passing. Removing the owner fence fails the foreign-owner case with 20 controls
+passing. The tenant-storage control fails against the pre-fix owner with 29
+controls passing. All source restorations were byte-exact and reran green;
+independent source review accepted the repaired boundary.
+
+The existing repeated live confirmations remain. No signed durable terminal
+witness, changed deletion/retention contract, held recovery authority, Dispatch
+settlement or recovery endpoint is supplied by this observation. Those remain
+required before historical dual-ledger recovery is qualified. Evaluation/retry
+serving and live/provider/device acceptance remain separate open work.
