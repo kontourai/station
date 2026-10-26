@@ -12,6 +12,7 @@ import {
   type TelemetryCompanionAction,
   type TelemetryCompanionInstallation,
   type TelemetryCompanionManagedState,
+  type TelemetryPrivateUsagePreparation,
 } from '@kontourai/station-contracts/telemetry-delivery';
 import { workItemRefFromGitHubIssueUrl } from '@kontourai/station-contracts/work-item-provider';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -553,6 +554,86 @@ export function useTelemetryCompanionIncidentLinkMutation(
     onSettled: (_data, _error, input) =>
       client.invalidateQueries({
         queryKey: [...queryKey, 'incident-links', input.groupId],
+      }),
+  });
+}
+
+const privateUsagePreparation = z
+  .object({
+    requestId: id,
+    recipientId: id,
+    personId: z.string().min(1).max(200),
+    stationId: z.string().min(1).max(200),
+    installationId: id,
+    custody: z.string().min(1).max(1024),
+    credentialRevision: z.number().int().positive(),
+    fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+    expiresAt: z.string().datetime(),
+    phase: z.enum(['awaiting-operator', 'prepared']),
+  })
+  .strict();
+
+export function useTelemetryPrivateUsagePreparationQuery(
+  apiBase: string,
+  requestId: string | null,
+  config?: ScopedConfig<TelemetryPrivateUsagePreparation>,
+) {
+  return useApiQuery(
+    [...key(apiBase, config), 'private-preparation', requestId],
+    async (signal) => {
+      validId(requestId ?? '');
+      const result = await getJson(
+        `${base(apiBase, config)}/api/operator/telemetry-companion/private-usage-preparations/${requestId}`,
+        {
+          requestScope: config?.requestScope,
+          signal,
+          maxResponseBytes: 8192,
+        },
+      );
+      if (result.status === 404)
+        throw new Error(
+          'This host does not support this preparation or the request expired. Ask the person for a fresh request; updating the host may be needed.',
+        );
+      return response(result, privateUsagePreparation);
+    },
+    {
+      ...queryOptions(config),
+      enabled: !!requestId && config?.enabled !== false,
+    },
+  );
+}
+
+export function usePrepareTelemetryPrivateUsageMutation(
+  apiBase: string,
+  options?: ClientRequestOptions,
+) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (
+      input: Pick<
+        TelemetryPrivateUsagePreparation,
+        'requestId' | 'fingerprint'
+      >,
+    ) => {
+      validId(input.requestId);
+      const result = await mutateJson(
+        `${base(apiBase, options)}/api/operator/telemetry-companion/private-usage-preparations/${input.requestId}`,
+        'POST',
+        {
+          ...options,
+          maxResponseBytes: 8192,
+        },
+        { fingerprint: input.fingerprint },
+      );
+      if (result.status === 404)
+        throw new Error(
+          'This host does not support this preparation or the request expired. Request it again; updating the host may be needed.',
+        );
+      return response(result, privateUsagePreparation);
+    },
+    onSettled: () =>
+      client.invalidateQueries({
+        queryKey: [...key(apiBase, options), 'private-preparation'],
       }),
   });
 }

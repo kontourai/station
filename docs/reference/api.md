@@ -5845,3 +5845,30 @@ immutable optional `terminal-outcomes/v1` grant. Missing consent returns 403
 advertises the route in personal and hosted mode; it grants no authority.
 The response includes retained terminal counts, `observedTurns`, unknown coverage
 and source revision fences. Queued response release checks current authority.
+
+### Prepare a receiving person's private analytics storage
+
+`POST /api/analytics/recipient-candidates/:recipientId/storage-preparation` accepts
+exactly `{requestId:<UUID>}` from the current receiving person Device with
+`orchestration:read`, after credential storage and source-address confirmation.
+It returns `{data:TelemetryPrivateUsagePreparation}`: secret-free review metadata
+binding the real person, receiving slot, Station, managed installation/custody,
+credential revision, fingerprint, expiry and phase. No vault is provisioned by
+this person request. Requests expire after at most five minutes or on process
+restart; a new request for a slot retires its earlier request.
+
+`GET /api/operator/telemetry-companion/private-usage-preparations/:requestId`
+reviews that live request. `POST` to the same path accepts exactly
+`{fingerprint:<reviewed SHA-256>}` and prepares its vault. Both retain the existing
+companion operator/home authority; scoped Devices additionally need
+`telemetry:manage`. The server retains the actual requesting person and rechecks
+that authority, receiving credential, source confirmation, current source grant
+and managed companion custody. The operator never becomes the receiving person.
+No caller supplies a credential hash, vault key, receiver URL or person ID.
+Retries of the live reviewed request provision the same vault. Expired, changed
+or missing requests require a fresh person request and operator review. Sync
+remains a separate person action. An older host's 404 is treated as unsupported
+or missing/expired, with refresh/request-again/update recovery.
+
+See [the user journey](../guides/monitoring.md#connect-a-personal-source-in-insights).
+This source contract has not established installed/native/release acceptance.

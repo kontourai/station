@@ -5,6 +5,7 @@ import {
   generateKeyPairSync,
   hkdfSync,
 } from 'node:crypto';
+import type { TelemetryPrivateUsagePreparation } from '@kontourai/station-contracts/telemetry-delivery';
 import type {
   AnalyticsSourceCredentialDelivery,
   AnalyticsStoredSourceCredential,
@@ -284,6 +285,188 @@ function binding(
 
 /** Per-person analytics keys only. It does not borrow Station/F1 keys or issue a source grant. */
 export class RecipientStore {
+  // Requests retain the actual receiving actor, never a reconstructed operator-as-person.
+  // Restart/expiry requires a fresh person request and operator review.
+  private readonly storagePreparations = new Map<
+    string,
+    {
+      view: TelemetryPrivateUsagePreparation;
+      assertPerson(): Promise<void>;
+      prepare(target: PrivateUsageTarget): Promise<void>;
+      inFlight: boolean;
+    }
+  >();
+
+  async requestStoragePreparation(
+    actor: EnrollmentActor,
+    recipientId: string,
+    requestId: string,
+    target: PrivateUsageTarget,
+  ): Promise<TelemetryPrivateUsagePreparation> {
+    enrollmentOperationId.parse(requestId);
+    await actor.assertCurrent();
+    await target.assertCurrent();
+    const record = this.sourceRecord(this.read(actor), actor, recipientId);
+    const sourceFingerprint = this.sourceFingerprint(record);
+    if (
+      record.sourceConfirmation?.fingerprint !== sourceFingerprint ||
+      !record.sourceCredential
+    )
+      throw new AuthorityObservationRejected(403, 'authority_changed');
+    const credential = record.sourceCredential.payload;
+    const fingerprint = createHash('sha256')
+      .update(
+        JSON.stringify([
+          actor.sourceStationId,
+          actor.userId,
+          actor.mode,
+          actor.tenantId,
+          recipientId,
+          sourceFingerprint,
+          record.sourceConfirmation,
+          target.installationId,
+          target.custody,
+          credential.revision,
+        ]),
+      )
+      .digest('hex');
+    for (const [id, pending] of this.storagePreparations)
+      if (Date.parse(pending.view.expiresAt) <= this.now())
+        this.storagePreparations.delete(id);
+    const existing = this.storagePreparations.get(requestId);
+    if (existing) {
+      if (existing.view.fingerprint !== fingerprint)
+        throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
+      await existing.assertPerson();
+      return { ...existing.view };
+    }
+    for (const [id, pending] of this.storagePreparations) {
+      if (
+        pending.view.personId === actor.userId &&
+        pending.view.recipientId === recipientId
+      ) {
+        if (pending.inFlight)
+          throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
+        this.storagePreparations.delete(id);
+      }
+    }
+    if (this.storagePreparations.size >= 128)
+      throw new PrivateUsageClientRejected(503, 'private_usage_unavailable');
+    const assertPerson = async () => {
+      await actor.assertCurrent();
+      if (Date.parse(view.expiresAt) <= this.now())
+        throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
+      const current = this.sourceRecord(this.read(actor), actor, recipientId);
+      if (
+        this.sourceFingerprint(current) !== sourceFingerprint ||
+        JSON.stringify(current.sourceConfirmation) !==
+          JSON.stringify(record.sourceConfirmation)
+      )
+        throw new AuthorityObservationRejected(403, 'authority_changed');
+    };
+    const view: TelemetryPrivateUsagePreparation = {
+      requestId,
+      recipientId,
+      personId: actor.userId,
+      stationId: actor.sourceStationId,
+      installationId: target.installationId,
+      custody: target.custody,
+      credentialRevision: credential.revision,
+      fingerprint,
+      expiresAt: new Date(
+        Math.min(this.now() + 300_000, Date.parse(credential.expiresAt)),
+      ).toISOString(),
+      phase: 'awaiting-operator',
+    };
+    const key = this.indexKey(
+      record,
+      target,
+      credential.revision,
+      credential.sourceApprovalId,
+    );
+    this.storagePreparations.set(requestId, {
+      view,
+      assertPerson,
+      inFlight: false,
+      prepare: async (currentTarget) => {
+        await assertPerson();
+        if (
+          currentTarget.installationId !== view.installationId ||
+          currentTarget.custody !== view.custody
+        )
+          throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
+        const assertSource = await captureRecipientSourceAuthority(
+          await this.sourceReadContext(
+            actor,
+            recipientId,
+            AbortSignal.timeout(30_000),
+          ),
+          0,
+        );
+        await assertSource();
+        await currentTarget.assertCurrent();
+        await currentTarget.provision(
+          createHash('sha256').update(key).digest('hex'),
+          assertSource,
+        );
+        await assertSource();
+        await assertPerson();
+        await currentTarget.assertCurrent();
+        view.phase = 'prepared';
+      },
+    });
+    return { ...view };
+  }
+
+  async reviewStoragePreparation(
+    requestId: string,
+    captureTarget: (
+      assertPerson: () => Promise<void>,
+    ) => Promise<PrivateUsageTarget>,
+  ): Promise<TelemetryPrivateUsagePreparation> {
+    const pending = this.storagePreparations.get(requestId);
+    if (!pending)
+      throw new RecipientCandidateRejected(
+        'recipient_candidate_not_found',
+        404,
+      );
+    await pending.assertPerson();
+    const target = await captureTarget(pending.assertPerson);
+    if (
+      target.installationId !== pending.view.installationId ||
+      target.custody !== pending.view.custody
+    )
+      throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
+    await target.assertCurrent();
+    return { ...pending.view };
+  }
+
+  async prepareStorage(
+    requestId: string,
+    fingerprint: string,
+    captureTarget: (
+      assertPerson: () => Promise<void>,
+    ) => Promise<PrivateUsageTarget>,
+  ): Promise<TelemetryPrivateUsagePreparation> {
+    const pending = this.storagePreparations.get(requestId);
+    if (!pending)
+      throw new RecipientCandidateRejected(
+        'recipient_candidate_not_found',
+        404,
+      );
+    if (pending.inFlight || pending.view.fingerprint !== fingerprint)
+      throw new PrivateUsageClientRejected(409, 'private_usage_conflict');
+    pending.inFlight = true;
+    try {
+      await pending.assertPerson();
+      const target = await captureTarget(pending.assertPerson);
+      await pending.prepare(target);
+      return { ...pending.view };
+    } finally {
+      pending.inFlight = false;
+    }
+  }
+
   private readonly file: AnalyticsPrivateFile<File>;
   private activation?: ReturnType<typeof captureAnalyticsHomeActivation>;
   constructor(

@@ -986,7 +986,7 @@ export async function captureTelemetryCompanionPrivateUsageTarget(
     installationId,
     custody: initial.state.custody,
     assertCurrent,
-    provision: async (credentialHash) => {
+    provision: async (credentialHash, assertSource) => {
       try {
         await requireOperator();
       } catch {
@@ -1013,6 +1013,10 @@ export async function captureTelemetryCompanionPrivateUsageTarget(
         key,
         'POST',
         { credentialHash },
+        async () => {
+          await assertSource?.();
+          await requireOperator();
+        },
       );
       await requireOperator();
       success(result.response.status);

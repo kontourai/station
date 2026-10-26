@@ -265,6 +265,35 @@ export function createRecipientCandidateRoutes(deps: {
       );
     },
   );
+  app.post('/:recipientId/storage-preparation', async (c) => {
+    if (!deps.captureSyncTarget)
+      return c.json({ error: { code: 'private_usage_unavailable' } }, 503);
+    let requestId: string;
+    try {
+      const body = await readBoundedRequestBody(c.req.raw, 1024);
+      if (body.status !== 'ok') throw new Error('Invalid body');
+      requestId = z
+        .object({ requestId: z.string().uuid() })
+        .strict()
+        .parse(JSON.parse(body.body)).requestId;
+    } catch {
+      return c.json({ error: { code: 'recipient_candidate_invalid' } }, 400);
+    }
+    const actor = await deps.capture({ env: c.env, req: c.req });
+    const recipientId = c.req.param('recipientId');
+    await deps.store.get(actor, recipientId);
+    const target = await deps.captureSyncTarget(c.req.raw, actor.assertCurrent);
+    const data = await deps.store.requestStoragePreparation(
+      actor,
+      recipientId,
+      requestId,
+      target,
+    );
+    return guardAuthorityObservationResponse(
+      c.json({ data }),
+      actor.assertCurrent,
+    );
+  });
   app.post('/:recipientId/sync', async (c) => {
     if (!deps.captureSyncTarget)
       return c.json({ error: { code: 'private_usage_unavailable' } }, 503);

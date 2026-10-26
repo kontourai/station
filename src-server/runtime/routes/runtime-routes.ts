@@ -3192,16 +3192,53 @@ export function configureRuntimeRoutes(
     } catch {
       throw new AuthorityObservationRejected(403, 'authority_changed');
     }
+    const principal = getRuntimeAuthenticatedRequestPrincipal(
+      requestContext.req.raw,
+    );
+    const device =
+      principal?.authority === 'device-credential' &&
+      principal.deviceKind === 'device'
+        ? context.environmentSecurityService.identifyDevice(
+            principal.credential,
+          )
+        : null;
+    if (
+      !device?.principalBinding ||
+      device.credentialKind === 'personal-token' ||
+      principalForDeviceBinding(device.principalBinding).id !==
+        captured.envelope.principal.id
+    )
+      throw new AuthorityObservationRejected(403, 'authority_changed');
+    const deviceBinding = JSON.stringify(device.principalBinding);
+    const since = Date.now();
+    const assertDevice = () => {
+      const current = context.environmentSecurityService.devicePairing
+        .listDevices()
+        .find((item) => item.id === device.id);
+      if (
+        !current?.principalBinding ||
+        JSON.stringify(current.principalBinding) !== deviceBinding ||
+        !context.environmentSecurityService.devicePairing.credentialHoldsScope(
+          device.id,
+          'orchestration:read',
+          since,
+        )
+      )
+        throw new AuthorityObservationRejected(403, 'authority_changed');
+    };
+    assertDevice();
     return {
       captured,
       authority: conversationReadAuthorityForRequest(requestContext.req.raw),
       assertCurrent: async () => {
+        assertDevice();
         await revalidateAuthorityObservation({
           request: requestContext.req.raw,
           captured,
           security: context.environmentSecurityService,
           deploymentAuthentication: context.deploymentAuthentication,
         });
+        assertDevice();
         try {
           activation.assertCurrent();
         } catch {
@@ -6547,6 +6584,25 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/operator/telemetry-companion',
     createTelemetryCompanionRoutes({
+      privateUsagePreparation: async (request, requestId, fingerprint) => {
+        const captureTarget = (assertPerson: () => Promise<void>) =>
+          captureTelemetryCompanionPrivateUsageTarget(
+            context.configLoader.getProjectHomeDir(),
+            assertPerson,
+            () => requireTelemetryCompanionOperator(request),
+            request.signal,
+          );
+        if (fingerprint !== undefined)
+          return analyticsRecipients.prepareStorage(
+            requestId,
+            fingerprint,
+            captureTarget,
+          );
+        return analyticsRecipients.reviewStoragePreparation(
+          requestId,
+          captureTarget,
+        );
+      },
       requireOperator: requireTelemetryCompanionOperator,
       productTrends: (request, window) =>
         readTelemetryCompanionProductTrends(

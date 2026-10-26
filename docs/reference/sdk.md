@@ -5809,3 +5809,18 @@ The hook hides cached outcome rows during refresh, errors, lost principal author
 and source validation denial; stale or revoked data is not retained for display.
 Source inventory includes optional `operationalConsent` from the source intent.
 These APIs report private retained observations and do not join product telemetry.
+
+### Private analytics storage preparation
+
+`useAnalyticsSetupMutation` accepts
+`{kind:'storage-preparation', recipientId, requestId}` and returns secret-free
+`storagePreparation` review metadata. It uses the captured person request scope.
+The Companion operator surface uses
+`useTelemetryPrivateUsagePreparationQuery(apiBase, requestId, config)` and
+`usePrepareTelemetryPrivateUsageMutation(apiBase, options)` with captured operator
+scope. The mutation accepts only the reviewed request ID and fingerprint.
+Queries partition by authority and retain no prior review while refreshing.
+A 404 means unsupported host or unavailable/expired request; request again and
+consider updating the host. No operator or private-vault credential is returned.
+See [the source journey](../guides/monitoring.md#connect-a-personal-source-in-insights)
+for expiry, source/Device revalidation and the remaining dispatch gap.

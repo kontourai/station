@@ -73,7 +73,10 @@ export interface PrivateUsageTarget {
   installationId: string;
   custody: string;
   assertCurrent(): Promise<void>;
-  provision(credentialHash: string): Promise<{ receiverEpoch: string }>;
+  provision(
+    credentialHash: string,
+    assertSource?: () => Promise<void>,
+  ): Promise<{ receiverEpoch: string }>;
   checkpoint(
     key: string,
     window: { from: string; to: string },

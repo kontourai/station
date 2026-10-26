@@ -45,6 +45,7 @@ import { createConsentApp } from '../../../runtime/consent/consent-listener.js';
 import { ConsentChannelService } from '../../../services/consent/consent-channel.js';
 import { AuthorityObservationRejected } from '../../../services/identity/authority-observation.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
+import { createTelemetryCompanionRoutes } from '../../system/telemetry-companion-routes.js';
 import { createRecipientCandidateRoutes } from '../recipient-candidates.js';
 import { createSourceEnrollmentRoutes } from '../source-enrollments.js';
 import { createSourceGrantApprovalRoutes } from '../source-grant-approvals.js';
@@ -349,6 +350,31 @@ async function fixture(
       capture: async () => actor('receiving-station'),
     }),
   );
+  const preparationBase =
+    '/api/operator/telemetry-companion/private-usage-preparations';
+  receiving.route(
+    '/api/operator/telemetry-companion',
+    createTelemetryCompanionRoutes({
+      // Domain HTTP owner fixture. Runtime account/Device/operator middleware is
+      // covered separately by runtime-routes-account-personal-tokens.test.ts.
+      requireOperator: async (request) => {
+        if (request.headers.get('authorization') !== 'Bearer fixture-operator')
+          throw new Error('Operator required');
+      },
+      prerequisites: async () => {
+        throw new Error('Not used');
+      },
+      privateUsagePreparation: async (_request, id, fingerprint) => {
+        const captureTarget = async (assertPerson: () => Promise<void>) => {
+          if (!options.target) throw new Error('Missing target');
+          return options.target(assertPerson);
+        };
+        return fingerprint === undefined
+          ? recipients.reviewStoragePreparation(id, captureTarget)
+          : recipients.prepareStorage(id, fingerprint, captureTarget);
+      },
+    }),
+  );
   const consent = createConsentApp({
     channel,
     credentials: {
@@ -449,6 +475,21 @@ async function fixture(
     sourceHome,
     receivingHome,
     receivingActor: () => actor('receiving-station'),
+    requestStorage: (requestId: string) =>
+      receiving.request(`${recipientBase}/${recipientId}/storage-preparation`, {
+        method: 'POST',
+        body: JSON.stringify({ requestId }),
+      }),
+    reviewStorage: (requestId: string) =>
+      receiving.request(`${preparationBase}/${requestId}`, {
+        headers: { authorization: 'Bearer fixture-operator' },
+      }),
+    prepareStorage: (requestId: string, fingerprint: string, operator = true) =>
+      receiving.request(`${preparationBase}/${requestId}`, {
+        method: 'POST',
+        headers: operator ? { authorization: 'Bearer fixture-operator' } : {},
+        body: JSON.stringify({ fingerprint }),
+      }),
     facts,
     advanceClock: (duration: number) => {
       now += duration;
@@ -2823,3 +2864,113 @@ test('a usage-only grant exports no terminal facts and its private copy refuses 
     await storage.close();
   }
 });
+
+test('operator HTTP preparation provisions only the reviewed receiving vault and the same person then syncs without operator authority', async () => {
+  const storage = await privateUsageFixture();
+  try {
+    const h = await fixture({ now: Date.now(), target: storage.target });
+    seedPrivateSyncThread(h, 'operator-prepared-person-sync');
+    await confirmPrivateSyncSource(h);
+    storage.operatorAllowed(false);
+    const requestId = crypto.randomUUID();
+    const requested = await h.requestStorage(requestId);
+    expect(requested.status, await requested.clone().text()).toBe(200);
+    const schema = z.object({
+      data: z.object({ fingerprint: z.string(), phase: z.string() }),
+    });
+    const pending = schema.parse(await requested.json()).data;
+    expect(pending.phase).toBe('awaiting-operator');
+    const refused = await h.prepareStorage(
+      requestId,
+      pending.fingerprint,
+      false,
+    );
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toEqual({
+      error: { code: 'operator_required' },
+    });
+    expect((await h.reviewStorage(requestId)).status).toBe(200);
+    expect((await h.prepareStorage(requestId, 'f'.repeat(64))).status).toBe(
+      409,
+    );
+    expect(
+      (
+        await storage.db.query<{ count: string }>(
+          'SELECT COUNT(*)::text AS count FROM station_private_usage.vaults',
+        )
+      ).rows[0].count,
+    ).toBe('0');
+    storage.operatorAllowed(true);
+    const prepared = await h.prepareStorage(requestId, pending.fingerprint);
+    expect(prepared.status, await prepared.clone().text()).toBe(200);
+    expect(schema.parse(await prepared.json()).data.phase).toBe('prepared');
+    expect(
+      (await h.prepareStorage(requestId, pending.fingerprint)).status,
+    ).toBe(200);
+    expect(
+      (
+        await storage.db.query<{ count: string }>(
+          'SELECT COUNT(*)::text AS count FROM station_private_usage.vaults',
+        )
+      ).rows[0].count,
+    ).toBe('1');
+    storage.operatorAllowed(false);
+    const day = new Date().toISOString().slice(0, 10);
+    const synced = await h.sync({
+      operationId: crypto.randomUUID(),
+      from: day,
+      to: day,
+    });
+    expect(synced.status, await synced.clone().text()).toBe(200);
+    expect(
+      (
+        await storage.db.query<{ count: string }>(
+          'SELECT COUNT(*)::text AS count FROM station_private_usage.observations',
+        )
+      ).rows[0].count,
+    ).toBe('1');
+  } finally {
+    await storage.close();
+  }
+});
+
+test.each(['person', 'source-revoke', 'companion', 'expiry'] as const)(
+  'operator storage preparation refuses a changed %s before creating a vault',
+  async (change) => {
+    const storage = await privateUsageFixture();
+    try {
+      let custody = 'b'.repeat(64);
+      const h = await fixture({
+        now: Date.now(),
+        target: (assertPerson) => ({
+          ...storage.target(assertPerson),
+          custody,
+        }),
+      });
+      await confirmPrivateSyncSource(h);
+      const requestId = crypto.randomUUID();
+      const pending = await h.requestStorage(requestId);
+      expect(pending.status, await pending.clone().text()).toBe(200);
+      const fingerprint = z
+        .object({ data: z.object({ fingerprint: z.string() }) })
+        .parse(await pending.json()).data.fingerprint;
+      if (change === 'person') h.receiverUser('human:tailscale:bob');
+      if (change === 'source-revoke') h.sourceSignout();
+      if (change === 'companion') custody = 'c'.repeat(64);
+      if (change === 'expiry') h.advanceClock(300_001);
+      const refused = await h.prepareStorage(requestId, fingerprint);
+      expect(refused.status).toBe(
+        change === 'companion' || change === 'expiry' ? 409 : 403,
+      );
+      expect(
+        (
+          await storage.db.query<{ count: string }>(
+            'SELECT COUNT(*)::text AS count FROM station_private_usage.vaults',
+          )
+        ).rows[0].count,
+      ).toBe('0');
+    } finally {
+      await storage.close();
+    }
+  },
+);

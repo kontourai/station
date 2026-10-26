@@ -2,6 +2,7 @@ import {
   PUBLIC_STATION_HANDSHAKE_PATH,
   parsePublicStationHandshake,
 } from '@kontourai/station-contracts/environment-security';
+import type { TelemetryPrivateUsagePreparation } from '@kontourai/station-contracts/telemetry-delivery';
 import { z } from 'zod';
 import { envelopeError } from './api-error-message';
 import {
@@ -151,6 +152,7 @@ export type AnalyticsSetupAction =
   | { kind: 'delivery'; approvalId: string }
   | { kind: 'store-delivery'; delivery: unknown }
   | { kind: 'address-review'; recipientId: string }
+  | { kind: 'storage-preparation'; recipientId: string; requestId: string }
   | { kind: 'cancel-receiver'; recipientId: string }
   | { kind: 'revoke-source'; approvalId: string };
 export function parseAnalyticsTransfer(text: string): unknown {
@@ -172,8 +174,13 @@ async function request(
       ? await getJson(`${scope.apiBase}${path}`, options)
       : await mutateJson(`${scope.apiBase}${path}`, method, options, body);
   const value: unknown = await response.json();
-  if (!response.ok)
+  if (!response.ok) {
+    if (response.status === 404 && path.endsWith('/storage-preparation'))
+      throw new Error(
+        'This host does not support storage preparation or the receiving slot is unavailable. Refresh the source connection; updating the host may be needed.',
+      );
     throw envelopeError(response, value, 'Source setup unavailable');
+  }
   return value;
 }
 function data(value: unknown) {
@@ -216,7 +223,33 @@ export async function performAnalyticsSetup(
   delivery?: AnalyticsEncryptedDelivery;
   review?: AnalyticsReview;
   message?: string;
+  storagePreparation?: TelemetryPrivateUsagePreparation;
 }> {
+  if (input.kind === 'storage-preparation') {
+    const value = await request(
+      scope,
+      `/api/analytics/recipient-candidates/${uuid.parse(input.recipientId)}/storage-preparation`,
+      'POST',
+      { requestId: uuid.parse(input.requestId) },
+    );
+    return {
+      storagePreparation: z
+        .object({
+          requestId: uuid,
+          recipientId: uuid,
+          personId: identity,
+          stationId: identity,
+          installationId: uuid,
+          custody: z.string().min(1).max(1024),
+          credentialRevision: z.number().int().positive(),
+          fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+          expiresAt: z.iso.datetime(),
+          phase: z.enum(['awaiting-operator', 'prepared']),
+        })
+        .strict()
+        .parse(data(value)),
+    };
+  }
   if (input.kind === 'offer')
     return {
       offer: intent.parse(

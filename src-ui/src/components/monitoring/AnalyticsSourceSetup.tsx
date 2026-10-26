@@ -84,6 +84,12 @@ export function AnalyticsSourceSetup({
       ? setup
       : undefined;
   const [message, setMessage] = useState('');
+  const [storagePreparation, setStoragePreparation] =
+    useState<
+      NonNullable<
+        Awaited<ReturnType<typeof action.mutateAsync>>['storagePreparation']
+      >
+    >();
   const { guard, DiscardModal } = useUnsavedGuard(
     !!(offerInput || proofInput || deliveryInput),
   );
@@ -504,6 +510,19 @@ export function AnalyticsSourceSetup({
               Review source address
             </Button>
             <Button
+              disabled={!recipientId || action.isPending}
+              onClick={async () => {
+                const result = await run({
+                  kind: 'storage-preparation',
+                  recipientId,
+                  requestId: randomCorrelationId(),
+                });
+                setStoragePreparation(result?.storagePreparation);
+              }}
+            >
+              Request private storage preparation
+            </Button>
+            <Button
               disabled={!recipientId}
               variant="danger-outline"
               onClick={() => void run({ kind: 'cancel-receiver', recipientId })}
@@ -511,11 +530,32 @@ export function AnalyticsSourceSetup({
               Stop receiving source
             </Button>
           </div>
+          {storagePreparation &&
+          storagePreparation.recipientId === recipientId ? (
+            <>
+              <Packet
+                label="Storage preparation request"
+                value={{
+                  requestId: storagePreparation.requestId,
+                  personId: storagePreparation.personId,
+                  recipientId: storagePreparation.recipientId,
+                  expiresAt: storagePreparation.expiresAt,
+                }}
+              />
+              <p>
+                Give this request ID to the selected Station's operator. In
+                Developer → Companion, they review the receiving person and
+                prepare storage. Then return here to sync. This request expires
+                in five minutes; request again after expiry or a Station
+                restart.
+              </p>
+            </>
+          ) : null}
           {addressDecision ? (
             <p role="status">
               Address review: {addressDecision}.{' '}
               {addressDecision === 'approved'
-                ? 'Refresh the source list, then select it for sync and Insights.'
+                ? 'Request private storage preparation, then ask the operator to review it before the first sync.'
                 : ''}
             </p>
           ) : null}

@@ -1440,27 +1440,6 @@ export type {
   SetupImportPreview,
   SetupImportReceipt,
 } from './query-domains/setupImports';
-export type { TelemetryIncidentLinkMutation } from './query-domains/telemetryCompanion';
-export {
-  controlTelemetryCompanion,
-  fetchTelemetryCompanionAction,
-  fetchTelemetryCompanionIncidentLinks,
-  fetchTelemetryCompanionInstallation,
-  fetchTelemetryCompanionManagedState,
-  fetchTelemetryCompanionProductIncidents,
-  fetchTelemetryCompanionProductTrends,
-  installTelemetryCompanion,
-  mutateTelemetryCompanionIncidentLink,
-  useControlTelemetryCompanionMutation,
-  useInstallTelemetryCompanionMutation,
-  useTelemetryCompanionActionQuery,
-  useTelemetryCompanionIncidentLinkMutation,
-  useTelemetryCompanionIncidentLinksQuery,
-  useTelemetryCompanionInstallationQuery,
-  useTelemetryCompanionManagedStateQuery,
-  useTelemetryCompanionProductIncidentsQuery,
-  useTelemetryCompanionProductTrendsQuery,
-} from './query-domains/telemetryCompanion';
 export {
   fetchTaskReview,
   fetchTaskReviewItem,
@@ -1486,6 +1465,29 @@ export {
   useTaskReviewQuery,
   useTaskReviewThreadQuery,
 } from './query-domains/taskReview';
+export type { TelemetryIncidentLinkMutation } from './query-domains/telemetryCompanion';
+export {
+  controlTelemetryCompanion,
+  fetchTelemetryCompanionAction,
+  fetchTelemetryCompanionIncidentLinks,
+  fetchTelemetryCompanionInstallation,
+  fetchTelemetryCompanionManagedState,
+  fetchTelemetryCompanionProductIncidents,
+  fetchTelemetryCompanionProductTrends,
+  installTelemetryCompanion,
+  mutateTelemetryCompanionIncidentLink,
+  useControlTelemetryCompanionMutation,
+  useInstallTelemetryCompanionMutation,
+  usePrepareTelemetryPrivateUsageMutation,
+  useTelemetryCompanionActionQuery,
+  useTelemetryCompanionIncidentLinkMutation,
+  useTelemetryCompanionIncidentLinksQuery,
+  useTelemetryCompanionInstallationQuery,
+  useTelemetryCompanionManagedStateQuery,
+  useTelemetryCompanionProductIncidentsQuery,
+  useTelemetryCompanionProductTrendsQuery,
+  useTelemetryPrivateUsagePreparationQuery,
+} from './query-domains/telemetryCompanion';
 export {
   checkTelemetryConnection,
   fetchTelemetryCompanionArchivePreparation,

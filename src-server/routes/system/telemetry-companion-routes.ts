@@ -13,10 +13,14 @@ import {
   type TelemetryCompanionManagedState,
   type TelemetryCompanionPreparationState,
   type TelemetryCompanionPrerequisites,
+  type TelemetryPrivateUsagePreparation,
 } from '@kontourai/station-contracts/telemetry-delivery';
 import { Hono } from 'hono';
 import { z } from 'zod/v3';
+import { PrivateUsageClientRejected } from '../../analytics/private-usage-client.js';
+import { RecipientCandidateRejected } from '../../analytics/recipient-store.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
+import { AuthorityObservationRejected } from '../../services/identity/authority-observation.js';
 import {
   CompanionArchivePreparationBusyError,
   CompanionArchivePreparationUnsupportedError,
@@ -26,6 +30,11 @@ import { CompanionInstallationRefusal } from '../../services/telemetry-companion
 
 export function createTelemetryCompanionRoutes(deps: {
   requireOperator(request: Request): Promise<void>;
+  privateUsagePreparation?(
+    request: Request,
+    requestId: string,
+    fingerprint?: string,
+  ): Promise<TelemetryPrivateUsagePreparation>;
   productTrends?(
     request: Request,
     window: { from: string; to: string },
@@ -68,6 +77,66 @@ export function createTelemetryCompanionRoutes(deps: {
   ): Promise<TelemetryCompanionPreparationState>;
 }) {
   const app = new Hono();
+  const privateUsagePreparation = async (
+    c: import('hono').Context,
+    prepare: boolean,
+  ) => {
+    c.header('Cache-Control', 'no-store');
+    try {
+      await deps.requireOperator(c.req.raw);
+    } catch {
+      return c.json({ error: { code: 'operator_required' } }, 403);
+    }
+    const requestId = c.req.param('requestId');
+    let fingerprint: string | undefined;
+    try {
+      if (!isTelemetryCompanionOperationId(requestId))
+        throw new Error('Invalid request');
+      if (prepare) {
+        const body = await readBoundedRequestBody(c.req.raw, 1024);
+        if (body.status !== 'ok') throw new Error('Invalid body');
+        fingerprint = z
+          .object({ fingerprint: z.string().regex(/^[a-f0-9]{64}$/) })
+          .strict()
+          .parse(JSON.parse(body.body)).fingerprint;
+      }
+    } catch {
+      return c.json(
+        { error: { code: 'invalid_private_usage_preparation' } },
+        400,
+      );
+    }
+    if (!deps.privateUsagePreparation)
+      return c.json({ error: { code: 'private_usage_unavailable' } }, 503);
+    try {
+      const data = await deps.privateUsagePreparation(
+        c.req.raw,
+        requestId,
+        fingerprint,
+      );
+      await deps.requireOperator(c.req.raw);
+      return c.json({ data });
+    } catch (error) {
+      try {
+        await deps.requireOperator(c.req.raw);
+      } catch {
+        return c.json({ error: { code: 'operator_required' } }, 403);
+      }
+      if (
+        error instanceof PrivateUsageClientRejected ||
+        error instanceof RecipientCandidateRejected ||
+        error instanceof AuthorityObservationRejected
+      )
+        return c.json({ error: { code: error.code } }, error.status);
+      return c.json({ error: { code: 'private_usage_unavailable' } }, 503);
+    }
+  };
+  app.get('/private-usage-preparations/:requestId', (c) =>
+    privateUsagePreparation(c, false),
+  );
+  app.post('/private-usage-preparations/:requestId', (c) =>
+    privateUsagePreparation(c, true),
+  );
   app.get('/product-trends', async (c) => {
     c.header('Cache-Control', 'no-store');
     try {

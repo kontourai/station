@@ -1,17 +1,19 @@
 import {
   useControlTelemetryCompanionMutation,
   useInstallTelemetryCompanionMutation,
+  usePrepareTelemetryPrivateUsageMutation,
   useTelemetryCompanionActionQuery,
   useTelemetryCompanionInstallationQuery,
   useTelemetryCompanionManagedStateQuery,
   useTelemetryCompanionPreparationStateQuery,
+  useTelemetryPrivateUsagePreparationQuery,
 } from '@kontourai/station-sdk';
 import { StationHttpError } from '@kontourai/station-sdk/client';
 import { useState } from 'react';
 import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { Checkbox } from '../../components/Checkbox';
-import { SkeletonBlock } from '../../components/state';
+import { ErrorState, SkeletonBlock } from '../../components/state';
 import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { CompanionProductTrends } from './CompanionProductTrends';
 import { newCompanionOperationId } from './companion-operation-id';
@@ -67,6 +69,17 @@ export function CompanionManaged({
     },
   );
   const [storageChosen, setStorageChosen] = useState(false);
+  const [preparationInput, setPreparationInput] = useState('');
+  const [preparationId, setPreparationId] = useState<string | null>(null);
+  const privatePreparation = useTelemetryPrivateUsagePreparationQuery(
+    authority.apiBase,
+    preparationId,
+    { requestScope: authority },
+  );
+  const preparePrivate = usePrepareTelemetryPrivateUsageMutation(
+    authority.apiBase,
+    { requestScope: authority },
+  );
   const pending = install.isPending || control.isPending;
   const check = () => {
     void state.refetch();
@@ -217,6 +230,103 @@ export function CompanionManaged({
   };
   return (
     <section className="companion-managed" aria-label="Managed companion">
+      <details>
+        <summary>Prepare a person's private storage</summary>
+        <p>
+          Ask the receiving person to request storage preparation after
+          confirming their source address. Review their request here. This
+          prepares an empty private vault; the person retains source and sync
+          authority.
+        </p>
+        <label>
+          Storage preparation request ID
+          <input
+            value={preparationInput}
+            onChange={(event) => {
+              setPreparationInput(event.target.value);
+              setPreparationId(null);
+              preparePrivate.reset();
+            }}
+          />
+        </label>
+        <Button
+          disabled={
+            !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+              preparationInput,
+            )
+          }
+          onClick={() => setPreparationId(preparationInput)}
+        >
+          Review storage request
+        </Button>
+        {privatePreparation.isFetching ? (
+          <SkeletonBlock count={1} label="Checking private storage request" />
+        ) : null}
+        {privatePreparation.isError ? (
+          <ErrorState
+            title="Storage request unavailable"
+            description={
+              privatePreparation.error instanceof Error
+                ? privatePreparation.error.message
+                : 'Ask the person for a fresh request.'
+            }
+            action={
+              <Button onClick={() => void privatePreparation.refetch()}>
+                Check request again
+              </Button>
+            }
+          />
+        ) : null}
+        {!privatePreparation.isFetching &&
+        !privatePreparation.isError &&
+        privatePreparation.data ? (
+          <>
+            <dl>
+              <dt>Receiving person</dt>
+              <dd>{privatePreparation.data.personId}</dd>
+              <dt>Receiving slot</dt>
+              <dd>{privatePreparation.data.recipientId}</dd>
+              <dt>Station</dt>
+              <dd>{privatePreparation.data.stationId}</dd>
+              <dt>Companion installation</dt>
+              <dd>{privatePreparation.data.installationId}</dd>
+              <dt>Credential revision</dt>
+              <dd>{privatePreparation.data.credentialRevision}</dd>
+              <dt>Expires</dt>
+              <dd>{privatePreparation.data.expiresAt}</dd>
+              <dt>Preparation</dt>
+              <dd>{privatePreparation.data.phase}</dd>
+            </dl>
+            <Button
+              disabled={
+                preparePrivate.isPending ||
+                privatePreparation.data.phase === 'prepared' ||
+                Date.parse(privatePreparation.data.expiresAt) <= Date.now()
+              }
+              onClick={() => {
+                if (privatePreparation.data)
+                  preparePrivate.mutate({
+                    requestId: privatePreparation.data.requestId,
+                    fingerprint: privatePreparation.data.fingerprint,
+                  });
+              }}
+            >
+              Prepare this person's private storage
+            </Button>
+          </>
+        ) : null}
+        {preparePrivate.isError ? (
+          <ErrorState
+            title="Storage preparation could not be confirmed"
+            description="Check the request again before retrying. If it expired, ask the person to request it again."
+            action={
+              <Button onClick={() => void privatePreparation.refetch()}>
+                Check request again
+              </Button>
+            }
+          />
+        ) : null}
+      </details>
       <h3>Install and run</h3>
       <p>
         Operations affect the selected Station host. Installing or starting does

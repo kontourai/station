@@ -250,8 +250,10 @@ live narrow source grant for new capture. Core selects the installed companion
 itself, revalidating signed artifact, home/daemon/container custody and runtime.
 No target URL, person, tenant, storage key or source credential is body input.
 
-If the private bucket is absent, provisioning additionally requires the current
-operator's companion-management permission. That service registers only the
+If the private bucket is absent, the person sync refuses with
+`private_usage_provision_required`. Use the separate
+[person request and operator preparation](#connect-a-personal-source-in-insights)
+before retrying. The operator's companion-management action registers only the
 private key hash. Existing buckets use the person's private capability; they do
 not require the viewer to gain operator data access. The storage key is derived
 from the owned receiving proof key, installation/custody and source grant/revision
@@ -425,9 +427,44 @@ operator does not grant access to another person's usage.
    to the receiving Station. Store it in the owned receiving slot, then review
    the source address on its separate requester page. Credential storage and
    address confirmation are separate operations.
-5. Refresh the source list, select the authorized source in the personal view,
-   and run foreground sync before querying its copied history. Sync remains
-   explicit, bounded and cancellable.
+5. On the receiving Station, choose **Request private storage preparation**.
+   Give its request ID to that Station's operator. Under **Developer → Monitoring
+   → Companion → Prepare a person's private storage**, the operator enters the
+   ID, reviews the receiving person, slot, Station, companion installation and
+   credential revision, then chooses **Prepare this person's private storage**.
+   The companion must already be admitted, installed and running.
+6. Return as the receiving person, refresh the source list, select the authorized
+   source in the personal view, and run foreground sync before querying copied
+   history. Sync remains explicit, bounded and cancellable. The person uses the
+   prepared vault without acquiring operator credentials or management access.
+
+Storage preparation requests are held in memory for at most five minutes and
+expire with their source credential if sooner. After a Station restart, expiry,
+or a new request for the same slot, ask the person to request preparation again.
+The review binds the real receiving principal and current session/Device grant,
+slot, source confirmation, credential revision and managed installation custody.
+Operator approval rechecks the current source grant before provisioning; changing
+the person, slot, credential or companion refuses the old request. Retrying the
+same live request provisions the same vault. A lost reply requires checking the
+request again; it is not evidence of failure or success. The request exposes no
+source, private-vault or operator credential. It does not start sync or grant
+source permission. An ordinary person cannot prepare storage or choose an
+arbitrary vault or receiver URL.
+
+Account-bound person Devices with a current matching account session may reach
+only the exact enrollment, requester review, receiving confirmation, saved-view,
+sync and query leaves marked in the
+[pairing-scope owner](../../src-server/security/pairing-route-scopes.ts).
+They still require `orchestration:read` and each route's current person, source,
+consent and grant checks. Account tokens, agents, cookies alone and Project
+membership alone do not obtain this access. Generic analytics, companion
+management and the orchestration commands endpoint remain closed to these
+Devices. Real dispatch from this account surface remains a checkpoint gap:
+the commands route's general session-read authorization does not establish
+Project execution permission, so telemetry access does not open it.
+
+These are source changes awaiting parent verification and independent authority
+review. They establish no installed runtime, native or release acceptance.
 
 The source offer and receiving slot selectors recover owned setup state after a
 reload. **Revoke source access** withdraws the source grant. Stopping a receiving

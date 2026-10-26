@@ -5180,7 +5180,16 @@ recovers by original operation receipt. The
 [bound client](../../src-server/analytics/private-usage-client.ts) exposes fixed
 operations without keys/URLs in wire results. The managed target retains operator
 permission only for empty-bucket provisioning; data methods use private caps
-and a final source check. Expired outbox bodies are discarded by runtime health
+and a final source check. The recipient owner now retains short-lived preparation
+requests bound to the actual receiving actor, slot, source credential revision
+and managed companion custody. Separate Companion operator GET/POST leaves
+review and prepare that exact vault without impersonating the person. Restart,
+expiry, changed authority or changed custody refuses the request; subsequent
+person sync uses the already prepared vault. These source changes await runtime
+verification and independent authority review. Account-bound Device access uses
+exact marked leaves in the existing pairing-scope owner, not an analytics prefix.
+Generic account-bound orchestration commands remain closed pending an execution
+permission policy; session readability alone is insufficient. Expired outbox bodies are discarded by runtime health
 housekeeping and sync actions, with only receipt expectations retained.
 The private schema-v2 transaction now applies source invalidations atomically
 with capacity, replay checkpoint and recovery receipt. It preserves newer source

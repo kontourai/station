@@ -328,7 +328,13 @@ Lifecycle controls never enable sending or acknowledge disclosure for a person.
 
 Profile → Insights → Personal views uses a separate verified-person/source
 consent flow, encrypted credential custody, explicit sync and bounded canonical
-usage queries. A product key, operator permission, saved view or key-possession
+usage queries. Before first sync, the receiving person requests private storage
+preparation; the operator reviews that short-lived request in Companion and
+prepares its exact managed vault. The person then syncs under their own authority.
+Restart, expiry, credential or companion changes require a fresh request.
+See the [source journey](../guides/monitoring.md#connect-a-personal-source-in-insights)
+for authority checks and the unresolved account-surface dispatch gap.
+A product key, operator permission, saved view or key-possession
 proof grants no personal source access. These source/UI implementations and
 controlled tests are not a qualified official companion install, deployed
 storage journey or native release. See [monitoring](../guides/monitoring.md)

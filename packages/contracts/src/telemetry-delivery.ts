@@ -217,3 +217,17 @@ export interface TelemetryDeliveryStatus {
   product: ProductTelemetryDeliveryStatus;
   otel: OtelTelemetryDeliveryStatus;
 }
+
+/** Short-lived operator review of storage custody; contains no source or vault credential. */
+export interface TelemetryPrivateUsagePreparation {
+  requestId: string;
+  recipientId: string;
+  personId: string;
+  stationId: string;
+  installationId: string;
+  custody: string;
+  credentialRevision: number;
+  fingerprint: string;
+  expiresAt: string;
+  phase: 'awaiting-operator' | 'prepared';
+}
