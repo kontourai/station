@@ -122,13 +122,11 @@ INSERT INTO station_telemetry.lite_publication_fence VALUES(true,'active');
 const PUBLICATION_FENCE_DIGEST = createHash('sha256')
   .update(PUBLICATION_FENCE_SCHEMA)
   .digest('hex');
-export const PUBLICATION_SUPPRESSED =
+const PUBLICATION_SUPPRESSED =
   'publication permanently suppressed; history unreconciled';
 
 /** Acquire before admission/day/key locks and retain through transaction commit. */
-export async function publicationSuppressed(
-  client: LiteSqlClient,
-): Promise<boolean> {
+async function publicationSuppressed(client: LiteSqlClient): Promise<boolean> {
   await client.query(
     "SELECT pg_advisory_xact_lock_shared(hashtext('station.lite.publication'))",
   );
