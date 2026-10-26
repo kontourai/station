@@ -3827,15 +3827,18 @@ selected input on access refusal. It does not hydrate a whole transcript.
 For automatic reads, the hook checks the host's public handshake for the
 `sessionInventoryInputRead` capability (`fetchSessionInventoryInputCapability`)
 and returns `hostSupport`: `checking`, `supported`, `unsupported` (an older host
-without the route; automatic reads are disabled) or `unknown` (the handshake
-could not be read; an automatic read is still attempted). An explicit
-`query.refetch()` can call the route even when automatic reads are disabled.
-Use `recheckHost()` after a host update to drop its cached handshake and ask
-again. The server treats an empty or whitespace-only prompt without attachments
-as not found, using `isAuthoredInputContent`
-(`@kontourai/station-shared/authored-input`). The SDK also refuses malformed
-successful responses, including those with no authored content, while retaining
-the observed HTTP status (usually 200).
+without the route, or a hosted deployment that does not advertise it; automatic
+reads are disabled) or `unknown` (the handshake could not be read; an automatic
+read is still attempted). An explicit `query.refetch()` can call the route even
+when automatic reads are disabled. `recheckHost()` drops that host's cached
+handshake and asks again after an update; it keeps one identity across renders
+and resolves when the host has answered. `hostRecheck` reports that press:
+`idle`, `checking` while the host is asked again, or `still-unsupported` when it
+answered and still does not serve the read. The server treats an empty or
+whitespace-only prompt without attachments as not found, using
+`isAuthoredInputContent` (`@kontourai/station-shared/authored-input`). The SDK also
+refuses malformed successful responses, including those with no authored
+content, while retaining the observed HTTP status (usually 200).
 
 - `useSessionInventoryQuery` returns the same captured current-answer Basis
   projection when that scope is selected. Consumers render its standing from
@@ -4370,13 +4373,13 @@ its original `operationId` and cause. In `adoptOrchestrationSession`, it becomes
 classification.
 
 Keys and stable message IDs do not establish server replay retention or digest
-checking. The retained-claim behavior below requires the server lifecycle change
-tracked in [Station PR #4191](https://github.com/kontourai/station/pull/4191).
-This SDK cut has not yet bound that change to a protected server landing or
-release. Establish the deployed server's compatible build before relying on
-it. Servers without that change can execute a same-key retry again after an
-invoked attempt fails. Stable request IDs do not establish transcript uniqueness
-or a minimum replay window.
+checking. The retained-claim behavior below requires a Station server build
+containing [the #4191 lifecycle fix](https://github.com/kontourai/station/commit/82b0727539d0b585cfd4f986073649b495501e00).
+Check the deployed server's build revision before relying on it. Servers built
+before this fix can execute a same-key retry again after an invoked attempt
+fails, is cancelled or loses its client. A claim released before Agent
+invocation allows a same-key retry. Stable request IDs do not establish
+transcript uniqueness or a minimum replay window.
 
 On servers with that lifecycle change, the direct chat stream
 (`streamConversationTurn`) can refuse a retried
@@ -5628,3 +5631,52 @@ read-only POST returns a validated HTML page plus isolated frame origin, or a
 bounded raster preview. `thread` selects an authorized Session workspace;
 verified Git worktrees of that repository are also eligible. The returned bytes
 are display data, not permission to navigate to a host filesystem URL.
+
+### Task review threads
+
+The SDK root and query barrel export `fetchTaskReview(taskId)`,
+`taskReviewQueryKey(taskId)` and `useTaskReviewQuery(taskId, {poll})` for the
+[Task review API](api.md#task-review-threads). `poll` defaults to false. Enable
+it only while the Review tab is visible: the query polls every three seconds
+while any returned thread has base state `sent`, then stops when delivery is
+answered/resolved or the list query enters an error state. A person's follow-up
+on a Sent thread leaves delivery in flight. Browser background polling is
+disabled. The list returns item metadata, counts and `TaskReviewThreadSummary` entries,
+without artifact text or full event arrays. Available entries expose `status`,
+`state`, `eventCount`, `openingEvent`, optional `lastDeliveryEvent`, `lastEvent`
+and anchor data. Summary event bodies are capped at
+`TASK_REVIEW_OPENING_PREVIEW_CHARS` (500 UTF-16 code units), exported by both
+SDK barrels; detail provides full text. Use `openingEvent.body`/author/createdAt
+for the card preview and `lastDeliveryEvent` for the latest delivery, even when
+`lastEvent` is a person reply or resolve. Render `status:'unavailable'`
+as an unavailable card; it has no invented base state or history and does not
+contribute to aggregate counts.
+
+`fetchTaskReviewItem(taskId, kind, id)` and
+`useTaskReviewItemQuery(taskId, kind, id, options)` read one selected item through
+`GET .../review/items/:kind/:id`; pass the list's opaque `item.id`, including
+JSON tuple IDs for answers. The item query never polls. Its independent key is
+`taskReviewItemQueryKey(taskId, kind, id, revision?)`; pass
+`options.revision: item.artifact.revision` to refresh mutable content when list
+metadata observes a new revision. Text exceeding 1,048,576 UTF-8 bytes or UTF-16
+code units is refused, never truncated.
+
+`fetchTaskReviewThread(taskId, threadId, signal?)` and
+`useTaskReviewThreadQuery(taskId, threadId, options)` fetch `{thread}` with full
+events from `GET .../review/threads/:threadId`. Enable the hook when a card is
+expanded, passing `options.eventCount` and `options.revision` from its available
+summary (`currentRevision`). Its key is
+`taskReviewThreadQueryKey(taskId, threadId, eventCount?, revision?)`; it never
+polls. A changed summary count or revision fetches fresh detail. A corrupt
+thread's detail request fails with 503 while healthy cards remain available.
+
+`useCreateReviewThreadMutation(taskId)` takes the contract's
+`TaskReviewCreateThreadRequest`. `useReplyReviewThreadMutation(taskId)`,
+`useResolveReviewThreadMutation(taskId)` and
+`useReopenReviewThreadMutation(taskId)` take the corresponding request plus
+`threadId`. Every mutation requires a stable caller-issued `operationId`,
+returns `{thread}` and invalidates both the Task's list and thread-detail queries. Refusals throw
+`StationHttpError` with the HTTP status and refusal code; malformed or non-JSON
+responses also throw `StationHttpError`, preserving the HTTP status. The SDK re-exports
+these request types, `TaskReviewThreadSummary`, `TaskReviewThreadView` and `TaskReviewView` from the
+[review contract](../../packages/contracts/src/task-review.ts).

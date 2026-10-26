@@ -725,10 +725,10 @@ function assertToolbarPreconditions(
   // A non-empty, complete inventory — precondition 2.
   const keys = measurement.controls.map((control) => control.key);
   for (const required of REQUIRED_CONTROL_KEYS) {
-    // The bell's label gains a " (N need attention)" suffix when its first
+    // The bell's label gains a ", N need attention" suffix when its first
     // notification arrives, which lands at a different moment per run.
     expect(
-      keys.map((key) => (key.startsWith(`${required} (`) ? required : key)),
+      keys.map((key) => (key.startsWith(`${required}, `) ? required : key)),
       `required toolbar control '${required}' is missing from the measured ` +
         `inventory — this guard would be checking less than it claims\n${context}`,
     ).toContain(required);
@@ -822,6 +822,12 @@ for (const width of TOOLBAR_WIDTHS) {
             new RegExp(`(^|\\s)${state.modifier}(\\s|$)`),
             { timeout: 30_000 },
           );
+          // The cold-launch intro is a modal dialog over an inert app until it
+          // finishes (#3698), so nothing is reachable while it shows, by design.
+          // Reachability is a claim about the app once the user can touch it.
+          await expect(
+            page.getByRole('dialog', { name: 'Starting Station', exact: true }),
+          ).toBeHidden();
 
           const measurement = await measureToolbarControls(page);
           assertToolbarPreconditions(measurement, state.modifier);

@@ -2,6 +2,7 @@ import { ACPStatus } from '@kontourai/station-contracts/acp';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { HomeRecoveryDisclosure } from '@kontourai/station-contracts/system-status';
 import { readStationHomeRecovery } from '@kontourai/station-shared/station-home-archive';
+import { servesWebPushNotifications } from '../../capabilities/station-capability-flags.js';
 import { getNotificationProviders } from '../../providers/registries/registry.js';
 import { listUnconnectedACPRegistryEntries } from '../../routes/connections/acp.js';
 import { getCachedUser } from '../../routes/system/auth.js';
@@ -322,6 +323,18 @@ export async function readStationSetupRequirement(
   }
 }
 
+/**
+ * Whether this deployment serves Web Push, from the same predicate the public
+ * handshake uses to advertise `webPushNotifications` (#4177).
+ */
+export function resolveRuntimeWebPushEnabled(
+  environment: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return servesWebPushNotifications({
+    hosted: isHostedTenantExecutionRequired(environment),
+  });
+}
+
 export function configureRuntimeSupportServices(
   context: ConfigureRuntimeRoutesContext,
   flowRunService: Pick<FlowRunService, 'getRunConsole'>,
@@ -348,7 +361,7 @@ export function configureRuntimeSupportServices(
   // default there; callers can inject the same resolved boolean when they
   // compose the public Push routes.
   const webPushEnabled =
-    options.webPushEnabled ?? !isHostedTenantExecutionRequired();
+    options.webPushEnabled ?? resolveRuntimeWebPushEnabled();
   const notificationService = new NotificationService(
     context.eventBus,
     context.configLoader.getProjectHomeDir(),

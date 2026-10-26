@@ -1,0 +1,17 @@
+{
+  "revision": "420af576c9e24a80104a4db845c3278539c50ca4",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Input delta is the threat model's handshake capabilities passage (hosted handshake reachable only through tenant ingress). This design cites the threat model only for its Funnel rejection, unchanged. No prose change.","inputs":["docs/design/automations.md","docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/design/inference-fleet.md","note":"Corrected the stale 'compile-time constants, all true, nothing runtime-derived' bullet: the registry is static, and its only deployment-dependent step withdraws sessionInventoryInputRead in hosted mode (resolveStationCapabilityFlags, #4177); no flag reflects participation. Verified against station-capability-flags.ts; the fleetInference static/participation split in 3.3 is unchanged.","inputs":["docs/design/inference-fleet.md"]},
+
+    {"path":"docs/design/remote-execution-preparation.md","note":"Capability-flags table row now says the handshake facts are static except where a deployment mode cannot serve the route; executionPreparation itself stays static. Verified against station-capability-flags.ts.","inputs":["docs/design/remote-execution-preparation.md"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Replaced the hosted-disclosure sentence: a hosted Station's tenant middleware (runtime-routes.ts, mounted on '*' before configureRuntimePublicRoutes, no /.well-known bypass) answers an unadmitted caller 421 tenant_context_required, so omitting the flag discloses nothing new. Verified in runtime-routes.ts and runtime-tenant-context.ts.","inputs":["docs/security/remote-access-threat-model.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reworded the skew rule: the client says the host can't do this and suggests updating as one remedy (matching SessionInventoryItemDetails copy); added the pointer to consumed-capability-flags.test.ts, which exists and fails on an untabled hasCapability gate.","inputs":["src-server/AGENTS.md"]},
+
+    {"path":"src-server/CLAUDE.md","note":"The complete file imports its paired AGENTS.md via @AGENTS.md; the AGENTS.md change is recorded separately.","inputs":["src-server/CLAUDE.md","src-server/AGENTS.md"]}
+  ]
+}
