@@ -12,6 +12,7 @@ import {
   test,
 } from './helpers/authenticated-request';
 import { monitorBrowserHealth } from './helpers/browser-health';
+import { phoneChatInventoryControls } from './helpers/chat-inventory';
 import {
   closeFixtureServer,
   startOllamaFixture,
@@ -218,14 +219,7 @@ test.describe('Chat inventory item drill-down on a phone', () => {
     // is a row of the Chat actions sheet rather than a third bar control
     // (#4192: it wrapped above ⋯ as a floating pill). 320px is the narrowest
     // phone the header supports; 390px is this journey's.
-    const chatActions = header.getByRole('button', {
-      name: 'Chat actions',
-      exact: true,
-    });
-    const inventoryRow = page.getByRole('menuitem', {
-      name: 'Chat inventory',
-      exact: true,
-    });
+    const { chatActions, inventoryRow } = phoneChatInventoryControls(page);
     // Measured once Chat inventory is available (the row appears when the
     // chat's inventory is ready), since that is when it used to wrap the bar.
     await chatActions.click();

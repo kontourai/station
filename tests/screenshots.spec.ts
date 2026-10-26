@@ -6,6 +6,7 @@ import { expect, type Locator, type Page, type Route } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
 import { assertGalleryScreenSourcesCover } from './gallery-screen-sources.mjs';
 import { createAuthenticatedE2ERequest } from './helpers/authenticated-request';
+import { phoneChatInventoryControls } from './helpers/chat-inventory';
 import { contrastRatio } from './helpers/color-contrast';
 import { routeCoreUpdateCheck } from './helpers/core-update-route';
 import { resolveE2EApiBase } from './helpers/e2e-target';
@@ -2311,10 +2312,18 @@ function inventoryDrilldownScreens(): Screen[] {
             await expect(
               page.getByText('Inventory fixture answered.', { exact: true }),
             ).toBeVisible({ timeout: 20_000 });
-            await page
-              .getByRole('button', { name: 'Chat inventory', exact: true })
-              .first()
-              .click();
+            // A phone opens the reader from the ⋯ actions sheet (#4199);
+            // desktop keeps the header's Chat inventory button.
+            if (viewport === MOBILE) {
+              const { chatActions, inventoryRow } =
+                phoneChatInventoryControls(page);
+              await chatActions.click();
+              await inventoryRow.click();
+            } else
+              await page
+                .getByRole('button', { name: 'Chat inventory', exact: true })
+                .first()
+                .click();
             const reader = page.getByRole('dialog', {
               name: 'Chat inventory',
               exact: true,
