@@ -1,0 +1,7 @@
+{
+  "revision": "75f2209ade3bc600f13ccb8b689def33fc030bac",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Updated in this change for out-of-line runtime event content (event-content-spill): checked the new and edited claims against event-store.ts, event-content-spill.ts, the content route, the respondToRequest digest gate and their tests; remaining claims are unaffected by the changed inputs.","inputs":["docs/architecture/module-map.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-server/services/evidence/__tests__/orchestration-review-executor.test.ts","src-server/services/evidence/orchestration-review-executor.ts","src-server/services/orchestration/__tests__/event-store.test.ts","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-recovery-coordinator.ts","src-server/services/orchestration/transcript-search-queries.ts","src-server/tools/station-control-delegation.ts","src-ui/src/contexts/active-chats-state.ts","src-ui/src/hooks/orchestration/turnHandlers.ts"]}
+  ]
+}
