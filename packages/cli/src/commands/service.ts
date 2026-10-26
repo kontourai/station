@@ -14,7 +14,10 @@ import {
 import { acquireFileMutationLock } from '@kontourai/station-shared/lifecycle-events';
 import { assertSupportedNodeVersion } from '@kontourai/station-shared/node-runtime';
 import { lookupProcessBirthFingerprint } from '@kontourai/station-shared/process-identity';
-import { spawnedStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
+import {
+  sameRuntimePath,
+  spawnedStationRoot,
+} from '@kontourai/station-shared/runtime-path-resolver';
 import { readServiceUpdateProgress } from '@kontourai/station-shared/service-launcher-protocol';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import {
@@ -61,8 +64,10 @@ import {
   type ServicePathDrift,
 } from './service-path.js';
 import {
+  readInstalledServiceRun,
   resolveInstalledServiceRemedy,
   type ServiceInstallRemedy,
+  shellArgument,
 } from './service-remedy.js';
 import { superviseService } from './service-run.js';
 import {
@@ -78,6 +83,7 @@ import {
   systemdStatus,
   uninstallSystemd,
 } from './service-systemd.js';
+import { readInstalledServiceUnit } from './service-unit.js';
 import { runServiceUpdateHome } from './service-update-home.js';
 import {
   assertWindowsServiceExecutionTrusted,
@@ -971,13 +977,68 @@ function describeServiceUpdate(
   }
 }
 
+/**
+ * A manifest in the home `status` read that does not describe the installed
+ * unit (#4196). launchd labels and systemd units are named by instance id
+ * alone, so reinstalling an instance from another `--base` rewrites the unit
+ * but leaves this home's earlier manifest behind.
+ */
+interface StaleServiceManifest {
+  /** The unit's own `--allowed-origin` flags: what the service runs with. */
+  allowedOrigins: string[];
+  manifestPath: string;
+  unitHome: string;
+  unitPath: string;
+}
+
+/** Printed, never performed: removal is the operator's decision. */
+function staleManifestRemoval(stale: StaleServiceManifest): string {
+  return `rm -- ${shellArgument(stale.manifestPath)}`;
+}
+
+/**
+ * The installed launchd or systemd unit's home, when it is not `home`.
+ * Null when they agree, on Windows (whose wrapper lives in the manifest's
+ * own home), or when the unit cannot be read: the remedy explains those.
+ */
+function findStaleServiceManifest(
+  manifest: ServiceManifest,
+  manifestPath: string,
+  home: string,
+  dependencies: { fs: ServiceFs; run: CommandRunner },
+): StaleServiceManifest | null {
+  if (manifest.platform === 'win32') return null;
+  let installed: ReturnType<typeof readInstalledServiceRun>;
+  try {
+    installed = readInstalledServiceRun(
+      readInstalledServiceUnit(manifest, dependencies),
+    );
+  } catch {
+    return null;
+  }
+  if ('reason' in installed) return null;
+  const { allowedOrigins, baseDir } = installed.configuration;
+  if (typeof baseDir !== 'string' || sameRuntimePath(baseDir, home)) {
+    return null;
+  }
+  return {
+    allowedOrigins: Array.isArray(allowedOrigins)
+      ? (allowedOrigins as string[])
+      : [],
+    manifestPath,
+    unitHome: baseDir,
+    unitPath: manifest.unitPath,
+  };
+}
+
 function renderStatus(
   state: InstanceState,
   scheduling: ServiceSchedulingPolicy,
   servicePath: ServicePathDrift | null,
-  remedy: ServiceInstallRemedy | null,
+  remedy: ServiceInstallRemedy,
   json: boolean,
   update: ServiceUpdateProgress | null = null,
+  staleManifest: StaleServiceManifest | null = null,
 ): void {
   const installed = state.installation !== 'absent';
   const schedulingHealthy = isSchedulingPolicyHealthy(scheduling);
@@ -1000,6 +1061,16 @@ function renderStatus(
     ...(servicePath === null ? {} : { servicePath }),
     unit: state.unit,
     ...(update === null ? {} : { update }),
+    ...(staleManifest === null
+      ? {}
+      : {
+          staleManifest: {
+            path: staleManifest.manifestPath,
+            removeCommand: staleManifestRemoval(staleManifest),
+            unitHome: staleManifest.unitHome,
+            unitPath: staleManifest.unitPath,
+          },
+        }),
   };
   if (json) {
     console.log(JSON.stringify(result));
@@ -1007,6 +1078,18 @@ function renderStatus(
   }
   console.log('LAYER          STATUS');
   console.log(`installation   ${installed ? 'installed' : 'not installed'}`);
+  if (staleManifest !== null) {
+    const { manifestPath, unitHome, unitPath } = staleManifest;
+    console.log(
+      `manifest       stale: ${manifestPath} describes an earlier install; the installed unit ${unitPath} runs from ${unitHome}`,
+    );
+    console.log(
+      `               the lines below are read from ${unitHome}; pass --base=${shellArgument(unitHome)} to address it`,
+    );
+    console.log(
+      `               to remove only the stale manifest (not \`service uninstall\`, which removes the installed unit): ${staleManifestRemoval(staleManifest)}`,
+    );
+  }
   console.log(
     `service unit   ${state.supervisor.error !== null ? 'unknown' : state.supervisor.state}`,
   );
@@ -1034,9 +1117,9 @@ function renderStatus(
     if (remedyPrinted) return;
     remedyPrinted = true;
     console.log(
-      remedy?.command
+      remedy.command
         ? `               run: ${remedy.command}`
-        : `               reinstall command unavailable: ${remedy?.reason ?? 'this registration does not record every setting. Inspect its manifest before reinstalling.'}`,
+        : `               reinstall command unavailable: ${remedy.reason}`,
     );
   };
   if (scheduling.status === 'stale') {
@@ -1810,6 +1893,41 @@ export async function runServiceCommand(
     }
   }
 
+  const staleManifest = existing
+    ? findStaleServiceManifest(existing, manifestPath, lifecycle.baseDir, {
+        fs,
+        run,
+      })
+    : null;
+  // The installed unit's own home owns its manifest, registry and running
+  // instance; read the reported state there, not from the stale manifest.
+  let unitManifest: ServiceManifest | null = existing;
+  if (staleManifest !== null) {
+    const unitLifecycle = { ...lifecycle, baseDir: staleManifest.unitHome };
+    try {
+      unitManifest = readManifest(
+        fs,
+        join(staleManifest.unitHome, 'service', `${instanceId}.json`),
+        instanceId,
+        registration,
+        run,
+        legacyRegistrations,
+      );
+    } catch {
+      unitManifest = null;
+    }
+    const unitState = await createStationInstanceReconciler(
+      createServiceInstancePlatformAdapter({
+        existing: unitManifest,
+        registration,
+        fs,
+        lifecycle: unitLifecycle,
+        run,
+        dependencies,
+      }),
+    ).inspect({ version: STATION_INSTANCE_STATE_VERSION, instanceId });
+    observed = { ...unitState, allowedOrigins: staleManifest.allowedOrigins };
+  }
   observed ??= await createStationInstanceReconciler(
     createServiceInstancePlatformAdapter({
       existing,
@@ -1833,9 +1951,12 @@ export async function runServiceCommand(
       })
     : null;
   // From the installed unit, not this home's manifest (#4189).
-  const remedy = existing
+  const remedy: ServiceInstallRemedy = existing
     ? resolveInstalledServiceRemedy(existing, lifecycle.baseDir, { fs, run })
-    : null;
+    : {
+        command: null,
+        reason: `no Station service manifest in ${lifecycle.baseDir} records this service. Inspect the installed unit ${registration.unitPath} before reinstalling.`,
+      };
   renderStatus(
     observed,
     scheduling,
@@ -1843,9 +1964,10 @@ export async function runServiceCommand(
     remedy,
     args.includes('--json'),
     // A launcher-run archive's update, read from its install's runtime files.
-    existing?.installRoot
-      ? readServiceUpdateProgress(existing.installRoot)
+    unitManifest?.installRoot
+      ? readServiceUpdateProgress(unitManifest.installRoot)
       : null,
+    staleManifest,
   );
   if (action === 'start' || action === 'stop') {
     if (observed.supervisor.error !== null) {

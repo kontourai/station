@@ -2464,7 +2464,19 @@ reinstalled through that install's channel launcher (`station`,
 `station-beta`, or `station-nightly`); the launcher sets `STATION_ROOT`
 itself, so when the unit records another root no command is given. Otherwise
 the command is prefixed with `STATION_ROOT=…` when the unit's recorded root
-differs from the one a shell without `STATION_ROOT` would derive.
+differs from the one a shell without `STATION_ROOT` would derive. When no
+command can be given, the explanation names the installed unit file to
+inspect.
+
+If the installed unit's `--base` is another home than the one `status` read,
+this home's manifest is left over from an earlier install. `status` prints a
+`manifest       stale` line naming that manifest, the unit file, and the
+`--base` to use, plus an `rm -- <manifest>` command that removes only the
+leftover manifest. Station never runs that command, and `service uninstall`
+would remove the installed unit instead. The remaining lines (manifest,
+registry, origins, instance health and update) are read from the unit's home,
+and the origins are the unit's own `--allowed-origin` flags. `--json` carries
+the same facts as `staleManifest: { path, removeCommand, unitHome, unitPath }`.
 
 `service start` and `service stop` require the private service manifest that
 `service install` creates; they never infer a service registration from a
