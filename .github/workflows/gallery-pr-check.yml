@@ -129,6 +129,7 @@ jobs:
           while IFS= read -r line; do
             case "$line" in
               "NEW SCREEN "*) echo "::warning title=Gallery screen arrived with listed findings::${line}" ;;
+              "REKEY "*) echo "::warning title=Gallery finding rekeyed by a name change::${line}" ;;
             esac
           done < "$verdict"
           {

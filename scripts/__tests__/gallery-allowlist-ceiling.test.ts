@@ -58,9 +58,12 @@ const writeAllowlist = (root: string, screens: Record<string, string[]>) =>
   );
 
 /** Upstream: a base commit, with or without the judge. */
-function upstream(withJudge: boolean) {
+function upstream(
+  withJudge: boolean,
+  screens: Record<string, string[]> = { home: ['overflow:document'] },
+) {
   const { root, git } = repo('gallery-ceiling-upstream-');
-  writeAllowlist(root, { home: ['overflow:document'] });
+  writeAllowlist(root, screens);
   writeScreenMap(root, ['home']);
   if (withJudge)
     copyFileSync(
@@ -147,6 +150,18 @@ describe('allowlist ceiling step (child process)', { timeout: 120_000 }, () => {
     );
     expect(run.summary).toContain('NEW SCREEN added: 1 finding(s)');
     expect(run.summary).toContain('  + axe:x:y');
+  });
+
+  it('annotates an intended name change as a REKEY and passes', () => {
+    const before = 'axe:label-content-name-mismatch:button.x[Old label]';
+    const after = 'axe:label-content-name-mismatch:button.x[New label]';
+    const { root, base } = upstream(true, { home: [before] });
+    const run = runStep(forkHead({ home: [after] }), base, root);
+    expect(run.status).toBe(0);
+    expect(run.out).toContain(
+      `::warning title=Gallery finding rekeyed by a name change::REKEY home: ${before} → ${after}`,
+    );
+    expect(run.summary).toContain(`REKEY home: ${before} → ${after}`);
   });
 
   it('fails a renamed screen through the same fetched base', () => {

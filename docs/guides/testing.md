@@ -1361,7 +1361,16 @@ accepted new screen is a `::warning::` annotation on the PR, and its listed
 findings are printed in the run summary. Accepted gap: a rename that keeps a
 stub of the old screen, or a removal and an addition landed as two PRs,
 passes the ceiling; those annotations and the removal's own diff are what
-make it visible to review. To add
+make it visible to review.
+
+An intended accessible-name change rekeys a name-bearing finding (for
+example axe `label-content-name-mismatch`). The ceiling pairs it as
+`REKEY old → new`, a `::warning::` annotation, when the screen already
+existed, the rule and anchor match once name segments are set aside, and that
+shape's count did not grow; `check` prints `LIKELY REKEY` for the pair. Replace
+the key in the allowlist rather than reverting the copy. Names stay in keys
+because, without them, 143 of 257 entries shared a key when this was measured.
+To add
 a screen: add it to `SCREENS` and the screen map, capture it, run
 `node scripts/gallery-ui-findings.mjs adopt --screens=<name>`, and review the
 listed findings in the PR.

@@ -199,6 +199,19 @@ export function formatVerdict(verdict, { partial }) {
     lines.push(
       `RESOLVED ${screen}: ${identity} (remove it: node scripts/gallery-ui-findings.mjs prune)`,
     );
+  // A failure and a resolved entry of the same shape on one screen read as
+  // an intended rename: replace the key, and the ceiling reports a REKEY.
+  for (const failure of verdict.failures) {
+    const renamed = verdict.resolved.find(
+      ({ screen, identity }) =>
+        screen === failure.screen &&
+        withoutName(identity) === withoutName(failure.identity),
+    );
+    if (renamed)
+      lines.push(
+        `LIKELY REKEY ${failure.screen}: ${renamed.identity} → ${failure.identity} (if the copy change is intended, replace that key in the allowlist)`,
+      );
+  }
   lines.push(
     `${verdict.failures.length === 0 ? 'OK' : 'FAILED'}: ${verdict.judged} screen(s)${partial ? ' (partial capture)' : ''}, ` +
       `${verdict.findingCount} finding(s), ${verdict.failures.length} not allowlisted, ${verdict.resolved.length} allowlisted finding(s) resolved`,
@@ -275,6 +288,7 @@ function requireFullCleanCapture(capture) {
  */
 export function allowlistGrowth(base, head, baseScreens, headScreens) {
   const added = [];
+  const rekeys = [];
   const newScreens = [];
   const unknown = Object.keys(head.screens).filter(
     (screen) => !headScreens.has(screen),
@@ -292,11 +306,40 @@ export function allowlistGrowth(base, head, baseScreens, headScreens) {
       newScreens.push({ screen, identities });
       continue;
     }
-    const before = new Set(base.screens[screen] ?? []);
-    for (const identity of identities)
-      if (!before.has(identity)) added.push({ screen, identity });
+    const before = base.screens[screen] ?? [];
+    const kept = new Set(before);
+    const fresh = identities.filter((identity) => !kept.has(identity));
+    const gone = before.filter((identity) => !identities.includes(identity));
+    // An intended copy change renames a finding: same rule, same anchor once
+    // the accessible-name segments are set aside, and no more findings of
+    // that shape than the base had. Those pair as REKEY (each a reviewed
+    // annotation, never silent); anything else added is growth.
+    const shapeCount = (list, shape) =>
+      list.filter((identity) => withoutName(identity) === shape).length;
+    for (const identity of fresh) {
+      const shape = withoutName(identity);
+      const partner = gone.find((old) => withoutName(old) === shape);
+      if (
+        partner !== undefined &&
+        shapeCount(identities, shape) <= shapeCount(before, shape)
+      ) {
+        gone.splice(gone.indexOf(partner), 1);
+        rekeys.push({ screen, from: partner, to: identity });
+      } else added.push({ screen, identity });
+    }
   }
-  return { added, newScreens, removed, unknown };
+  return { added, newScreens, removed, unknown, rekeys };
+}
+
+/**
+ * A finding identity with its accessible-name segments removed: the bracketed
+ * parts of an anchor that are not `type=`, `name=`, `role=` or `data-testid=`.
+ * Nameless keys collide too often to be the identity themselves (143 of 257
+ * allowlist entries shared one when this was measured), so they only pair a
+ * rename with what it replaced.
+ */
+export function withoutName(identity) {
+  return identity.replace(/\[(?!type=|name=|role=|data-testid=)[^\]]*\]/g, '');
 }
 
 /** A file at `base`, or null when the path does not exist there. */
@@ -358,7 +401,7 @@ async function runGrowth(options) {
     );
   if (!existsSync(SCREEN_MAP))
     throw new UsageError(`no ${SCREEN_MAP} in this checkout`);
-  const { added, newScreens, removed, unknown } = allowlistGrowth(
+  const { added, newScreens, removed, unknown, rekeys } = allowlistGrowth(
     base,
     head,
     screenNames(baseMap, `${options.base}:${SCREEN_MAP}`),
@@ -371,6 +414,9 @@ async function runGrowth(options) {
     );
     for (const identity of identities) console.log(`  + ${identity}`);
   }
+  // Accepted as a rename of an existing finding: each is shown for review.
+  for (const { screen, from, to } of rekeys)
+    console.log(`REKEY ${screen}: ${from} → ${to}`);
   for (const screen of unknown)
     console.log(
       `UNKNOWN SCREEN ${screen}: listed in the allowlist but not in ${SCREEN_MAP}`,
