@@ -341,12 +341,16 @@ export class StationReportGroupCustody {
       undefined,
       undefined,
     );
-    const completed = orchestration.readSessionTurnCompleted(
-      delivery.sessionId,
-      delivery.turnId,
+    const snapshot = orchestration.readHistoricalReportTurn(
+      {
+        conversationId: member.reservedTaskId,
+        sessionId: delivery.sessionId,
+        clientTurnId: delivery.clientTurnId,
+        turnId: delivery.turnId,
+      },
       scope,
     );
-    if (!completed) refuse();
+    if (!snapshot) refuse();
     const wire = await wireIntents.lookup(
       epoch.root.authority_id,
       invocation.invocationId,
@@ -422,7 +426,7 @@ export class StationReportGroupCustody {
       );
       const terminal = orchestration.readSessionEventById(
         delivery.sessionId,
-        completed.eventId,
+        snapshot.terminalEventId,
         scope,
       );
       authorized.current();
@@ -431,7 +435,7 @@ export class StationReportGroupCustody {
         actual.turnId === delivery.turnId &&
         actual.sessionId === delivery.sessionId &&
         terminal?.method === 'turn.completed' &&
-        terminal.eventId === completed.eventId &&
+        terminal.eventId === snapshot.terminalEventId &&
         terminal.threadId === delivery.sessionId &&
         terminal.turnId === delivery.turnId
       );

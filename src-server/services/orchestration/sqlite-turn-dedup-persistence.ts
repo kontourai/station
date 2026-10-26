@@ -102,6 +102,10 @@ const LONE_SURROGATE =
 const NO_LIVENESS: OwnerLiveness = () => 'unknown';
 
 export interface SqliteTurnDedupPersistence extends TurnIdempotencyPersistence {
+  readResolvedTurnWithinHostTransaction(
+    threadId: string,
+    clientTurnId: string,
+  ): string | undefined;
   /**
    * Forget every claim and tombstone of `threadId`, as part of the transaction
    * the caller already holds: they commit or roll back together.
@@ -143,6 +147,22 @@ export function createSqliteTurnDedupPersistence({
   // Refuse a bad limit now, not at the first claim.
   resolveKernelLimits(limits);
   return {
+    readResolvedTurnWithinHostTransaction(threadId, clientTurnId) {
+      if (db.isTransaction !== true)
+        throw new Error('Historical turn read requires a host transaction.');
+      const result = kernel.executeSync(
+        { type: 'turnDedup.read', key: turnDedupKey(threadId, clientTurnId) },
+        { liveness: NO_LIVENESS, limits },
+        { withinHostTransaction: true },
+      );
+      if (
+        result.kind !== 'found' ||
+        result.record.settlement !== undefined ||
+        typeof result.record.value !== 'string'
+      )
+        return undefined;
+      return result.record.value;
+    },
     execute<C extends KernelCommand>(
       command: C,
       liveness: OwnerLiveness,

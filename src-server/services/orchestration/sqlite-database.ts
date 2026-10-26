@@ -9,6 +9,7 @@
  * nothing else — not `close`, which stays the store's to call.
  */
 export interface SqliteDatabase {
+  readonly isTransaction?: boolean;
   exec(sql: string): void;
   prepare(sql: string): {
     run(...values: unknown[]): unknown;

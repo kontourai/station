@@ -8,7 +8,10 @@ import type {
   OrchestrationSessionEventWindow,
   OrchestrationSessionSummary,
 } from '@kontourai/station-contracts/orchestration';
-import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import {
+  INTERNAL_SESSION_READ_SCOPE,
+  isSessionReadAuthority,
+} from '@kontourai/station-contracts/tenancy';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import type { ProviderSession } from '../../providers/adapter-shape.js';
 import { errorMessage } from '../../utils/error-message.js';
@@ -230,6 +233,23 @@ export class SessionEventReads {
       hasMore: page.hasMore,
       nextSequence: page.nextSequence,
     };
+  }
+
+  readHistoricalReportTurn(
+    input: Omit<
+      Parameters<EventStore['readHistoricalReportTurn']>[0],
+      'ownerId'
+    >,
+    authority: SessionReadScope,
+  ) {
+    if (!isSessionReadAuthority(authority) || authority.mode !== 'personal')
+      return null;
+    return (
+      this.deps.eventStore?.readHistoricalReportTurn({
+        ...input,
+        ownerId: authority.userId,
+      }) ?? null
+    );
   }
 
   readSessionTurnCompleted(

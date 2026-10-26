@@ -10343,6 +10343,59 @@ export class EventStore {
     return row ? mapPersistedSessionRow(row as any) : undefined;
   }
 
+  /** One read snapshot of the original personal report's owner and exact terminal turn. */
+  readHistoricalReportTurn(input: {
+    conversationId: string;
+    sessionId: string;
+    clientTurnId: string;
+    turnId: string;
+    ownerId: string;
+  }) {
+    this.db.exec('SAVEPOINT historical_report_turn');
+    try {
+      const session = this.readSessionByThread(input.sessionId);
+      const lineage = this.conversationForSession(input.sessionId);
+      const owner = this.findSessionOwnerAttribution(input.sessionId);
+      if (
+        !session ||
+        !input.ownerId.trim() ||
+        session.tenantExecutionContext !== undefined ||
+        lineage?.conversationId !== input.conversationId ||
+        owner.unattributedAgent ||
+        owner.ownerUserId !== input.ownerId ||
+        this.turnDedupPersistence.readResolvedTurnWithinHostTransaction(
+          input.sessionId,
+          input.clientTurnId,
+        ) !== input.turnId
+      )
+        return null;
+      const events = this.listTurnEventsByMethods(
+        input.sessionId,
+        input.turnId,
+        ['turn.completed'],
+        2,
+      );
+      const terminal = events[0];
+      if (
+        events.length !== 1 ||
+        terminal?.method !== 'turn.completed' ||
+        terminal.payload.method !== terminal.method ||
+        terminal.payload.threadId !== input.sessionId ||
+        terminal.payload.turnId !== input.turnId ||
+        terminal.payload.provider !== session.provider
+      )
+        return null;
+      return Object.freeze({
+        ...input,
+        provider: session.provider,
+        terminalEventId: terminal.payload.eventId,
+        terminalCreatedAt: terminal.payload.createdAt,
+      });
+    } finally {
+      this.db.exec('RELEASE SAVEPOINT historical_report_turn');
+    }
+  }
+
   /** Internal workspace-mutation barrier inventory; never exposed to callers. */
   listSessionIdsByCwd(cwd: string): string[] {
     const rows = this.db

@@ -1,9 +1,15 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import {
+  INTERNAL_SESSION_READ_SCOPE,
+  sessionReadAuthorityFromRequest,
+} from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
+import { OrchestrationService } from '../orchestration-service.js';
 import { SessionEventReads } from '../session-event-reads.js';
 
 const directories: string[] = [];
@@ -49,6 +55,164 @@ function seedRoot(store: EventStore, rootId: string): void {
     updatedAt: '2026-08-25T00:00:00.000Z',
   });
 }
+
+const historicalHomes = trackTempDirs();
+const historicalTurn = {
+  conversationId: 'report-thread',
+  sessionId: 'report-thread',
+  clientTurnId: 'report-client-turn',
+  turnId: 'report-provider-turn',
+};
+const historicalAuthority = sessionReadAuthorityFromRequest(
+  'report-owner',
+  undefined,
+  undefined,
+);
+function seedHistoricalTurn(store: EventStore): void {
+  seedRoot(store, historicalTurn.sessionId);
+  const fields = {
+    provider: 'claude' as const,
+    threadId: historicalTurn.sessionId,
+    createdAt: '2026-10-26T00:00:00.000Z',
+  };
+  store.appendEvent({
+    ...fields,
+    eventId: 'report-session-start',
+    method: 'session.started',
+    sessionId: historicalTurn.sessionId,
+    metadata: { userId: 'report-owner' },
+  });
+  const claim = store.createTurnDeduplicator().claim({
+    threadId: historicalTurn.sessionId,
+    clientTurnId: historicalTurn.clientTurnId,
+  });
+  if (claim.kind !== 'owner') throw new Error('Fixture must own its real turn');
+  claim.claim.beginInvocation();
+  claim.claim.resolve(historicalTurn.turnId);
+  store.appendEvent({
+    ...fields,
+    eventId: 'report-terminal',
+    method: 'turn.completed',
+    turnId: historicalTurn.turnId,
+    finishReason: 'stop',
+  });
+}
+
+describe('historical report terminal snapshots', () => {
+  test('refuses a personal report authority on a hosted runtime', async () => {
+    const store = createStore();
+    const service = new OrchestrationService({
+      eventStore: store,
+      eventBus: new EventBus(),
+      adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
+      logger: { debug() {}, warn() {} },
+      requireTenantExecutionContext: () => true,
+    });
+    try {
+      seedHistoricalTurn(store);
+      expect(
+        service.readHistoricalReportTurn(historicalTurn, historicalAuthority),
+      ).toBeNull();
+    } finally {
+      await service.shutdown();
+      store.close();
+    }
+  });
+
+  test('joins the original owner, delivery claim and exact terminal in one SQLite snapshot', async () => {
+    const file = join(
+      historicalHomes('report-turn-snapshot-'),
+      'events.sqlite',
+    );
+    const store = new EventStore(file);
+    const peer = new EventStore(file);
+    const service = new OrchestrationService({
+      eventStore: store,
+      eventBus: new EventBus(),
+      adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
+      logger: { debug() {}, warn() {} },
+    });
+    try {
+      seedHistoricalTurn(store);
+      const originalRead = store.readSessionByThread.bind(store);
+      vi.spyOn(store, 'readSessionByThread').mockImplementationOnce((id) => {
+        const session = originalRead(id);
+        peer.deleteThread(id);
+        return session;
+      });
+      const observation = service.readHistoricalReportTurn(
+        historicalTurn,
+        historicalAuthority,
+      );
+      expect(observation).toEqual({
+        ...historicalTurn,
+        ownerId: 'report-owner',
+        provider: 'claude',
+        terminalEventId: 'report-terminal',
+        terminalCreatedAt: '2026-10-26T00:00:00.000Z',
+      });
+      expect(
+        peer.readSessionByThread(historicalTurn.sessionId),
+      ).toBeUndefined();
+      expect(
+        service.readHistoricalReportTurn(historicalTurn, historicalAuthority),
+      ).toBeNull();
+      expect(observation?.terminalEventId).toBe('report-terminal');
+    } finally {
+      await service.shutdown();
+      peer.close();
+      store.close();
+    }
+  });
+
+  test('refuses foreign owners, mismatched tuples and ambiguous completion without trusting cached authorization', () => {
+    const store = createStore();
+    try {
+      seedHistoricalTurn(store);
+      const reads = readsFor(store, historicalTurn.sessionId, undefined, {
+        canReadSession: () => true,
+      });
+      expect(
+        reads.readHistoricalReportTurn(
+          historicalTurn,
+          sessionReadAuthorityFromRequest(
+            'foreign-owner',
+            undefined,
+            undefined,
+          ),
+        ),
+      ).toBeNull();
+      for (const patch of [
+        { conversationId: 'foreign-conversation' },
+        { clientTurnId: 'unreceived-turn' },
+        { turnId: 'another-provider-turn' },
+      ])
+        expect(
+          reads.readHistoricalReportTurn(
+            { ...historicalTurn, ...patch },
+            historicalAuthority,
+          ),
+        ).toBeNull();
+      expect(
+        reads.readHistoricalReportTurn(historicalTurn, historicalAuthority),
+      ).not.toBeNull();
+      store.appendEvent({
+        eventId: 'second-report-terminal',
+        provider: 'claude',
+        threadId: historicalTurn.sessionId,
+        turnId: historicalTurn.turnId,
+        method: 'turn.completed',
+        createdAt: '2026-10-26T00:00:01.000Z',
+        finishReason: 'stop',
+      });
+      expect(
+        reads.readHistoricalReportTurn(historicalTurn, historicalAuthority),
+      ).toBeNull();
+    } finally {
+      store.close();
+    }
+  });
+});
 
 afterEach(() => {
   for (const directory of directories.splice(0)) {

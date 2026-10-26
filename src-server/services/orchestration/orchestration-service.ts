@@ -6047,6 +6047,14 @@ export class OrchestrationService {
     return this.sessionEventReads.readSessionEventPage(threadId, options);
   }
 
+  readHistoricalReportTurn(
+    input: Parameters<SessionEventReads['readHistoricalReportTurn']>[0],
+    authority: SessionReadScope,
+  ) {
+    if (this.options.requireTenantExecutionContext?.() === true) return null;
+    return this.sessionEventReads.readHistoricalReportTurn(input, authority);
+  }
+
   readSessionTurnCompleted(
     threadId: string,
     turnId: string,
