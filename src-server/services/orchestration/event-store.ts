@@ -3034,6 +3034,31 @@ export class EventStore {
                method <> 'turn.started'
                OR ${READABLE_USER_INPUT_SQL_FUNCTION}(${USER_INPUT_DESCRIPTOR_FIELDS_SQL}) = 1
              )
+             -- An \`unresolved\` completion a later completion of the same call
+             -- superseded is not a second command: the transcript replaces
+             -- that row with the late result (station#1569 H1, same turn
+             -- rule), so the inventory lists the call once (#4178 review).
+             -- Bounded by the frozen high-water mark, so a continuation
+             -- re-reads its prior page exactly as it was first read.
+             AND NOT (
+               method = 'tool.completed'
+               AND json_extract(payload, '$.status') = 'unresolved'
+               AND EXISTS (
+                 SELECT 1 FROM orchestration_events AS later
+                  WHERE later.thread_id = orchestration_events.thread_id
+                    AND later.method = 'tool.completed'
+                    AND later.sequence > orchestration_events.sequence
+                    AND later.sequence <= ?
+                    AND json_extract(later.payload, '$.toolCallId')
+                        = json_extract(orchestration_events.payload, '$.toolCallId')
+                    AND (
+                      coalesce(json_extract(later.payload, '$.turnId'), later.turn_id) IS NULL
+                      OR coalesce(json_extract(orchestration_events.payload, '$.turnId'), orchestration_events.turn_id) IS NULL
+                      OR coalesce(json_extract(later.payload, '$.turnId'), later.turn_id)
+                         = coalesce(json_extract(orchestration_events.payload, '$.turnId'), orchestration_events.turn_id)
+                    )
+               )
+             )
              AND (
                ? IS NULL
                OR sequence > ?
@@ -3046,6 +3071,7 @@ export class EventStore {
           threadId,
           highWater,
           ...methods,
+          highWater,
           input.continuation?.sequence ?? null,
           input.continuation?.sequence ?? 0,
           input.continuation?.sequence ?? 0,

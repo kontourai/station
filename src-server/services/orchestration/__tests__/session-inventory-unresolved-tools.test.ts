@@ -4,7 +4,10 @@ import { parseSessionInventoryProjection } from '@kontourai/station-contracts/se
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-import { settleUnresolvedClaudeToolCalls } from '../../../providers/adapters/claude-adapter-events.js';
+import {
+  mapClaudeSdkMessage,
+  settleUnresolvedClaudeToolCalls,
+} from '../../../providers/adapters/claude-adapter-events.js';
 import { EventStore } from '../event-store.js';
 import {
   createSessionInventoryModule,
@@ -255,6 +258,85 @@ describe('Session inventory commands with no recorded result (#4178)', () => {
       expect(
         current.rows.filter(([, status]) => status === 'unresolved'),
       ).toHaveLength(3);
+    } finally {
+      store.close?.();
+    }
+  });
+
+  test('lists a call once when its real result arrives after the session-end settle', async () => {
+    const store = new EventStore(
+      join(tempRoot('station-inventory-unresolved-'), 'orchestration.sqlite'),
+    );
+    try {
+      store.appendEvent({
+        provider: 'claude',
+        threadId: THREAD,
+        createdAt: '2026-10-24T16:00:00.000Z',
+        eventId: 'start',
+        turnId: 'turn-1',
+        method: 'turn.started',
+        prompt: 'Run the checks',
+        attachments: [],
+      } as never);
+      // One adapter record across both writes, as in a session whose stop
+      // grace elapsed while the SDK still held the result (station#1569).
+      const record = {
+        session: { threadId: THREAD },
+        activeToolCalls: new Map([
+          ['call-late', { toolName: 'Task', turnId: 'turn-1' }],
+          ['call-open', { toolName: 'Bash', turnId: 'turn-1' }],
+        ]),
+      } as never;
+      const publish = (event: Parameters<typeof store.appendEvent>[0]) =>
+        store.appendEvent(event);
+      settleUnresolvedClaudeToolCalls({
+        provider: 'claude',
+        record,
+        publish,
+        createdAt: '2026-10-24T16:00:02.000Z',
+      });
+      mapClaudeSdkMessage({
+        provider: 'claude',
+        record,
+        publish,
+        message: {
+          type: 'user',
+          parent_tool_use_id: null,
+          message: {
+            role: 'user',
+            content: [
+              { type: 'tool_result', tool_use_id: 'call-late', content: 'ok' },
+            ],
+          },
+        } as never,
+      });
+      // Reached: the store holds both completions for the late call.
+      const storedLate = (
+        store as unknown as {
+          db: { prepare(sql: string): { all(...args: unknown[]): unknown[] } };
+        }
+      ).db
+        .prepare(
+          `SELECT json_extract(payload, '$.status') AS status
+             FROM orchestration_events
+            WHERE thread_id = ? AND method = 'tool.completed'
+              AND json_extract(payload, '$.toolCallId') = 'call-late'
+            ORDER BY sequence`,
+        )
+        .all(THREAD);
+      expect(storedLate).toEqual([
+        { status: 'unresolved' },
+        { status: 'success' },
+      ]);
+
+      // The transcript shows the late call succeeded and one call with no
+      // result; the inventory says the same.
+      const current = await readExecution(store, 4);
+      expect(current.rows).toEqual([
+        ['call-open', 'unresolved'],
+        ['call-late', 'succeeded'],
+      ]);
+      expect(current.finalCount).toEqual({ kind: 'exact', value: 2 });
     } finally {
       store.close?.();
     }
