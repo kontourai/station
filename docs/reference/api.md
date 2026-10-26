@@ -142,7 +142,9 @@ default, Station default. A `never` hint that would apply is refused (403
 `approval-full-access-not-granted`) without the caller's full-access grant,
 exactly as a carried pick is; one that would not apply is ignored. A recorded
 hint is reported in the response's `approvalMode`; a hint not applied is
-spent with that send. When this route answered 404 (a Station that may
+spent with that send. An agent's station-control call that carries the hint
+(on `/chat`, its continue route or a handoff) is refused with 403
+`station_control_posture_not_allowed`, as a carried pick is. When this route answered 404 (a Station that may
 predate the hint), the composer sends the default as the pick it used to be;
 with no Project layer the order is the same. Accepted gap: a Station that
 predates the hint and whose chat-defaults read this composer never made (or
