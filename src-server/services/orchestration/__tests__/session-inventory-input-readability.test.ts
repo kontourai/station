@@ -1,7 +1,9 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { describe, expect, test, vi } from 'vitest';
+import { CHAT_INPUT_MAX_CHARS } from '../../../../src-shared/chat-input-limits.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { CodexRolloutSessionSource } from '../../../providers/sessions/codex-rollout-session-source.js';
 import { EventStore } from '../event-store.js';
@@ -169,6 +171,127 @@ describe('Session inventory authored inputs', () => {
       expect(store.userInputEventById('ws-3')).toMatchObject({
         prompt: 'Continue',
       });
+    } finally {
+      store.close?.();
+    }
+  });
+
+  test('lists no prompt over the chat limit, which the exact read refuses; one at the limit is listed and read', async () => {
+    const path = join(
+      tempRoot('station-inventory-store-'),
+      'orchestration.sqlite',
+    );
+    const store = new EventStore(path);
+    try {
+      const threadId = 'station:1:session:oversized';
+      const lengths = [CHAT_INPUT_MAX_CHARS + 1, CHAT_INPUT_MAX_CHARS];
+      lengths.forEach((_length, index) =>
+        store.appendEvent({
+          provider: 'codex',
+          threadId,
+          createdAt: `2026-10-24T16:00:0${index}.000Z`,
+          eventId: `long-${index}`,
+          turnId: `long-turn-${index}`,
+          method: 'turn.started',
+          prompt: 'placeholder',
+          attachments: [],
+        } as never),
+      );
+      // Today's routes refuse a longer prompt, ingress refuses a payload over
+      // 64 KB, and importers keep 32 KB, so an over-limit prompt exists only
+      // in a row written before those bounds. Make these two rows that: the
+      // writer's payload, with only the prompt grown.
+      const legacy = new DatabaseSync(path);
+      try {
+        const grow = legacy.prepare(
+          `UPDATE orchestration_events
+              SET payload = json_set(payload, '$.prompt', ?)
+            WHERE id = ?`,
+        );
+        lengths.forEach((length, index) =>
+          grow.run('x'.repeat(length), `long-${index}`),
+        );
+      } finally {
+        legacy.close();
+      }
+      const inputs = await listInputs(store, threadId);
+      expect(inputs.map((item) => item.eventId)).toEqual(['long-1']);
+      expect(store.userInputEventById('long-1')?.prompt).toHaveLength(
+        CHAT_INPUT_MAX_CHARS,
+      );
+      expect(() => store.userInputEventById('long-0')).toThrow(
+        'Invalid user-input event descriptor',
+      );
+    } finally {
+      store.close?.();
+    }
+  });
+
+  test('lists no input whose attachment descriptor the exact read refuses, and still lists well-formed ones', async () => {
+    const store = new EventStore(
+      join(tempRoot('station-inventory-store-'), 'orchestration.sqlite'),
+    );
+    try {
+      const threadId = 'station:1:session:attachments';
+      const good = {
+        kind: 'image',
+        name: 'screen.png',
+        mimeType: 'image/png',
+        size: 1200,
+        blobRef: `sha256-${'a'.repeat(64)}`,
+      };
+      // Shapes an older writer or an import left in real stores: an
+      // unsupported type, a kind that disagrees with its type, an empty
+      // size, an unsafe name, a missing field, and a non-object entry.
+      const malformed = [
+        { ...good, mimeType: 'application/x-unknown' },
+        { ...good, kind: 'file' },
+        { ...good, size: 0 },
+        { ...good, name: '../escape.png' },
+        { kind: 'image', name: 'screen.png', mimeType: 'image/png' },
+        'screen.png',
+      ];
+      const starts: Array<{ id: string; attachments: unknown[] }> = [
+        { id: 'att-good', attachments: [good] },
+        ...malformed.map((attachment, index) => ({
+          id: `att-bad-${index}`,
+          attachments: [good, attachment],
+        })),
+      ];
+      starts.forEach(({ id, attachments }, index) =>
+        store.appendEvent({
+          provider: 'codex',
+          threadId,
+          createdAt: `2026-10-24T16:00:${String(index).padStart(2, '0')}.000Z`,
+          eventId: id,
+          turnId: `${id}-turn`,
+          method: 'turn.started',
+          prompt: 'See attached',
+          attachments,
+        } as never),
+      );
+      const inputs = await listInputs(store, threadId);
+      expect(inputs.map((item) => item.eventId)).toEqual(['att-good']);
+      expect(inputs[0]?.attachmentDescriptors).toEqual([
+        {
+          kind: 'attachment',
+          name: 'screen.png',
+          mediaType: 'image/png',
+          length: 1200,
+        },
+      ]);
+      expect(store.userInputEventById('att-good')).toMatchObject({
+        prompt: 'See attached',
+        attachments: [
+          { name: 'screen.png', mimeType: 'image/png', size: 1200 },
+        ],
+      });
+      // Reached: each malformed row was stored, and the read refuses it.
+      malformed.forEach((_attachment, index) =>
+        expect(() => store.userInputEventById(`att-bad-${index}`)).toThrow(
+          'Invalid user-input event descriptor',
+        ),
+      );
     } finally {
       store.close?.();
     }

@@ -67,10 +67,7 @@ import {
 import { parseStationControlRefusal } from '@kontourai/station-contracts/station-control-refusal';
 import { parseTenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
-import {
-  AUTHORED_INPUT_SQL_FUNCTION,
-  isAuthoredInputContent,
-} from '@kontourai/station-shared/authored-input';
+import { isAuthoredInputContent } from '@kontourai/station-shared/authored-input';
 import { htmlReplyReference } from '@kontourai/station-shared/html-reply-document';
 import { isSuccessfulMcpResult } from '@kontourai/station-shared/mcp-app-result';
 import {
@@ -792,6 +789,139 @@ function hasBoundedDescriptorText(
   return true;
 }
 
+/** SQLite function: whether the exact input read would serve this row. */
+const READABLE_USER_INPUT_SQL_FUNCTION = 'station_is_readable_user_input';
+
+/**
+ * The descriptor fields of one `orchestration_events` row, in the argument
+ * order `parseUserInputDescriptorFields` takes. The Session inventory listing
+ * and the exact input read select exactly this, so the two cannot disagree on
+ * what a stored input looks like. Attachments arrive as one compact
+ * `[type, kind, name, mimeType, size]` tuple per entry: never `dataUrl` bytes,
+ * and never built for an array over the count limit (that alone refuses).
+ */
+const USER_INPUT_DESCRIPTOR_FIELDS_SQL = `
+  id, thread_id, turn_id, json_valid(payload),
+  CASE WHEN json_valid(payload) THEN json_type(payload, '$.turnId') END,
+  CASE WHEN json_valid(payload) AND json_type(payload, '$.turnId') = 'text'
+       THEN json_extract(payload, '$.turnId') END,
+  CASE WHEN json_valid(payload) THEN json_type(payload, '$.prompt') END,
+  CASE WHEN json_valid(payload) AND json_type(payload, '$.prompt') = 'text'
+       THEN json_extract(payload, '$.prompt') END,
+  CASE WHEN json_valid(payload) THEN json_type(payload, '$.inputKind') END,
+  CASE WHEN json_valid(payload) AND json_type(payload, '$.inputKind') = 'text'
+       THEN json_extract(payload, '$.inputKind') END,
+  CASE WHEN json_valid(payload) THEN json_type(payload, '$.attachments') END,
+  CASE WHEN json_valid(payload) AND json_type(payload, '$.attachments') = 'array'
+       THEN json_array_length(payload, '$.attachments') END,
+  CASE WHEN json_valid(payload) AND json_type(payload, '$.attachments') = 'array'
+         AND json_array_length(payload, '$.attachments') BETWEEN 1 AND ${CHAT_ATTACHMENT_MAX_COUNT}
+       THEN (
+         SELECT json_group_array(json_array(
+           attachment.type,
+           CASE WHEN attachment.type = 'object' AND json_type(attachment.value, '$.kind') = 'text'
+                THEN json_extract(attachment.value, '$.kind') END,
+           CASE WHEN attachment.type = 'object' AND json_type(attachment.value, '$.name') = 'text'
+                THEN json_extract(attachment.value, '$.name') END,
+           CASE WHEN attachment.type = 'object' AND json_type(attachment.value, '$.mimeType') = 'text'
+                THEN json_extract(attachment.value, '$.mimeType') END,
+           CASE WHEN attachment.type = 'object' AND json_type(attachment.value, '$.size') IN ('integer', 'real')
+                THEN json_extract(attachment.value, '$.size') END
+         ))
+         FROM (SELECT key, type, value FROM json_each(payload, '$.attachments') ORDER BY key) AS attachment
+       ) END`;
+
+type UserInputDescriptorFields = Omit<UserInputEventDescriptor, 'method'>;
+
+/**
+ * The one rule for whether a stored turn start is an input the exact read
+ * serves (#4182). `userInputEventById` refuses whatever this refuses, and the
+ * Session inventory listing calls it as a SQLite function, so a listed input
+ * is always one its drill-down can read: no prompt over CHAT_INPUT_MAX_CHARS,
+ * no malformed or over-count attachment descriptor, nothing authored-empty,
+ * and a turn id the read reports exactly as the listing does.
+ */
+function parseUserInputDescriptorFields(
+  id: unknown,
+  threadId: unknown,
+  turnId: unknown,
+  validJson: unknown,
+  payloadTurnIdType: unknown,
+  payloadTurnId: unknown,
+  promptType: unknown,
+  prompt: unknown,
+  inputKindType: unknown,
+  inputKind: unknown,
+  attachmentsType: unknown,
+  attachmentCount: unknown,
+  attachmentsJson: unknown,
+): UserInputDescriptorFields | undefined {
+  if (
+    validJson !== 1 ||
+    !hasBoundedDescriptorText(id, MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES) ||
+    !hasBoundedDescriptorText(threadId, MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES) ||
+    (turnId !== null &&
+      !hasBoundedDescriptorText(turnId, MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES)) ||
+    // The listing names `payload.turnId ?? turn_id`; the read answers with
+    // `turn_id`. A payload id that disagrees would be listed and then refused.
+    (payloadTurnIdType !== null &&
+      payloadTurnIdType !== 'null' &&
+      payloadTurnId !== turnId) ||
+    (promptType !== null && promptType !== 'null' && promptType !== 'text') ||
+    (typeof prompt === 'string' && prompt.length > CHAT_INPUT_MAX_CHARS) ||
+    (inputKindType !== null &&
+      (inputKindType !== 'text' || inputKind !== 'steer')) ||
+    (attachmentsType !== null && attachmentsType !== 'array')
+  )
+    return undefined;
+  const count = attachmentCount === null ? 0 : Number(attachmentCount);
+  if (!Number.isSafeInteger(count) || count > CHAT_ATTACHMENT_MAX_COUNT)
+    return undefined;
+  const attachments: Array<{ name: string; mimeType: string; size: number }> =
+    [];
+  if (count > 0) {
+    let tuples: unknown;
+    try {
+      tuples = JSON.parse(String(attachmentsJson));
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(tuples) || tuples.length !== count) return undefined;
+    for (const tuple of tuples) {
+      if (!Array.isArray(tuple)) return undefined;
+      const [type, kind, name, mimeType, size] = tuple as unknown[];
+      if (
+        type !== 'object' ||
+        typeof kind !== 'string' ||
+        typeof name !== 'string' ||
+        typeof mimeType !== 'string' ||
+        typeof size !== 'number'
+      )
+        return undefined;
+      const descriptor = {
+        kind: kind as PersistedChatAttachment['kind'],
+        name,
+        mimeType: mimeType as PersistedChatAttachment['mimeType'],
+        size,
+      };
+      if (validatePersistedChatAttachmentDescriptor(descriptor))
+        return undefined;
+      attachments.push({ name, mimeType, size });
+    }
+  }
+  if (!isAuthoredInputContent(prompt, attachments.length)) return undefined;
+  return {
+    eventId: id as string,
+    threadId: threadId as string,
+    ...(typeof turnId === 'string' && turnId ? { turnId } : {}),
+    ...(inputKindType === null
+      ? { inputKind: 'initial' as const }
+      : { inputKind: 'steer' as const }),
+    ...(typeof prompt === 'string' ? { prompt } : {}),
+    attachments,
+  };
+}
+
 /** The descriptor query never materializes a window aggregate just to count. */
 function measuredBasisDescriptorBytes(
   rows: readonly Record<string, unknown>[],
@@ -1306,6 +1436,7 @@ export interface UserInputEventDescriptor {
   threadId: string;
   turnId?: string;
   method: string;
+  inputKind?: 'initial' | 'steer';
   prompt?: string;
   attachments: ReadonlyArray<{ name: string; mimeType: string; size: number }>;
 }
@@ -2249,13 +2380,17 @@ export class EventStore {
     const connection = new DatabaseSync(dbPath, {
       timeout: SQLITE_BUSY_TIMEOUT_MS,
     });
-    // The listing query and the exact input read share one authored-input
-    // rule; SQLite's trim() alone would disagree with it on "\n".
+    // The listing query and the exact input read share one readability rule
+    // (#4182); a listed input is one its drill-down can read.
     connection.function(
-      AUTHORED_INPUT_SQL_FUNCTION,
-      { deterministic: true },
-      (prompt, attachmentCount) =>
-        isAuthoredInputContent(prompt, Number(attachmentCount ?? 0)) ? 1 : 0,
+      READABLE_USER_INPUT_SQL_FUNCTION,
+      { deterministic: true, varargs: true },
+      (...fields) =>
+        parseUserInputDescriptorFields(
+          ...(fields as Parameters<typeof parseUserInputDescriptorFields>),
+        )?.turnId
+          ? 1
+          : 0,
     );
     this.db = watchForSqliteCorruption(connection, {
       onCorruptionObserved: (error) => {
@@ -2851,18 +2986,15 @@ export class EventStore {
            WHERE thread_id = ?
              AND sequence <= ?
              AND method IN (${placeholders})
-             -- A turn recorded with no prompt text and no attachments (an
-             -- imported Codex turn without a user message) authored nothing,
-             -- and the exact input read (userInputEventById) refuses it by
-             -- the same rule. Filtered here, not after the read, so a page
-             -- and its "at least" count hold only listable inputs.
+             -- A turn start the exact input read (userInputEventById) would
+             -- refuse is not listed: nothing authored (an imported Codex turn
+             -- without a user message), a prompt over the chat limit, or a
+             -- malformed attachment descriptor (#4182). Filtered here, not
+             -- after the read, so a page and its "at least" count hold only
+             -- inputs the drill-down can open.
              AND (
                method <> 'turn.started'
-               OR ${AUTHORED_INPUT_SQL_FUNCTION}(
-                 CASE WHEN json_type(payload, '$.prompt') = 'text'
-                      THEN json_extract(payload, '$.prompt') END,
-                 coalesce(json_array_length(payload, '$.attachments'), 0)
-               ) = 1
+               OR ${READABLE_USER_INPUT_SQL_FUNCTION}(${USER_INPUT_DESCRIPTOR_FIELDS_SQL}) = 1
              )
              AND (
                ? IS NULL
@@ -8385,115 +8517,23 @@ export class EventStore {
   userInputEventById(eventId: string): UserInputEventDescriptor | undefined {
     if (!hasBoundedDescriptorText(eventId, MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES))
       return undefined;
-    const rows = this.db
-      .prepare(
-        `SELECT e.id, e.thread_id, e.turn_id, e.method,
-                json_valid(e.payload) AS valid_json,
-                CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.prompt') END AS prompt,
-                CASE WHEN json_valid(e.payload) THEN json_type(e.payload, '$.inputKind') END AS input_kind_type,
-                CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.inputKind') END AS input_kind,
-                CASE WHEN json_valid(e.payload) THEN json_type(e.payload, '$.attachments') END AS attachments_type,
-                a.key AS attachment_key,
-                json_type(a.value) AS attachment_type,
-                json_extract(a.value, '$.kind') AS attachment_kind,
-                json_extract(a.value, '$.name') AS attachment_name,
-                json_extract(a.value, '$.mimeType') AS attachment_mime_type,
-                json_extract(a.value, '$.size') AS attachment_size
-           FROM orchestration_events e
-           LEFT JOIN json_each(CASE WHEN json_valid(e.payload) THEN e.payload ELSE '[]' END, '$.attachments') a
-             ON true
-          WHERE e.id = ?
-          LIMIT ?`,
-      )
-      .all(eventId, CHAT_ATTACHMENT_MAX_COUNT + 1) as Array<{
-      id: string;
-      thread_id: string;
-      turn_id: string | null;
-      method: string;
-      valid_json: unknown;
-      prompt: unknown;
-      input_kind_type: unknown;
-      input_kind: unknown;
-      attachments_type: unknown;
-      attachment_key: unknown;
-      attachment_type: unknown;
-      attachment_kind: unknown;
-      attachment_name: unknown;
-      attachment_mime_type: unknown;
-      attachment_size: unknown;
-    }>;
-    const first = rows[0];
-    if (!first) return undefined;
-    if (
-      rows.length > CHAT_ATTACHMENT_MAX_COUNT ||
-      first.valid_json !== 1 ||
-      !hasBoundedDescriptorText(
-        first.id,
-        MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES,
-      ) ||
-      !hasBoundedDescriptorText(
-        first.thread_id,
-        MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES,
-      ) ||
-      (first.turn_id !== null &&
-        !hasBoundedDescriptorText(
-          first.turn_id,
-          MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES,
-        )) ||
-      (first.attachments_type !== null && first.attachments_type !== 'array') ||
-      (first.input_kind_type !== null &&
-        (first.input_kind_type !== 'text' || first.input_kind !== 'steer')) ||
-      (first.prompt !== null && typeof first.prompt !== 'string') ||
-      (typeof first.prompt === 'string' &&
-        first.prompt.length > CHAT_INPUT_MAX_CHARS)
-    )
-      throw new Error('Invalid user-input event descriptor');
-    const attachments = [] as Array<{
-      name: string;
-      mimeType: string;
-      size: number;
-    }>;
-    for (const row of rows) {
-      // A `LEFT JOIN` emits one key-less row only for an empty/missing array.
-      if (row.attachment_key === null) continue;
-      if (
-        row.attachment_type !== 'object' ||
-        typeof row.attachment_kind !== 'string' ||
-        typeof row.attachment_name !== 'string' ||
-        typeof row.attachment_mime_type !== 'string' ||
-        typeof row.attachment_size !== 'number'
-      )
-        throw new Error('Invalid user-input attachment descriptor');
-      const descriptor = {
-        kind: row.attachment_kind as PersistedChatAttachment['kind'],
-        name: row.attachment_name,
-        mimeType:
-          row.attachment_mime_type as PersistedChatAttachment['mimeType'],
-        size: row.attachment_size,
-      };
-      if (validatePersistedChatAttachmentDescriptor(descriptor))
-        throw new Error('Invalid user-input attachment descriptor');
-      attachments.push({
-        name: descriptor.name,
-        mimeType: descriptor.mimeType,
-        size: descriptor.size,
-      });
-    }
-    if (!isAuthoredInputContent(first.prompt, attachments.length))
-      throw new Error('Invalid user-input event descriptor');
-    return {
-      eventId: first.id,
-      threadId: first.thread_id,
-      ...(first.turn_id ? { turnId: first.turn_id } : {}),
-      method: first.method,
-      ...(first.input_kind_type === null
-        ? { inputKind: 'initial' as const }
-        : first.input_kind_type === 'text' && first.input_kind === 'steer'
-          ? { inputKind: 'steer' as const }
-          : {}),
-      ...(typeof first.prompt === 'string' ? { prompt: first.prompt } : {}),
-      attachments,
-    };
+    const statement = this.db.prepare(
+      `SELECT method, ${USER_INPUT_DESCRIPTOR_FIELDS_SQL}
+         FROM orchestration_events
+        WHERE id = ?`,
+    );
+    // Positional: the fields are unnamed and arrive in the rule's order.
+    statement.setReturnArrays(true);
+    const row = statement.get(eventId) as unknown[] | undefined;
+    if (!row) return undefined;
+    const [method, ...fields] = row;
+    // The same rule the inventory listing filters by, so whatever the listing
+    // offers this serves, and whatever this refuses was never listed.
+    const descriptor = parseUserInputDescriptorFields(
+      ...(fields as Parameters<typeof parseUserInputDescriptorFields>),
+    );
+    if (!descriptor) throw new Error('Invalid user-input event descriptor');
+    return { ...descriptor, method: method as string };
   }
 
   /**

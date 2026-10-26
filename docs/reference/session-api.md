@@ -1288,11 +1288,15 @@ A host that serves this read advertises `capabilities.sessionInventoryInputRead:
 true` on its public handshake. A host built before the read answers the path 404,
 the same as a refused read, so a client checks the flag before reading and tells
 the user to update the host when it is absent. A whole-Session inventory lists an
-authored input only for a `turn.started` with non-whitespace prompt text or
-attachments (one shared rule, `isAuthoredInputContent`, for the listing and this
-read); a turn recorded with neither (for example an imported Codex turn without a user
-message, or a turn the engine opened on its own) is not listed, because this
-read would refuse it.
+authored input only when this read would serve it: the listing and the read
+apply one readability rule in the event store (#4182). It refuses a
+`turn.started` with neither non-whitespace prompt text nor attachments
+(`isAuthoredInputContent`; for example an imported Codex turn without a user
+message), a prompt over `CHAT_INPUT_MAX_CHARS`, a malformed or over-count
+attachment descriptor, or a payload turn id that disagrees with the stored one.
+A turn the engine opened on its own is not listed either. Such an input stays in
+the conversation transcript; the inventory does not list it, rather than adding
+a row the published row contract has no state for.
 
 ### Bounded session detail
 
