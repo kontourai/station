@@ -12,6 +12,7 @@ import {
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
 import { computeViewedContentDigest } from '@kontourai/station-sdk/runtime-event-content';
+import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
@@ -620,5 +621,31 @@ describe('oversized event content through the live adapter loop', () => {
       'accept',
       expect.objectContaining({ inputContent: expect.anything() }),
     );
+  });
+
+  test('an assistant turn read returns the exact spilled reply', async () => {
+    const reply = 'Exact answer line.\n'.repeat(15_000);
+    adapter.events.push({
+      eventId: 'turn-done-big',
+      provider: 'claude',
+      threadId,
+      turnId: 'turn-1',
+      createdAt: at(),
+      method: 'turn.completed',
+      status: 'completed',
+      outputText: reply,
+    } as CanonicalRuntimeEvent);
+    await vi.waitFor(() =>
+      expect(stored().some((e) => e.id === 'turn-done-big')).toBe(true),
+    );
+    const turn = await service.sessionQueries.readAssistantTurn(
+      { type: 'assistant-turn', threadId, turnId: 'turn-1' },
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    expect(turn.status).toBe('found');
+    const text = (turn as { message: { parts: Array<{ text?: string }> } }).message.parts
+      .map((part) => part.text ?? '')
+      .join('');
+    expect(text).toBe(reply);
   });
 });

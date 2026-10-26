@@ -2775,14 +2775,23 @@ export class OrchestrationService {
         this.options.eventStore?.listBasisEventsForTurn(threadId, turnId) ?? {
           status: 'over-budget' as const,
         },
-      listEventsForTurn: (threadId, turnId) =>
-        (
-          this.options.eventStore?.listEventsForTurn(
-            threadId,
-            turnId,
-            MAX_ASSISTANT_TURN_EVENTS + 1,
-          ) ?? []
-        ).map((event) => event.payload),
+      // An assistant turn read owes its caller the exact reply (Basis,
+      // quote sources, room publication), so it opts in to resolving
+      // out-of-line content (docs/design/event-content-spill.md). It is
+      // bounded to one turn.
+      listEventsForTurn: (threadId, turnId) => {
+        const store = this.options.eventStore;
+        if (!store) return [];
+        return store
+          .resolveEventContent(
+            store.listEventsForTurn(
+              threadId,
+              turnId,
+              MAX_ASSISTANT_TURN_EVENTS + 1,
+            ),
+          )
+          .map((event) => event.payload);
+      },
       projectSlugForSession: (_session, threadId) =>
         this.options.eventStore?.readConversationProjectSlug(threadId),
       reportUnavailable: (query, error) => {
@@ -11481,7 +11490,13 @@ export class OrchestrationService {
       return false;
     }
     if (current?.state !== 'found') return false;
-    const opened = current.event.payload;
+    // The grant derives from the whole request: a spilled argument subtree
+    // can hold what escalates it (docs/design/event-content-spill.md).
+    const opened = current.event.payload.spilledContent
+      ? (this.options.eventStore?.resolveCanonicalEventContent(
+          current.event.payload,
+        ) ?? current.event.payload)
+      : current.event.payload;
     return (
       opened.method === 'request.opened' &&
       toolRequestSessionGrantFromPayload(opened.payload) === 'edit-mode'
