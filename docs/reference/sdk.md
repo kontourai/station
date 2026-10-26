@@ -5940,6 +5940,14 @@ the canonical unsaved-changes guard. Unmount or authority change aborts the
 request without claiming physical termination. Creation results remain
 unassessed.
 
+Report accounting recovery uses `recoverReportGroupAccounting(base, groupId,
+{ seatId, invocationId, operationKey })` in the SDK, or
+`station group report-recover <group> <seat> <invocation> --operation=<key>`.
+It resumes retained accounting only, with no automatic retry or new model call.
+A 404 reports that the host does not support recovery and suggests updating it.
+Unknown usage remains held; an overrun may retain partial accounting writes.
+The response exposes amounts and a receipt reference, never private ledger records.
+
 ## Workspace visual files
 
 `@kontourai/station-sdk/workspace-file-preview` exports
@@ -5999,13 +6007,7 @@ responses also throw `StationHttpError`, preserving the HTTP status. The SDK re-
 these request types, `TaskReviewThreadSummary`, `TaskReviewThreadView` and `TaskReviewView` from the
 [review contract](../../packages/contracts/src/task-review.ts).
 
-Report accounting recovery uses `recoverReportGroupAccounting(base, groupId,
-{ seatId, invocationId, operationKey })` in the SDK, or
-`station group report-recover <group> <seat> <invocation> --operation=<key>`.
-It resumes retained accounting only, with no automatic retry or new model call.
-A 404 reports that the host does not support recovery and suggests updating it.
-Unknown usage remains held; an overrun may retain partial accounting writes.
-The response exposes amounts and a receipt reference, never private ledger records.
+
 `useSendReviewThreadsMutation(taskId)` takes the shared `TaskReviewSendRequest`
 `{threadIds, operationId, mode}`, where `mode` is `send` or `send-and-resolve`. It returns `{deliveryKey, status,
 threads, reason?}` and invalidates the review list and thread detail queries.

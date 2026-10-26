@@ -2115,8 +2115,13 @@ settlement separately handles its mutable reservation under its own lock. A part
 Dispatch commit can resume Flow reconciliation without invoking or reserving again.
 Unknown usage stays held. A `held` result does not promise no writes: the published
 contract can record known overrun accounting while retaining unavailable capacity.
-There is no public recovery route, SDK or CLI surface yet, and full joined recovery
-qualification remains open.
+`POST /:groupId/accounting/recover`, `recoverReportGroupAccounting` and the CLI
+`group report-recover` expose an allowlisted accounting response: exact identifiers,
+status/reason, amounts and receipt reference. Raw ledger records and signatures
+remain private. The SDK rejects foreign identities and inconsistent outcomes,
+reports old-host 404 as unsupported and never retries recovery automatically.
+The composed test covers route/SDK/storage with a controlled principal stamp;
+full ingress, cross-process and live-provider recovery qualification remain open.
 
 First recovery admission compares the complete consumed wire identity against the
 authenticated group/controller/seat, original root/envelope, execution, allocation

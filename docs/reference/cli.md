@@ -512,9 +512,17 @@ deadline would abandon healthy work:
 | `knowledge reindex` / `knowledge migrate` | Duration scales with your corpus, not with Station's health. |
 | `flow attach-command` | Runs a gate command server-side; bounded by its own `--timeout-ms`. |
 | `group session-run` / `group session-sync` | Supervision uses the server's absolute deadline and caller cancellation; the SDK disables its ordinary client request timeout. |
-| `group report-create` / `report-cancel` / `report-finalize-cancel` / `report-sync` / `report-finalize-sync` | Explicit paid execution or cancellation operations use caller cancellation; creation retains its server deadline and unknown outcomes never authorize resend. |
+| `group report-create` / `report-cancel` / `report-finalize-cancel` / `report-sync` / `report-finalize-sync` / `report-recover` | Explicit paid execution or cancellation operations use caller cancellation; creation retains its server deadline and unknown outcomes never authorize resend. |
 | `group events` / `session-events` / `report-events` with `--follow` | Observation streams have no overall deadline; SIGINT closes observation without sending cancellation. |
 | `start`/`build` readiness probes | Already enforce their own startup deadlines. |
+
+Report accounting recovery uses `recoverReportGroupAccounting(base, groupId,
+{ seatId, invocationId, operationKey })` in the SDK, or
+`station group report-recover <group> <seat> <invocation> --operation=<key>`.
+It resumes retained accounting only, with no automatic retry or new model call.
+A 404 reports that the host does not support recovery and suggests updating it.
+Unknown usage remains held; an overrun may retain partial accounting writes.
+The response exposes amounts and a receipt reference, never private ledger records.
 
 This is the shared SDK client contract, not a guarantee for every raw network
 call in the CLI. The current `checkpoints restore` and `operate` stream paths
@@ -4382,11 +4390,3 @@ exact snapshot as an optimistic guard. Supply `--repo-id` and a repo-relative
 resource must already be declared, but it may be unbound on this Station;
 configuration never clones, binds, or grants compute. An unchanged request is
 idempotent and does not advance the identity timestamp.
-
-Report accounting recovery uses `recoverReportGroupAccounting(base, groupId,
-{ seatId, invocationId, operationKey })` in the SDK, or
-`station group report-recover <group> <seat> <invocation> --operation=<key>`.
-It resumes retained accounting only, with no automatic retry or new model call.
-A 404 reports that the host does not support recovery and suggests updating it.
-Unknown usage remains held; an overrun may retain partial accounting writes.
-The response exposes amounts and a receipt reference, never private ledger records.
