@@ -25,6 +25,21 @@ only when this Station's build can run it; if none is, the section says
 | `fleet-consumer-probes` | Fleet consumer probes | Sends a test request to a peer-contributed model before routing work to it. | Can spend a completion on another Station. |
 | `walkthroughs` | Walkthroughs | Imports narrated screen recordings into transcripts and frames agents can read, using local processing. | One-time consented media/speech tool download; CPU use; recordings may contain private information. |
 | `local-speech` | Local speech | Offers Station (local) in Voice → Speech-to-text: record a message, then transcribe it on this Station. | One-time consented tool/model download; English batch dictation only; microphone permission; shares one recognizer and a bounded wait queue with Walkthroughs. |
+| `task-review` | Task review | Adds a Review tab to Tasks for anchored comments on plans, outputs, answers and Screens, which can be sent to the lead agent. | Sending starts or queues a lead-agent turn; Screen capture needs a committed workspace. |
+
+**Task review** (`task-review`): turn this on in **Settings → Advanced →
+Feature previews**, then open a Task and choose **Review**, after Conversation.
+Choose its plan, Brief, output or answer, select text and comment. Expand a
+thread for its history; use **Send** or **Send + Resolve** to ask the live lead
+agent to act, or **Copy for agent** to copy the discussion. Outdated means the
+quoted text can no longer be relocated; a changed revision alone is separate.
+
+Choose **Capture** beside **Screens**, then select a Browser session
+from the Task's Project and capture it. Commit workspace changes first. Place a
+region pin with the pointer, or focus the image target, use the arrow keys and
+press Enter, then comment. Captures retain the commit and appear through the
+Task's authorized image route. Turning the preview off hides Review; a
+`taskView=review` link then opens Overview.
 
 Turning a preview on affects everyone who uses this Station.
 

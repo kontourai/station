@@ -83,6 +83,13 @@ function boundIds(root) {
     throw new Error(
       `Cannot resolve FeaturePreviewRegistry.bind in ${registryPath}`,
     );
+  // The registry may offer a consumer itself by passing an inline definition
+  // to rememberConsumer; bind's own forwarding call passes a variable.
+  const remember = declaration?.members.find(
+    (node) =>
+      ts.isMethodDeclaration(node) &&
+      propertyName(node.name) === 'rememberConsumer',
+  );
   const ids = new Set();
   for (const file of program.getSourceFiles()) {
     const location = (node) => {
@@ -105,10 +112,19 @@ function boundIds(root) {
               ts.isStringLiteral(expression.argumentExpression)
             ? expression.argumentExpression.text
             : undefined;
-        if (name === 'bind') {
+        const offered =
+          name === 'bind'
+            ? bind
+            : name === 'rememberConsumer' &&
+                remember &&
+                node.arguments[0] &&
+                ts.isObjectLiteralExpression(unwrap(node.arguments[0]))
+              ? remember
+              : undefined;
+        if (offered) {
           const receiver = checker.getTypeAtLocation(expression.expression);
-          const declarations = receiver.getProperty('bind')?.declarations ?? [];
-          if (declarations.includes(bind)) {
+          const declarations = receiver.getProperty(name)?.declarations ?? [];
+          if (declarations.includes(offered)) {
             const fail = (message) => {
               throw new Error(`${location(node)}: preview bind ${message}`);
             };

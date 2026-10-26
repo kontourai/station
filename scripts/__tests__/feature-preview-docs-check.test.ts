@@ -9,6 +9,8 @@ const script = join(root, 'scripts/feature-preview-docs-check.mjs');
 const registry =
   'src-server/services/feature-previews/feature-preview-registry.ts';
 const makeTempDir = trackTempDirs();
+// The copied registry offers this consumer itself, through rememberConsumer.
+const registryOffered = ['task-review'];
 
 function run(directory: string) {
   const result = spawnSyncBounded(process.execPath, [script, directory], {
@@ -82,7 +84,7 @@ describe('feature preview documentation CLI', () => {
       // renamed.bind({ id: 'comment-preview' });
       const text = "renamed.bind({ id: 'string-preview' })";
     `,
-      ['example-preview', 'second-preview'],
+      ['example-preview', 'second-preview', ...registryOffered],
     );
     writeFileSync(
       join(directory, 'src-server/example.test.ts'),
@@ -90,7 +92,9 @@ describe('feature preview documentation CLI', () => {
     );
     const result = run(directory);
     expect(result.status, result.output).toBe(0);
-    expect(result.output).toContain('match 2 bound preview(s)');
+    expect(result.output).toContain(
+      `match ${2 + registryOffered.length} bound preview(s)`,
+    );
   });
 
   it.each([

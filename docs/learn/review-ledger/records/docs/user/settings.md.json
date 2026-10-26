@@ -38,7 +38,15 @@
 
     "src-server/services/feature-previews/feature-preview-refusal.ts",
 
-    "src-ui/src/providers/voice/useLocalSpeechProvider.ts"
+    "src-ui/src/providers/voice/useLocalSpeechProvider.ts",
+
+    "src-ui/src/views/TaskWorkspaceView.tsx",
+
+    "src-ui/src/hooks/useSurfaceVisibilityFlags.ts",
+
+    "src-ui/src/views/task-workspace/review/TaskReviewTab.tsx",
+
+    "tests/task-review.spec.ts"
   ],
 
   "checks": [
