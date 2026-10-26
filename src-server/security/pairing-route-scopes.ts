@@ -2104,6 +2104,7 @@ export type ExternalSurfaceCapability =
   | 'pairing-scope'
   | 'public'
   | 'mcp-token'
+  | 'outside-mcp-token'
   | 'webhook-token'
   | 'stage-grant'
   | 'middleware';
@@ -2133,6 +2134,74 @@ const STATION_CONTROL_MCP_ENDPOINT_PATH = '/mcp/station-control';
 
 export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabilityRule[] =
   [
+    // UNWIRED(#4115): exact outside resource; its own audience/ingress validator follows the compiled refusal.
+    {
+      id: 'outside-mcp:get',
+      transport: 'http',
+      method: 'GET',
+      prefix: '/mcp',
+      match: 'exact',
+      capability: 'outside-mcp-token',
+      reason:
+        'Outside-agent audience-bound bearer only; no Device or internal token authority',
+    },
+    {
+      id: 'outside-mcp:post',
+      transport: 'http',
+      method: 'POST',
+      prefix: '/mcp',
+      match: 'exact',
+      capability: 'outside-mcp-token',
+      reason:
+        'Outside-agent audience-bound bearer only; no Device or internal token authority',
+    },
+    {
+      id: 'outside-mcp:delete',
+      transport: 'http',
+      method: 'DELETE',
+      prefix: '/mcp',
+      match: 'exact',
+      capability: 'outside-mcp-token',
+      reason:
+        'Outside-agent audience-bound bearer only; no Device or internal token authority',
+    },
+    {
+      id: 'outside-mcp:options',
+      transport: 'http',
+      method: 'OPTIONS',
+      prefix: '/mcp',
+      match: 'exact',
+      capability: 'outside-mcp-token',
+      reason:
+        'Outside-agent audience-bound bearer only; no Device or internal token authority',
+    },
+    {
+      id: 'outside-mcp:head',
+      transport: 'http',
+      method: 'HEAD',
+      prefix: '/mcp',
+      match: 'exact',
+      capability: 'outside-mcp-token',
+      reason: 'Outside MCP authenticates before returning method-not-allowed',
+    },
+    {
+      id: 'outside-mcp:put',
+      transport: 'http',
+      method: 'PUT',
+      prefix: '/mcp',
+      match: 'exact',
+      capability: 'outside-mcp-token',
+      reason: 'Outside MCP authenticates before returning method-not-allowed',
+    },
+    {
+      id: 'outside-mcp:patch',
+      transport: 'http',
+      method: 'PATCH',
+      prefix: '/mcp',
+      match: 'exact',
+      capability: 'outside-mcp-token',
+      reason: 'Outside MCP authenticates before returning method-not-allowed',
+    },
     ...PAIRING_SCOPE_ROUTE_TABLE.map((rule) => ({
       ...rule,
       transport: 'http' as const,

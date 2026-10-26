@@ -1,0 +1,15 @@
+{
+  "revision": "85f655ca19663e152774bed40e313f5f90aadb99",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r2b-evidence.md","note":"Reviewed the store read-path delta against R2b management/consent callers. Only access admission and MCP budget protection changed; R2b mutation/decision locks and historical passkey receipt scope remain unchanged. The integrated outside-agent suites passed; no historical real-device or release evidence is renewed.","inputs":["docs/design/outside-agent-mcp-r2b-evidence.md","src-server/services/outside-agent/oauth-store.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"Reviewed access() expiry reads and the new protected mcp:global bucket against R3 OAuth/status/replay callers. Existing lifecycle writers and sweeps retain ownership; focused OAuth/store suites passed. Historical client/fault receipts retain their original revisions and limits.","inputs":["docs/design/outside-agent-mcp-r3-evidence.md","src-server/services/outside-agent/oauth-store.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r4a-evidence.md","note":"Reviewed the abort race, SDK 2.3.1 close behavior, request-slot finally, R3 all-keys budget ordering and read-only access/recheck. Recorded clean 0c49235 baseline, three JSON timeout failures without the race, twenty forbidden reads before budget, exact SHA-256 restores and 33-test green runs. Runtime prefix-collision, clean reinitialize and release-fallthrough tests passed; no R6 or real-client requalification.","inputs":["docs/design/outside-agent-mcp-r4a-evidence.md","src-server/routes/outside-agent/__tests__/mcp-routes.test.ts","src-server/routes/outside-agent/mcp-routes.ts","src-server/security/outside-agent-token-audience.ts","src-server/services/outside-agent/oauth-store.ts","src-server/runtime/bootstrap/__tests__/outside-agent-release-guard.test.ts","src-server/runtime/bootstrap/__tests__/runtime-http.test.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp.md","note":"Reviewed the R4a amendments against transport/store/runtime owners: HTTP 404 on pending JSON session end, SSE closure, ingress quotas before access/CORS, read-only token/recheck expiry, explicit open-GET 30-minute cap, live full-shape audience boundary, and atomic R6 guard-removal/router-mount invariant. Exposure remains off.","inputs":["docs/design/outside-agent-mcp.md"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed R3 lifecycle/admission and R4a refinements against real callers and 512 integrated tests plus 98 repair-baseline tests. The reference now distinguishes read-only access/rechecks from lifecycle writers, budget transactions, live audience middleware from inert router, invalid_token challenge, abort settlement and GET cap. No released outside endpoint or R6 journey is claimed.","inputs":["docs/reference/outside-agent-oauth.md","src-server/routes/outside-agent/__tests__/mcp-routes.test.ts","src-server/routes/outside-agent/mcp-routes.ts","src-server/security/outside-agent-token-audience.ts","src-server/services/outside-agent/oauth-store.ts"]}
+  ]
+}

@@ -644,7 +644,7 @@ the reviewed raw metadata digest. No trusted badge inferred from a name/domain.
 | Code exchange | 10/minute/client and verifiable peer; 60/minute/instance; at most 5 failed verifier attempts/code |
 | Refresh (including rejected reuse attempts) | 6/minute/family, burst 3; 30/minute/client; 60/minute/verifiable peer when available; 120/minute/instance |
 | Client-ID recovery tombstones | 30 days from client retirement; 20,000/instance hard cap, no live tombstone eviction to admit a registration |
-| MCP transport | 5 sessions/grant, 10 calls in flight/grant; 1 MiB request and bounded response/stream queues |
+| MCP transport | 120 requests/minute/verifiable peer, 600/minute/instance, charged together before token/CORS/store reads (including invalid bearers); 5 sessions/grant, 10 calls in flight/grant; 1 MiB request and bounded response/stream queues |
 
 Active-grant caps are enforced in the code-exchange activation transaction,
 after selected supersessions are removed; approval checks are advisory only.
@@ -723,7 +723,7 @@ approval bypass.
 | Access token | `oat_` + 32 random bytes, base64url; opaque, hash stored with issuer/station, R, grant ID/version, client, subject, family and scopes | 60 minutes (`expires_in: 3600` when not capped), capped by grant expiry; valid only as `/mcp` Authorization bearer. |
 | Refresh token | `ort_` + 32 random bytes, base64url; hash with client/R/grant/family/sequence, issued/used timestamps | Rotate on first use; 7 days idle, capped by the grant's absolute expiry. Any reuse revokes its only family and grant (`refresh_replay`); idle expiry expires both (`idle`); no grace. |
 | Grant | Random ID; active/revoked/expired (approval intent is separate); delegator, approval actor, immutable client/redirect/R, Project ID or explicit global, originally requested scopes, selected level/scopes, version, created/last-use/expiry | Default 30 days absolute, selectable shorter, maximum 30 days in v1. No automatic extension or refresh beyond expiry. |
-| MCP session | Random opaque ID bound to grant, family, version, issuer and transport | At most 30 minutes idle and never beyond grant expiry; ID alone grants nothing. Reauthenticate each request. |
+| MCP session | Random opaque ID bound to grant, family, version, issuer and transport | At most 30 minutes since the last HTTP request, including an open GET stream, and never beyond grant expiry; ID alone grants nothing. Reauthenticate each request. |
 
 Hash all high-entropy secrets using domain-separated SHA-256; perform constant-time
 comparison when comparing secret-derived bytes. Prefixes are format separation,
@@ -1361,6 +1361,28 @@ regenerating the design index produces no byte change. Current guides retain
 their shipped-behavior claims.
 
 **R2b isolated evidence:** [typed passkey targets, caught faults and inspected review pages](outside-agent-mcp-r2b-evidence.md). The compiled refusal also covers outside transactions on the shared consent listener. This receipt does not qualify R3–R6 or enable the feature.
+
+**R4a transport refinements:** Ending a session during a pending JSON response
+returns HTTP 404 with JSON-RPC `-32001` / `Session not found`; an already-open
+SSE response ends without further content. Both paths release the request's
+call reservation. Revoke, in-place narrowing, CORS removal and same-grant
+DELETE all end the old session. The 30-minute inactivity clock is refreshed by
+HTTP requests, not by an open GET channel; clients must reconnect before this
+cap, still subject to token/grant expiry. Token admission and the one-second
+session recheck are read-only; lifecycle mutation/pruning remains with its
+existing owners, and outward emission still rechecks under the decision lock.
+
+The negative audience middleware ships live even while the outside router is
+compiled off. It recognizes the full outside-artifact shape: `oat_`, `ort_` or
+`oac_` plus 43 base64url characters (47 total). Station's 32-byte internal,
+operator and Device credentials have 43 base64url characters total, so an
+accidental prefix match cannot deny them.
+
+R6 must mount the authenticating `/mcp` router in the **same change** that
+removes the compiled guard. Removing the guard without that router must fail
+the release composition test; anonymous fallthrough is never an enablement path.
+
+**R4a isolated evidence:** [two scoped reads, audience and emission faults, and real CLI checks](outside-agent-mcp-r4a-evidence.md). Exposure remains compiled off; this does not qualify R4b–R6.
 
 ## 12. Decisions and open owner question
 
