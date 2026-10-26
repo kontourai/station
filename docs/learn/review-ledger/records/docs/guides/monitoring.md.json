@@ -188,7 +188,9 @@
 
     "src-server/routes/operations/source-grant-approvals.ts",
 
-    "src-server/routes/operations/__tests__/source-credential-delivery.test.ts"
+    "src-server/routes/operations/__tests__/source-credential-delivery.test.ts",
+
+    "src-ui/src/components/monitoring/AnalyticsSourceSetup.tsx"
   ],
 
   "checks": [
