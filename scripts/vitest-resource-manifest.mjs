@@ -47,6 +47,9 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
 // changes the system under test or turns their correctness bound into a
 // scheduler-contention measurement.
 export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // #4204 measures main-thread approval latency while a real room worker
+  // holds SQLite's write lock; overlapping suites would distort that bound.
+  'src-server/services/orchestration/__tests__/project-task-room-revision-evidence-bridge.test.ts',
   // Disposable Chromium boots retain 15s render/3s policy deadlines; keep
   // sibling runtime boots out of this lifecycle measurement (#4022).
   'src-server/services/__tests__/html-reply-preview.process.test.ts',
