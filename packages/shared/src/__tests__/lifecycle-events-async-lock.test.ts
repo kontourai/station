@@ -188,8 +188,12 @@ describe('held file mutation leases', () => {
         fault.mockRestore();
         syncBuiltinESMExports();
       }
+      const competing =
+        failure === 'rename'
+          ? undefined
+          : await acquireFileMutationLeaseAsync(lock);
       await lease.release();
-      const successor = await acquireFileMutationLeaseAsync(lock);
+      const successor = competing ?? (await acquireFileMutationLeaseAsync(lock));
       await lease.release();
       expect(successor.assertCurrent()).toBeUndefined();
       await successor.release();
