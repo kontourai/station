@@ -10,10 +10,15 @@
 }
 
 .about__legal a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
+  position: relative;
   font-size: var(--k-text-md);
+}
+
+/* 44px touch target without adding visible height to the row. */
+.about__legal a::before {
+  content: "";
+  position: absolute;
+  inset: -12px -4px;
 }
 
 .about__legal a,
