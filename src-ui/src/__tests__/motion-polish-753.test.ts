@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 
 /**
@@ -93,12 +94,14 @@ function reducedMotionBodies(source: string): string[] {
 const routeTransitionCss = read('app-shell', 'route-transition.css');
 const splitPaneCss = read('components', 'SplitPaneLayout.css');
 const indexCss = read('index.css');
-const actionControlCss = readFileSync(
-  createRequire(import.meta.url).resolve(
-    '@kontourai/station-sdk/action-control.css',
-  ),
-  'utf8',
-).replace(/\/\*[\s\S]*?\*\//g, '');
+const actionControlUrl = new URL(
+  '../../../packages/sdk/src/components/ActionControl.css',
+  import.meta.url,
+);
+const actionControlCss = readFileSync(actionControlUrl, 'utf8').replace(
+  /\/\*[\s\S]*?\*\//g,
+  '',
+);
 const chatCss = read('components', 'chat', 'chat.css');
 
 describe('station#753 item 1: route entrance', () => {
@@ -263,6 +266,11 @@ describe('station#753 item 3: dialog open transition', () => {
 
 describe('station#753 item 5: press micro-feedback', () => {
   test('.button--primary presses to scale(0.97) on the instant token', () => {
+    expect(
+      createRequire(import.meta.url).resolve(
+        '@kontourai/station-sdk/action-control.css',
+      ),
+    ).toBe(fileURLToPath(actionControlUrl));
     const bodies = rulesFor(
       actionControlCss,
       '.button--primary:active:not(:disabled)',
