@@ -1800,7 +1800,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Credential-free isolated Station comment, relocation, Send refusal, resolve/reopen and real Chromium capture/pin journeys. The room revision-publication prerequisite passes after #4211. PR-smoke admission remains deferred: the full nine-spec candidate lane failed its existing orchestration-chat approval assertion, and the strict receipt also rejected this spec\'s explicit live-provider skip. Credential-free Review cases passed, but three clean full-lane runs are not qualified. A separate live-Claude text-reply/commit-verification test is explicitly skipped as NOT_QUALIFIED unless STATION_REVIEW_USE_CLAUDE=1 and signed-in Claude are supplied; there is no ACP fallback. Missing Chromium is explicitly NOT_VERIFIED.',
+      "Credential-free isolated Station comment, relocation, Send refusal, resolve/reopen and real Chromium capture/pin journeys. The room revision-publication prerequisite passes after #4211. PR-smoke admission remains deferred: the full nine-spec candidate lane failed its existing orchestration-chat approval assertion, and the strict receipt also rejected this spec's explicit live-provider skip. Credential-free Review cases passed, but three clean full-lane runs are not qualified. A separate live-Claude text-reply/commit-verification test is explicitly skipped as NOT_QUALIFIED unless STATION_REVIEW_USE_CLAUDE=1 and signed-in Claude are supplied; there is no ACP fallback. Missing Chromium is explicitly NOT_VERIFIED.",
     exceptions: [],
   },
   {
