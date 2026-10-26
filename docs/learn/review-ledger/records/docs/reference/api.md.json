@@ -548,6 +548,14 @@
 
     "src-server/services/identity/operator-sessions.ts",
 
+    "src-server/routes/orchestration/task-review.ts",
+
+    "src-server/services/projects/task-review-module.ts",
+
+    "src-server/services/orchestration/task-review-store.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts",
+
     "src-server/services/terminal/shell-host.ts",
 
     "src-server/services/terminal/terminal-sessions.ts",
