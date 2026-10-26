@@ -100,6 +100,93 @@ function writeSchemaVersion(home: string, version: number): void {
 }
 
 describe('update backup and in-place restore (#2675 D)', () => {
+  it('resolves every directory target before removing current update state', () => {
+    const root = makeTempDir('update-directory-plan-');
+    const home = join(root, 'home');
+    ensureStationHomeSchemaSync(home);
+    mkdirSync(join(home, 'saved'));
+    const backupDir = join(root, 'backup');
+    const { manifest } = createStationHomeUpdateBackup({
+      homeDir: home,
+      backupDir,
+    });
+    rmSync(join(backupDir, 'home', 'saved'), { recursive: true });
+    mkdirSync(join(backupDir, 'home', '..saved'));
+    manifest.directories = [['..saved']];
+    writeFileSync(
+      join(backupDir, STATION_HOME_BACKUP_MANIFEST),
+      JSON.stringify(manifest),
+    );
+    writeFileSync(join(home, 'current.txt'), 'current state');
+    const marker = readFileSync(join(home, STATION_HOME_SCHEMA_FILE));
+    let removed = false;
+    expect(() =>
+      restoreStationHomeUpdateBackup({
+        homeDir: home,
+        backupDir,
+        afterRemove: () => {
+          removed = true;
+        },
+      }),
+    ).toThrow(/path escapes its root/);
+    expect(removed, 'invalid directory target must refuse before cleanup').toBe(
+      false,
+    );
+    expect(readFileSync(join(home, 'current.txt'), 'utf8')).toBe(
+      'current state',
+    );
+    expect(readFileSync(join(home, STATION_HOME_SCHEMA_FILE))).toEqual(marker);
+  });
+
+  it.each(['browser', 'acquisition'] as const)(
+    'restores an exact-cap archive while retaining trial-created %s work',
+    (kind) => {
+      const root = makeTempDir('update-directory-budget-');
+      const home = join(root, 'home');
+      ensureStationHomeSchemaSync(home);
+      const backupDir = join(root, 'backup');
+      createStationHomeUpdateBackup({ homeDir: home, backupDir, maxFiles: 1 });
+      const work =
+        kind === 'browser'
+          ? join(home, 'browser', 'profiles', 'work.txt')
+          : join(
+              home,
+              'repository-acquisitions',
+              'abcdefab-cdef-abcd-efab-cdefabcdefab',
+              'checkout-1',
+              'work.txt',
+            );
+      mkdirSync(join(work, '..'), { recursive: true });
+      writeFileSync(work, 'trial user work');
+      mkdirSync(join(home, 'trial-state'));
+      const marker = readFileSync(join(home, STATION_HOME_SCHEMA_FILE));
+      restoreStationHomeUpdateBackup({ homeDir: home, backupDir, maxFiles: 1 });
+      expect(readFileSync(work, 'utf8')).toBe('trial user work');
+      expect(readFileSync(join(home, STATION_HOME_SCHEMA_FILE))).toEqual(
+        marker,
+      );
+      expect(existsSync(join(home, 'trial-state'))).toBe(false);
+    },
+  );
+
+  it('keeps non-exempt directory entries inside the verification budget', () => {
+    const root = makeTempDir('update-directory-budget-control-');
+    const home = join(root, 'home');
+    ensureStationHomeSchemaSync(home);
+    const backupDir = join(root, 'backup');
+    createStationHomeUpdateBackup({ homeDir: home, backupDir, maxFiles: 1 });
+    expect(() =>
+      restoreStationHomeUpdateBackup({
+        homeDir: home,
+        backupDir,
+        maxFiles: 1,
+        afterRemove: () => {
+          mkdirSync(join(home, 'unexpected-state'));
+        },
+      }),
+    ).toThrow(/file-count limit/);
+  });
+
   it('restores an uncertain creation intent without admitting another publication', async () => {
     const fixture = serviceHome();
     const service = new ProjectCreationService(
