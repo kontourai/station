@@ -1,5 +1,4 @@
 import type { STTOptions, STTProvider, STTState } from '@kontourai/station-sdk';
-import { ListenerManager } from '@kontourai/station-sdk';
 import {
   type LocalTranscriptionResult,
   StationHttpError,
@@ -35,20 +34,21 @@ interface Capture {
 }
 
 /** Batch dictation: recording → transcribing → one final transcript notification. */
-export class LocalSpeechSTTProvider
-  extends ListenerManager
-  implements STTProvider
-{
+export class LocalSpeechSTTProvider implements STTProvider {
   readonly id = 'station-local';
   readonly name = 'Station (local)';
   private _state: STTState = 'idle';
   private _transcript = '';
   private _errorMessage: string | undefined;
   private capture: Capture | undefined;
+  private readonly listeners = new Set<() => void>();
 
-  constructor(private readonly apiBase: string) {
-    super();
-  }
+  constructor(private readonly apiBase: string) {}
+
+  readonly subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  };
   get state(): STTState {
     return this._state;
   }
@@ -182,7 +182,7 @@ export class LocalSpeechSTTProvider
 
   destroy(): void {
     this.cancelListening();
-    this._clearListeners();
+    this.listeners.clear();
   }
 
   private releaseRecording(capture: Capture): void {
@@ -294,7 +294,7 @@ export class LocalSpeechSTTProvider
   }
   private setState(state: STTState): void {
     this._state = state;
-    this._notify();
+    this.listeners.forEach((listener) => listener());
   }
 }
 

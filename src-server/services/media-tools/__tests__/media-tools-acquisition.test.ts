@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readdir, readFile, rm, stat } from 'node:fs/promises';
+import { readdir, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import {
@@ -19,6 +19,7 @@ import {
   type MediaToolAsset,
   type MediaToolPins,
 } from '../media-tools-pins.js';
+import observed from './fixtures/linux-av1-decoders.json';
 
 const makeTempDir = trackTempDirs();
 
@@ -317,12 +318,6 @@ test('healthy download progress survives five minutes, while an idle download is
 });
 
 test('pinned Linux AV1 decoder observations remain admitted by the Walkthrough input policy', async () => {
-  const observed = JSON.parse(
-    await readFile(
-      new URL('./fixtures/linux-av1-decoders.json', import.meta.url),
-      'utf8',
-    ),
-  );
   const policy = mediaInputPolicy(true);
   const admitted = policy[policy.indexOf('-codec_whitelist') + 1]!.split(',');
   for (const platform of ['linux-x64', 'linux-arm64'] as const) {
