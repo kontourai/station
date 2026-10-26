@@ -96,6 +96,15 @@ function parseAllowlist(text, source) {
     throw new UsageError(
       `${source} must be { schemaVersion: 1, screens: { <screen>: string[] } }`,
     );
+  // A key listed twice would let the ceiling pair two renames against it.
+  for (const [screen, ids] of Object.entries(parsed.screens)) {
+    const seen = new Set();
+    for (const id of ids) {
+      if (seen.has(id))
+        throw new UsageError(`${source} lists ${screen}: ${id} more than once`);
+      seen.add(id);
+    }
+  }
   return parsed;
 }
 
@@ -199,6 +208,19 @@ export function formatVerdict(verdict, { partial }) {
     lines.push(
       `RESOLVED ${screen}: ${identity} (remove it: node scripts/gallery-ui-findings.mjs prune)`,
     );
+  // A failure and a resolved entry of the same shape on one screen read as
+  // an intended rename: replace the key, and the ceiling reports a REKEY.
+  for (const failure of verdict.failures) {
+    const renamed = verdict.resolved.find(
+      ({ screen, identity }) =>
+        screen === failure.screen &&
+        withoutName(identity) === withoutName(failure.identity),
+    );
+    if (renamed)
+      lines.push(
+        `LIKELY REKEY ${failure.screen}: ${renamed.identity} → ${failure.identity} (if the copy change is intended, replace that key in the allowlist)`,
+      );
+  }
   lines.push(
     `${verdict.failures.length === 0 ? 'OK' : 'FAILED'}: ${verdict.judged} screen(s)${partial ? ' (partial capture)' : ''}, ` +
       `${verdict.findingCount} finding(s), ${verdict.failures.length} not allowlisted, ${verdict.resolved.length} allowlisted finding(s) resolved`,
@@ -275,6 +297,7 @@ function requireFullCleanCapture(capture) {
  */
 export function allowlistGrowth(base, head, baseScreens, headScreens) {
   const added = [];
+  const rekeys = [];
   const newScreens = [];
   const unknown = Object.keys(head.screens).filter(
     (screen) => !headScreens.has(screen),
@@ -292,11 +315,49 @@ export function allowlistGrowth(base, head, baseScreens, headScreens) {
       newScreens.push({ screen, identities });
       continue;
     }
-    const before = new Set(base.screens[screen] ?? []);
-    for (const identity of identities)
-      if (!before.has(identity)) added.push({ screen, identity });
+    const before = base.screens[screen] ?? [];
+    const kept = new Set(before);
+    const fresh = identities.filter((identity) => !kept.has(identity));
+    const gone = before.filter((identity) => !identities.includes(identity));
+    // An intended copy change renames a finding: same rule, same anchor once
+    // the trailing name segment is set aside. Each added key may consume one
+    // removed key of its shape, and a consumed key is gone (the splice), so a
+    // shape can never come out with more keys than the base had: that
+    // one-to-one pairing is the count guard. Pairs report as REKEY (a
+    // reviewed annotation, never silent); anything unpaired is growth.
+    for (const identity of fresh) {
+      const shape = withoutName(identity);
+      const partner = gone.find((old) => withoutName(old) === shape);
+      if (partner !== undefined) {
+        gone.splice(gone.indexOf(partner), 1);
+        rekeys.push({ screen, from: partner, to: identity });
+      } else added.push({ screen, identity });
+    }
   }
-  return { added, newScreens, removed, unknown };
+  return { added, newScreens, removed, unknown, rekeys };
+}
+
+/**
+ * A finding identity with each anchor's trailing accessible-name segment
+ * removed. A stable anchor ends `tag.class[type=…][name=…][Name]`; only that
+ * last bracket goes, and only when it is not attribute-shaped (so a raw
+ * fallback's `[href=…]` stays, and a lowercase-hyphen name is kept too, which
+ * fails closed to growth). Overlap identities carry two anchors (` / `). Nameless keys
+ * collide too often to be identities themselves (143 of 257 allowlist entries
+ * shared one when measured), so they only pair a rename with what it
+ * replaced.
+ */
+export function withoutName(identity) {
+  return identity
+    .split(' / ')
+    .map((part) => {
+      const match = /\[([^\]]*)\]$/.exec(part);
+      // Attribute-shaped (`href=…`, `aria-pressed`, `type=…`) is part of the
+      // anchor, as in a raw frame or shadow-root fallback; only a name goes.
+      if (!match || /^[a-z][a-z-]*(=.*)?$/.test(match[1])) return part;
+      return part.slice(0, match.index);
+    })
+    .join(' / ');
 }
 
 /** A file at `base`, or null when the path does not exist there. */
@@ -358,7 +419,7 @@ async function runGrowth(options) {
     );
   if (!existsSync(SCREEN_MAP))
     throw new UsageError(`no ${SCREEN_MAP} in this checkout`);
-  const { added, newScreens, removed, unknown } = allowlistGrowth(
+  const { added, newScreens, removed, unknown, rekeys } = allowlistGrowth(
     base,
     head,
     screenNames(baseMap, `${options.base}:${SCREEN_MAP}`),
@@ -371,6 +432,9 @@ async function runGrowth(options) {
     );
     for (const identity of identities) console.log(`  + ${identity}`);
   }
+  // Accepted as a rename of an existing finding: each is shown for review.
+  for (const { screen, from, to } of rekeys)
+    console.log(`REKEY ${screen}: ${from} → ${to}`);
   for (const screen of unknown)
     console.log(
       `UNKNOWN SCREEN ${screen}: listed in the allowlist but not in ${SCREEN_MAP}`,
