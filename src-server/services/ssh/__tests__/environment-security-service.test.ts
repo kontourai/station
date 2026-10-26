@@ -22,6 +22,7 @@ import {
   STATION_HOME_SCHEMA_VERSION,
 } from '@kontourai/station-shared/station-home-schema';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { createLogger } from '../../../utils/logger.js';
 
 const ENVIRONMENT_SECURITY_RECORD_RELATIVE_PATH = 'security/environment.json';
 
@@ -771,13 +772,14 @@ describe('EnvironmentSecurityService', () => {
         'the observer must reach actual lock stats',
       ).toBeGreaterThan(0);
     } catch (error) {
-      if (error instanceof Error && Object.isExtensible(error))
+      const receipt = { observations, total, truncated: total > 128 };
+      createLogger({ name: 'environment-lock-observation' }).info(
+        'Environment lock failure observation',
+        { environmentLockObservation: receipt },
+      );
+      if (error && typeof error === 'object' && Object.isExtensible(error))
         Object.defineProperty(error, 'environmentLockObservation', {
-          value: JSON.stringify({
-            observations,
-            total,
-            truncated: total > 128,
-          }),
+          value: JSON.stringify(receipt),
           enumerable: true,
           configurable: true,
         });
