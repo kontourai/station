@@ -214,8 +214,8 @@ export const items: readonly TaskReviewItem[] = [
     artifact: {
       kind: 'capture',
       id: 'screen-1',
-      revision: 'sha256:screen',
-      digest: 'sha256:screen',
+      revision: '7c04e1d000000000000000000000000000000000',
+      digest: `sha256:${'a'.repeat(64)}`,
     },
   },
 ];
@@ -225,12 +225,12 @@ export const captureThread: TaskReviewThreadView = {
   artifact: {
     kind: 'capture',
     id: 'screen-1',
-    revision: 'sha256:screen',
-    digest: 'sha256:screen',
+    revision: '7c04e1d000000000000000000000000000000000',
+    digest: `sha256:${'a'.repeat(64)}`,
   },
   anchor: { kind: 'region', x: 0.78, y: 0.69, w: 0.18, h: 0.1 },
   quote: undefined,
-  currentRevision: 'sha256:screen',
+  currentRevision: '7c04e1d000000000000000000000000000000000',
 };
 
 export const capture: TaskCapture = {
@@ -297,5 +297,6 @@ export const captureArtifact = {
   ...captureThread.artifact,
   kind: 'capture' as const,
   id: 'screen-1',
-  revision: 'sha256:screen',
+  revision: capture.commit,
+  digest: capture.digest,
 };

@@ -5770,7 +5770,10 @@ SDK barrels; detail provides full text. Use `openingEvent.body`/author/createdAt
 for the card preview and `lastDeliveryEvent` for the latest delivery, even when
 `lastEvent` is a person reply or resolve. Render `status:'unavailable'`
 as an unavailable card; it has no invented base state or history and does not
-contribute to aggregate counts.
+contribute to aggregate counts. Its optional `artifact` identifies the item on
+which to render that state. The list's optional `authors` projection supplies
+person and agent display labels without People-management scope or transcript
+reads; missing identity facts use the UI's generic label.
 
 `fetchTaskReviewItem(taskId, kind, id)` and
 `useTaskReviewItemQuery(taskId, kind, id, options)` read one selected item through
@@ -5828,6 +5831,19 @@ lead owner may send until multiplayer is supported. Older replies are omitted fr
 and latest comments with an omitted count. Only selections whose minimal content
 cannot fit fail with `message-too-large` before Sent; select fewer threads.
 
+`useCaptureToTaskMutation(taskId)` takes `TaskReviewCreateCaptureRequest` with
+`sourceKind:'browser'`, `sourceSessionId`, optional `label` and a stable
+`operationId`. It requires `orchestration:operate`, returns `{capture}` and
+invalidates the Task review query.
+`fetchTaskCaptureSessions(taskId, signal?)` and
+`useTaskCaptureSessionsQuery(taskId, options?)` supply live, view-authorized
+Browser sessions for the picker. `fetchTaskCaptureContent(taskId, captureId,
+signal?)` returns an image `Blob`; callers own any object URL they create and
+must revoke it. Content stays Task-scoped, uses authenticated fetch and throws
+`StationHttpError` on refusals. These functions and `TaskCapture`,
+`TaskReviewCreateCaptureRequest` and `TaskCaptureBrowserSession` are exported
+from both the root and query barrels.
+
 ### Private terminal outcomes
 
 The private Insights client exports `fetchPrivateOutcomes(scope, recipientId,
@@ -5854,4 +5870,4 @@ Queries partition by authority and retain no prior review while refreshing.
 A 404 means unsupported host or unavailable/expired request; request again and
 consider updating the host. No operator or private-vault credential is returned.
 See [the source journey](../guides/monitoring.md#connect-a-personal-source-in-insights)
-for expiry, source/Device revalidation and the remaining dispatch gap.
+for expiry, source/Device revalidation and remaining qualification limits.

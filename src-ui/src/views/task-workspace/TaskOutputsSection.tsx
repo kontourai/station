@@ -15,6 +15,7 @@ import {
 } from '@kontourai/station-sdk/task-outputs';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import {
   ResponsiveDialogSurface,
@@ -25,6 +26,8 @@ import {
   useApiBase,
   useHostRequestAuthorityScope,
 } from '../../contexts/ApiBaseContext';
+import { useNavigationActions } from '../../contexts/NavigationContext';
+import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { userFacingErrorMessage } from '../../utils/errorText';
 
@@ -59,7 +62,7 @@ export function TaskOutputsSection({
   const [confirming, setConfirming] = useState<TaskOutputRecord | null>(null);
   const [confirmation, setConfirmation] = useState('');
   const attempted = useRef<string | null>(null);
-  const deleteTrigger = useRef<HTMLButtonElement | null>(null);
+  const deleteTrigger = useRef<HTMLElement | null>(null);
   const heading = useRef<HTMLHeadingElement | null>(null);
   const confirmationInput = useRef<HTMLInputElement | null>(null);
 
@@ -265,9 +268,11 @@ export function TaskOutputRow({
   taskId: string;
   output: TaskOutputRecord;
   taskCreatedAt: string;
-  onDelete?: (trigger: HTMLButtonElement) => void;
+  onDelete?: (trigger: HTMLElement) => void;
 }) {
   const [showContent, setShowContent] = useState(false);
+  const reviewEnabled = useSurfaceVisibilityFlags().has('task-review');
+  const { updateParams } = useNavigationActions();
   const [contentReady, setContentReady] = useState(false);
   const [reviewDirty, setReviewDirty] = useState(false);
   const { guard, DiscardModal } = useUnsavedGuard(reviewDirty);
@@ -289,35 +294,66 @@ export function TaskOutputRow({
         )}
         <time dateTime={output.createdAt}>{time(output.createdAt)}</time>
       </div>
-      <div className="task-outputs__actions">
-        <Button
-          size="sm"
-          onClick={() =>
-            guard(() => {
-              setContentReady(false);
-              setReviewDirty(false);
-              setShowContent((value) => !value);
-            })
-          }
-          aria-label={`${showContent ? 'Hide' : 'View'} output ${output.title}`}
-        >
-          {showContent ? 'Hide' : 'View'}
-        </Button>
-        {onDelete && (
+      <ActionRow
+        className="task-outputs__actions"
+        overflowLabel={`More actions for ${output.title}`}
+        primary={
           <Button
             size="sm"
-            ref={deleteRef}
             onClick={() =>
               guard(() => {
-                if (deleteRef.current) onDelete?.(deleteRef.current);
+                setContentReady(false);
+                setReviewDirty(false);
+                setShowContent((value) => !value);
               })
             }
-            aria-label={`Delete output ${output.title}`}
+            aria-label={`${showContent ? 'Hide' : 'View'} output ${output.title}`}
           >
-            Delete
+            {showContent ? 'Hide' : 'View'}
           </Button>
-        )}
-      </div>
+        }
+        secondary={
+          reviewEnabled ? (
+            <Button
+              size="sm"
+              onClick={() =>
+                updateParams({
+                  taskView: 'review',
+                  reviewKind: 'output',
+                  reviewItem: output.id,
+                })
+              }
+            >
+              Comment in Review
+            </Button>
+          ) : onDelete ? (
+            <Button
+              size="sm"
+              ref={deleteRef}
+              onClick={() =>
+                guard(() => {
+                  if (deleteRef.current) onDelete?.(deleteRef.current);
+                })
+              }
+              aria-label={`Delete output ${output.title}`}
+            >
+              Delete
+            </Button>
+          ) : undefined
+        }
+        overflow={
+          reviewEnabled && onDelete
+            ? [
+                {
+                  key: 'delete',
+                  label: `Delete output ${output.title}`,
+                  tone: 'danger',
+                  onSelect: (trigger) => guard(() => onDelete(trigger)),
+                },
+              ]
+            : []
+        }
+      />
       {showContent ? (
         <>
           <TaskOutputContent
