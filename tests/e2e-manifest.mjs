@@ -291,6 +291,11 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
   ],
   journeys: [
     {
+      path: 'tests/task-review.spec.ts',
+      journey:
+        'Credential-free Task review comments, quote relocation, resolution, Send refusal and real Browser capture with a keyboard region pin',
+    },
+    {
       path: 'tests/connect-modal.spec.ts',
       journey:
         'manual connection consent, keyboard access, and saved host management',
