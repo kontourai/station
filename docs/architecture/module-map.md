@@ -2106,8 +2106,9 @@ The private `recoverAccounting` method authenticates the original epoch,
 invocation, signed terminal, final-wire intent and raw historical tariff evidence.
 When the terminal is still observable it can capture that actual coherent read;
 it does not reconstruct a deleted unsigned completion. A bounded signed recovery
-intent retains the exact operation, reservation tuple and accounting proof before
-calling published `recoverAuthorizedDelegationAccountingV1`. Replay revalidates
+intent retains the exact operation, reservation tuple and accounting proof inside
+the admission callback, before published `recoverAuthorizedDelegationAccountingV1`
+performs settlement. Replay revalidates
 the proof and compares the complete newly signed intent with the retained bytes.
 The home hold excludes participating Station authority changes; checked Dispatch
 settlement separately handles its mutable reservation under its own lock. A partial
@@ -2116,6 +2117,13 @@ Unknown usage stays held. A `held` result does not promise no writes: the publis
 contract can record known overrun accounting while retaining unavailable capacity.
 There is no public recovery route, SDK or CLI surface yet, and full joined recovery
 qualification remains open.
+
+First recovery admission compares the complete consumed wire identity against the
+authenticated group/controller/seat, original root/envelope, execution, allocation
+and receipt digests. Initial-turn fallback requires the actual first group
+invocation. A later invocation requires its signed continuation binding for live
+capture, or an already authenticated exact terminal witness; missing later proof
+cannot substitute the first turn on the same Session.
 
 ## CliSessionGroups
 

@@ -2354,3 +2354,16 @@ calls. The recovery/persistence/coherent-read owner run passes35 cases and
 server-test types pass. Final review and mutations are pending. The public
 HTTP/SDK/CLI recovery surface is not mounted, and broader/provider/device/hosted
 qualification remains open.
+
+Independent source review of `65b6acceb35` found two first-admission gaps: consumed
+wire metadata was not compared in full, and missing later-turn proof could fall
+back to the initial turn. The wire control altered only controller generation,
+preserving lookup identity and the final-wire digest; it reached settlement before
+the repair. Recovery now checks the entire expected wire tuple before admission.
+The second control ran initial and acknowledged context-sync invocations on one
+Session, then removed the later continuation binding and terminal observation.
+The old path accepted recovery; the repair refuses instead of signing the first
+turn as the later invocation. A valid signed later witness remains sufficient
+after the auxiliary binding is removed. All three composed recovery cases and
+server-test types pass after repair. Cross-process publication-drain probes,
+public transport and broader qualification are still open.

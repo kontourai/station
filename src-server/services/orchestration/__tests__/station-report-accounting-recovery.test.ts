@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
+import { flowRunHead, loadRun } from '@kontourai/flow';
 import { delegationAccountingDollarsV1 } from '@kontourai/flow-agents/delegation-dispatch';
 import { onTestFinished, test, vi } from 'vitest';
 import { createGateTestRegistry } from '../../../__test-utils__/orchestration-gate-test-harness.js';
@@ -14,12 +15,14 @@ import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
 import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
+import { createReportFlow } from './delegation-source-fixtures/flow.js';
 import {
   installControl,
   NOW,
   requestFor,
   setup,
 } from './delegation-source-fixtures/report.js';
+import { controlledTextStream } from './delegation-source-fixtures/streamed-text.js';
 
 async function recoveryFixture() {
   const h = await setup();
@@ -132,6 +135,29 @@ test('accounting recovery resumes a Dispatch-only commit after Session deletion 
       seatId: member.seatId,
       invocationId: attempt.invocationId,
     };
+    const wireFile = join(
+      h.f.home,
+      'report-groups',
+      'final-wire-intents',
+      'intents.json',
+    );
+    const originalWire = readFileSync(wireFile);
+    try {
+      const changed = JSON.parse(originalWire.toString('utf8'));
+      changed.records[0].identity.controller.generation++;
+      writeFileSync(wireFile, JSON.stringify(changed));
+      await assert.rejects(
+        runtime.recoverAccounting(
+          h.f.context(requestFor(h, 'POST')),
+          created.group.groupId,
+          command,
+        ),
+        /report_recovery_wire_mismatch/,
+      );
+      assert.equal((await inspect())[0].state, 'reserved');
+    } finally {
+      writeFileSync(wireFile, originalWire);
+    }
     const settle = FileAuthorizationLedger.prototype.settleChecked;
     const exclusion = vi
       .spyOn(FileAuthorizationLedger.prototype, 'settleChecked')
@@ -328,3 +354,115 @@ test('unknown physical usage stays reserved across accounting recovery and exact
     eventStore.close();
   }
 }, 180_000);
+
+test('a later invocation with missing turn proofs cannot acquire the original turn as its recovery witness', async () => {
+  const { h, owners, orchestration, eventStore } = await recoveryFixture();
+  h.rawFetch.mockImplementation(async (_url, options) => {
+    const body = JSON.parse(String(options?.body));
+    const prompt = JSON.parse(body.messages[0].content[0].text);
+    const text = Object.hasOwn(prompt, 'context')
+      ? prompt.brief.split('Reply exactly ')[1]
+      : 'Controlled initial report';
+    return controlledTextStream('anthropic', 'claude-sonnet-4-6', text, {
+      input_tokens: 4,
+      output_tokens: 32,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+    });
+  });
+  const flow = await createReportFlow(h.f, 'recovery-continuation', [
+    { id: 'left', requiredEvidence: true },
+  ]);
+  try {
+    const runtime = new StationReportGroupRuntime(owners);
+    const initial = await runtime.create(h.f.context(), {
+      ...h.input,
+      flow,
+      maxConcurrent: 1,
+      members: [{ ...h.input.members[0], maxOutputTokens: 256 }],
+      continuation: {
+        attemptsPerMember: 3,
+        maxRounds: 3,
+        maxSyncs: 1,
+        maxRenewals: 0,
+        maxEvaluations: 2,
+        maxRecoveries: 0,
+      },
+      budget: {
+        inputTokens: 3 * 1_048_576,
+        outputTokens: 3 * 256,
+        costMicros: 3 * (1_048_576 * 3 + 256 * 15),
+      },
+    });
+    const run = await loadRun(flow.runId, h.f.repo);
+    const synced = await runtime.sync(
+      h.f.context(requestFor(h, 'POST')),
+      initial.group.groupId,
+      {
+        operationKey: 'later-turn',
+        expectedRevision: initial.group.revision,
+        seatId: 'left',
+        flowHead: flowRunHead(run.state),
+        text: 'Controlled later context',
+      },
+    );
+    const attempt = synced.group.contextSyncs?.[0].attempts?.[0];
+    assert.ok(attempt?.terminal);
+    const command = {
+      seatId: 'left',
+      invocationId: attempt.invocationId,
+      operationKey: 'bound-later-proof',
+    };
+    const before = await runtime.recoverAccounting(
+      h.f.context(requestFor(h, 'POST')),
+      initial.group.groupId,
+      command,
+    );
+    assert.equal(before.recovered.status, 'settled');
+    const root = join(h.f.home, 'report-groups');
+    const directory = join(root, 'station-report-continuation-turns-v1');
+    const files = readdirSync(directory).filter((name) =>
+      name.endsWith('.json'),
+    );
+    assert.equal(files.length, 1);
+    const bindingFile = join(directory, files[0]);
+    const ledger = JSON.parse(readFileSync(bindingFile, 'utf8'));
+    assert.equal(
+      ledger.entries.filter(
+        (entry: { intent: { invocationId: string } }) =>
+          entry.intent.invocationId === attempt.invocationId,
+      ).length,
+      1,
+    );
+    ledger.entries = ledger.entries.filter(
+      (entry: { intent: { invocationId: string } }) =>
+        entry.intent.invocationId !== attempt.invocationId,
+    );
+    writeFileSync(bindingFile, JSON.stringify(ledger));
+    const retainedWitness = await runtime.recoverAccounting(
+      h.f.context(requestFor(h, 'POST')),
+      initial.group.groupId,
+      { ...command, operationKey: 'retained-later-witness' },
+    );
+    assert.equal(retainedWitness.recovered.status, 'settled');
+    unlinkSync(
+      join(
+        root,
+        'station-report-observations-v1',
+        `${attempt.terminal.id}.json`,
+      ),
+    );
+    await assert.rejects(
+      runtime.recoverAccounting(
+        h.f.context(requestFor(h, 'POST')),
+        initial.group.groupId,
+        { ...command, operationKey: 'missing-later-proof' },
+      ),
+      /report_recovery_turn_binding_missing/,
+    );
+    assert.equal(h.rawFetch.mock.calls.length, 2);
+  } finally {
+    await orchestration.shutdown();
+    eventStore.close();
+  }
+}, 300_000);

@@ -40,7 +40,10 @@ import {
   HomeWriterOwner,
   HomeWriterUnavailableError,
 } from '../ssh/home-writer-owner.js';
-import type { StationDelegationPersistence } from './delegation-group-persistence.js';
+import {
+  DelegationPersistenceError,
+  type StationDelegationPersistence,
+} from './delegation-group-persistence.js';
 import type { RuntimeSourceRequestContext } from './delegation-group-source-admission.js';
 import {
   type FileFinalWireIntentStore,
@@ -519,11 +522,40 @@ export class StationReportGroupCustody {
                 envelope.execution_authority.allowed_tools.length !== 0
               )
                 refuse();
+              const binding = {
+                groupId,
+                controller: group.spec.controller,
+                seatId: member.seatId,
+                root,
+                envelope: envelopeRef,
+                executionId: member.reservedTaskId,
+                invocationId: invocation.invocationId,
+                effect: wire.effect,
+                allocation: invocation.allocation,
+                executionBindingDigest: wireIdentityDigest(
+                  envelope.execution_binding,
+                ),
+                principalDigest: epoch.root.authenticated_principal_ref.digest,
+                subjectDigest: epoch.root.authenticated_subject_ref.digest,
+                finalWireDigest: wire.finalWireDigest,
+              };
+              if (!same(wire, binding))
+                throw new DelegationPersistenceError(
+                  'report_recovery_wire_mismatch',
+                );
               const continuation =
                 await this.owners.persistence.readReportContinuationTurn(
                   groupId,
                   invocation.invocationId,
                   current,
+                );
+              const initial =
+                group.attempts.find(
+                  (attempt) => attempt.seatId === member.seatId,
+                )?.invocationId === invocation.invocationId;
+              if (!continuation && !initial && !terminal)
+                throw new DelegationPersistenceError(
+                  'report_recovery_turn_binding_missing',
                 );
               const clientTurnId = continuation
                 ? (
@@ -534,7 +566,10 @@ export class StationReportGroupCustody {
                       invocation.invocationId,
                     )
                   ).clientTurnId
-                : member.reservedClientTurnId;
+                : initial
+                  ? member.reservedClientTurnId
+                  : terminal?.data.terminal.clientTurnId;
+              if (!clientTurnId) refuse();
               if (!terminal) {
                 const delivery = await this.#delivery(
                   authorized,
@@ -602,22 +637,7 @@ export class StationReportGroupCustody {
                         ? { usage: resultRecord.observation }
                         : {}),
                       executionIntent: {
-                        binding: {
-                          controller: group.spec.controller,
-                          seatId: member.seatId,
-                          root,
-                          envelope: envelopeRef,
-                          effect: wire.effect,
-                          allocation: invocation.allocation,
-                          executionBindingDigest: wireIdentityDigest(
-                            envelope.execution_binding,
-                          ),
-                          principalDigest:
-                            epoch.root.authenticated_principal_ref.digest,
-                          subjectDigest:
-                            epoch.root.authenticated_subject_ref.digest,
-                          finalWireDigest: wire.finalWireDigest,
-                        },
+                        binding,
                         modelReceipt:
                           envelope.execution_binding.runtime.model_receipt_ref,
                       },
