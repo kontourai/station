@@ -1,0 +1,7 @@
+{
+  "revision": "aed88445c660e051c0562106a65bbd0c2d499a8a",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"First-chat flow unchanged: with no Session yet the chip and header name the Agent's configured engine. The new short 'Agent moved' hint applies only to an existing chat whose Agent was repointed.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

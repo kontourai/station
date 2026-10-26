@@ -237,6 +237,13 @@ export interface ForegroundMessageHandle {
   providerTurnId: string;
   target: { kind: 'agent'; id: AgentId };
   resolution: ExecutionResolutionReceipt;
+  /**
+   * #4162: this send started `sessionId` (a new conversation, a successor, or
+   * a handoff target), so `resolution.engine` is the engine that Session runs
+   * on. Absent when the turn went to an already-running Session, whose engine
+   * may differ from the Agent's current binding that `resolution` describes.
+   */
+  sessionStarted?: true;
   /** Present only for the explicit Agent/engine handoff route. */
   handoff?: {
     predecessorSessionId: string;
@@ -1425,6 +1432,9 @@ export async function executeForegroundMessage(
     providerTurnId: turn.turnId,
     target: { kind: 'agent', id: resolved.agentId },
     resolution,
+    ...(!binding || continuation?.startRequired
+      ? { sessionStarted: true as const }
+      : {}),
     ...(approvalMode ? { approvalMode } : {}),
     ...(preparedHandoff
       ? {

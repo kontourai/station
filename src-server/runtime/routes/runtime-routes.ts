@@ -4768,8 +4768,6 @@ export function configureRuntimeRoutes(
       logger: context.logger,
     });
     const resolveRoomPerson = (request: Request) => {
-      if (!isRequestPrincipalCurrent(request))
-        return { kind: 'revoked' as const };
       const authenticated = getRuntimeAuthenticatedRequestPrincipal(request);
       if (!authenticated) return { kind: 'revoked' as const };
       const principal = roomRequestPrincipals.get(request);
@@ -4855,6 +4853,7 @@ export function configureRuntimeRoutes(
         // back to any default identity.
         resolve: async (request) => resolveRoomPerson(request),
         isCurrent: (request, expected) => {
+          if (!isRequestPrincipalCurrent(request)) return false;
           const now = resolveRoomPerson(request);
           return (
             now.kind === 'granted' &&
