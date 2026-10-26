@@ -117,7 +117,9 @@ async function closeDay(day = closedWeek) {
   );
 }
 async function readAll(path = '/v1/public/aggregates', key?: string) {
-  const cells: Awaited<ReturnType<LiteRepository['aggregates']>>['cells'] = [];
+  const cells: Array<
+    Awaited<ReturnType<LiteRepository['aggregates']>>['cells'][number]
+  > = [];
   let cursor: string | null = null;
   do {
     const r = await app.request(
@@ -1281,9 +1283,10 @@ test('offline suppression preserves sealed history while restart, maintenance an
   expect(await publisher.json()).toMatchObject({ cells: [], nextCursor: null });
   expect(
     (
-      await db.query(
-        'SELECT client_hash,contributions FROM station_telemetry.lite_pings',
-      )
+      await db.query<{
+        client_hash: Uint8Array | null;
+        contributions: unknown;
+      }>('SELECT client_hash,contributions FROM station_telemetry.lite_pings')
     ).rows.every(
       (row) => row.client_hash === null && row.contributions === null,
     ),
@@ -1480,7 +1483,7 @@ test.each([false, true])(
         );
         expect(
           (
-            await restored.query(
+            await restored.query<{ body: unknown }>(
               'SELECT body FROM station_telemetry.commits WHERE id=$1',
               [receipt.receiptId],
             )

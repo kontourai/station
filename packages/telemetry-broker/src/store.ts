@@ -317,9 +317,10 @@ export class PgProductRepository implements ProductRepository {
       'sources|p|PRIMARY KEY (id)',
       'sources|u|UNIQUE (credential_hash)',
     ];
-    const actualConstraints = constraints.rows.map(
-      (row) => `${row.name}|${row.type}|${row.definition}`,
-    );
+    // PostgreSQL 18 also catalogs NOT NULL; required columns are checked above.
+    const actualConstraints = constraints.rows
+      .filter((row) => row.type !== 'n')
+      .map((row) => `${row.name}|${row.type}|${row.definition}`);
     if (
       constraints.rows.some(
         (row) => !row.valid || row.deferred || !row.key_valid,
