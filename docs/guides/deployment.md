@@ -253,8 +253,10 @@ readiness. Application and workspace files need their own retention/backup polic
 ## Offline home recovery drill
 
 Use a disposable home first, with the same Station release on source and target.
-Record a Project, Task, room message, document edit, its durable edit receipt,
-and the published revision link. Make another edit so the first revision is no
+Record a Project, Task, room message, document edit and its durable edit receipt.
+Create a Task Review thread on that Plan revision to freeze a receipt, and record
+the resulting published revision link. Enable the `task-review` feature preview
+for this step; saving alone retains a replaceable candidate. Make another edit so the first revision is no
 longer the current document. Stop every runtime using the source home before
 running the [home backup and restore commands](../reference/cli.md#home-backup)
 from a matching source checkout. These local archive verbs are not a promise

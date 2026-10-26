@@ -174,7 +174,17 @@ async function setup() {
       }),
     ).toMatchObject({ kind: 'committed' });
   };
-  return { runtime, text, plan, edit, settled, deletedSince, seedLegacy };
+  return {
+    runtime,
+    scope,
+    directory,
+    text,
+    plan,
+    edit,
+    settled,
+    deletedSince,
+    seedLegacy,
+  };
 }
 
 type Room = Awaited<ReturnType<typeof setup>>;
@@ -231,7 +241,7 @@ describe('#4008 a mid-document edit never rewrites the rest of the document', ()
 });
 
 describe('#4007 a Task document refuses what it cannot hold, explicitly and up front', () => {
-  test(`an empty room seeds ${SEED_CAPACITY} characters with linked evidence and refuses one more`, async () => {
+  test(`an empty room seeds ${SEED_CAPACITY} characters as a revision candidate and refuses one more`, async () => {
     const over = await setup();
     expect(await over.edit('a'.repeat(SEED_CAPACITY + 1))).toEqual({
       kind: 'rejected',
@@ -241,7 +251,7 @@ describe('#4007 a Task document refuses what it cannot hold, explicitly and up f
     const room = await setup();
     expect(await room.edit('a'.repeat(SEED_CAPACITY))).toMatchObject({
       kind: 'committed',
-      revisionEvidence: { kind: 'linked' },
+      revisionEvidence: { kind: 'unavailable' },
     });
   }, 120_000);
 
@@ -250,7 +260,7 @@ describe('#4007 a Task document refuses what it cannot hold, explicitly and up f
     const full = 'b'.repeat(SEED_CAPACITY);
     expect(await room.edit(full)).toMatchObject({
       kind: 'committed',
-      revisionEvidence: { kind: 'linked' },
+      revisionEvidence: { kind: 'unavailable' },
     });
     // Fill whatever insert headroom remains with halving chunks, until one
     // character is refused. Refusals are deterministic and write nothing.
@@ -273,7 +283,7 @@ describe('#4007 a Task document refuses what it cannot hold, explicitly and up f
       trimmed = trimmed.slice(0, at) + trimmed.slice(at + 10);
       expect(await room.edit(trimmed)).toMatchObject({
         kind: 'committed',
-        revisionEvidence: { kind: 'linked' },
+        revisionEvidence: { kind: 'unavailable' },
       });
     }
     expect(await room.text()).toBe(trimmed);
@@ -283,39 +293,53 @@ describe('#4007 a Task document refuses what it cannot hold, explicitly and up f
     });
   }, 120_000);
 
-  test('when the Station-wide evidence ledger is full every write is refused as evidence-ledger-full, never left pending', async () => {
+  test('a full evidence ledger refuses new references while edits and deletions keep saving', async () => {
     const room = await setup();
-    // About 370 KB per revision record: the 4 MiB ledger holds about eleven.
     let current = 'd'.repeat(4_000);
-    let refused: unknown;
-    let committed = 0;
-    for (let index = 0; index < 20; index += 1) {
-      const result = await room.edit(current);
-      if (result.kind !== 'committed') {
-        refused = result;
-        break;
-      }
-      committed += 1;
-      expect(result).toMatchObject({ revisionEvidence: { kind: 'linked' } });
-      current = `${current}e`;
+    let linked = true;
+    for (let index = 0; index < 20 && linked; index += 1) {
+      expect(await room.edit(current)).toMatchObject({ kind: 'committed' });
+      const document = await room.runtime.readTaskDocumentForBrief('task-1');
+      if (document.kind !== 'available') throw new Error('expected document');
+      linked = await room.runtime.freezeDocumentRevision({
+        taskId: 'task-1',
+        documentId: room.scope.documentId,
+        workingRevision: document.revision,
+        beforeCommit: () => true,
+      });
+      current += 'e';
     }
-    expect(committed).toBeGreaterThan(1);
-    expect(refused).toEqual({
-      kind: 'rejected',
-      reason: 'evidence-ledger-full',
-    });
-    const stored = await room.text();
-    expect(current).toBe(`${stored}e`);
-    // Still explicit on the next writes, a deletion included: nothing pends.
-    expect(await room.edit(current)).toEqual({
-      kind: 'rejected',
-      reason: 'evidence-ledger-full',
-    });
-    expect(await room.edit(stored.slice(1))).toEqual({
-      kind: 'rejected',
-      reason: 'evidence-ledger-full',
-    });
-    expect(await room.text()).toBe(stored);
+    expect(linked).toBe(false);
+    // Upgrade custody: old outboxes are claimed even if freeze never committed.
+    const database = new DatabaseSync(
+      join(room.directory, 'orchestration.sqlite'),
+    );
+    try {
+      const receipts = database
+        .prepare(
+          'SELECT record_json FROM revision_evidence_receipts ORDER BY revision_id',
+        )
+        .all();
+      database
+        .prepare(
+          'UPDATE project_task_room_revision_publication_outbox SET freeze_requested=1',
+        )
+        .run();
+      expect(await room.edit(current)).toMatchObject({ kind: 'committed' });
+      expect(await room.edit(current.slice(1))).toMatchObject({
+        kind: 'committed',
+      });
+      expect(await room.text()).toBe(current.slice(1));
+      expect(
+        database
+          .prepare(
+            'SELECT record_json FROM revision_evidence_receipts ORDER BY revision_id',
+          )
+          .all(),
+      ).toEqual(receipts);
+    } finally {
+      database.close();
+    }
   }, 300_000);
 });
 
@@ -430,40 +454,45 @@ async function setupRooms(taskIds: readonly string[]) {
   };
 }
 
-describe('#4007 the ledger reserves room for revisions admitted but not yet recorded', () => {
-  test('while evidence recording is down, a second room is refused instead of being admitted into a wedge', async () => {
+describe('#4055 candidates do not reserve the shared evidence ledger', () => {
+  test('unfrozen candidates and an evidence outage do not stop other rooms saving', async () => {
     const rooms = await setupRooms(['filler', 'room-b', 'room-c']);
-    // Fill the shared ledger until between 300 KB and 800 KB remain.
     let filler = 'f'.repeat(4_000);
     while (rooms.ledgerRemaining() > 800_000) {
       expect(await rooms.edit('filler', filler)).toMatchObject({
         kind: 'committed',
-        revisionEvidence: { kind: 'linked' },
       });
+      const document = await rooms.runtime.readTaskDocumentForBrief('filler');
+      if (document.kind !== 'available') throw new Error('expected document');
+      expect(
+        await rooms.runtime.freezeDocumentRevision({
+          taskId: 'filler',
+          documentId: projectTaskRoomDocumentId({
+            projectId: 'project-1',
+            taskId: 'filler',
+          }),
+          workingRevision: document.revision,
+          beforeCommit: () => true,
+        }),
+      ).toBe(true);
       filler += 'g';
     }
     const remaining = rooms.ledgerRemaining();
-    expect(remaining).toBeGreaterThan(300_000);
-    // Each of B and C alone fits; both together do not (about 0.6 each).
     const size = Math.floor((0.6 * remaining - 28_000) / 93);
     rooms.setEvidenceDown(true);
-    expect(await rooms.edit('room-b', 'b'.repeat(size))).toMatchObject({
-      kind: 'committed',
-      revisionEvidence: { kind: 'unavailable' },
-    });
-    // B's revision is admitted but not recorded; its reservation counts.
-    expect(await rooms.edit('room-c', 'c'.repeat(size))).toEqual({
-      kind: 'rejected',
-      reason: 'evidence-ledger-full',
-    });
+    for (const taskId of ['room-b', 'room-c']) {
+      expect(await rooms.edit(taskId, 'b'.repeat(size))).toMatchObject({
+        kind: 'committed',
+      });
+      expect(await rooms.edit(taskId, 'b'.repeat(size) + 'c')).toMatchObject({
+        kind: 'committed',
+      });
+    }
+    expect(rooms.ledgerRemaining()).toBe(remaining);
     rooms.setEvidenceDown(false);
-    // B's publication drains into the ledger it was reserved in.
-    await rooms.runtime.discover({ taskId: 'room-b', request: rooms.request });
-    expect(rooms.ledgerRemaining()).toBeLessThan(remaining);
-    // C is still refused explicitly, never left pending.
-    expect(await rooms.edit('room-c', 'c'.repeat(size))).toEqual({
-      kind: 'rejected',
-      reason: 'evidence-ledger-full',
-    });
+    for (const taskId of ['room-b', 'room-c'])
+      expect(await rooms.edit(taskId, 'recovered')).toMatchObject({
+        kind: 'committed',
+      });
   }, 300_000);
 });

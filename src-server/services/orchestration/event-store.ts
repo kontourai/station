@@ -132,6 +132,7 @@ import { TASK_MEMORY_MIGRATION } from '../../domain/migrations/020-task-memory.j
 import { TASK_LEARNING_DISMISSALS_MIGRATION } from '../../domain/migrations/021-task-learning-dismissals.js';
 import { TASK_LEARNING_PROMOTIONS_MIGRATION } from '../../domain/migrations/022-task-learning-promotions.js';
 import { TASK_REVIEW_MIGRATION } from '../../domain/migrations/023-task-review.js';
+import { ensureProjectTaskRoomRevisionFreezeColumn } from '../../domain/migrations/024-project-task-room-revision-freeze.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -2557,6 +2558,7 @@ export class EventStore {
       this.db.exec(REVISION_EVIDENCE_RECEIPTS_MIGRATION);
       this.db.exec(PROJECT_TASK_ROOM_REVISION_PUBLICATION_MIGRATION);
       ensureProjectTaskRoomRevisionAttributionColumn(this.db);
+      ensureProjectTaskRoomRevisionFreezeColumn(this.db);
       this.db.exec(`
       CREATE TABLE IF NOT EXISTS orchestration_attachment_quota (
         thread_id TEXT PRIMARY KEY,
