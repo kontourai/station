@@ -3126,9 +3126,28 @@ const SCREENS: Screen[] = [
       });
       await starter.click();
       await expect(starter).toHaveAttribute('aria-pressed', 'true');
-      // The wheel scroll (and the click's scroll-into-view) can still be
-      // moving: an unsettled scroll position changed both the pixels and
-      // which controls axe saw run to run.
+      // Where the wheel scroll and the click's scroll-into-view stop varies
+      // run to run, and with it which controls are on screen (the identity
+      // icon's visible initials flickered in and out of axe's view). Pin the
+      // modal's scroller to its exact end, where the layout choices sit, and
+      // then wait for it to settle.
+      await starter.evaluate((element) => {
+        for (
+          let node = element.parentElement;
+          node;
+          node = node.parentElement
+        ) {
+          const { overflowY } = getComputedStyle(node);
+          if (
+            (overflowY === 'auto' || overflowY === 'scroll') &&
+            node.scrollHeight > node.clientHeight
+          ) {
+            node.scrollTop = node.scrollHeight;
+            return;
+          }
+        }
+        throw new Error('New Project layout choices have no scroll container');
+      });
       await expect
         .poll(
           () =>
