@@ -1,5 +1,8 @@
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
-import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
+import type {
+  AgentConnectionView,
+  ConnectionConfig,
+} from '@kontourai/station-contracts/tool';
 import { describe, expect, test } from 'vitest';
 import {
   buildProviderOptions,
@@ -1101,8 +1104,8 @@ describe('execution utils', () => {
     ).toMatchObject({ id: 'session-model', source: 'session override' });
   });
 
-  test('sessionAdapterSupportsSteering reads midTurnSteer, not a connection capabilities flag', () => {
-    const connections = [
+  test('sessionAdapterSupportsSteering requires native fidelity, not a connection capabilities flag', () => {
+    const connections: ConnectionConfig[] = [
       {
         id: 'claude-runtime',
         kind: 'agent',
@@ -1137,6 +1140,17 @@ describe('execution utils', () => {
         prerequisites: [],
       },
       {
+        id: 'acp-runtime',
+        kind: 'agent',
+        type: 'acp',
+        name: 'ACP Runtime',
+        enabled: true,
+        capabilities: ['agent-runtime'],
+        config: {},
+        status: 'ready',
+        prerequisites: [],
+      },
+      {
         id: 'steering-preview-runtime',
         kind: 'agent',
         type: 'steering-preview-runtime',
@@ -1147,7 +1161,7 @@ describe('execution utils', () => {
         status: 'ready',
         prerequisites: [],
       },
-    ] as any;
+    ];
 
     expect(sessionAdapterSupportsSteering('claude-runtime', connections)).toBe(
       true,
@@ -1158,12 +1172,21 @@ describe('execution utils', () => {
     expect(sessionAdapterSupportsSteering('muse-runtime', connections)).toBe(
       false,
     );
+    expect(sessionAdapterSupportsSteering('acp-runtime', connections)).toBe(
+      false,
+    );
     // The live session's provider wins over the bound connection.
     expect(
       sessionAdapterSupportsSteering('muse-runtime', connections, 'claude'),
     ).toBe(true);
     expect(
       sessionAdapterSupportsSteering('claude-runtime', connections, 'muse'),
+    ).toBe(false);
+    expect(
+      sessionAdapterSupportsSteering('acp-runtime', connections, 'claude'),
+    ).toBe(true);
+    expect(
+      sessionAdapterSupportsSteering('claude-runtime', connections, 'acp'),
     ).toBe(false);
     // A stale `capabilities: ['steering']` string is not authority.
     expect(
@@ -1174,6 +1197,11 @@ describe('execution utils', () => {
       false,
     );
     expect(sessionAdapterSupportsSteering('claude-runtime')).toBe(false);
+    for (const provider of ['unknown-engine', 'constructor', '__proto__']) {
+      expect(
+        sessionAdapterSupportsSteering('claude-runtime', connections, provider),
+      ).toBe(false);
+    }
   });
 });
 

@@ -3,6 +3,7 @@ import {
   ENGINE_CAPABILITY_MATRICES,
   type ModelImageSupport,
   resolveEngineCapabilityMatrix,
+  UNKNOWN_EXTERNAL_ENGINE_MATRIX,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
@@ -656,9 +657,8 @@ type SessionExecutionActivity = SessionExecutionSummary & {
 /**
  * Whether a running turn can take more user input on the engine's live
  * channel (`steerTurn` / `turn.started` with `inputKind: 'steer'`).
- * Authority is the capability matrix, not a connection `capabilities`
- * string. Claude and Codex expose additive steering. ACP is held because
- * its matrix also admits cancel+reprompt, without a session-native receipt.
+ * Only native steering fidelity permits this action. Emulated steering can
+ * cancel and reprompt, so it cannot promise an additive live input channel.
  */
 export function sessionAdapterSupportsSteering(
   agentConnectionId?: string | null,
@@ -668,22 +668,12 @@ export function sessionAdapterSupportsSteering(
   const connection = agentConnectionId
     ? agentConnections.find((candidate) => candidate.id === agentConnectionId)
     : undefined;
-  // ACP's matrix also permits interruptive cancel-and-reprompt. It is not
-  // evidence of an additive input channel on this particular session.
-  if (orchestrationProvider === 'acp' || connection?.type === 'acp')
-    return false;
-  if (
-    orchestrationProvider &&
-    orchestrationProvider in ENGINE_CAPABILITY_MATRICES
-  ) {
-    return (
-      ENGINE_CAPABILITY_MATRICES[orchestrationProvider].midTurnSteer === true
-    );
-  }
-  return (
-    resolveEngineCapabilityMatrix(agentConnectionId, connection)
-      .midTurnSteer === true
-  );
+  const matrix = orchestrationProvider
+    ? Object.hasOwn(ENGINE_CAPABILITY_MATRICES, orchestrationProvider)
+      ? ENGINE_CAPABILITY_MATRICES[orchestrationProvider]
+      : UNKNOWN_EXTERNAL_ENGINE_MATRIX
+    : resolveEngineCapabilityMatrix(agentConnectionId, connection);
+  return matrix.durability?.steerPlacement.state === 'native';
 }
 
 export function defaultManagedRuntimeConnection(

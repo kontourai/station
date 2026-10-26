@@ -351,8 +351,7 @@ export function useSendMessage(
     clearEphemeralMessages,
   } = useActiveChatActions();
   const { clearStreamingMessage } = useStreamingMessage();
-  // Mid-turn send gate: matrix `midTurnSteer` (via sessionAdapterSupportsSteering)
-  // chooses steer vs queue. Muse and Station queue.
+  // Only native steering fidelity permits an additive mid-turn send.
   const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
     data: ConnectionConfig[];
   };
