@@ -2,12 +2,14 @@ import {
   countThreads,
   deriveThreadView,
   TASK_REVIEW_LIMITS,
+  TASK_REVIEW_OPENING_PREVIEW_CHARS,
   TASK_REVIEW_VERSION,
   type TaskCapture,
   type TaskReviewArtifactRef,
   type TaskReviewCurrentArtifact,
   type TaskReviewEvent,
   type TaskReviewItem,
+  type TaskReviewThreadSummary,
   type TaskReviewThreadView,
   type TaskReviewView,
 } from '@kontourai/station-contracts/task-review';
@@ -255,7 +257,38 @@ export const view: TaskReviewView = {
   taskId: 'task-1',
   taskCreatedAt: '2026-10-25T00:00:00Z',
   items,
-  threads,
+  threads: threads.map(({ events, ...thread }): TaskReviewThreadSummary => {
+    const openingEvent = events[0];
+    if (openingEvent?.kind !== 'comment')
+      throw new TypeError('Missing opening comment');
+    const previewEvent = <T extends TaskReviewEvent>(event: T): T =>
+      'body' in event
+        ? {
+            ...event,
+            body: event.body
+              .slice(0, TASK_REVIEW_OPENING_PREVIEW_CHARS)
+              .replace(/[\uD800-\uDBFF]$/, ''),
+          }
+        : event;
+    const lastDeliveryEvent = [...events]
+      .reverse()
+      .find(
+        (event) =>
+          event.kind === 'sent' ||
+          event.kind === 'send-failed' ||
+          event.kind === 'agent-reply',
+      );
+    return {
+      ...thread,
+      status: 'available',
+      eventCount: events.length,
+      openingEvent: previewEvent({ ...openingEvent, kind: 'comment' }),
+      lastDeliveryEvent: lastDeliveryEvent
+        ? previewEvent(lastDeliveryEvent)
+        : undefined,
+      lastEvent: previewEvent(events.at(-1)!),
+    };
+  }),
   counts: countThreads(threads),
   limits: TASK_REVIEW_LIMITS,
 };

@@ -1,0 +1,9 @@
+{
+  "revision": "f1dcd8b4c9185092b39b49647d8b84e58c3fe9a2",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the refusal serialization change: TaskReviewError now owns a typed public response rather than the route reading Error.message. Existing refusal codes, text, HTTP statuses, authorization and store predicates are unchanged. The four composed runtime route tests, server-test typechecking and repo-governance proof pass. The store source bytes remain those verified by the earlier 11-green, two-injected-failures, 11-restored-green incarnation fault cycle.","inputs":["docs/architecture/module-map.md","src-server/routes/orchestration/task-review.ts","src-server/services/projects/task-review-module.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the refusal serialization change: TaskReviewError now owns a typed public response rather than the route reading Error.message. Existing refusal codes, text, HTTP statuses, authorization and store predicates are unchanged. The four composed runtime route tests, server-test typechecking and repo-governance proof pass. The store source bytes remain those verified by the earlier 11-green, two-injected-failures, 11-restored-green incarnation fault cycle.","inputs":["docs/reference/api.md","src-server/routes/orchestration/task-review.ts","src-server/services/projects/task-review-module.ts"]}
+  ]
+}

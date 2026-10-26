@@ -1498,6 +1498,8 @@ describe('text relocation and freshness', () => {
       'the quote ends\r\nsecond',
     );
     expect(document?.text).toBe('the quote ends\nsecond');
+    expect(document?.lineStarts).toEqual([0, 15]);
+    expect(Object.isFrozen(document?.lineStarts)).toBe(true);
     expect(Object.isFrozen(document)).toBe(true);
     const first = document?.relocateTextQuote(quote);
     const second = document?.relocateTextQuote({

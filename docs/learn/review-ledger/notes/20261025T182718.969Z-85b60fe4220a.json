@@ -1,0 +1,49 @@
+{
+  "revision": "e8eea2369a1ce9b557b9ffca04a98490842432ee",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"PR #4153 fix round 4 scoped source review. The changed TaskReviewThreads section keeps review persistence in the Task/Workspace owner and supplies no agent execution or evidence authority. The context relationships and links remain accurate.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"PR #4153 fix round 4 scoped source review. Inspected owner/composition routing and separation of source, test, provider and release claims. Corruption containment and delivery-status fallback remain inside the review owner; context guidance remains accurate.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"PR #4153 fix round 4 scoped source review. The module-map and reference reading links still resolve to the review owner. This local SQLite/read projection repair changes no install, Device or released-product claim.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"PR #4153 fix round 4 scoped source review. The canonical API/SDK/contracts routing and generated MCP admission remain unchanged. The TaskReviewThreads section now explains tolerant creation, delivery outages and large-document re-preparation without claiming agent or UI delivery.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"PR #4153 fix round 4 scoped source review. The reviewed changes stay in the existing TaskReviewModule and store; no new service or extraction boundary was introduced. Existing owner routing and investigation status remain accurate.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"PR #4153 fix round 4 scoped source review. Reviewed TaskReviewThreads against the real store, module, SDK reader and regression owners: tolerant create replay with all-row SQL capacity count, removal of strict public listing, explicit appendReviewEvent plus compatible appendEvent alias, delivery outage as unconfirmed with its own warning, guarded detail diagnostics and the 8 MiB line-offset cache limit. Local focused tests passed 190 tests; no live agent, UI, release or production claim.","inputs":["docs/architecture/module-map.md","packages/sdk/src/query-domains/taskReview.ts","src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts","src-server/services/orchestration/__tests__/task-review-store.test.ts","src-server/services/orchestration/task-review-store.ts","src-server/services/projects/__tests__/task-review-module.test.ts","src-server/services/projects/task-review-module.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"PR #4153 fix round 4 scoped source review. Review-domain events remain in their own append-only SQLite tables; appendReviewEvent does not write CanonicalRuntimeEvent or UI-block provenance. No ledger extraction, schema migration or authority claim changed in this round.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"PR #4153 fix round 4 scoped source review. Inspected this historical isolated OAuth evidence record and the branch pairing-scope delta: only person Task-review read/operate leaves were added. OAuth ingress, token, release guard and absent external MCP transport claims are unaffected. Historical executed evidence is not refreshed or requalified.","inputs":["docs/design/outside-agent-mcp-r3-evidence.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/glossary.md","note":"PR #4153 fix round 4 scoped source review. The Task review module continues to use Task, Session, Device and evidence meanings as defined here. A delivery-status outage reports unconfirmed and confers no delivery or receipt authority; vocabulary remains accurate.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"PR #4153 fix round 4 scoped source review. Checked the personal Task review API repair against this guide's design-target and deployment qualifications. No hosted SaaS, PostgreSQL, public ingress or managed offering behavior is added or qualified.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"PR #4153 fix round 4 scoped source review. The changed review implementation adds no station-control tool or external agent delivery. Existing tool-delivery, caller authority and capability limits remain accurate; agent-loop composition remains a separate increment.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"PR #4153 fix round 4 scoped source review. Reviewed the completed-removal record and its executable inventory. Review-store method names and diagnostic fallback introduce no synthetic Agent IDs, aliases for Agent identity, or new supported identity surface.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/api.md","note":"PR #4153 fix round 4 scoped source review. Reviewed Task review list/detail/mutation envelopes against the module and real route tests. Corrupt entries remain unavailable and excluded from counts; delivery-port failures instead keep Sent threads available as unconfirmed, and detail diagnostic-list failures are converted to typed unavailable errors. Person routes and authorization are unchanged.","inputs":["docs/reference/api.md","src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts","src-server/services/orchestration/task-review-store.ts","src-server/services/projects/task-review-module.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"PR #4153 fix round 4 scoped source review. The branch pairing-scope delta contains only person Task-review GET/POST leaves. OAuth namespace, inert compiled release guard, exact-origin/callback/token controls and absence of external MCP transport remain unchanged; this note does not qualify OAuth runtime evidence.","inputs":["docs/reference/outside-agent-oauth.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"PR #4153 fix round 4 scoped source review. Task review unwrap now uses the existing readJsonBody deadline-preserving reader. Public exports, fetch/hook signatures, query keys, mutation invalidation, polling, preview and full-detail behavior are unchanged. Existing malformed-envelope StationHttpError behavior is retained; the deadline scan passes.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/taskReview.ts"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"PR #4153 fix round 4 scoped source review. The TaskReviewThreads module-map changes add no Settings section, deep link, scope, notification or answer-delivery control. The settings registry contracts remain accurate.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"PR #4153 fix round 4 scoped source review. Regenerated station-docs-content from merged canonical inputs and inspected the generated delta against both merge parents. TaskReviewThreads describes local corruption/delivery handling and oversized prepared-cache entries; static topic delivery grants no execution or runtime authority.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"PR #4153 fix round 4 scoped source review. Review-store creation and delivery status remain Task-scoped data; they do not alter Project, Session, Device or pairing concepts. This repair does not enable agent reply or capture UI journeys.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"PR #4153 fix round 4 scoped source review. The changed TaskReviewThreads canonical section remains an attributed module-map input. Exported graph provenance, dirty-input disclosure and observational no-authority limits remain accurate.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"PR #4153 fix round 4 scoped source review. Checked review owner boundaries: route validation and request authority remain at existing seams, SQLite behavior stays in the store, and new warnings use the injected logger. Local tests do not establish live delivery or provider evidence.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"PR #4153 fix round 4 scoped source review. The changed server/SDK behavior preserves contract-driven summaries and counts, and adds no UI navigation or fetch lifecycle. Unavailable and unconfirmed remain distinct contract values; existing UI guidance remains accurate.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"PR #4153 fix round 4 merge review. Compared both contract parents: the lane retains all main contracts plus TaskReviewThreadSummary/opening and delivery fields, preparedDocument/lineStarts reuse and summary-compatible selectors. Kept the lane superset and both frozen line-offset assertions. Contracts source/test bytes are unchanged from the lane parent; pure contract tests pass. No new release/runtime qualification.","inputs":["docs/reference/contracts.md"]}
+  ]
+}
