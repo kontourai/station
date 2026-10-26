@@ -1,0 +1,366 @@
+{
+  "schemaVersion": 1,
+  "screens": {
+    "agent-editor": [
+      "axe:label-content-name-mismatch:button.split-pane__item[Station]"
+    ],
+    "agent-editor-not-runnable": [
+      "axe:label-content-name-mismatch:button.split-pane__item[Support Agent]"
+    ],
+    "agents": [
+      "axe:label-content-name-mismatch:button.split-pane__item[Station]"
+    ],
+    "command-palette-empty": [
+      "axe:aria-valid-attr-value:input.command-palette__input[type=text][Search commands and indexed conversation messages]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
+    ],
+    "connections-tools": [
+      "axe:label-content-name-mismatch:button.split-pane__item[Station Control]",
+      "axe:label-content-name-mismatch:button.split-pane__item[Station Docs]",
+      "axe:label-content-name-mismatch:button.split-pane__item[Station Knowledge]",
+      "hit-target:unreachable:button.button[Create binding]",
+      "hit-target:unreachable:button.button[Refresh key references]",
+      "hit-target:unreachable:input.editor-input[ID]",
+      "hit-target:unreachable:input.editor-input[Name]",
+      "hit-target:unreachable:input.editor-input[Reference]"
+    ],
+    "desktop-conversation-resync": [
+      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B]",
+      "axe:label-content-name-mismatch:button.chat-status-pill[Status unavailable — resync this conversation]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Model & effort]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+      "axe:label-content-name-mismatch:button.session-context-card__action[Last known: Waiting on you, Background tasks]",
+      "axe:label-content-name-mismatch:button.session-context-card__action[Open project — Project B]",
+      "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
+      "axe:label:input.attachment-input[type=file]",
+      "axe:scrollable-region-focusable:div.chat-messages[role=status]",
+      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=inbox-row] button.chat-dock-inbox__row-action[Close Mismatch demo chat]",
+      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=inbox-row] button.chat-dock-inbox__row-action[Snooze Mismatch demo chat]",
+      "hit-target:overlap:[data-testid=starter-work-card] button.button[Create task] / button.session-context-card__action[Last known: Waiting on you, Background tasks]",
+      "hit-target:overlap:button.disclosure-toggle[Earlier] / button.chat-dock-inbox__refresh[Refresh inbox]",
+      "hit-target:overlap:button.disclosure-toggle[Snoozed · #] / button[History]",
+      "hit-target:overlap:button.home-view__action[ProjectNew ProjectRepository, folder, documents or tools] / button.button[New chat]",
+      "hit-target:overlap:button.home-view__action[ProjectNew ProjectRepository, folder, documents or tools] / button.chat-dock__icon-btn[Hide inbox]",
+      "hit-target:overlap:button.sidebar__project-btn[Open Project A workspace] / button.sidebar__reorder-handle[Reorder Project A]",
+      "hit-target:overlap:button.sidebar__project-btn[Open Project B workspace] / button.sidebar__reorder-handle[Reorder Project B]"
+    ],
+    "home": [
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
+    ],
+    "mobile-access-request-error-320": [
+      "hit-target:small:[data-testid=notification-delivery] input[type=checkbox][Hide content]",
+      "hit-target:small:[data-testid=notification-delivery] input[type=checkbox][Quiet hours]",
+      "hit-target:small:button.button[+ Pair device]",
+      "hit-target:small:button.info-tip__trigger[More about Approval guardian]",
+      "hit-target:small:button.theme-toggle[Switch to light mode]",
+      "hit-target:small:input[Device name]",
+      "hit-target:small:input[type=radio][name=*][Anonymous usage counts]",
+      "hit-target:small:input[type=radio][name=*][Detailed usage to help improve Station]",
+      "hit-target:small:input[type=radio][name=*][Don't share]",
+      "hit-target:small:summary[Advanced]",
+      "hit-target:small:summary[Build details]",
+      "hit-target:small:summary[Connection details]",
+      "hit-target:small:summary[Details]",
+      "hit-target:small:summary[Source installation details]",
+      "overflow:element:div.settings__update-meta span"
+    ],
+    "mobile-access-request-error-390": [
+      "hit-target:overlap:button[Back] / button.button[Import previous preferences]",
+      "hit-target:small:[data-testid=notification-delivery] input[type=checkbox][Hide content]",
+      "hit-target:small:[data-testid=notification-delivery] input[type=checkbox][Quiet hours]",
+      "hit-target:small:button.button[+ Pair device]",
+      "hit-target:small:button.info-tip__trigger[More about Approval guardian]",
+      "hit-target:small:button.theme-toggle[Switch to light mode]",
+      "hit-target:small:input[Device name]",
+      "hit-target:small:input[type=radio][name=*][Anonymous usage counts]",
+      "hit-target:small:input[type=radio][name=*][Detailed usage to help improve Station]",
+      "hit-target:small:input[type=radio][name=*][Don't share]",
+      "hit-target:small:summary[Advanced]",
+      "hit-target:small:summary[Build details]",
+      "hit-target:small:summary[Connection details]",
+      "hit-target:small:summary[Details]",
+      "hit-target:small:summary[Source installation details]"
+    ],
+    "mobile-agent-editor": [
+      "hit-target:overlap:button.button[New agent] / button.split-pane__back[← Back to list]",
+      "hit-target:small:button.split-pane__back[← Back to list]"
+    ],
+    "mobile-agent-editor-project-control": [
+      "hit-target:overlap:button.button[New agent] / button.split-pane__back[← Back to list]",
+      "hit-target:overlap:button.split-pane__back[← Back to list] / input.editor-input[type=text][name=name][Name *]",
+      "hit-target:small:button.editor__lock-btn[Add model connection]",
+      "hit-target:small:button.split-pane__back[← Back to list]",
+      "hit-target:small:input[type=radio][name=ae-engine][Station]",
+      "hit-target:small:summary[Delegated-child denials (# built-in)]"
+    ],
+    "mobile-agent-editor-save-footer": [
+      "hit-target:overlap:button.button[New agent] / button.split-pane__back[← Back to list]",
+      "hit-target:overlap:input.editor-input[type=text][name=slug][Agent ID] / input.editor-input[type=text][name=icon][Icon]",
+      "hit-target:small:button.editor__lock-btn[Add model connection]",
+      "hit-target:small:button.split-pane__back[← Back to list]",
+      "hit-target:small:input[type=radio][name=ae-engine][Station]",
+      "hit-target:small:summary[Delegated-child denials (# built-in)]"
+    ],
+    "mobile-agents": [
+      "axe:label-content-name-mismatch:button.split-pane__item[Station]"
+    ],
+    "mobile-chat-dock-header-320": [
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+      "hit-target:small:input.attachment-input[type=file]"
+    ],
+    "mobile-conversation-resync": [
+      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B]",
+      "axe:label-content-name-mismatch:button.chat-status-pill[Status unavailable — resync this conversation]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Model & effort]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+      "axe:label:input.attachment-input[type=file]",
+      "axe:scrollable-region-focusable:div.chat-messages[role=status]",
+      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=chat-dock-mobile-header] button.app-toolbar__icon-btn[Chat actions]",
+      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=chat-dock-mobile-header] button.app-toolbar__icon-btn[Collapse chat]",
+      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=chat-dock-mobile-header] button.app-toolbar__icon-btn[New chat]",
+      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-identity[Chats and tasks — Mismatch demo chat, demo-agent · Project B]",
+      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-project[Switch project — New chats, No project]",
+      "hit-target:overlap:button.home-view__action[Last projectProject A] / textarea[Type a message — @ files, / for commands…]",
+      "hit-target:overlap:button.home-view__action[ProjectNew ProjectRepository, folder, documents or tools] / button.chat-status-pill[Status unavailable — resync this conversation]",
+      "hit-target:small:input.attachment-input[type=file]"
+    ],
+    "mobile-home": [
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+      "hit-target:overlap:button.home-view__action[# · Add a Project, if you need oneNew ProjectOptional: ordinary chats can start without a Project. Repository, folder, d] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-identity[Chats and tasks — Chat]",
+      "hit-target:small:input.attachment-input[type=file]"
+    ],
+    "mobile-http-consent-320": [
+      "axe:select-name:div.settings__var-row select",
+      "hit-target:small:[data-testid=notification-delivery] input[type=checkbox][Hide content]",
+      "hit-target:small:[data-testid=notification-delivery] input[type=checkbox][Quiet hours]",
+      "hit-target:small:button.button[+ Pair device]",
+      "hit-target:small:button.info-tip__trigger[More about Approval guardian]",
+      "hit-target:small:button.theme-toggle[Switch to light mode]",
+      "hit-target:small:input[type=radio][name=*][Anonymous usage counts]",
+      "hit-target:small:input[type=radio][name=*][Detailed usage to help improve Station]",
+      "hit-target:small:input[type=radio][name=*][Don't share]",
+      "hit-target:small:summary[Advanced]",
+      "hit-target:small:summary[Build details]",
+      "hit-target:small:summary[Details]",
+      "hit-target:small:summary[Source installation details]",
+      "overflow:element:div.settings__update-meta span"
+    ],
+    "mobile-http-consent-390": [
+      "axe:select-name:div.settings__var-row select",
+      "hit-target:small:[data-testid=notification-delivery] input[type=checkbox][Hide content]",
+      "hit-target:small:[data-testid=notification-delivery] input[type=checkbox][Quiet hours]",
+      "hit-target:small:button.button[+ Pair device]",
+      "hit-target:small:button.info-tip__trigger[More about Approval guardian]",
+      "hit-target:small:button.theme-toggle[Switch to light mode]",
+      "hit-target:small:input[type=radio][name=*][Anonymous usage counts]",
+      "hit-target:small:input[type=radio][name=*][Detailed usage to help improve Station]",
+      "hit-target:small:input[type=radio][name=*][Don't share]",
+      "hit-target:small:summary[Advanced]",
+      "hit-target:small:summary[Build details]",
+      "hit-target:small:summary[Details]",
+      "hit-target:small:summary[Source installation details]"
+    ],
+    "mobile-onboarding-setup": [
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+      "hit-target:overlap:button.home-view__action[# · Add a Project, if you need oneNew ProjectOptional: ordinary chats can start without a Project. Repository, folder, d] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-identity[Chats and tasks — Chat]",
+      "hit-target:small:input.attachment-input[type=file]"
+    ],
+    "mobile-settings-overview": [
+      "axe:select-name:div.settings__var-row select",
+      "hit-target:small:[data-testid=notification-delivery] input[type=checkbox][Hide content]",
+      "hit-target:small:[data-testid=notification-delivery] input[type=checkbox][Quiet hours]",
+      "hit-target:small:button.button[+ Pair device]",
+      "hit-target:small:button.info-tip__trigger[More about Approval guardian]",
+      "hit-target:small:button.theme-toggle[Switch to light mode]",
+      "hit-target:small:input[type=radio][name=*][Anonymous usage counts]",
+      "hit-target:small:input[type=radio][name=*][Detailed usage to help improve Station]",
+      "hit-target:small:input[type=radio][name=*][Don't share]",
+      "hit-target:small:summary[Advanced]",
+      "hit-target:small:summary[Build details]",
+      "hit-target:small:summary[Details]",
+      "hit-target:small:summary[Source installation details]"
+    ],
+    "motion-reduced-mobile-chat": [
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+      "hit-target:overlap:button.choice-trigger[Agent: Choose an agent] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-project[Switch project — New chats, No project]",
+      "hit-target:overlap:button.choice-trigger[Model: Model not reported] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-identity[Chats and tasks — Chat]",
+      "hit-target:small:input.attachment-input[type=file]"
+    ],
+    "motion-reduced-navigation": [
+      "axe:label-content-name-mismatch:button.split-pane__item[Station]"
+    ],
+    "motion-reduced-notification": [
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
+    ],
+    "overlay-agent-actions-menu": [
+      "axe:label-content-name-mismatch:button.split-pane__item[Support Agent]"
+    ],
+    "overlay-command-palette-results": [
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
+    ],
+    "overlay-confirm-dialog": [
+      "axe:aria-conditional-attr:[data-testid=job-row-gallery-demo-job]"
+    ],
+    "overlay-connection-banner": [
+      "axe:select-name:div.settings__var-row select",
+      "hit-target:small:[data-testid=notification-delivery] input[type=checkbox][Hide content]",
+      "hit-target:small:[data-testid=notification-delivery] input[type=checkbox][Quiet hours]",
+      "hit-target:small:button.button[+ Pair device]",
+      "hit-target:small:button.info-tip__trigger[More about Approval guardian]",
+      "hit-target:small:button.theme-toggle[Switch to light mode]",
+      "hit-target:small:input[type=radio][name=*][Anonymous usage counts]",
+      "hit-target:small:input[type=radio][name=*][Detailed usage to help improve Station]",
+      "hit-target:small:input[type=radio][name=*][Don't share]",
+      "hit-target:small:summary[Advanced]",
+      "hit-target:small:summary[Build details]",
+      "hit-target:small:summary[Details]",
+      "hit-target:small:summary[Source installation details]"
+    ],
+    "overlay-dock-project-bound": [
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: Demo Project]"
+    ],
+    "overlay-dock-project-mismatch": [
+      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B]",
+      "axe:label-content-name-mismatch:button.chat-status-pill[Status unavailable — resync this conversation]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Agent: demo-agent. Change Agent]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code — Model & effort]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: Project A]",
+      "axe:label-content-name-mismatch:button.session-context-card__action[Last known: Waiting on you, Background tasks]",
+      "axe:label-content-name-mismatch:button.session-context-card__action[Open project — Project B]",
+      "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
+      "axe:label:input.attachment-input[type=file]",
+      "axe:scrollable-region-focusable:div.chat-messages[role=status]",
+      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=inbox-row] button.chat-dock-inbox__row-action[Close Mismatch demo chat]",
+      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=inbox-row] button.chat-dock-inbox__row-action[Snooze Mismatch demo chat]",
+      "hit-target:overlap:[data-testid=starter-work-card] button.button[Create task] / button.session-context-card__action[Last known: Waiting on you, Background tasks]",
+      "hit-target:overlap:button.disclosure-toggle[Earlier] / button.chat-dock-inbox__refresh[Refresh inbox]",
+      "hit-target:overlap:button.disclosure-toggle[Snoozed · #] / button[History]",
+      "hit-target:overlap:button.home-view__action[AgentsExplore agents] / button.chat-dock__active-identity-close[Close chat]",
+      "hit-target:overlap:button.home-view__action[ProjectNew ProjectRepository, folder, documents or tools] / button.button[New chat]",
+      "hit-target:overlap:button.home-view__action[ProjectNew ProjectRepository, folder, documents or tools] / button.chat-dock__icon-btn[Hide inbox]",
+      "hit-target:overlap:button.sidebar__project-btn[Open Project A workspace] / button.sidebar__reorder-handle[Reorder Project A]",
+      "hit-target:overlap:button.sidebar__project-btn[Open Project B workspace] / button.sidebar__reorder-handle[Reorder Project B]"
+    ],
+    "overlay-mobile-sheet": [
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+      "hit-target:small:input.attachment-input[type=file]"
+    ],
+    "overlay-new-project-modal": [
+      "axe:label-content-name-mismatch:button.new-project-modal__identity-icon[Choose project icon]"
+    ],
+    "overlay-project-switcher-populated": [
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
+    ],
+    "overlay-region-chooser-from-toggle": [
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+      "axe:label-content-name-mismatch:button.menu-row[Chat Move here from Bottom]",
+      "axe:label-content-name-mismatch:button.menu-row[Diff Choose a project for this dock before opening that pane.]",
+      "axe:label-content-name-mismatch:button.menu-row[Files Choose a project for this dock before opening that pane.]",
+      "axe:label-content-name-mismatch:button.menu-row[Terminal Choose a project for this dock before opening that pane.]"
+    ],
+    "overlay-toast": [
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
+    ],
+    "overlay-toast-action": [
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+      "axe:nested-interactive:[data-testid=toast-card]"
+    ],
+    "registry": [
+      "hit-target:unreachable:button.button[Disable]",
+      "hit-target:unreachable:button.button[Refresh]"
+    ],
+    "sessions": [
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
+    ],
+    "sessions-filtered-empty": [
+      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Claude Code session, No project]",
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+      "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Claude Code session, No project] / [data-testid=inbox-row] button.chat-dock-inbox__row-action[Snooze Claude Code session]"
+    ],
+    "settings": ["axe:select-name:div.settings__var-row select"],
+    "skills": [
+      "axe:label-content-name-mismatch:button.split-pane__item[agentic-engineering]",
+      "axe:label-content-name-mismatch:button.split-pane__item[browser-test]",
+      "axe:label-content-name-mismatch:button.split-pane__item[builder-shape]",
+      "axe:label-content-name-mismatch:button.split-pane__item[continue-work]",
+      "axe:label-content-name-mismatch:button.split-pane__item[deliver]",
+      "axe:label-content-name-mismatch:button.split-pane__item[dependency-update]",
+      "axe:label-content-name-mismatch:button.split-pane__item[design-probe]",
+      "axe:label-content-name-mismatch:button.split-pane__item[eval-rebuild]",
+      "axe:label-content-name-mismatch:button.split-pane__item[evidence-gate]",
+      "axe:label-content-name-mismatch:button.split-pane__item[github-cli]",
+      "axe:label-content-name-mismatch:button.split-pane__item[search-first]",
+      "hit-target:overlap:button.split-pane__item[design-probe] / button.split-pane__add-btn[Commands only]"
+    ],
+    "telemetry-dialog-default-mobile": [
+      "hit-target:small:input[type=radio][name=*][Anonymous usage counts]",
+      "hit-target:small:input[type=radio][name=*][Detailed usage to help improve Station]",
+      "hit-target:small:input[type=radio][name=*][Don't share]"
+    ],
+    "telemetry-dialog-detailed-mobile": [
+      "hit-target:small:input[type=radio][name=*][Anonymous usage counts]",
+      "hit-target:small:input[type=radio][name=*][Detailed usage to help improve Station]",
+      "hit-target:small:input[type=radio][name=*][Don't share]"
+    ],
+    "telemetry-dialog-dnt-mobile": [
+      "hit-target:small:input[type=radio][name=*][Anonymous usage counts]",
+      "hit-target:small:input[type=radio][name=*][Detailed usage to help improve Station]",
+      "hit-target:small:input[type=radio][name=*][Don't share]"
+    ],
+    "telemetry-dialog-endpoint-mobile": [
+      "hit-target:small:input[type=radio][name=*][Anonymous usage counts]",
+      "hit-target:small:input[type=radio][name=*][Detailed usage to help improve Station]",
+      "hit-target:small:input[type=radio][name=*][Don't share]"
+    ],
+    "telemetry-dialog-light-desktop": [
+      "axe:color-contrast:a.page__tab[Privacy & sharing]"
+    ],
+    "telemetry-dialog-light-mobile": [
+      "hit-target:small:input[type=radio][name=*][Anonymous usage counts]",
+      "hit-target:small:input[type=radio][name=*][Detailed usage to help improve Station]",
+      "hit-target:small:input[type=radio][name=*][Don't share]"
+    ],
+    "telemetry-dialog-mixed-mobile": [
+      "hit-target:small:input[type=radio][name=*][Anonymous usage counts]",
+      "hit-target:small:input[type=radio][name=*][Detailed usage to help improve Station]",
+      "hit-target:small:input[type=radio][name=*][Don't share]"
+    ],
+    "telemetry-feedback-mobile": [
+      "hit-target:small:input[type=radio][name=*][Anonymous usage counts]",
+      "hit-target:small:input[type=radio][name=*][Detailed usage to help improve Station]",
+      "hit-target:small:input[type=radio][name=*][Don't share]"
+    ],
+    "telemetry-outbox-mobile": [
+      "hit-target:small:input[type=radio][name=*][Anonymous usage counts]",
+      "hit-target:small:input[type=radio][name=*][Detailed usage to help improve Station]",
+      "hit-target:small:input[type=radio][name=*][Don't share]"
+    ],
+    "telemetry-settings-detailed-expanded-mobile": [
+      "hit-target:small:input[type=radio][name=*][Anonymous usage counts]",
+      "hit-target:small:input[type=radio][name=*][Detailed usage to help improve Station]",
+      "hit-target:small:input[type=radio][name=*][Don't share]"
+    ],
+    "telemetry-settings-dnt-after-fix-mobile": [
+      "hit-target:overlap:button.station-toggle[Save offline reading copies] / button.button[Clear offline copies]",
+      "hit-target:small:input[type=radio][name=*][Anonymous usage counts]",
+      "hit-target:small:input[type=radio][name=*][Detailed usage to help improve Station]",
+      "hit-target:small:input[type=radio][name=*][Don't share]"
+    ],
+    "telemetry-settings-dnt-mobile": [
+      "hit-target:overlap:button.station-toggle[Save offline reading copies] / button.button[Clear offline copies]",
+      "hit-target:overlap:summary[Technical details] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-identity[Chats and tasks — Chat]",
+      "hit-target:small:input[type=radio][name=*][Anonymous usage counts]",
+      "hit-target:small:input[type=radio][name=*][Detailed usage to help improve Station]",
+      "hit-target:small:input[type=radio][name=*][Don't share]"
+    ],
+    "telemetry-settings-mobile": [
+      "hit-target:overlap:button.station-toggle[Save offline reading copies] / button.button[Clear offline copies]",
+      "hit-target:overlap:summary[Technical details] / [data-testid=chat-dock-mobile-header] button.chat-dock__mobile-identity[Chats and tasks — Chat]",
+      "hit-target:small:input[type=radio][name=*][Anonymous usage counts]",
+      "hit-target:small:input[type=radio][name=*][Detailed usage to help improve Station]",
+      "hit-target:small:input[type=radio][name=*][Don't share]"
+    ]
+  }
+}
