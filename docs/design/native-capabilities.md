@@ -228,9 +228,12 @@ Station health, authority and member Project/shared-work reads; fixed account
 challenge/exchange/revoke and invitation acceptance are separate control leaves.
 The separate closed management inventory adds relay setup/invitation/Device
 decisions and Project access administration without granting terminal, Agent
-or Task publication writes. The account-bound gate admits only exact native
-relay-management leaves with current Device/account proof and separate
-`relay:manage`; credential-only account-bound Devices remain refused.
+or Task publication writes. For relay management, the account-bound gate admits
+only exact native leaves with current Device/account proof and separate
+`relay:manage`; credential-only account-bound Devices remain refused on those leaves.
+The independent [personal analytics leaves](../guides/monitoring.md#connect-a-personal-source-in-insights)
+require a person-bound Device, matching current account session and
+`orchestration:read`; this exception does not qualify native analytics transport.
 Capabilities are neutral false without management authority. Account
 continuation and Project membership remain independent. A mounted
 consumer is not proof of a completed fresh native or physical Project journey.
