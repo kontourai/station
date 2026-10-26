@@ -12,6 +12,7 @@ import {
   resolveRuntimeEventContent,
   viewedContentPreimage,
 } from '@kontourai/station-contracts/runtime-event-content';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { envelopeError } from './api-error-message';
 import { type ClientRequestOptions, getJson, readJsonBody } from './http';
 
@@ -101,5 +102,86 @@ export async function loadRuntimeEventContent<T>(
   return {
     resolved: resolveRuntimeEventContent(event, (ref) => bodies.get(ref)),
     viewedContentDigest: await computeViewedContentDigest(event),
+  };
+}
+
+/** What the server's gate checks for an allow of one request. */
+export interface ApprovalContentBinding {
+  requestEventId: string;
+  request: CanonicalRuntimeEvent;
+  bound: CanonicalRuntimeEvent[];
+  required: boolean;
+  viewedContentDigest: string;
+}
+
+export async function fetchApprovalContentBinding(
+  apiBase: string,
+  threadId: string,
+  requestId: string,
+  opts?: ClientRequestOptions,
+): Promise<ApprovalContentBinding> {
+  const response = await getJson(
+    `${apiBase}/api/orchestration/sessions/${encodeURIComponent(threadId)}/requests/${encodeURIComponent(requestId)}/content-binding`,
+    opts,
+  );
+  const body = await readJsonBody(response);
+  if (!response.ok)
+    throw envelopeError(response, body, 'Request content unavailable', {
+      message: 'Request content unavailable',
+    });
+  const data = (body as { data?: ApprovalContentBinding } | undefined)?.data;
+  if (!data || typeof data.viewedContentDigest !== 'string')
+    throw new Error('Request content binding is invalid');
+  return data;
+}
+
+/**
+ * docs/design/event-content-spill.md: load everything an allow of this
+ * request must load, as the server defines it (the request and the tool
+ * calls bound to it), and return the digest to send. The digest is checked
+ * against this client's own computation over the same events, so a server
+ * and client that disagree on the definition fail here rather than at the
+ * gate. Rejects if any body could not be read.
+ */
+export async function loadApprovalContent(
+  apiBase: string,
+  threadId: string,
+  requestId: string,
+  opts?: ClientRequestOptions,
+): Promise<{
+  binding: ApprovalContentBinding;
+  request: CanonicalRuntimeEvent;
+  bound: CanonicalRuntimeEvent[];
+  viewedContentDigest: string;
+}> {
+  const binding = await fetchApprovalContentBinding(
+    apiBase,
+    threadId,
+    requestId,
+    opts,
+  );
+  const request = await loadRuntimeEventContent(
+    apiBase,
+    threadId,
+    binding.request,
+    opts,
+  );
+  const bound = await loadRuntimeEventContent(
+    apiBase,
+    threadId,
+    binding.bound,
+    opts,
+  );
+  const computed = await computeViewedContentDigest(
+    binding.request,
+    binding.bound,
+  );
+  if (computed !== binding.viewedContentDigest)
+    throw new Error('Request content binding does not match its events');
+  return {
+    binding,
+    request: request.resolved,
+    bound: bound.resolved,
+    viewedContentDigest: computed,
   };
 }

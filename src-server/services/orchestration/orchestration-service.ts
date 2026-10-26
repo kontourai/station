@@ -106,7 +106,6 @@ import {
   type ProviderFailureKind,
   SESSION_START_IN_FLIGHT_CODE,
 } from '@kontourai/station-contracts/provider-failure';
-import { requestBoundCallIds } from '@kontourai/station-contracts/runtime-event-content';
 import type {
   CanonicalRuntimeEvent,
   FlowRunFreshness,
@@ -348,7 +347,10 @@ import {
   withoutDispatchCanonicalCwd,
 } from './dispatch-cwd-admission.js';
 import type { EventBus } from './event-bus.js';
-import { storedEventDigest } from './event-content-spill.js';
+import {
+  type ApprovalContentBinding,
+  approvalContentBinding,
+} from './event-content-spill.js';
 import {
   type CommandRefusalPhase,
   type ConversationForkProvenance,
@@ -5770,6 +5772,20 @@ export class OrchestrationService {
     return this.sessionEventReads.readSessionEventPage(threadId, options);
   }
 
+  /** See {@link SessionEventReads.readApprovalContentBinding}. */
+  readApprovalContentBinding(
+    threadId: string,
+    requestId: string,
+    authority: SessionReadScope,
+  ): ApprovalContentBinding | null {
+    this.initialize();
+    return this.sessionEventReads.readApprovalContentBinding(
+      threadId,
+      requestId,
+      authority,
+    );
+  }
+
   /** See {@link SessionEventReads.readEventContent}. */
   readEventContent(
     threadId: string,
@@ -9216,22 +9232,24 @@ export class OrchestrationService {
           // The gate also covers content bound to the request: a gated tool
           // call's spilled arguments (a Codex file change's diff lives only in
           // its `tool.started`), so the digest then covers their references.
-          const boundEvents = contentRequest
-            ? (this.options.eventStore?.boundToolStartedEvents(
-                command.threadId,
-                requestBoundCallIds(contentRequest),
-              ) ?? [])
-            : [];
+          // The one definition (approvalContentBinding) is also what the
+          // binding route serves to clients.
+          const contentStore = this.options.eventStore;
+          const binding =
+            contentRequest && contentStore
+              ? approvalContentBinding(contentRequest, (callIds) =>
+                  contentStore.boundToolStartedEvents(
+                    command.threadId,
+                    callIds,
+                  ),
+                )
+              : undefined;
           if (
-            contentRequest &&
-            (contentRequest.spilledContent ||
-              boundEvents.some((bound) => bound.spilledContent)) &&
-            !inputRequestFromRequestEvent(contentRequest) &&
+            binding?.required &&
             (command.decision === 'accept' ||
               command.decision === 'acceptForSession') &&
-            (command.expectedRequestEventId !== contentRequest.eventId ||
-              command.viewedContentDigest !==
-                storedEventDigest(contentRequest, boundEvents))
+            (command.expectedRequestEventId !== binding.requestEventId ||
+              command.viewedContentDigest !== binding.viewedContentDigest)
           )
             throw new RequestEventGuardError(
               'request_content_not_loaded',

@@ -46,10 +46,7 @@ import {
   SESSION_VISIBILITY_METADATA_KEY,
   type SessionCapabilityDeliveryMetadata,
 } from '@kontourai/station-contracts/provider';
-import {
-  isRuntimeEventContentRef,
-  requestBoundCallIds,
-} from '@kontourai/station-contracts/runtime-event-content';
+import { isRuntimeEventContentRef } from '@kontourai/station-contracts/runtime-event-content';
 import {
   type CanonicalRuntimeEventBase,
   isDeferredRetriableTurnError,
@@ -75,6 +72,7 @@ import {
 } from '@kontourai/station-contracts/tool';
 import {
   type ApprovalDecision,
+  fetchApprovalContentBinding,
   getAgent,
   getOrchestrationSession,
   getOrchestrationSessionEventPage,
@@ -132,7 +130,6 @@ import {
   DISPATCH_CANONICAL_CWD_METADATA_KEY,
   type DispatchCwdAdmission,
 } from '../services/orchestration/dispatch-cwd-admission.js';
-import { storedEventDigest } from '../services/orchestration/event-content-spill.js';
 import { captureExecutionWorkspaceBinding } from '../services/orchestration/execution-workspace-binding.js';
 import {
   type ForegroundInvocationAdmission,
@@ -5198,36 +5195,36 @@ export async function respondToDelegatedTaskRequest(
   if (!requestIsOpen || requestWasResolved) {
     throw new Error('Delegated task request is not open');
   }
-  // docs/design/event-content-spill.md: allowing a request whose content
-  // was stored out of line must name the exact stored event this tool
-  // answered from (owner decision: agent approve tools send the digest).
-  const opened = [...events]
-    .reverse()
-    .find(
-      (event) =>
-        event.method === 'request.opened' &&
-        event.requestId === input.requestId,
-    );
-  // Bound tool calls count too: their spilled arguments are part of what
-  // is approved (a Codex file change's diff).
-  const boundCallIds = opened ? requestBoundCallIds(opened) : [];
-  const bound = events.filter(
-    (event) =>
-      event.method === 'tool.started' &&
-      typeof event.toolCallId === 'string' &&
-      boundCallIds.includes(event.toolCallId),
-  );
-  const contentBinding =
-    opened &&
-    (opened.spilledContent || bound.some((event) => event.spilledContent)) &&
-    typeof opened.eventId === 'string' &&
-    (input.decision === 'accept' || input.decision === 'acceptForSession')
-      ? {
-          expectedRequestEventId: opened.eventId,
-          viewedContentDigest: storedEventDigest(opened, bound),
-        }
-      : {};
+  // docs/design/event-content-spill.md: the server defines what an allow
+  // must load (the request and the tool calls bound to it) and the digest
+  // its gate checks; this tool echoes that binding (owner decision: agent
+  // approve tools send the digest). An unreadable binding sends none, and
+  // the gate refuses an allow that needed one.
   const snapshot = snapshotFor(loaded);
+  const allowing =
+    input.decision === 'accept' || input.decision === 'acceptForSession';
+  const binding = !allowing
+    ? undefined
+    : loaded.target.kind === 'current' && orchestrationService
+      ? orchestrationService.readApprovalContentBinding?.(
+          snapshot.currentSessionId,
+          input.requestId,
+          readAuthority,
+        )
+      : await readSelectedStation(loaded.target, () =>
+          fetchApprovalContentBinding(
+            loaded.target.apiBase,
+            snapshot.currentSessionId,
+            input.requestId,
+            loaded.target.requestOptions,
+          ),
+        ).catch(() => undefined);
+  const contentBinding = binding?.required
+    ? {
+        expectedRequestEventId: binding.requestEventId,
+        viewedContentDigest: binding.viewedContentDigest,
+      }
+    : {};
   if (loaded.target.kind === 'current' && orchestrationService) {
     await orchestrationService.dispatchWithReceipt(
       {

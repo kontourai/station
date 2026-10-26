@@ -2,8 +2,8 @@ import { collectRuntimeEventContentRefs } from '@kontourai/station-contracts/run
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { _getApiBase } from '../api';
 import {
-  computeViewedContentDigest,
   fetchRuntimeEventContent,
+  loadApprovalContent,
   loadRuntimeEventContent,
 } from '../client/runtime-event-content.js';
 import { useApiQuery } from '../query-core';
@@ -11,58 +11,56 @@ import { useApiQuery } from '../query-core';
 export interface LoadedApprovalContent {
   /** The request with every reference resolved. */
   request: CanonicalRuntimeEvent;
-  /** The bound tool call's arguments, resolved (when they held references). */
+  /** The latest bound tool call's arguments, resolved. */
   args?: unknown;
-  /** Proof of the load, sent with an allow decision. */
+  /** Whether the server requires the digest for an allow. */
+  required: boolean;
+  /** Proof of the load, as the server's gate will check it. */
   viewedContentDigest: string;
 }
 
 /**
- * docs/design/event-content-spill.md: loads the whole of an approval whose
- * content was stored out of line (and the bound call's spilled arguments)
- * before a surface may offer Allow. Bodies are immutable per digest, so the
- * result never goes stale; it is refetched only when the request changes.
+ * docs/design/event-content-spill.md: loads the whole of an approval (the
+ * request and every tool call the server binds to it) before a surface may
+ * offer Allow. The server defines the bound set and the digest; this loads
+ * and echoes them. The key includes the references the surface currently
+ * shows for the call, so a later bound `tool.started` refetches.
  */
 export function useApprovalContentQuery(input: {
   threadId?: string;
-  request?: CanonicalRuntimeEvent;
-  args?: unknown;
+  requestId?: string;
+  requestEventId?: string;
+  shownRefs?: readonly string[];
 }) {
-  const threadId = input.threadId;
-  const request = input.request;
+  const { threadId, requestId, requestEventId } = input;
   return useApiQuery<LoadedApprovalContent>(
     [
       'runtime-event-content',
       'approval',
       threadId ?? '',
-      request?.eventId ?? '',
+      requestId ?? '',
+      requestEventId ?? '',
+      (input.shownRefs ?? []).join(','),
     ],
     async () => {
-      if (!threadId || !request) throw new Error('No request to load');
-      const apiBase = await _getApiBase();
-      const loaded = await loadRuntimeEventContent(apiBase, threadId, request);
-      const argRefs = collectRuntimeEventContentRefs(input.args);
-      // The bound call's spilled arguments are part of what is approved, so
-      // the proof covers their references too.
-      const viewedContentDigest = await computeViewedContentDigest(
-        request,
-        input.args,
-      );
-      if (argRefs.length === 0)
-        return { request: loaded.resolved, viewedContentDigest };
-      const resolvedArgs = await loadRuntimeEventContent(
-        apiBase,
+      if (!threadId || !requestId) throw new Error('No request to load');
+      const loaded = await loadApprovalContent(
+        await _getApiBase(),
         threadId,
-        input.args,
+        requestId,
       );
+      const latest = loaded.bound[loaded.bound.length - 1];
       return {
-        request: loaded.resolved,
-        args: resolvedArgs.resolved,
-        viewedContentDigest,
+        request: loaded.request,
+        ...(latest && latest.method === 'tool.started'
+          ? { args: latest.arguments }
+          : {}),
+        required: loaded.binding.required,
+        viewedContentDigest: loaded.viewedContentDigest,
       };
     },
     {
-      enabled: Boolean(threadId && request),
+      enabled: Boolean(threadId && requestId),
       staleTime: Number.POSITIVE_INFINITY,
     },
   );

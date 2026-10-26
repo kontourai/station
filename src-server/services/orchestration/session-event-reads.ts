@@ -12,6 +12,10 @@ import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenanc
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import type { ProviderSession } from '../../providers/adapter-shape.js';
 import { errorMessage } from '../../utils/error-message.js';
+import {
+  type ApprovalContentBinding,
+  approvalContentBinding,
+} from './event-content-spill.js';
 import type { EventStore, PersistedRuntimeEvent } from './event-store.js';
 import {
   type RequestReplayOutcome,
@@ -253,6 +257,36 @@ export class SessionEventReads {
     )
       return null;
     return this.deps.eventStore?.readEventContentBody(threadId, digest) ?? null;
+  }
+
+  /**
+   * docs/design/event-content-spill.md: everything an allow of this request
+   * must load, as the server defines it: the stored request, the stored
+   * `tool.started` events bound to it, and the viewed-content digest the
+   * server's gate will check. A client loads every reference in these and
+   * echoes the digest; it never derives the bound set itself.
+   */
+  readApprovalContentBinding(
+    threadId: string,
+    requestId: string,
+    authority: SessionReadScope,
+  ): ApprovalContentBinding | null {
+    const persisted = this.deps.eventStore?.readSessionByThread(threadId);
+    if (persisted) this.deps.hydratePersistedTenantContexts([persisted]);
+    const loaded = this.deps.loadedSessionForThread(threadId);
+    if (
+      (!persisted && !loaded) ||
+      !this.deps.canReadSession(threadId, authority)
+    )
+      return null;
+    const store = this.deps.eventStore;
+    const current = store?.readCurrentRequestEvent(threadId, requestId);
+    if (current?.state !== 'found') return null;
+    const request = current.event.payload;
+    if (request.method !== 'request.opened') return null;
+    return approvalContentBinding(request, (callIds) =>
+      store!.boundToolStartedEvents(threadId, callIds),
+    );
   }
 
   async readSessionEventWindow(

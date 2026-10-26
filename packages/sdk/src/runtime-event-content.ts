@@ -4,8 +4,11 @@
  * kept out of the SDK first-paint barrel.
  */
 export {
+  type ApprovalContentBinding,
   computeViewedContentDigest,
+  fetchApprovalContentBinding,
   fetchRuntimeEventContent,
+  loadApprovalContent,
   loadRuntimeEventContent,
   type RuntimeEventContentRead,
 } from './client/runtime-event-content.js';

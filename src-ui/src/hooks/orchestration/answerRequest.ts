@@ -56,6 +56,43 @@ function viewedContentDigestFor(request: {
   );
 }
 
+/**
+ * Requests the server refused an allow for (409 `request_content_not_loaded`):
+ * the server's binding holds content this surface did not load. Bumping the
+ * version remounts the card's loader, which refetches the binding; the
+ * person then allows again once it has loaded.
+ */
+const contentRefreshVersions = new Map<string, number>();
+const contentRefreshListeners = new Set<() => void>();
+export function subscribeContentRefresh(listener: () => void) {
+  contentRefreshListeners.add(listener);
+  return () => {
+    contentRefreshListeners.delete(listener);
+  };
+}
+export function contentRefreshVersion(
+  threadId: string,
+  requestEventId: string,
+): number {
+  return contentRefreshVersions.get(contentKey(threadId, requestEventId)) ?? 0;
+}
+/** Test seam: what a 409 `request_content_not_loaded` triggers. */
+export function requestContentRefreshForTest(
+  threadId: string,
+  requestEventId: string,
+) {
+  requestContentRefresh(threadId, requestEventId);
+}
+
+function requestContentRefresh(threadId: string, requestEventId: string) {
+  const key = contentKey(threadId, requestEventId);
+  viewedContentDigests.delete(key);
+  if (contentRefreshVersions.size >= 256)
+    contentRefreshVersions.delete(contentRefreshVersions.keys().next().value!);
+  contentRefreshVersions.set(key, (contentRefreshVersions.get(key) ?? 0) + 1);
+  for (const listener of contentRefreshListeners) listener();
+}
+
 const answerListeners = new Set<() => void>();
 export function subscribeApprovalAnswers(listener: () => void) {
   answerListeners.add(listener);
@@ -259,6 +296,20 @@ async function sendAnswer(
     });
     return 'answered';
   } catch (error) {
+    // The server's binding holds content this card has not loaded (a bound
+    // call that arrived later, or one this surface cannot see): reload it
+    // and let the person allow again. The decision itself was refused.
+    if (
+      request.requestEventId &&
+      error instanceof Error &&
+      'code' in error &&
+      error.code === 'request_content_not_loaded'
+    ) {
+      requestContentRefresh(request.threadId, request.requestEventId);
+      throw new Error(
+        'Station is loading more of this request. Review it, then allow it again.',
+      );
+    }
     let inspected: 'pending' | 'already-settled' | undefined;
     if (request.requestEventId) {
       try {

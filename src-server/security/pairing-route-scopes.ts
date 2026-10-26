@@ -3876,6 +3876,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/content/:ref',
     },
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/requests/:requestId/content-binding',
+    },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/events' },
     // station#1877: stops ONE provider-reported subagent inside a session the
     // caller already reaches through this family. It mutates, but no more

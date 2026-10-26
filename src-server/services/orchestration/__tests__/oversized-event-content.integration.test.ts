@@ -16,7 +16,10 @@ import {
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
-import { computeViewedContentDigest } from '@kontourai/station-sdk/runtime-event-content';
+import {
+  computeViewedContentDigest,
+  loadApprovalContent,
+} from '@kontourai/station-sdk/runtime-event-content';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { runApprovalsCommand } from '../../../../packages/cli/src/commands/approvals.js';
@@ -852,6 +855,207 @@ describe('oversized event content through the live adapter loop', () => {
         await expect(cliRespond(apiBase)).rejects.toThrow();
       });
       expect(adapter.respondToRequest).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the client loads and echoes the server-defined binding', () => {
+    const serveRoutes = async <T>(run: (apiBase: string) => Promise<T>) => {
+      const app = new Hono();
+      app.route(
+        '/api/orchestration',
+        createOrchestrationRoutes(service, {
+          eventBus: bus,
+          logger: { debug: vi.fn() },
+          getUserId: () => 'default',
+          isRequestPrincipalCurrent: () => true,
+        }),
+      );
+      const listener = serve({
+        fetch: app.fetch,
+        hostname: '127.0.0.1',
+        port: 0,
+      });
+      await once(listener, 'listening');
+      const { port } = listener.address() as { port: number };
+      try {
+        return await run(`http://127.0.0.1:${port}`);
+      } finally {
+        await new Promise((resolve) => listener.close(resolve));
+      }
+    };
+    const allowAsClient = (requestId: string, requestEventId: string) =>
+      serveRoutes(async (apiBase) => {
+        const loaded = await loadApprovalContent(apiBase, threadId, requestId);
+        expect(loaded.binding.required).toBe(true);
+        await service.dispatch({
+          type: 'respondToRequest',
+          threadId,
+          requestId,
+          expectedRequestEventId: requestEventId,
+          decision: 'accept',
+          viewedContentDigest: loaded.viewedContentDigest,
+        });
+      });
+    const waitStored = (id: string) =>
+      vi.waitFor(() => expect(stored().some((e) => e.id === id)).toBe(true));
+
+    test('(a) a Codex command whose request spills but whose bound call does not', async () => {
+      const command = `cat > f <<'EOF2'\n${'x'.repeat(10 * 1024)}\nEOF2`;
+      adapter.events.push({
+        eventId: 'start-a',
+        provider: 'claude',
+        threadId,
+        turnId: 'turn-1',
+        createdAt: at(),
+        method: 'tool.started',
+        toolCallId: 'cmd-a',
+        toolName: 'shell_exec',
+        arguments: { command, cwd: '/repo' },
+      } as CanonicalRuntimeEvent);
+      const opened = mapServerRequestToEvent(
+        threadId,
+        'req-a',
+        'item/commandExecution/requestApproval',
+        {
+          kind: 'command',
+          threadId: 'codex-thread',
+          turnId: 'turn-1',
+          itemId: 'cmd-a',
+          startedAtMs: 1_790_000_000_000,
+          command,
+          cwd: '/repo',
+          commandActions: [{ type: 'unknown', command }],
+        },
+        at(),
+      )!;
+      adapter.events.push({
+        ...opened,
+        provider: 'claude',
+        eventId: 'open-a',
+        turnId: 'turn-1',
+      } as CanonicalRuntimeEvent);
+      await waitStored('open-a');
+      await allowAsClient('req-a', 'open-a');
+      expect(adapter.respondToRequest).toHaveBeenCalledWith(
+        threadId,
+        'req-a',
+        'accept',
+      );
+    });
+
+    test('(b) a Claude Write with no tool.started yet', async () => {
+      adapter.events.push({
+        eventId: 'open-b',
+        provider: 'claude',
+        threadId,
+        turnId: 'turn-1',
+        createdAt: at(),
+        requestId: 'req-b',
+        method: 'request.opened',
+        requestType: 'approval',
+        title: 'Allow Write',
+        payload: {
+          toolCallId: 'call-b',
+          toolName: 'Write',
+          toolInput: { file_path: '/a', content: 'c'.repeat(40_000) },
+          suggestions: [],
+        },
+      } as CanonicalRuntimeEvent);
+      await waitStored('open-b');
+      await allowAsClient('req-b', 'open-b');
+      expect(adapter.respondToRequest).toHaveBeenCalledWith(
+        threadId,
+        'req-b',
+        'accept',
+      );
+    });
+
+    test('(c) two tool.started for one call id', async () => {
+      for (const [id, fill] of [
+        ['s1', 'a'],
+        ['s2', 'b'],
+      ] as const)
+        adapter.events.push({
+          eventId: id,
+          provider: 'claude',
+          threadId,
+          turnId: 'turn-1',
+          createdAt: at(),
+          method: 'tool.started',
+          toolCallId: 'call-c',
+          toolName: 'edit',
+          arguments: { rawInput: { content: fill.repeat(40_000) } },
+        } as CanonicalRuntimeEvent);
+      adapter.events.push({
+        eventId: 'open-c',
+        provider: 'claude',
+        threadId,
+        turnId: 'turn-1',
+        createdAt: at(),
+        requestId: 'req-c',
+        method: 'request.opened',
+        requestType: 'approval',
+        title: 'Allow edit',
+        payload: { toolCallId: 'call-c', toolName: 'edit', options: [] },
+      } as CanonicalRuntimeEvent);
+      await waitStored('open-c');
+      await allowAsClient('req-c', 'open-c');
+      expect(adapter.respondToRequest).toHaveBeenCalledWith(
+        threadId,
+        'req-c',
+        'accept',
+      );
+    });
+
+    test('a bound call that arrives after loading is refused, then admitted after reloading', async () => {
+      adapter.events.push({
+        eventId: 'open-late',
+        provider: 'claude',
+        threadId,
+        turnId: 'turn-1',
+        createdAt: at(),
+        requestId: 'req-late',
+        method: 'request.opened',
+        requestType: 'approval',
+        title: 'Allow Write',
+        payload: {
+          toolCallId: 'call-late',
+          toolName: 'Write',
+          toolInput: { file_path: '/a', content: 'c'.repeat(40_000) },
+        },
+      } as CanonicalRuntimeEvent);
+      await waitStored('open-late');
+      const early = await serveRoutes((apiBase) =>
+        loadApprovalContent(apiBase, threadId, 'req-late'),
+      );
+      adapter.events.push({
+        eventId: 'start-late',
+        provider: 'claude',
+        threadId,
+        turnId: 'turn-1',
+        createdAt: at(),
+        method: 'tool.started',
+        toolCallId: 'call-late',
+        toolName: 'Write',
+        arguments: { file_path: '/a', content: 'd'.repeat(40_000) },
+      } as CanonicalRuntimeEvent);
+      await waitStored('start-late');
+      await expect(
+        service.dispatch({
+          type: 'respondToRequest',
+          threadId,
+          requestId: 'req-late',
+          expectedRequestEventId: 'open-late',
+          decision: 'accept',
+          viewedContentDigest: early.viewedContentDigest,
+        }),
+      ).rejects.toMatchObject({ code: 'request_content_not_loaded' });
+      await allowAsClient('req-late', 'open-late');
+      expect(adapter.respondToRequest).toHaveBeenCalledWith(
+        threadId,
+        'req-late',
+        'accept',
+      );
     });
   });
 });

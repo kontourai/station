@@ -16,10 +16,13 @@ import {
   RUNTIME_EVENT_CONTENT_KEY,
   RUNTIME_EVENT_CONTENT_LITERAL_KEY,
   type RuntimeEventContentKind,
+  requestBoundCallIds,
   unescapeRuntimeEventContent,
   usesReservedContentKey,
   viewedContentPreimage,
 } from '@kontourai/station-contracts/runtime-event-content';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
 import {
   jsonCodeUnitBytes,
   jsonStringBodyBytes,
@@ -202,6 +205,41 @@ function previewOf(text: string): string {
  */
 export function storedEventDigest(event: unknown, bound?: unknown): string {
   return `sha256-${createHash('sha256').update(viewedContentPreimage(event, bound), 'utf8').digest('hex')}`;
+}
+
+/**
+ * The server's one definition of what an allow of `request` must load and
+ * prove (docs/design/event-content-spill.md): the request, the stored
+ * `tool.started` events bound to it, and their viewed-content digest. The
+ * gate, the binding route, the delegation tool and the CLI all use it.
+ */
+export interface ApprovalContentBinding {
+  requestEventId: string;
+  request: CanonicalRuntimeEvent;
+  bound: CanonicalRuntimeEvent[];
+  /** Whether an allow must carry the digest (anything spilled, not a form). */
+  required: boolean;
+  viewedContentDigest: string;
+}
+
+export function approvalContentBinding(
+  request: CanonicalRuntimeEvent,
+  boundToolStarted: (callIds: string[]) => CanonicalRuntimeEvent[],
+): ApprovalContentBinding {
+  const bound = boundToolStarted(requestBoundCallIds(request));
+  return {
+    requestEventId: request.eventId,
+    request,
+    bound,
+    required:
+      (Boolean(request.spilledContent) ||
+        bound.some((event) => Boolean(event.spilledContent))) &&
+      !(
+        request.method === 'request.opened' &&
+        inputRequestFromRequestEvent(request)
+      ),
+    viewedContentDigest: storedEventDigest(request, bound),
+  };
 }
 
 function contentDigest(kind: RuntimeEventContentKind, body: string): string {

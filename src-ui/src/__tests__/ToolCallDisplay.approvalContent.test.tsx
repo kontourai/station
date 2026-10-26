@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
@@ -17,9 +17,11 @@ const query = vi.hoisted(() => ({
     isError?: boolean;
   },
   refetch: vi.fn(),
+  inputs: [] as unknown[],
 }));
 vi.mock('@kontourai/station-sdk/runtime-event-content', () => ({
-  useApprovalContentQuery: () => ({
+  useApprovalContentQuery: (input: unknown) => ({
+    ...(query.inputs.push(input) ? {} : {}),
     data: query.state.data,
     isError: query.state.isError ?? false,
     refetch: query.refetch,
@@ -81,6 +83,7 @@ const card = () =>
 describe('approval card with content stored out of line', () => {
   beforeEach(() => {
     query.state = {};
+    query.inputs = [];
     recorded.mockClear();
   });
 
@@ -116,6 +119,7 @@ describe('approval card with content stored out of line', () => {
           },
         },
         args: { file_path: '/repo/big.ts', content },
+        required: true,
         viewedContentDigest: `sha256-${'c'.repeat(64)}`,
       },
     };
@@ -130,5 +134,64 @@ describe('approval card with content stored out of line', () => {
     const details = view.container.querySelector('.tool-call__details');
     expect(details?.textContent).toContain('const x = 1;');
     expect(details?.textContent).not.toContain('$stationContent');
+  });
+
+  test('asks the server binding by request, keyed on the references the row shows', () => {
+    const view = card();
+    expect(query.inputs.at(-1)).toMatchObject({
+      threadId: 'thread-1',
+      requestId: 'req-big',
+      requestEventId: 'open-big',
+      shownRefs: [ref.ref],
+    });
+    // A later bound tool.started with other references changes the key, so
+    // the binding (and its digest) is fetched again rather than kept stale.
+    const later = { ...ref, ref: `sha256-${'e'.repeat(64)}` };
+    view.rerender(
+      <ToolCallDisplay
+        toolCall={{
+          type: 'tool-invocation',
+          toolCallId: 'toolu_1',
+          toolName: 'Write',
+          args: { file_path: '/repo/big.ts', content: later },
+          needsApproval: true,
+          state: 'awaiting-approval',
+          approvalId: 'req-big',
+          approvalThreadId: 'thread-1',
+          approvalEventId: 'open-big',
+          approvalContentEvent: request,
+        }}
+        onApprove={vi.fn()}
+      />,
+    );
+    expect(query.inputs.at(-1)).toMatchObject({ shownRefs: [later.ref] });
+  });
+
+  test('a server refusal for unloaded content makes a row with no reference load it', async () => {
+    const { requestContentRefreshForTest } = await import(
+      '../hooks/orchestration/answerRequest'
+    );
+    const view = render(
+      <ToolCallDisplay
+        toolCall={{
+          type: 'tool-invocation',
+          toolCallId: 'fc-1',
+          toolName: 'apply_patch',
+          args: { changes: 'small' },
+          needsApproval: true,
+          state: 'awaiting-approval',
+          approvalId: 'req-fc',
+          approvalThreadId: 'thread-1',
+          approvalEventId: 'open-fc',
+        }}
+        onApprove={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Allow Once' })).toBeTruthy();
+    expect(query.inputs).toHaveLength(0);
+    act(() => requestContentRefreshForTest('thread-1', 'open-fc'));
+    expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull();
+    expect(query.inputs.at(-1)).toMatchObject({ requestId: 'req-fc' });
+    view.unmount();
   });
 });

@@ -1,3 +1,4 @@
+import { collectRuntimeEventContentRefs } from '@kontourai/station-contracts/runtime-event-content';
 import { useApprovalContentQuery } from '@kontourai/station-sdk/runtime-event-content';
 import {
   type ToolRequestServerGrant,
@@ -6,8 +7,17 @@ import {
   toolRequestServerGrantFromPayload,
   toolRequestSessionGrantFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
-import { type ReactNode, useEffect, useState } from 'react';
-import { recordViewedContentDigest } from '../../hooks/orchestration/answerRequest';
+import {
+  type ReactNode,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+} from 'react';
+import {
+  contentRefreshVersion,
+  recordViewedContentDigest,
+  subscribeContentRefresh,
+} from '../../hooks/orchestration/answerRequest';
 import { commandOnlyArgs } from '../../hooks/orchestration/pendingRequestRows';
 import type { ToolCallData } from './ToolCallDisplay';
 
@@ -48,19 +58,34 @@ export function useApprovalContent(
   toolCall: ToolCallData,
   active: boolean,
 ): { gate: ApprovalContentGate; loader: ReactNode } {
-  const request = active ? toolCall.approvalContentEvent : undefined;
+  const threadId = toolCall.approvalThreadId;
+  const requestId = toolCall.approvalId;
+  const requestEventId = toolCall.approvalEventId;
+  // A request needs loading when its stored form (or the call it binds)
+  // shows a reference, or when the server refused an allow for content
+  // this surface did not know about (a 409 marks it).
+  const marked = useSyncExternalStore(subscribeContentRefresh, () =>
+    threadId && requestEventId
+      ? contentRefreshVersion(threadId, requestEventId)
+      : 0,
+  );
+  const needed =
+    active &&
+    Boolean(threadId && requestId) &&
+    (Boolean(toolCall.approvalContentEvent) || marked > 0);
   const [gate, setGate] = useState<{
-    eventId: string;
+    key: string;
     gate: ApprovalContentGate;
   }>();
-  if (!request) return { gate: NOT_NEEDED, loader: null };
+  if (!needed) return { gate: NOT_NEEDED, loader: null };
+  const key = `${requestEventId ?? requestId}:${marked}`;
   return {
-    gate: gate?.eventId === request.eventId ? gate.gate : LOADING,
+    gate: gate?.key === key ? gate.gate : LOADING,
     loader: (
       <ApprovalContentLoader
-        key={request.eventId}
+        key={key}
         toolCall={toolCall}
-        onChange={(next) => setGate({ eventId: request.eventId, gate: next })}
+        onChange={(next) => setGate({ key, gate: next })}
       />
     ),
   };
@@ -73,12 +98,18 @@ function ApprovalContentLoader({
   toolCall: ToolCallData;
   onChange: (gate: ApprovalContentGate) => void;
 }) {
-  const request = toolCall.approvalContentEvent;
   const threadId = toolCall.approvalThreadId;
+  const requestEventId = toolCall.approvalEventId;
+  // The server defines what is loaded and proved; the references this row
+  // shows key the query, so a later bound `tool.started` refetches.
+  const shownRefs = collectRuntimeEventContentRefs(toolCall.args).map(
+    (ref) => ref.ref,
+  );
   const query = useApprovalContentQuery({
     threadId,
-    request,
-    args: toolCall.args,
+    requestId: toolCall.approvalId,
+    requestEventId,
+    shownRefs,
   });
   const { data, isError, refetch } = query;
   // biome-ignore lint/correctness/useExhaustiveDependencies: onChange is a fresh closure per render; the query state and request identity are what matter.
@@ -92,10 +123,10 @@ function ApprovalContentLoader({
       });
       return;
     }
-    if (threadId && request?.eventId)
+    if (threadId && requestEventId && data.required)
       recordViewedContentDigest(
         threadId,
-        request.eventId,
+        requestEventId,
         data.viewedContentDigest,
       );
     const payload =
@@ -114,6 +145,6 @@ function ApprovalContentLoader({
       serverGrant: toolRequestServerGrantFromPayload(payload),
       retry,
     });
-  }, [data, isError, refetch, threadId, request?.eventId]);
+  }, [data, isError, refetch, threadId, requestEventId]);
   return null;
 }

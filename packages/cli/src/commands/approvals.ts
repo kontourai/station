@@ -31,14 +31,12 @@ import {
   unanswerableRequestNotice,
   unknownAnswerabilityNotice,
 } from '@kontourai/station-contracts/orchestration';
-import { requestBoundCallIds } from '@kontourai/station-contracts/runtime-event-content';
 import {
   type ApprovalDecision,
   authenticatedFetch,
-  computeViewedContentDigest,
   getOrchestrationSession,
   listOrchestrationSessions,
-  loadRuntimeEventContent,
+  loadApprovalContent,
   respondToRequest,
 } from '@kontourai/station-sdk/client';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
@@ -512,34 +510,18 @@ async function expectedRequestEvent(
   // docs/design/event-content-spill.md: allowing a request whose content was
   // stored out of line loads all of it first; the digest proves the load.
   // A failed load leaves the answer unbound and the server refuses it.
-  // Bound tool calls count too: their spilled arguments are part of what
-  // is approved (a Codex file change's diff lives only there).
-  const boundCallIds = opened ? requestBoundCallIds(opened) : [];
-  const bound = events.filter(
-    (event) =>
-      event.method === 'tool.started' &&
-      typeof (event as { toolCallId?: unknown }).toolCallId === 'string' &&
-      boundCallIds.includes((event as { toolCallId: string }).toolCallId),
-  );
-  if (
-    opened &&
-    (opened.spilledContent ||
-      bound.some(
-        (event) => (event as { spilledContent?: unknown }).spilledContent,
-      )) &&
-    (decision === 'accept' || decision === 'acceptForSession')
-  ) {
+  // docs/design/event-content-spill.md: the server defines what an allow
+  // must load (the request and the tool calls bound to it) and the digest
+  // its gate checks; load all of it, then send the digest. A failed load
+  // leaves the answer without one, and the server refuses it.
+  if (decision === 'accept' || decision === 'acceptForSession') {
     try {
-      await loadRuntimeEventContent(apiBase, threadId, opened);
-      await loadRuntimeEventContent(apiBase, threadId, bound);
-      const viewedContentDigest = await computeViewedContentDigest(
-        opened,
-        bound,
-      );
-      return {
-        expectedRequestEventId: request.requestEventId,
-        viewedContentDigest,
-      };
+      const loaded = await loadApprovalContent(apiBase, threadId, requestId);
+      if (loaded.binding.required)
+        return {
+          expectedRequestEventId: request.requestEventId,
+          viewedContentDigest: loaded.viewedContentDigest,
+        };
     } catch {
       return { expectedRequestEventId: request.requestEventId };
     }

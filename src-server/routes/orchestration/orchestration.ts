@@ -5345,6 +5345,24 @@ export function createOrchestrationRoutes(
     return c.body(prefix);
   });
 
+  /**
+   * docs/design/event-content-spill.md: what an allow of this request must
+   * load and the viewed-content digest the gate will check, as the server
+   * defines them (the request and the tool calls bound to it). Authorized
+   * like the window read.
+   */
+  app.get('/sessions/:threadId/requests/:requestId/content-binding', (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    const binding = orchestrationService.readApprovalContentBinding(
+      param(c, 'threadId'),
+      param(c, 'requestId'),
+      readAuthorityFor(c),
+    );
+    if (!binding)
+      return c.json({ success: false, error: 'Request not found' }, 404);
+    return c.json({ success: true, data: binding });
+  });
+
   app.get('/conversations/:conversationId/event-window', async (c) => {
     const parsed = sessionEventWindowQuerySchema.safeParse({
       cursor: c.req.query('cursor'),
