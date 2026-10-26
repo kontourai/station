@@ -11,6 +11,7 @@ import {
 
 /** Runs the real source entrypoint; the observer must prove export, not just boot. */
 export async function withTelemetryStation(input, observe) {
+  assert(/^[a-f0-9]{40}$/.test(input.source));
   const directory = join(
     input.output,
     input.restart ? 'station-restarted' : 'station',
@@ -32,6 +33,7 @@ export async function withTelemetryStation(input, observe) {
   await writeFile(
     config,
     JSON.stringify({
+      source: input.source,
       ports: [
         port,
         port + 1,
@@ -77,6 +79,7 @@ export async function withTelemetryStation(input, observe) {
         STATION_OWNED_PROCESS_REGISTRY: registry,
         STATION_INSTANCE: serviceName,
         STATION_INSTANCE_ID: serviceName,
+        STATION_BUILD_SHA: input.source,
         STATION_HOST: '127.0.0.1',
         PORT: String(port),
         STATION_STDOUT_HANDSHAKE: '1',

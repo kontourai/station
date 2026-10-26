@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { restrictAccountLabTcp } from './local-collaboration-network.mjs';
 
 const input = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+assert(/^[a-f0-9]{40}$/.test(input.source));
+assert.equal(process.env.STATION_BUILD_SHA, input.source);
 assert(Array.isArray(input.ports) && [5, 6].includes(input.ports.length));
 assert(
   input.ports.every(

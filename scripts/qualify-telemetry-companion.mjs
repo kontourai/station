@@ -128,7 +128,6 @@ async function qualifyTelemetryCompanion(candidate, output) {
     notVerified: [
       'installed-release Station export',
       'trace retention beyond same-volume restart',
-      'product restart durability beyond the product fence',
       'fresh backup/restore',
       'version upgrade/rollback',
       'publisher privacy reconciliation',
@@ -720,6 +719,7 @@ async function qualifyTelemetryCompanion(candidate, output) {
     );
     const stationInput = {
       root: ROOT,
+      source: manifest.source,
       output,
       owner,
       collectorPort: ports[1],
@@ -947,6 +947,7 @@ async function qualifyTelemetryCompanion(candidate, output) {
             return rows?.length === 1 && rows[0].count === 1 && rows[0];
           },
         );
+        assert.equal(observed.shaSource, 'checkout');
         const delivery = await request(
           port,
           '/api/usage-telemetry/delivery-status',
@@ -1078,6 +1079,55 @@ async function qualifyTelemetryCompanion(candidate, output) {
     assert.equal(retry.body.receipt.inserted, 0);
     assert.equal(retry.body.receipt.alreadyPresent, 1);
     await check('synthetic source event committed and replay deduplicated');
+    const retainedReceipt = await request(
+      ports[0],
+      `/v1/product/receipts/${first.body.receipt.receiptId}`,
+      { key: sourceKey },
+    );
+    assert.equal(retainedReceipt.status, 200);
+    const retainedWindow = report.stationProductObservation.window;
+    const trendsPath = `/v1/operator/trends?${new URLSearchParams(retainedWindow)}`;
+    const retainedProduct = await request(ports[0], trendsPath, operator);
+    assert.equal(retainedProduct.status, 200);
+    await docker(
+      [...compose, 'stop', '--timeout', '15', 'receiver', 'postgres'],
+      'stop receiver and PostgreSQL before product durability check',
+      90_000,
+    );
+    await docker(
+      [
+        ...compose,
+        'start',
+        '--wait',
+        '--wait-timeout',
+        '120',
+        'postgres',
+        'receiver',
+      ],
+      'restart receiver and PostgreSQL on retained product volume',
+      150_000,
+    );
+    await poll(
+      'restarted product storage ready',
+      async () =>
+        (await request(ports[0], '/v1/operator/storage', operator)).status ===
+        200,
+    );
+    assert.deepEqual(
+      await request(
+        ports[0],
+        `/v1/product/receipts/${first.body.receipt.receiptId}`,
+        { key: sourceKey },
+      ),
+      retainedReceipt,
+    );
+    assert.deepEqual(
+      await request(ports[0], trendsPath, operator),
+      retainedProduct,
+    );
+    await check(
+      'receiver and PostgreSQL restart retain exact product receipt and real Station trends without resend',
+    );
     await docker(
       [...compose, 'stop', '--timeout', '15', 'receiver'],
       'stop receiver before fence',
@@ -1126,6 +1176,24 @@ async function qualifyTelemetryCompanion(candidate, output) {
     );
     await check(
       'one-shot product fence completes before activation; copied key refused after restart',
+    );
+    assert.equal(
+      await command(
+        'git',
+        ['rev-parse', 'HEAD'],
+        'final source revision',
+        process.env,
+      ),
+      manifest.source,
+    );
+    assert.equal(
+      await command(
+        'git',
+        ['status', '--porcelain'],
+        'final clean source',
+        process.env,
+      ),
+      '',
     );
     report.state = 'passed';
   } catch (error) {
@@ -1185,8 +1253,36 @@ async function qualifyTelemetryCompanion(candidate, output) {
           ),
           '',
         );
+        const networks = (
+          await docker(
+            [
+              'network',
+              'ls',
+              '-q',
+              '--filter',
+              `label=com.docker.compose.project=${project}`,
+            ],
+            'identify exact owned qualification networks',
+          )
+        )
+          .split(/\s+/)
+          .filter(Boolean);
+        for (const id of networks) {
+          const [network] = JSON.parse(
+            await docker(
+              ['network', 'inspect', id],
+              'verify empty network custody',
+            ),
+          );
+          assert.equal(network.Labels['com.docker.compose.project'], project);
+          assert.deepEqual(Object.keys(network.Containers ?? {}), []);
+          await docker(
+            ['network', 'rm', id],
+            'release exact owned empty network',
+          );
+        }
         report.cleanup =
-          'stopped; private credentials, candidate, image and volumes retained';
+          'stopped; empty owned networks released; private credentials, candidate, image and volumes retained';
       } catch {
         report.cleanup = 'UNPROVEN; reconcile owned project before retry';
         report.state = 'failed';
