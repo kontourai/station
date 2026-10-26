@@ -46,9 +46,10 @@ export interface HitTargetAudit {
   /**
    * `overlaps` as data: the two controls' names, in document order;
    * `checkable` when both centres are on screen to hit-test, and `layered`
-   * when a third element is topmost at either centre, or when one control is
-   * pinned (fixed or sticky) over content the user can scroll out from
-   * under it.
+   * when a third element is topmost at either centre, when one control is
+   * in a sheet that covers the other (content behind a modal or the expanded
+   * chat dock), or when the content has the scroll room to move clear of the
+   * pinned layer.
    */
   overlapPairs: Array<{
     first: string;
@@ -116,17 +117,19 @@ export const HIT_TARGET_AUDIT = `(() => {
     // Wholly beside the viewport: an off-canvas control (a skip link at
     // left:-9999px until focused), not one a clip swallowed on screen.
     const offCanvas = r.right <= 0 || r.left >= innerWidth;
-    // Pinned: in a fixed or sticky container (a toolbar, a save footer).
-    // Scrollable: inside content the user can scroll out from under one.
-    let pinned = null, scrollable = false;
+    // Pinned: the nearest fixed or sticky container (a toolbar, a dock).
+    // Scroller: the nearest ancestor that really scrolls vertically; a
+    // control that is not pinned falls back to the document's scroll.
+    let pinned = null, scroller = null;
     for (let a = el; a; a = a.parentElement) {
       const cs = getComputedStyle(a);
       if (!pinned && (cs.position === 'fixed' || cs.position === 'sticky')) pinned = a;
-      if (a !== el && scrolls(cs.overflowY) && a.scrollHeight > a.clientHeight + 1) scrollable = true;
+      if (!scroller && a !== el && scrolls(cs.overflowY) && a.scrollHeight > a.clientHeight + 1) scroller = a;
     }
-    if (document.scrollingElement && document.scrollingElement.scrollHeight > innerHeight + 1) scrollable = true;
+    const page = document.scrollingElement;
+    if (!scroller && !pinned && page && page.scrollHeight > page.clientHeight + 1) scroller = page;
     return {
-      el, hit, name, anchor: stableAnchor(el), hidden, offCanvas, pinned, scrollable,
+      el, hit, name, anchor: stableAnchor(el), hidden, offCanvas, pinned, scroller,
       w: Math.min(rr - l, reachSpan(x)), h: Math.min(b - t, reachSpan(y)), l, r: rr, t, b,
     };
   });
@@ -136,6 +139,32 @@ export const HIT_TARGET_AUDIT = `(() => {
   const smallZones = zones.filter((z) => z.w < 43.5 || z.h < 43.5);
   const small = smallZones.map((z) => z.name + ' ' + Math.round(z.w) + 'x' + Math.round(z.h));
   const smallTargets = smallZones.map((z) => ({ name: z.name, anchor: z.anchor, width: Math.round(z.w), height: Math.round(z.h) }));
+  // A pinned control (in a fixed or sticky layer) over a content control is
+  // not two targets competing for one press in exactly two cases:
+  // - the layer is a sheet (aria-modal, an open <dialog>, the expanded chat
+  //   dock) that covers the content control's centre, and that control is
+  //   outside the sheet and not itself pinned: it is behind the sheet;
+  // - the content control's scroller has enough room left, in the direction
+  //   that matters, to move it clear of the layer's box.
+  // Everything else is reported: a bar over content that cannot move far
+  // enough, a header over a page's first row, a sticky header over row one at
+  // scrollTop 0, and two pinned controls. A collapsed chat dock is a bar.
+  const SHEET = '[aria-modal="true"], dialog[open], .chat-dock:not(.is-collapsed)';
+  const pinnedOver = (p, c) => {
+    if (p.pinned === null || p.pinned.contains(c.el)) return false;
+    const sheet = p.el.closest(SHEET);
+    if (sheet && !sheet.contains(c.el) && c.pinned === null && c.hit !== null && sheet.contains(c.hit)) return true;
+    if (c.scroller === null) return false;
+    const layer = p.pinned.getBoundingClientRect();
+    const box = c.el.getBoundingClientRect();
+    const s = c.scroller;
+    const below = layer.top + layer.height / 2 > box.top + box.height / 2;
+    // Below: scroll further down to lift the control above the layer.
+    // Above: scroll back up to drop it below the layer.
+    const need = below ? box.bottom - layer.top : layer.bottom - box.top;
+    const room = below ? s.scrollHeight - s.clientHeight - s.scrollTop : s.scrollTop;
+    return need <= room + 1;
+  };
   const overlaps = [];
   const overlapPairs = [];
   for (let i = 0; i < zones.length; i += 1) for (let j = i + 1; j < zones.length; j += 1) {
@@ -148,13 +177,7 @@ export const HIT_TARGET_AUDIT = `(() => {
       // not both pressable here. One control covering the other is not
       // layered: that centre lands on the pair.
       const third = (z) => z.hit !== null && !a.el.contains(z.hit) && !b.el.contains(z.hit);
-      // A pinned control (fixed or sticky layer: a toolbar, a dock) over
-      // content is not two targets competing for one press when the content
-      // can scroll out from under it, or when the layer already covers the
-      // content's centre (the content is behind the layer, not beside it).
-      const overlay = (p, c) =>
-        p.pinned !== null && c.pinned === null &&
-        (c.scrollable || (c.hit !== null && p.pinned.contains(c.hit)));
+      const overlay = (p, c) => pinnedOver(p, c);
       overlapPairs.push({
         first: a.name,
         second: b.name,

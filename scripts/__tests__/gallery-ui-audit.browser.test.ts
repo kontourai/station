@@ -167,48 +167,79 @@ describe('hit-target and overflow identities', { timeout: 60_000 }, () => {
     ).toEqual(alone);
   });
 
+  const overlaps = (body: string) => keys(body, 'hit-target:overlap:');
   const bar =
     '<div style="position:fixed;top:0;left:0;right:0;height:50px;background:#fff;z-index:2"><button class="bar-action" aria-label="Menu" style="width:44px;height:44px">M</button></div>';
-  const under =
-    '<div style="height:30px"></div><button class="under-choice" aria-label="Choice" style="display:block;width:200px;height:44px;margin-top:10px">Choice</button>';
 
-  it('does not report content scrolled under a fixed bar as an overlap', async () => {
+  it('clears content the page has scrolled up under a fixed header', async () => {
+    // Scrolled 100px: scrolling back up 10px drops the control below the bar.
     expect(
-      await keys(
-        `${bar}${under}<div style="height:2000px"></div>`,
-        'hit-target:overlap:',
+      await overlaps(
+        `${bar}<div style="height:130px"></div><button class="under-choice" aria-label="Choice" style="display:block;width:200px;height:44px;margin-top:10px">Choice</button><div style="height:2000px"></div><script>scrollTo(0, 100)</script>`,
       ),
     ).toEqual([]);
   });
 
-  it('does not report content behind a fixed layer that covers its centre', async () => {
-    // A docked panel over a page that cannot scroll: the page's control sits
-    // behind the panel's own button, so a press at the page control's centre
-    // lands on that button (the pair itself, not a third element).
+  it('clears content behind a modal sheet that covers its centre', async () => {
     expect(
-      await keys(
-        '<div style="position:fixed;left:0;top:0;width:300px;height:60px"><button class="dock-action" aria-label="New chat" style="width:300px;height:60px">New chat</button></div><textarea class="page-input" aria-label="Page input" style="display:block;width:300px;height:60px"></textarea>',
-        'hit-target:overlap:',
+      await overlaps(
+        '<div role="dialog" aria-modal="true" style="position:fixed;left:0;top:0;width:300px;height:60px"><button class="sheet-action" aria-label="New chat" style="width:300px;height:60px">New chat</button></div><textarea class="page-input" aria-label="Page input" style="display:block;width:300px;height:60px"></textarea>',
       ),
     ).toEqual([]);
   });
 
-  it('still reports a fixed bar over content that cannot scroll away', async () => {
-    expect(await keys(`${bar}${under}`, 'hit-target:overlap:')).toEqual([
-      'hit-target:overlap:button.bar-action[Menu] / button.under-choice[Choice]',
-    ]);
+  it('clears content behind the expanded chat dock sheet', async () => {
+    expect(
+      await overlaps(
+        '<section class="chat-dock" style="position:fixed;left:0;top:0;width:300px;height:60px"><button class="dock-action" aria-label="New chat" style="width:300px;height:60px">New chat</button></section><textarea class="page-input" aria-label="Page input" style="display:block;width:300px;height:60px"></textarea>',
+      ),
+    ).toEqual([]);
   });
 
-  it('still reports two overlapping content controls', async () => {
-    expect(
-      await keys(
-        '<button class="first-action" aria-label="First" style="display:block;width:60px;height:60px">1</button><button class="second-action" aria-label="Second" style="display:block;width:60px;height:60px;margin-top:-20px;margin-left:20px;position:relative">2</button><div style="height:2000px"></div>',
-        'hit-target:overlap:',
-      ),
-    ).toEqual([
+  // Must stay reported: each is a control a user cannot reach or press.
+  const reported: Record<string, [string, string]> = {
+    'a collapsed chat dock bar over the last control at max scroll': [
+      '<div style="height:790px"></div><button class="tech-details" aria-label="Technical details" style="display:block;width:390px;height:44px">Technical details</button><section class="chat-dock is-collapsed" style="position:fixed;left:0;right:0;bottom:0;height:44px"><button class="dock-bar" aria-label="Chat" style="width:390px;height:44px">Chat</button></section>',
+      'hit-target:overlap:button.tech-details[Technical details] / button.dock-bar[Chat]',
+    ],
+    'F1: a fixed bottom bar button over a primary control, page cannot scroll':
+      [
+        '<div style="height:780px"></div><button class="primary-submit" aria-label="Submit order" style="display:block;width:390px;height:44px">Submit</button><div style="position:fixed;left:0;right:0;bottom:0;height:60px;z-index:2"><button class="bar-save" aria-label="Bar save" style="width:390px;height:60px">Bar</button></div>',
+        'hit-target:overlap:button.primary-submit[Submit order] / button.bar-save[Bar save]',
+      ],
+    "F3: a fixed header over a scrolling page's first row": [
+      '<div style="position:fixed;top:0;left:0;right:0;height:56px;z-index:2;background:#fff"><button class="hdr-menu" aria-label="Menu" style="width:390px;height:56px">M</button></div><button class="first-row" aria-label="First row" style="display:block;width:390px;height:44px;margin-top:30px">First</button><div style="height:2000px"></div>',
+      'hit-target:overlap:button.hdr-menu[Menu] / button.first-row[First row]',
+    ],
+    'F4: a page that scrolls 8px with its last control 30px under a bar': [
+      '<div style="height:776px"></div><button class="last-row" aria-label="Last row" style="display:block;width:390px;height:76px">Last</button><div style="position:fixed;left:0;right:0;bottom:0;height:30px;z-index:2"><button class="bar-save" aria-label="Bar save" style="width:390px;height:30px">Bar</button></div>',
+      'hit-target:overlap:button.last-row[Last row] / button.bar-save[Bar save]',
+    ],
+    "F5: a sticky header over a pane's first row at scrollTop 0": [
+      '<div style="height:600px;overflow:auto"><div style="position:sticky;top:0;height:50px;z-index:2"><button class="sticky-filter" aria-label="Filter" style="width:390px;height:50px">F</button></div><button class="row-one" aria-label="Row one" style="display:block;width:390px;height:44px;margin-top:-30px;position:relative">Row</button><div style="height:2000px"></div></div>',
+      'hit-target:overlap:button.sticky-filter[Filter] / button.row-one[Row one]',
+    ],
+    'F6: a control in a non-scrolling region under a fixed button': [
+      '<div style="height:300px;overflow:hidden"><button class="pane-act" aria-label="Pane act" style="display:block;width:200px;height:44px;margin-top:20px">Act</button></div><div style="position:fixed;top:0;left:0;width:150px;height:50px;z-index:2"><button class="dock-new" aria-label="Dock new" style="width:150px;height:50px">N</button></div><div style="height:2000px"></div>',
+      'hit-target:overlap:button.pane-act[Pane act] / button.dock-new[Dock new]',
+    ],
+    'F7: two pinned controls overlapping': [
+      '<div style="position:fixed;top:0;left:0"><button class="fx-a" aria-label="Fx A" style="width:60px;height:60px">A</button></div><div style="position:fixed;top:20px;left:20px"><button class="fx-b" aria-label="Fx B" style="width:60px;height:60px">B</button></div>',
+      'hit-target:overlap:button.fx-a[Fx A] / button.fx-b[Fx B]',
+    ],
+    'a pinned control whose centre a modal sheet covers': [
+      '<div style="position:fixed;left:0;top:0"><button class="toolbar-action" aria-label="Toolbar" style="width:300px;height:60px">T</button></div><div role="dialog" aria-modal="true" style="position:fixed;left:0;top:0;width:300px;height:60px"><button class="sheet-action" aria-label="New chat" style="width:300px;height:60px">New chat</button></div>',
+      'hit-target:overlap:button.toolbar-action[Toolbar] / button.sheet-action[New chat]',
+    ],
+    'two overlapping content controls': [
+      '<button class="first-action" aria-label="First" style="display:block;width:60px;height:60px">1</button><button class="second-action" aria-label="Second" style="display:block;width:60px;height:60px;margin-top:-20px;margin-left:20px;position:relative">2</button><div style="height:2000px"></div>',
       'hit-target:overlap:button.first-action[First] / button.second-action[Second]',
-    ]);
-  });
+    ],
+  };
+  for (const [name, [body, key]] of Object.entries(reported))
+    it(`still reports ${name}`, async () => {
+      expect(await overlaps(body)).toEqual([key]);
+    });
 
   it('tells two inputs apart by their label alone', async () => {
     // Same tag, same type, no name: only the label differs.
