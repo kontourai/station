@@ -292,9 +292,9 @@ guessing a Project.
 
 ### D5. Presence is a tray, not a section
 
-**Historical footer placement, superseded 2026-10-25.** The footer no longer
-mounts the presence tray. The original decision below records its earlier
-placement and does not describe the current footer.
+**Superseded 2026-10-25.** The footer no longer has a presence tray, and the
+tray component has been removed. The original decision below is kept as
+history and does not describe the current footer.
 
 Original decision: the footer shows an avatar stack and a count of people present on
 projects the viewer shares. Opening it lists people (with a message action)
