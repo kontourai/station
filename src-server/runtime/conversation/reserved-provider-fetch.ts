@@ -18,6 +18,7 @@ import {
   type BoundedApiAttemptQuote,
   type BoundedApiProvider,
   boundedApiUsesReportInput,
+  captureBoundedApiHistoricalPricing,
   priceBoundedApiProviderRawUsage,
   quoteBoundedApiProviderAttempt,
   type ResolvedBoundedApiProviderContract,
@@ -31,6 +32,7 @@ export interface ReservedProviderEvidence {
   readonly quote: BoundedApiAttemptQuote;
   readonly rawBodySha256: string;
   readonly rawResponseJson: string;
+  readonly historicalPricingJson?: string;
 }
 export class ReservedProviderUnavailable extends Error {
   readonly code = 'usage_unknown';
@@ -82,14 +84,27 @@ export class ReservedProviderFetch {
       intent: FinalWireIntentIdentity,
     ) => {
       const rawResponseJson = JSON.stringify(raw);
+      const pricedAtMs = owners.now();
       const usage = priceBoundedApiProviderRawUsage(
         owners.contract,
         quote,
         rawResponseJson,
-        owners.now(),
+        pricedAtMs,
+      );
+      const historicalPricingJson = captureBoundedApiHistoricalPricing(
+        owners.contract,
+        quote,
+        pricedAtMs,
       );
       resolve(
-        Object.freeze({ intent, usage, quote, rawBodySha256, rawResponseJson }),
+        Object.freeze({
+          intent,
+          usage,
+          quote,
+          rawBodySha256,
+          rawResponseJson,
+          historicalPricingJson,
+        }),
       );
     };
     this.fetch = async (input, init) => {

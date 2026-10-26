@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import {
   cpSync,
   mkdirSync,
@@ -1609,6 +1610,19 @@ for (const [provider, protocol] of [
     assert.equal(driver.observed[0].usage.costBasis, 'tariff-upper-bound');
     assert.deepEqual(driver.retainedEvidence(), driver.observed[0]);
     const retained = driver.observed[0];
+    assert.ok(retained.historicalPricingJson);
+    const historicalPricing = JSON.parse(retained.historicalPricingJson);
+    assert.equal(
+      historicalPricing.qualification.contractSha256,
+      retained.quote.contractSha256,
+    );
+    assert.equal(
+      createHash('sha256')
+        .update(historicalPricing.qualification.serializedContract)
+        .digest('hex'),
+      retained.quote.contractSha256,
+    );
+    assert.deepEqual(historicalPricing.quote, retained.quote);
     assert.equal(
       retained.intent.invocationId,
       (await driver.ledger()).invocations[0].invocationId,

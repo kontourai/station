@@ -9,6 +9,7 @@ import {
   BoundedApiProviderContractError,
   type BoundedApiQualificationRegistryOwner,
   boundedApiWireOptionsSha256,
+  captureBoundedApiHistoricalPricing,
   priceBoundedApiProviderRawUsage,
   quoteBoundedApiProviderAttempt,
   resolveBoundedApiProviderContract,
@@ -1372,5 +1373,37 @@ test('disabled-thinking quotes reject positive residual thoughts and explicit th
   refused(
     () => priceBoundedApiProviderRawUsage(ac, aq, JSON.stringify(rawA), NOW),
     'usage_unknown',
+  );
+});
+
+test('historical pricing retains the original qualification after revocation without restoring execution authority', () => {
+  const f = fixture();
+  const contract = f.resolve();
+  const quote = quoteBoundedApiProviderAttempt(
+    contract,
+    f.wire,
+    remaining,
+    NOW,
+  );
+  const original = structuredClone(f.owner.read(contract.id));
+  const serialized = captureBoundedApiHistoricalPricing(contract, quote, NOW);
+  f.revoke();
+  const retained = JSON.parse(serialized);
+  assert.deepEqual(retained.qualification, original);
+  assert.deepEqual(retained.quote, quote);
+  assert.equal(retained.pricedAtMs, NOW);
+  assert.equal(retained.thinkingDisabled, false);
+  refused(
+    () => quoteBoundedApiProviderAttempt(contract, f.wire, remaining, NOW),
+    'untrusted_contract',
+  );
+  refused(
+    () =>
+      quoteBoundedApiProviderAttempt(retained.quote, f.wire, remaining, NOW),
+    'untrusted_contract',
+  );
+  refused(
+    () => captureBoundedApiHistoricalPricing(contract, quote, NOW),
+    'untrusted_contract',
   );
 });

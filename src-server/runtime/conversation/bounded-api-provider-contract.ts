@@ -134,6 +134,9 @@ type State = {
   facts: Facts;
   owner: BoundedApiQualificationRegistryOwner;
   registryDigest: string;
+  qualification: NonNullable<
+    ReturnType<BoundedApiQualificationRegistryOwner['read']>
+  >;
 };
 const contracts = new WeakMap<ResolvedBoundedApiProviderContract, State>();
 const quotes = new WeakMap<
@@ -638,7 +641,12 @@ export function resolveBoundedApiProviderContract(
     contractSha256: record.contractSha256,
     evidenceDigest,
   });
-  contracts.set(handle, { facts, owner, registryDigest: evidenceDigest });
+  contracts.set(handle, {
+    facts,
+    owner,
+    registryDigest: evidenceDigest,
+    qualification: structuredClone(record),
+  });
   return handle;
 }
 
@@ -659,6 +667,27 @@ function current(
   )
     fail('untrusted_contract');
   return state.facts;
+}
+
+/** Inert original pricing evidence; deserialization grants no execution capability. */
+export function captureBoundedApiHistoricalPricing(
+  contract: ResolvedBoundedApiProviderContract,
+  quote: BoundedApiAttemptQuote,
+  pricedAtMs: number,
+): string {
+  current(contract, pricedAtMs);
+  const state = contracts.get(contract);
+  const quoted = quotes.get(quote);
+  if (!state || quoted?.contract !== contract) fail('usage_unknown');
+  const serialized = JSON.stringify({
+    version: 1,
+    qualification: state.qualification,
+    pricedAtMs,
+    quote,
+    thinkingDisabled: quoted.thinkingDisabled,
+  });
+  if (Buffer.byteLength(serialized, 'utf8') > 128 * 1024) fail('usage_unknown');
+  return serialized;
 }
 
 /** Complete bounded JSON only; duplicate fields never become executable arguments. */
