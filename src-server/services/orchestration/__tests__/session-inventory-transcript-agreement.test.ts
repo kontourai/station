@@ -77,7 +77,8 @@ function generateSession(random: () => number, threadId: string): Event[] {
         attachments: [],
       }),
     );
-    if (random() < 0.7)
+    // Some turns write no assistant text at all.
+    if (random() < 0.55)
       events.push(base('content.text-delta', { turnId, delta: 'Working.' }));
     const calls = Math.floor(random() * 4);
     for (let call = 0; call < calls; call += 1) {
@@ -87,14 +88,26 @@ function generateSession(random: () => number, threadId: string): Event[] {
       const toolName = pick(['Bash', 'Read', 'Task']);
       // Claude tracks the issuing turn; a few writers do not know it.
       const tracked = random() < 0.85 ? turnId : undefined;
-      events.push(
-        base('tool.started', {
-          ...(tracked ? { turnId: tracked } : {}),
-          itemId: toolCallId,
-          toolCallId,
-          toolName,
-        }),
-      );
+      const started = base('tool.started', {
+        ...(tracked ? { turnId: tracked } : {}),
+        itemId: toolCallId,
+        toolCallId,
+        toolName,
+      });
+      events.push(started);
+      // A user steer opens the same turn again mid-call.
+      if (random() < 0.25)
+        events.push(
+          base('turn.started', {
+            turnId,
+            inputKind: 'steer',
+            prompt: 'Also check the tests',
+            attachments: [],
+          }),
+        );
+      // A retried call is started again before it settles.
+      if (random() < 0.25)
+        events.push({ ...started, eventId: id('tool-started') });
       const outcome = random();
       if (outcome < 0.55) {
         events.push(
@@ -129,9 +142,11 @@ function generateSession(random: () => number, threadId: string): Event[] {
     // The session sometimes ends here: everything still open is settled.
     if (random() < 0.35 || turn === turns - 1) {
       for (const [toolCallId, tracked] of open) {
+        // The Claude settle names the call's turn only when it tracked one.
+        const settleTurn = random() < 0.7 ? tracked.turnId : undefined;
         events.push(
           base('tool.completed', {
-            ...(tracked.turnId ? { turnId: tracked.turnId } : {}),
+            ...(settleTurn ? { turnId: settleTurn } : {}),
             itemId: toolCallId,
             toolCallId,
             toolName: tracked.toolName,
@@ -199,7 +214,7 @@ function transcriptCompletions(store: EventStore, threadId: string) {
 }
 
 describe('the Session inventory lists tool results exactly as the transcript shows them (#4178)', () => {
-  test('agrees with the transcript on 600 seeded sessions in the shapes real writers emit', () => {
+  test('agrees with the transcript on 1,000 seeded sessions in the shapes real writers emit', () => {
     const store = new EventStore(
       join(tempRoot('station-inventory-differential-'), 'orchestration.sqlite'),
     );
@@ -208,7 +223,7 @@ describe('the Session inventory lists tool results exactly as the transcript sho
       const mismatches: string[] = [];
       let unresolvedListed = 0;
       let unresolvedReplaced = 0;
-      for (let index = 0; index < 600; index += 1) {
+      for (let index = 0; index < 1000; index += 1) {
         const threadId = `station:1:session:differential-${index}`;
         const events = generateSession(random, threadId);
         for (const event of events) store.appendEvent(event as never);
@@ -227,7 +242,7 @@ describe('the Session inventory lists tool results exactly as the transcript sho
             if (listed.includes(event.eventId)) unresolvedListed += 1;
             else unresolvedReplaced += 1;
       }
-      expect(mismatches).toEqual([]);
+      expect(mismatches.length, mismatches.slice(0, 3).join('\n')).toBe(0);
       // Reached: both outcomes occur often, not by luck of the seed.
       expect(unresolvedListed).toBeGreaterThan(100);
       expect(unresolvedReplaced).toBeGreaterThan(100);
