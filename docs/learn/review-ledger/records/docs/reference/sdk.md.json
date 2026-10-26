@@ -755,7 +755,6 @@
     "packages/sdk/src/__tests__/chatRuntimeStream.test.ts",
 
     "packages/sdk/src/__tests__/starter-work.test.ts"
-
   ],
 
   "checks": [

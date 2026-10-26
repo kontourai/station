@@ -124,7 +124,12 @@ async function fixture(streamText: IAgent['streamText']) {
   const address = server.address();
   if (!address || typeof address === 'string')
     throw new Error('No fixture loopback port');
-  return `http://127.0.0.1:${address.port}`;
+  return {
+    apiBase: `http://127.0.0.1:${address.port}`,
+    waitForResponses: async () => {
+      await Promise.all(responsesFinished);
+    },
+  };
 }
 
 function finished(): IStreamResult {
@@ -142,7 +147,7 @@ const keepState = (_event: unknown, state: unknown) => state;
 describe('public SDK direct-chat keys through the production route', () => {
   test('a generated key replays its conversation and an independent send invokes again', async () => {
     const streamText = vi.fn<IAgent['streamText']>(async () => finished());
-    const apiBase = await fixture(streamText);
+    const { apiBase } = await fixture(streamText);
     const input = {
       apiBase,
       agentSlug: 'assistant',
@@ -179,7 +184,7 @@ describe('public SDK direct-chat keys through the production route', () => {
     const streamText = vi.fn<IAgent['streamText']>(async () => {
       throw new Error('Fixture possible effect');
     });
-    const apiBase = await fixture(streamText);
+    const { apiBase, waitForResponses } = await fixture(streamText);
     const failure = new Error('Observed stream failure');
     const input = {
       apiBase,
@@ -197,6 +202,7 @@ describe('public SDK direct-chat keys through the production route', () => {
     const key = sentTurnKey(firstError);
     expect(key).toEqual(expect.any(String));
     expect(streamText).toHaveBeenCalledTimes(1);
+    await waitForResponses();
     const retryError: unknown = await streamConversationTurn({
       ...input,
       chatOptions: { clientTurnId: key },
