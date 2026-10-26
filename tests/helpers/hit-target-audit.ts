@@ -79,7 +79,7 @@ export const HIT_TARGET_AUDIT = `(() => {
     else if (clip) { axis.lo = Math.max(axis.lo, lo); axis.hi = Math.min(axis.hi, hi); }
   };
   const interactive = Array.from(root.querySelectorAll(
-    'button, input, textarea, summary, a[href], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]',
+    'button, input, select, textarea, summary, a[href], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]',
   )).filter((el) => {
     const r = el.getBoundingClientRect();
     // checkVisibility() also excludes content the UA is not rendering: a

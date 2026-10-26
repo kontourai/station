@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { type Browser, chromium, type Page } from '@playwright/test';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { auditGalleryScreen } from '../../tests/helpers/gallery-ui-audit';
@@ -259,6 +260,15 @@ describe('hit-target and overflow identities', { timeout: 60_000 }, () => {
       expect(await overlaps(body)).toEqual([key]);
     });
 
+  it('measures a select like any other control', async () => {
+    expect(
+      await keys(
+        '<label for="tone">Alert sound</label><select id="tone" name="tone" style="width:120px;height:38px"><option>Chime</option></select>',
+        'hit-target:small:',
+      ),
+    ).toEqual(['hit-target:small:select[name=tone][Alert sound]']);
+  });
+
   it('tells two inputs apart by their label alone', async () => {
     // Same tag, same type, no name: only the label differs.
     expect(
@@ -302,5 +312,47 @@ describe('hit-target and overflow identities', { timeout: 60_000 }, () => {
       'axe:select-name:select[name=region]',
       'axe:select-name:select[name=tier]',
     ]);
+  });
+});
+
+describe('settings notification controls on a phone', {
+  timeout: 60_000,
+}, () => {
+  // The real stylesheet, so the shared narrow-width floor and the component
+  // rule meet exactly as they do in the app. In the gallery most of these
+  // sit in a closed disclosure and are not measured; here every one is.
+  const css = readFileSync('src-ui/src/views/SettingsView.css', 'utf8');
+
+  it('gives every notification select and time input a 44px target at 390px', async () => {
+    const row = (label: string, control: string) =>
+      `<label class="settings__notification-sound"><span>${label}</span>${control}</label>`;
+    const select = '<select><option>Default</option></select>';
+    await page.setContent(
+      `<!doctype html><html lang="en"><head><style>${css}</style></head><body><div class="settings"><fieldset class="settings__notification-sounds"><div class="settings__notification-sounds-grid">${[
+        'Agent notifications',
+        'Station local UI: interrupt for',
+        'Approval requests sound',
+        'Completed turns sound',
+        'Failed turns sound',
+        'Job failures sound',
+        'Missed jobs sound',
+        'Pairing requests sound',
+        'Scheduler health sound',
+        'Stopped turns sound',
+      ]
+        .map((label) => row(label, select))
+        .join(
+          '',
+        )}${row('Quiet hours start', '<input type="time">')}</div></fieldset></div></body></html>`,
+    );
+    const heights = await page.evaluate(() =>
+      Array.from(
+        document.querySelectorAll(
+          '.settings__notification-sound > :is(select, input[type="time"])',
+        ),
+      ).map((el) => el.getBoundingClientRect().height),
+    );
+    expect(heights).toHaveLength(11);
+    expect(Math.min(...heights)).toBeGreaterThanOrEqual(43.99);
   });
 });
