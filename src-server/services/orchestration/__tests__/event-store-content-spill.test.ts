@@ -526,6 +526,23 @@ describe('EventStore event content spill', () => {
     expect(results).toContain('[content too large for Station to keep]');
   });
 
+  test('a lone surrogate survives spilling and never shares a digest with U+FFFD', () => {
+    const lone = `${big(20_000)}\uD800`;
+    const replaced = `${big(20_000)}\uFFFD`;
+    store.appendEvent({ ...reply('thread-u', lone), eventId: 'done-lone' } as CanonicalRuntimeEvent);
+    store.appendEvent({ ...reply('thread-u', replaced), eventId: 'done-fffd' } as CanonicalRuntimeEvent);
+    const resolved = store.resolveEventContent(store.listEvents('thread-u'));
+    const text = (id: string) =>
+      (resolved.find((e) => e.id === id)!.payload as { outputText?: unknown }).outputText;
+    expect(text('done-lone')).toBe(lone);
+    expect(text('done-fffd')).toBe(replaced);
+    const digests = rows(
+      'SELECT digest FROM orchestration_event_content WHERE thread_id = ?',
+      'thread-u',
+    );
+    expect(new Set(digests.map((row) => row.digest)).size).toBe(2);
+  });
+
   test('every stored reference has its row', () => {
     store.appendEvent(claudeWriteApproval('thread-z', big(300 * 1024)));
     const [event] = store.listEvents('thread-z');

@@ -246,14 +246,21 @@ interface Candidate {
   depth: number;
 }
 
+/** A high surrogate not followed by a low one, or a low one not preceded by a high one. */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
 function buildRef(original: Json): {
   ref: JsonRecord;
   spill: PlannedSpill;
 } {
-  const kind: RuntimeEventContentKind =
-    typeof original === 'string' ? 'string' : 'json';
-  const body =
-    typeof original === 'string' ? original : JSON.stringify(original);
+  // A string with a lone surrogate has no UTF-8 form: SQLite TEXT and the
+  // digest would both turn it into U+FFFD. It is stored as JSON instead,
+  // whose escapes keep it exactly; the body and digest preimage are then
+  // ASCII-safe for those code units.
+  const plainText =
+    typeof original === 'string' && !LONE_SURROGATE.test(original);
+  const kind: RuntimeEventContentKind = plainText ? 'string' : 'json';
+  const body = plainText ? (original as string) : JSON.stringify(original);
   const bytes = Buffer.byteLength(body, 'utf8');
   const digest = contentDigest(kind, body);
   // Built as JSON data in the `RuntimeEventContentRef` shape (the contracts
