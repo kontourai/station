@@ -72,9 +72,12 @@ describe('FeaturePreviewRegistry', () => {
   test('a bound consumer enters the catalog before its branch runs', () => {
     const registry = new FeaturePreviewRegistry(home(), logger);
 
-    expect(registry.list()).toEqual([]);
+    expect(registry.list()).toEqual([
+      expect.objectContaining({ id: 'task-review', enabled: false }),
+    ]);
     const probe = bindProbe(registry);
     expect(registry.list()).toEqual([
+      expect.objectContaining({ id: 'task-review', enabled: false }),
       expect.objectContaining({ id: 'probe', enabled: false }),
     ]);
     expect(selectProbe(probe)).toBe('skipped');
@@ -104,7 +107,9 @@ describe('FeaturePreviewRegistry', () => {
       JSON.stringify({ orphaned: { enabled: true } }),
     );
 
-    expect(registry.list()).toEqual([]);
+    expect(registry.list()).toEqual([
+      expect.objectContaining({ id: 'task-review', enabled: false }),
+    ]);
     await expect(registry.setEnabled('orphaned', false)).rejects.toBeInstanceOf(
       FeaturePreviewNotOfferedError,
     );

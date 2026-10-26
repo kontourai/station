@@ -1,7 +1,8 @@
 /**
  * Runtime-derived Feature Previews registry (archive#2961).
  *
- * A preview becomes visible only when runtime composition binds a consumer.
+ * Runtime previews are bound by composition; built-in UI previews name their
+ * consuming surface here.
  * A bound consumer returns the selector used at its real branch; persistence
  * alone can never make a removed consumer visible.
  */
@@ -78,6 +79,12 @@ export class FeaturePreviewRegistry {
     homeDir: string,
     private readonly logger: Logger,
   ) {
+    this.rememberConsumer({
+      id: 'task-review',
+      label: 'Task review',
+      description:
+        'Review Task plans, outputs and Screens with anchored comments and send them to the lead agent.',
+    });
     this.state = new GrantsFileStore<FeaturePreviewState>({
       filePath: featurePreviewStatePath(homeDir),
       storeLabel: 'feature-previews',

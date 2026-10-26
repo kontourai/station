@@ -124,7 +124,11 @@
 
     "src-server/routes/__tests__/browser-agent-capture.test.ts",
 
-    "src-ui/src/workspace-panes/browser-pane/BrowserTabs.tsx"
+    "src-ui/src/workspace-panes/browser-pane/BrowserTabs.tsx",
+
+    "src-ui/src/views/task-workspace/review/TaskReviewTab.tsx",
+
+    "tests/task-review.spec.ts"
   ],
 
   "checks": [

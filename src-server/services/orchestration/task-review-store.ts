@@ -11,6 +11,7 @@ import {
   parseTaskReviewEvent,
   parseTaskReviewSendRequest,
   type TaskCapture,
+  type TaskReviewArtifactRef,
   type TaskReviewAuthor,
   type TaskReviewCreateThreadRequest,
   type TaskReviewEvent,
@@ -50,6 +51,7 @@ export type TaskReviewStoredThread =
   | { readonly status: 'available'; readonly thread: TaskReviewThread }
   | {
       readonly status: 'unavailable';
+      readonly artifact?: TaskReviewArtifactRef;
       readonly threadId: string;
       readonly ordinal: number;
       readonly eventCount: number;
@@ -330,7 +332,9 @@ export function createSqliteTaskReviewStore(
     }
     return rows.map((row): TaskReviewStoredThread => {
       const history = grouped.get(row.thread_id) ?? [];
+      let artifact: TaskReviewArtifactRef | undefined;
       try {
+        artifact = artifactFromRow(row);
         return {
           status: 'available',
           thread: fromRow(row, history.map(eventFromRow)),
@@ -341,6 +345,7 @@ export function createSqliteTaskReviewStore(
           threadId: row.thread_id,
           ordinal: row.ordinal,
           eventCount: history.length,
+          ...(artifact ? { artifact } : {}),
           error,
         };
       }

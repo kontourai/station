@@ -28,7 +28,7 @@ import { sameReviewArtifact } from './review-types';
 
 function formatRevision(revision: TaskReviewArtifactRef['revision']) {
   if (typeof revision === 'number') return `v${revision}`;
-  return /^(?:sha\d+:|[a-f\d]{40}$|[a-f\d]{64}$)/i.test(revision)
+  return /^(?:swsr-v1:|sha\d+:|[a-f\d]{40}$|[a-f\d]{64}$)/i.test(revision)
     ? undefined
     : revision;
 }
@@ -130,7 +130,7 @@ export function ReviewDocumentView({
   draftScope: string;
   text: string;
   title: string;
-  threads?: readonly TaskReviewThreadView[];
+  threads?: readonly Omit<TaskReviewThreadView, 'events'>[];
   onCreateThread: (
     anchor: TaskReviewAnchor,
     body: string,
@@ -468,7 +468,7 @@ export function ReviewDocumentView({
             {title}
           </span>
           {revision && (
-            <span className="review-chip">
+            <span className="review-chip" title={String(artifact.revision)}>
               {previousRevision && previousRevision !== revision
                 ? `${previousRevision} → ${revision}`
                 : revision}

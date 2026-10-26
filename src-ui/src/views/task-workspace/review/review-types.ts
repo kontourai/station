@@ -32,7 +32,9 @@ export interface ReviewThreadActions extends ReviewDeliveryActions {
   onReopen: (threadId: string) => void | Promise<void>;
 }
 
-export function isReviewThreadSendable(thread: TaskReviewThreadView) {
+export function isReviewThreadSendable(
+  thread: Pick<TaskReviewThreadView, 'state' | 'baseState' | 'pendingFollowUp'>,
+) {
   return (
     thread.state !== 'outdated' &&
     (thread.baseState === 'open' ||

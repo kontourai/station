@@ -1,0 +1,11 @@
+{
+  "revision": "87d58716937a545e198682f32f98c75400a3ba00",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the final summary/detail boundary: a persisted reply draft stays behind expansion until the thread detail query has loaded, then returns with its saved text. The mounted regression failed on the pre-fix editor and now passes with a single detail read after expansion. The combined mounted UI/writer selection passes 141 tests, all 16 typechecks pass after main custody integration, and compact shared retry-state hygiene has zero new findings. These changes preserve the documented Review/Screen entry, counts, delivery and authority boundaries.","inputs":["docs/architecture/module-map.md","src-ui/src/views/task-workspace/review/ReviewThreadCard.tsx","src-ui/src/views/task-workspace/review/__tests__/TaskReviewTab.test.tsx"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed the final summary/detail boundary: a persisted reply draft stays behind expansion until the thread detail query has loaded, then returns with its saved text. The mounted regression failed on the pre-fix editor and now passes with a single detail read after expansion. The combined mounted UI/writer selection passes 141 tests, all 16 typechecks pass after main custody integration, and compact shared retry-state hygiene has zero new findings. These changes preserve the documented Review/Screen entry, counts, delivery and authority boundaries.","inputs":["docs/guides/browser-workspace.md"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed the final summary/detail boundary: a persisted reply draft stays behind expansion until the thread detail query has loaded, then returns with its saved text. The mounted regression failed on the pre-fix editor and now passes with a single detail read after expansion. The combined mounted UI/writer selection passes 141 tests, all 16 typechecks pass after main custody integration, and compact shared retry-state hygiene has zero new findings. These changes preserve the documented Review/Screen entry, counts, delivery and authority boundaries.","inputs":["docs/user/settings.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "f59a24f62f8a045959c347115bd6753cfd2b49d4",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed the Task Review SDK-reference delta against the SDK scope instructions and actual query-domain owner. The added optional author display projection and validated unavailable-artifact reference remain fields of the published contract. SDK request-authority partitioning, query keys, mutation transport, cancellation and caller-result behavior are unchanged. This note records source impact only and does not qualify provider or hosted execution.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

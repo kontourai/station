@@ -29,6 +29,13 @@ The live-chat send journey tests Station's request and rendering path; the fixtu
 fixed text and does not run a model or contact a provider. A phone-sized browser
 viewport is not physical-phone evidence.
 
+Task review remains in `extended`. Its credential-free cases passed the
+candidate lane, but the full lane failed the existing chat approval assertion.
+The strict browser receipt also rejects the explicit signed-in Claude skip in
+that spec. Admission needs separate credential-free selection and three clean
+full-lane runs within the existing budget; a successful live-provider run alone
+does not satisfy it.
+
 The project-creation journey waits for the initial **Starting Station** dialog
 to leave before filling the form. The form can mount behind the cold-launch
 presentation while that modal still blocks input; its heading alone does not
