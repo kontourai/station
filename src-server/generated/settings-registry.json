@@ -133,6 +133,15 @@
       "configKey": "experimentalTrustEnabled"
     },
     {
+      "id": "experimental-sheet-gestures",
+      "label": "Sheet gestures preview",
+      "help": "Opt in to dragging phone sheets up to expand them and down to close them.",
+      "scope": "device",
+      "section": "developer-tools",
+      "route": "/settings?view=developer-tools&highlight=experimental-sheet-gestures",
+      "configKey": "experimentalSheetGesturesEnabled"
+    },
+    {
       "id": "shared-answers",
       "label": "Shared answers",
       "scope": "station",
