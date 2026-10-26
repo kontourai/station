@@ -183,7 +183,7 @@ test.describe('Notifications: attention queue and activity log', () => {
     // The bell badge is this count and only this count.
     await expect(bell(page)).toHaveAttribute(
       'aria-label',
-      `Notifications (${initial.pendingCount} need attention)`,
+      `Notifications, ${initial.pendingCount} need attention`,
     );
 
     // The page's own activity receipt, read BEFORE the bulk action so the
@@ -218,7 +218,7 @@ test.describe('Notifications: attention queue and activity log', () => {
       'aria-label',
       standingCount === 0
         ? 'Notifications'
-        : `Notifications (${standingCount} need attention)`,
+        : `Notifications, ${standingCount} need attention`,
     );
     for (const item of initial.items.filter((entry) =>
       isStandingAttentionKind(entry.kind),

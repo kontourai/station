@@ -9,11 +9,20 @@
  * pairs of targets that overlap (a finger aiming at one presses the other).
  * Light DOM only: a shadow tree (the diff renderer's) is its owner's.
  *
+ * A scroll container that really scrolls on an axis (its scroll size exceeds
+ * its client size) can bring a control outside its visible box into view.
+ * Past it, the walk stops cutting the control and instead cuts the
+ * scroller's visible box by the clips further out: the control is unreachable
+ * when that box is clipped away, and its target is no larger than that box.
+ * An `auto`/`scroll` box that does not scroll is a clip like `hidden`.
+ *
  * Known limits, not modelled: a `clip-path` or `contain: paint` ancestor
  * clips without hiding overflow, so its cut is not applied; and a hit-area
  * pseudo-element is assumed centred on its control (the idiom here), so an
  * offset one is measured as if it were centred.
  */
+import { STABLE_ANCHOR_SOURCE } from './stable-anchor';
+
 export interface HitTargetAudit {
   /** Controls with a reachable target; `small` and `overlaps` judge these. */
   count: number;
@@ -21,18 +30,66 @@ export interface HitTargetAudit {
   unreachable: string[];
   small: string[];
   overlaps: string[];
+  /** `unreachable` as data, with whether the control is wholly off-canvas. */
+  unreachableTargets: Array<{
+    name: string;
+    anchor: string;
+    offCanvas: boolean;
+  }>;
+  /** `small` as data: the control's name and its measured target. */
+  smallTargets: Array<{
+    name: string;
+    anchor: string;
+    width: number;
+    height: number;
+  }>;
+  /**
+   * `overlaps` as data: the two controls' names, in document order;
+   * `checkable` when both centres are on screen to hit-test, and `layered`
+   * when a third element is topmost at either centre, or when one control is
+   * in a sheet that covers the other (content behind a modal or the expanded
+   * chat dock).
+   */
+  overlapPairs: Array<{
+    first: string;
+    second: string;
+    firstAnchor: string;
+    secondAnchor: string;
+    checkable: boolean;
+    layered: boolean;
+    /** Which rule layered the pair: a third element on top, or a covering sheet. */
+    layeredBy: 'third' | 'sheet' | null;
+  }>;
 }
 
 export const HIT_TARGET_AUDIT = `(() => {
+  ${STABLE_ANCHOR_SOURCE}
   const root = document.getElementById('root');
-  // Only a hard clip: a scroller's edge moves with its scroll position and
-  // its scrollable overflow includes the hit areas, so it can bring them in.
   const clips = (value) => value === 'hidden' || value === 'clip';
+  const scrolls = (value) => value === 'auto' || value === 'scroll';
+  // One axis of the walk: clips cut the control until the first scroller that
+  // really scrolls; after it they cut that scroller's visible box (reach).
+  const step = (axis, overflow, lo, hi, scrollable) => {
+    const scroller = scrolls(overflow) && scrollable;
+    const clip = clips(overflow) || (scrolls(overflow) && !scrollable);
+    if (axis.reach) {
+      if (scroller || clip) { axis.reach[0] = Math.max(axis.reach[0], lo); axis.reach[1] = Math.min(axis.reach[1], hi); }
+    } else if (scroller) axis.reach = [lo, hi];
+    else if (clip) { axis.lo = Math.max(axis.lo, lo); axis.hi = Math.min(axis.hi, hi); }
+  };
   const interactive = Array.from(root.querySelectorAll(
     'button, input, textarea, summary, a[href], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]',
   )).filter((el) => {
     const r = el.getBoundingClientRect();
-    return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+    // checkVisibility() also excludes content the UA is not rendering: a
+    // closed <details> keeps layout boxes for its content (it is
+    // content-visibility: hidden) but draws none of it. Its default leaves
+    // content-visibility: auto content measured, so off-screen sections that
+    // render on scroll are still judged.
+    const rendered = typeof el.checkVisibility === 'function'
+      ? el.checkVisibility({ visibilityProperty: true })
+      : getComputedStyle(el).visibility !== 'hidden';
+    return r.width > 0 && r.height > 0 && rendered;
   });
   const all = interactive.map((el) => {
     const r = el.getBoundingClientRect();
@@ -46,28 +103,92 @@ export const HIT_TARGET_AUDIT = `(() => {
       }
     }
     const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-    let l = cx - w / 2, rr = cx + w / 2, t = cy - h / 2, b = cy + h / 2;
+    const x = { lo: -Infinity, hi: Infinity, reach: null };
+    const y = { lo: -Infinity, hi: Infinity, reach: null };
     for (let a = el.parentElement; a; a = a.parentElement) {
       const cs = getComputedStyle(a);
       const ar = a.getBoundingClientRect();
-      if (clips(cs.overflowX)) { l = Math.max(l, ar.left); rr = Math.min(rr, ar.right); }
-      if (clips(cs.overflowY)) { t = Math.max(t, ar.top); b = Math.min(b, ar.bottom); }
+      step(x, cs.overflowX, ar.left, ar.right, a.scrollWidth > a.clientWidth + 1);
+      step(y, cs.overflowY, ar.top, ar.bottom, a.scrollHeight > a.clientHeight + 1);
       if (a === root) break;
     }
-    // A control a hard clip hides entirely is not on screen to press: it is
+    const l = Math.max(cx - w / 2, x.lo), rr = Math.min(cx + w / 2, x.hi);
+    const t = Math.max(cy - h / 2, y.lo), b = Math.min(cy + h / 2, y.hi);
+    const reachSpan = (axis) => (axis.reach ? axis.reach[1] - axis.reach[0] : Infinity);
+    // A control a clip hides entirely is not on screen to press: it is
     // reported, not skipped, so a clip that swallows a control fails the audit.
-    const hidden = r.right <= l || r.left >= rr || r.bottom <= t || r.top >= b;
+    const hidden = r.right <= x.lo || r.left >= x.hi || r.bottom <= y.lo || r.top >= y.hi ||
+      reachSpan(x) <= 0 || reachSpan(y) <= 0;
     const name = el.getAttribute('aria-label') || (el.textContent || '').trim().slice(0, 30) || el.tagName;
-    return { name, hidden, w: rr - l, h: b - t, l, r: rr, t, b };
+    // What a press at the control's centre lands on, when that is on screen.
+    const inView = cx >= 0 && cy >= 0 && cx < innerWidth && cy < innerHeight;
+    const hit = inView ? document.elementFromPoint(cx, cy) : null;
+    // Wholly beside the viewport: an off-canvas control (a skip link at
+    // left:-9999px until focused), not one a clip swallowed on screen.
+    const offCanvas = r.right <= 0 || r.left >= innerWidth;
+    // Pinned: the nearest fixed or sticky container (a toolbar, a dock).
+    let pinned = null;
+    for (let a = el; a && !pinned; a = a.parentElement) {
+      const cs = getComputedStyle(a);
+      if (cs.position === 'fixed' || cs.position === 'sticky') pinned = a;
+    }
+    return {
+      el, hit, name, anchor: stableAnchor(el), hidden, offCanvas, pinned,
+      w: Math.min(rr - l, reachSpan(x)), h: Math.min(b - t, reachSpan(y)), l, r: rr, t, b,
+    };
   });
   const unreachable = all.filter((z) => z.hidden).map((z) => z.name);
+  const unreachableTargets = all.filter((z) => z.hidden).map((z) => ({ name: z.name, anchor: z.anchor, offCanvas: z.offCanvas }));
   const zones = all.filter((z) => !z.hidden);
-  const small = zones.filter((z) => z.w < 43.5 || z.h < 43.5).map((z) => z.name + ' ' + Math.round(z.w) + 'x' + Math.round(z.h));
+  const smallZones = zones.filter((z) => z.w < 43.5 || z.h < 43.5);
+  const small = smallZones.map((z) => z.name + ' ' + Math.round(z.w) + 'x' + Math.round(z.h));
+  const smallTargets = smallZones.map((z) => ({ name: z.name, anchor: z.anchor, width: Math.round(z.w), height: Math.round(z.h) }));
+  // A pinned control (in a fixed or sticky layer) over a content control is
+  // not two targets competing for one press in one case only: the layer is a
+  // sheet (aria-modal, a modal <dialog>, the expanded chat dock) that covers
+  // the content control's centre or the part where the two overlap, and that
+  // control is outside the sheet and not itself pinned: it is behind the
+  // sheet. Scroll position is not
+  // credited: a bar over content that could scroll clear is still reported,
+  // which errs conservative (attempts to model scroll clearance kept hiding
+  // real defects). A collapsed chat dock is a bar.
+  const SHEET = '[aria-modal="true"], dialog:modal, .chat-dock:not(.is-collapsed)';
+  // meet is what a press lands on at the centre of the two targets'
+  // intersection. Content partly behind a sheet (its centre still visible
+  // above an expanded dock) loses only the covered part, where the sheet is
+  // on top; it competes with nothing there.
+  const pinnedOver = (p, c, meet) => {
+    if (p.pinned === null || p.pinned.contains(c.el)) return null;
+    const sheet = p.el.closest(SHEET);
+    if (!sheet || sheet.contains(c.el) || c.pinned !== null) return null;
+    const covered = (hit) => hit !== null && sheet.contains(hit);
+    return covered(c.hit) || covered(meet) ? 'sheet' : null;
+  };
   const overlaps = [];
+  const overlapPairs = [];
   for (let i = 0; i < zones.length; i += 1) for (let j = i + 1; j < zones.length; j += 1) {
     const a = zones[i], b = zones[j];
     const ox = Math.min(a.r, b.r) - Math.max(a.l, b.l), oy = Math.min(a.b, b.b) - Math.max(a.t, b.t);
-    if (ox > 1 && oy > 1) overlaps.push(a.name + ' / ' + b.name + ' ' + Math.round(ox) + 'x' + Math.round(oy));
+    if (ox > 1 && oy > 1) {
+      overlaps.push(a.name + ' / ' + b.name + ' ' + Math.round(ox) + 'x' + Math.round(oy));
+      // Layered: a third element is on top at either centre (a dialog over
+      // the page, a fixed bar over scrolled content), so the two targets are
+      // not both pressable here. One control covering the other is not
+      // layered: that centre lands on the pair.
+      const third = (z) => z.hit !== null && !a.el.contains(z.hit) && !b.el.contains(z.hit);
+      const mx = (Math.max(a.l, b.l) + Math.min(a.r, b.r)) / 2, my = (Math.max(a.t, b.t) + Math.min(a.b, b.b)) / 2;
+      const meet = mx >= 0 && my >= 0 && mx < innerWidth && my < innerHeight ? document.elementFromPoint(mx, my) : null;
+      const layeredBy = third(a) || third(b) ? 'third' : pinnedOver(a, b, meet) || pinnedOver(b, a, meet);
+      overlapPairs.push({
+        first: a.name,
+        second: b.name,
+        firstAnchor: a.anchor,
+        secondAnchor: b.anchor,
+        checkable: a.hit !== null && b.hit !== null,
+        layered: layeredBy !== null,
+        layeredBy,
+      });
+    }
   }
-  return { count: zones.length, unreachable, small, overlaps };
+  return { count: zones.length, unreachable, small, overlaps, unreachableTargets, smallTargets, overlapPairs };
 })()`;

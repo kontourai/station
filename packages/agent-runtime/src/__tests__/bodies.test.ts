@@ -1,4 +1,4 @@
-import { DatabaseSync } from 'node:sqlite';
+import { constants, DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, it } from 'vitest';
 import { bodyRef, canonical, encode, hash } from '../encoding.js';
 import { type BodyRef, DEFAULT_MODEL_POLICY } from '../index.js';
@@ -39,15 +39,28 @@ it('immutable SQLite bytes survive a separate connection reopen and reject UPDAT
 it('body insert failure rolls back without an acknowledgment or adopted request', async () => {
   const f = await fixture();
   cleanup.push(() => f.close());
-  f.database.exec(
-    "CREATE TRIGGER runtime_body_failure BEFORE INSERT ON agent_runtime_bodies BEGIN SELECT RAISE(ABORT,'body write rejected'); END;",
-  );
-  await expect(
-    f.bodies.put(
-      'runtime-ai-sdk-v3-part/1',
-      encode({ type: 'text-delta', id: 'a', delta: 'new' }),
-    ),
-  ).rejects.toThrow('body write rejected');
+  const denied: string[] = [];
+  f.database.setAuthorizer((action, table) => {
+    if (
+      action === constants.SQLITE_INSERT &&
+      table === 'agent_runtime_bodies'
+    ) {
+      denied.push(table);
+      return constants.SQLITE_DENY;
+    }
+    return constants.SQLITE_OK;
+  });
+  try {
+    await expect(
+      f.bodies.put(
+        'runtime-ai-sdk-v3-part/1',
+        encode({ type: 'text-delta', id: 'a', delta: 'new' }),
+      ),
+    ).rejects.toThrow('not authorized');
+  } finally {
+    f.database.setAuthorizer(null);
+  }
+  expect(denied).toEqual(['agent_runtime_bodies']);
   expect(
     f.database
       .prepare(
@@ -123,9 +136,6 @@ it('journal receipt and outbox roll back when SQLite fails the final emitting ta
     'runtime-ai-sdk-v3-part/1',
     encode({ type: 'stream-start', warnings: [] }),
   );
-  f.database.exec(
-    "CREATE TRIGGER runtime_outbox_failure BEFORE INSERT ON agent_runtime_outbox BEGIN SELECT RAISE(ABORT,'outbox write rejected'); END;",
-  );
   const c = operation({
     type: 'partial',
     key,
@@ -134,9 +144,25 @@ it('journal receipt and outbox roll back when SQLite fails the final emitting ta
     sequence: 0,
     body,
   });
-  await expect(f.storage.execute(c, f.context)).rejects.toThrow(
-    'outbox write rejected',
-  );
+  const denied: string[] = [];
+  f.database.setAuthorizer((action, table) => {
+    if (
+      action === constants.SQLITE_INSERT &&
+      table === 'agent_runtime_outbox'
+    ) {
+      denied.push(table);
+      return constants.SQLITE_DENY;
+    }
+    return constants.SQLITE_OK;
+  });
+  try {
+    await expect(f.storage.execute(c, f.context)).rejects.toThrow(
+      'not authorized',
+    );
+  } finally {
+    f.database.setAuthorizer(null);
+  }
+  expect(denied).toEqual(['agent_runtime_outbox']);
   expect(
     f.database.prepare('SELECT count(*) AS n FROM agent_runtime_receipts').get()
       ?.n,
@@ -144,7 +170,6 @@ it('journal receipt and outbox roll back when SQLite fails the final emitting ta
   expect(
     await f.storage.execute({ type: 'listOutbox', key, limit: 10 }, f.context),
   ).toEqual({ kind: 'listed', entries: [], throughPosition: -1 });
-  f.database.exec('DROP TRIGGER runtime_outbox_failure');
   expect(await f.storage.execute(c, f.context)).toMatchObject({
     kind: 'applied',
   });
@@ -592,69 +617,183 @@ it('ordinary ACK persists its receipt before only its projection, rolls back bot
       .all(),
   });
   const before = snapshot();
-  for (const table of ['runs', 'retired'])
-    for (const verb of ['INSERT', 'UPDATE', 'DELETE'])
-      f.database.exec(
-        `CREATE TRIGGER ack_no_${table}_${verb} BEFORE ${verb} ON agent_runtime_${table} BEGIN SELECT RAISE(ABORT,'ACK wrote unrelated generation'); END;`,
+  const originalPrepare = f.database.prepare;
+  const prepare = originalPrepare.bind(f.database);
+  type Write = { action: number; table: string };
+  let collecting: Write[] | undefined;
+  let phase: 'fault' | 'positive' | 'replay' | undefined;
+  const denied: Write[] = [];
+  const observations: string[] = [];
+  const receiptRow = () =>
+    prepare('SELECT record FROM agent_runtime_receipts WHERE id=?').get(
+      receiptId,
+    );
+  const outboxRow = () => {
+    const row = prepare(
+      'SELECT record FROM agent_runtime_outbox WHERE id=?',
+    ).get(entry.id);
+    if (typeof row?.record !== 'string')
+      throw Error('actual outbox observation prerequisite');
+    return JSON.parse(row.record);
+  };
+  f.database.prepare = (sql, options) => {
+    const writes: Write[] = [];
+    const previous = collecting;
+    collecting = writes;
+    let statement: ReturnType<DatabaseSync['prepare']>;
+    try {
+      statement = prepare(sql, options);
+    } finally {
+      collecting = previous;
+    }
+    statement.run = new Proxy(statement.run, {
+      apply(target, _receiver, args) {
+        const active = phase;
+        const receiptWrite =
+          active && writes.some((w) => w.table === 'agent_runtime_receipts');
+        const outboxWrite =
+          active && writes.some((w) => w.table === 'agent_runtime_outbox');
+        if (receiptWrite) {
+          expect(args[0]).toBe(receiptId);
+          expect(receiptRow()).toBeUndefined();
+          expect(outboxRow().acknowledged).toBe(false);
+          observations.push('receipt-before');
+        }
+        if (outboxWrite) {
+          expect(args[1]).toBe(entry.id);
+          expect(typeof receiptRow()?.record).toBe('string');
+          expect(outboxRow().acknowledged).toBe(false);
+          observations.push('outbox-before');
+        }
+        const result = Reflect.apply(target, statement, args);
+        if (receiptWrite) {
+          expect(typeof receiptRow()?.record).toBe('string');
+          expect(outboxRow().acknowledged).toBe(false);
+          observations.push('receipt-after');
+        }
+        if (outboxWrite) {
+          expect(outboxRow().acknowledged).toBe(true);
+          observations.push('outbox-after');
+        }
+        return result;
+      },
+    });
+    return statement;
+  };
+  const authorize = (action: number, table: string | null) => {
+    const write =
+      action === constants.SQLITE_INSERT ||
+      action === constants.SQLITE_UPDATE ||
+      action === constants.SQLITE_DELETE;
+    if (!phase || !write || table === null) return constants.SQLITE_OK;
+    const current = { action, table };
+    collecting?.push(current);
+    const unrelated =
+      table === 'agent_runtime_runs' || table === 'agent_runtime_retired';
+    const priorReceiptUpdate =
+      table === 'agent_runtime_receipts' &&
+      action === constants.SQLITE_UPDATE &&
+      !collecting?.some(
+        (w) => w.action === constants.SQLITE_INSERT && w.table === table,
       );
-  f.database.exec(`
-    CREATE TRIGGER ack_receipt_no_update BEFORE UPDATE ON agent_runtime_receipts BEGIN SELECT RAISE(ABORT,'ACK updated prior receipt'); END;
-    CREATE TRIGGER ack_receipt_order BEFORE INSERT ON agent_runtime_receipts WHEN EXISTS(SELECT 1 FROM agent_runtime_outbox WHERE json_extract(record,'$.acknowledged')=1) BEGIN SELECT RAISE(ABORT,'receipt must precede outbox'); END;
-    CREATE TRIGGER ack_outbox_scope BEFORE UPDATE ON agent_runtime_outbox WHEN json_extract(OLD.record,'$.position')<>0 BEGIN SELECT RAISE(ABORT,'ACK wrote unrelated projection'); END;
-    CREATE TRIGGER ack_outbox_order BEFORE UPDATE ON agent_runtime_outbox WHEN NOT EXISTS(SELECT 1 FROM agent_runtime_receipts WHERE json_extract(record,'$.commandType')='acknowledge') BEGIN SELECT RAISE(ABORT,'outbox preceded receipt'); END;
-    CREATE TRIGGER ack_outbox_failure BEFORE UPDATE ON agent_runtime_outbox BEGIN SELECT RAISE(ABORT,'ACK outbox write rejected'); END;
-  `);
-  await expect(f.storage.execute(command, f.context)).rejects.toThrow(
-    'ACK outbox write rejected',
-  );
-  expect(snapshot()).toEqual(before);
-  f.database.exec('DROP TRIGGER ack_outbox_failure');
-  expect(await f.storage.execute(command, f.context)).toEqual({
-    kind: 'applied',
-  });
-  const after = snapshot();
-  expect(after.runs).toEqual(before.runs);
-  expect(after.retired).toEqual(before.retired);
-  expect(after.projection).toEqual(before.projection);
-  expect(after.bodies).toEqual(before.bodies);
-  expect(after.receipts.filter((r) => r.id !== receiptId)).toEqual(
-    before.receipts,
-  );
-  expect(after.receipts).toHaveLength(before.receipts.length + 1);
-  expect(after.outbox.filter((r) => r.id !== entry.id)).toEqual(
-    before.outbox.filter((r) => r.id !== entry.id),
-  );
-  const acknowledged = f.database
-    .prepare('SELECT record FROM agent_runtime_outbox WHERE id=?')
-    .get(entry.id);
-  const receipt = f.database
-    .prepare('SELECT record FROM agent_runtime_receipts WHERE id=?')
-    .get(receiptId);
-  if (
-    typeof acknowledged?.record !== 'string' ||
-    typeof receipt?.record !== 'string'
-  )
-    throw Error('stored ACK prerequisite');
-  expect(JSON.parse(acknowledged.record)).toMatchObject({
-    acknowledged: true,
-    projection: entry,
-  });
-  f.database
-    .prepare('UPDATE agent_runtime_outbox SET record=? WHERE id=?')
-    .run(` ${acknowledged.record} `, entry.id);
-  f.database.exec('DROP TRIGGER ack_receipt_no_update');
-  f.database
-    .prepare('UPDATE agent_runtime_receipts SET record=? WHERE id=?')
-    .run(` ${receipt.record} `, receiptId);
-  f.database.exec(`
-    CREATE TRIGGER ack_replay_receipt_insert BEFORE INSERT ON agent_runtime_receipts BEGIN SELECT RAISE(ABORT,'replayed ACK inserted receipt'); END;
-    CREATE TRIGGER ack_replay_receipt_update BEFORE UPDATE ON agent_runtime_receipts BEGIN SELECT RAISE(ABORT,'replayed ACK updated receipt'); END;
-    CREATE TRIGGER ack_replay_outbox_insert BEFORE INSERT ON agent_runtime_outbox BEGIN SELECT RAISE(ABORT,'replayed ACK inserted outbox'); END;
-    CREATE TRIGGER ack_replay_outbox_update BEFORE UPDATE ON agent_runtime_outbox BEGIN SELECT RAISE(ABORT,'replayed ACK updated outbox'); END;
-  `);
-  const replayBefore = snapshot();
-  expect(await f.storage.execute(command, f.context)).toEqual({
-    kind: 'already-applied',
-  });
-  expect(snapshot()).toEqual(replayBefore);
+    const replayWrite =
+      phase === 'replay' &&
+      (table === 'agent_runtime_receipts' || table === 'agent_runtime_outbox');
+    const targetFault =
+      phase === 'fault' &&
+      action === constants.SQLITE_UPDATE &&
+      table === 'agent_runtime_outbox';
+    if (unrelated || priorReceiptUpdate || replayWrite || targetFault) {
+      denied.push(current);
+      return constants.SQLITE_DENY;
+    }
+    return constants.SQLITE_OK;
+  };
+  try {
+    phase = 'fault';
+    f.database.setAuthorizer(authorize);
+    try {
+      await expect(f.storage.execute(command, f.context)).rejects.toThrow(
+        'not authorized',
+      );
+    } finally {
+      phase = undefined;
+      f.database.setAuthorizer(null);
+    }
+    expect(denied).toEqual([
+      { action: constants.SQLITE_UPDATE, table: 'agent_runtime_outbox' },
+    ]);
+    expect(observations).toEqual(['receipt-before', 'receipt-after']);
+    expect(snapshot()).toEqual(before);
+    observations.length = 0;
+    phase = 'positive';
+    f.database.setAuthorizer(authorize);
+    try {
+      expect(await f.storage.execute(command, f.context)).toEqual({
+        kind: 'applied',
+      });
+    } finally {
+      phase = undefined;
+      f.database.setAuthorizer(null);
+    }
+    expect(observations).toEqual([
+      'receipt-before',
+      'receipt-after',
+      'outbox-before',
+      'outbox-after',
+    ]);
+    const after = snapshot();
+    expect(after.runs).toEqual(before.runs);
+    expect(after.retired).toEqual(before.retired);
+    expect(after.projection).toEqual(before.projection);
+    expect(after.bodies).toEqual(before.bodies);
+    expect(after.receipts.filter((r) => r.id !== receiptId)).toEqual(
+      before.receipts,
+    );
+    expect(after.receipts).toHaveLength(before.receipts.length + 1);
+    expect(after.outbox.filter((r) => r.id !== entry.id)).toEqual(
+      before.outbox.filter((r) => r.id !== entry.id),
+    );
+    const acknowledged = f.database
+      .prepare('SELECT record FROM agent_runtime_outbox WHERE id=?')
+      .get(entry.id);
+    const receipt = f.database
+      .prepare('SELECT record FROM agent_runtime_receipts WHERE id=?')
+      .get(receiptId);
+    if (
+      typeof acknowledged?.record !== 'string' ||
+      typeof receipt?.record !== 'string'
+    )
+      throw Error('stored ACK prerequisite');
+    expect(JSON.parse(acknowledged.record)).toMatchObject({
+      acknowledged: true,
+      projection: entry,
+    });
+    f.database
+      .prepare('UPDATE agent_runtime_outbox SET record=? WHERE id=?')
+      .run(` ${acknowledged.record} `, entry.id);
+    f.database
+      .prepare('UPDATE agent_runtime_receipts SET record=? WHERE id=?')
+      .run(` ${receipt.record} `, receiptId);
+    const replayBefore = snapshot();
+    observations.length = 0;
+    denied.length = 0;
+    phase = 'replay';
+    f.database.setAuthorizer(authorize);
+    try {
+      expect(await f.storage.execute(command, f.context)).toEqual({
+        kind: 'already-applied',
+      });
+    } finally {
+      phase = undefined;
+      f.database.setAuthorizer(null);
+    }
+    expect(denied).toEqual([]);
+    expect(observations).toEqual([]);
+    expect(snapshot()).toEqual(replayBefore);
+  } finally {
+    phase = undefined;
+    f.database.setAuthorizer(null);
+    f.database.prepare = originalPrepare;
+  }
 });
