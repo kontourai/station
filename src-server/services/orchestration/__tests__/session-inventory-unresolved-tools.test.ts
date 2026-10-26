@@ -61,7 +61,11 @@ function seedCrashedTurn(store: EventStore) {
  * The Execution group as a client sees it: the first read's preview, then
  * every page the UI's "load more" would fetch, until the owner says exact.
  */
-async function readExecution(store: EventStore, clientProtocol: number) {
+async function readExecution(
+  store: EventStore,
+  clientProtocol: number,
+  from: 'preview' | 'page' = 'preview',
+) {
   const issued = new Map<string, unknown>();
   let serial = 0;
   const module = createSessionInventoryModule({
@@ -98,6 +102,35 @@ async function readExecution(store: EventStore, clientProtocol: number) {
     undefined,
     undefined,
   );
+  if (from === 'page') {
+    // "Load more" from the group itself: the first page carries no cursor.
+    const rows: unknown[][] = [];
+    let continuation: string | undefined;
+    let finalCount: unknown;
+    let pages = 0;
+    do {
+      const page = await module.page({
+        scope,
+        authority,
+        current: () => true,
+        clientProtocol,
+        groupId: 'execution',
+        ...(continuation ? { continuation } : {}),
+      });
+      if (page.status !== 'found')
+        throw new Error(`expected page ${pages + 1}, got ${page.status}`);
+      pages += 1;
+      for (const item of page.page.group.items)
+        rows.push(
+          item.kind === 'thread-tool-result'
+            ? [item.toolCallId, item.terminalStatus]
+            : [item.kind],
+        );
+      continuation = page.page.group.continuation;
+      finalCount = page.page.group.count;
+    } while (continuation && pages < 10);
+    return { rows, finalCount, pages };
+  }
   const result = await module.read({
     scope,
     authority,
@@ -167,6 +200,47 @@ describe('Session inventory commands with no recorded result (#4178)', () => {
         expect(legacy.rows).toEqual([['call-done', 'succeeded']]);
         expect(legacy.finalCount).toEqual({ kind: 'exact', value: 1 });
       }
+    } finally {
+      store.close?.();
+    }
+  });
+
+  test('pages past omitted commands for an older client, and through them for a current one', async () => {
+    const store = new EventStore(
+      join(tempRoot('station-inventory-unresolved-'), 'orchestration.sqlite'),
+    );
+    try {
+      seedCrashedTurn(store);
+      // Enough later results that Execution spans three owner pages of 20
+      // events, with the two omitted commands inside the first.
+      for (let index = 0; index < 42; index += 1)
+        store.appendEvent({
+          provider: 'claude',
+          threadId: THREAD,
+          createdAt: `2026-10-24T16:01:${String(index).padStart(2, '0')}.000Z`,
+          eventId: `later-${index}`,
+          turnId: 'turn-1',
+          itemId: `call-later-${index}`,
+          method: 'tool.completed',
+          toolCallId: `call-later-${index}`,
+          toolName: 'Bash',
+          status: 'success',
+          output: 'ok',
+        } as never);
+
+      const legacy = await readExecution(store, 3, 'page');
+      expect(legacy.pages).toBe(3);
+      expect(legacy.rows).toHaveLength(43);
+      expect(legacy.rows.some(([, status]) => status === 'unresolved')).toBe(
+        false,
+      );
+      expect(legacy.finalCount).toEqual({ kind: 'exact', value: 43 });
+
+      const current = await readExecution(store, 4, 'page');
+      expect(current.rows).toHaveLength(45);
+      expect(
+        current.rows.filter(([, status]) => status === 'unresolved'),
+      ).toHaveLength(2);
     } finally {
       store.close?.();
     }
