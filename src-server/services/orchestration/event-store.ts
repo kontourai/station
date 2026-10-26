@@ -8985,7 +8985,7 @@ export class EventStore {
           ORDER BY sequence ASC
           LIMIT 16`,
       )
-      .all(threadId, ...callIds) as any[];
+      .all(threadId, ...callIds);
     return rows.map((row) => this.mapEventRow(row, false).payload);
   }
 
