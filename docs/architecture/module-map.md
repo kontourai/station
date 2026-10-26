@@ -5249,10 +5249,37 @@ atomically; agent replies and `recordSendFailed` require the active delivery key
 SQLite also rejects summary revisions with leading zeros and agent replies
 without an earlier same-thread sent key; active-key retirement remains contract
 admission's responsibility.
-Admission folds full event history, preserving Sent on a person follow-up; image bytes belong to the capture increment.
-The separate capture primitives in [PR #4150](https://github.com/kontourai/station/pull/4150),
-`workspace-commit-pin` and `task-capture-blob-store`, own commit pinning and
-content-addressed image bytes; this module does not depend on that PR.
+Admission folds full event history, preserving Sent on a person follow-up.
+
+[TaskBrowserCapture](../../src-server/services/projects/task-browser-capture.ts)
+composes `workspace-commit-pin`, the Browser registry's `captureScreenshot`,
+`task-capture-blob-store` and the metadata store. It resolves the Task's stored
+Project identity through `localProjectIdFor`
+when matching Browser sessions. Person picker authorization and the bound Agent
+Task check use the same resolver; persisted review scope remains unchanged.
+It refuses dirty workspaces
+and unobserved submodules, rechecks the pin and session after CDP returns, and
+checks the Task count and available home capacity before requesting a screenshot.
+It holds the home blob lock through synchronous metadata publication: refusal
+removes only a newly published digest, preserving already shared bytes. The
+blob store callback type rejects Promise-like results so asynchronous metadata
+publication cannot escape that lock and rollback boundary. The
+[keyed factory](../../src-server/services/projects/task-capture-blob-store-factory.ts)
+reuses the blob store while its current home and forbidden root set match.
+After a successful synchronous metadata commit, a lock-release failure is logged
+without changing the capture result. Missing, corrupt or unavailable blob reads
+retain their internal cause for sanitized route warnings, as does storage inside
+a registered repository root. Person and bound Agent capture routes log only the
+Task ID and error type, without raw errors or storage paths.
+Task workspace roots are derived from freshly read, validated graph bytes and
+cached only while those bytes match; changed bindings and corruption invalidate
+that derivation. Project roots and filesystem confinement are rechecked.
+[Person capture routes](../../src-server/routes/orchestration/task-review-captures.ts)
+use Browser view standing to select sessions and paired operate scope to persist
+a capture, and Task authority to
+read digest-verified content with explicit image headers. The sensitive
+`browser_capture_to_task` operation uses the bound Session's execution binding.
+Screens are immutable Review items; region anchors pass the contract parser.
 
 The [SDK hooks](../../packages/sdk/src/query-domains/taskReview.ts) invalidate
 review reads after person mutations and support opt-in polling every three
@@ -5266,6 +5293,10 @@ They cover durable reopening, append-only enforcement, idempotency, capacity
 refusals, incarnation isolation, plan editing, unavailable working state and
 review writes preserving room content, history and revision evidence. They do
 not qualify a real provider, browser capture, a UI journey or a release.
+[Capture route tests](../../src-server/routes/__tests__/browser-agent-capture.test.ts)
+exercise real Git, SQLite, room binding authority and blob storage with a CDP
+double, including restart, Task isolation, digest corruption and region bounds.
+They do not qualify a real Chromium or provider run.
 
 [TaskReviewSend](../../src-server/services/orchestration/task-review-send.ts)
 implements the person's `POST /api/tasks/:taskId/review/send`. It refuses a

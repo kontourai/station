@@ -231,6 +231,43 @@ function createTempService(
 }
 
 describe('TaskGraphService', () => {
+  test('capture roots follow current on-disk Task bindings and refuse corrupt replacements', async () => {
+    const home = makeTempDir('station-capture-roots-');
+    const service = new TaskGraphService(home, {
+      resolveProjectWorkspace: async () => undefined,
+    });
+    const task = await service.createTask({
+      projectId: 'project-alpha',
+      title: 'Capture roots',
+    });
+    const path = join(home, 'task-graph.json');
+    const graph = JSON.parse(readFileSync(path, 'utf8'));
+    graph.tasks[0].workspaceBinding = {
+      availability: 'available',
+      workingDirectory: join(home, 'first'),
+      repoRoot: join(home, 'repo'),
+      worktreePath: join(home, 'tree'),
+    };
+    writeFileSync(path, JSON.stringify(graph));
+    expect(service.listWorkspaceRoots()).toEqual([
+      join(home, 'first'),
+      join(home, 'repo'),
+      join(home, 'tree'),
+    ]);
+    graph.tasks[0].workspaceBinding.workingDirectory = join(home, 'second');
+    writeFileSync(path, JSON.stringify(graph));
+    expect(service.listWorkspaceRoots()).toEqual([
+      join(home, 'second'),
+      join(home, 'repo'),
+      join(home, 'tree'),
+    ]);
+    expect(service.readTask(task.id)?.workspaceBinding?.workingDirectory).toBe(
+      join(home, 'second'),
+    );
+    writeFileSync(path, '{broken');
+    expect(() => service.listWorkspaceRoots()).toThrow();
+  });
+
   test('keeps an exact declared PR with TaskGraph-owned operation deduplication', async () => {
     const service = createTempService();
     const task = await service.createTask({

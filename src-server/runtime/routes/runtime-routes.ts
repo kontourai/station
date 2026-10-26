@@ -24,6 +24,7 @@ import { createEngineOAuthProxyRoutes } from '../../routes/mcp/engine-oauth-prox
 import { createAccountPreferencesRoutes } from '../../routes/me/account-preferences.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createHtmlReplyRoutes } from '../../routes/orchestration/html-replies.js';
+import { createTaskReviewCaptureRoutes } from '../../routes/orchestration/task-review-captures.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
 import { createProjectRoomRoutes } from '../../routes/projects/project-room-routes.js';
 import { createProjectSharedTaskRoutes } from '../../routes/projects/project-shared-tasks.js';
@@ -153,6 +154,8 @@ import {
 } from '../../services/projects/project-room-store.js';
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
+import { TaskBrowserCapture } from '../../services/projects/task-browser-capture.js';
+import { createTaskCaptureBlobStoreFactory } from '../../services/projects/task-capture-blob-store-factory.js';
 import { TaskRoomAttachments } from '../../services/projects/task-room-attachments.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
 import { TaskRoomConversationModule } from '../../services/projects/task-room-conversation-module.js';
@@ -6401,6 +6404,46 @@ export function configureRuntimeRoutes(
       settings: browserService.projectSettings,
       locatorEngine: loadLocatorEngineInstallExpression,
     });
+    const captureRuntime = projectTaskRoomRuntime;
+    const captureRegistry = browserService.registry;
+    const captureProjectIdFor = (identity: string) =>
+      localProjectIdFor(context.projectService, identity);
+    const captureStore = context.orchestrationEventStore?.taskReviewStore();
+    const taskCaptures =
+      captureRuntime && captureStore
+        ? new TaskBrowserCapture({
+            localProjectIdFor: captureProjectIdFor,
+            store: captureStore,
+            taskGraph: context.taskGraphService,
+            blobs: createTaskCaptureBlobStoreFactory({
+              logger: context.logger,
+              homeDir: () => context.configLoader.getProjectHomeDir(),
+              forbiddenProjectRoots: () => [
+                ...context.projectService.listProjects().flatMap((project) => {
+                  const dir = context.projectService.getProject(
+                    project.slug,
+                  )?.workingDirectory;
+                  return dir ? [resolve(expandTilde(dir))] : [];
+                }),
+                ...context.taskGraphService.listWorkspaceRoots(),
+              ],
+            }),
+          })
+        : undefined;
+    if (taskCaptures && captureRuntime)
+      context.app.route(
+        '/api/tasks',
+        createTaskReviewCaptureRoutes({
+          localProjectIdFor: captureProjectIdFor,
+          logger: context.logger,
+          runtime: captureRuntime,
+          captures: taskCaptures,
+          registry: captureRegistry,
+          authorizeProject: authorizeBrowserProject,
+          isStationInternalRequest,
+          isRequestPrincipalCurrent,
+        }),
+      );
     const browserAcquisition = browserService.acquisition;
     context.app.route(
       '/api/browser-agent',
@@ -6427,6 +6470,17 @@ export function configureRuntimeRoutes(
             : {}),
         }),
         automation: browserAutomation,
+        ...(taskCaptures && captureRuntime
+          ? {
+              taskCapture: {
+                logger: context.logger,
+                localProjectIdFor: captureProjectIdFor,
+                runtime: captureRuntime,
+                captures: taskCaptures,
+                registry: captureRegistry,
+              },
+            }
+          : {}),
         settings: browserService.projectSettings,
         browserReady: () => {
           const state = browserAcquisition.status().state;
