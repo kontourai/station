@@ -1897,7 +1897,9 @@ Resolves one inventory row under the server's request-derived authority before
 a caller treats it as a writable Session. The discriminated result is
 `resolved`, `missing-session`, or `unavailable`; only the `resolved` arm can
 carry a current Session identity and a server-derived
-`canContinue` decision. Transport, rejection, and invalid wire failures throw a
+`canContinue` decision. A current server also says on that arm whether the next
+ordinary turn starts a new Session (`nextTurnStartsSession`, #4179); the field is
+optional and absent on older servers. Transport, rejection, and invalid wire failures throw a
 typed `ConversationOpenResolutionFailure` rather than degrading to an empty
 chat. Optional `options.signal` cancels the request and `options.timeoutMs`
 sets its deadline, including JSON body consumption. Picker opens and active retries use the default request behavior without

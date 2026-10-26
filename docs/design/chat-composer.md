@@ -545,7 +545,12 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   the conversation runs on its engine and the Agent now uses another. Once the Session's
   engine binding has ended (`exited`, `closed`, `dead` or `error`), the caption says
   "Next turn on …" ("Next: …" when narrow), because the next turn starts a successor
-  there. The picker distinguishes duplicate model
+  there. A tab that has observed no status for the Session, such as a freshly opened
+  conversation, reads that from the open read's `nextTurnStartsSession` (#4179), the
+  server's continuation rule, while it still describes the chat's current Session.
+  Both surfaces resolve the execution Agent with `chatExecutionBinding`: an override
+  whose Agent is deleted or not loaded borrows nothing from the chat's own Agent, so
+  both name only the Session's engine. The picker distinguishes duplicate model
   names by Provider identity. Compact neutral controls use clear hover/focus states and
   preserve the 44px mobile touch floor.
 - Choosing or resetting a Model closes the picker, in a chat, in the start

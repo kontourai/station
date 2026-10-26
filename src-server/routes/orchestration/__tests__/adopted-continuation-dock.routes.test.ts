@@ -1071,6 +1071,105 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
     },
   );
 
+  test('#4179: the open read says whether the next turn starts a Session, as the send then does', async () => {
+    const f = await fixture({ engineAgent: true });
+    const child = await f.adopt(f.attached('claude', f.worktree));
+    const open = async () => {
+      const opened = await f.request(
+        `/api/conversations/${encodeURIComponent(child)}/open`,
+      );
+      expect(opened.status, opened.text).toBe(200);
+      return opened.body.data;
+    };
+    // A running Session takes the next turn itself.
+    expect(await open()).toMatchObject({
+      status: 'resolved',
+      currentSessionId: child,
+      nextTurnStartsSession: false,
+    });
+
+    f.engines.claude.exit(child);
+    await vi.waitFor(async () => {
+      const read = await f.request(
+        `/api/orchestration/sessions/${encodeURIComponent(child)}`,
+      );
+      expect(read.body.data.session.status).toBe('closed');
+    });
+    // Its engine binding ended: a fresh open learns the next turn starts one.
+    expect(await open()).toMatchObject({
+      status: 'resolved',
+      currentSessionId: child,
+      canContinue: true,
+      nextTurnStartsSession: true,
+    });
+
+    const followUp = await f.request(
+      '/api/orchestration/chat',
+      dockFollowUp('claude', child, 'station', 'pick it up'),
+    );
+    expect(followUp.status, followUp.text).toBe(200);
+    const successor = f.engines.claude.starts.at(-1)!.threadId;
+    expect(successor).not.toBe(child);
+    expect(followUp.body.data).toMatchObject({
+      sessionId: successor,
+      sessionStarted: true,
+    });
+    // The successor now takes the turn after.
+    expect(await open()).toMatchObject({
+      status: 'resolved',
+      currentSessionId: successor,
+      nextTurnStartsSession: false,
+    });
+  });
+
+  test('#4162: a same-key retry says it started a Session only when that send did', async () => {
+    const f = await fixture({ engineAgent: true });
+    const child = await f.adopt(f.attached('claude', f.worktree));
+    const send = (clientTurnId: string, message: string) =>
+      f.request('/api/orchestration/chat', {
+        ...dockFollowUp('claude', child, 'station', message),
+        clientTurnId,
+      });
+
+    // A turn the running Session took: neither the send nor its retry
+    // started anything.
+    const ran = await send('key-ran', 'keep going');
+    expect(ran.status, ran.text).toBe(200);
+    expect(ran.body.data.sessionId).toBe(child);
+    expect(ran.body.data).not.toHaveProperty('sessionStarted');
+    const ranRetry = await send('key-ran', 'keep going');
+    expect(ranRetry.status, ranRetry.text).toBe(200);
+    expect(ranRetry.body.data).toMatchObject({
+      sessionId: child,
+      providerTurnId: ran.body.data.providerTurnId,
+    });
+    expect(ranRetry.body.data).not.toHaveProperty('sessionStarted');
+
+    // A send that started a successor, then its retry, answered from that
+    // successor's turn without sending again.
+    f.engines.claude.exit(child);
+    await vi.waitFor(async () => {
+      const read = await f.request(
+        `/api/orchestration/sessions/${encodeURIComponent(child)}`,
+      );
+      expect(read.body.data.session.status).toBe('closed');
+    });
+    const started = await send('key-started', 'pick it up');
+    expect(started.status, started.text).toBe(200);
+    const successor = started.body.data.sessionId;
+    expect(successor).not.toBe(child);
+    expect(started.body.data.sessionStarted).toBe(true);
+    const turns = f.engines.claude.turns.length;
+    const startedRetry = await send('key-started', 'pick it up');
+    expect(startedRetry.status, startedRetry.text).toBe(200);
+    expect(f.engines.claude.turns).toHaveLength(turns);
+    expect(startedRetry.body.data).toMatchObject({
+      sessionId: successor,
+      providerTurnId: started.body.data.providerTurnId,
+      sessionStarted: true,
+    });
+  });
+
   /** Adopt a worktree child, then let its engine exit so the next follow-up starts a successor. */
   async function exitedWorktreeChild(f: Awaited<ReturnType<typeof fixture>>) {
     const child = await f.adopt(f.attached('claude', f.worktree));

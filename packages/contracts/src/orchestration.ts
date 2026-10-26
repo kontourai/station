@@ -1919,6 +1919,18 @@ export type ConversationOpenResolution =
       /** Continuation is temporarily blocked only by the current active turn. */
       continuationPending?: boolean;
       /**
+       * #4179: whether the next ordinary turn starts a new Session (on the
+       * Agent's then-current engine binding) rather than running in
+       * `currentSessionId`: that Session's lifecycle is terminal, its engine
+       * binding ended (`closed`/`dead`/`error`), or a continuation is
+       * reserved but not started. The same rule as the server's continuation
+       * decision, read with this resolution; a model change the Session
+       * cannot apply per turn also starts one, and is not counted here.
+       * Absent on older servers. It sits on the resolution rather than on
+       * `execution`, whose field set older clients validate strictly.
+       */
+      nextTurnStartsSession?: boolean;
+      /**
        * #2309: the conversation's activity read with this resolution — fresher
        * than any copy on the `conversation` row the caller supplied.
        */

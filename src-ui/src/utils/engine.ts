@@ -1,5 +1,6 @@
 import type { EngineId } from '@kontourai/station-contracts/agent-identity';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
+import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
 
 /**
  * What executes an agent (docs/glossary.md — "the one question"): a display
@@ -43,6 +44,31 @@ export interface ChatEngineIdentity {
    * or a possibly stale connection), so callers show something neutral.
    */
   sessionEngine?: string;
+  /**
+   * Whether the execution Agent's configuration names the engine: it
+   * resolved (`chatExecutionBinding`), and either nothing has started or the
+   * Session runs on its current connection. Otherwise only `sessionEngine`
+   * may name it.
+   */
+  configurationNamesEngine: boolean;
+}
+
+/**
+ * The Agent whose engine binding runs a chat: a conversation override's
+ * execution Agent (`executionAgentId`), else the chat's own Agent. `null`
+ * when that Agent is not in `agents` (deleted, or not loaded yet). An
+ * override never borrows the chat Agent's binding, which is not what runs.
+ * The composer chip and the dock header both resolve it here, so they
+ * compare the Session against the same Agent.
+ */
+export function chatExecutionBinding<Agent extends { slug: string }>(
+  chat: { agentSlug?: string; executionAgentId?: string },
+  agents: readonly Agent[],
+): Agent | null {
+  const slug = chat.executionAgentId ?? chat.agentSlug;
+  return (
+    (slug ? agents.find((agent) => agent.slug === slug) : undefined) ?? null
+  );
 }
 
 export function chatEngineIdentity(input: {
@@ -54,15 +80,20 @@ export function chatEngineIdentity(input: {
   sessionConnectionId?: string | null;
   /** `ChatSession.agentConnectionObservedFor`. */
   connectionObservedFor?: string;
-  /** The Agent's configured connection (`execution.agentConnectionId`). */
-  configuredConnectionId?: string | null;
+  /** The execution Agent (`chatExecutionBinding`); `null` when it did not resolve. */
+  binding: { execution?: { agentConnectionId?: string | null } } | null;
   acpConnections?: readonly { id: string; name: string }[];
 }): ChatEngineIdentity {
   const provider = input.orchestrationProvider;
-  if (!provider) return { relation: 'no-session' };
+  if (!provider)
+    return {
+      relation: 'no-session',
+      configurationNamesEngine: input.binding !== null,
+    };
   const sessionConnection = input.sessionConnectionId || undefined;
   const sameConnection =
-    sessionConnection === (input.configuredConnectionId || undefined);
+    sessionConnection ===
+    (input.binding?.execution?.agentConnectionId || undefined);
   const observed =
     input.currentSessionId !== undefined &&
     input.connectionObservedFor === input.currentSessionId;
@@ -86,7 +117,44 @@ export function chatEngineIdentity(input: {
             (connection) => connection.id === sessionConnection,
           )?.name
       : (engineDisplayLabel(provider) ?? undefined);
-  return { relation, ...(sessionEngine ? { sessionEngine } : {}) };
+  return {
+    relation,
+    ...(sessionEngine ? { sessionEngine } : {}),
+    configurationNamesEngine: input.binding !== null && relation === 'same',
+  };
+}
+
+/** Session statuses whose engine binding can take no further turn. */
+const ENDED_SESSION_STATUSES: ReadonlySet<string> = new Set([
+  'exited',
+  'closed',
+  'dead',
+  'error',
+]);
+
+/**
+ * Whether the chat's next turn starts a new Session, on the Agent's current
+ * engine, instead of running in the current one. A live status observed for
+ * the Session answers first: its engine binding ended
+ * (`exited`/`closed`/`dead`/`error`; `errored` can be a failed turn on a
+ * Session that continues). With none observed, as after a fresh open, the
+ * open read's `nextTurnStartsSession` answers (#4179), the server's own
+ * continuation rule, and only while it describes the chat's current Session.
+ */
+export function chatNextTurnStartsSession(chat: {
+  orchestrationStatus?: string;
+  currentSessionId?: string;
+  conversationId?: string;
+  conversationOpenState?: ConversationOpenResolution;
+}): boolean {
+  if (chat.orchestrationStatus !== undefined)
+    return ENDED_SESSION_STATUSES.has(chat.orchestrationStatus);
+  const open = chat.conversationOpenState;
+  return (
+    open?.status === 'resolved' &&
+    open.currentSessionId === (chat.currentSessionId ?? chat.conversationId) &&
+    open.nextTurnStartsSession === true
+  );
 }
 
 /**

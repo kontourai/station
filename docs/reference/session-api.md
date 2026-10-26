@@ -143,7 +143,11 @@ Agent, engine kind, provider, and honest model launch plan. When the send starte
 its Session (a new conversation, a successor, or a handoff target), the handle also
 carries `sessionStarted: true`, and the receipt's engine is that Session's. A turn
 sent to an already-running Session omits it: the receipt then describes the Agent's
-current binding, which can differ from the engine that Session runs on. A validated continuation
+current binding, which can differ from the engine that Session runs on. A replay
+answered from an earlier attempt's turn says the same as that attempt: a handoff
+replay carries it, and a same-key retry carries it when that Session's recorded
+start was for this key on the engine the receipt names (not after the Agent was
+repointed, and not for a Session started before Station recorded the key). A validated continuation
 without an owned-worktree binding reports its server-read bound directory rather
 than the Project's current default, including an accepted-key retry. Owned-worktree
 bindings retain the existing repository-root receipt form. Changing the default

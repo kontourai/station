@@ -121,6 +121,33 @@ function hasTurnFacts(detail: OrchestrationSessionDetail): boolean {
   return detail.events.some((event) => event.method.startsWith('turn.'));
 }
 
+/**
+ * #2540: whether a Session can take another turn itself. A turn's outcome
+ * does not end its session. After a finished (`idle`), failed or stopped
+ * (`canceled`) turn the follow-up runs in the same session (its engine is
+ * still resident, or dispatch restarts it in place from its resume cursor),
+ * so no second engine contends for the native thread. It cannot when it was
+ * explicitly closed (terminal `completed`), or its engine binding can no
+ * longer take a turn: `closed` or `dead` (dispatch cannot restart such a
+ * row), or `error` (engines that mark a failed turn that way, Claude and ACP,
+ * refuse further turns on it; Codex keeps its session `ready` through a
+ * failed turn, and continues in place). A model change is decided separately
+ * by `resolveConversationContinuation`.
+ */
+export function sessionTakesNextTurn(
+  session: OrchestrationSessionDetail['session'],
+): boolean {
+  const bindingEnded =
+    session.status === 'closed' ||
+    session.status === 'dead' ||
+    session.status === 'error';
+  return (
+    !isSessionLifecycleStateTerminal(
+      foldedSessionLifecycleState(session.lifecycleState),
+    ) && !bindingEnded
+  );
+}
+
 export function canResolveConversationContinuation(
   detail: OrchestrationSessionDetail,
 ): boolean {
@@ -301,41 +328,23 @@ export class ConversationLineage {
           : {}),
       };
     }
-    const lifecycle = foldedSessionLifecycleState(
-      detail.session.lifecycleState,
-    );
     if (!isConversationContinuationControlEligible(detail)) {
       throw new Error(
         'This conversation is not writable under its current control state.',
       );
     }
-    // #2540: a turn's outcome does not end its session. After a finished
-    // (`idle`), failed or stopped (`canceled`) turn the follow-up runs in the
-    // same session — its engine is still resident, or dispatch restarts it in
-    // place from its resume cursor — so no second engine contends for the
-    // native thread. A successor is reserved only when the session cannot
-    // take the turn: it was explicitly closed (terminal `completed`), or its
-    // engine binding can no longer take one — `closed` or `dead` (dispatch
-    // cannot restart such a row), or `error` (engines that mark a failed turn
-    // that way, Claude and ACP, refuse further turns on it; Codex keeps its
-    // session `ready` through a failed turn, and continues in place).
-    const bindingEnded =
-      detail.session.status === 'closed' ||
-      detail.session.status === 'dead' ||
-      detail.session.status === 'error';
-    // Likewise a model switch the live session cannot apply to a turn: the
-    // successor starts with the requested model, as every follow-up did
-    // before sessions stayed reusable.
+    // A successor is reserved only when the current Session cannot take the
+    // turn (`sessionTakesNextTurn`, which the conversation-open read also
+    // reports as `nextTurnStartsSession`), or for a model switch the live
+    // session cannot apply to a turn: the successor starts with the
+    // requested model, as every follow-up did before sessions stayed
+    // reusable.
     const requestedModel = requested.modelOverride?.trim();
     const needsModelRestart =
       !!requestedModel &&
       requestedModel !== detail.session.model?.trim() &&
       this.deps.perTurnModelOverride?.(requested.provider) === false;
-    if (
-      !isSessionLifecycleStateTerminal(lifecycle) &&
-      !bindingEnded &&
-      !needsModelRestart
-    ) {
+    if (sessionTakesNextTurn(detail.session) && !needsModelRestart) {
       observeConversationContinuation('current_open');
       return { sessionId: current.sessionId, startRequired: false };
     }
@@ -388,6 +397,40 @@ export class ConversationLineage {
     return lineage && lineage.conversationId !== sessionId
       ? lineage.conversationId
       : undefined;
+  }
+
+  /**
+   * #4179: whether `resolveConversationContinuation` would start a Session
+   * for the next ordinary turn (no model change), read without reserving
+   * one. `described` is the Session `readCurrentConversationSession`
+   * answered. Undefined when that turn would be refused (a handoff awaiting
+   * its target, a control state continuation does not admit), so nothing is
+   * claimed about it.
+   */
+  nextTurnStartsSession(
+    conversationId: string,
+    described: OrchestrationSessionDetail,
+  ): boolean | undefined {
+    const store = this.deps.eventStore;
+    const tail = store?.conversationSessions(conversationId).at(-1);
+    // No lineage: the continuation reuses the conversation's own Session.
+    if (!store || !tail) return false;
+    if (described.session.threadId !== tail.sessionId) {
+      // The tail is reserved and unstarted; the next turn starts it, unless
+      // it is a handoff's, which only its selected target may launch.
+      if (store.conversationHandoffForSession(tail.sessionId)) return undefined;
+      const boundary = store.conversationContextBoundaryForSuccessor(
+        tail.sessionId,
+      );
+      if (
+        boundary?.status === 'cancelled' ||
+        boundary?.status === 'indeterminate'
+      )
+        return undefined;
+      return true;
+    }
+    if (!isConversationContinuationControlEligible(described)) return undefined;
+    return !sessionTakesNextTurn(described.session);
   }
 
   /** Current replaceable Session for a durable conversation; legacy falls back to its id. */

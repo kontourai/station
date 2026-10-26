@@ -682,6 +682,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           };
         };
       };
+      expect(handoffReceipt.data).toMatchObject({ sessionStarted: true });
       expect(handoffReceipt.data.handoff).toMatchObject({
         predecessorSessionId: conversationId,
         currentSessionId: handoffReceipt.data.sessionId,
@@ -723,6 +724,9 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       const replayBody = (await replay.json()) as { data: unknown };
       expect(replayBody.data).toMatchObject({
         sessionId: handoffReceipt.data.sessionId,
+        // #4162: the handoff started its target Session, and so says the
+        // replay of it.
+        sessionStarted: true,
         handoff: {
           outcome: 'existing',
           target: {

@@ -58,6 +58,12 @@ vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ user: { alias: 'operator' } }),
 }));
 
+// The dock header's close-tab hint; the header renders beside the chip below.
+vi.mock('../hooks/useKeyboardShortcut', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useKeyboardShortcut')>()),
+  useShortcutDisplay: () => '⌘W',
+}));
+
 vi.mock('../hooks/useToolApproval', () => ({
   useToolApproval: () => vi.fn(),
 }));
@@ -117,9 +123,13 @@ vi.mock('../components/chat/QueuedMessages', () => ({
   QueuedMessages: () => null,
 }));
 
+import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
+import { ChatDockActiveIdentity } from '../components/chat-dock/ChatDockActiveIdentity';
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
+import { conversationOpenPatch } from '../components/chat-dock/conversationOpenController';
 import { PreviewProvider } from '../contexts/PreviewContext';
 import type { ChatSession } from '../types';
+import { chatExecutionBinding } from '../utils/engine';
 
 function buildChatInput() {
   return {
@@ -427,5 +437,103 @@ describe('ChatDockBody composer engine chip', () => {
     const { engine, hint } = await engineChip();
     expect(engine).toBe('Codex (work)');
     expect(hint).toBeNull();
+  });
+
+  /** A fresh tab's state for a conversation the open read resolved. */
+  function reopened(
+    open: Partial<Extract<ConversationOpenResolution, { status: 'resolved' }>>,
+  ): ChatSession {
+    const resolution = {
+      status: 'resolved',
+      conversation: {
+        id: 'conversation-engine-chip',
+        title: 'Continue',
+        agentSlug: agentId('station'),
+        answerability: { answerable: true },
+      },
+      currentSessionId: 'session-1',
+      execution: {
+        sessionId: 'session-1',
+        agentId: agentId('station'),
+        provider: 'codex',
+        engineConnectionId: engineConnectionId('codex'),
+      },
+      transcript: { available: true, owner: 'runtime', messageCount: 2 },
+      canContinue: true,
+      answerability: { answerable: true },
+      recoveryActions: [],
+      ...open,
+    } as ConversationOpenResolution;
+    // The real open patch: a fresh tab has no live status for the Session.
+    const patch = conversationOpenPatch(resolution);
+    expect(patch.orchestrationStatus).toBeUndefined();
+    return buildSession(patch as Partial<ChatSession>);
+  }
+
+  test('#4179: a fresh open of an ended Session says the next turn starts on the new engine', async () => {
+    renderDock(reopened({ nextTurnStartsSession: true }), {
+      id: 'opencode',
+      name: 'OpenCode',
+    });
+    const { engine, hint, shortHint } = await engineChip();
+    expect(engine).toBe('Codex');
+    expect(hint).toBe(' · Next turn on OpenCode');
+    expect(shortHint).toBe(' · Next: OpenCode');
+  });
+
+  test.each([
+    ['the Session takes the next turn', { nextTurnStartsSession: false }],
+    ['an older host says nothing', {}],
+  ] as const)(
+    '#4179: a fresh open where %s keeps the Agent copy',
+    async (_case, open) => {
+      renderDock(reopened(open), { id: 'opencode', name: 'OpenCode' });
+      const { engine, hint } = await engineChip();
+      expect(engine).toBe('Codex');
+      expect(hint).toBe(' · Agent now on OpenCode');
+    },
+  );
+
+  test("#4179: the open fact stops applying once the chat's Session moves on", async () => {
+    const session = reopened({ nextTurnStartsSession: true });
+    renderDock(
+      {
+        ...session,
+        // A later send started a successor; its own facts are not in yet.
+        currentSessionId: 'session-2',
+        agentConnectionObservedFor: 'session-2',
+      },
+      { id: 'opencode', name: 'OpenCode' },
+    );
+    const { hint } = await engineChip();
+    expect(hint).not.toMatch(/Next turn/);
+  });
+
+  test('an override whose execution Agent is missing: the chip and the header name one engine', async () => {
+    // The override's Agent was deleted (or has not loaded); the chat's own
+    // Agent sits on the connection the Session runs on, under its own name.
+    const session = buildSession(
+      observed('codex', 'codex-work', {
+        executionAgentId: agentId('codex-work-default'),
+      }),
+    );
+    renderDock(session, { id: 'codex-work', name: 'Codex (work)' });
+    const { engine } = await engineChip();
+    render(
+      <ChatDockActiveIdentity
+        session={session}
+        agent={agentsMock.current[0]}
+        executionAgent={chatExecutionBinding(session, agentsMock.current)}
+        acpConnections={acpConnectionsMock.current}
+        onClose={vi.fn()}
+      />,
+    );
+    const header = document.querySelector(
+      '.chat-dock__active-identity-engine',
+    )?.textContent;
+    // Neither borrows the chat Agent's binding for the override: both name
+    // the Session's own engine.
+    expect(engine).toBe('Codex');
+    expect(header).toBe(engine);
   });
 });
