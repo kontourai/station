@@ -1105,6 +1105,18 @@ export function useSendMessage(
           // live controls/events to the server-receipted child identity.
           currentSessionId: receipt.sessionId,
           executionAgentId: receipt.resolution.executionAgentId,
+          // #4162: only a send that started its Session says which engine
+          // connection that Session runs on; a turn sent to a running Session
+          // leaves the observation where its own start put it.
+          ...(receipt.sessionStarted
+            ? {
+                agentConnectionId:
+                  receipt.resolution.engine.kind === 'connection'
+                    ? receipt.resolution.engine.connectionId
+                    : undefined,
+                agentConnectionObservedFor: receipt.sessionId,
+              }
+            : {}),
           // #2436: the carried pick is settled only by what the server
           // reports became of it, never by the send's success alone. A
           // Station that reports nothing (an older one, or another Station

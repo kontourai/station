@@ -139,7 +139,11 @@ read as the calling Session's owner within the caller's Project.
 The response is a foreground handle containing `conversationId`, `sessionId`,
 `providerTurnId`, the
 resolved Agent target, and an `ExecutionResolutionReceipt` describing the Environment,
-Agent, engine kind, provider, and honest model launch plan. A validated continuation
+Agent, engine kind, provider, and honest model launch plan. When the send started
+its Session (a new conversation, a successor, or a handoff target), the handle also
+carries `sessionStarted: true`, and the receipt's engine is that Session's. A turn
+sent to an already-running Session omits it: the receipt then describes the Agent's
+current binding, which can differ from the engine that Session runs on. A validated continuation
 without an owned-worktree binding reports its server-read bound directory rather
 than the Project's current default, including an accepted-key retry. Owned-worktree
 bindings retain the existing repository-root receipt form. Changing the default

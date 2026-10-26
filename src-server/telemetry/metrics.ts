@@ -2584,3 +2584,11 @@ export function registerObservableGauges(callbacks: {
     })
     .addCallback((obs) => obs.observe(callbacks.mcpConnections()));
 }
+
+export const outsideAgentMcpOutcomes = meter.createCounter(
+  'station.outside_agent.mcp.outcomes',
+  {
+    description:
+      'Outside-agent MCP admission outcomes; no credentials or arguments',
+  },
+);
