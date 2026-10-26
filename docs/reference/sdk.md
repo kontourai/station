@@ -133,9 +133,11 @@ once its minimum wait has elapsed. Those signals are coalesced per wait and
 spread reconnects by 100–999 ms, within the existing retry deadline. Explicit
 `retry()` and cancellation remain immediate; cursor and authorization handling
 are unchanged.
-Streams reconnect after
-75 seconds without body bytes by default; Station writes keepalives every
-30 seconds (Task rooms use 15 seconds). `stallTimeoutMs` overrides the deadline;
+Streams reconnect after 75 seconds without body bytes by default. Station's
+common event streams use a 30-second keepalive; Task rooms and direct-chat streams
+use 15 seconds, and Shared Project rooms use a 20-second heartbeat. Other stream
+contracts may differ. These are configured cadences, not delivery guarantees.
+`stallTimeoutMs` overrides the deadline;
 `null` explicitly disables it for a server without heartbeats. Any bytes count,
 including comments. Hidden pages defer the check until visible, focus or online
 signals; this is transport recovery, not physical-device qualification.
@@ -1104,8 +1106,10 @@ result is `{ ok: true, registryId }` or `{ ok: false, reason, message }`, with
   (⌘/), and the text-editing chords ⌘C, ⌘V, ⌘X, ⌘Z, ⇧⌘Z and ⌘A (Ctrl off a
   Mac), and Ctrl+Y. Station never lets a plugin shortcut fire on them.
 
-Plugin shortcuts rank below Station's own: a Station shortcut on the same
-chord wins whichever registered first. See
+Plugin shortcuts use priority -1, below Station shortcuts at the normal
+priority 0, regardless of registration order. Deliberately yielding route
+fallbacks, such as Escape-up at priority -100, run after plugins. Reserved
+kernel and editing chords remain unavailable to plugins. See
 [plugin shortcuts](../guides/keyboard-shortcuts.md#plugin-shortcuts).
 
 A `when` string is a host context key (`'composerFocused'`,
@@ -1733,8 +1737,9 @@ repository without branches.
 Discovers the git repositories under a folder through `/api/coding/repos` and
 returns `ReposResult`: `{ workspace, workspaceIsRepo, repos }`, where each
 `DiscoveredRepo` carries its symlink-resolved `root`, `name`, `relativePath`
-and current `branch` (`''` for a detached HEAD or a repository the Project does
-not own). Discovery is bounded: the walk stops at 24 repositories and skips
+and the current `branch` reported by Git (which can be `HEAD` when detached),
+or an empty string when the branch read fails or the repository is not owned by
+the Project. Discovery is bounded: the walk stops at 24 repositories and skips
 heavy directories, so an over-broad folder is sampled rather than exhaustively
 enumerated, and identical concurrent asks share one scan. `location` is a
 `ReposLocation`, `{ projectSlug?, workingDir }`: the
