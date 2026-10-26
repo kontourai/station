@@ -402,6 +402,8 @@ under that home hold. The outer check re-reads its retained bytes before returni
 changed or corrupt bytes refuse. Nested checks use the same snapshot, while a later
 check loads current state again. Registry mutations still validate their preimage
 before publication, and successful mutations update the held snapshot.
+Snapshot lifetime is separate from registry-operation nesting, preserving the
+existing cadence-based credential-activity touch and its failure behavior.
 
 **Borrowing and recovery.** Only an explicit live lease can start a borrowed
 span. Thenables refuse; the span invalidates before return, so a late async

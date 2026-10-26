@@ -2276,3 +2276,11 @@ finalizer like the production execution owner. Literal route classification
 avoids splitting paths that cannot match a parameterized route. No deadline,
 durability flush or authority predicate was removed; composed execution and the
 five timed-out cases still require qualification on this revision.
+
+Independent source review found the first snapshot implementation suppressed
+the existing credential-activity timestamp touch. The persistence-fault owner
+test reproduced that omission. Snapshot lifetime is now separate from registry
+operation nesting, preserving the cadence and failure/retry behavior; the four
+owner suites pass48 cases after repair. The final byte comparison was
+disabled in a local mutation: the callback-tamper assertion failed alone, then
+all15 credential-owner cases passed after exact restoration.

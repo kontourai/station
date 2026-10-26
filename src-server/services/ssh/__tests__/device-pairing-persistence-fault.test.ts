@@ -440,12 +440,18 @@ describe('device pairing persistence faults (portable seam, station#3277/#3324)'
     const restarted = await DevicePairingService.create({
       homeDir,
       environmentId: ENVIRONMENT_ID,
+      now: () => clock,
     });
     // Read the persisted value before verifying: verifyCredential performs
     // the same touch, which would succeed now and overwrite what we came to
     // measure.
     expect(restarted.listDevices()[0]?.lastUsedAt).toBe(lastUsedBeforeFault);
-    expect(restarted.verifyCredential(paired.credential)).toBe(true);
+    expect(
+      restarted.withCurrentRegistry(() =>
+        restarted.verifyCredential(paired.credential),
+      ),
+    ).toBe(true);
+    expect(restarted.listDevices()[0]?.lastUsedAt).toBe(clock);
   });
 
   test("a stale bookkeeping writer cannot overwrite another owner's committed revocation", async () => {

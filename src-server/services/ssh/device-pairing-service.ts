@@ -1189,6 +1189,7 @@ export class DevicePairingService {
   readonly #registryPath: string;
   readonly #writer: HomeWriterOwner;
   #registrySpanDepth = 0;
+  #registrySnapshotActive = false;
   #registryOutcomeUnconfirmed = false;
   #environmentId: string;
   readonly #now: () => number;
@@ -3569,12 +3570,13 @@ export class DevicePairingService {
   readCurrentUnboundLocalGrantScope(candidate: string): string | undefined {
     return this.#writer.runSynchronous(() => {
       try {
-        const registry = this.#registrySpanDepth
-          ? this.#registry
-          : validateRegistry(
-              this.#readRegistrySnapshot().value,
-              this.#environmentId,
-            );
+        const registry =
+          this.#registrySnapshotActive || this.#registrySpanDepth
+            ? this.#registry
+            : validateRegistry(
+                this.#readRegistrySnapshot().value,
+                this.#environmentId,
+              );
         const match = this.#findActiveCredential(registry, candidate);
         return match &&
           !match.alias &&
@@ -3963,16 +3965,31 @@ export class DevicePairingService {
   }
 
   withCurrentRegistry<T>(check: () => T): T {
-    if (this.#registrySpanDepth) return this.#withRegistrySpan(check);
-    return this.#withRegistrySpan(() => {
-      const result = check();
-      if (
-        this.#registryPreimage !== null &&
-        this.#readRegistrySnapshot().sha256 !== this.#registryPreimage
-      )
-        throw new Error('Paired-device registry revision changed');
-      return result;
+    return this.#writer.runSynchronous(() => {
+      if (this.#registrySnapshotActive || this.#registrySpanDepth)
+        return check();
+      this.#refreshRegistry();
+      this.#registrySnapshotActive = true;
+      try {
+        const result = check();
+        if (
+          this.#registryPreimage !== null &&
+          this.#readRegistrySnapshot().sha256 !== this.#registryPreimage
+        )
+          throw new Error('Paired-device registry revision changed');
+        return result;
+      } finally {
+        this.#registrySnapshotActive = false;
+      }
     });
+  }
+
+  #refreshRegistry(): void {
+    if (this.#registryOutcomeUnconfirmed)
+      throw new HomeWriterUnavailableError('cleanup-required', true);
+    if (this.#registryPreimage !== null && !existsSync(this.#registryPath))
+      throw new Error('Paired-device registry revision changed');
+    this.#registry = this.#loadRegistry();
   }
 
   #withRegistrySpan<T>(operation: () => T): T {
@@ -3980,9 +3997,7 @@ export class DevicePairingService {
       if (this.#registryOutcomeUnconfirmed)
         throw new HomeWriterUnavailableError('cleanup-required', true);
       if (this.#registrySpanDepth) return operation();
-      if (this.#registryPreimage !== null && !existsSync(this.#registryPath))
-        throw new Error('Paired-device registry revision changed');
-      this.#registry = this.#loadRegistry();
+      if (!this.#registrySnapshotActive) this.#refreshRegistry();
       this.#registrySpanDepth++;
       try {
         return operation();
