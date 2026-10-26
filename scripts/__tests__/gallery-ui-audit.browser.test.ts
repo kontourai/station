@@ -250,6 +250,34 @@ describe('hit-target and overflow identities', { timeout: 60_000 }, () => {
       '<div style="position:fixed;left:0;top:0"><button class="toolbar-action" aria-label="Toolbar" style="width:300px;height:60px">T</button></div><div role="dialog" aria-modal="true" style="position:fixed;left:0;top:0;width:300px;height:60px"><button class="sheet-action" aria-label="New chat" style="width:300px;height:60px">New chat</button></div>',
       'hit-target:overlap:button.toolbar-action[Toolbar] / button.sheet-action[New chat]',
     ],
+    'B2: the last control at max page scroll under a 60px bottom bar': [
+      '<div style="height:2000px"></div><button class="last-row" aria-label="Last row" style="display:block;width:390px;height:44px">Last</button><div style="position:fixed;left:0;right:0;bottom:0;height:60px;z-index:2"><button class="bar-save" aria-label="Bar save" style="width:390px;height:60px">Bar</button></div><script>scrollTo(0, 99999)</script>',
+      'hit-target:overlap:button.last-row[Last row] / button.bar-save[Bar save]',
+    ],
+    'B2b: the same at max pane scroll': [
+      '<div id="p" style="height:844px;overflow:auto"><div style="height:2000px"></div><button class="last-row" aria-label="Last row" style="display:block;width:390px;height:44px">Last</button></div><div style="position:fixed;left:0;right:0;bottom:0;height:60px;z-index:2"><button class="bar-save" aria-label="Bar save" style="width:390px;height:60px">Bar</button></div><script>document.getElementById("p").scrollTop=99999</script>',
+      'hit-target:overlap:button.last-row[Last row] / button.bar-save[Bar save]',
+    ],
+    'B3: a column-reverse scroller at its natural bottom under a 60px bar': [
+      '<div style="height:844px;overflow:auto;display:flex;flex-direction:column-reverse"><button class="last-row" aria-label="Last row" style="flex:none;display:block;width:390px;height:44px">Last</button><div style="flex:none;height:2000px"></div></div><div style="position:fixed;left:0;right:0;bottom:0;height:60px;z-index:2"><button class="bar-save" aria-label="Bar save" style="width:390px;height:60px">Bar</button></div>',
+      'hit-target:overlap:button.last-row[Last row] / button.bar-save[Bar save]',
+    ],
+    'B3b: a column-reverse scroller under a 30px bar': [
+      '<div style="height:844px;overflow:auto;display:flex;flex-direction:column-reverse"><button class="last-row" aria-label="Last row" style="flex:none;display:block;width:390px;height:44px">Last</button><div style="flex:none;height:2000px"></div></div><div style="position:fixed;left:0;right:0;bottom:0;height:30px;z-index:2"><button class="bar-save" aria-label="Bar save" style="width:390px;height:30px">Bar</button></div>',
+      'hit-target:overlap:button.last-row[Last row] / button.bar-save[Bar save]',
+    ],
+    'B4: a fixed control inside a scroller, under another fixed control': [
+      '<div style="height:844px;overflow:auto"><div style="height:2000px"></div><div style="position:fixed;left:0;top:0"><button class="fx-a" aria-label="Fx A" style="width:60px;height:60px">A</button></div></div><div style="position:fixed;top:20px;left:20px"><button class="fx-b" aria-label="Fx B" style="width:60px;height:60px">B</button></div>',
+      'hit-target:overlap:button.fx-a[Fx A] / button.fx-b[Fx B]',
+    ],
+    'B5: two sticky controls overlapping in one scroller': [
+      '<div style="height:600px;overflow:auto"><div style="position:sticky;top:0;height:0;z-index:2"><button class="st-a" aria-label="St A" style="width:60px;height:60px">A</button></div><div style="position:sticky;top:20px;height:0;margin-left:20px;z-index:3"><button class="st-b" aria-label="St B" style="width:60px;height:60px">B</button></div><div style="height:2000px"></div></div>',
+      'hit-target:overlap:button.st-a[St A] / button.st-b[St B]',
+    ],
+    "B6: a layer covering the scroller's whole visible area": [
+      '<div style="height:744px"></div><div style="height:100px;overflow:auto"><button class="pane-row" aria-label="Pane row" style="display:block;width:390px;height:44px">R</button><div style="height:400px"></div></div><div style="position:fixed;left:0;right:0;bottom:0;height:100px;z-index:2"><button class="bar-save" aria-label="Bar save" style="width:390px;height:100px">Bar</button></div>',
+      'hit-target:overlap:button.pane-row[Pane row] / button.bar-save[Bar save]',
+    ],
     'two overlapping content controls': [
       '<button class="first-action" aria-label="First" style="display:block;width:60px;height:60px">1</button><button class="second-action" aria-label="Second" style="display:block;width:60px;height:60px;margin-top:-20px;margin-left:20px;position:relative">2</button><div style="height:2000px"></div>',
       'hit-target:overlap:button.first-action[First] / button.second-action[Second]',

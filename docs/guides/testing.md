@@ -1328,7 +1328,9 @@ photographed, recorded per screen as `uiAudit` in `gallery/capture.json`
   control cannot scroll clear of the layer and is not behind a covering
   sheet: `aria-modal`, an open `<dialog>`, or the expanded chat dock;
   controls the UA does not render, inside a closed `<details>`, are
-  skipped), and, at the touch layout (600px wide or less), targets under 44px. Desktop is exempt from
+  skipped; accepted limitation: the sheet test trusts markup, so a bar that
+  carries `aria-modal="true"` or the `chat-dock` class is treated as a
+  sheet), and, at the touch layout (600px wide or less), targets under 44px. Desktop is exempt from
   the 44px rule: about 1,370 of 1,672 desktop controls measured under 44px
   when it was introduced, so it would measure the desktop design, not defects;
 - horizontal overflow: the document scrolling sideways, and elements that
