@@ -1,0 +1,7 @@
+{
+  "revision": "61a7da92d5ad2c707c6a2d9b4fa1981b9617afd0",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the independent-review correction: failure artifacts now use a unique mkdtemp group invocation directory and receipt invocationId, so later partial writes cannot overwrite an older receipt/log set. Real two-child controls prove distinct IDs/directories and unchanged earlier logs; actual CLI default RUNNER_TEMP wiring passed. Windows controls now use the supported serialized corpus path, while POSIX controls retain the real async owned-child path and SIGTERM witness. No output cap, classification verdict, deadline, workflow trigger or promotion authority changed. The guide names the new invocation boundary; earlier e41 evidence remains attributed to its original bytes, not successor qualification.","inputs":["docs/guides/testing.md","scripts/__tests__/run-vitest-corpus.test.ts","scripts/run-vitest-corpus.mjs"]}
+  ]
+}
