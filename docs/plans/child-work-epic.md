@@ -2225,9 +2225,9 @@ These controls remain local evidence, not provider/device or full recovery proof
 
 ### Published recovery contract and coherent authority validation
 
-Station selects published Flow Agents9.8.0, Flow5.3.0 and Dispatch0.8.0 together.
+Station selects published Flow Agents 9.8.0, Flow 5.3.0 and Dispatch 0.8.0 together.
 Registry tarballs and every installed package file were compared byte-for-byte;
-all201 included Flow Agents source files match release commit
+all 201 included Flow Agents source files match release commit
 `e2baf1e292d7d35fdc9ca68591ddb549ba02d82a`. Station and Flow Agents resolve the
 same Flow and Dispatch module instances, and the public recovery export loads.
 These checks do not establish that Station's recovery host or endpoint is wired.
@@ -2242,8 +2242,19 @@ await or stream boundary, and each later check reacquires current authority.
 
 Owner-boundary regressions measured ten or twelve lock publications before
 repair and one afterward, then refused independent revocation on the next call.
-The focused authority suites pass29 cases and server-test types pass. Earlier
+The focused authority suites pass 29 cases and server-test types pass. Earlier
 partial batching restored independent and mixed execution but not Flow. Final
 composed execution remains required; deadlines and provider qualification windows
 were not enlarged. Signed retained terminal/intent evidence, dual-ledger recovery
 serving and live provider/device acceptance remain open.
+
+Execution finalizers and SDK inspection now share their complete synchronous
+checks as well. An observed SDK credential read uses a required request-bound
+observation scope supplied by the existing local-grant owner, forwarded by the
+runtime owner; both original credential revalidations and secret selection still
+run inside it. Its regression measured six publications before repair and one
+afterward, followed by refusal of a later revocation. The four credential/authority
+suites pass54 cases and server-test types pass. Filesystem durability fault probes
+now identify the observation record or directory by descriptor identity, so a
+home-lock flush cannot masquerade as the observation durability check. Composed
+execution qualification is still pending.

@@ -27,6 +27,7 @@ import { captureEnvironmentLocalGrantObservationOwner } from '../local-grant-obs
 import {
   ProviderCredentialObservationError,
   ProviderCredentialObservationStore,
+  readObservedSdkProviderCredential,
 } from '../provider-credential-observation.js';
 
 const makeTempDir = trackTempDirs();
@@ -471,6 +472,42 @@ test('one current-grant validation shares one home hold and observes a later rev
     });
     other.revokeDevice(h.paired.device.id, 'operator-credential');
     denied(lease.assertCurrent);
+  } finally {
+    observe.mockRestore();
+    syncBuiltinESMExports();
+  }
+});
+
+test('an observed SDK credential read shares one current home hold without caching later authority', async () => {
+  const h = await setup();
+  const owner = await captureEnvironmentLocalGrantObservationOwner(
+    h.request,
+    h.environment,
+    h.environment,
+  );
+  const credential = h.store(owner).captureSdkCredential(h.request, 'selected');
+  const link = fs.linkSync;
+  let holds = 0;
+  const observe = vi.spyOn(fs, 'linkSync').mockImplementation((from, to) => {
+    if (String(to) === join(h.home, 'security', '.home-writer.mutation'))
+      holds++;
+    return link(from, to);
+  });
+  syncBuiltinESMExports();
+  try {
+    assert.equal(
+      readObservedSdkProviderCredential(credential, 'anthropic', h.request)
+        .connectionId,
+      'selected',
+    );
+    assert.equal(holds, 1);
+    h.environment.devicePairing.revokeDevice(
+      h.paired.device.id,
+      'operator-credential',
+    );
+    denied(() =>
+      readObservedSdkProviderCredential(credential, 'anthropic', h.request),
+    );
   } finally {
     observe.mockRestore();
     syncBuiltinESMExports();

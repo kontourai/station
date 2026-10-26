@@ -726,19 +726,25 @@ export class StationReportGroupPreparation {
     request: Request,
     envelope: DelegationEnvelopeV2,
   ): boolean {
-    const state = this.#state(handle, request);
-    if (
-      !state.envelopes.some((e) => canonicalJson(e) === canonicalJson(envelope))
-    )
-      return false;
-    const member = state.members.find(
-      (m) => m.seatId === envelope.selected_grant_id,
-    );
-    if (!member) return false;
-    const captured = inspectSdkSourceWire(member.owner, member.sdkHandle);
-    return (
-      canonicalJson(captured.sourceBinding.source) ===
-      canonicalJson(envelope.execution_binding.source)
+    return this.owners.runtime.environmentSecurityService.withCurrentAuthority(
+      () => {
+        const state = this.#state(handle, request);
+        if (
+          !state.envelopes.some(
+            (e) => canonicalJson(e) === canonicalJson(envelope),
+          )
+        )
+          return false;
+        const member = state.members.find(
+          (m) => m.seatId === envelope.selected_grant_id,
+        );
+        if (!member) return false;
+        const captured = inspectSdkSourceWire(member.owner, member.sdkHandle);
+        return (
+          canonicalJson(captured.sourceBinding.source) ===
+          canonicalJson(envelope.execution_binding.source)
+        );
+      },
     );
   }
 
@@ -812,12 +818,16 @@ export class StationReportGroupPreparation {
     request: Request,
     seatId: string,
   ): { owner: object; sdkHandle: object } {
-    const member = this.#state(handle, request).members.find(
-      (m) => m.seatId === seatId,
+    return this.owners.runtime.environmentSecurityService.withCurrentAuthority(
+      () => {
+        const member = this.#state(handle, request).members.find(
+          (m) => m.seatId === seatId,
+        );
+        if (!member) refuse();
+        inspectSdkSourceWire(member.owner, member.sdkHandle);
+        return { owner: member.owner, sdkHandle: member.sdkHandle };
+      },
     );
-    if (!member) refuse();
-    inspectSdkSourceWire(member.owner, member.sdkHandle);
-    return { owner: member.owner, sdkHandle: member.sdkHandle };
   }
   /** A task start is a control-plane effect; the paid request still requires
    * the independently persisted rounds reservation at the final wire fence. */

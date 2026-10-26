@@ -417,6 +417,9 @@ than independently publishing locks for each member. Source and Flow admission
 assertions use the same synchronous scope for their request, signature and source
 witness checks. Preparation, custody and response callbacks similarly batch each
 complete synchronous currentness check; async reads still revalidate after awaiting.
+Observed SDK credential reads use the request-bound owner's synchronous scope for
+both existing revalidations and secret selection. Execution finalizers and SDK
+inspection borrow that same domain without retaining a lease in returned data.
 
 **Evidence and limits.** [Owner and composed pairing tests](../../src-server/services/ssh/__tests__/home-writer-owner.test.ts)
 exercise actual locks, alias/directory custody, short-span borrowing, contention

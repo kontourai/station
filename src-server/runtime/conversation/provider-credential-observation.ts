@@ -38,6 +38,8 @@ export class ProviderCredentialObservationError extends Error {
  * This module issues no grant and has no default/boolean approval callback.
  */
 export interface CurrentLocalGrantObservationOwner {
+  /** Resource custody for a complete synchronous read; never an authorization substitute. */
+  withObservationScope<T>(request: Request, check: () => T): T;
   requireCurrentLocalGrant(request: Request): Readonly<{
     principalCredential: string;
     hostContextId: string;
@@ -697,46 +699,47 @@ export class ProviderCredentialObservationStore {
     lifetimeMs = 15 * 60 * 1000,
   ): ObservedSdkProviderCredential {
     const observation = this.capture(request, connectionId, lifetimeMs);
-    const read = (): SdkCredentialValue => {
-      if (request.signal.aborted) fail('authorization_unavailable');
-      this.revalidate(request, observation.observationId);
-      const record = this.#record(observation.observationId);
-      const selected = this.#sources.adapter
-        .listProviderConnections()
-        .find((row) => row.id === record.connectionId);
-      if (
-        !selected ||
-        (selected.type !== 'anthropic' && selected.type !== 'google') ||
-        sha(canonical(selected)) !== record.source.selectedConnectionSha256
-      )
-        fail('observation_obsolete');
-      const baseUrl =
-        selected.type === 'anthropic'
-          ? 'https://api.anthropic.com/v1'
-          : 'https://generativelanguage.googleapis.com/v1beta';
-      if (
-        selected.config.baseUrl !== undefined &&
-        selected.config.baseUrl !== baseUrl
-      )
-        fail('unsupported_source');
-      if (selected.config.baseURL !== undefined) fail('unsupported_source');
-      const apiKey = string(selected.config.apiKey, 16384);
-      if (sha(apiKey) !== record.source.staticKeySha256)
-        fail('observation_obsolete');
-      const result: SdkCredentialValue = {
-        provider: selected.type,
-        connectionId: record.connectionId,
-        connectionRevision: record.source.selectedConnectionSha256,
-        credentialRevision: record.source.staticKeySha256,
-        hostContextId: record.hostContextId,
-        apiKey,
-      };
-      Object.defineProperty(result, 'apiKey', { enumerable: false });
-      Object.freeze(result);
-      this.revalidate(request, observation.observationId);
-      if (request.signal.aborted) fail('authorization_unavailable');
-      return result;
-    };
+    const read = (): SdkCredentialValue =>
+      this.#sources.authority.withObservationScope(request, () => {
+        if (request.signal.aborted) fail('authorization_unavailable');
+        this.revalidate(request, observation.observationId);
+        const record = this.#record(observation.observationId);
+        const selected = this.#sources.adapter
+          .listProviderConnections()
+          .find((row) => row.id === record.connectionId);
+        if (
+          !selected ||
+          (selected.type !== 'anthropic' && selected.type !== 'google') ||
+          sha(canonical(selected)) !== record.source.selectedConnectionSha256
+        )
+          fail('observation_obsolete');
+        const baseUrl =
+          selected.type === 'anthropic'
+            ? 'https://api.anthropic.com/v1'
+            : 'https://generativelanguage.googleapis.com/v1beta';
+        if (
+          selected.config.baseUrl !== undefined &&
+          selected.config.baseUrl !== baseUrl
+        )
+          fail('unsupported_source');
+        if (selected.config.baseURL !== undefined) fail('unsupported_source');
+        const apiKey = string(selected.config.apiKey, 16384);
+        if (sha(apiKey) !== record.source.staticKeySha256)
+          fail('observation_obsolete');
+        const result: SdkCredentialValue = {
+          provider: selected.type,
+          connectionId: record.connectionId,
+          connectionRevision: record.source.selectedConnectionSha256,
+          credentialRevision: record.source.staticKeySha256,
+          hostContextId: record.hostContextId,
+          apiKey,
+        };
+        Object.defineProperty(result, 'apiKey', { enumerable: false });
+        Object.freeze(result);
+        this.revalidate(request, observation.observationId);
+        if (request.signal.aborted) fail('authorization_unavailable');
+        return result;
+      });
     read();
     const credential: ObservedSdkProviderCredential = Object.freeze({
       [sdkCredentialBrand]: true,

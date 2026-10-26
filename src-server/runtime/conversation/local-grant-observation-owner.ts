@@ -142,6 +142,10 @@ async function captureExistingLocalGrant(
     };
     assertCurrent();
     return Object.freeze({
+      withObservationScope<T>(request: Request, check: () => T): T {
+        if (request !== boundRequest) refuse();
+        return environment.withCurrentAuthority(check);
+      },
       requireCurrentLocalGrant(request: Request) {
         if (request !== boundRequest) refuse();
         assertCurrent();

@@ -112,6 +112,11 @@ async function setup() {
     directory: join(home, 'security', 'provider-credential-observations-v1'),
   };
 }
+function descriptorIs(fd: number, path: string): boolean {
+  const held = fs.fstatSync(fd);
+  const target = fs.statSync(path);
+  return held.dev === target.dev && held.ino === target.ino;
+}
 function refuses(operation: () => unknown, code?: ObservationFailure) {
   assert.throws(
     operation,
@@ -226,8 +231,10 @@ test('directory fsync failure after publication never returns a confirmed observ
     const confirmed = h.store.capture(h.request, 'selected'); // Private directories already exist.
     let count = 0;
     fs.fsyncSync = (fd: number) => {
-      count++;
-      if (count === 3) throw new Error('synthetic-directory-sync-failure');
+      if (descriptorIs(fd, h.directory)) {
+        count++;
+        throw new Error('synthetic-directory-sync-failure');
+      }
       original(fd);
     };
     syncBuiltinESMExports();
@@ -235,7 +242,7 @@ test('directory fsync failure after publication never returns a confirmed observ
       () => h.store.capture(h.request, 'selected'),
       'durability_unconfirmed',
     );
-    assert.equal(count, 3);
+    assert.equal(count, 1);
     fs.fsyncSync = original;
     syncBuiltinESMExports();
     const orphan = readdirSync(h.directory).find(
@@ -243,8 +250,10 @@ test('directory fsync failure after publication never returns a confirmed observ
         name.endsWith('.json') && name !== `${confirmed.observationId}.json`,
     )!;
     assert.ok(orphan);
-    fs.fsyncSync = () => {
-      throw new Error('synthetic-replay-sync-failure');
+    fs.fsyncSync = (fd: number) => {
+      if (descriptorIs(fd, join(h.directory, orphan)))
+        throw new Error('synthetic-replay-sync-failure');
+      original(fd);
     };
     syncBuiltinESMExports();
     refuses(
@@ -279,9 +288,18 @@ test.each(['file', 'directory'] as const)(
     const original = fs.fsyncSync;
     let attempts = 0;
     try {
-      fs.fsyncSync = () => {
-        attempts++;
-        throw Error('controlled new durability failure');
+      fs.fsyncSync = (fd: number) => {
+        if (
+          descriptorIs(fd, h.directory) ||
+          descriptorIs(
+            fd,
+            join(h.directory, `${observation.observationId}.json`),
+          )
+        ) {
+          attempts++;
+          throw Error('controlled new durability failure');
+        }
+        original(fd);
       };
       syncBuiltinESMExports();
       assert.equal(
@@ -306,9 +324,12 @@ test.each(['file', 'directory'] as const)(
       fs.fsyncSync = original;
       syncBuiltinESMExports();
       reader.revalidate(h.request, observation.observationId);
-      fs.fsyncSync = () => {
-        attempts++;
-        throw Error('controlled reopened durability failure');
+      fs.fsyncSync = (fd: number) => {
+        if (descriptorIs(fd, h.directory) || descriptorIs(fd, path)) {
+          attempts++;
+          throw Error('controlled reopened durability failure');
+        }
+        original(fd);
       };
       syncBuiltinESMExports();
       reader.revalidate(h.request, observation.observationId);

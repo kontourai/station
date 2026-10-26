@@ -122,6 +122,11 @@ export class RuntimeFencedCredentialObservationOwner {
       {
         adapter: owners.storageAdapter,
         authority: {
+          withObservationScope: <T>(request: Request, check: () => T): T => {
+            const authority = this.#authorities.get(request);
+            if (!authority) refuse();
+            return authority.withObservationScope(request, check);
+          },
           requireCurrentLocalGrant: (request) => {
             const authority = this.#authorities.get(request);
             if (!authority) refuse();

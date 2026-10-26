@@ -15,6 +15,7 @@ import { canonicalJson, type ModelRuntime } from '@kontourai/relay';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import type { reservedStationTurnResult } from '../../runtime/conversation/reserved-station-turn.js';
 import type { DelegatedTaskHandle } from '../../tools/station-control-delegation.js';
+import type { EnvironmentSecurityService } from '../ssh/environment-security-service.js';
 import type { PreparedReservedFinalFetchOwners } from './delegation-group-launch-fence.js';
 import type { StationDelegationPersistence } from './delegation-group-persistence.js';
 import {
@@ -66,6 +67,7 @@ export class StationReportGroupExecution {
       orchestration: OrchestrationService;
       dispatchLedger: AuthorizationLedger;
       wireIntents: FileFinalWireIntentStore;
+      environment: EnvironmentSecurityService;
       authorize(context: RuntimeSourceRequestContext): Promise<() => void>;
     },
   ) {
@@ -107,38 +109,40 @@ export class StationReportGroupExecution {
         requestCurrent();
         return undefined;
       };
-      const executionCurrent = (): undefined => {
-        current();
-        signal.throwIfAborted();
-        preparation.assertCurrent(handle, context.req.raw);
-        return undefined;
-      };
+      const executionCurrent = (): undefined =>
+        this.owners.environment.withCurrentAuthority(() => {
+          current();
+          signal.throwIfAborted();
+          preparation.assertCurrent(handle, context.req.raw);
+          return undefined;
+        });
       const retained = new Map<string, Retained>();
       const invocation = new AsyncLocalStorage<{
         envelope: DelegationEnvelopeV2;
         id: string;
       }>();
-      const memberFor = (envelope: DelegationEnvelopeV2) => {
-        current();
-        const member = prepared.members.find(
-          (m) => m.taskId === envelope.execution_id,
-        );
-        const seat = prepared.spec.seats.find(
-          (s) => s.seatId === member?.seatId,
-        );
-        if (
-          !member ||
-          !seat ||
-          !preparation.authorizes(
-            handle,
-            context.req.raw,
-            prepared.root,
-            envelope,
+      const memberFor = (envelope: DelegationEnvelopeV2) =>
+        this.owners.environment.withCurrentAuthority(() => {
+          current();
+          const member = prepared.members.find(
+            (m) => m.taskId === envelope.execution_id,
+          );
+          const seat = prepared.spec.seats.find(
+            (s) => s.seatId === member?.seatId,
+          );
+          if (
+            !member ||
+            !seat ||
+            !preparation.authorizes(
+              handle,
+              context.req.raw,
+              prepared.root,
+              envelope,
+            )
           )
-        )
-          refuse();
-        return { member, seat };
-      };
+            refuse();
+          return { member, seat };
+        });
       const host = {
         now: () => new Date(Date.now()).toISOString(),
         authorize: async (

@@ -252,6 +252,7 @@ export class StationReportGroupRuntime {
     });
     let prepared: Promise<StationReportGroupPreparation> | undefined;
     this.#execution = new StationReportGroupExecution({
+      environment: owners.runtime.environmentSecurityService,
       authorize: (context) => this.authorizeResponse(context),
       preparation: () =>
         (prepared ??= Promise.resolve(
