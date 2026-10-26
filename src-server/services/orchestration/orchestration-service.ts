@@ -335,6 +335,7 @@ import {
   createCredentialRecoveryModule,
 } from './credential-recovery-module.js';
 import { DeltaCoalescer, isCoalescableDelta } from './delta-coalescer.js';
+import { splitOversizedDeltas } from './delta-splitting.js';
 import {
   assertDispatchCwdUnmoved,
   DISPATCH_CANONICAL_CWD_METADATA_KEY,
@@ -10669,9 +10670,14 @@ export class OrchestrationService {
     let lastThreadId: string | undefined;
     let restart = false;
     try {
-      for await (let event of adapter.streamEvents({
-        signal: controller.signal,
-      })) {
+      // Oversized deltas are split here, before publishing, so each chunk
+      // gets its own #3560 publish retry and none is ever stored out of
+      // line (docs/design/event-content-spill.md).
+      for await (let event of splitOversizedDeltas(
+        adapter.streamEvents({
+          signal: controller.signal,
+        }),
+      )) {
         if (!this.isAdapterCurrent(adapter)) continue;
         if (event.method === 'session.stop-settled') {
           // This is an orchestration-owned derivation. Accepting it from an

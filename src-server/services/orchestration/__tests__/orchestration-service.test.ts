@@ -22924,8 +22924,11 @@ describe('OrchestrationService', () => {
         itemId: 'huge-tool',
         toolName: 'read_file',
         status: 'success',
-        output: 'x'.repeat(100000),
-      });
+        output: 'ok',
+        // Tool output is stored out of line now; only a field outside the
+        // spill allowlist can still exceed EventStore's backstop.
+        adapterNote: 'x'.repeat(100000),
+      } as CanonicalRuntimeEvent);
       await vi.waitFor(() =>
         expect(
           eventStore
@@ -28581,8 +28584,10 @@ describe('OrchestrationService', () => {
       eventId: 'window-elided-turn',
       createdAt: '2026-08-19T00:00:01.000Z',
       method: 'turn.started',
-      // Past `snapshotEvent`'s serialized ceiling (24 KiB).
-      prompt: 'p'.repeat(32_000),
+      // Past `snapshotEvent`'s serialized ceiling (24 KiB), in a field
+      // outside the spill allowlist (a long prompt is stored out of line).
+      prompt: 'short',
+      metadata: { note: 'p'.repeat(32_000) },
     } as never);
     eventStore.appendEvent({
       provider: 'claude',
@@ -28605,7 +28610,9 @@ describe('OrchestrationService', () => {
     );
     const elidedTurn = byId.get('window-elided-turn');
     expect(elidedTurn?.elided).toBe('byte_limit');
-    expect((elidedTurn?.event as { prompt?: string })?.prompt).toBeUndefined();
+    expect(
+      (elidedTurn?.event as { metadata?: unknown })?.metadata,
+    ).toBeUndefined();
     // Absence is the other half of the contract: a whole event must not
     // carry a label, or the label distinguishes nothing.
     expect(byId.get('window-whole-tool')?.elided).toBeUndefined();

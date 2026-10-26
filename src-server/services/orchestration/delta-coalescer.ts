@@ -1,6 +1,7 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
+import { jsonStringBodyBytes } from './event-content-spill.js';
 
 const logger = createLogger({ name: 'delta-coalescer' });
 
@@ -38,6 +39,8 @@ const logger = createLogger({ name: 'delta-coalescer' });
 
 /** Methods whose payloads accumulate by concatenation, and so may merge. */
 const COALESCABLE = new Set(['content.text-delta', 'content.reasoning-delta']);
+/** Default merged-delta cap; equal to the adapter-stream split size. */
+export const DELTA_COALESCER_MAX_BYTES = 8 * 1024;
 
 /**
  * How many convergence passes `flushAll` will make before giving up. A flush
@@ -62,7 +65,10 @@ interface DeltaCoalescerOptions {
    */
   windowMs?: number;
   /**
-   * The largest a merged delta may grow. A buffer is flushed BEFORE a delta
+   * The largest a merged delta may grow, in bytes of its JSON string body
+   * (UTF-8, escapes included), so a merged event always stays well inside
+   * EventStore's stored-event target whatever the script: 8,000 characters
+   * of CJK text would have been about 24 KB. A buffer is flushed BEFORE a delta
    * that would take it to this size joins it (#3560), and that delta then
    * starts a new buffer that waits for the window. Only a single delta at or
    * over the cap is flushed at once on its own. It bounds event SIZE and
@@ -70,7 +76,7 @@ interface DeltaCoalescerOptions {
    * >130k chars/sec to reach the cap first, and time-to-first-token is
    * governed by the first-delta pass-through below, not by this.
    */
-  maxChars?: number;
+  maxBytes?: number;
   /** Injected in tests; real callers use the module default. */
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (handle: unknown) => void;
@@ -102,6 +108,8 @@ type DeliveryFailureMode = 'propagate' | 'warn';
 interface Pending {
   event: CanonicalRuntimeEvent;
   text: string;
+  /** JSON-escaped UTF-8 bytes of `text`. */
+  bytes: number;
   /** Undefined only while retained for an owner retry (see `flushPending`). */
   timer: unknown;
 }
@@ -148,7 +156,7 @@ export class DeltaCoalescer {
   /** threadId -> the stream whose first delta has already been delivered. */
   private readonly streamStarts = new Map<string, string>();
   private readonly windowMs: number;
-  private readonly maxChars: number;
+  private readonly maxBytes: number;
   private readonly setTimer: (fn: () => void, ms: number) => unknown;
   private readonly clearTimer: (handle: unknown) => void;
   private readonly logger: CoalescerLogger;
@@ -165,7 +173,7 @@ export class DeltaCoalescer {
     options: DeltaCoalescerOptions = {},
   ) {
     this.windowMs = options.windowMs ?? 60;
-    this.maxChars = options.maxChars ?? 8_000;
+    this.maxBytes = options.maxBytes ?? DELTA_COALESCER_MAX_BYTES;
     this.setTimer =
       options.setTimer ??
       ((fn, ms) => {
@@ -231,7 +239,8 @@ export class DeltaCoalescer {
     // retained and the retry delivers it first. A merged event now stays
     // under the cap; only a single delta at or over it is emitted that large.
     const buffered = this.pending.get(event.threadId);
-    if (buffered && buffered.text.length + text.length >= this.maxChars) {
+    const textBytes = jsonStringBodyBytes(text);
+    if (buffered && buffered.bytes + textBytes >= this.maxBytes) {
       this.flushPending(event.threadId, 'propagate', true);
       // That flush fans out synchronously, so a listener may have buffered a
       // LATER delta for this thread. Appending the offered delta to it would
@@ -248,6 +257,7 @@ export class DeltaCoalescer {
       this.pending.set(event.threadId, {
         event,
         text,
+        bytes: textBytes,
         timer: this.setTimer(
           () => this.flushThread(event.threadId),
           this.windowMs,
@@ -255,6 +265,7 @@ export class DeltaCoalescer {
       });
     } else {
       existing.text += text;
+      existing.bytes += textBytes;
       // Retained text is untimed (see `flushPending`); text merging into it
       // means the retry is over, so the window applies again.
       if (existing.timer === undefined)
@@ -267,7 +278,7 @@ export class DeltaCoalescer {
     // Normally only a single delta at or over the cap reaches this. Its event
     // is the offered one, so the caller's committed-event check covers it.
     const held = this.pending.get(event.threadId);
-    if (held && held.text.length >= this.maxChars)
+    if (held && held.bytes >= this.maxBytes)
       this.flushPending(event.threadId, 'propagate');
     return true;
   }
@@ -375,6 +386,7 @@ export class DeltaCoalescer {
         this.pending.set(threadId, {
           event: held.event,
           text: held.text,
+          bytes: held.bytes,
           timer: undefined,
         });
       }
