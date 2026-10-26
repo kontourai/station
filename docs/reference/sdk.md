@@ -4370,13 +4370,16 @@ its original `operationId` and cause. In `adoptOrchestrationSession`, it becomes
 classification.
 
 Keys and stable message IDs do not establish server replay retention or digest
-checking. The retained-claim behavior below requires the server lifecycle
-implemented at [Station source 30ff976a39f](https://github.com/kontourai/station/commit/30ff976a39f).
-Check the deployed server's build revision before relying on it; older servers
-can execute a same-key retry again after an in-process outcome. Stable request
-IDs do not establish transcript uniqueness or a minimum replay window.
+checking. The retained-claim behavior below requires the server lifecycle change
+tracked in [Station PR #4191](https://github.com/kontourai/station/pull/4191).
+This SDK cut has not yet bound that change to a protected server landing or
+release. Establish the deployed server's compatible build before relying on
+it. Servers without that change can execute a same-key retry again after an
+invoked attempt fails. Stable request IDs do not establish transcript uniqueness
+or a minimum replay window.
 
-The direct chat stream (`streamConversationTurn`) can refuse a retried
+On servers with that lifecycle change, the direct chat stream
+(`streamConversationTurn`) can refuse a retried
 `clientTurnId` that may already have reached the Agent, or whose result
 Station no longer keeps, with a `ChatHttpError` whose `code` is
 `foreground_message_indeterminate` and whose `outcome` is `'indeterminate'`.
