@@ -80,6 +80,7 @@ describe('client execution', () => {
         agent: agentId('station'),
       },
       automaticBackground: true,
+      clientTurnId: 'background-key',
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -88,6 +89,7 @@ describe('client execution', () => {
         body: JSON.stringify({
           message: 'Replay later',
           target: { environment: { kind: 'current' }, agent: 'station' },
+          clientTurnId: 'background-key',
         }),
       }),
     );
@@ -132,12 +134,14 @@ describe('client execution', () => {
               clientTurnId: 'queued-key',
               message: 'waiting',
             });
-      await expect(pending).rejects.toMatchObject({
+      const caught = await pending.catch((error: unknown) => error);
+      expect(caught).toMatchObject({
         name: 'ForegroundMessageQueuedError',
         status: 202,
         outcome: 'queued',
         receipt,
       });
+      expect(sentTurnKey(caught)).toBe('queued-key');
       expect(fetchMock).toHaveBeenCalledTimes(1);
     },
   );

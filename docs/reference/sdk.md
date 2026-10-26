@@ -4294,6 +4294,31 @@ For new integrations, use `sendExecutionMessage` from
 the [Session API](session-api.md). The legacy `streamConversationTurn` export
 targets Station's private compatibility route, `/api/agents/:slug/chat`.
 
+`sendExecutionMessage` (including `sendExecutionMessageWithInventory`),
+`continueExecutionMessage` and `sendOrchestrationTurn` choose one `clientTurnId`
+per call before asynchronous work. Pass `clientTurnId` to retain a caller-owned
+key; omission generates one. A supplied key must be a nonblank string of at
+most 200 UTF-16 code units, and invalid values fail before any request, including
+visual-skill inventory reads. These calls send the key and return it on a
+`KeyedForegroundMessageReceipt`; the SDK attaches it even when the server's
+receipt does not echo it. The base `ForegroundMessageReceipt` remains usable by
+other receipt producers without claiming a key they do not return.
+
+A foreground failure after key selection is associated with that key through
+`sentTurnKey(error)`, including typed queued or indeterminate outcomes,
+transport errors and preflight refusals. Preserve the original input with the
+key for inspection or a deliberate retry. The SDK never retries automatically.
+Server digest enforcement and replay retention remain separate contracts; key
+custody alone does not establish a minimum retry window. The fixed automatic
+background route uses the same key custody.
+
+For a new foreground conversation, choose `conversationId` before the first send
+and retain it with the key. When it is omitted, the current server allocates a
+fresh conversation per attempt; the same turn key alone cannot recover or
+replay that allocation after a lost response. Inspect the conversation list
+before another attempt. This server admission gap remains separate from SDK
+key custody; never automatically retry that start.
+
 `streamConversationTurn` chooses one `clientTurnId` per call. Pass
 `chatOptions.clientTurnId` to reuse a caller-owned key; an omitted key is generated
 with the shared correlation-ID helper. A supplied key must be a nonblank string of
@@ -4303,7 +4328,8 @@ The returned result includes `clientTurnId`, including when an active stream is
 aborted. Aborting consumption does not prove that server execution stopped.
 
 `sentTurnKey(error)`, exported by the root SDK and the React-free `/client`
-entry, retrieves the chosen key from an object thrown by this direct chat call.
+entry, retrieves the chosen key from an object thrown by one of these keyed foreground
+calls or by `streamConversationTurn`.
 The SDK rethrows the same object; its class, fields and identity are preserved,
 including for transport failures, aborts and stalls. If the same object is
 thrown for different keys, the accessor returns `undefined` permanently for
@@ -4311,16 +4337,17 @@ that object; it never substitutes another turn's key. Repeated use with the same
 key keeps the association. Primitive throws cannot carry this association.
 Retain a caller-owned key separately when reusing an abort signal or error.
 Invalid-key validation happens before a key is chosen.
-The accessor does not prove dispatch, acceptance or completion, and other SDK
-send functions do not yet register their errors with it.
+The accessor does not prove dispatch, acceptance or completion. Queue, handoff,
+steer, delegation, answer, invoke and raw framework helpers do not yet register
+their errors with it.
 
 Retain the key and the original input when inspecting an uncertain outcome.
 The SDK does not retry automatically. A `SyntaxError` can come from parsing a
 response after dispatch; `isProvablyNotSent` therefore does not classify that
 error class as proof of no send, even when its message contains a connection
-refusal word. Errors recorded by the keyed direct-chat helper also remain
+refusal word. Errors recorded by the keyed foreground and direct-chat helpers also remain
 uncertain regardless of their message, including after their key association
-becomes ambiguous and for a read-only refusal before network dispatch. This
+becomes ambiguous and for a read-only or preflight refusal before network dispatch. This
 conservative classification does not override the refusal or issue a request.
 An unregistered fetch-time `SyntaxError` now becomes
 `ScheduledCheckStarterResponseError` in `launchScheduledCheckStarter`, keeping

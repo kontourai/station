@@ -240,6 +240,7 @@ describe('chatRuntimeOrchestration', () => {
       sendOrchestrationTurn({
         threadId: 'thread-6',
         text: 'what time is it?',
+        clientTurnId: 'ambient-key',
         ambientContext: '[Timezone: America/Denver]',
       }),
     ).resolves.toMatchObject({ providerTurnId: 'provider-turn-ambient' });
@@ -250,6 +251,7 @@ describe('chatRuntimeOrchestration', () => {
         body: JSON.stringify({
           message: 'what time is it?',
           ambientContext: '[Timezone: America/Denver]',
+          clientTurnId: 'ambient-key',
         }),
       }),
     );
@@ -263,12 +265,16 @@ describe('chatRuntimeOrchestration', () => {
       },
     });
     await expect(
-      sendOrchestrationTurn({ threadId: 'thread-6', text: 'hello' }),
+      sendOrchestrationTurn({
+        threadId: 'thread-6',
+        text: 'hello',
+        clientTurnId: 'plain-key',
+      }),
     ).resolves.toMatchObject({ providerTurnId: 'provider-turn-plain' });
     expect(fetch).toHaveBeenLastCalledWith(
       'http://example.test/api/orchestration/chat/thread-6/continue',
       expect.objectContaining({
-        body: JSON.stringify({ message: 'hello' }),
+        body: JSON.stringify({ message: 'hello', clientTurnId: 'plain-key' }),
       }),
     );
   });
@@ -287,6 +293,7 @@ describe('chatRuntimeOrchestration', () => {
       sendOrchestrationTurn({
         threadId: 'thread-attachment',
         text: 'Review this',
+        clientTurnId: 'attachment-key',
         attachments: [
           {
             kind: 'image',
@@ -314,6 +321,7 @@ describe('chatRuntimeOrchestration', () => {
               dataUrl: 'data:image/png;base64,YWJj',
             },
           ],
+          clientTurnId: 'attachment-key',
         }),
       }),
     );
