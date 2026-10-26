@@ -1254,6 +1254,24 @@
 
     "src-server/security/outside-agent-release-guard.ts",
 
+    "src-server/domain/migrations/023-task-review.ts",
+
+    "src-server/services/orchestration/task-review-store.ts",
+
+    "src-server/services/projects/task-review-module.ts",
+
+    "src-server/routes/orchestration/task-review.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts",
+
+    "src-server/services/orchestration/__tests__/task-review-store.test.ts",
+
+    "packages/sdk/src/query-domains/taskReview.ts",
+
+    "packages/sdk/src/__tests__/task-review-hooks.test.tsx",
+
+    "src-server/services/projects/__tests__/task-review-module.test.ts",
+
     "src-server/services/terminal/shell-host.ts",
 
     "src-server/services/terminal/terminal-sessions.ts",
@@ -1286,7 +1304,13 @@
 
     "src-ui/src/__tests__/ChatDockColdChatHydration.test.tsx",
 
-    "src-ui/src/__tests__/HomeView.test.tsx"
+    "src-ui/src/__tests__/HomeView.test.tsx",
+
+    "src-server/routes/chat/chat-turn-dedup.ts",
+
+    "src-server/routes/chat/__tests__/chat-primary-stream.dedup.test.ts",
+
+    "src-server/routes/chat/__tests__/chat-turn-dedup-crash.process.test.ts"
   ],
 
   "checks": [

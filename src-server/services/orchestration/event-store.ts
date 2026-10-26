@@ -131,6 +131,7 @@ import {
 import { TASK_MEMORY_MIGRATION } from '../../domain/migrations/020-task-memory.js';
 import { TASK_LEARNING_DISMISSALS_MIGRATION } from '../../domain/migrations/021-task-learning-dismissals.js';
 import { TASK_LEARNING_PROMOTIONS_MIGRATION } from '../../domain/migrations/022-task-learning-promotions.js';
+import { TASK_REVIEW_MIGRATION } from '../../domain/migrations/023-task-review.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -331,6 +332,10 @@ import {
   createSqliteTaskMemoryStore,
   type TaskMemoryStore,
 } from './task-memory-store.js';
+import {
+  createSqliteTaskReviewStore,
+  type TaskReviewStore,
+} from './task-review-store.js';
 import {
   createSqliteThreadInboxStore,
   type ThreadInboxStore,
@@ -2324,6 +2329,7 @@ export class EventStore {
   private delegationResults?: DelegationResultStore;
   private threadInbox?: ThreadInboxStore;
   private taskMemory?: TaskMemoryStore;
+  private taskReview?: TaskReviewStore;
   private agentSchedule?: AgentScheduleStore;
   private resumeChoices?: UsageLimitResumeChoices;
   private mcpAppResourceResolver?: (toolRef: string) => string | undefined;
@@ -2618,6 +2624,7 @@ export class EventStore {
       this.db.exec(TASK_LEARNING_DISMISSALS_MIGRATION);
       // #4003 layer 4: the store each promoted record version went to.
       this.db.exec(TASK_LEARNING_PROMOTIONS_MIGRATION);
+      this.db.exec(TASK_REVIEW_MIGRATION);
       this.db
         .prepare(
           `INSERT OR IGNORE INTO orchestration_stream_identity(singleton, high_water)
@@ -12983,6 +12990,11 @@ export class EventStore {
     return this.taskMemory;
   }
 
+  taskReviewStore(): TaskReviewStore {
+    this.taskReview ??= createSqliteTaskReviewStore(this.db);
+    return this.taskReview;
+  }
+
   /** #3157: a person's resume choice per usage-limit stop. */
   usageLimitResumeChoices(): UsageLimitResumeChoices {
     this.resumeChoices ??= createSqliteUsageLimitResumeChoices(this.db);
@@ -13964,6 +13976,9 @@ export class EventStore {
   }
   releaseChatTurn(clientTurnId: string): void {
     this.turnIdempotence.release(chatTurnDedupKey(clientTurnId));
+  }
+  retainChatTurn(clientTurnId: string): void {
+    this.turnIdempotence.retain(chatTurnDedupKey(clientTurnId));
   }
   awaitChatTurn(
     clientTurnId: string,

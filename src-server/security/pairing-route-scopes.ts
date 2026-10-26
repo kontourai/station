@@ -3234,6 +3234,25 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // No station-control tool names either route.
     { method: 'POST', path: '/api/tasks/from-work-item' },
     { method: 'GET', path: '/api/tasks/:taskId/work-item' },
+    // Task review exposes Task content and personal comments: sensitive to the
+    // exact room/Project authority. Reads use read standing; append-only person
+    // comments and transitions use operate standing. No external send occurs.
+    { method: 'GET', path: '/api/tasks/:taskId/review' },
+    { method: 'GET', path: '/api/tasks/:taskId/review/items/:kind/:id' },
+    { method: 'GET', path: '/api/tasks/:taskId/review/threads/:threadId' },
+    { method: 'POST', path: '/api/tasks/:taskId/review/threads' },
+    {
+      method: 'POST',
+      path: '/api/tasks/:taskId/review/threads/:threadId/replies',
+    },
+    {
+      method: 'POST',
+      path: '/api/tasks/:taskId/review/threads/:threadId/resolve',
+    },
+    {
+      method: 'POST',
+      path: '/api/tasks/:taskId/review/threads/:threadId/reopen',
+    },
     // #4003 Task memory from the Task workspace: the summary and records of
     // the exact Task the paired caller's room authority resolves, read at
     // the read tier and written (one bounded revision or record version,

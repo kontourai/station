@@ -3817,7 +3817,8 @@ selected input on access refusal. It does not hydrate a whole transcript.
 Before reading, the hook checks the host's public handshake for the
 `sessionInventoryInputRead` capability (`fetchSessionInventoryInputCapability`)
 and returns `hostSupport`: `checking`, `supported`, `unsupported` (an older host
-without the route; no read is sent) or `unknown` (the handshake could not be
+without the route, or a hosted deployment, which does not advertise it; no read
+is sent) or `unknown` (the handshake could not be
 read; the read is still attempted). `recheckHost()` drops that host's cached
 handshake and asks again, for after the host is updated; it keeps one identity
 across renders and resolves when the host has answered. `hostRecheck` reports
@@ -4293,12 +4294,22 @@ this header in its validated response metadata, so native SDK requests use the
 same marker and fallback rules.
 `ForegroundMessageIndeterminateError` keeps its `detail` and fixed `code`.
 Both classes retain their positional constructors.
-The direct chat stream (`streamConversationTurn`) rejects a retried
-`clientTurnId` that may already have reached the agent, or whose result
+The direct chat stream (`streamConversationTurn`) can refuse a retried
+`clientTurnId` that may already have reached the Agent, or whose result
 Station no longer keeps, with a `ChatHttpError` whose `code` is
 `foreground_message_indeterminate` and whose `outcome` is `'indeterminate'`.
-Do not resend that turn automatically; open the conversation instead. Other
-refusals leave `outcome` unset.
+Station retains a claim after an invoked attempt fails, is cancelled or
+loses its client. A new same-key request in the owning process receives this
+refusal while its local retention marker remains; after owner death the
+invocation record supplies the durable refusal. A contended retry, including
+one served by another live process, can instead end its stream with an error
+event. Resolved retries replay the conversation ID and a `completed` finish,
+without replaying output. Read the conversation after an uncertain send; do
+not automatically resend with a new key. Use a new `clientTurnId` only for a
+deliberate new request. The key is not yet bound to input or caller identity;
+legacy rows, older writers and retention limits still apply. See the
+[direct chat lifecycle](../architecture/module-map.md#turndeduplicator).
+Other refusals leave `outcome` unset.
 `getTurnDelivery(apiBase, conversationId, clientTurnId, { projectSlug? })`
 asks Station what became of one send by its `clientTurnId`, for example after
 the connection dropped before the answer arrived. It is read-only and, on success,
@@ -5529,3 +5540,52 @@ read-only POST returns a validated HTML page plus isolated frame origin, or a
 bounded raster preview. `thread` selects an authorized Session workspace;
 verified Git worktrees of that repository are also eligible. The returned bytes
 are display data, not permission to navigate to a host filesystem URL.
+
+### Task review threads
+
+The SDK root and query barrel export `fetchTaskReview(taskId)`,
+`taskReviewQueryKey(taskId)` and `useTaskReviewQuery(taskId, {poll})` for the
+[Task review API](api.md#task-review-threads). `poll` defaults to false. Enable
+it only while the Review tab is visible: the query polls every three seconds
+while any returned thread has base state `sent`, then stops when delivery is
+answered/resolved or the list query enters an error state. A person's follow-up
+on a Sent thread leaves delivery in flight. Browser background polling is
+disabled. The list returns item metadata, counts and `TaskReviewThreadSummary` entries,
+without artifact text or full event arrays. Available entries expose `status`,
+`state`, `eventCount`, `openingEvent`, optional `lastDeliveryEvent`, `lastEvent`
+and anchor data. Summary event bodies are capped at
+`TASK_REVIEW_OPENING_PREVIEW_CHARS` (500 UTF-16 code units), exported by both
+SDK barrels; detail provides full text. Use `openingEvent.body`/author/createdAt
+for the card preview and `lastDeliveryEvent` for the latest delivery, even when
+`lastEvent` is a person reply or resolve. Render `status:'unavailable'`
+as an unavailable card; it has no invented base state or history and does not
+contribute to aggregate counts.
+
+`fetchTaskReviewItem(taskId, kind, id)` and
+`useTaskReviewItemQuery(taskId, kind, id, options)` read one selected item through
+`GET .../review/items/:kind/:id`; pass the list's opaque `item.id`, including
+JSON tuple IDs for answers. The item query never polls. Its independent key is
+`taskReviewItemQueryKey(taskId, kind, id, revision?)`; pass
+`options.revision: item.artifact.revision` to refresh mutable content when list
+metadata observes a new revision. Text exceeding 1,048,576 UTF-8 bytes or UTF-16
+code units is refused, never truncated.
+
+`fetchTaskReviewThread(taskId, threadId, signal?)` and
+`useTaskReviewThreadQuery(taskId, threadId, options)` fetch `{thread}` with full
+events from `GET .../review/threads/:threadId`. Enable the hook when a card is
+expanded, passing `options.eventCount` and `options.revision` from its available
+summary (`currentRevision`). Its key is
+`taskReviewThreadQueryKey(taskId, threadId, eventCount?, revision?)`; it never
+polls. A changed summary count or revision fetches fresh detail. A corrupt
+thread's detail request fails with 503 while healthy cards remain available.
+
+`useCreateReviewThreadMutation(taskId)` takes the contract's
+`TaskReviewCreateThreadRequest`. `useReplyReviewThreadMutation(taskId)`,
+`useResolveReviewThreadMutation(taskId)` and
+`useReopenReviewThreadMutation(taskId)` take the corresponding request plus
+`threadId`. Every mutation requires a stable caller-issued `operationId`,
+returns `{thread}` and invalidates both the Task's list and thread-detail queries. Refusals throw
+`StationHttpError` with the HTTP status and refusal code; malformed or non-JSON
+responses also throw `StationHttpError`, preserving the HTTP status. The SDK re-exports
+these request types, `TaskReviewThreadSummary`, `TaskReviewThreadView` and `TaskReviewView` from the
+[review contract](../../packages/contracts/src/task-review.ts).

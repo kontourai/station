@@ -94,6 +94,24 @@ describe('gallery-ui-findings check', () => {
     expect(run.out).toContain('FAIL agents: overflow:document');
   });
 
+  it('points at a likely rekey when a renamed finding fails', () => {
+    const root = scratch();
+    const dir = gallery(root, [
+      screen(
+        'home',
+        audit('axe:label-content-name-mismatch:button.x[New name]'),
+      ),
+    ]);
+    const list = allowlist(root, {
+      home: ['axe:label-content-name-mismatch:button.x[Old name]'],
+    });
+    const run = judge(['check', `--gallery=${dir}`, `--allowlist=${list}`]);
+    expect(run.status).toBe(1);
+    expect(run.out).toContain(
+      'LIKELY REKEY home: axe:label-content-name-mismatch:button.x[Old name] → axe:label-content-name-mismatch:button.x[New name]',
+    );
+  });
+
   it('passes when a listed finding is gone, and says it can be removed', () => {
     const root = scratch();
     const dir = gallery(root, [screen('home', audit())]);
@@ -317,6 +335,70 @@ describe('gallery-ui-findings growth', () => {
     screenMap(root, ['home']);
     write(root, { home: ['overflow:document'] });
     expect(growth(root, base).status).toBe(0);
+  });
+
+  const OLD =
+    'axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code Claude Code]';
+  const NEW =
+    'axe:label-content-name-mismatch:button.choice-trigger[Engine & model: Claude Code]';
+
+  it('accepts an intended name change on an existing screen as a REKEY', () => {
+    const { root, base } = based({ chat: [OLD, 'overflow:document'] }, [
+      'chat',
+    ]);
+    write(root, { chat: [NEW, 'overflow:document'] });
+    const run = growth(root, base);
+    expect(run.status).toBe(0);
+    expect(run.out).toContain(`REKEY chat: ${OLD} → ${NEW}`);
+    expect(run.out).not.toContain('GROWTH');
+  });
+
+  it('still fails a new finding with a different rule or anchor', () => {
+    const { root, base } = based({ chat: [OLD] }, ['chat']);
+    write(root, { chat: ['axe:label:input.attachment-input[type=file]'] });
+    const run = growth(root, base);
+    expect(run.status).toBe(1);
+    expect(run.out).toContain(
+      'GROWTH chat: axe:label:input.attachment-input[type=file]',
+    );
+  });
+
+  it('still fails a name-shaped finding when that shape grows in number', () => {
+    const { root, base } = based({ chat: [OLD] }, ['chat']);
+    write(root, { chat: [OLD, NEW] });
+    const run = growth(root, base);
+    expect(run.status).toBe(1);
+    expect(run.out).toContain(`GROWTH chat: ${NEW}`);
+    expect(run.out).not.toContain('REKEY');
+  });
+
+  it('pairs one removed key with only one renamed key', () => {
+    const OTHER =
+      'axe:label-content-name-mismatch:button.choice-trigger[Agent: demo]';
+    const { root, base } = based({ chat: [OLD] }, ['chat']);
+    write(root, { chat: [NEW, OTHER] });
+    const run = growth(root, base);
+    expect(run.status).toBe(1);
+    expect(run.out.match(/^GROWTH /gm)?.length).toBe(1);
+    expect(run.out.match(/^REKEY /gm)?.length).toBe(1);
+  });
+
+  it('refuses a base allowlist that lists a key twice', () => {
+    const { root, base } = based({ chat: [OLD, OLD] }, ['chat']);
+    write(root, { chat: [NEW] });
+    const run = growth(root, base);
+    expect(run.status).toBe(2);
+    expect(run.out).toContain('more than once');
+  });
+
+  it('does not treat an attribute-shaped anchor end as a name', () => {
+    const { root, base } = based({ chat: ['axe:link-name:a[href=/old]'] }, [
+      'chat',
+    ]);
+    write(root, { chat: ['axe:link-name:a[href=/new]'] });
+    const run = growth(root, base);
+    expect(run.status).toBe(1);
+    expect(run.out).toContain('GROWTH chat: axe:link-name:a[href=/new]');
   });
 
   it('is an input error for an unknown base, or a base allowlist without a map', () => {
