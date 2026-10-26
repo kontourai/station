@@ -20,6 +20,27 @@ export interface LoadedApprovalContent {
 }
 
 /**
+ * The approval content query's key: the request, and the references the
+ * surface shows for its call, so a later bound `tool.started` (new
+ * references) fetches the binding again instead of keeping a stale digest.
+ */
+export function approvalContentQueryKey(input: {
+  threadId?: string;
+  requestId?: string;
+  requestEventId?: string;
+  shownRefs?: readonly string[];
+}): string[] {
+  return [
+    'runtime-event-content',
+    'approval',
+    input.threadId ?? '',
+    input.requestId ?? '',
+    input.requestEventId ?? '',
+    [...(input.shownRefs ?? [])].sort().join(','),
+  ];
+}
+
+/**
  * docs/design/event-content-spill.md: loads the whole of an approval (the
  * request and every tool call the server binds to it) before a surface may
  * offer Allow. The server defines the bound set and the digest; this loads
@@ -32,16 +53,9 @@ export function useApprovalContentQuery(input: {
   requestEventId?: string;
   shownRefs?: readonly string[];
 }) {
-  const { threadId, requestId, requestEventId } = input;
+  const { threadId, requestId } = input;
   return useApiQuery<LoadedApprovalContent>(
-    [
-      'runtime-event-content',
-      'approval',
-      threadId ?? '',
-      requestId ?? '',
-      requestEventId ?? '',
-      (input.shownRefs ?? []).join(','),
-    ],
+    approvalContentQueryKey(input),
     async () => {
       if (!threadId || !requestId) throw new Error('No request to load');
       const loaded = await loadApprovalContent(
