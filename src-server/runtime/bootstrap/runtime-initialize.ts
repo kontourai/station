@@ -912,7 +912,8 @@ export async function initializeRuntime(
 
   // First-run engine adoption persists AppConfig; finish that owned write before
   // fencing agent construction against subsequent configuration changes.
-  const builtinEngineBinding = await deps.resolveBuiltinEngineBinding?.(appConfig);
+  const builtinEngineBinding =
+    await deps.resolveBuiltinEngineBinding?.(appConfig);
   const registryPolicyApplication =
     await deps.registryTrustPolicyAuthority?.captureApplication();
   const configurationBefore = deps.captureAgentConfigurationRevisions?.();
