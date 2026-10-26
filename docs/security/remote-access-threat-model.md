@@ -461,8 +461,9 @@ checks `capabilities.<name> === true` instead of branching on a version number.
 Station's own seeded flags live in one registry,
 `src-server/capabilities/station-capability-flags.ts`, whose resolver withdraws
 a flag in a deployment mode that refuses every call to its route (hosted mode
-omits `sessionInventoryInputRead`, so the handshake reveals whether a Station
-is hosted, which its tenant ingress already makes evident); the sdk exposes a
+omits `sessionInventoryInputRead`). That discloses nothing new: a hosted
+Station answers the handshake only through tenant ingress and refuses an
+unadmitted caller with 421 `tenant_context_required`; the sdk exposes a
 `hasCapability(descriptor, name)` accessor (`@kontourai/station-sdk`) that
 treats every absence case as `false`.
 
