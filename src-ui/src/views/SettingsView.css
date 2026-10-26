@@ -959,7 +959,9 @@
 .settings__notification-sound > span {
   overflow-wrap: anywhere;
 }
-.settings__notification-sound > :is(select, input[type="time"]) {
+/* `:where` keeps this at one class of specificity, so the narrow-width
+   settings floor (`.settings select`, 44px) still owns touch targets. */
+.settings__notification-sound > :where(select, input[type="time"]) {
   width: 100%;
   min-height: 36px;
   padding: var(--k-space-2);

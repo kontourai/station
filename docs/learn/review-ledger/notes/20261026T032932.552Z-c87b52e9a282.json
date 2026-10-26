@@ -1,0 +1,7 @@
+{
+  "revision": "88714463104006ec1bfdd123e3308bf38dab83ee",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Bounded merge-composition review at88714463104006ec1bfdd123e3308bf38dab83ee against main56b2fc24e675f2767cc7e2bd75f85d6b4fe43573. Read the complete23-line API delta, which adds the independently reviewed direct-chat retry/retention/indeterminacy contract; it changes no terminal endpoint or terminal prose. This design and every terminal implementation claim remain byte-identical to main. Re-listed the same existing API citation through the recording owner solely to include that explicitly reviewed input in the note; the citation set and human classification/limits are preserved. No terminal runtime, supervisor, power-loss, provider or release claim, no unrelated source review.","inputs":["docs/design/terminal.md","docs/reference/api.md"]}
+  ]
+}

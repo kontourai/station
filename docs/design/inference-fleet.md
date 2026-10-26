@@ -402,11 +402,14 @@ Version drift between a pin and the install is guarded by
   is therefore **not silently additive across mixed versions**: an older host
   handed a scope string containing it rejects the entire grant. §3.3 handles
   this.
-- **`StationCapabilityFlags` are compile-time constants, all `true`.**
-  `src-server/capabilities/station-capability-flags.ts:20-35`. Nothing in the
-  handshake is currently *runtime*-derived. Fleet inference needs both a
-  protocol-support flag (static) and a participation fact (runtime); §3.3
-  keeps them distinct.
+- **`StationCapabilityFlags` are a static build registry.**
+  `src-server/capabilities/station-capability-flags.ts`. Its one
+  deployment-dependent step withdraws a flag in a deployment mode whose route
+  refuses every call (hosted mode omits `sessionInventoryInputRead` and
+  `webPushNotifications`, #4177); no flag reflects runtime participation or
+  configuration. Fleet inference
+  needs both a protocol-support flag (static) and a participation fact
+  (runtime); §3.3 keeps them distinct.
 - **Mobile Station is a WebView shell, not a server.**
   `src-desktop/tauri.conf.json` ships `frontendDist: ../dist-ui` with no
   sidecar or bundled binary; the Android build "wraps the same web UI in an

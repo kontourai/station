@@ -6,6 +6,9 @@
  */
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { resolveStationCapabilityFlags } from '../../../capabilities/station-capability-flags.js';
+import { createPushRoutes } from '../../../routes/operations/push-routes.js';
+import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../bootstrap/hosted-tenant-mode.js';
 
 vi.mock(
   '../../../providers/registries/registry.js',
@@ -199,3 +202,43 @@ test('a plugin provider with a reserved id is skipped at boot and the ordinary o
     expect.objectContaining({ plugin: 'plugin-bad', reason: 'reserved' }),
   );
 });
+
+// #4177: the composition, given no explicit webPushEnabled, derives it from
+// the deployment, and that composed value is what both the push routes and
+// the handshake's webPushNotifications flag answer.
+test.each([
+  { mode: 'personal', hosted: false },
+  { mode: 'hosted', hosted: true },
+])(
+  '$mode: composed Web Push enablement matches the advertised flag',
+  async ({ hosted }) => {
+    vi.stubEnv(
+      HOSTED_TENANT_REGISTRY_FILE_ENV,
+      hosted ? '/hosted/tenants.json' : undefined,
+    );
+    try {
+      const services = configureRuntimeSupportServices(
+        supportContext(makeTempDir('runtime-support-push-')) as never,
+        stub(),
+      );
+      shutdowns.push(() => services.notificationService.shutdown());
+      const routes = createPushRoutes({
+        enabled: services.webPushEnabled,
+        getVapidPublicKey: () => 'vapid-public-key',
+        identifyDevice: () => null,
+        credentialAliasId: () => undefined,
+        setPushSubscription: vi.fn(),
+        clearPushSubscription: vi.fn(),
+      });
+      const served = (await routes.request('/vapid-public-key')).status === 200;
+      const advertised =
+        resolveStationCapabilityFlags({ hosted }).webPushNotifications === true;
+
+      expect(services.webPushEnabled).toBe(!hosted);
+      expect(served).toBe(!hosted);
+      expect(advertised).toBe(served);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  },
+);

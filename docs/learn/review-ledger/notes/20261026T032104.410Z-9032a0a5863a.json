@@ -1,0 +1,11 @@
+{
+  "revision": "32b9b7cab1436ea4d291161d3e9a61a56e7046f9",
+
+  "notes": [
+    {"path":"docs/design/remote-execution-preparation.md","note":"Source delta: only the servesWebPushNotifications doc comment in station-capability-flags.ts changed (it now names the test pinning composition). executionPreparation and the capability-flags table row are unaffected. No prose change.","inputs":["docs/design/remote-execution-preparation.md","src-server/capabilities/station-capability-flags.ts"]},
+
+    {"path":"src-server/AGENTS.md","note":"Rule now also says the scan reports any member call named hasCapability (rename an unrelated method), and lists the gap for a capabilities object held in a variable not named capabilities. Verified against consumed-capability-flags.test.ts fixtures.","inputs":["src-server/AGENTS.md"]},
+
+    {"path":"src-server/CLAUDE.md","note":"The complete file imports its paired AGENTS.md via @AGENTS.md; the AGENTS.md change is recorded separately.","inputs":["src-server/CLAUDE.md","src-server/AGENTS.md"]}
+  ]
+}

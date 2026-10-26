@@ -1,0 +1,7 @@
+{
+  "revision": "3eac116d50648281d5829fd8e8c60832222c9b8e",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Input delta is the Web Push guide noting the hosted handshake omits webPushNotifications. This review only links the guide as the current Web Push reference; its historical finding is unchanged. No prose change.","inputs":["docs/architecture/abstraction-review.md","docs/guides/web-push-notifications.md"]}
+  ]
+}

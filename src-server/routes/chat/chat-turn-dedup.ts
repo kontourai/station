@@ -47,6 +47,9 @@ export class ChatTurnDedupStore {
   release(clientTurnId: string): void {
     this.eventStore.releaseChatTurn(clientTurnId);
   }
+  retain(clientTurnId: string): void {
+    this.eventStore.retainChatTurn(clientTurnId);
+  }
   awaitResolution(
     clientTurnId: string,
     timeoutMs?: number,

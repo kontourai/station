@@ -161,6 +161,10 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'packages/contracts/src/__tests__/flow-agents-vocabulary-drift.test.ts',
   // Walks the whole SDK source tree (a repo scan), like its neighbours here.
   'packages/sdk/src/__tests__/body-read-deadline.scan.test.ts',
+  // Walks packages/sdk/src and src-ui/src for capability gates (a repo scan in
+  // REPO_SCAN_SUITES, #4177); its anchored roots are directories, which no
+  // single file pin can stand for.
+  'src-server/capabilities/__tests__/client-capability-gates.scan.test.ts',
   'packages/sdk/src/__tests__/client-entry-portability.test.ts',
   'packages/shared/src/__tests__/plugin-build.test.ts',
   'packages/shared/src/__tests__/plugin-dependency-install.test.ts',

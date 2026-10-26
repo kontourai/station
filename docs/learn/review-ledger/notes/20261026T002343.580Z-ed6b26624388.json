@@ -1,0 +1,7 @@
+{
+  "revision": "13484113f2e3a5c119a37caf5ce5e8eb888f3ce8",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Input delta is the threat model's handshake capabilities passage (deployment-mode flag withdrawal, #4177). This design cites the threat model only for its Funnel rejection, which is unchanged. No prose change.","inputs":["docs/design/automations.md","docs/security/remote-access-threat-model.md"]}
+  ]
+}

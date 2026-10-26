@@ -2,7 +2,13 @@
  * Deployment capability facts describe what the answering Station deployment
  * can provide. They are intentionally separate from `STATION_CAPABILITY_FLAGS`:
  * that registry is build/handshake support, while these facts are an operator
- * or distribution's runtime contract with its clients.
+ * or distribution's declared runtime contract with its clients.
+ *
+ * One deployment fact does reach the handshake: hosted mode withdraws
+ * `sessionInventoryInputRead` and `webPushNotifications`
+ * (`resolveStationCapabilityFlags`, #4177). That is not an operator
+ * declaration but a property of this build's own routes, which refuse every
+ * hosted call, so it lives beside the flags it withdraws rather than here.
  */
 const DEPLOYMENT_CAPABILITY_IDS = ['web-push', 'scheduler'] as const;
 

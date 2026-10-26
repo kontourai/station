@@ -748,6 +748,8 @@
 
     "packages/sdk/src/components/ActionControl.css",
 
+    "packages/sdk/src/query-domains/chatRuntimeStream.ts",
+
     "packages/sdk/src/query-domains/taskReview.ts",
 
     "packages/sdk/src/__tests__/task-review-hooks.test.tsx"

@@ -8,7 +8,8 @@ and push service; pairing or a successful send request is not a phone receipt.
 This guide covers browser Web Push, separately from the native Android FCM and
 iOS APNs channels. Normal runtime
 wiring disables Web Push when hosted-tenant execution is required: its routes
-return 404 and the delivery wiring is inactive. Personal-host operation and
+return 404, the delivery wiring is inactive, and the public handshake omits
+`capabilities.webPushNotifications`. Personal-host operation and
 [Device pairing](connections.md) are separate prerequisites from browser support.
 
 <a id="how-it-fits-together"></a>

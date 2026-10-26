@@ -1,0 +1,13 @@
+{
+  "revision": "8880d516bef709e141fb812b04df72e8dcf0511a",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Source delta: REPO_SCAN_SUITES gains client-capability-gates.scan.test.ts and path-read-pin-boundary's UNREPORTED_PATH_READING_SUITES gains it with a directory-walk reason (#4177). The guide names no repo-scan or unreported-suite membership and its scan/pin guidance is unchanged. No prose change.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts","scripts/test-impact-manifest.mjs"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Source delta: one REPO_SCAN_SUITES entry added in scripts/test-impact-manifest.mjs for a src-server capabilities scan. This context makes no claim about that list or any capabilities suite. No prose change.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/test-impact-manifest.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"Rule now names the repo scan client-capability-gates.scan.test.ts as what reads packages/sdk and src-ui, keeps the scan's caught forms and gaps, and attributes the withdrawn-flag check to the table suite. Verified against both suites.","inputs":["src-server/AGENTS.md"]},
+
+    {"path":"src-server/CLAUDE.md","note":"The complete file imports its paired AGENTS.md via @AGENTS.md; the AGENTS.md change is recorded separately.","inputs":["src-server/CLAUDE.md","src-server/AGENTS.md"]}
+  ]
+}
