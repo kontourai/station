@@ -39,19 +39,19 @@ export const EVENT_STORED_TARGET_BYTES = 16 * 1024;
  * window per-event ceiling (`SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES`), so the
  * snapshot's App passthrough keeps working.
  */
-export const MCP_APP_STORED_TARGET_BYTES = 24_576;
+const MCP_APP_STORED_TARGET_BYTES = 24_576;
 /** A smaller value is never spilled: a reference costs about 600 bytes. */
-export const SPILL_MIN_VALUE_BYTES = 1024;
+const SPILL_MIN_VALUE_BYTES = 1024;
 /** Stored-form structure, below the ingress backstop's 32 / 512. */
-export const SPILL_MAX_STORED_DEPTH = 24;
-export const SPILL_MAX_STORED_ENTRIES = 256;
+const SPILL_MAX_STORED_DEPTH = 24;
+const SPILL_MAX_STORED_ENTRIES = 256;
 /** Per-event raw ceiling for engine content (owner decision, 16 MiB). */
 export const MAX_EVENT_CONTENT_BYTES = 16 * 1024 * 1024;
 export const MAX_EVENT_CONTENT_DEPTH = 256;
 export const MAX_EVENT_CONTENT_CONTAINER_ENTRIES = 200_000;
 /** Bytes of JSON encoding a preview may take. */
-export const SPILL_PREVIEW_MAX_JSON_BYTES = 512;
-export const SPILL_PLANNER_VERSION = 1 as const;
+const SPILL_PREVIEW_MAX_JSON_BYTES = 512;
+const SPILL_PLANNER_VERSION = 1 as const;
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
@@ -88,7 +88,7 @@ const SPILLABLE_ROOTS: Readonly<
   'extension.notification': [['payload']],
 };
 
-export function spillableRootsFor(
+function spillableRootsFor(
   method: string,
 ): readonly (readonly string[])[] {
   return SPILLABLE_ROOTS[method] ?? [];
@@ -169,7 +169,7 @@ export function storedEventDigest(event: unknown): string {
   return `sha256-${createHash('sha256').update(runtimeEventStoredText(event), 'utf8').digest('hex')}`;
 }
 
-export function contentDigest(
+function contentDigest(
   kind: RuntimeEventContentKind,
   body: string,
 ): string {

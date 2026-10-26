@@ -40,7 +40,7 @@ const logger = createLogger({ name: 'delta-coalescer' });
 /** Methods whose payloads accumulate by concatenation, and so may merge. */
 const COALESCABLE = new Set(['content.text-delta', 'content.reasoning-delta']);
 /** Default merged-delta cap; equal to the adapter-stream split size. */
-export const DELTA_COALESCER_MAX_BYTES = 8 * 1024;
+const DELTA_COALESCER_MAX_BYTES = 8 * 1024;
 
 /**
  * How many convergence passes `flushAll` will make before giving up. A flush

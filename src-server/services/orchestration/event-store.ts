@@ -857,7 +857,7 @@ const PROMPTED_TURN_SQL = `((typeof(json_extract(payload, '$.prompt')) = 'text'
  * they are given inside the append savepoint, so a 16 MiB reply would cost
  * several times that; search covers the first 256 KiB of a message.
  */
-export const MESSAGE_SEARCH_MAX_INDEXED_BYTES = 256 * 1024;
+const MESSAGE_SEARCH_MAX_INDEXED_BYTES = 256 * 1024;
 
 function capSearchText(text: string): string {
   if (Buffer.byteLength(text, 'utf8') <= MESSAGE_SEARCH_MAX_INDEXED_BYTES)
