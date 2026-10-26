@@ -11,6 +11,7 @@ import {
   gunzipSync,
   gzipSync,
 } from 'node:zlib';
+import { uiDocumentContentSecurityPolicy } from '@kontourai/station-shared/ui-document-policy';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs';
 import { buildUiServerScript } from '../commands/lifecycle';
@@ -341,6 +342,25 @@ describe('built UI asset delivery', () => {
     );
     expect(second.body.toString()).toContain('<script nonce=');
     expect(second.body.toString()).not.toContain('STALE HTML');
+  });
+
+  it('applies the shared document policy and asset rule through the serialized listener', async () => {
+    const page = await request('/');
+    const nonce = page.body.toString().match(/<script nonce="([^"]+)"/)?.[1];
+    expect(nonce).toBeTruthy();
+    expect(page.headers['content-security-policy']).toBe(
+      uiDocumentContentSecurityPolicy(nonce),
+    );
+    // A hashed asset of any type is immutable, as the service worker assumes;
+    // an unhashed one under /assets is not.
+    writeFileSync(join(dir, 'assets', 'openjpeg-tw7Aizcv.wasm'), content);
+    writeFileSync(join(dir, 'assets', 'decoder.wasm'), content);
+    const hashed = await request('/assets/openjpeg-tw7Aizcv.wasm');
+    expect(hashed.headers['cache-control']).toBe(
+      'public, max-age=31536000, immutable',
+    );
+    const unhashed = await request('/assets/decoder.wasm');
+    expect(unhashed.headers['cache-control']).toBe('no-cache');
   });
 
   it('falls back safely when a sidecar is missing or escapes the UI root, and refuses unacceptable representations', async () => {

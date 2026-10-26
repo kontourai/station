@@ -315,7 +315,18 @@ export default defineConfig(({ command, mode }) => {
   return {
     plugins: [
       sharedShikiGrammars(),
-      ...(mode === 'native' ? [] : [offlineShell()]),
+      ...(mode === 'native'
+        ? []
+        : [
+            offlineShell({
+              // Chat is the surface a phone opens first after a dropped link.
+              warmModules: [
+                'src-ui/src/components/chat-dock/ChatDock.tsx',
+                'src-ui/src/components/chat/ChatMessageList.tsx',
+                'src-ui/src/components/chat/ChatInputArea.tsx',
+              ],
+            }),
+          ]),
       uiAssetDelivery({ precompress: mode !== 'native' }),
       tailwindcss(),
       react(),

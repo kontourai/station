@@ -17,6 +17,7 @@ declare global {
     holdReconnectOnline?: boolean;
     reconnectOnlineObserved?: boolean;
     reading: typeof import('../lib/offlineReading');
+    openWarm: () => Promise<{ decoder: string }>;
   }
 }
 
@@ -45,6 +46,7 @@ beforeAll(async () => {
     import {OfflineReadingSection} from '${ROOT}/src-ui/src/views/settings/OfflineReadingSection';
     import * as reading from '${ROOT}/src-ui/src/lib/offlineReading';
     window.reading=reading;
+    window.openWarm=()=>import('./warm-surface');
     import {ConnectionsProvider,useConnections} from '@kontourai/station-connect';
     function Probe(){window.connections=useConnections(); useEffect(()=>{window.fixtureMounted=true},[]); return null;}
     function App(){return <><WebOfflineShell/><OfflineReadingBoundary><QueryClientProvider client={new QueryClient()}><main><h1>Live app</h1><OfflineReadingSection/></main></QueryClientProvider></OfflineReadingBoundary></>}
@@ -60,6 +62,12 @@ beforeAll(async () => {
     export const useAuthorityPersistence=()=>({namespace:'authority-a'});
     export function useHostRequestAuthorityScope(){const {captureCredentialEvidence}=useConnections(); const id=captureCredentialEvidence().connectionId; return {isCurrent:()=>id===window.connections.activeConnection.id}}
   `;
+  // A lazy surface the worker warms, with a hashed binary it must keep offline.
+  writeFileSync(
+    path.join(root, 'warm-surface.ts'),
+    "export const decoder = new URL('./decoder.wasm', import.meta.url).href;",
+  );
+  writeFileSync(path.join(root, 'decoder.wasm'), Buffer.alloc(8192, 7));
   const fixturePath = path.join(root, 'connection-fixture.ts');
   writeFileSync(
     fixturePath,
@@ -82,7 +90,7 @@ beforeAll(async () => {
         },
       ],
     },
-    plugins: [offlineShell()],
+    plugins: [offlineShell({ warmModules: ['warm-surface.ts'] })],
     build: { write: false, minify: false },
   });
   if (!('output' in result)) throw new Error('Expected one build output');
@@ -347,6 +355,66 @@ test('opt-in text survives an offline reload under CSP, stays read-only, and cle
     await context.close();
   }
 }, 30000);
+
+test('the worker warms named chunks without credentials and keeps hashed binaries offline', async () => {
+  const context = await browser.newContext();
+  context.setDefaultTimeout(5000);
+  try {
+    await context.addCookies([
+      { name: 'private-cookie', value: 'not-for-cache', url: origin },
+    ]);
+    const page = await context.newPage();
+    await page.goto(origin);
+    await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+    const cached = () =>
+      page.evaluate(async () =>
+        (
+          await Promise.all(
+            (
+              await caches.keys()
+            ).map(async (name) =>
+              (
+                await (await caches.open(name)).keys()
+              ).map((request) => new URL(request.url).pathname),
+            ),
+          )
+        ).flat(),
+      );
+    await expect
+      .poll(async () =>
+        (await cached()).some((url) =>
+          /^\/assets\/warm-surface-[\w-]+\.js$/.test(url),
+        ),
+      )
+      .toBe(true);
+    const warmFetches = requests.filter((request) =>
+      request.path.startsWith('/assets/warm-surface-'),
+    );
+    expect(warmFetches.length).toBeGreaterThan(0);
+    expect(warmFetches.every((request) => !request.cookie)).toBe(true);
+    const decoder = new URL(
+      await page.evaluate(async () => (await window.openWarm()).decoder),
+    ).pathname;
+    expect(decoder).toMatch(/^\/assets\/decoder-[\w-]+\.wasm$/);
+    const online = await page.evaluate(
+      async (url) => (await (await fetch(url)).arrayBuffer()).byteLength,
+      decoder,
+    );
+    expect(online).toBe(8192);
+    await expect
+      .poll(async () => (await cached()).includes(decoder))
+      .toBe(true);
+    await context.setOffline(true);
+    expect(
+      await page.evaluate(
+        async (url) => (await (await fetch(url)).arrayBuffer()).byteLength,
+        decoder,
+      ),
+    ).toBe(8192);
+  } finally {
+    await context.close();
+  }
+});
 
 test('storage bounds, authority fencing, expiry and clearing prevent stale copies returning', async () => {
   const context = await browser.newContext();
