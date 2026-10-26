@@ -16,8 +16,6 @@ import {
   RUNTIME_EVENT_CONTENT_KEY,
   RUNTIME_EVENT_CONTENT_LITERAL_KEY,
   type RuntimeEventContentKind,
-  type RuntimeEventContentRef,
-  type RuntimeEventSpilledContent,
   runtimeEventStoredText,
   unescapeRuntimeEventContent,
   usesReservedContentKey,
@@ -123,7 +121,7 @@ export function withUnavailableContent<T extends { method: string }>(
     };
     changed = true;
   }
-  return changed ? (copy as unknown as T) : undefined;
+  return changed ? (copy as T) : undefined;
 }
 
 export interface PlannedSpill {
@@ -133,8 +131,8 @@ export interface PlannedSpill {
   bytes: number;
 }
 
-export interface SpillPlan {
-  payload: JsonRecord;
+export interface SpillPlan<T extends object = JsonRecord> {
+  payload: T;
   spills: PlannedSpill[];
   /** Raw `output`/`error` of a `tool.completed` whose value was spilled. */
   spilledToolResult?: { output?: unknown; error?: unknown };
@@ -210,7 +208,7 @@ interface Candidate {
 }
 
 function buildRef(original: Json): {
-  ref: RuntimeEventContentRef;
+  ref: JsonRecord;
   spill: PlannedSpill;
 } {
   const kind: RuntimeEventContentKind =
@@ -219,18 +217,20 @@ function buildRef(original: Json): {
     typeof original === 'string' ? original : JSON.stringify(original);
   const bytes = Buffer.byteLength(body, 'utf8');
   const digest = contentDigest(kind, body);
-  const ref: RuntimeEventContentRef = {
+  // Built as JSON data in the `RuntimeEventContentRef` shape (the contracts
+  // guard `isRuntimeEventContentRef` is what readers check).
+  const ref: JsonRecord = {
     [RUNTIME_EVENT_CONTENT_KEY]: 1,
     ref: digest,
     kind,
     bytes,
     ...(typeof original === 'string' ? { length: original.length } : {}),
     ...(Array.isArray(original)
-      ? { shape: { type: 'array' as const, size: original.length } }
+      ? { shape: { type: 'array', size: original.length } }
       : isRecord(original)
         ? {
             shape: {
-              type: 'object' as const,
+              type: 'object',
               size: Object.keys(original).length,
             },
           }
@@ -328,10 +328,12 @@ function setChild(
  * Plan the stored form of a data-only canonical event. Never throws for
  * size: the caller's backstop decides whether the result can persist.
  */
-export function planEventContentSpill(
-  event: JsonRecord,
+export function planEventContentSpill<T extends object>(
+  input: T,
   options: { trustedUnavailableRoots?: boolean } = {},
-): SpillPlan {
+): SpillPlan<T> {
+  // A data-only copy (EventStore's bounded projector made it), read as JSON.
+  const event = input as JsonRecord;
   const payload = escapeRoot(event);
   if (options.trustedUnavailableRoots) restoreUnavailableRoots(payload);
   const method = typeof event.method === 'string' ? event.method : '';
@@ -351,14 +353,14 @@ export function planEventContentSpill(
     const { ref, spill: planned } = buildRef(
       original ?? (unescapeRuntimeEventContent(candidate.value) as Json),
     );
-    setChild(candidate.parent, candidate.key, ref as unknown as Json);
+    setChild(candidate.parent, candidate.key, ref);
     if (!spills.has(planned.digest)) spills.set(planned.digest, planned);
     if (
       candidate.path.startsWith('$."output"') ||
       candidate.path.startsWith('$."error"')
     )
       spilledToolOutput = true;
-    return before - jsonBytes(ref as unknown as Json);
+    return before - jsonBytes(ref);
   };
 
   const roots = spillableRootsFor(method)
@@ -431,15 +433,17 @@ export function planEventContentSpill(
     }
   }
   if (spills.size > 0) {
-    const summary: RuntimeEventSpilledContent = {
+    // The `RuntimeEventSpilledContent` shape, as JSON data.
+    payload.spilledContent = {
       v: SPILL_PLANNER_VERSION,
       count: spills.size,
       bytes: [...spills.values()].reduce((sum, item) => sum + item.bytes, 0),
     };
-    payload.spilledContent = summary as unknown as Json;
   }
   return {
-    payload,
+    // The stored form keeps the event's shape: only content values became
+    // references and reserved-key objects became literals.
+    payload: payload as T,
     spills: [...spills.values()],
     ...(spilledToolOutput && method === 'tool.completed'
       ? { spilledToolResult: { output: event.output, error: event.error } }

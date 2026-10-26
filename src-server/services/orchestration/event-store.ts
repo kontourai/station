@@ -3962,13 +3962,13 @@ export class EventStore {
     const projectWithIdentity = (
       value: unknown,
       options?: { allowCanonicalAttachmentDataUrls?: boolean },
-      limits?: EventStoreIngressLimits,
     ): EventStoreIngressJson => {
       try {
-        return new BoundedEventStoreIngressProjector(limits).project(
-          value,
-          options,
-        );
+        return new BoundedEventStoreIngressProjector(
+          options?.allowCanonicalAttachmentDataUrls
+            ? RAW_EVENT_INGRESS_LIMITS
+            : STORED_EVENT_INGRESS_LIMITS,
+        ).project(value, options);
       } catch (error) {
         if (error instanceof EventStoreIngressError) {
           const prefix =
@@ -3997,13 +3997,12 @@ export class EventStore {
         throw error;
       }
     };
-    // The raw event may carry engine content up to the per-event ceiling;
-    // the stored form below is held to the ordinary backstop.
-    const projectedEvent = projectWithIdentity(
-      event,
-      { allowCanonicalAttachmentDataUrls: true },
-      RAW_EVENT_INGRESS_LIMITS,
-    ) as unknown as CanonicalRuntimeEvent;
+    // The raw projection (the only one admitting attachment data URLs) may
+    // carry engine content up to the per-event ceiling; the stored form
+    // below is held to the ordinary backstop.
+    const projectedEvent = projectWithIdentity(event, {
+      allowCanonicalAttachmentDataUrls: true,
+    }) as unknown as CanonicalRuntimeEvent;
     // Never accept a provider/import's claim to these Station-owned fields.
     if (projectedEvent.method === 'tool.completed') {
       delete projectedEvent.htmlReply;
@@ -4042,16 +4041,13 @@ export class EventStore {
     // content fields move out of line; reserved-key objects are escaped.
     // The planner copies, so `projectedEvent` keeps the raw values that the
     // derived projections (search, title) read inside the append.
-    const plan = planEventContentSpill(
-      persisted.payload as unknown as Parameters<
-        typeof planEventContentSpill
-      >[0],
-      { trustedUnavailableRoots: this.residualEvents.has(event) },
-    );
-    if (plan.spilledToolResult) {
+    const plan = planEventContentSpill(persisted.payload, {
+      trustedUnavailableRoots: this.residualEvents.has(event),
+    });
+    if (plan.spilledToolResult && plan.payload.method === 'tool.completed') {
       // `snapshotEvent` derives these from the output; a reference cannot
       // be read there, so they are stamped from the raw value here.
-      const stamped = plan.payload as Record<string, unknown>;
+      const stamped = plan.payload;
       const raw = plan.spilledToolResult;
       const toolName =
         typeof stamped.toolName === 'string' ? stamped.toolName : undefined;
@@ -4067,10 +4063,7 @@ export class EventStore {
         ) ?? parseStationControlRefusal(toolName, raw.output);
       if (refusal) stamped.stationControlRefusal = refusal;
     }
-    persisted = {
-      ...persisted,
-      payload: plan.payload as unknown as CanonicalRuntimeEvent,
-    };
+    persisted = { ...persisted, payload: plan.payload };
     // Attachment projection can replace a very small inline data URL with a
     // longer digest reference, so measure its persisted shape independently.
     // It is now a plain projected value, not caller-controlled structure.

@@ -384,6 +384,45 @@ describe('EventStore event content spill', () => {
     });
   });
 
+  test('a spilled html_render result keeps its page reference in window reads', () => {
+    const htmlReply = {
+      version: 1,
+      pageId: '0f8fad5b-d9cb-469f-a165-70867728950e',
+      sessionId: 'thread-h',
+    };
+    store.appendEvent({
+      eventId: 'turn-h',
+      provider: 'claude',
+      threadId: 'thread-h',
+      turnId: 'turn-1',
+      createdAt: T0,
+      method: 'turn.started',
+      prompt: 'render',
+    } as CanonicalRuntimeEvent);
+    store.appendEvent({
+      eventId: 'render-h',
+      provider: 'claude',
+      threadId: 'thread-h',
+      turnId: 'turn-1',
+      createdAt: T0,
+      method: 'tool.completed',
+      toolCallId: 'c1',
+      toolName: 'mcp__station-control__html_render',
+      status: 'success',
+      output: { htmlReply, note: big(30_000) },
+    } as CanonicalRuntimeEvent);
+    const { payload } = storedPayload('render-h');
+    expect(isRuntimeEventContentRef(payload.output.note)).toBe(true);
+    // Derived at ingress from the raw output, before it became a reference.
+    expect(payload.htmlReply).toEqual(htmlReply);
+    const window = store.listEventWindowByTurn('thread-h', { turnLimit: 1 });
+    const rendered = window.events.find((event) => event.id === 'render-h')!;
+    expect((rendered.payload as { htmlReply?: unknown }).htmlReply).toEqual(
+      htmlReply,
+    );
+    expect(rendered.elided).not.toBe('byte_limit');
+  });
+
   test('every stored reference has its row', () => {
     store.appendEvent(claudeWriteApproval('thread-z', big(300 * 1024)));
     const [event] = store.listEvents('thread-z');
