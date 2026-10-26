@@ -12,7 +12,7 @@ import {
 import { join, resolve } from 'node:path';
 import type { ReleaseManifestKeyTable } from '@kontourai/station-shared/release-manifest';
 import { load } from 'js-yaml';
-import { beforeAll, expect, test, vi } from 'vitest';
+import { afterEach, beforeAll, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import type { InstallProvenance } from '../../src-server/routes/system/install-provenance.js';
 import { managedCompanionFixture } from '../../src-server/services/__tests__/fixtures/telemetry-companion-managed.js';
@@ -48,9 +48,24 @@ const { docker, fixtureKeys } = vi.hoisted(() => {
   const fixtureKeys: ReleaseManifestKeyTable = { keys: [] };
   return { docker: vi.fn(), fixtureKeys };
 });
-vi.mock('../../src-server/utils/process-group-exec.js', () => ({
-  runInProcessGroup: docker,
-}));
+vi.mock(
+  '../../src-server/utils/process-group-exec.js',
+  async (importOriginal) => {
+    const original =
+      await importOriginal<
+        typeof import('../../src-server/utils/process-group-exec.js')
+      >();
+    return {
+      ...original,
+      runInProcessGroup: (
+        ...args: Parameters<typeof original.runInProcessGroup>
+      ) =>
+        args[0] === 'docker'
+          ? docker(...args)
+          : original.runInProcessGroup(...args),
+    };
+  },
+);
 vi.mock('../../src-server/services/telemetry-companion.js', () => ({
   readTelemetryCompanionHost: async () => ({
     kind: 'available',
@@ -63,6 +78,10 @@ vi.mock('../../src-server/config/release-manifest-keys.json', () => ({
 }));
 
 const makeTempDir = trackTempDirs();
+afterEach(() => {
+  fixtureKeys.keys = [];
+  docker.mockReset();
+});
 
 async function qualifiedPackageFixture() {
   const root = makeTempDir('companion-qualified-package-');
