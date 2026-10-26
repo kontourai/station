@@ -700,38 +700,43 @@ export class LocalSourceAdmissionOwner {
         environmentSecurityService: this.#environment,
       })(capturedContext);
     const principal = principalNow();
-    const assertCurrent = () => {
-      lease.assertCurrent();
-      if (
-        !this.#personal(request) ||
-        !isOperatorInPersonNotAgent(request) ||
-        principal.id !== LOCAL_OPERATOR_PRINCIPAL_ID ||
-        principalNow().id !== principal.id
-      )
-        refuse('personal_operator_required');
-      privateDirectory(this.#home);
-      privateDirectory(this.#store);
-      if (
-        identity(this.#store) !== this.#storeIdentity ||
-        identity(this.#home) !== this.#homeIdentity
-      )
-        refuse('private_store_changed');
-      if (
-        localEnvironment.signRevisionEvidenceAuthorityBinding(
-          contextBinding,
-        ) !==
-        this.#environment.signRevisionEvidenceAuthorityBinding(contextBinding)
-      )
-        refuse('home_context_mismatch');
-      lease.assertCurrent();
-      if (
-        !runtimeRequestPrincipalMayAccessHttpRoute(request, this.#environment, {
-          method: 'POST',
-          path: '/api/orchestration/chat',
-        })
-      )
-        refuse('source_grant_action_not_authorized');
-    };
+    const assertCurrent = () =>
+      this.#environment.withCurrentAuthority(() => {
+        lease.assertCurrent();
+        if (
+          !this.#personal(request) ||
+          !isOperatorInPersonNotAgent(request) ||
+          principal.id !== LOCAL_OPERATOR_PRINCIPAL_ID ||
+          principalNow().id !== principal.id
+        )
+          refuse('personal_operator_required');
+        privateDirectory(this.#home);
+        privateDirectory(this.#store);
+        if (
+          identity(this.#store) !== this.#storeIdentity ||
+          identity(this.#home) !== this.#homeIdentity
+        )
+          refuse('private_store_changed');
+        if (
+          localEnvironment.signRevisionEvidenceAuthorityBinding(
+            contextBinding,
+          ) !==
+          this.#environment.signRevisionEvidenceAuthorityBinding(contextBinding)
+        )
+          refuse('home_context_mismatch');
+        lease.assertCurrent();
+        if (
+          !runtimeRequestPrincipalMayAccessHttpRoute(
+            request,
+            this.#environment,
+            {
+              method: 'POST',
+              path: '/api/orchestration/chat',
+            },
+          )
+        )
+          refuse('source_grant_action_not_authorized');
+      });
     assertCurrent();
     return { lease, principalId: principal.id, assertCurrent, request };
   }
@@ -1129,31 +1134,32 @@ export class LocalSourceAdmissionOwner {
       key: authority.principalId,
       kind: 'station-operator',
     });
-    const assertCurrent = () => {
-      context.req.raw.signal.throwIfAborted();
-      if (
-        this.#flowAdmissions.get(capability) !== admission ||
-        (!state.sdkConsumed &&
-          (this.#snapshots.get(capability) !== state || state.released))
-      )
-        refuse('snapshot_unavailable');
-      if (state.sdkConsumed)
-        this.#assertSnapshotReceipt(state, authority, boundSubject);
-      else this.#assertSnapshot(state, authority, boundSubject);
-      state.assertObservationOwnersCurrentSync();
-      if (
-        !runtimeRequestPrincipalMayAccessHttpRoute(
-          context.req.raw,
-          this.#environment,
-          {
-            method: 'POST',
-            path: `/api/projects/${encodeURIComponent(state.record.provenance.selection.projectSlug)}/flow/runs/${encodeURIComponent(runId)}/evaluate`,
-          },
+    const assertCurrent = () =>
+      this.#environment.withCurrentAuthority(() => {
+        context.req.raw.signal.throwIfAborted();
+        if (
+          this.#flowAdmissions.get(capability) !== admission ||
+          (!state.sdkConsumed &&
+            (this.#snapshots.get(capability) !== state || state.released))
         )
-      )
-        refuse('flow_grant_action_not_authorized');
-      authority.assertCurrent();
-    };
+          refuse('snapshot_unavailable');
+        if (state.sdkConsumed)
+          this.#assertSnapshotReceipt(state, authority, boundSubject);
+        else this.#assertSnapshot(state, authority, boundSubject);
+        state.assertObservationOwnersCurrentSync();
+        if (
+          !runtimeRequestPrincipalMayAccessHttpRoute(
+            context.req.raw,
+            this.#environment,
+            {
+              method: 'POST',
+              path: `/api/projects/${encodeURIComponent(state.record.provenance.selection.projectSlug)}/flow/runs/${encodeURIComponent(runId)}/evaluate`,
+            },
+          )
+        )
+          refuse('flow_grant_action_not_authorized');
+        authority.assertCurrent();
+      });
     assertCurrent();
     const run = await loadRun(runId, cwd);
     assertCurrent();

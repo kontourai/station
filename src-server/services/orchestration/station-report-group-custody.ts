@@ -94,21 +94,23 @@ export class StationReportGroupCustody {
   }
 
   #request(context: RuntimeSourceRequestContext, method: 'GET' | 'POST'): void {
-    const request = context.req.raw;
-    request.signal.throwIfAborted();
-    if (
-      request.method !== method ||
-      !this.#personal(request) ||
-      !isOperatorInPersonNotAgent(request) ||
-      !runtimeRequestPrincipalMayAccessHttpRoute(
-        request,
-        this.owners.environment,
-        method === 'GET'
-          ? { method, path: '/api/orchestration/sessions' }
-          : { method, path: '/api/orchestration/chat' },
+    this.owners.environment.withCurrentAuthority(() => {
+      const request = context.req.raw;
+      request.signal.throwIfAborted();
+      if (
+        request.method !== method ||
+        !this.#personal(request) ||
+        !isOperatorInPersonNotAgent(request) ||
+        !runtimeRequestPrincipalMayAccessHttpRoute(
+          request,
+          this.owners.environment,
+          method === 'GET'
+            ? { method, path: '/api/orchestration/sessions' }
+            : { method, path: '/api/orchestration/chat' },
+        )
       )
-    )
-      refuse();
+        refuse();
+    });
   }
   #verify(record: StationReportAdmission): void {
     if (!reportAdmissionSignatureMatches(record, this.owners.environment))
@@ -135,10 +137,12 @@ export class StationReportGroupCustody {
     )
       refuse();
     const preparationCurrent = (): undefined => {
-      lease.assertCurrent();
-      this.#request(context, 'POST');
-      if (!same(preparer.read(handle, context.req.raw), prepared)) refuse();
-      return undefined;
+      return this.owners.environment.withCurrentAuthority(() => {
+        lease.assertCurrent();
+        this.#request(context, 'POST');
+        if (!same(preparer.read(handle, context.req.raw), prepared)) refuse();
+        return undefined;
+      });
     };
     if (prepared.intent.continuation) {
       const reference = await this.owners.persistence.retainReportIntent(
@@ -166,9 +170,11 @@ export class StationReportGroupCustody {
       signature: reportAdmissionSignature(data, this.owners.environment),
     };
     const current = (): undefined => {
-      preparationCurrent();
-      this.#verify(record);
-      return undefined;
+      return this.owners.environment.withCurrentAuthority(() => {
+        preparationCurrent();
+        this.#verify(record);
+        return undefined;
+      });
     };
     current();
     await this.owners.persistence.retainReportAdmission(record, current);
@@ -196,9 +202,11 @@ export class StationReportGroupCustody {
       environmentSecurityService: this.owners.environment,
     })(context);
     const current = (): undefined => {
-      lease.assertCurrent();
-      this.#request(context, method);
-      return undefined;
+      return this.owners.environment.withCurrentAuthority(() => {
+        lease.assertCurrent();
+        this.#request(context, method);
+        return undefined;
+      });
     };
     current();
     return { lease, principal, current };

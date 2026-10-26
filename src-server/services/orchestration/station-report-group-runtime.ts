@@ -287,23 +287,31 @@ export class StationReportGroupRuntime {
             )
           ).requireCurrentLocalGrant(context.req.raw);
     const current = () => {
-      lease.assertCurrent();
-      this.#assertCurrent(context);
+      return this.owners.runtime.environmentSecurityService.withCurrentAuthority(
+        () => {
+          lease.assertCurrent();
+          this.#assertCurrent(context);
+        },
+      );
     };
     current();
     return current;
   }
   #assertCurrent(context: RuntimeSourceRequestContext) {
-    context.req.raw.signal.throwIfAborted();
-    if (
-      !isOperatorInPersonNotAgent(context.req.raw) ||
-      !isBoundLocalGrantMintedOperator(context.req.raw) ||
-      !isRuntimeRequestPrincipalCurrent(
-        context.req.raw,
-        this.owners.runtime.requestSecurity,
-      )
-    )
-      throw new StationReportCustodyUnavailable();
+    return this.owners.runtime.environmentSecurityService.withCurrentAuthority(
+      () => {
+        context.req.raw.signal.throwIfAborted();
+        if (
+          !isOperatorInPersonNotAgent(context.req.raw) ||
+          !isBoundLocalGrantMintedOperator(context.req.raw) ||
+          !isRuntimeRequestPrincipalCurrent(
+            context.req.raw,
+            this.owners.runtime.requestSecurity,
+          )
+        )
+          throw new StationReportCustodyUnavailable();
+      },
+    );
   }
   async create(context: RuntimeSourceRequestContext, input: unknown) {
     const result = await this.#execution.execute(context, input);

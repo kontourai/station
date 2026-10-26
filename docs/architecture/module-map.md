@@ -408,6 +408,15 @@ retirement notifications wait for confirmed release and run outside the writer's
 async context, so scheduled publisher work cannot inherit an expired grant.
 Token routes recheck their caller, person binding and required scope inside the
 held mutation, after any wait; reset or narrowed access refuses publication.
+Synchronous local-grant validation shares one home span across its principal,
+scope and host-signature checks. It retains both currentness checks and acquires
+a fresh span for the next validation; no hold crosses an await or stream boundary.
+The report preparation owner also validates its complete roster under one such
+span, so nested credential and Flow checks borrow the same resource hold rather
+than independently publishing locks for each member. Source and Flow admission
+assertions use the same synchronous scope for their request, signature and source
+witness checks. Preparation, custody and response callbacks similarly batch each
+complete synchronous currentness check; async reads still revalidate after awaiting.
 
 **Evidence and limits.** [Owner and composed pairing tests](../../src-server/services/ssh/__tests__/home-writer-owner.test.ts)
 exercise actual locks, alias/directory custody, short-span borrowing, contention

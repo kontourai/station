@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import {
+import fs, {
   chmodSync,
   readdirSync,
   readFileSync,
@@ -8,8 +8,9 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 import { ConfigLoader } from '../../../domain/config-loader.js';
@@ -442,5 +443,36 @@ test('old observation records with no private host witness require fresh prepara
       () => h.store(owner).revalidate(h.request, observation.observationId),
       ProviderCredentialObservationError,
     );
+  }
+});
+
+test('one current-grant validation shares one home hold and observes a later revocation', async () => {
+  const h = await setup();
+  const owner = await captureEnvironmentLocalGrantObservationOwner(
+    h.request,
+    h.environment,
+    h.environment,
+  );
+  const lease = owner.requireCurrentLocalGrant(h.request);
+  const link = fs.linkSync;
+  let holds = 0;
+  const observe = vi.spyOn(fs, 'linkSync').mockImplementation((from, to) => {
+    if (String(to) === join(h.home, 'security', '.home-writer.mutation'))
+      holds++;
+    return link(from, to);
+  });
+  syncBuiltinESMExports();
+  try {
+    lease.assertCurrent();
+    assert.equal(holds, 1);
+    const other = await DevicePairingService.create({
+      homeDir: h.home,
+      environmentId: h.record.environmentId,
+    });
+    other.revokeDevice(h.paired.device.id, 'operator-credential');
+    denied(lease.assertCurrent);
+  } finally {
+    observe.mockRestore();
+    syncBuiltinESMExports();
   }
 });

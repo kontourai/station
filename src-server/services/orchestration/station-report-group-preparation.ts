@@ -250,18 +250,22 @@ export class StationReportGroupPreparation {
     let hostId: string | undefined;
     let pendingSnapshot: object | undefined;
     const current = () => {
-      context.req.raw.signal.throwIfAborted();
-      this.#assertRequest(context.req.raw);
-      for (const qualification of qualifications.values())
-        qualification.assertCurrent();
-      if (Date.now() < now || Date.now() >= input.deadlineAt) refuse();
-      for (const selected of selections.values())
-        readObservedSdkProviderCredential(
-          selected.credential,
-          selected.provider,
-          context.req.raw,
-        );
-      this.#assertRequest(context.req.raw);
+      return this.owners.runtime.environmentSecurityService.withCurrentAuthority(
+        () => {
+          context.req.raw.signal.throwIfAborted();
+          this.#assertRequest(context.req.raw);
+          for (const qualification of qualifications.values())
+            qualification.assertCurrent();
+          if (Date.now() < now || Date.now() >= input.deadlineAt) refuse();
+          for (const selected of selections.values())
+            readObservedSdkProviderCredential(
+              selected.credential,
+              selected.provider,
+              context.req.raw,
+            );
+          this.#assertRequest(context.req.raw);
+        },
+      );
     };
     try {
       for (const member of input.members) {
@@ -667,36 +671,40 @@ export class StationReportGroupPreparation {
       refuse();
   }
   #state(handle: PreparedStationReportGroup, request: Request): State {
-    const state = this.#states.get(handle);
-    if (
-      !state ||
-      state.closed ||
-      state.request !== request ||
-      request.signal.aborted ||
-      Date.now() >= state.deadlineAt
-    )
-      refuse();
-    this.#assertRequest(request);
-    for (const qualification of new Set(
-      state.members.map((m) => m.qualification),
-    ))
-      qualification.assertCurrent();
-    const credentials = new Set<ObservedSdkProviderCredential>();
-    for (const member of state.members) {
-      member.flow?.assertCurrent();
-    }
-    for (const member of state.members) {
-      if (!credentials.has(member.credential)) {
-        readObservedSdkProviderCredential(
-          member.credential,
-          member.provider,
-          request,
-        );
-        credentials.add(member.credential);
-      }
-    }
-    this.#assertRequest(request);
-    return state;
+    return this.owners.runtime.environmentSecurityService.withCurrentAuthority(
+      () => {
+        const state = this.#states.get(handle);
+        if (
+          !state ||
+          state.closed ||
+          state.request !== request ||
+          request.signal.aborted ||
+          Date.now() >= state.deadlineAt
+        )
+          refuse();
+        this.#assertRequest(request);
+        for (const qualification of new Set(
+          state.members.map((m) => m.qualification),
+        ))
+          qualification.assertCurrent();
+        const credentials = new Set<ObservedSdkProviderCredential>();
+        for (const member of state.members) {
+          member.flow?.assertCurrent();
+        }
+        for (const member of state.members) {
+          if (!credentials.has(member.credential)) {
+            readObservedSdkProviderCredential(
+              member.credential,
+              member.provider,
+              request,
+            );
+            credentials.add(member.credential);
+          }
+        }
+        this.#assertRequest(request);
+        return state;
+      },
+    );
   }
   authorizes(
     handle: PreparedStationReportGroup,

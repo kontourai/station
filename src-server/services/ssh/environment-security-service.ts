@@ -228,6 +228,7 @@ export class EnvironmentSecurityService {
   readonly #hostIdentity: string;
   readonly #hosted: boolean;
   #devicePairingService?: DevicePairingService;
+  #homeWriter?: HomeWriterOwner;
   readonly #groups: StationGroupsService;
 
   constructor(options: EnvironmentSecurityServiceOptions) {
@@ -491,6 +492,13 @@ export class EnvironmentSecurityService {
     candidate: string,
   ): 'local-grant' | 'ui-bootstrap' | undefined {
     return this.#devicePairingService?.credentialMintKind(candidate);
+  }
+
+  /** One synchronous authority check; borrowing ends before returning. */
+  withCurrentAuthority<T>(check: () => T): T {
+    if (!this.#homeWriter)
+      throw new HomeWriterUnavailableError('identity-unavailable');
+    return this.#homeWriter.runSynchronous(check);
   }
 
   readCurrentUnboundLocalGrantScope(candidate: string): string | undefined {
@@ -854,6 +862,7 @@ export class EnvironmentSecurityService {
     operation: (lease: HomeWriterLease, owner: HomeWriterOwner) => Promise<T>,
   ): Promise<T> {
     const owner = await HomeWriterOwner.forHome(this.#homeDir);
+    this.#homeWriter = owner;
     const lease = await owner.acquire();
     let operationRan = false;
     let outcome: { ok: true; value: T } | { ok: false; error: unknown };

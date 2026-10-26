@@ -2222,3 +2222,28 @@ the held mutation; self-service also rechecks the required operation scope and
 exact person binding. Composed route controls reproduced successful stale mints
 before repair; timer-driven retirement controls replace forced worker draining.
 These controls remain local evidence, not provider/device or full recovery proof.
+
+### Published recovery contract and coherent authority validation
+
+Station selects published Flow Agents9.8.0, Flow5.3.0 and Dispatch0.8.0 together.
+Registry tarballs and every installed package file were compared byte-for-byte;
+all201 included Flow Agents source files match release commit
+`e2baf1e292d7d35fdc9ca68591ddb549ba02d82a`. Station and Flow Agents resolve the
+same Flow and Dispatch module instances, and the public recovery export loads.
+These checks do not establish that Station's recovery host or endpoint is wired.
+
+The first composed consumer run after writer integration hit all three execution
+deadlines. Profiling and source tracing found nested freshness checks repeatedly
+publishing separate home locks. Local-grant assertions, source/Flow guards,
+whole-roster validation, preparation/custody callbacks and response authorization
+now share one home span for each complete synchronous check. Existing principal,
+scope, signature, source, runtime and expiry checks remain. No hold crosses an
+await or stream boundary, and each later check reacquires current authority.
+
+Owner-boundary regressions measured ten or twelve lock publications before
+repair and one afterward, then refused independent revocation on the next call.
+The focused authority suites pass29 cases and server-test types pass. Earlier
+partial batching restored independent and mixed execution but not Flow. Final
+composed execution remains required; deadlines and provider qualification windows
+were not enlarged. Signed retained terminal/intent evidence, dual-ledger recovery
+serving and live provider/device acceptance remain open.

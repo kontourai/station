@@ -90,24 +90,25 @@ async function captureExistingLocalGrant(
     const principal = getRuntimeAuthenticatedRequestPrincipal(boundRequest);
     if (!principal || principal.kind === 'internal') refuse();
     const credential = principal.credential;
-    const requirePrincipal = () => {
-      const scope = environment.readCurrentUnboundLocalGrantScope(credential);
-      if (
-        getRuntimeAuthenticatedRequestPrincipal(boundRequest) !== principal ||
-        !isBoundLocalGrantMintedOperator(boundRequest) ||
-        principal.locality !== 'home-possession' ||
-        principal.mintKind !== 'local-grant' ||
-        scope === undefined ||
-        !isRuntimeRequestPrincipalCurrent(boundRequest, {
-          authorizeCredential: (candidate) => candidate === credential,
-          resolveGrantedScope: () => scope,
-        }) ||
-        environment.credentialLocality(credential) !== 'home-possession' ||
-        environment.credentialMintKind(credential) !== 'local-grant' ||
-        !isRuntimeRequestPrincipalCurrent(boundRequest, security)
-      )
-        refuse();
-    };
+    const requirePrincipal = () =>
+      environment.withCurrentAuthority(() => {
+        const scope = environment.readCurrentUnboundLocalGrantScope(credential);
+        if (
+          getRuntimeAuthenticatedRequestPrincipal(boundRequest) !== principal ||
+          !isBoundLocalGrantMintedOperator(boundRequest) ||
+          principal.locality !== 'home-possession' ||
+          principal.mintKind !== 'local-grant' ||
+          scope === undefined ||
+          !isRuntimeRequestPrincipalCurrent(boundRequest, {
+            authorizeCredential: (candidate) => candidate === credential,
+            resolveGrantedScope: () => scope,
+          }) ||
+          environment.credentialLocality(credential) !== 'home-possession' ||
+          environment.credentialMintKind(credential) !== 'local-grant' ||
+          !isRuntimeRequestPrincipalCurrent(boundRequest, security)
+        )
+          refuse();
+      });
     requirePrincipal();
     const before = await environment.readExistingRecord();
     requirePrincipal();
@@ -124,15 +125,17 @@ async function captureExistingLocalGrant(
     if (after.environmentId !== environmentId) refuse();
     const assertCurrent = () => {
       try {
-        requirePrincipal();
-        if (
-          !sameSignature(
-            witness,
-            environment.signRevisionEvidenceAuthorityBinding(binding),
+        environment.withCurrentAuthority(() => {
+          requirePrincipal();
+          if (
+            !sameSignature(
+              witness,
+              environment.signRevisionEvidenceAuthorityBinding(binding),
+            )
           )
-        )
-          refuse();
-        requirePrincipal();
+            refuse();
+          requirePrincipal();
+        });
       } catch {
         refuse();
       }
