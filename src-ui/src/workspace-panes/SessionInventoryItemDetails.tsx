@@ -85,13 +85,18 @@ function ReadFailure({
         retry || fallback ? (
           <div className="session-inventory__item-details-actions">
             {retry ? (
+              // A pending check keeps the button focusable (busy, not
+              // `disabled`): disabling the focused control would drop focus
+              // to the page and take Escape and keyboard travel with it.
               <Button
                 variant="primary"
-                onClick={retry.onRetry}
-                pending={retry.pending}
-                pendingLabel={retry.pendingLabel}
+                onClick={retry.pending ? undefined : retry.onRetry}
+                aria-busy={retry.pending || undefined}
+                aria-disabled={retry.pending || undefined}
               >
-                {retry.label}
+                {retry.pending && retry.pendingLabel
+                  ? retry.pendingLabel
+                  : retry.label}
               </Button>
             ) : null}
             {fallback}

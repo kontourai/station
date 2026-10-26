@@ -437,7 +437,16 @@ describe('ConnectedSessionInventory', () => {
     });
     const pending = screen.getByRole('button', { name: 'Checking…' });
     expect(pending.getAttribute('aria-busy')).toBe('true');
-    expect((pending as HTMLButtonElement).disabled).toBe(true);
+    expect(pending.getAttribute('aria-disabled')).toBe('true');
+    // Busy, not disabled: the focused button keeps focus, and a second press
+    // during the check sends nothing.
+    expect((pending as HTMLButtonElement).disabled).toBe(false);
+    pending.focus();
+    fireEvent.click(pending);
+    expect(document.activeElement).toBe(pending);
+    expect(
+      hooks.input.mock.results.at(-1)?.value.recheckHost,
+    ).not.toHaveBeenCalled();
     hooks.input.mockReturnValue({
       data: undefined,
       error: null,
@@ -459,7 +468,7 @@ describe('ConnectedSessionInventory', () => {
     expect(failure.textContent).not.toMatch(/still on an older version/i);
     const again = screen.getByRole('button', { name: 'Check again' });
     expect(again.getAttribute('aria-busy')).toBeNull();
-    expect((again as HTMLButtonElement).disabled).toBe(false);
+    expect(again.getAttribute('aria-disabled')).toBeNull();
   });
 
   test.each([
