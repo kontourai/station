@@ -76,6 +76,11 @@ their **Inspect output** action. Items that cannot be read show an unavailable
 state rather than an empty result. The answer's **Basis** chip still opens
 inspection scoped to that answer.
 
+To see how much of the model's context window a chat has used, read the meter
+beside the model under the message box, or choose **⋯** then **Conversation
+stats** in the phone chat header, which names the share used. Either opens the
+chat's stats.
+
 ## MCP app previews in chat
 
 In Station's web client, a completed MCP call can show its declared app directly
