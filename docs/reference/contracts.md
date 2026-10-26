@@ -53,6 +53,16 @@ bytes, publication references, byte/height limits and theme variable names for
 [visual replies](../user/html-replies.md). It grants no publication or
 conversation access. Filesystem preparation stays in the server.
 
+The `@kontourai/station-contracts/runtime-event-content` subpath defines the
+reference a stored runtime event keeps in place of a large value
+(`RuntimeEventContentRef`: digest, kind, byte size and a preview whose JSON
+encoding is at most 512 bytes), the `exceeds-ceiling`/`missing` marker, the
+literal wrapper for engine data that used a reserved key, and the
+`spilledContent` summary. Its pure helpers collect, resolve (single-level,
+with a caller-supplied lookup), unescape and display references, and give the
+stored text a viewed-content digest covers. A preview is never the whole
+value; see [event content spill](../design/event-content-spill.md).
+
 | Module | Owns |
 |---|---|
 | `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota, optional identity/credit/model/spending/breakdown metadata and bounded capture-audit projections, plus provider-owned login; runtime validation stays in SDK consumers |

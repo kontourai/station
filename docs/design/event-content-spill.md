@@ -1,14 +1,15 @@
 # Event content spill: keep runtime events small, store large values once
 
-> **Reading status: accepted direction, revised after adversarial review
-> (2026-10-26); implementation in progress on
-> `feat/event-content-spill-20261026`.** Owner decisions on the original open
-> questions are recorded in [Owner decisions](#owner-decisions). Current behavior is owned by
-> [EventStore](../../src-server/services/orchestration/event-store.ts) and the
-> [Module map](../architecture/module-map.md). Line references are to
-> `origin/main` at `2ae604ccc1c`. Evidence is source inspection unless stated
-> otherwise; this phase executed no tests. Claims marked **(source)** are
-> inferred from reading the code path and have not been reproduced.
+> **Reading status: accepted direction, implemented on
+> `feat/event-content-spill-20261026` (not yet merged).** Owner decisions on
+> the original open questions are recorded in [Owner decisions](#owner-decisions);
+> where the implementation differs from this note, see
+> [Implementation status](#implementation-status). Current behavior is owned by
+> [EventStore](../../src-server/services/orchestration/event-store.ts), the
+> spill planner ([event-content-spill.ts](../../src-server/services/orchestration/event-content-spill.ts))
+> and the [Module map](../architecture/module-map.md). Line references in the
+> problem and reader sections are to `origin/main` at `2ae604ccc1c`. Claims
+> marked **(source)** were inferred from reading the code path.
 
 ## Problem
 
@@ -473,9 +474,9 @@ hosted tenant scope. The tool-result point read is disabled in hosted mode
 (`orchestration.ts:5800`) because it has no tenant-scoped owner; the content
 route borrows the window authority instead. Lookup is by `(threadId,
 digest)`. The route is added to `src-server/security/pairing-route-scopes.ts`
-so paired phones can load approvals. It is gated by a new
-`runtimeEventContent` capability flag, with its row in the consumed-flags
-table.
+so paired phones can load approvals. There is no capability flag: a client
+only ever sees a reference from a host that stores them, and every such host
+serves the route, so a flag would name a state nothing computes.
 
 ### Approval card
 
@@ -599,3 +600,30 @@ injection follows the repository rule.
 11. UI: the approval card keeps Allow disabled until content loads; rendered
     screenshots at 390 and 1440 in both themes.
 12. Migration fixture.
+
+## Implementation status
+
+Implemented, with tests through the seams named in
+[Tests that will prove it](#tests-that-will-prove-it) and fault injection of
+each mechanism (planner, escaping, kind in digest, deletion, sweep, live
+ingress reuse, SQL joins, search cap, delta split, byte cap, server gate, card
+gate, digest agreement, residual handling, store-marked markers, stored-form
+emission, review resolution, the #4118 refusal). Differences from the body
+above:
+
+- **No capability flag** (see [Content route](#content-route)).
+- **`get_task_events`** shows a spilled reply's preview (at most 512 bytes of
+  JSON) marked `truncated`, not an 8,192-character prefix read.
+- **Conversation export** does not resolve references yet: exported messages
+  carry the marked preview. Accepted gap.
+- **Delegation result output** resolves through the opt-in read in its port
+  wiring (`runtime-routes.ts`); that wiring has no direct test.
+- **CLI `station approvals respond`** loads content and sends the digest; it
+  has no test in this change.
+- **Delegated-agent approve tools** send the stored-event digest without
+  returning the full content to the agent first.
+- **Not verified:** whether the phone request sheet keeps its actions in view
+  once a very long request has loaded. The 390-wide screenshot shows the
+  loaded content filling the sheet with the actions out of frame; the e2e
+  spec checks that Allow appears, not where.
+
