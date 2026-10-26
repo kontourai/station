@@ -756,7 +756,11 @@
 
     "packages/sdk/src/__tests__/starter-work.test.ts",
 
-    "src-server/routes/chat/__tests__/chat-sdk-turn-key.integration.test.ts"
+    "src-server/routes/chat/__tests__/chat-sdk-turn-key.integration.test.ts",
+
+    "packages/sdk/src/client/send-execution-message.ts",
+
+    "src-server/routes/orchestration/__tests__/turn-delivery.routes.test.ts"
   ],
 
   "checks": [
