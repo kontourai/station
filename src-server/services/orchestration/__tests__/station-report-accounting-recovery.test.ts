@@ -74,7 +74,7 @@ async function recoveryFixture() {
   return { h, adapter, orchestration, eventStore, owners, relay };
 }
 
-test('accounting recovery resumes a Dispatch-only commit after Session deletion without another invocation or reservation', async () => {
+test('accounting recovery refuses aborted admission and resumes a Dispatch-only commit after expiry and Session deletion without another invocation or reservation', async () => {
   const { h, adapter, orchestration, eventStore, owners, relay } =
     await recoveryFixture();
   const starts = vi.spyOn(adapter, 'startSession');
@@ -143,6 +143,25 @@ test('accounting recovery resumes a Dispatch-only commit after Session deletion 
       seatId: member.seatId,
       invocationId: attempt.invocationId,
     };
+    const abort = new AbortController();
+    const unbound = requestFor(h, 'POST');
+    const aborted = new Request(unbound, { signal: abort.signal });
+    const abortedPrincipal = getRuntimeAuthenticatedRequestPrincipal(unbound);
+    assert.ok(abortedPrincipal);
+    setRuntimeAuthenticatedRequestPrincipal(aborted, abortedPrincipal);
+    bindRuntimeLocalOperator(aborted);
+    abort.abort(new Error('controlled recovery aborted before admission'));
+    await assert.rejects(
+      runtime.recoverAccounting(
+        h.f.context(aborted),
+        created.group.groupId,
+        command,
+      ),
+      /controlled recovery aborted before admission/,
+    );
+    assert.equal((await inspect())[0].state, 'reserved');
+    assert.equal(h.rawFetch.mock.calls.length, 1);
+    assert.equal(reserve.mock.calls.length, 1);
     const wireFile = join(
       h.f.home,
       'report-groups',
@@ -200,6 +219,7 @@ test('accounting recovery resumes a Dispatch-only commit after Session deletion 
       totalTokens: 6,
       costUsd: delegationAccountingDollarsV1(42),
     });
+    vi.setSystemTime(h.input.deadlineAt + 1);
     eventStore.deleteThread(member.taskId);
     const returning = new StationReportGroupRuntime(owners);
     const request = requestFor(h, 'POST');
