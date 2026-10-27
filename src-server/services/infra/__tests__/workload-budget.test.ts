@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   type ChildWorkloadOomKill,
@@ -570,6 +570,52 @@ describe('workload manager budgets (fake systemd manager)', () => {
     } finally {
       await closeChildWorkload(process.pid);
     }
+  });
+
+  test('an engine killed alone, whose scope systemd collected, is attributed from the slice', async () => {
+    const { cgroupRoot, controlGroups, slice } = await start();
+    const base = '/user.slice/user-1000.slice/user@1000.service';
+    const sliceGroup = `${base}/${slice}`;
+    controlGroups.set(slice, sliceGroup);
+    await writeScopeFixture(`${cgroupRoot}${sliceGroup}`, 0);
+    const unitOf = (args: readonly string[]) =>
+      args
+        .find((arg) => arg.startsWith('--unit='))
+        ?.slice('--unit='.length) as string;
+    const engine = launch('thread-alone');
+    const sibling = launch('thread-sibling');
+    const engineGroup = `${sliceGroup}/${unitOf(engine.args)}`;
+    const siblingGroup = `${sliceGroup}/${unitOf(sibling.args)}`;
+    controlGroups.set(unitOf(engine.args), engineGroup);
+    controlGroups.set(unitOf(sibling.args), siblingGroup);
+    await writeScopeFixture(`${cgroupRoot}${engineGroup}`, 0);
+    await writeScopeFixture(`${cgroupRoot}${siblingGroup}`, 0);
+    trackChildWorkload(engine, process.pid);
+    trackChildWorkload(sibling, process.ppid);
+    await __workloadTestHooks.pollOomKills();
+    // The engine is OOM-killed alone and systemd collects its emptied scope
+    // (unit and cgroup gone). The sibling lost a command meanwhile. The slice
+    // counts both.
+    await rm(`${cgroupRoot}${engineGroup}`, { recursive: true });
+    controlGroups.delete(unitOf(engine.args));
+    await writeFile(
+      join(`${cgroupRoot}${siblingGroup}`, 'memory.events'),
+      'low 0\nhigh 0\nmax 9\noom 1\noom_kill 1\noom_group_kill 0\n',
+    );
+    await writeFile(
+      join(`${cgroupRoot}${sliceGroup}`, 'memory.events'),
+      'low 0\nhigh 0\nmax 21\noom 2\noom_kill 2\noom_group_kill 0\n',
+    );
+    const outcome = engine.outcome;
+    await closeChildWorkload(process.pid);
+    // One of the slice's two kills was the sibling's own.
+    expect(await outcome).toMatchObject({
+      result: 'collected',
+      oomKills: 1,
+      unreportedOomKills: 1,
+    });
+    expect(childWorkloadMemoryExhausted(await outcome, 'SIGKILL')).toBe(true);
+    await closeChildWorkload(process.ppid);
   });
 
   test('without enforcement no limit is claimed', async () => {
