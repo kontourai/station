@@ -32,6 +32,7 @@ import {
 } from '@kontourai/station-contracts/client-origin';
 import {
   ENGINE_MEMORY_EXHAUSTED_CODE,
+  isStationMemoryContinuationTurn,
   MEMORY_CONTINUATION_CLIENT_TURN_PREFIX,
 } from '@kontourai/station-contracts/provider';
 import type { EventStore } from './event-store.js';
@@ -46,6 +47,17 @@ import type {
 export const AUTO_CONTINUE_MAX = 3;
 /** …within this window. Past it, the person's Continue card remains. */
 export const AUTO_CONTINUE_WINDOW_MS = 5 * 60_000;
+
+/**
+ * At most this many automatic continuations in a row in one conversation's
+ * lineage. Only a turn a person sent resets the chain: a task that runs out of
+ * memory every time stops after this many restarts and waits for Continue,
+ * whatever the rate cap still allows.
+ */
+export const AUTO_CONTINUE_CHAIN_MAX = 2;
+
+/** How far back the chain is walked; beyond it the chain counts as full. */
+const CHAIN_WALK_SESSIONS = 32;
 
 /** What the continuation turn says; the recovery note is added server-side. */
 export const MEMORY_CONTINUATION_TEXT =
@@ -93,6 +105,8 @@ export type MemoryContinuationOutcome =
       readonly reason:
         | DeadTurnRefusal
         | 'capped'
+        | 'chain-limit'
+        | 'delegated'
         | 'superseded'
         | 'already-claimed';
     }
@@ -110,12 +124,18 @@ export type MemoryContinuationOutcome =
 export interface MemoryExhaustionContinuationPorts {
   readonly eventStore: Pick<
     EventStore,
-    'conversationForSession' | 'listEventWindowByTurn' | 'hasTurnFacts'
+    | 'conversationForSession'
+    | 'listEventWindowByTurn'
+    | 'hasTurnFacts'
+    | 'listEventsByMethods'
+    | 'firstEventByMethod'
   >;
   readonly service: Pick<
     OrchestrationService,
     'currentConversationSessionId' | 'sessionRecordedOwnerId'
   >;
+  /** Whether the conversation inbox already holds an entry under `key`. */
+  readonly entryExists?: (conversationId: string, key: string) => boolean;
   readonly submit:
     | ((input: {
         readonly conversationId: string;
@@ -242,6 +262,11 @@ export class MemoryExhaustionContinuation {
     if (!this.ports.submit)
       return { kind: 'failed', reason: 'inbox-unavailable' };
     const clientTurnId = memoryContinuationKey(dead.threadId, dead.turnId);
+    // Whoever continued first (Station, this person, another device or
+    // person) owns the one entry; every later request is told so. The
+    // inbox's same-key conflict remains the backstop.
+    if (this.ports.entryExists?.(conversationId, clientTurnId))
+      return { kind: 'skipped', reason: 'already-claimed' };
     const submitted = this.ports.submit({
       conversationId,
       clientTurnId,
@@ -256,6 +281,55 @@ export class MemoryExhaustionContinuation {
     return { kind: 'queued', conversationId, clientTurnId };
   }
 
+  /**
+   * Automatic continuations since the last turn a person sent, walking the
+   * conversation's lineage back from `threadId`.
+   */
+  private automaticChain(threadId: string): number {
+    let chain = 0;
+    let session: string | undefined = threadId;
+    for (let walked = 0; session && walked < CHAIN_WALK_SESSIONS; walked += 1) {
+      const starts = this.ports.eventStore
+        .listEventsByMethods(session, ['turn.started'])
+        .map((event) => record(event.payload))
+        .reverse();
+      for (const start of starts) {
+        if (!start) continue;
+        if (isStationMemoryContinuationTurn(start as never)) chain += 1;
+        // A turn not sent by Station itself (a person, or an unknown origin)
+        // ends the chain; other Station turns (check-backs) neither count nor
+        // reset it.
+        else if (record(record(start.clientOrigin)?.actor)?.kind !== 'internal')
+          return chain;
+      }
+      session =
+        this.ports.eventStore.conversationForSession(
+          session,
+        )?.predecessorSessionId;
+    }
+    return session ? AUTO_CONTINUE_CHAIN_MAX : chain;
+  }
+
+  /**
+   * A delegated child's conversation: its parent decides whether to retry,
+   * so Station does not continue it on its own.
+   */
+  private delegated(conversationId: string): boolean {
+    const metadata = record(
+      record(
+        this.ports.eventStore.firstEventByMethod(
+          conversationId,
+          'session.started',
+        )?.payload,
+      )?.metadata,
+    );
+    return (
+      typeof record(metadata?.delegation)?.parentConversationId === 'string' ||
+      typeof metadata?.parentConversationId === 'string' ||
+      typeof metadata?.parentTaskId === 'string'
+    );
+  }
+
   /** Station's own continuation after `threadId` exited for memory. */
   continueAutomatically(threadId: string): MemoryContinuationOutcome {
     const dead = this.deadTurn(threadId);
@@ -266,6 +340,10 @@ export class MemoryExhaustionContinuation {
     const conversationId = this.conversationOf(threadId);
     if (!this.stillAtDeadTurn(conversationId, threadId))
       return { kind: 'skipped', reason: 'superseded' };
+    if (this.delegated(conversationId))
+      return { kind: 'skipped', reason: 'delegated' };
+    if (this.automaticChain(threadId) >= AUTO_CONTINUE_CHAIN_MAX)
+      return { kind: 'skipped', reason: 'chain-limit' };
     const now = this.now();
     const recent = (this.automatic.get(conversationId) ?? []).filter(
       (at) => now - at < AUTO_CONTINUE_WINDOW_MS,
@@ -296,19 +374,38 @@ export class MemoryExhaustionContinuation {
     const current = this.ports.service.currentConversationSessionId(
       input.conversationId,
     );
-    const lineage = this.ports.eventStore.conversationForSession(current);
-    const threadId =
-      !this.ports.eventStore.hasTurnFacts(current) &&
-      lineage?.predecessorSessionId
-        ? lineage.predecessorSessionId
-        : current;
-    const dead = this.deadTurn(threadId);
-    if (dead === 'not-memory-exhausted')
-      return { kind: 'skipped', reason: dead };
-    const turn =
-      typeof dead === 'string' ? this.newestFailedTurn(threadId) : dead;
-    if (!turn) return { kind: 'skipped', reason: 'not-memory-exhausted' };
-    return this.submit(input.conversationId, turn, input.actor);
+    const predecessor =
+      this.ports.eventStore.conversationForSession(
+        current,
+      )?.predecessorSessionId;
+    const memoryKilled = (threadId: string): DeadTurn | undefined => {
+      const dead = this.deadTurn(threadId);
+      if (dead === 'not-memory-exhausted') return undefined;
+      return typeof dead === 'string' ? this.newestFailedTurn(threadId) : dead;
+    };
+    if (!this.ports.eventStore.hasTurnFacts(current)) {
+      // The dead Session is current, or its successor is reserved and idle.
+      const turn =
+        memoryKilled(current) ??
+        (predecessor ? memoryKilled(predecessor) : undefined);
+      if (!turn) return { kind: 'skipped', reason: 'not-memory-exhausted' };
+      return this.submit(input.conversationId, turn, input.actor);
+    }
+    const turn = memoryKilled(current);
+    if (turn) return this.submit(input.conversationId, turn, input.actor);
+    // A successor already ran: either it is this dead turn's continuation
+    // (someone continued first), or the conversation moved on and an old
+    // card must not start a continuation now.
+    const continued = predecessor ? memoryKilled(predecessor) : undefined;
+    if (
+      continued &&
+      this.ports.entryExists?.(
+        input.conversationId,
+        memoryContinuationKey(continued.threadId, continued.turnId),
+      )
+    )
+      return { kind: 'skipped', reason: 'already-claimed' };
+    return { kind: 'skipped', reason: 'not-memory-exhausted' };
   }
 
   private newestFailedTurn(threadId: string): DeadTurn | undefined {

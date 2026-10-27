@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../event-store.js';
 import {
+  AUTO_CONTINUE_CHAIN_MAX,
   AUTO_CONTINUE_MAX,
   AUTO_CONTINUE_WINDOW_MS,
   MEMORY_CONTINUATION_TEXT,
@@ -67,6 +68,10 @@ describe('automatic continuation after a memory kill', () => {
         listEventWindowByTurn: (threadId, options) =>
           store.listEventWindowByTurn(threadId, options),
         hasTurnFacts: (threadId) => store.hasTurnFacts(threadId),
+        listEventsByMethods: (threadId, methods) =>
+          store.listEventsByMethods(threadId, methods),
+        firstEventByMethod: (threadId, method) =>
+          store.firstEventByMethod(threadId, method),
       },
       service: {
         currentConversationSessionId: (conversationId) =>
@@ -75,6 +80,8 @@ describe('automatic continuation after a memory kill', () => {
       },
       // The inbox kernel's own submit: same key and payload is the same
       // entry; the same key with another payload is a conflict.
+      entryExists: (conversationId, key) =>
+        inbox.read(conversationId, key) !== undefined,
       submit: (input) => {
         const result = inbox.submit({ ...input, now: clock });
         const outcome =
@@ -108,13 +115,37 @@ describe('automatic continuation after a memory kill', () => {
   }
 
   /** A turn that ran and was ended by a memory kill. */
+  const HUMAN = {
+    version: 1,
+    actor: { kind: 'human' },
+    reported: { surface: 'unknown' },
+  };
+  const INTERNAL = { ...HUMAN, actor: { kind: 'internal' } };
+
   function killedTurn(
     threadId: string,
-    options: { pendingRequest?: boolean; aborted?: boolean } = {},
+    options: {
+      pendingRequest?: boolean;
+      aborted?: boolean;
+      /** The killed turn was itself Station's automatic continuation. */
+      continuation?: string;
+      metadata?: Record<string, unknown>;
+    } = {},
   ) {
     const turnId = `${threadId}-turn`;
-    append(threadId, { method: 'session.started', sessionId: threadId });
-    append(threadId, { method: 'turn.started', turnId, prompt: 'Build it' });
+    append(threadId, {
+      method: 'session.started',
+      sessionId: threadId,
+      ...(options.metadata ? { metadata: options.metadata } : {}),
+    });
+    append(threadId, {
+      method: 'turn.started',
+      turnId,
+      prompt: options.continuation ? MEMORY_CONTINUATION_TEXT : 'Build it',
+      ...(options.continuation
+        ? { clientTurnId: options.continuation, clientOrigin: INTERNAL }
+        : { clientOrigin: HUMAN }),
+    });
     if (options.pendingRequest)
       append(threadId, {
         method: 'request.opened',
@@ -253,17 +284,82 @@ describe('automatic continuation after a memory kill', () => {
     const outcomes = [automatic, person].map((outcome) =>
       outcome.kind === 'failed' ? outcome.reason : outcome.kind,
     );
-    expect(outcomes.sort()).toEqual(['conflict', 'queued']);
+    // Exactly: the first continues, the second is told it already did.
+    expect(outcomes).toEqual(['queued', 'skipped']);
+    expect(person).toEqual({ kind: 'skipped', reason: 'already-claimed' });
     // Both named the same key; the inbox holds exactly one entry for it.
     expect(new Set(submissions.map((entry) => entry.clientTurnId)).size).toBe(
       1,
     );
-    // The same person on two devices is one entry, not a conflict.
-    const again = continuation.continueOnRequest({
-      conversationId: 'thread-race',
-      actor: { userId: 'person-1' },
+    // The owner's own click, too, finds Station's entry.
+    expect(
+      continuation.continueOnRequest({
+        conversationId: 'thread-race',
+        actor: { userId: 'person-1' },
+      }),
+    ).toEqual({ kind: 'skipped', reason: 'already-claimed' });
+  });
+
+  test("stops after AUTO_CONTINUE_CHAIN_MAX automatic continuations in a row; a person's turn resets the chain", () => {
+    const continuation = coordinator();
+    const conversation = 'conversation-chain';
+    const link = (threadId: string, predecessor?: string) => {
+      lineage.set(threadId, {
+        conversationId: conversation,
+        ...(predecessor ? { predecessorSessionId: predecessor } : {}),
+      });
+      current.set(conversation, threadId);
+    };
+    // The person's turn is killed; Station continues (chain 0 → 1).
+    killedTurn(conversation);
+    link(conversation);
+    const first = continuation.continueAutomatically(conversation);
+    expect(first.kind).toBe('queued');
+    // That continuation is killed too; Station continues again (1 → 2).
+    const b = `${conversation}:session:b`;
+    killedTurn(b, {
+      continuation: (first as { clientTurnId: string }).clientTurnId,
     });
-    expect(again.kind).toBe('queued');
+    link(b, conversation);
+    clock += 1000;
+    const second = continuation.continueAutomatically(b);
+    expect(second.kind).toBe('queued');
+    // The second continuation is killed: the chain is full.
+    const c = `${conversation}:session:c`;
+    killedTurn(c, {
+      continuation: (second as { clientTurnId: string }).clientTurnId,
+    });
+    link(c, b);
+    clock += 1000;
+    expect(continuation.continueAutomatically(c)).toEqual({
+      kind: 'skipped',
+      reason: 'chain-limit',
+    });
+    // A person sends a turn in the next Session; when that is killed,
+    // Station may continue again.
+    const d = `${conversation}:session:d`;
+    killedTurn(d);
+    link(d, c);
+    clock += 1000;
+    expect(continuation.continueAutomatically(d).kind).toBe('queued');
+    // Literal pin beside the constant.
+    expect(AUTO_CONTINUE_CHAIN_MAX).toBe(2);
+  });
+
+  test('never continues a delegated child on its own: its parent decides', () => {
+    const continuation = coordinator();
+    killedTurn('thread-child', {
+      metadata: { delegation: { parentConversationId: 'parent-conversation' } },
+    });
+    expect(continuation.continueAutomatically('thread-child')).toEqual({
+      kind: 'skipped',
+      reason: 'delegated',
+    });
+    killedTurn('thread-task-child', { metadata: { parentTaskId: 'task-1' } });
+    expect(continuation.continueAutomatically('thread-task-child')).toEqual({
+      kind: 'skipped',
+      reason: 'delegated',
+    });
   });
 
   test('a person can continue past the cap; an unrelated failure is refused', () => {

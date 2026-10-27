@@ -788,10 +788,16 @@ export const ENGINE_SESSION_BINDING_DEAD_CODE = 'engine-session-binding-dead';
 
 /**
  * `runtime.error` code for a turn whose engine process was killed because its
- * workload scope exhausted its memory budget (a positively observed systemd
- * `oom-kill`, never inferred from a signal). `details.workload` carries the
- * scope's `result`, `memoryPeakBytes` and `memoryMaxBytes` when observed.
- * The next turn of the conversation receives a Station recovery note.
+ * workload scope exhausted its memory budget. The evidence is the kernel's own
+ * `oom_kill` count in the engine scope's `memory.events`, read before the
+ * scope is stopped: the engine exited by SIGKILL and the scope recorded an
+ * OOM kill that was not already reported as a command kill, or systemd
+ * reported the scope `oom-kill` (`childWorkloadMemoryExhausted` in
+ * `@kontourai/station-shared/child-workload`). A signal alone, or an unknown
+ * count, is never enough. `details.workload` carries `result`,
+ * `memoryPeakBytes`, `memoryMaxBytes`, `oomKills` and `unreportedOomKills`
+ * when observed. Published by the Codex adapter today; the conversation is then
+ * continued with a Station recovery note.
  */
 export const ENGINE_MEMORY_EXHAUSTED_CODE = 'engine-memory-exhausted';
 

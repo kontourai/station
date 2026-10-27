@@ -574,6 +574,8 @@ describe('POST /chat whenBusy queue (#3568)', () => {
           eventStore: store,
           service,
           submit: (input) => inbox.submit(input),
+          entryExists: (conversationId, key) =>
+            inbox.entry(conversationId, key) !== undefined,
           logger: { warn: vi.fn() },
         })
       : undefined;
@@ -1290,7 +1292,12 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       `/api/orchestration/conversations/${encodeURIComponent(CONVERSATION)}/memory-continuation`,
       { method: 'POST' },
     );
-    expect([202, 409]).toContain(person.status);
+    // The owner's click after Station's own continuation is the same entry:
+    // told it is already being continued, never a second turn.
+    expect(person.status).toBe(409);
+    expect(await person.json()).toMatchObject({
+      code: 'memory_continuation_already_started',
+    });
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(world.adapter.turns).toHaveLength(2);
   });
@@ -1312,11 +1319,35 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       expect(first.status, await first.clone().text()).toBe(202);
     });
     const second = await post(OWNER);
-    expect(second.status).toBe(202);
+    expect(second.status).toBe(409);
+    expect(await second.json()).toMatchObject({
+      code: 'memory_continuation_already_started',
+    });
     await eventually(() => expect(world.adapter.turns).toHaveLength(2));
     expect(world.adapter.turns[1]!.input).toContain('## Station recovery note');
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(world.adapter.turns).toHaveLength(2);
+  });
+
+  test("an ordinary sender cannot claim Station's continuation key", async () => {
+    const world = station({ memoryContinuation: 'manual' });
+    const reserved = `memory-continue-${'a'.repeat(40)}`;
+    const direct = await world.send(reserved, 'pre-claim');
+    expect(direct.status).toBe(400);
+    await world.busy();
+    const queued = await world.send(reserved, 'pre-claim', {
+      whenBusy: 'queue',
+    });
+    expect(queued.status).toBe(400);
+    // The inbox itself refuses the prefix from anyone but Station.
+    expect(
+      world.inbox.submit({
+        conversationId: CONVERSATION,
+        clientTurnId: reserved,
+        payload: { message: 'pre-claim', actor: { userId: OWNER } },
+      }),
+    ).toEqual({ outcome: 'not-permitted' });
+    expect(world.inbox.entry(CONVERSATION, reserved)).toBeUndefined();
   });
 
   test('a follow-up to a busy conversation is held, answered 202, and sent once when the turn ends', async () => {

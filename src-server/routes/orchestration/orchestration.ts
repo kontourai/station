@@ -60,6 +60,7 @@ import {
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   CLIENT_TURN_IN_FLIGHT_CODE,
   type DelegationProvenance,
+  MEMORY_CONTINUATION_CLIENT_TURN_PREFIX,
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
@@ -914,7 +915,17 @@ export const foregroundMessageObjectSchema = z.object({
     })
     .optional(),
   attachmentRefs: stagedAttachmentReferencesSchema,
-  clientTurnId: z.string().min(1).max(200).optional(),
+  // Station's own continuation after a memory kill owns its key prefix; a
+  // client claiming one could pre-empt that continuation.
+  clientTurnId: z
+    .string()
+    .min(1)
+    .max(200)
+    .refine(
+      (key) => !key.startsWith(MEMORY_CONTINUATION_CLIENT_TURN_PREFIX),
+      'This clientTurnId prefix is reserved for Station.',
+    )
+    .optional(),
   // #2436: a posture decision this send carries (a pick made before the chat
   // had a session, or while offline). Recorded on receipt, before the turn.
   setApprovalMode: approvalModeSchema.optional(),
@@ -3479,6 +3490,18 @@ export function createOrchestrationRoutes(
         { success: true, data: { clientTurnId: outcome.clientTurnId } },
         202,
       );
+    if (
+      (outcome.kind === 'skipped' && outcome.reason === 'already-claimed') ||
+      (outcome.kind === 'failed' && outcome.reason === 'conflict')
+    )
+      return c.json(
+        {
+          success: false,
+          code: 'memory_continuation_already_started',
+          error: 'This conversation is already being continued.',
+        },
+        409,
+      );
     if (outcome.kind === 'skipped')
       return c.json(
         {
@@ -3486,15 +3509,6 @@ export function createOrchestrationRoutes(
           code: 'memory_continuation_not_applicable',
           error:
             "The conversation's latest turn did not end because its engine ran out of memory.",
-        },
-        409,
-      );
-    if (outcome.reason === 'conflict')
-      return c.json(
-        {
-          success: false,
-          code: 'memory_continuation_already_started',
-          error: 'This conversation is already being continued.',
         },
         409,
       );
