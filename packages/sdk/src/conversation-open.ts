@@ -126,6 +126,12 @@ function parseConversationOpenResolution(
     );
   }
   if (record.status === 'resolved') {
+    // #4179: optional; a present value must be the boolean it claims to be.
+    if (
+      record.nextTurnStartsSession !== undefined &&
+      typeof record.nextTurnStartsSession !== 'boolean'
+    )
+      return false;
     if (
       record.execution !== undefined &&
       !validExecution(

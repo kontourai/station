@@ -2998,6 +2998,12 @@ export class OrchestrationService {
             ? startMetadata.expectedDefinitionFingerprint
             : undefined;
         const model = session.reportedModel ?? session.model;
+        const nextTurnStartsSession =
+          await this.conversationLineage.nextTurnStartsSession(
+            conversationId,
+            detail,
+            authority,
+          );
         return {
           sessionId: session.threadId,
           // Only `readCurrentConversationSession`'s reserved-tail fallback
@@ -3045,6 +3051,9 @@ export class OrchestrationService {
           // provider today.
           canContinue: canResolveConversationContinuation(detail),
           continuationPending: isConversationContinuationPending(detail),
+          ...(nextTurnStartsSession === undefined
+            ? {}
+            : { nextTurnStartsSession }),
           ...(detail.session.conversationActivity
             ? { activity: detail.session.conversationActivity }
             : {}),
@@ -4920,6 +4929,20 @@ export class OrchestrationService {
         : {}),
       ...(session.cwd ? { cwd: session.cwd } : {}),
     };
+  }
+
+  /**
+   * #4162: the metadata the session's latest start recorded (reserved keys
+   * stripped). Undefined for a session `authority` may not read.
+   */
+  readSessionStartMetadata(
+    threadId: string,
+    authority: SessionReadScope,
+  ): Record<string, unknown> | undefined {
+    this.initialize();
+    if (!this.sessionAuthz.canReadSession(threadId, authority))
+      return undefined;
+    return this.readLatestSessionStartMetadata(threadId);
   }
 
   /**
