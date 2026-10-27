@@ -198,26 +198,52 @@ runaway engine still leaves at least 40% of the slice to its siblings. A fixed
 browser at once, which is exactly what a 16 GiB host could otherwise afford.
 
 The two memory budgets can also be saved as Station settings in
-`<home>/config/workload-budgets.json` (Settings → Advanced → Host options,
-behind the **Workload budget settings** Feature Preview). Each value resolves
-in this order: the environment variable, then the saved setting, then the
-default above. A saved setting above the host's memory, below 256 MiB, or a
-per-engine value above the total is refused; an invalid file is reported and
-ignored. While enforcement runs, a save re-applies the slice's total
-`MemoryMax` at once and new scopes receive the new per-engine limit without a
-restart; running scopes keep the limit they were launched with. Where
-enforcement is not running, the saved values are read when it next starts.
+`<home>/config/workload-budgets.json`. Each value resolves in this order: the
+environment variable, then the saved setting, then the default above. A
+setting is never silently capped: one below 256 MiB or above the host's memory,
+a per-engine value above the total it would resolve against (a saved or
+environment total, or the default), and a saved total below
+`STATION_WORKLOAD_MEMORY_MIB` are refused. The same check runs when the file is
+read at start; a file that is unreadable, malformed or out of range is
+reported (`settingsError`) and ignored, so the environment and defaults apply.
+
+While enforcement runs, a save applies without a restart. The total is the
+slice's `MemoryMax`, which binds every running engine at once, so a total
+below what the slice uses now is refused. A new per-engine budget reaches only
+scopes launched after the save; running scopes keep the limit they started
+with, and `GET /api/system/workload` lists each running scope with its own
+limit. Saves are serialized; the slice is changed before the file is replaced,
+and a failed change leaves the file, the reported state and the enforced limits
+as they were. Where enforcement is not running, the saved values are read when
+it next starts.
+
+Only the editor is a preview: Settings → Advanced → Host options shows it, and
+`PUT /api/system/workload/settings` accepts a save, only while the **Workload
+budget settings** Feature Preview is on. The budgets themselves, the
+host-sized default, the engine statement, `workload_status` and memory-kill
+recovery are not previews. Turning the preview off keeps saved values in
+force; to clear them, save empty fields (the default) before turning it off, or
+remove `workload-budgets.json` and restart Station. The read
+(`GET /api/system/workload`) and the save are ordinary `/api/system` routes:
+a paired device holding `orchestration:operate` can save, like it can change
+feature previews. Hosted deployments mount neither.
 
 The slice also caps combined swap at 1 GiB. At most 256 scopes can be active.
 One engine's budget includes all of its tools, so size it for the intended
-workload. Exceeding its limit can interrupt that engine. Aggregate exhaustion
+workload. Engine scopes launch with `OOMPolicy=continue`: when a scope reaches
+its limit, the kernel OOM killer kills one process in it, normally the largest
+command (a build, a linter, a browser), and the engine keeps running and sees
+that command fail (SIGKILL, exit 137) within the same turn. Only when the
+engine itself is the process killed does the engine end. Aggregate exhaustion
 can kill any workload in the slice, including a sibling engine. The server
 requests 512 MiB of memory protection and an oomd avoidance preference; these
 do not guarantee survival under host-wide exhaustion or an ancestor policy
 that kills the entire user session.
 
-Managed Linux service isolation requires systemd 253 or newer for scope OOM
-policy and cause reporting. Older installations must upgrade systemd before
+Managed Linux service isolation requires systemd 253 or newer, which accepts
+`OOMPolicy=` on a scope; an older `systemd-run` rejects the property (systemd
+249 was observed to). Memory-kill causes no longer depend on the scope result
+systemd reports, so the floor is set by the property, not by reporting. Older installations must upgrade systemd before
 starting workloads. Scope launches preserve literal arguments; systemd 254 and
 newer receive an explicit option disabling environment expansion.
 
@@ -230,12 +256,29 @@ their existing process behavior and do not gain these limits. The developer
 scopes, recent results/peaks and slice memory/pressure measurements. An unavailable
 measurement is reported separately from enforcement state.
 
-Codex retains its own launch's systemd outcome through scope cleanup. A positively
-observed `oom-kill` produces an `engine-memory-exhausted` failure with the scope
-budget and peak; aggregate or host pressure can also select that scope. A signal
-alone does not prove OOM. Other unexpected exits retain their signal in the
-message. Unavailable outcome inspection leaves the cause unknown while the
-turn and interrupted tool/child rows still settle.
+Under `OOMPolicy=continue` systemd records no `oom-kill` result for a scope,
+so Station reads the kernel's own count: the `oom_kill` line of the scope's
+cgroup v2 `memory.events`. A 1-second poll announces new kills in a running
+scope, and the count is read again when the scope closes. systemd collects a
+scope as soon as its last process exits, cgroup and counters with it; for such
+a scope Station takes the slice's hierarchical `oom_kill` increase since the
+last poll, less the increases still visible in the other scopes. Each launch
+also polls at once, so an engine killed within its first second has a
+baseline.
+
+Codex reports both cases. A kill while Codex runs publishes a live warning
+(`workload-command-oom-killed`, naming the budget) and a transcript marker
+("A command was killed … for exceeding the engine's workload memory budget");
+Station does not know which command it was and fabricates no tool result —
+Codex reports that command's own failure. Codex's own death is a SIGKILL with
+an `oom_kill` no listener was told about, or a scope systemd reports as
+`oom-kill`; it produces an `engine-memory-exhausted` failure with the budget
+and peak and `session.exited` reason `memory-exhausted`. A signal alone does
+not prove OOM; an unknown count (no poll yet, or the slice unreadable) leaves
+the cause unknown, and the turn and interrupted tool/child rows still settle.
+Claude Code runs in the same scopes and is told its budget, but its adapter
+does not yet read these counts: a Claude command kill is reported only by
+Claude, and Claude's own memory death is not classified as such.
 
 #### What engines are told
 
@@ -247,22 +290,43 @@ the engine starts, and that memory-heavy work should run one step at a time.
 Nothing is said where no scope is enforced, or for engines that have not
 declared one (ACP, Muse and in-process engines today).
 
-Codex and Claude Code launches also name their Station session to the
-launcher, which attributes the scope to it. The `workload_status`
-station-control tool (`GET /api/system/workload/session`) reports the calling
-Session's own scope: enforcement state, limits, and `memory.current`,
-`memory.peak`, `memory.max`, swap, `oom_kill` and task counters read from the
-scope's cgroup v2 files. A Session whose engine is not attributed reports
+The statement names the limit of the Session's own scope when it already
+exists (a later settings save does not change a running scope), otherwise the
+limit a launch would receive now. Codex and Claude Code launches also name
+their Station session to the launcher, which attributes the scope to it. The
+`workload_status` station-control tool (`GET /api/system/workload/session`)
+reports the calling Session's own scope: enforcement state, limits, and
+`memory.current`, `memory.peak`, `memory.max`, swap, `oom_kill` and task
+counters read from the scope's cgroup v2 files, with the time Station first saw
+the latest kill (to its 1-second poll). A Session whose engine is not attributed reports
 `unattributed` rather than another scope's numbers. Operators read the whole
 Station's budgets with `station workload status` (`GET /api/system/workload`).
 
-After a memory kill, the chat offers **Continue** instead of **Send again**:
-resending the original prompt would restart the same concurrent work. The next
-turn runs in a successor Session, and its first turn is prefixed with a Station
+After the engine itself is killed for memory, Station continues the
+conversation on its own: it hands one Station-authored turn ("Continue the
+task from where it stopped.") to the conversation inbox, which runs it in a
+successor Session. That Session's first turn is prefixed with a Station
 recovery note built from the predecessor's own events: the commands whose tool
-calls never reported a result, the peak and the limit, and the instruction to
-check their partial results and run heavy steps one at a time. Automatic
-recovery does not replay a memory-killed turn.
+calls never reported a result (secrets redacted, set as code, and labelled as
+a record of the previous engine's commands rather than an instruction from the
+user), the peak and the limit, and the instruction to check their partial
+results and run heavy steps one at a time. The chat shows "The engine ran out
+of memory and was restarted — continuing", with **Stop** while it runs.
+
+Automatic continuation is withheld when the turn was interrupted, when a
+request (approval or question) was still open at the kill, when the
+conversation has moved on, and after `AUTO_CONTINUE_MAX` (3) automatic
+continuations within `AUTO_CONTINUE_WINDOW_MS` (5 minutes) per conversation,
+counted in the server process (a restart resets it). Then the chat offers
+**Continue** instead of **Send again**, because resending the original prompt
+would restart the same concurrent work. Continue posts
+`/api/orchestration/conversations/:id/memory-continuation`, which sends the
+same turn under the same inbox key, derived from the dead Session and turn: the
+same person on another device gets the same entry, anyone else a 409, and a
+click racing Station's own continuation never starts a second one. An older
+Station without the route answers 404 and the client sends the short
+continuation as an ordinary message. Ordinary connection recovery still treats
+a memory kill as manual and never replays the prompt.
 
 `npm run lint:check` and `lint:fix` share one Biome slot per OS user across
 worktrees and use at most two Biome worker threads. This prevents overlapping

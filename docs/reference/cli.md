@@ -2093,7 +2093,8 @@ Prints this Station's engine workload memory budgets as JSON: whether Linux
 enforcement is `ready`, `unmanaged` or `unavailable` (with its reason), the
 per-engine and total limits and whether each came from the environment, a
 saved setting or the default, the host's memory, and whether a saved change
-applies to new engines now or after a restart. A Station without the route
+applies to new engines now or after a restart, and each running scope with
+the limit it was launched with and the OOM kills seen in it. A Station without the route
 exits nonzero and says it does not report workload budgets. See
 [Linux service workload budgets](../guides/development.md#linux-service-workload-budgets).
 

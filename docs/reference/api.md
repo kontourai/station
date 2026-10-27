@@ -4161,7 +4161,29 @@ under `/api/system/workload`:
   `unmeasured`. Without a verified caller it answers 403
   `station_control_caller_required`.
 
+`GET /api/system/workload` also lists running `scopes`, each with the limit
+it was launched with (a saved change reaches only later launches), its OOM
+kill count and `lastOomKillAt`. The session read's measured scope carries
+`lastOomKillAt` too. A save refuses a total below the slice's current usage
+(400 `workload_settings_invalid`), because the total binds running engines at
+once.
+
 Hosted deployments mount only the session read; the first two answer 404 there.
+
+### Continue after a memory kill
+
+`POST /api/orchestration/conversations/:conversationId/memory-continuation`
+continues a conversation whose latest turn ended with `engine-memory-exhausted`
+([continuation module](../../src-server/services/orchestration/memory-exhaustion-continuation.ts)).
+It sends one Station-authored turn through the conversation inbox as the caller,
+under a key derived from the dead Session and turn, and answers 202 with that
+`clientTurnId`. The same caller again is the same entry (202); a different
+sender, or one racing Station's own automatic continuation, gets 409
+`memory_continuation_already_started`. A latest turn that did not end that way
+is 409 `memory_continuation_not_applicable`; a conversation the caller cannot
+read is 404; one the inbox refuses the caller is 403
+`memory_continuation_not_permitted`. A Station without a conversation inbox
+(hosted) answers 404, as an older Station does.
 
 `GET /api/system/status` returns a plain status object. It includes prerequisites
 and `prerequisitesState`, configured/detected providers, CLI observations,
