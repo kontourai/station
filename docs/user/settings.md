@@ -58,9 +58,9 @@ for requirements, limits and error recovery.
 the command palette, and its **Monitoring** page in the command palette. It is
 off by default; a direct `/developer` link still opens when it is off.
 
-Enabling it also reveals four independent previews: **Flow delivery preview**,
-**Veritas readiness preview**, **Trust preview**, and **Sheet gestures
-preview**. Each starts off and is saved on this device. The tools require both Developer tools and their own
+Enabling it also reveals five independent previews: **Flow delivery preview**,
+**Veritas readiness preview**, **Trust preview**, **Sheet gestures preview**,
+and **Station routes preview**. Each starts off and is saved on this device. The tools require both Developer tools and their own
 preview switch to be on. Turning Developer tools off makes them unavailable
 without clearing those saved choices. These device previews are separate from
 the Station-wide Feature previews above.
@@ -72,6 +72,14 @@ between the two heights. Closing this way is the same as choosing the sheet's
 close button. Confirmation prompts and sheets that cannot be dismissed get no
 handle, and the handle can only be dragged with touch or a pointer; the close
 button and Escape still close every sheet.
+
+**Station routes preview** adds **Routes** to the Devices page: every address
+this device reaches the current Station on, which one is in use, which failed
+and why, and **Add route** for an address you type. **Edit** removes routes you
+added. While connected, the app also learns the LAN, Tailscale and Tailscale
+HTTPS addresses the Station reports, marked "found automatically". The app saved on a phone or desktop
+lists those addresses but still connects only through its saved one; see
+[Station routes](https://github.com/kontourai/station/blob/main/docs/design/station-routes.md).
 
 ## Shared answers
 

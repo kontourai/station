@@ -1,5 +1,125 @@
 [
   {
+    "timestampUtc": "2026-10-27T10:25:49Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2491.1",
+    "sha": "663143356c0abef8fdb166fd488a188c2fb0544d",
+    "artifactBuiltAt": "2026-10-27T09:36:43.329Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40480667915",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40480667915)"
+    ],
+    "changelog": {
+      "previousSha": "8ba48bfa3ea62dc5ca2d3ad2f88e8f9a9bd64428",
+      "groups": {
+        "feat": [
+          "[#4244](https://github.com/kontourai/station/pull/4244) feat(station-routes): reach a saved Station over every route it reports",
+          "[#4242](https://github.com/kontourai/station/pull/4242) feat(ui): drag phone sheets to expand or dismiss (device preview); show context use in the mobile Actions sheet",
+          "[#4241](https://github.com/kontourai/station/pull/4241) feat(settings): About page with licenses and legal; one spacing rhythm for settings cards"
+        ],
+        "fix": [
+          "[#4250](https://github.com/kontourai/station/pull/4250) fix(runtime): restore the literal personal-host gate around Browser and device routes",
+          "[#4248](https://github.com/kontourai/station/pull/4248) fix(home): preserve archive directories and recorded legacy media",
+          "[#4194](https://github.com/kontourai/station/pull/4194) fix(chat): say when a reopened chat's next turn starts a Session (#4179)",
+          "[#4234](https://github.com/kontourai/station/pull/4234) fix(chat): derive live steering from native durability fidelity"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4249](https://github.com/kontourai/station/pull/4249) test(contracts): pin existing conversation context refusal semantics",
+          "[#4243](https://github.com/kontourai/station/pull/4243) perf(mobile): lean entry, offline Chat, steady reconnects, revalidated reads",
+          "[#4245](https://github.com/kontourai/station/pull/4245) test(docs): serve atlas assets outside the DevTools pipe"
+        ]
+      },
+      "note": null,
+      "commitCount": 10
+    }
+  },
+  {
+    "timestampUtc": "2026-10-27T10:25:45Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2491.1",
+    "sha": "663143356c0abef8fdb166fd488a188c2fb0544d",
+    "artifactBuiltAt": "2026-10-27T09:36:10.384Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40480667915",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40480667915)"
+    ],
+    "changelog": {
+      "previousSha": "8ba48bfa3ea62dc5ca2d3ad2f88e8f9a9bd64428",
+      "groups": {
+        "feat": [
+          "[#4244](https://github.com/kontourai/station/pull/4244) feat(station-routes): reach a saved Station over every route it reports",
+          "[#4242](https://github.com/kontourai/station/pull/4242) feat(ui): drag phone sheets to expand or dismiss (device preview); show context use in the mobile Actions sheet",
+          "[#4241](https://github.com/kontourai/station/pull/4241) feat(settings): About page with licenses and legal; one spacing rhythm for settings cards"
+        ],
+        "fix": [
+          "[#4250](https://github.com/kontourai/station/pull/4250) fix(runtime): restore the literal personal-host gate around Browser and device routes",
+          "[#4248](https://github.com/kontourai/station/pull/4248) fix(home): preserve archive directories and recorded legacy media",
+          "[#4194](https://github.com/kontourai/station/pull/4194) fix(chat): say when a reopened chat's next turn starts a Session (#4179)",
+          "[#4234](https://github.com/kontourai/station/pull/4234) fix(chat): derive live steering from native durability fidelity"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4249](https://github.com/kontourai/station/pull/4249) test(contracts): pin existing conversation context refusal semantics",
+          "[#4243](https://github.com/kontourai/station/pull/4243) perf(mobile): lean entry, offline Chat, steady reconnects, revalidated reads",
+          "[#4245](https://github.com/kontourai/station/pull/4245) test(docs): serve atlas assets outside the DevTools pipe"
+        ]
+      },
+      "note": null,
+      "commitCount": 10
+    }
+  },
+  {
+    "timestampUtc": "2026-10-27T09:37:03Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2491.40480667915",
+    "sha": "663143356c0abef8fdb166fd488a188c2fb0544d",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40480667915",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2491.40480667915 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "8ba48bfa3ea62dc5ca2d3ad2f88e8f9a9bd64428",
+      "groups": {
+        "feat": [
+          "[#4244](https://github.com/kontourai/station/pull/4244) feat(station-routes): reach a saved Station over every route it reports",
+          "[#4242](https://github.com/kontourai/station/pull/4242) feat(ui): drag phone sheets to expand or dismiss (device preview); show context use in the mobile Actions sheet",
+          "[#4241](https://github.com/kontourai/station/pull/4241) feat(settings): About page with licenses and legal; one spacing rhythm for settings cards"
+        ],
+        "fix": [
+          "[#4250](https://github.com/kontourai/station/pull/4250) fix(runtime): restore the literal personal-host gate around Browser and device routes",
+          "[#4248](https://github.com/kontourai/station/pull/4248) fix(home): preserve archive directories and recorded legacy media",
+          "[#4194](https://github.com/kontourai/station/pull/4194) fix(chat): say when a reopened chat's next turn starts a Session (#4179)",
+          "[#4234](https://github.com/kontourai/station/pull/4234) fix(chat): derive live steering from native durability fidelity"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4249](https://github.com/kontourai/station/pull/4249) test(contracts): pin existing conversation context refusal semantics",
+          "[#4243](https://github.com/kontourai/station/pull/4243) perf(mobile): lean entry, offline Chat, steady reconnects, revalidated reads",
+          "[#4245](https://github.com/kontourai/station/pull/4245) test(docs): serve atlas assets outside the DevTools pipe"
+        ]
+      },
+      "note": null,
+      "commitCount": 10
+    }
+  },
+  {
     "timestampUtc": "2026-10-27T01:02:28Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2491",

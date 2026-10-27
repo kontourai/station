@@ -29,9 +29,11 @@ vi.mock('@kontourai/station-sdk', () => ({
 
 import {
   answerOrchestrationRequest,
+  contentRefreshVersion,
   forgetApprovalAnswer,
   inspectApprovalAnswer,
   readApprovalAnswerState,
+  recordViewedContentDigest,
 } from '../answerRequest';
 
 const request = {
@@ -251,5 +253,37 @@ describe('answerOrchestrationRequest', () => {
       answerOrchestrationRequest('http://api', request),
     ).rejects.toBe(refused);
     expect(resolveOrchestrationRequest).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('docs/design/event-content-spill.md: allow digests', () => {
+  test('sends the recorded digest and reloads the content after a 409', async () => {
+    const resolve = vi.mocked(resolveOrchestrationRequest);
+    resolve.mockReset();
+    recordViewedContentDigest('thread-c', 'evt-c', `sha256-${'1'.repeat(64)}`);
+    resolve.mockRejectedValueOnce(
+      Object.assign(new Error('Load the full request before allowing it.'), {
+        code: 'request_content_not_loaded',
+      }),
+    );
+    inspectAttentionRequest.mockResolvedValue({
+      state: 'open',
+      canRespond: true,
+    });
+    const before = contentRefreshVersion('thread-c', 'evt-c');
+    await expect(
+      answerOrchestrationRequest('http://station.test', {
+        threadId: 'thread-c',
+        requestId: 'req-c',
+        requestEventId: 'evt-c',
+        decision: 'accept',
+      }),
+    ).rejects.toThrow('Station is loading more of this request');
+    expect(resolve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        viewedContentDigest: `sha256-${'1'.repeat(64)}`,
+      }),
+    );
+    expect(contentRefreshVersion('thread-c', 'evt-c')).toBe(before + 1);
   });
 });

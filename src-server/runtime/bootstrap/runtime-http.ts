@@ -40,6 +40,7 @@ import {
   INTERACTIVE_WORKSPACE_TIMING_MODE,
   INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER,
 } from '../../../src-shared/interactive-workspace-performance-timing.js';
+import { jsonRevalidation } from '../../routes/conditional-get.js';
 import {
   clientProtocolApplies,
   evaluateClientProtocol,
@@ -469,6 +470,10 @@ export function configureRuntimeHttp({
       eventBus.emit(SERVER_EVENTS.DATA_CHANGED, { keys });
     }
   });
+
+  // Innermost: it compares the body a handler produced for this caller, after
+  // every admission check above, and before the account guard re-checks it.
+  app.use('*', jsonRevalidation());
 }
 
 /**
@@ -941,6 +946,12 @@ function configureRuntimeSecurity(
         'Access-Control-Allow-Methods',
         'GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS',
       );
+      // Without it the browser re-asks before nearly every cross-origin
+      // request, an extra round trip a phone pays on each poll. A cached
+      // answer cannot widen access: a request needing a header or method
+      // this one did not allow is preflighted again, and every response is
+      // still authorized on its own. Two hours is Chromium's ceiling.
+      c.header('Access-Control-Max-Age', '7200');
       return c.body(null, 204);
     }
 

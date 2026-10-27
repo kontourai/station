@@ -83,6 +83,8 @@ archive/
 !src-ui/public/favicon.png
 # favicon-dev.png is what a dev build's is-dev-build rule actually displays.
 !src-ui/public/favicon-dev.png
+# The web app manifest's install icons, written by generate-app-icons.mjs.
+!src-ui/public/icons/*.png
 .station.pids
 test-results/
 playwright-report/

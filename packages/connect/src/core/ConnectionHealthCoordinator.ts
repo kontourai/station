@@ -7,6 +7,17 @@ import type {
   ConnectionStatus,
 } from './types';
 
+/**
+ * What the last run learned about one route (docs/design/station-routes.md).
+ * `not-checked` is a route ranked after the one that answered: probing it too
+ * would cost a request per poll and change nothing.
+ */
+export interface ConnectionRouteResult {
+  endpointId: string;
+  state: 'in-use' | 'failed' | 'blocked' | 'not-checked';
+  reason?: ConnectionFailureReason;
+}
+
 export interface ConnectionHealthSnapshot {
   status: ConnectionStatus;
   checking: boolean;
@@ -34,6 +45,8 @@ export interface ConnectionHealthSnapshot {
     end: string;
     reason: ConnectionFailureReason;
   }>;
+  /** Per-route outcome of the last completed run, in probe order. */
+  routes: ReadonlyArray<ConnectionRouteResult>;
 }
 
 export type ConnectionHealthCheckResult =
@@ -75,6 +88,7 @@ export class ConnectionHealthCoordinator {
     failureStreak: 0,
     blocked: false,
     failureWindows: [],
+    routes: [],
   };
   private timer: ReturnType<typeof setTimeout> | null = null;
   private windowOpen = false;
@@ -154,6 +168,10 @@ export class ConnectionHealthCoordinator {
         failureStreak: 0,
         blocked: false,
         failureWindows: this.snapshot.failureWindows,
+        routes: compatible.map((endpoint, index) => ({
+          endpointId: endpoint.id,
+          state: index === 0 ? 'in-use' : 'not-checked',
+        })),
       });
       this.schedule(this.options.pollIntervalMs ?? 10_000);
       if (this.rerunRequested) {
@@ -170,12 +188,22 @@ export class ConnectionHealthCoordinator {
     // simply not learned anything yet.
     let reason: ConnectionFailureReason =
       selection.failures.values().next().value ?? 'undetermined';
+    const routes = new Map<string, ConnectionRouteResult>(
+      compatible.map((endpoint) => [
+        endpoint.id,
+        { endpointId: endpoint.id, state: 'not-checked' },
+      ]),
+    );
+    for (const [endpointId, failure] of selection.failures) {
+      routes.set(endpointId, { endpointId, state: 'blocked', reason: failure });
+    }
     for (const endpoint of compatible) {
       try {
         const result = await this.options.check(endpoint, controller.signal);
         if (result === true || (typeof result === 'object' && result.ok)) {
           connected = endpoint;
           success = result === true ? { ok: true } : result;
+          routes.set(endpoint.id, { endpointId: endpoint.id, state: 'in-use' });
           break;
         }
         // A bare `false` is a check that failed without saying why — the
@@ -188,6 +216,11 @@ export class ConnectionHealthCoordinator {
           result === false || typeof result !== 'object'
             ? 'undetermined'
             : result.reason;
+        routes.set(endpoint.id, {
+          endpointId: endpoint.id,
+          state: 'failed',
+          reason,
+        });
       } catch (error) {
         if (controller.signal.aborted) {
           this.inFlight = false;
@@ -201,8 +234,14 @@ export class ConnectionHealthCoordinator {
           error instanceof DOMException && error.name === 'TimeoutError'
             ? 'timeout'
             : 'undetermined';
+        routes.set(endpoint.id, {
+          endpointId: endpoint.id,
+          state: 'failed',
+          reason,
+        });
       }
     }
+    const routeResults = [...routes.values()];
     this.inFlight = false;
     if (this.abortController === controller) this.abortController = null;
     if (controller.signal.aborted || this.listeners.size === 0) return;
@@ -216,6 +255,7 @@ export class ConnectionHealthCoordinator {
         failureStreak: 0,
         blocked: false,
         failureWindows: this.closeFailureWindow(),
+        routes: routeResults,
       });
       this.schedule(this.options.pollIntervalMs ?? 10_000);
     } else {
@@ -273,6 +313,7 @@ export class ConnectionHealthCoordinator {
         failureStreak,
         blocked,
         failureWindows,
+        routes: routeResults,
       });
       if (!blocked) this.schedule(this.retryDelay());
     }

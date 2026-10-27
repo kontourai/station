@@ -79,6 +79,15 @@ change background delivery guarantees. A request answered with a form (a
 harness question) carries no decision actions in notification history or
 Attention: an Allow or Deny there names no answer and no exact request event,
 so the command route would refuse it. Its Open session link leads to the form.
+A request whose content, or the content of a call it gates, was stored out of
+line carries only Deny there: allowing it needs the whole request loaded,
+which the conversation's card does ([event content spill](event-content-spill.md)).
+The same holds when Station cannot read the request back, and a card that
+offered Allow before such content arrived is rewritten when it does, or when
+Station refuses an Allow from it. The rewrite emits `notification:updated`,
+so open notification history and Attention views refetch and stop offering
+Allow. It is not pushed again, so a native notification already delivered is
+not updated; any Allow that still reaches Station is refused.
 While its request is open the item still counts as waiting on you: the
 session's generic composer stays hidden and Dismiss stays secondary.
 

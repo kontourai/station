@@ -66,6 +66,7 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['continuation_workspace_unbound', 'input_unsupported', false],
     ['continuation_workspace_worktree_gone', 'input_unsupported', false],
     ['continuation_workspace_worktree_moved', 'input_unsupported', false],
+    ['conversation-context-unavailable', 'conflict', false],
     ['engine-decision-not-sent', 'warning', false],
     ['engine-decision-unacknowledged', 'warning', false],
     ['engine-session-binding-dead', 'session_gone', false],

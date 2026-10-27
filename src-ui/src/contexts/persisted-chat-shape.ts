@@ -1,4 +1,5 @@
 import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
+import { hasRuntimeEventContentRefs } from '@kontourai/station-contracts/runtime-event-content';
 import type { FlowRunFreshness } from '@kontourai/station-contracts/runtime-events';
 import type {
   ComposerAttachmentStageSnapshot,
@@ -240,11 +241,20 @@ export function readPlanArtifact(value: unknown): PlanArtifact | null {
     if (!status) return null;
     steps.push({ content: step.content, status });
   }
+  // docs/design/event-content-spill.md: a restored plan stored out of line
+  // keeps what its Load full content action resolves.
+  const spilled =
+    isPlainRecord(value.spilled) &&
+    typeof value.spilled.threadId === 'string' &&
+    hasRuntimeEventContentRefs(value.spilled.entries)
+      ? { threadId: value.spilled.threadId, entries: value.spilled.entries }
+      : undefined;
   return {
     source,
     rawText: value.rawText,
     steps,
     updatedAt: value.updatedAt,
+    ...(spilled ? { spilled } : {}),
   };
 }
 

@@ -1,6 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import {
   type Browser,
@@ -20,6 +22,9 @@ import { JOB_ENV } from './helpers/freshness-env.js';
 import { writeReviewLedger } from './helpers/review-ledger-fixture.js';
 
 let browser: Browser;
+let server: Server | undefined;
+let origin: string;
+const serverErrors: unknown[] = [];
 let atlas: Awaited<ReturnType<typeof buildLearningGuide>>;
 const assets = new Map<
   string,
@@ -94,6 +99,44 @@ beforeAll(async () => {
       body: await readFile(`docs/learn/${file}`, 'utf8'),
       contentType,
     });
+  // Route fulfillment base64-encodes each body into one DevTools message.
+  // The real atlas manifest exceeds Chromium's pipe frame capacity.
+  const listener = createServer(async (request, response) => {
+    try {
+      const pathname = new URL(request.url ?? '/', origin).pathname;
+      const asset = assets.get(pathname === '/' ? '/index.html' : pathname);
+      if (asset) {
+        response.writeHead(200, { 'content-type': asset.contentType });
+        response.end(asset.body);
+        return;
+      }
+      const sourcePath = Object.keys(atlas.sourceSnapshots).find(
+        (file) => `/${atlas.sourceSnapshots[file]}` === pathname,
+      );
+      if (sourcePath) {
+        const body = await readFile(sourcePath, 'utf8');
+        response.writeHead(200, {
+          'content-type': 'text/plain; charset=utf-8',
+        });
+        response.end(body);
+        return;
+      }
+      response.writeHead(404);
+      response.end();
+    } catch (error) {
+      serverErrors.push(error);
+      response.destroy();
+    }
+  });
+  server = listener;
+  await new Promise<void>((resolve, reject) => {
+    listener.once('error', reject);
+    listener.listen(0, '127.0.0.1', () => {
+      listener.off('error', reject);
+      resolve();
+    });
+  });
+  origin = `http://127.0.0.1:${(listener.address() as AddressInfo).port}`;
   browser = await chromium.launch({ headless: true });
 }, 60_000);
 
@@ -101,8 +144,18 @@ afterAll(async () => {
   try {
     await Promise.all(contexts.map((context) => context.close()));
   } finally {
-    await browser?.close();
+    try {
+      await browser?.close();
+    } finally {
+      if (server?.listening) {
+        const listener = server;
+        await new Promise<void>((resolve, reject) => {
+          listener.close((error) => (error ? reject(error) : resolve()));
+        });
+      }
+    }
   }
+  expect(serverErrors).toEqual([]);
 });
 
 async function pageAt(width: number, suffix = '') {
@@ -111,29 +164,12 @@ async function pageAt(width: number, suffix = '') {
   });
   contexts.push(context);
   await context.route('**/*', async (route) => {
-    const url = new URL(route.request().url());
-    const asset =
-      url.origin === 'http://atlas.test' &&
-      assets.get(url.pathname === '/' ? '/index.html' : url.pathname);
-    if (asset) {
-      await route.fulfill({ status: 200, ...asset });
-      return;
-    }
-    const sourcePath = Object.keys(atlas.sourceSnapshots).find(
-      (file) => `/${atlas.sourceSnapshots[file]}` === url.pathname,
-    );
-    if (url.origin === 'http://atlas.test' && sourcePath) {
-      await route.fulfill({
-        status: 200,
-        contentType: 'text/plain; charset=utf-8',
-        body: await readFile(sourcePath, 'utf8'),
-      });
-      return;
-    }
-    await route.abort();
+    if (new URL(route.request().url()).origin === origin)
+      await route.continue();
+    else await route.abort();
   });
   const page = await context.newPage();
-  await page.goto(`http://atlas.test/${suffix}`);
+  await page.goto(`${origin}/${suffix}`);
   return page;
 }
 
@@ -248,7 +284,7 @@ test('a reader follows a concept into its exact module, searches, and returns th
   await browserExpect(page.getByRole('status')).toContainText(
     '0 concepts and 0 documents',
   );
-  await page.goto('http://atlas.test/#doc=docs%2Fstrategy%2Fconstitution.md');
+  await page.goto(`${origin}/#doc=docs%2Fstrategy%2Fconstitution.md`);
   await browserExpect(page.locator('.review-status')).toContainText(
     'Policy · Purpose checked',
   );
@@ -259,7 +295,7 @@ test('a reader follows a concept into its exact module, searches, and returns th
   await browserExpect(page.locator('.source-details')).toContainText(
     'not proof that every current feature meets them',
   );
-  await page.goto('http://atlas.test/#doc=docs%2Freference%2Fdeploy-ledger.md');
+  await page.goto(`${origin}/#doc=docs%2Freference%2Fdeploy-ledger.md`);
   await browserExpect(page.locator('.review-status')).toContainText(
     'Generated reference · Generated output checked',
   );
@@ -269,7 +305,7 @@ test('a reader follows a concept into its exact module, searches, and returns th
   await browserExpect(page.locator('.review-status')).not.toContainText(
     'Reviewed against code',
   );
-  await page.goto('http://atlas.test/#doc=docs%2Fuser%2Fgetting-started.md');
+  await page.goto(`${origin}/#doc=docs%2Fuser%2Fgetting-started.md`);
   await page
     .getByRole('article')
     .getByRole('link', { name: 'Starter Work guide', exact: true })
@@ -404,7 +440,7 @@ test('narrow reading, keyboard disclosure, and section links preserve visible co
     page.getByRole('article').getByRole('heading', { level: 2 }),
   ).toHaveText('SessionCommandModule');
   await page.goto(
-    'http://atlas.test/#doc=docs%2Farchitecture.md&section=data-flow-chat-request',
+    `${origin}/#doc=docs%2Farchitecture.md&section=data-flow-chat-request`,
   );
   await browserExpect(
     page.getByRole('heading', { name: 'Data Flow: Chat Request', exact: true }),
@@ -435,7 +471,7 @@ test('narrow reading, keyboard disclosure, and section links preserve visible co
   await mkdir(screenshotDir, { recursive: true });
   await page.screenshot({ path: resolve(screenshotDir, 'reader-narrow.png') });
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto('http://atlas.test/');
+  await page.goto(`${origin}/`);
   await browserExpect(
     page.getByRole('heading', { name: 'How Station fits together' }),
   ).toBeVisible();
@@ -455,7 +491,7 @@ test('renders every Mermaid diagram in the tracked documentation', async () => {
   );
   expect(documents.length).toBeGreaterThan(0);
   for (const doc of documents) {
-    await page.goto(`http://atlas.test/#doc=${encodeURIComponent(doc.path)}`);
+    await page.goto(`${origin}/#doc=${encodeURIComponent(doc.path)}`);
     const count = (doc.html.match(/class="language-mermaid"/g) ?? []).length;
     await browserExpect(page.locator('.diagram'), doc.path).toHaveCount(count, {
       timeout: 15_000,
@@ -487,7 +523,7 @@ test('refuses a document body from a different generated snapshot', async () => 
       }),
     }),
   );
-  await page.goto('http://atlas.test/#module=sessioncommandmodule');
+  await page.goto(`${origin}/#module=sessioncommandmodule`);
   await browserExpect(page.getByRole('alert')).toContainText(
     'document was rebuilt',
   );

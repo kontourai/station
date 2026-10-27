@@ -273,6 +273,58 @@ describe('AttachedSessionFollowService', () => {
     expect(source.read).toHaveBeenLastCalledWith(session, 40);
   });
 
+  // docs/design/event-content-spill.md: a followed event with large content
+  // is stored with its content out of line, and the live frame carries the
+  // stored (reference) form, never the raw value.
+  test('stores a large followed result out of line and emits the stored form', async () => {
+    const output = 'r'.repeat(300_000);
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi.fn().mockResolvedValue({ sessions: [session] }),
+      read: vi.fn().mockResolvedValueOnce({
+        outcome: 'ok',
+        events: [
+          {
+            eventId: 'big-result',
+            provider: 'claude' as const,
+            threadId: session.threadId,
+            createdAt: '2026-07-22T00:00:01.000Z',
+            method: 'tool.completed' as const,
+            toolCallId: 'call-1',
+            toolName: 'Read',
+            status: 'success' as const,
+            output,
+          },
+        ],
+        cursor: 10,
+      }),
+    };
+    const frames: unknown[] = [];
+    eventBus.subscribe((message) => {
+      const emitted = (message.data as { event?: { eventId?: string } })?.event;
+      if (emitted?.eventId === 'big-result') frames.push(emitted);
+    });
+    const service = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      logger: { warn: vi.fn() },
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    });
+    await service.pollNow();
+    const [frame] = frames as Array<{ output?: unknown }>;
+    expect(frame?.output).toMatchObject({ $stationContent: 1, kind: 'string' });
+    expect(Buffer.byteLength(JSON.stringify(frame))).toBeLessThan(16 * 1024);
+    const stored = store
+      .listEvents(session.threadId)
+      .find((item) => item.id === 'big-result')!;
+    const [resolved] = store.resolveEventContent([stored]);
+    expect((resolved!.payload as { output?: unknown }).output).toBe(output);
+  });
+
   // #216: a Claude transcript record over `maxLineBytes` (typically a large
   // tool result) was skipped with only `outcome: 'line_limit'`, which nothing
   // read, so the call appeared to have no result and nothing said why.

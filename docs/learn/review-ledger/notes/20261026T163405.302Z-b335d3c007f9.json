@@ -1,0 +1,7 @@
+{
+  "revision": "a668c118488e6c8ce600d7779793cc5c91736b02",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked against the regenerated metric reference (three new event-content counters, shifted line numbers); this document's claims do not depend on those rows. No update needed.","inputs":["docs/architecture/abstraction-review.md","docs/reference/metrics.md"]}
+  ]
+}

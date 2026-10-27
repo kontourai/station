@@ -1,0 +1,21 @@
+{
+  "revision": "626f5e453b920465b37ca409a9c6a5c4d57ef35e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the claims here against this change. CommandPalette.tsx and SettingsView.tsx only pass the Station routes preview into the existing settings search and palette filters, and SettingsView mounts the Routes section on the Devices page behind that preview; no other palette, settings, highlight or telemetry behavior changed.","inputs":["docs/architecture/module-map.md","src-ui/src/components/CommandPalette.tsx","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Checked the claims here against this change. Updated the developer previews paragraph to five previews. The catalog only adds the station-routes section and row (device scope) behind the new experimental-station-routes conditional; the Devices page lists it after Pairing.","inputs":["docs/design/settings-architecture.md","docs/reference/settings-deep-links.md","src-ui/src/views/SettingsView.tsx","src-ui/src/views/settings/settings-catalog.ts","src-ui/src/views/settings/settings-pages.ts"]},
+
+    {"path":"docs/design/settings-launch-triage.md","note":"Checked the claims here against this change. Added rows for experimental-station-routes and station-routes; other rows unchanged.","inputs":["docs/design/settings-launch-triage.md","src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Checked the claims here against this change. settings.md only re-describes the Station routes device preview (Routes on the Devices page); no Station-wide Feature Preview changed.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the claims here against this change. CommandPalette.tsx and SettingsView.tsx only pass the Station routes preview into the existing settings search and palette filters, and SettingsView mounts the Routes section on the Devices page behind that preview; no other palette, settings, highlight or telemetry behavior changed.","inputs":["docs/reference/sdk.md","src-ui/src/components/CommandPalette.tsx"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Checked the claims here against this change. Updated the developer previews paragraph: five device opt-ins and the station-routes section gated by its preview. The regenerated registry only adds the station-routes row with device scope.","inputs":["docs/reference/settings-deep-links.md","src-server/generated/settings-registry.json","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the claims here against this change. CommandPalette.tsx and SettingsView.tsx only pass the Station routes preview into the existing settings search and palette filters, and SettingsView mounts the Routes section on the Devices page behind that preview; no other palette, settings, highlight or telemetry behavior changed.","inputs":["docs/reference/usage-telemetry.md","src-ui/src/components/OnboardingGate.tsx","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Checked the claims here against this change. Updated the Station routes preview paragraph for the Routes section on the Devices page; the catalog and pages change only adds that gated section.","inputs":["docs/user/settings.md","src-ui/src/views/settings/settings-catalog.ts","src-ui/src/views/settings/settings-pages.ts"]}
+  ]
+}

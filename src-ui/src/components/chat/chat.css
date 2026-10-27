@@ -463,29 +463,6 @@
   font-weight: 600;
 }
 
-/* ── Workspace Modal ── */
-@keyframes modal-fade-in {
-  from {
-    opacity: 0;
-    backdrop-filter: blur(0px);
-  }
-  to {
-    opacity: 1;
-    backdrop-filter: blur(8px);
-  }
-}
-
-@keyframes modal-slide-up {
-  from {
-    transform: translateY(20px) scale(0.95);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0) scale(1);
-    opacity: 1;
-  }
-}
-
 /* ── MessageBubble ── */
 .message-row {
   display: flex;
@@ -903,6 +880,37 @@
   transition:
     background-color var(--motion-base) var(--ease-standard),
     outline-color var(--motion-base) var(--ease-standard);
+}
+/* docs/design/event-content-spill.md: "Load full content" under a preview.
+   Inside the person's filled bubble the default secondary button is the
+   accent on the accent; it takes the bubble's own foreground instead. */
+.load-full-content {
+  margin-top: var(--k-space-1);
+}
+.message.user .load-full-content {
+  color: inherit;
+  border-color: currentColor;
+}
+.message.user .load-full-content:hover:not(:disabled) {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  border-color: currentColor;
+}
+/* The wait for spilled content is a line-high placeholder on its own row,
+   not a region beside the approval's Deny. */
+.tool-call__approval-loading {
+  flex: 1 0 100%;
+}
+.tool-call__approval-loading .skeleton-block > *,
+.load-full-content__status.skeleton-block > * {
+  height: 2rem;
+  /* The shared raised-panel fill disappears on the light approval sheet. */
+  background: var(--k-line);
+  border-color: var(--k-line-strong);
+}
+/* A multi-line text argument (a file body) reads like a command block. */
+.tool-call__code--text {
+  font-family: var(--k-font-mono);
+  font-size: 0.85em;
 }
 /* A check-back Station sent: sent as the person, written by nobody. A
    quiet panel with Station's label instead of the person's filled bubble. */
