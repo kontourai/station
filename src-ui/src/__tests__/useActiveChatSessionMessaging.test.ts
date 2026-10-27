@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
 import type { SkillExperienceDefinitionV1 } from '@kontourai/station-contracts/skill-experience';
 import { projectChatDefaultsQueryKey } from '@kontourai/station-sdk';
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
   fireEvent,
@@ -21,6 +21,15 @@ vi.mock('../contexts/AuthorityPersistenceContext', () => ({
     namespace: 'authority-1',
     status: 'verified',
   }),
+}));
+
+// The rendered bubble below asks only about its attachment chip: its avatar
+// reads the signed-in account.
+vi.mock('../components/icons/UserIcon', () => ({ UserIcon: () => null }));
+// Its file chip resolves a blob reference against the Station it talks to.
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ApiBaseContext')>()),
+  useApiBase: () => ({ apiBase: 'http://api.test' }),
 }));
 
 const accountPreferenceFixture = vi.hoisted(() => ({
@@ -764,6 +773,81 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       status: 'sending',
       orchestrationSessionStarted: true,
     });
+  });
+
+  // The owner saw this on Android: right after sending a picture, while the
+  // reply streamed, the user's own bubble showed a blank chip that could not
+  // be opened, and only a reload (which brings the server's blobRef) fixed
+  // it. The bubble here is the one the real send path wrote to the store.
+  it('the bubble a picture send writes previews and opens that picture before any reload', async () => {
+    const png = 'data:image/png;base64,iVBORw0KGgo=';
+    const attachment = {
+      id: 'screen-live',
+      name: 'screen.png',
+      type: 'image/png',
+      size: 8,
+      data: png,
+      preview: png,
+    };
+    activeChatsStore.updateChat(sessionId, {
+      attachmentStages: [
+        {
+          clientAttachmentId: attachment.id,
+          name: attachment.name,
+          mimeType: 'image/png',
+          size: attachment.size,
+          state: 'complete',
+          progress: 1,
+          delivery: 'legacy-inline',
+        },
+      ],
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(sessionId, 'codex', undefined, 'Look at this', [
+        attachment,
+      ]);
+    });
+    const bubble = activeChatsStore
+      .getSnapshot()
+      [sessionId].messages?.find((message) => message.role === 'user');
+    expect(bubble).toBeDefined();
+
+    const [{ MessageBubble }, { PreviewProvider }] = await Promise.all([
+      import('../components/chat/MessageBubble'),
+      import('../contexts/PreviewContext'),
+    ]);
+    render(
+      createElement(
+        QueryClientProvider,
+        { client: new QueryClient() },
+        createElement(
+          PreviewProvider,
+          null,
+          createElement(MessageBubble, {
+            msg: bubble!,
+            idx: 0,
+            activeSession: {
+              id: sessionId,
+              agentSlug: 'codex',
+              agentName: 'Codex',
+              messageCount: 1,
+            },
+            agents: [],
+            chatFontSize: 14,
+            showReasoning: false,
+            showToolDetails: false,
+            onCopy: () => {},
+          }),
+        ),
+      ),
+    );
+
+    const chip = screen.getByRole('button', { name: 'Preview screen.png' });
+    expect(screen.getByAltText('screen.png').getAttribute('src')).toBe(png);
+    fireEvent.click(chip);
+    const dialog = await screen.findByRole('dialog', { name: 'Preview' });
+    expect(dialog.textContent).toContain('screen.png');
   });
 
   it('omits every model override after the picker explicitly requests the default', async () => {
