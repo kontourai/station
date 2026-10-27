@@ -126,11 +126,11 @@ describe.skipIf(process.platform === 'win32')(
       return sessions.read(request(), scope, id);
     }
 
-    async function exited(id: string) {
+    async function exited(id: string, targetScope = scope) {
       await expect
         .poll(
           async () =>
-            (await sessions.list(request(), scope)).find(
+            (await sessions.list(request(), targetScope)).find(
               (record) => record.terminalId === id,
             )?.status,
           { timeout: 10000 },
@@ -560,6 +560,8 @@ describe.skipIf(process.platform === 'win32')(
         legacy: { projectSlug: 'alpha', terminalId: 'old_terminal' },
       });
       expect(opened.journal.records[0]?.data).toBe('legacy🙂\nsafe\n');
+      await sessions.write(request(), scope, opened.terminalId, 'exit\r');
+      await exited(opened.terminalId);
       await sessions.dispose();
       await history.save('alpha:old_terminal', 'must not import twice\n');
       create();
@@ -792,6 +794,8 @@ describe.skipIf(process.platform === 'win32')(
 
     test('HTTP replay refuses an incomplete page below the byte bound', async () => {
       const opened = await sessions.open(request(), scope, dimensions);
+      await sessions.write(request(), scope, opened.terminalId, 'exit\r');
+      await exited(opened.terminalId);
       await sessions.dispose();
       const directory = join(home, 'terminal-journals', opened.terminalId);
       await rm(directory, { recursive: true });
@@ -943,7 +947,8 @@ describe.skipIf(process.platform === 'win32')(
       await expect(sessions.open(request(), scope, dimensions)).rejects.toThrow(
         'capacity',
       );
-      await sessions.close(request(), scope, first.terminalId);
+      await sessions.write(request(), scope, first.terminalId, 'exit\r');
+      await exited(first.terminalId);
       const third = await sessions.open(request(), scope, dimensions);
       expect(
         (await sessions.list(request(), scope)).map(
@@ -956,8 +961,10 @@ describe.skipIf(process.platform === 'win32')(
       const live = await sessions.read(request(), scope, second.terminalId);
       expect(live.status).toBe('running');
       expect(live.pid).toBe(second.pid);
-      await sessions.close(request(), scope, second.terminalId);
-      await sessions.close(request(), scope, third.terminalId);
+      await sessions.write(request(), scope, second.terminalId, 'exit\r');
+      await exited(second.terminalId);
+      await sessions.write(request(), scope, third.terminalId, 'exit\r');
+      await exited(third.terminalId);
       await sessions.dispose();
       create(options, limits, () => {
         throw new Error('shell settings unavailable');
@@ -976,9 +983,10 @@ describe.skipIf(process.platform === 'win32')(
       ).toBe(true);
       await sessions.dispose();
       create(options, limits);
-      expect((await sessions.open(request(), scope, dimensions)).status).toBe(
-        'running',
-      );
+      const replacement = await sessions.open(request(), scope, dimensions);
+      expect(replacement.status).toBe('running');
+      await sessions.write(request(), scope, replacement.terminalId, 'exit\r');
+      await exited(replacement.terminalId);
     });
 
     test('quota eviction cannot delete an ended session outside the caller Project grant', async () => {
@@ -989,7 +997,8 @@ describe.skipIf(process.platform === 'win32')(
       );
       const beta = { ...scope, projectId: 'project-b' };
       const record = await sessions.open(request(), beta, dimensions);
-      await sessions.close(request(), beta, record.terminalId);
+      await sessions.write(request(), beta, record.terminalId, 'exit\r');
+      await exited(record.terminalId, beta);
       grants.set('alpha-only', 'operate');
       projectGrants.set('alpha-only', ['project-a']);
       await expect(
@@ -998,9 +1007,10 @@ describe.skipIf(process.platform === 'win32')(
       expect(
         (await sessions.read(request(), beta, record.terminalId)).status,
       ).toBe('exited');
-      expect((await sessions.open(request(), scope, dimensions)).status).toBe(
-        'running',
-      );
+      const replacement = await sessions.open(request(), scope, dimensions);
+      expect(replacement.status).toBe('running');
+      await sessions.write(request(), scope, replacement.terminalId, 'exit\r');
+      await exited(replacement.terminalId);
     });
 
     test('aggregate journal payload and disk retention stay bounded across recreation', async () => {
