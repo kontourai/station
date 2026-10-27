@@ -156,6 +156,7 @@ import {
   EVENT_CONTENT_MIGRATION,
   EVENT_CONTENT_ORPHAN_SWEEP,
 } from '../../domain/migrations/024-event-content.js';
+import { ensureProjectTaskRoomRevisionFreezeColumn } from '../../domain/migrations/024-project-task-room-revision-freeze.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -2816,6 +2817,7 @@ export class EventStore {
       this.db.exec(REVISION_EVIDENCE_RECEIPTS_MIGRATION);
       this.db.exec(PROJECT_TASK_ROOM_REVISION_PUBLICATION_MIGRATION);
       ensureProjectTaskRoomRevisionAttributionColumn(this.db);
+      ensureProjectTaskRoomRevisionFreezeColumn(this.db);
       this.db.exec(`
       CREATE TABLE IF NOT EXISTS orchestration_attachment_quota (
         thread_id TEXT PRIMARY KEY,

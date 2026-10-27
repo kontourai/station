@@ -1,0 +1,7 @@
+{
+  "revision": "40fb9e84ed3790e92effa12e17627ec119653e94",
+
+  "notes": [
+    {"path":"docs/guides/walkthroughs.md","note":"Scoped #4055 source-currentness review: read the complete Walkthrough guide and its runtime composition dependency. The own diff in runtime-routes.ts adds only TaskReviewModule freezePlan wiring to the Task room runtime. Walkthrough preview admission, Project authorization, shared media/recognizer instances, upload deadlines, storage and route/MCP mounting are unchanged by this delta. Existing partial/source/synthetic-media evidence limits and default-off preview remain; no new narrated, hosted, package or release qualification is claimed.","inputs":["docs/guides/walkthroughs.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}
