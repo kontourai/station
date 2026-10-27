@@ -399,16 +399,17 @@ class ExperienceAdapter extends GateTestAdapter {
   }
   override async startSession(input: ProviderSessionStartInput) {
     this.sessions.add(input.threadId);
-    this.events.push({
-      eventId: `${input.threadId}:configured`,
-      provider: this.provider,
-      threadId: input.threadId,
-      sessionId: input.threadId,
-      method: 'session.configured',
-      createdAt: new Date().toISOString(),
-      metadata: input.metadata,
-    });
-    return super.startSession(input);
+    for (const method of ['session.started', 'session.configured'] as const)
+      this.events.push({
+        eventId: `${input.threadId}:${method}`,
+        provider: this.provider,
+        threadId: input.threadId,
+        sessionId: input.threadId,
+        method,
+        createdAt: new Date().toISOString(),
+        metadata: input.metadata,
+      });
+    return { ...(await super.startSession(input)), metadata: input.metadata };
   }
   override async sendTurn(input: ProviderSendTurnInput) {
     this.turns.push(input);
@@ -491,6 +492,7 @@ async function experienceRuntime(
     getProject: async (_access, slug) =>
       slug === 'project-one' ? { workingDirectory: fixture.home } : undefined,
     getProviderAdapter: (provider) => service.getProviderAdapter(provider),
+    readInitialConversationContext: async () => undefined,
     readSessionBinding: async (_access, id) => {
       const root = fixture.store.conversationSessions(id)[0]?.sessionId ?? id;
       const event = [...fixture.store.listEvents(root)]
