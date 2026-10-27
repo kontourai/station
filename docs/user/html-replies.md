@@ -22,6 +22,40 @@ or out-of-scope files show an unavailable message rather than navigating away
 from the conversation. These file previews follow the current file bytes and
 are not retained published pages.
 
+## Images saved on the host
+
+With the **Chat images from the host** Feature Preview on (**Settings →
+Advanced → Feature previews**), an image a reply names by host path, such as
+`![Before and after](/home/me/project/compare.png)` or a `file:` URL, is shown on
+every device, including the phone app, without a Project. When the reply
+finishes, Station reads each named image once and keeps a copy as a chat
+attachment, so it is served like an image you attached: only to people who can
+read that chat.
+
+Station reads an image only when, after following every symbolic link, it is
+inside the chat's working folder, a verified Git worktree of it, or the chat's
+own temporary folder. Agents started while the preview is on get that folder
+as `$TMPDIR`; it is removed when the session ends. A chat whose working folder is
+your home folder (or contains it or Station's data) has no working-folder root,
+so only its temporary folder is read. Paths elsewhere, including `/tmp`, are
+not read. The file must really be a PNG, JPEG, GIF or WebP image (checked by
+content, not name), at most 512 KiB and 4,194,304 pixels, and a reply keeps at
+most 5. A file a path names is read when the reply finishes; a later change to
+the file does not change the copy.
+
+An image Station did not keep shows **Image not available on this device** and
+the reason: outside the working and temporary folders, missing, not an image,
+too large, too many pixels, too many images, unreadable, or the chat's attachment
+storage is full. While a reply is still streaming the image shows "Image appears
+when the reply finishes". For a path Station has no record of (a reply from
+before the preview was on), a Project conversation falls back to the Project
+file reader described above.
+
+While the preview is on, the agent's first turn includes one line asking it to
+save images there and reference them by absolute path. Agents that run without
+a Station-owned temporary folder (Claude under macOS confinement, which uses its
+own, and Station's built-in agent) must save under the working folder instead.
+
 Publishing writes to the conversation and may require engine tool approval.
 For example, Codex configured with approval policy `never` can refuse the write;
 select a session mode that permits approval. Station does not mislabel the
