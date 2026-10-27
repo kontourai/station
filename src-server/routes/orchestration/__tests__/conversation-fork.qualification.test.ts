@@ -60,39 +60,44 @@ describe('scripted fork delivery and canonical history qualification', () => {
     }
   });
 
-  async function fixture(provider: 'codex' | 'claude') {
+  async function fixture(
+    provider: 'codex' | 'claude',
+    options: { nativeSource?: boolean } = {},
+  ) {
+    const sourceAgent = options.nativeSource ? agentId(provider) : PARENT_AGENT;
     const root = makeTempDir('station-fork-qualification-');
     const parentFiles = new FileMemoryAdapter({ projectHomeDir: root });
     const targetFiles = new FileMemoryAdapter({ projectHomeDir: root });
     await parentFiles.createConversation({
       id: PARENT,
-      resourceId: PARENT_AGENT,
+      resourceId: sourceAgent,
       userId: OWNER,
       title: 'Parent before branching',
       metadata: {},
     });
-    await parentFiles.addMessages(
-      [
-        {
-          id: 'parent-user',
-          role: 'user',
-          parts: [
-            {
-              type: 'text',
-              text: `Remember HANDOFF-CARRY-731 and ${PARENT_ONLY}.`,
-            },
-          ],
-        },
-        {
-          id: 'parent-answer',
-          role: 'assistant',
-          parts: [{ type: 'text', text: 'Stored parent answer.' }],
-          metadata: { turnId: 'parent-turn', answerEligible: true },
-        },
-      ],
-      OWNER,
-      PARENT,
-    );
+    if (!options.nativeSource)
+      await parentFiles.addMessages(
+        [
+          {
+            id: 'parent-user',
+            role: 'user',
+            parts: [
+              {
+                type: 'text',
+                text: `Remember HANDOFF-CARRY-731 and ${PARENT_ONLY}.`,
+              },
+            ],
+          },
+          {
+            id: 'parent-answer',
+            role: 'assistant',
+            parts: [{ type: 'text', text: 'Stored parent answer.' }],
+            metadata: { turnId: 'parent-turn', answerEligible: true },
+          },
+        ],
+        OWNER,
+        PARENT,
+      );
     const store = new EventStore(join(root, 'events.sqlite'));
     const ownership = {
       assertMutable: (id: string) => store.assertNativeSessionMutable(id),
@@ -100,8 +105,20 @@ describe('scripted fork delivery and canonical history qualification', () => {
         store.claimNativeSessionIdentity(key, id, rebind),
       retired: (id: string) => store.recordNativeSessionRetired(id),
     };
-    const codex = new TerminalHandoffAdapter('codex', true, ownership);
-    const claude = new TerminalHandoffAdapter('claude', true, ownership);
+    const codex = new TerminalHandoffAdapter(
+      'codex',
+      true,
+      ownership,
+      0,
+      options.nativeSource,
+    );
+    const claude = new TerminalHandoffAdapter(
+      'claude',
+      true,
+      ownership,
+      0,
+      options.nativeSource,
+    );
     const service = new OrchestrationService({
       eventStore: store,
       eventBus: new EventBus(),
@@ -120,8 +137,8 @@ describe('scripted fork delivery and canonical history qualification', () => {
     });
     runtimes.push({ service, store });
     const memoryAdapters = new Map([
-      [PARENT_AGENT, parentFiles],
-      [agentId(provider), targetFiles],
+      [sourceAgent, parentFiles],
+      [agentId(provider), options.nativeSource ? parentFiles : targetFiles],
     ]);
     const globalRoutes = createGlobalConversationRoutes(
       memoryAdapters,
@@ -149,51 +166,6 @@ describe('scripted fork delivery and canonical history qualification', () => {
       () => authority,
       service,
       () => true,
-    );
-    const fork = await routes.request(
-      `/${PARENT_AGENT}/conversations/${PARENT}/fork`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          targetAgent: provider,
-          branchPointTurnId: 'parent-turn',
-          idempotencyKey: 'one-owned-fork',
-        }),
-      },
-    );
-    expect(fork.status, await fork.clone().text()).toBe(200);
-    const body: unknown = await fork.json();
-    if (
-      !body ||
-      typeof body !== 'object' ||
-      !('data' in body) ||
-      !body.data ||
-      typeof body.data !== 'object' ||
-      !('conversationId' in body.data) ||
-      typeof body.data.conversationId !== 'string'
-    )
-      throw new Error('Fork did not return a Conversation identity.');
-    const conversationId = body.data.conversationId;
-    expect(conversationId).not.toBe(PARENT);
-    expect(store.readSessionByThread(conversationId)).toBeUndefined();
-    expect(store.readSessionByThread(PARENT)).toBeUndefined();
-    await parentFiles.addMessages(
-      [
-        {
-          id: 'later-parent-user',
-          role: 'user',
-          parts: [{ type: 'text', text: 'AFTER-FORK-DIVERGENCE' }],
-        },
-        {
-          id: 'later-parent-answer',
-          role: 'assistant',
-          parts: [{ type: 'text', text: 'Later parent answer.' }],
-          metadata: { turnId: 'later-parent-turn', answerEligible: true },
-        },
-      ],
-      OWNER,
-      PARENT,
     );
 
     const deps: ExecutionTargetExecutionDependencies = {
@@ -314,7 +286,8 @@ describe('scripted fork delivery and canonical history qualification', () => {
         return { turnId: receipt.result.turnId };
       },
     };
-    const execute = (
+    const executeAt = (
+      conversationId: string,
       selected: 'codex' | 'claude',
       message: string,
       handoffKey?: string,
@@ -336,13 +309,111 @@ describe('scripted fork delivery and canonical history qualification', () => {
         },
         deps,
       );
+    const receiver = provider === 'codex' ? codex : claude;
+    let branchPointTurnId = 'parent-turn';
+    let sourceSessionId: string | undefined;
+    let sourceTerminalEventId: string | undefined;
+    if (options.nativeSource) {
+      await executeAt(
+        PARENT,
+        provider,
+        `Remember HANDOFF-CARRY-731 and ${PARENT_ONLY}.`,
+      );
+      await vi.waitFor(() => {
+        const source = store.readSessionByThread(PARENT);
+        expect(source?.hasActiveTurn).toBe(false);
+        expect(
+          store.latestEventByMethod(PARENT, 'turn.completed', true),
+        ).toBeDefined();
+      });
+      const completed = store.latestEventByMethod(
+        PARENT,
+        'turn.completed',
+        true,
+      );
+      if (!completed?.payload.turnId)
+        throw new Error('Owned source has no completed boundary.');
+      branchPointTurnId = completed.payload.turnId;
+      sourceSessionId = PARENT;
+      sourceTerminalEventId = completed.id;
+      await executeAt(
+        PARENT,
+        provider,
+        'Remember HANDOFF-CARRY-222 AFTER-FORK-DIVERGENCE.',
+      );
+      await vi.waitFor(() =>
+        expect(store.readSessionByThread(PARENT)?.hasActiveTurn).toBe(false),
+      );
+    }
+    const fork = await routes.request(
+      `/${sourceAgent}/conversations/${PARENT}/fork`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetAgent: provider,
+          branchPointTurnId,
+          idempotencyKey: 'one-owned-fork',
+        }),
+      },
+    );
+    expect(fork.status, await fork.clone().text()).toBe(200);
+    const body: unknown = await fork.json();
+    if (
+      !body ||
+      typeof body !== 'object' ||
+      !('data' in body) ||
+      !body.data ||
+      typeof body.data !== 'object' ||
+      !('conversationId' in body.data) ||
+      typeof body.data.conversationId !== 'string'
+    )
+      throw new Error('Fork did not return a Conversation identity.');
+    const conversationId = body.data.conversationId;
+    expect(conversationId).not.toBe(PARENT);
+    if (!options.nativeSource) {
+      expect(store.readSessionByThread(conversationId)).toBeUndefined();
+      expect(store.readSessionByThread(PARENT)).toBeUndefined();
+    }
+    const continuation =
+      'continuation' in body.data ? body.data.continuation : undefined;
+    if (!options.nativeSource)
+      await parentFiles.addMessages(
+        [
+          {
+            id: 'later-parent-user',
+            role: 'user',
+            parts: [{ type: 'text', text: 'AFTER-FORK-DIVERGENCE' }],
+          },
+          {
+            id: 'later-parent-answer',
+            role: 'assistant',
+            parts: [{ type: 'text', text: 'Later parent answer.' }],
+            metadata: { turnId: 'later-parent-turn', answerEligible: true },
+          },
+        ],
+        OWNER,
+        PARENT,
+      );
+
+    const execute = (
+      selected: 'codex' | 'claude',
+      message: string,
+      handoffKey?: string,
+      ephemeral = false,
+    ) => executeAt(conversationId, selected, message, handoffKey, ephemeral);
     return {
       service,
       store,
       routes,
       globalRoutes,
       conversationId,
-      receiver: provider === 'codex' ? codex : claude,
+      receiver,
+      continuation,
+      sourceSessionId,
+      sourceTerminalEventId,
+      branchPointTurnId,
+      executeParent: (message: string) => executeAt(PARENT, provider, message),
       other: provider === 'codex' ? claude : codex,
       execute,
     };
@@ -420,6 +491,57 @@ describe('scripted fork delivery and canonical history qualification', () => {
       ).toBe(PARENT);
     },
   );
+
+  test('an owned native fork uses the selected completed turn and diverges independently', async () => {
+    const f = await fixture('codex', { nativeSource: true });
+    expect(f.continuation).toBe('native');
+    expect(f.receiver.forks).toHaveLength(1);
+    expect(f.receiver.forks[0]).toMatchObject({
+      sourceThreadId: f.sourceSessionId,
+      sourceBoundary: {
+        kind: 'completed-turn',
+        providerTurnId: f.branchPointTurnId,
+        observedEventId: f.sourceTerminalEventId,
+      },
+    });
+    const child = f.store.readSessionByThread(f.conversationId);
+    const parent = f.store.readSessionByThread(PARENT);
+    expect(child).toBeDefined();
+    expect(child?.resumeCursor).not.toEqual(parent?.resumeCursor);
+    await f.execute('codex', FIRST_MESSAGE);
+    await vi.waitFor(() =>
+      expect(f.store.readSessionByThread(f.conversationId)?.hasActiveTurn).toBe(
+        false,
+      ),
+    );
+    const childTurn = f.receiver.turns.at(-1);
+    expect(childTurn?.ambientContext).toBeUndefined();
+    expect(childTurn?.input).not.toContain(PARENT_ONLY);
+    const childMessages = f.service.readSessionMessages(
+      f.conversationId,
+      authority,
+    );
+    expect(JSON.stringify(childMessages)).toContain(
+      'codex retained HANDOFF-CARRY-731',
+    );
+    expect(JSON.stringify(childMessages)).not.toContain('HANDOFF-CARRY-222');
+    await f.executeParent('Recall the token on the parent.');
+    await vi.waitFor(() =>
+      expect(f.store.readSessionByThread(PARENT)?.hasActiveTurn).toBe(false),
+    );
+    expect(
+      JSON.stringify(f.service.readSessionMessages(PARENT, authority)),
+    ).toContain('codex retained HANDOFF-CARRY-222');
+    const refreshed = await f.routes.request(
+      `/codex/conversations/${encodeURIComponent(f.conversationId)}/messages`,
+    );
+    expect(refreshed.status).toBe(200);
+    expect(JSON.stringify(await refreshed.json())).toContain(FIRST_MESSAGE);
+    expect(
+      f.store.readConversationForkProvenance(f.conversationId).forkedFrom
+        ?.sourceConversationId,
+    ).toBe(PARENT);
+  });
 
   test('a fork continues after its native identity first arrives during the seed turn', async () => {
     const f = await fixture('claude');

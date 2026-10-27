@@ -1,4 +1,5 @@
 import type {
+  ProviderOwnedSessionForkInput,
   ProviderSendTurnInput,
   ProviderSessionStartInput,
 } from '@kontourai/station-contracts/provider';
@@ -6,6 +7,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import type {
   ProviderAdapterMetadata,
   ProviderAdapterShape,
+  ProviderAdoptionHooks,
   ProviderSession,
 } from '../providers/adapter-shape.js';
 import {
@@ -23,6 +25,9 @@ export class TerminalHandoffAdapter implements ProviderAdapterShape {
   readonly events = new AsyncEventQueue<CanonicalRuntimeEvent>();
   readonly starts: ProviderSessionStartInput[] = [];
   readonly turns: ProviderSendTurnInput[] = [];
+  readonly forks: ProviderOwnedSessionForkInput[] = [];
+  readonly forkLifecycle: 'reported' | undefined;
+  private readonly turnMemory = new Map<string, string>();
   readonly stopped = new Set<string>();
   failNextNativeReturn = false;
   failNextTranscriptSeed = false;
@@ -35,7 +40,9 @@ export class TerminalHandoffAdapter implements ProviderAdapterShape {
     readonly nativeReturn = false,
     private readonly ownership?: NativeSessionOwnership,
     private readonly turnOrdinalOffset = 0,
+    private readonly nativeFork = false,
   ) {
+    this.forkLifecycle = nativeFork ? 'reported' : undefined;
     this.metadata = {
       displayName: provider === 'claude' ? 'Claude Code' : 'Codex',
       description: 'Terminal cross-Agent qualification adapter',
@@ -44,7 +51,7 @@ export class TerminalHandoffAdapter implements ProviderAdapterShape {
         ? {
             continuity: {
               resume: 'same-session' as const,
-              fork: 'none' as const,
+              fork: nativeFork ? ('native' as const) : ('none' as const),
               rewind: 'none' as const,
               resumeIdentity: 'require-match' as const,
               nativeReturn: 'same-binding' as const,
@@ -138,6 +145,42 @@ export class TerminalHandoffAdapter implements ProviderAdapterShape {
     return session;
   }
 
+  async forkSession(
+    input: ProviderOwnedSessionForkInput,
+    hooks: ProviderAdoptionHooks,
+  ): Promise<ProviderSession> {
+    const source = this.sessions.get(input.sourceThreadId);
+    const nativeId = this.nativeIds.get(input.sourceThreadId);
+    const memory = this.turnMemory.get(
+      JSON.stringify([
+        input.sourceThreadId,
+        input.sourceBoundary.providerTurnId,
+      ]),
+    );
+    if (
+      !this.nativeFork ||
+      !source ||
+      !nativeId ||
+      memory === undefined ||
+      input.sourceNativeIdentityKey !==
+        nativeSessionIdentityKey(this.provider, 'a'.repeat(64), nativeId) ||
+      JSON.stringify(input.sourceResumeCursor) !==
+        JSON.stringify(source.resumeCursor)
+    )
+      throw new Error('Scripted native fork source is unavailable.');
+    await hooks.onProviderChildCreationStarted?.();
+    this.forks.push(input);
+    const child = await this.startSession(input);
+    const childNativeId = this.nativeIds.get(input.threadId);
+    if (!childNativeId || childNativeId === nativeId)
+      throw new Error(
+        'Scripted native fork did not create an independent child.',
+      );
+    this.memory.set(childNativeId, memory);
+    await hooks.onProviderChildCreated(child.resumeCursor);
+    return child;
+  }
+
   /** A live engine session keeps its own context across turns (#2540). */
   private readonly memory = new Map<string, string>();
 
@@ -201,9 +244,12 @@ export class TerminalHandoffAdapter implements ProviderAdapterShape {
         this.nativeIds.get(input.threadId) ?? input.threadId,
         token,
       );
+    if (this.nativeFork && token)
+      this.turnMemory.set(JSON.stringify([input.threadId, turnId]), token);
     this.events.push({
       ...base,
       eventId: `${turnId}:completed`,
+      ...(this.nativeFork ? { finishReason: 'stop' as const } : {}),
       method: 'turn.completed',
       ...(this.announceNativeIdentityDuringTurn && nativeId
         ? {

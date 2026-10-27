@@ -1256,6 +1256,19 @@ export interface ProviderSessionAdoptInput
   sourceBoundary?: ProviderSessionContinuationBoundary;
 }
 
+/** Server-composed native fork of an owned Session at an observed completed turn. */
+export interface ProviderOwnedSessionForkInput
+  extends Omit<ProviderSessionStartInput, 'resumeCursor'> {
+  sourceThreadId: string;
+  sourceResumeCursor: unknown;
+  /** Full engine/home/profile/workspace identity observed for the source. */
+  sourceNativeIdentityKey: string;
+  sourceBoundary: ProviderSessionContinuationBoundary & {
+    /** Exact completed assistant transcript position, when the engine requires it. */
+    providerMessageId?: string;
+  };
+}
+
 export interface ProviderSendTurnInput {
   threadId: string;
   /** Server-assigned retained invocation; attribution only, never replay authority. */

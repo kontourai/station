@@ -13,6 +13,7 @@ import type {
   ModelLaunchCapabilities,
   ProviderContinuityCapabilities,
   ProviderDurabilityProfile,
+  ProviderOwnedSessionForkInput,
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionAdoptInput,
@@ -416,6 +417,8 @@ export function isProviderInterruptTurnResult(
 export interface ProviderAdapterShape {
   /** Positive declaration that adoption calls the creation-start hook before its first child effect. */
   readonly adoptionLifecycle?: 'reported';
+  /** Owned forks report the same durable creation boundaries before child effects. */
+  readonly forkLifecycle?: 'reported';
   readonly provider: EngineId;
   readonly metadata: ProviderAdapterMetadata;
 
@@ -432,6 +435,11 @@ export interface ProviderAdapterShape {
   adoptSession?(
     input: ProviderSessionAdoptInput,
     hooks?: ProviderAdoptionHooks,
+  ): Promise<ProviderSession>;
+  /** Optional native owned-Session fork; capability and caller authority are separate. */
+  forkSession?(
+    input: ProviderOwnedSessionForkInput,
+    hooks: ProviderAdoptionHooks,
   ): Promise<ProviderSession>;
   /** Permanently discard an abandoned adopted provider transcript. */
   discardSession?(
