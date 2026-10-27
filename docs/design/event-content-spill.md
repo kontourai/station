@@ -428,7 +428,8 @@ reference handling. `P` means a preview or reference is the intended form.
 | `shared/thread-projection.ts:90-140` | T |
 | Conversation export (`conversations.ts:2034`) | O (explicit user action) |
 | Fork (`conversations.ts:840-1125`) | P. Not hydrated: `FORK_WINDOW_MAX_BYTES` (2 MiB, `conversations.ts:340`) bounds the window, so references stay references, and the seed renders previews with the marker. |
-| Handoff, return and boundary seeds, answer share, room publication, Discord, intent summary | T through the projection (marked previews). These already seed bounded text. |
+| Engine transcript seeds: handoff, return, pinned context and history continuation (`conversation-lineage.ts` `captureTranscriptContext`, `readConversationTranscriptMessages`) | O through a seed-only reader (`readSessionSeedMessages`): the read check runs first, then the projection reads resolved payloads, so a seed counts a long reply at its real size under its own budget (whole, or disclosed as omitted). Discovery (`readSessionConversation`) and every other `readSessionMessages` caller keep references |
+| Answer share, room publication, Discord, intent summary | T through the projection (marked previews). These already carry bounded text. |
 | Monitoring bridge (`orchestration-monitoring-bridge.ts:131,161,237`) | T for arguments and output; `length` from the reference |
 | `snapshotEvent` | Stamps derived at ingress (above) |
 | UI `streamHandlers.ts:103`, `turnHandlers.ts:205`, `planHandlers.ts:26`, `semanticDeliveryBuffer.ts:135-179`, `offlineReading.ts:170-190` | T. Deltas are never references; the rest use the text helper or render a reference chip with "Load full content". |

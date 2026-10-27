@@ -57,7 +57,9 @@ not qualified by this native-return receipt.
 
 New seed-backed ordinary continuations and `continue-from-history` context starts
 also pin their exact text and source cutoffs before the replacement provider
-starts. Retries recheck source access and use that pin, even if a cursor becomes
+starts. A seed reads each message at its full size, including a reply Station
+stored out of line, so a long reply is seeded whole or disclosed as omitted,
+never cut to its preview. Retries recheck source access and use that pin, even if a cursor becomes
 available later. Ordinary reuse requires the seed-bearing invocation's exact
 completion witness and, where required, its current native identity. Failed or
 ambiguous delivery refuses further ordinary turns rather than silently dropping
