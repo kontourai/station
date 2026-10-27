@@ -351,11 +351,11 @@ test('history reads and runtime frames carry recorded attachments without their 
       blobRef: ref,
     };
     expect(
-      (captured.initialHistory?.events[0] as { event: typeof attached }).event
+      (captured.initialHistory!.events[0] as { event: typeof attached }).event
         .attachments,
     ).toEqual([descriptor]);
     expect(
-      (captured.frames?.[0] as { event: typeof attached }).event.attachments,
+      (captured.frames![0] as { event: typeof attached }).event.attachments,
     ).toEqual([descriptor]);
   } finally {
     removeHistoryForCapture('host', 'source');
