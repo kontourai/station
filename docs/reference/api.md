@@ -2869,12 +2869,15 @@ inert handling rather than serve the caller-supplied MIME type as active content
 | status | meaning |
 |---|---|
 | `200` | `application/octet-stream`, `ETag: "<ref>"`, `Cache-Control: private, no-cache`, `Vary: Authorization, Cookie`, plus `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox`, `Cross-Origin-Resource-Policy: same-origin` |
+| `304` | `If-None-Match` names this `ETag`: an empty body with the same `ETag`, `Cache-Control` and `Vary`, sent only after the checks behind `200` pass |
 | `400` | `:ref` is not a `sha256-<64 lowercase hex>` reference — refused before it reaches any path |
 | `404` | no readable binding for this caller, or bytes absent/reclaimed. The response does not reveal which case applies; the transcript keeps its attachment chip without a preview |
 
 Every fetch reauthorizes a readable conversation binding; knowing the digest
-is insufficient. ETag is emitted, but this handler does not implement an
-authorization-skipping 304 path. See the [handler](../../src-server/routes/orchestration/attachments.ts),
+is insufficient. A revalidation is answered `304` only after that
+authorization and after the bytes are found, so a stored copy is confirmed only
+to a caller who may read it now; a stranger or reclaimed bytes still receive
+`404`. See the [handler](../../src-server/routes/orchestration/attachments.ts),
 [preview consumer](../../src-ui/src/components/chat/FilePartPreview.tsx), and
 [retry recovery](../../src-ui/src/components/chat-dock/retry-attachments.ts).
 
@@ -4768,6 +4771,27 @@ non-OK responses, invalid JSON and transport errors leave it cleared.
 Older or unobserved hosts receive an unlabelled request, interpreted
 as protocol 1. Same-origin requests, Node callers and host-owned transports
 can carry it without that preflight condition.
+
+A preflight answer carries `Access-Control-Max-Age: 7200`, so a browser reuses
+it for two hours (Chromium's ceiling) instead of asking again before each
+cross-origin request. A cached answer cannot widen access: a request needing a
+method or header the answer did not allow is preflighted again, and every
+response is still authenticated and authorized on its own.
+
+### Conditional JSON reads
+
+A `GET` that answers `200` with a JSON body carries a weak `ETag`, a digest of
+the body sent to that caller. It also carries `Cache-Control: private,
+no-cache` when the handler set none, and `Authorization, Cookie` added to any
+`Vary` the handler set. A request whose `If-None-Match` names that tag receives
+an empty `304` with the same `ETag`, `Cache-Control` and `Vary`. The handler
+runs and authorizes the request before the comparison, so a `304` confirms only
+a body this caller may read now; a refused request receives its refusal, never
+a `304`. Responses marked `no-store`, responses with their own `ETag` (such as
+[attachment bytes](#get-attachment-bytes)), streams and non-JSON bodies are
+unchanged. The browser's HTTP cache sends `If-None-Match` itself, so an
+unchanged poll costs a `304` instead of its body. See the
+[middleware](../../src-server/routes/conditional-get.ts).
 
 ---
 

@@ -26,6 +26,12 @@ import { createHash } from 'node:crypto';
  *                                       startup splash, the iOS launch screen
  *                                       and the Android launch window show it
  *                                       too.
+ *   src-ui/public/icons/station{,-maskable}-512.png
+ *                                     — the web app manifest's install icons:
+ *                                       the rounded Stable tile on
+ *                                       transparency, and the full-bleed
+ *                                       opaque square that survives a
+ *                                       launcher's mask
  *   src-ui/src/lib/startup-mark-geometry.ts
  *                                     — where the startup animation finds the
  *                                       river in that mark, derived from the
@@ -166,6 +172,8 @@ const STATUS_BAR_MARK = join(
 
 const ICON_SIZE = 1024;
 const FAVICON_SIZE = 192;
+const WEB_APP_ICON_SIZE = 512;
+const WEB_APP_ICON_DIR = join(ROOT, 'src-ui', 'public', 'icons');
 // The startup animation draws the mark into a square of this many pixels.
 const STARTUP_MARK_SIZE = 187;
 
@@ -253,6 +261,18 @@ async function renderMasters() {
         channel === 'stable' ? 'favicon.png' : `favicon-${channel}.png`,
       ),
     })),
+    {
+      channel: 'stable',
+      target: 'desktop',
+      size: WEB_APP_ICON_SIZE,
+      path: join(WEB_APP_ICON_DIR, 'station-512.png'),
+    },
+    {
+      channel: 'stable',
+      target: 'square',
+      size: WEB_APP_ICON_SIZE,
+      path: join(WEB_APP_ICON_DIR, 'station-maskable-512.png'),
+    },
     // The iOS Live Activity draws this beside the agent status; SwiftUI
     // applies the rounded mask, so it is the opaque square.
     ...LIVE_ACTIVITY_ICON_SCALES.map((scale) => ({
@@ -275,7 +295,10 @@ async function renderMasters() {
       size,
     })),
   );
-  requests.forEach(({ path }, index) => writeFileSync(path, pngs[index]));
+  requests.forEach(({ path }, index) => {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, pngs[index]);
+  });
   writeFileSync(STARTUP_MARK_GEOMETRY, startupMarkGeometryModule());
   writeFileSync(STATUS_BAR_MARK, statusBarMarkXml());
   return { variantDir, paths };
@@ -321,6 +344,8 @@ const DIRECT_OUTPUTS = [
   'src-ui/public/favicon-beta.png',
   'src-ui/public/favicon-nightly.png',
   'src-ui/public/favicon-dev.png',
+  'src-ui/public/icons/station-512.png',
+  'src-ui/public/icons/station-maskable-512.png',
   'src-ui/src/lib/startup-mark-geometry.ts',
   'src-desktop/plugins/agent-activity/android/src/main/res/drawable/agent_activity_mark.xml',
   'src-desktop/ios/StationAgentActivity/Assets.xcassets/StationAppIcon.imageset/StationAppIcon@1x.png',

@@ -85,7 +85,10 @@ import {
   resolveBootAccentColor,
   resolveBootTheme,
 } from './lib/device-settings-store';
-import { stationQueryDefaults } from './lib/queryDefaults';
+import {
+  stationMutationDefaults,
+  stationQueryDefaults,
+} from './lib/queryDefaults';
 import {
   PlatformBootstrap,
   usePlatformProfile,
@@ -199,7 +202,10 @@ const bootstrapQueryClient = new QueryClient({
         console.error(`[query:${query.queryKey}]`, error);
     },
   }),
-  defaultOptions: { queries: stationQueryDefaults() },
+  defaultOptions: {
+    queries: stationQueryDefaults(),
+    mutations: stationMutationDefaults(),
+  },
 });
 
 // Debug: Track all hash changes globally with more detail
