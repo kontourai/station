@@ -40,6 +40,8 @@ export type SettingsSectionId =
   | 'voice'
   | 'pairing'
   | 'developer-tools'
+  // The release-required app facts: version, open source notices, legal.
+  | 'about'
   | 'knowledge';
 
 export interface SettingsCatalogEntry {
@@ -153,6 +155,8 @@ export const SETTINGS_SECTIONS = [
   // this device (a device setting — see contracts' developerToolsEnabled).
   { id: 'developer-tools', title: 'Developer tools', group: 'you' },
   // #2144 decision 5: Knowledge keeps a group of its own this slice.
+  // What this installed app is, and the notices a store release must carry.
+  { id: 'about', title: 'About Station', group: 'you' },
   { id: 'knowledge', title: 'My knowledge store', group: 'knowledge' },
 ] as const satisfies readonly {
   id: SettingsSectionId;
@@ -750,6 +754,25 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'knowledge',
     keywords: ['personal project obsidian adapter root vault'],
   },
+  // ── About ── appended last so earlier rows keep their order.
+  {
+    id: 'app-version',
+    title: 'Version',
+    section: 'about',
+    keywords: ['build', 'release', 'channel', 'commit'],
+  },
+  {
+    id: 'open-source-licenses',
+    title: 'Open source licenses',
+    section: 'about',
+    keywords: ['third party', 'notices', 'attribution', 'oss'],
+  },
+  {
+    id: 'legal',
+    title: 'Legal',
+    section: 'about',
+    keywords: ['privacy policy', 'license', 'support', 'terms'],
+  },
 ] as const satisfies readonly Omit<SettingsCatalogEntry, 'scope'>[];
 
 export type SettingsCatalogId = (typeof SETTINGS_CATALOG_SOURCE)[number]['id'];
@@ -865,7 +888,11 @@ function scopeForKeylessSection(
     section === 'developer-tools'
   )
     return 'device';
-  if (section === 'host-runtime' || section === 'diagnostics')
+  if (
+    section === 'host-runtime' ||
+    section === 'diagnostics' ||
+    section === 'about'
+  )
     return 'informational';
   return 'station';
 }
