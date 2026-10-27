@@ -2,14 +2,12 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
-  rmSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import { runStationsCommand } from '../commands/profile-command.js';
 import {
   getProfileCredentialStore,
@@ -95,8 +93,10 @@ function store(timeoutMs?: number) {
   });
 }
 
+const makeTempDir = trackTempDirs();
+
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'station-keychain-'));
+  dir = makeTempDir('station-keychain-');
   mkdirSync(join(dir, 'items'));
   mkdirSync(join(dir, 'home'));
   securityPath = join(dir, 'security');
@@ -114,7 +114,6 @@ afterEach(() => {
   else process.env.STATION_HOME = previousHome;
   if (previousRoot === undefined) delete process.env.STATION_ROOT;
   else process.env.STATION_ROOT = previousRoot;
-  rmSync(dir, { recursive: true, force: true });
 });
 
 describe('macOS Keychain store through the security tool', () => {
@@ -191,6 +190,29 @@ describe('macOS Keychain store through the security tool', () => {
     expect(message).toContain('security unlock-keychain');
     expect(message).not.toContain(credential);
   });
+
+  it.each([
+    ['an SSH session', { SSH_CONNECTION: '10.0.0.2 52000 10.0.0.1 22' }, true],
+    ['a local terminal', {}, false],
+  ])(
+    'with a TTY, %s gets the wait that matches who can answer the dialog',
+    (_where, env, viaSsh) => {
+      const keychain = createProfileKeyringStore({
+        platform: 'darwin',
+        stdinIsTTY: true,
+        env,
+        securityPath,
+        timeoutMs: 400,
+      });
+      keychain.set(ref, credential);
+      writeFileSync(join(dir, 'prompt'), '');
+      expect(() => keychain.get(ref)).toThrow(
+        viaSsh
+          ? 'non-interactive shell cannot answer'
+          : 'that was not answered',
+      );
+    },
+  );
 
   it('bounds a non-interactive read by default', () => {
     store().set(ref, credential);

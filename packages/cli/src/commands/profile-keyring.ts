@@ -31,12 +31,24 @@ function entry(ref: StationProfileCredentialRef): KeyringEntry {
 export interface ProfileKeyringStoreOptions {
   /** Defaults to `process.platform`. */
   platform?: NodeJS.Platform;
-  /** Whether a person can answer an OS access prompt; defaults to stdin being a TTY. */
+  /**
+   * Whether a person can answer an OS access prompt. Defaults to stdin being a
+   * TTY outside SSH: the dialog appears on the Mac's screen, which an SSH
+   * session cannot see.
+   */
   interactive?: boolean;
+  /** Test seam for the interactivity default. */
+  stdinIsTTY?: boolean;
+  /** Test seam for the interactivity default; defaults to `process.env`. */
+  env?: NodeJS.ProcessEnv;
   /** Test seam: a fixture executable standing in for `/usr/bin/security`. */
   securityPath?: string;
   /** Test seam: overrides the interactivity-derived Keychain bound. */
   timeoutMs?: number;
+}
+
+function isSshSession(env: NodeJS.ProcessEnv): boolean {
+  return Boolean(env.SSH_CONNECTION || env.SSH_CLIENT || env.SSH_TTY);
 }
 
 /** Production CLI credential store backed only by the operating-system keyring. */
@@ -50,7 +62,10 @@ export function createProfileKeyringStore(
     return createMacosKeychainStore({
       service: STATION_KEYRING_SERVICE,
       account,
-      interactive: options.interactive ?? Boolean(process.stdin.isTTY),
+      interactive:
+        options.interactive ??
+        (Boolean(options.stdinIsTTY ?? process.stdin.isTTY) &&
+          !isSshSession(options.env ?? process.env)),
       ...(options.securityPath ? { securityPath: options.securityPath } : {}),
       ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
     });
