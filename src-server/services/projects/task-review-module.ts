@@ -830,7 +830,7 @@ export class TaskReviewModule {
     )
       throw new TaskReviewError(
         'artifact-unavailable',
-        'This plan revision could not be frozen.',
+        'This plan revision could not be saved to revision history, which may be full or unavailable.',
       );
     assertCurrent(access);
     const result = this.deps.store.createThread({

@@ -2117,6 +2117,9 @@ export class ProjectTaskRoomRuntime {
       documentIdFor(scope) !== input.documentId
     )
       return false;
+    // Refuse before claiming: a claim the bridge cannot drain blocks every
+    // later save in this room until evidence becomes available again.
+    if (!this.#deps.revisionEvidence?.available()) return false;
     const document = { ...scope, documentId: input.documentId };
     const task = this.#deps.taskGraph.readTaskView(input.taskId);
     if (!task) return false;

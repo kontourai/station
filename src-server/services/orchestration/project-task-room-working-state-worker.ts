@@ -102,7 +102,8 @@ function reservedRevisionLedger(): {
 }
 /**
  * Every save must fit a complete evidence record. Coalesced candidates do not
- * reserve immutable ledger capacity; eager internal callers still preflight it.
+ * reserve immutable ledger capacity; only non-coalescing (eager) saves still
+ * preflight it.
  */
 function revisionPublicationRefusal(
   value: any,

@@ -852,6 +852,19 @@ describe('ProjectTaskRoomRevisionEvidenceBridge production composition', () => {
     healthy.store.close();
   });
 
+  test('a refused freeze without a bridge leaves later saves committing', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'station-room-revision-nobridge-'));
+    homes.push(home);
+    const absent = await composition(home, { bridge: false });
+    const first = await commitText(absent.runtime, 'plan before comment');
+    expect(first.settled).toMatchObject({ kind: 'committed' });
+    expect(await freezeCurrent(absent.runtime)).toBe(false);
+    const after = await commitText(absent.runtime, 'plan after comment');
+    expect(after.settled).toMatchObject({ kind: 'committed' });
+    await absent.runtime.close();
+    absent.store.close();
+  });
+
   test('chains successive evidence parents across a runtime restart without duplicate room links', async () => {
     const home = mkdtempSync(join(tmpdir(), 'station-room-revision-chain-'));
     homes.push(home);
