@@ -6607,6 +6607,12 @@ export async function executeExecutionTargetMessage(
     readAuthority,
     orchestrationService,
   );
+  if (input.conversationId && orchestrationService)
+    orchestrationService.assertConversationForkContextEnvironment(
+      input.conversationId,
+      selectedTarget.kind === 'current' && !selectedTarget.relayEnvironmentId,
+      readAuthority,
+    );
   if (selectedTarget.kind !== 'current' || !orchestrationService) {
     if (input.resolveAttachments) {
       throw new Error(
@@ -6675,6 +6681,22 @@ export async function executeExecutionTargetMessage(
     );
   }
   const resolverDependencies = {
+    readInitialConversationContext: async (
+      access: EnvironmentAccess,
+      initial: {
+        conversationId: string;
+        agentId: string;
+        projectSlug?: string;
+        userId?: string;
+      },
+    ) => {
+      if (access.kind !== 'current')
+        throw new Error('Saved fork context is local to its owning Station.');
+      return orchestrationService.prepareInitialConversationForkContext(
+        initial,
+        readAuthority,
+      );
+    },
     resolveEnvironmentAccess: async (_executionTarget: ExecutionTarget) => {
       const target = selectedTarget;
       return {
@@ -6899,6 +6921,16 @@ export async function executeExecutionTargetMessage(
         throw new Error('The requested conversation is unavailable.');
       return inspection;
     },
+    readSessionStartMetadata: (
+      _access: EnvironmentAccess,
+      sessionId: string,
+    ) =>
+      typeof orchestrationService.readSessionStartMetadata === 'function'
+        ? orchestrationService.readSessionStartMetadata(
+            sessionId,
+            readAuthority,
+          )
+        : undefined,
     joinConversationTurnKey: async (
       _access: EnvironmentAccess,
       sessionId: string,
@@ -7162,6 +7194,11 @@ export async function executeExecutionTargetMessage(
                 },
               }
             : {}),
+          ...(input.personChatStart &&
+          !ephemeral &&
+          !startInput.metadata?.delegation
+            ? { personChatStart: true as const }
+            : {}),
           resourceAdmissionIntent:
             startContext?.resourceAdmissionIntent ??
             (ephemeral
@@ -7227,6 +7264,8 @@ export async function executeExecutionTargetMessage(
         : undefined,
     approvalPickReachesFullAccess: (_access: EnvironmentAccess, input) =>
       orchestrationService.approvalPickReachesFullAccess(input),
+    recordPersonalApprovalDefault: (_access: EnvironmentAccess, hint) =>
+      orchestrationService.recordPersonalApprovalDefault(hint),
     sendTurn: async (_access: EnvironmentAccess, turnInput, context) => {
       if (
         input.taskRoomInvocationAdmission?.expectedSessionId &&

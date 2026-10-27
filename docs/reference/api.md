@@ -19,6 +19,34 @@ authorities. The [runtime composition](../../src-server/runtime/routes/runtime-r
 mounts handlers and their request boundaries. A handler existing in source does
 not mean every deployment mounts or admits it.
 
+## Local speech and media tools
+
+Personal hosts mount these Project-independent routes; hosted deployments do
+not. All requests require current authentication. See [local speech](../guides/local-speech.md)
+for limits and the implementation/evidence owners. **Local speech** and
+**Walkthroughs** are default-off Feature Previews enabled in Settings → Advanced
+→ Feature previews. Transcription requires Local speech; media-tools requires
+either switch. Off routes return HTTP 404 with `success:false`,
+`code:'feature_preview_disabled'`, `previewId`, and `settingsPath`.
+
+| Route | Authority | Response |
+| --- | --- | --- |
+| `GET /api/media-tools/status` | Operator; paired scope `orchestration:read` | `{ success: true, data: { components } }`, including version, bytes, resolution and active byte progress/failure |
+| `POST /api/media-tools/download` | Operator; paired scope `terminal:operate` | 202 status; body `{ "consent": true, "components": ["ffmpeg", "speech-runtime", "speech-model"] }` (components optional) |
+| `POST /api/transcription` | Current authenticated principal; paired scope `orchestration:operate` | `{ success: true, data: TranscriptionResult }`; raw binary browser audio body, no host path |
+
+Download requests without literal `true` return 400. Read status until each
+required component is ready; acceptance does not mean installed. Transcription
+rejects uploads above 32 MiB with 413, including chunked requests. Receive time is bounded to 60 seconds. Inputs
+use the browser container/audio-codec policy in the [guide](../guides/local-speech.md);
+playlist and virtual inputs are refused. Transcription
+failure/unavailability is a typed result, never a fabricated empty transcript.
+Queue overflow instead returns HTTP 503 with `{success:false, code:"busy", error}`
+and `Retry-After: 5`; one recognition runs while at most four requests wait FIFO.
+The 15-minute transcription deadline includes waiting, and queued aborts leave
+the queue.
+The server checks principal freshness before and after processing.
+
 ## Project tool defaults
 
 Project create and update bodies accept optional `toolDefaults` with
@@ -33,11 +61,17 @@ restrictions and ordinary Project edit authority. See [configuration](./config.m
 `/mcp/station-control` serves platform controls. `/mcp/station-knowledge`
 serves five default read/capture tools, plus three S3 read tools when the
 experimental S3 flag is enabled; see the [Knowledge guide](../guides/knowledge.md#agent-tools).
-Both accept only loopback connections with a live, session-scoped credential
+Both accept only loopback connections with a live credential scoped to a recorded Session
 for that exact server. They use MCP authentication rather than a paired Device
 credential. Tokens for one server cannot open the other, and in-process tokens
 cannot be presented over HTTP. Ordinary API and Project authorization still
 apply to each tool operation.
+
+An existing local client can obtain a separate, explicitly selected Station
+Control lease through the [personal-host setup recipe](session-api.md#external-clients-using-station-tools).
+Its operator-only setup, expiry and revocation are separate from runtime token
+delivery. Binding that lease to a retained Session record does not start an
+engine or establish that the Session is active.
 
 ## Visual replies
 
@@ -70,6 +104,90 @@ See [account preference contracts](contracts.md#account-preferences) and
 - HTTP success can mean persisted or accepted while activation remains pending.
 - Readiness, health, catalog discovery, and a completed model turn are distinct
   observations. Response fields and receipts state which one was observed.
+
+## Project new-chat defaults
+
+A Project chooses how a person's new chat in it starts. `PUT /api/projects/:slug`
+(and `POST /api/projects`) accept three fields; `null` drops each:
+
+- `defaultModelSelection`: `fixed` (absent) starts a new chat on the Project's
+  `defaultProviderId`/`defaultModel`. Station-engine Agents always use that
+  pair. An Agent app uses it, ahead of your last pick for that app on this
+  device and the model the app reports, only when the app's catalog lists
+  that exact model; otherwise its usual chain applies. `last-used` starts on the
+  model the caller's last chat in this Project started with for the same
+  Agent, while it is still offered, then falls back to the `fixed` chain. A
+  model picked in the composer always wins for that chat.
+- `defaultApprovalMode`: `ask`, `auto` or `never`. A new chat here starts in it
+  when its Agent sets no default of its own. It sits above the Station's
+  `defaultApprovalMode` and above the person's per-engine default hint (see
+  below), and applies to every session start in the
+  Project, as the Station default does. Raising it to `never` needs the grant
+  raising the Station default needs (the operator in person or
+  `approval:full-access`), checked against the Project revision the update
+  replaces; without it the write is 403 and nothing is saved. Resending a
+  stored `never` is not a raise.
+- `defaultApprovalModeSelection`: `fixed` (absent) applies
+  `defaultApprovalMode`; `last-used` applies the mode the caller's last chat
+  here started in. A recorded full access is reapplied only to a start whose
+  caller may grant it; otherwise the fixed mode applies. The value is
+  Project-wide rather than per Agent: it is how the person chose to work in
+  this Project, every approval-capable engine shares the ask/auto/never
+  vocabulary, and an Agent that needs its own posture sets its own default,
+  which wins.
+
+A chat whose first send carries an explicit **Default** pick
+(`connection-default`) records that pick, and it resolves to the Agent's
+default, then the Station's, without the Project layer; the composer shows the
+same.
+
+"Last used" is what a successful start recorded
+(`<home>/project-chat-last-used.json`, per Project id and person); a failed
+start records nothing. Only a person's own interactive chat records or
+inherits it: the `/chat` route marks a request as one unless it may be an
+agent's, comes from a paired Station's delegation credential, carries a
+delegation, or is an automatic replay. A start without that mark (delegations,
+webhooks, scheduled and agent-caused starts) takes the fixed mode. An agent
+that runs `station chat` with a person's own CLI credential cannot be told
+apart from that person. An unreadable record is moved aside to
+`project-chat-last-used.json.corrupt-<time>` and writing starts fresh; a record
+that would exceed its 512 KiB bound drops the oldest entries first.
+
+`GET /api/projects/:slug/chat-defaults` returns the caller's
+`ProjectChatDefaultsView`: both selections, the recorded models (newest first,
+one per Agent), the recorded approval mode, and `approvalMode.resolved`, the
+Project layer resolved for the caller, with `fallback: 'no-history'` or
+`'full-access-not-granted'` when `last-used` could not supply it. A shared
+member admitted to the Project reads it too, with only their own values,
+because the start applies the same approval layer to their chats; any other
+caller gets 404. A member's composer does not see the Project's model fields,
+so for a member `fixed` means the Agent's own model chain; `last-used` still
+uses the member's own recorded model. The composer only displays this view
+("Set when the chat starts" until it is read) and never waits for it to send.
+
+The person's personal per-engine approval default is queued for a chat's
+first send as before (with its account namespace, so offline replay and
+account switches behave as they did). In a Project chat it travels on `/chat`
+as `personalApprovalDefault` (`ask`, `auto` or `never`), a hint rather than a
+pick; outside a Project there is no Project layer and it goes as a carried pick. For a new conversation of a person's own chat the server
+records it as the conversation's decision only when nothing above it decides,
+so the order is: explicit pick, Agent default, Project layer, personal
+default, Station default. A `never` hint that would apply is refused (403
+`approval-full-access-not-granted`) without the caller's full-access grant,
+exactly as a carried pick is; one that would not apply is ignored. A recorded
+hint is reported in the response's `approvalMode`; a hint not applied is
+spent with that send. An agent's station-control call that carries the hint
+(on `/chat`, its continue route or a handoff) is refused with 403
+`station_control_posture_not_allowed`, as a carried pick is. When this route answered 404 (a Station that may
+predate the hint), the composer sends the default as the pick it used to be;
+with no Project layer the order is the same. Accepted gap: a Station that
+predates the hint and whose chat-defaults read this composer never made (or
+has not answered) ignores the hint, so that first chat starts in its Agent or
+Station default instead of the personal default. That is never looser than
+the person chose; detecting it would need a capability flag the client does
+not read today.
+
+See [project chat defaults](contracts.md).
 
 ## Durable Project creation
 
@@ -5219,11 +5337,26 @@ projection includes conversation messages only. Invited/public participation,
 browser acceptance and installed delivery require separate evidence from these
 source contracts.
 
+## Project Walkthroughs
+
+The personal-host [Walkthrough routes](../../src-server/routes/walkthroughs.ts)
+mount at `/api/projects/:projectSlug/walkthroughs` with the shared runtime
+media resolution and transcription. All leaves require the default-off
+**Walkthroughs** Feature Preview. Off returns the typed HTTP 404 refusal
+`feature_preview_disabled`; enable it in Settings → Advanced → Feature previews. `POST /import?filename=<plain-name>`
+accepts raw video bytes with UUID header `x-walkthrough-request-id`, returning
+202 with an `ActionOperation` and optional typed terminal outcome. Read status
+at `GET /imports/:requestId`, list at `GET /`, read a manifest at `GET /:id`,
+and read JPEG bytes at `GET /:id/frames/:frameId`. Import needs Project drive;
+reads need view. [The guide](../guides/walkthroughs.md#rest-and-sdk) owns bounds,
+authorization, failure, privacy and preview lifecycle limits.
+
 ## Task review threads
 
 Personal runtimes mount review routes under `/api/tasks/:taskId/review`, using
-Task room request authority. Reads require `orchestration:read`; mutations
-require `orchestration:operate`. Every mutation carries a stable `operationId`.
+Task room request authority. Reads require `orchestration:read`; comment
+mutations and persisting Browser captures require `orchestration:operate`.
+Comment mutations require a stable `operationId`.
 
 - `GET /api/tasks/:taskId/review?state=open|outdated|resolved` returns
   `station.task-review/v1`, item metadata, thread summaries and unfiltered counts.
@@ -5235,9 +5368,14 @@ require `orchestration:operate`. Every mutation carries a stable `operationId`.
   is the latest sent, send-failed or agent-reply even after a later resolve or
   person reply. If the delivery-status port fails, a Sent thread stays available
   with `deliveryStatus: 'unconfirmed'` and a distinct warning. A corrupt thread returns
-  `{status:"unavailable", state:"unavailable", threadId, ordinal, eventCount}`,
+  `{status:"unavailable", state:"unavailable", threadId, ordinal, eventCount}`
+  with an optional validated `artifact` reference,
   is logged once per thread/event count while retained in the module's bounded
-  warning cache, and stays visible in every filter; aggregate counts omit it. Open includes sent and agent-replied threads with no Outdated overlay.
+  warning cache, and stays visible in every filter of its own item; aggregate
+  counts omit it. Rows without a valid artifact cannot be assigned to an item.
+  The optional `authors` projection supplies display names for preview authors
+  and recorded agent starters within the authorized Task read. Open includes
+  sent and agent-replied threads with no Outdated overlay.
 - `GET /api/tasks/:taskId/review/threads/:threadId` returns `{thread}` with full
   events and current derived state. A corrupt thread returns 503; another Task
   or incarnation returns 404.
@@ -5255,11 +5393,40 @@ require `orchestration:operate`. Every mutation carries a stable `operationId`.
   operationId}`.
 - `POST /api/tasks/:taskId/review/threads/:threadId/resolve` and `/reopen` take
   `{reason?, operationId}`. Resolve records a default reason when omitted.
+- `POST /api/tasks/:taskId/review/send` takes `{threadIds, operationId,
+  mode: 'send'|'send-and-resolve'}` (omitted mode defaults to `send`). It
+  returns `{deliveryKey, status: 'queued'|'unconfirmed'|'failed', threads,
+  reason?}`. Only the live lead receives it. The sending principal must equal
+  the lead's recorded owner; otherwise `sender-not-task-owner` (409) refuses
+  before Sent. A lead without a recorded owner returns `unavailable` (503).
+  The inbox actor is that actual sender. Multiplayer send is
+  deferred to #4136. A stopped lead returns `no-live-agent` (409).
+  Send + Resolve appends resolution only after queue acceptance. Reusing an
+  operation with another mode returns `operation-conflict`; a fresh operation
+  still checks recovery when its requested mode differs. Modes persist in opaque
+  delivery keys. Legacy keys without a mode cannot replay confirmed delivery,
+  but can recover known non-delivery or report uncertain delivery.
+  Quoted bodies and excerpts are capped at 800 UTF-16 code units after quoting,
+  with a cut marker. The complete frame fits 190,000 units including metadata.
+  When needed, it omits older replies, keeps each opening comment and the latest
+  replies, and reports how many earlier replies were omitted. Only a selection
+  whose minimal per-thread content cannot fit returns `message-too-large` (409)
+  before Sent; select fewer threads and send separate batches. The frame
+  identifies review data and forbids following instructions in it.
+  Retrying a refused entry, or one cancelled while still queued, appends keyed
+  `send-failed` and returns the thread to Open. Send again with a new operation
+  id for a fresh delivery key. Dismissing an unconfirmed entry does not prove
+  non-delivery. A missing key, including one pruned after settled retention,
+  also stays `unconfirmed` (**Send unconfirmed**), as does an unavailable inbox
+  service. These intents are never resubmitted automatically. A person can
+  explicitly reply to set `pendingFollowUp` and send that follow-up with a new
+  operation id. The inbox owns restart delivery.
 
-Success returns `{success:true,data:...}`; mutations return `data.thread`.
+Success returns `{success:true,data:...}`. Thread edits return `data.thread`;
+send returns the delivery key, status and selected threads.
 Refusals include `invalid-request` and `invalid-event` (400), `not-found` (404),
-`anchor-mismatch`, `invalid-transition`, `operation-conflict`, `thread-limit`
-and `event-limit` (409),
+`anchor-mismatch`, `invalid-transition`, `operation-conflict`, `thread-limit`,
+`event-limit`, `message-too-large`, `no-live-agent` and `sender-not-task-owner` (409),
 and `artifact-unavailable` or `unavailable` (503). Another Task incarnation's
 thread, a cross-Project thread and a revoked person grant are not found.
 Oversize request bodies are refused with 413.
@@ -5308,9 +5475,57 @@ plan/summary anchors retain no body quote; changed revisions have unknown
 freshness and remain visible through `currentRevision`, following the shared
 contract. Review
 reads plan working state and never writes the room document, room history,
-Task status or revision-bound evidence. Capture metadata primitives exist in
-the store; send, capture HTTP routes, agent tools and the Review UI are separate
-increments.
+Task status or revision-bound evidence.
+
+The internal-only station-control routes are `GET
+/api/orchestration/station-control/task-threads?state=open|outdated|resolved`,
+`POST /api/orchestration/station-control/task-thread-reply` and
+`POST /api/orchestration/station-control/task-thread-resolve`. Their closed
+request shapes are the contract's `TaskThread*Request` types. Task authority
+comes from the verified caller's lead Session binding, never arguments.
+Unbound/non-lead Sessions get `no_task_binding`; a thread on another Task
+gets `not-found`. The agent list excludes corrupt thread entries and returns
+healthy complete histories from one store batch and one artifact snapshot.
+The additive `unavailableThreadCount` reports corrupt entries omitted from both
+`threads` and the healthy state counts, independently of the requested filter.
+Reply evidence is nested under `evidence`; verification
+fields are server-owned. Replies require the `deliveryKey` returned by Send or
+list; a stale key is refused. A reply to a resolved delivery keeps it resolved.
+Resolve never changes Task status. `commitVerified` means the exact object
+exists in the Task workspace and has type `commit`; it does not prove branch
+reachability or that the review was addressed. Tags and blobs remain claims.
+`gateVerified` requires every supplied reference to be linked to this Task and
+resolve to the exact current passing evaluation. A passing gate linked only
+to another Task stays claimed. Receipt references remain claims.
+
+Browser capture routes on personal hosts:
+
+- `GET /api/tasks/:taskId/review/capture-sessions` returns `data.sessions` with
+  live `browserSessionId`, sanitized `url` and `viewport` for this Task's Project.
+- `POST /api/tasks/:taskId/review/captures` takes
+  `{sourceKind:'browser', sourceSessionId, label?, operationId?}` and returns
+  201 with `data.capture`. Both listing and capture require Browser view
+  standing and Task authority; listing uses `orchestration:read`, while
+  persisting a capture requires `orchestration:operate`. Other source kinds are
+  refused. Omitted operation IDs are server-minted; stable caller IDs make
+  identical retries return the original capture.
+- `GET /api/tasks/:taskId/review/captures/:captureId/content` requires current
+  Task authority and read scope. It returns digest-verified image bytes with
+  explicit `Content-Type` and `X-Content-Type-Options: nosniff`, or 404 for a
+  capture outside this Task incarnation. Corrupt bytes return
+  `capture-corrupt` (503), with no image bytes.
+
+Captures require a clean, observable Task workspace. Task count and home capacity
+are checked before taking the screenshot. A failed metadata publication removes
+only newly written image bytes under the home lock, preserving shared digests.
+Non-HTTP page URLs are omitted from metadata; HTTP query strings and fragments
+are redacted. Refusals include
+`workspace-changed`, `workspace-unobservable`, `screenshot-too-large`,
+`capture-limit`, `capture-home-limit` (409), and `capture-unavailable` (503).
+The bound-only `/api/browser-agent/capture-to-task` operation derives the Task
+from the Session execution binding and returns `{ok:true,captureId,commit,digest,
+screenshot:{mimeType,data}}`; missing Task binding returns `no_task_binding`.
+See [Browser capture](../guides/browser-workspace.md#capture-a-screen-for-task-review).
 
 Owners: [review routes](../../src-server/routes/orchestration/task-review.ts),
 [artifact resolution](../../src-server/services/projects/task-review-module.ts),

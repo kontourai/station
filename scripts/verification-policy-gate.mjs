@@ -123,6 +123,7 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
   // CLI help ↔ docs/reference/cli.md parity. Pure source read, ~50ms; see
   // run-ci-fast.mjs for why this belongs on the PR-visible lane.
   Object.freeze(['npm', Object.freeze(['run', 'docs:cli-parity:check'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'docs:feature-previews:check'])]),
   // #2803: the docs-reference and link gates, until then composed only by
   // verify:static. Whole-tree reads, ~1s each; see run-ci-fast.mjs.
   Object.freeze(['npm', Object.freeze(['run', 'docs:reference:gate'])]),

@@ -12,6 +12,21 @@ entry point. Exports select TypeScript/TSX source and host components may also
 need CSS, React and a Query Client. See the [package README](../../packages/sdk/README.md)
 for source distribution and a checked authoring example.
 
+## Local speech and media tools
+
+The React-free `@kontourai/station-sdk/client` exports
+`getMediaToolsStatus(apiBase, options?)`,
+`downloadMediaTools(apiBase, { consent: true, components? }, options?)` and
+`transcribeAudio(apiBase, blob, options?)`. The first two accept ordinary
+`ClientRequestOptions`. The upload uses the host credential resolver and
+accepts `signal`, `headers` and `timeoutMs`; it defaults to 16 minutes and
+refuses empty or over-32-MiB Blobs. Results use `MediaToolsStatus` and
+`LocalTranscriptionResult`. A caller must distinguish `unavailable`, `failed`
+and `transcribed` before reading segments. Queue overflow throws `StationHttpError`
+with status 503, code `busy` and `retryAfterMs: 5000`; direct transcription
+results also include `busy` in the failed reason union. These exports require a build
+containing this change. See [local speech](../guides/local-speech.md).
+
 ## Telemetry delivery
 
 The root exports `fetchTelemetryDeliveryStatus`, `checkTelemetryConnection`,
@@ -1470,6 +1485,24 @@ authority changes before the body is consumed. With `requireRequestScope`, a
 missing scope uses an isolated inert key and never exposes an older unscoped
 cache entry.
 
+### `useProjectChatDefaultsQuery(slug, config?)`
+
+Fetches `GET /api/projects/:slug/chat-defaults` through
+`getProjectChatDefaults`: the caller's `ProjectChatDefaultsView` for a new chat
+in that Project, or `null` when the route answers 404 or 501 (an older Station,
+no such Project, or a Station that does not compose it), meaning no Project
+layer applies; other failures throw. Scoped like `useProjectRunLocationsQuery`
+and keyed under `projectChatDefaultsQueryKey(requestScope, durableAuthorityId,
+slug)`: `[PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX, apiBase, identity, slug]`
+(`'project-chat-defaults'`), outside `'projects'`, because every chat start can
+change it. A host reads or seeds that exact entry with the exported key
+function; Station's first send reads it without waiting, only to tell a
+Station that answered 404 (which may predate the `personalApprovalDefault`
+hint) to receive the personal default as a pick. Disabled without a slug. `useUpdateProjectMutation` invalidates the
+prefix. Station reads it through `ProjectsContext`'s
+`useScopedProjectChatDefaultsQuery` (`staleTime: 0`, `refetchOnMount: true`)
+in the start composers, a chat that has not started, and Project settings.
+
 ### `useProjectRunLocationsQuery(config?)`
 
 Fetches `GET /api/projects/run-locations` through `listProjectRunLocations`:
@@ -1914,9 +1947,19 @@ accept an explicit API base and current request options.
 
 Resolves one inventory row under the server's request-derived authority before
 a caller treats it as a writable Session. The discriminated result is
-`resolved`, `missing-session`, or `unavailable`; only the `resolved` arm can
-carry a current Session identity and a server-derived
-`canContinue` decision. Transport, rejection, and invalid wire failures throw a
+`resolved`, `fork-ready`, `missing-session`, or `unavailable`. Only `resolved`
+can carry a current Session identity. `fork-ready` identifies an authorized saved
+fork whose copied transcript is available under `transcript.owner: 'fork-context'`;
+it has no provider Session or runtime execution binding until first send. Both
+successful arms carry the server-derived `canContinue` decision. A pending first
+start may return `canContinue: false` with `continuationPending: true`; clients
+must wait rather than fabricate a Session identity. A current server also says on
+the `resolved` arm whether the next ordinary turn starts a new Session
+(`nextTurnStartsSession`, #4179). The field is optional: older servers omit it,
+and so does a server that would refuse that turn (a handoff awaiting its target,
+or a context delivery not yet reconciled). A value that is not a boolean is
+refused as `invalid-response`.
+Transport, rejection, and invalid wire failures throw a
 typed `ConversationOpenResolutionFailure` rather than degrading to an empty
 chat. Optional `options.signal` cancels the request and `options.timeoutMs`
 sets its deadline, including JSON body consumption. Picker opens and active retries use the default request behavior without
@@ -3392,10 +3435,13 @@ interface STTProvider {
   readonly id: string;
   readonly name: string;
   readonly isSupported: boolean;
-  readonly state: 'idle' | 'listening' | 'error';
+  readonly state: 'idle' | 'listening' | 'transcribing' | 'error';
+  readonly errorMessage?: string;
+  readonly unsupportedReason?: string;
   readonly transcript: string;
   startListening(opts?: STTOptions): void;
   stopListening(): void;
+  cancelListening?(): void;
   subscribe(fn: () => void): () => void;
 }
 
@@ -3405,6 +3451,18 @@ interface STTOptions {
   interimResults?: boolean;
 }
 ```
+
+A batch provider uses `listening` during recording, `transcribing` after stop
+while upload/recognition runs, then `idle` with the final `transcript`. It notifies
+subscribers for those changes; the interface has no separate result callback.
+It need not emit interim results or implement continuous capture. Optional
+`errorMessage` and `unsupportedReason` supply actionable UI diagnostics.
+`stopListening` finishes a clip; optional `cancelListening` discards capture or
+pending recognition without delivering text. The host invokes cancellation when
+an owner closes or changes providers. The compatibility voice-session adapter
+projects `transcribing` and uses cancellation when ending a session, falling back
+to `stopListening` for older providers. Station’s built-in **Station (local)**
+registration follows the live `local-speech` preview and selected Station.
 
 ### `TTSProvider` interface
 
@@ -5609,6 +5667,29 @@ bounded raster preview. `thread` selects an authorized Session workspace;
 verified Git worktrees of that repository are also eligible. The returned bytes
 are display data, not permission to navigate to a host filesystem URL.
 
+## Walkthroughs
+
+The React-free `@kontourai/station-sdk/client` exports `importWalkthrough`,
+`getWalkthroughImport`, `listWalkthroughs`, `getWalkthrough`,
+`getWalkthroughFrame`, and `walkthroughFramePath`. They take an explicit API
+base and Project slug. Import takes a Blob, plain filename, UUID request id and
+optional request options; it returns the operation after upload admission.
+Import defaults to a two-hour upload timeout; `timeoutMs` can override it.
+The server also enforces a 60-second receive-idle deadline.
+Follow status separately until `outcome` is present. Reuse an id only to
+observe that upload; use a new id to retry a refused import or upload new bytes.
+Reads return bounded pages, a contract-validated manifest, or bounded JPEG bytes.
+These calls retain normal Station authentication and Project authorization.
+
+The [runtime composition](../../src-server/runtime/bootstrap/local-media-runtime.ts)
+shares concrete acquisition/transcription instances. Calls require the default-off
+Walkthroughs Feature Preview; enable it in Settings → Advanced → Feature previews.
+Off responses throw `StationHttpError` with `code:'feature_preview_disabled'`,
+`previewId` and `settingsPath`, also preserved by the MCP tools. See the
+[Walkthrough guide](../guides/walkthroughs.md). Missing tools are typed terminal
+unavailability, never empty transcript success. The CLI and Station-control MCP
+use these same fetchers.
+
 ### Task review threads
 
 The SDK root and query barrel export `fetchTaskReview(taskId)`,
@@ -5627,7 +5708,10 @@ SDK barrels; detail provides full text. Use `openingEvent.body`/author/createdAt
 for the card preview and `lastDeliveryEvent` for the latest delivery, even when
 `lastEvent` is a person reply or resolve. Render `status:'unavailable'`
 as an unavailable card; it has no invented base state or history and does not
-contribute to aggregate counts.
+contribute to aggregate counts. Its optional `artifact` identifies the item on
+which to render that state. The list's optional `authors` projection supplies
+person and agent display labels without People-management scope or transcript
+reads; missing identity facts use the UI's generic label.
 
 `fetchTaskReviewItem(taskId, kind, id)` and
 `useTaskReviewItemQuery(taskId, kind, id, options)` read one selected item through
@@ -5657,3 +5741,43 @@ returns `{thread}` and invalidates both the Task's list and thread-detail querie
 responses also throw `StationHttpError`, preserving the HTTP status. The SDK re-exports
 these request types, `TaskReviewThreadSummary`, `TaskReviewThreadView` and `TaskReviewView` from the
 [review contract](../../packages/contracts/src/task-review.ts).
+
+`useCaptureToTaskMutation(taskId)` takes `TaskReviewCreateCaptureRequest` with
+`sourceKind:'browser'`, `sourceSessionId`, optional `label` and a stable
+`operationId`. It requires `orchestration:operate`, returns `{capture}` and
+invalidates the Task review query.
+`fetchTaskCaptureSessions(taskId, signal?)` and
+`useTaskCaptureSessionsQuery(taskId, options?)` supply live, view-authorized
+Browser sessions for the picker. `fetchTaskCaptureContent(taskId, captureId,
+signal?)` returns an image `Blob`; callers own any object URL they create and
+must revoke it. Content stays Task-scoped, uses authenticated fetch and throws
+`StationHttpError` on refusals. These functions and `TaskCapture`,
+`TaskReviewCreateCaptureRequest` and `TaskCaptureBrowserSession` are exported
+from both the root and query barrels.
+
+`useSendReviewThreadsMutation(taskId)` takes the shared `TaskReviewSendRequest`
+`{threadIds, operationId, mode}`, where `mode` is `send` or `send-and-resolve`. It returns `{deliveryKey, status,
+threads, reason?}` and invalidates the review list and thread detail queries.
+`unconfirmed` carries "Send unconfirmed" for uncertain inbox evidence, including
+dismissed unconfirmed entries and missing keys after retention. Only a refused
+entry or one withdrawn while queued is recorded failed on retry and reopens
+Sent; use a new operation id to send again. For uncertain delivery, explicitly
+reply to set `pendingFollowUp` before sending a fresh follow-up. The second mode resolves only after
+queue acceptance. Retry with the same operation id, selection and mode to avoid
+another send; changing the mode on that same operation is a conflict. Only the recorded
+lead owner may send until multiplayer is supported. Older replies are omitted from oversized messages while preserving the opening
+and latest comments with an omitted count. Only selections whose minimal content
+cannot fit fail with `message-too-large` before Sent; select fewer threads.
+
+`useCaptureToTaskMutation(taskId)` takes `TaskReviewCreateCaptureRequest` with
+`sourceKind:'browser'`, `sourceSessionId`, optional `label` and a stable
+`operationId`. It requires `orchestration:operate`, returns `{capture}` and
+invalidates the Task review query.
+`fetchTaskCaptureSessions(taskId, signal?)` and
+`useTaskCaptureSessionsQuery(taskId, options?)` supply live, view-authorized
+Browser sessions for the picker. `fetchTaskCaptureContent(taskId, captureId,
+signal?)` returns an image `Blob`; callers own any object URL they create and
+must revoke it. Content stays Task-scoped, uses authenticated fetch and throws
+`StationHttpError` on refusals. These functions and `TaskCapture`,
+`TaskReviewCreateCaptureRequest` and `TaskCaptureBrowserSession` are exported
+from both the root and query barrels.

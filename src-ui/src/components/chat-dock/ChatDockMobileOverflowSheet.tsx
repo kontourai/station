@@ -1,10 +1,42 @@
 import './ChatDockMobileOverflowSheet.css';
+import { useContextPercentage } from '../conversation-stats/ContextPercentage';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
 import { ChatDockMobileConnection } from './ChatDockMobileConnection';
 import type { ChatDockMobileOverflowActions } from './ChatDockMobileHeader';
+
+function ConversationStatsItem({
+  stats,
+  onSelect,
+}: {
+  stats: NonNullable<ChatDockMobileOverflowActions['conversationStats']>;
+  onSelect: () => void;
+}) {
+  const percentage = useContextPercentage(stats);
+  const share =
+    percentage === null ? null : `Context ${Math.round(percentage)}% used`;
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      className="composer-actions-menu__item"
+      aria-haspopup="dialog"
+      // Named explicitly, like Clear project scope: an inline hint's text
+      // joins the label's with no separator in the computed name.
+      aria-label={share ? `Conversation stats — ${share}` : undefined}
+      onClick={onSelect}
+    >
+      Conversation stats
+      {share && (
+        <span className="composer-actions-menu__item-hint" aria-hidden="true">
+          {share}
+        </span>
+      )}
+    </button>
+  );
+}
 
 /**
  * The mobile header's overflow sheet.
@@ -95,6 +127,12 @@ export function ChatDockMobileOverflowSheet({
           >
             Chat inventory
           </button>
+        )}
+        {overflow.conversationStats && (
+          <ConversationStatsItem
+            stats={overflow.conversationStats}
+            onSelect={() => run(overflow.conversationStats!.onOpen)}
+          />
         )}
         {showConnection && <ChatDockMobileConnection showLabel />}
         {/* Desktop More-menu parity first, like the desktop menu's own order:

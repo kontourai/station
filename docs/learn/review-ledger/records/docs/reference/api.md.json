@@ -548,6 +548,8 @@
 
     "src-server/services/identity/operator-sessions.ts",
 
+    "src-server/routes/walkthroughs.ts",
+
     "src-server/routes/chat/chat-primary-stream.ts",
 
     "src-server/routes/orchestration/task-review.ts",
@@ -570,7 +572,19 @@
 
     "src-server/routes/projects/terminal-session-routes.ts",
 
-    "src-server/services/terminal/__tests__/terminal-sessions.process.test.ts"
+    "src-server/services/terminal/__tests__/terminal-sessions.process.test.ts",
+
+    "src-server/services/projects/task-browser-capture.ts",
+
+    "src-server/routes/orchestration/task-review-captures.ts",
+
+    "src-server/routes/__tests__/browser-agent-capture.test.ts",
+
+    "src-server/services/orchestration/task-review-send.ts",
+
+    "src-server/routes/orchestration/task-review-station-control.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts"
   ],
 
   "checks": [

@@ -748,6 +748,17 @@ export const STATION_CONTROL_TOOL_POLICY = {
   // stays in its own Project or the global space, and another Project's
   // Sessions read as absent. The caller's own conversation is its own whatever
   // its scope. Each owns its leaf and shares none.
+  list_walkthroughs: {
+    ...SELF_READ,
+    routes: [get('/api/projects/:projectSlug/walkthroughs')],
+  },
+  get_walkthrough: {
+    ...SELF_READ,
+    routes: [
+      get('/api/projects/:projectSlug/walkthroughs/:id'),
+      get('/api/projects/:projectSlug/walkthroughs/:id/frames/:frameId'),
+    ],
+  },
   list_project_activity: {
     ...SELF_READ,
     routes: [get('/api/orchestration/session-activity')],
@@ -1055,6 +1066,25 @@ export const STATION_CONTROL_TOOL_POLICY = {
     toolClass: 'bounded-write',
     personOnly: 'never',
     routes: [post('/api/orchestration/station-control/task-record')],
+  },
+
+  task_thread_list: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/station-control/task-threads')],
+  },
+  task_thread_reply: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'bounded-write',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/station-control/task-thread-reply')],
+  },
+  task_thread_resolve: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'bounded-write',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/station-control/task-thread-resolve')],
   },
 
   // ── notify ─────────────────────────────────────────────────────────────

@@ -3,6 +3,20 @@
 The Station CLI controls running Stations and supports selected local and
 checkout operations. Availability depends on how it was launched.
 
+## Local speech and media tools
+
+### `media-tools`
+
+`station media-tools status [--json]` prints component IDs, versions, pinned
+download bytes, resolution, byte progress and failures. It performs no download.
+`station media-tools download --yes [--json]` requires explicit consent before
+contacting the selected Station, then starts its missing component downloads.
+Both accept `--station`, or `--api-base` and the usual credential selection.
+These commands require the Station operator and either the Walkthroughs or Local
+speech preview, enabled in Settings → Advanced → Feature previews. A 202 response means downloading
+has started; inspect `status` for readiness or failure. See
+[local speech](../guides/local-speech.md) for platforms and limits.
+
 ## Invocation
 
 There are three entry points, and they are not the same program surface.
@@ -914,6 +928,48 @@ the UI and REST API. Payload-bearing commands accept JSON via:
 - `--data='{"key":"value"}'`
 - `--file=/absolute/or/relative/path.json`
 - piped stdin
+
+### `mcp-clients`
+
+Expose a bounded set of Station tools to an existing external MCP client on the
+same host. This is the opposite direction from `tools` connecting Station to
+external MCP servers. It does not start an engine or transfer Session execution.
+
+```bash
+station mcp-clients authorize --station=<installed-local-profile>
+station mcp-clients create --station=<installed-local-profile> --session=<existing-session-id> --tools=read_conversation,board_read,board_pin --ttl-seconds=300 --output=/absolute/private/path/station-client.json
+station mcp-clients revoke <lease-id> --station=<installed-local-profile>
+```
+
+`authorize` explicitly uses the existing local owner-home proof and OS credential
+store. It neither starts a service nor prints the resulting device credential.
+Issuance requires that file-proven local device, `access:manage`, and a real
+operator-owned Session with a recorded, current Project identity. Browser
+bootstrap grants, ordinary pairing, personal access tokens and internal process
+credentials cannot substitute. The target must be an IP-literal loopback profile.
+
+`create` requires explicit tools and a TTL from 60 through 3600 seconds. The
+initial tools are only `read_conversation`, `board_read`, and `board_pin`; omitted,
+empty, duplicate or other selections refuse. Output must be a new absolute file.
+The CLI creates it with mode 0600 and prints metadata only. Initial private-file
+creation is POSIX-only; Windows creation explicitly refuses instead of claiming
+unverified ACL protection. No existing file is overwritten.
+
+Creating a lease does not rotate runtime tokens or another client lease.
+`revoke` targets its exact ID. Expiry, Session revocation and server restart also
+invalidate it. A disconnect is not revocation. Issuance is not automatically
+retried after an uncertain response. Failed file storage attempts revocation and
+reports whether it was confirmed; a partial private file may remain. See the
+[external-client recipe](session-api.md#external-clients-using-station-tools)
+for client configuration, mutation approval and qualification limits.
+
+Each HTTP request uses the normal CLI deadline (30 seconds by default), including
+the separate compensating revoke after a file-write failure. There is no
+independent deadline for the entire create-and-compensate command. Setting
+`STATION_REQUEST_TIMEOUT_MS=0` disables the request deadline and can leave either
+request waiting without a wall-clock bound. A timeout remains an unknown outcome,
+not proof that issuance or revocation failed; the CLI does not automatically
+retry it.
 
 ### `agents`
 
@@ -2214,7 +2270,8 @@ running version, backs up the home once, and starts the new version as a
 trial. The backup holds Station's own state: every entry but the service
 manifests, `instances.json`, logs, monitoring, quarantine, `tmp` and the update
 restore marker `update-restore.json` (which the service and its updates own),
-the default project directories under `workspaces/`, real acquired working-copy
+versioned re-acquirable `media-tools/`, the default project directories under
+`workspaces/`, real acquired working-copy
 directories at `repository-acquisitions/<request UUID>/checkout-N`, and the
 browser's `browser/chromium` and `browser/profiles`: an update neither copies
 nor rolls them back. Acquisition receipts and mutation files remain backed-up
@@ -2681,6 +2738,10 @@ required to reach Station from:
 - a LAN or tailnet IP/hostname (e.g. `http://192.168.1.42:3010` or a Tailscale
   MagicDNS name), or
 - a single-origin HTTPS reverse proxy that only forwards the UI port.
+
+Malformed or reset upstream response bodies close the downstream connection
+without a clean end, so clients observe truncation. The listener contains
+response errors and continues serving subsequent requests.
 
 `STATION_API_BASE` (set before `station start`) is the explicit override: when
 set, it is the **only** case where the UI server injects an absolute
@@ -3221,7 +3282,10 @@ WAL and shared-memory sidecars are not copied. Symlinks in included content,
 corrupt databases, detected active instances, and
 configured size/count limits fail closed. Volatile logs, monitoring output,
 service state, temporary files, live instance records, and the top-level
-quarantine directory are excluded. Defaults are 100,000 files, 20 GiB total,
+quarantine directory are excluded. Re-acquirable `media-tools/` downloads are
+also excluded; a restored home requires host tools or fresh download consent.
+See [media backup and rollback](../guides/local-speech.md#backup-and-update-rollback).
+Defaults are 100,000 files, 20 GiB total,
 and 2 GiB per file. This is a private local copy, not an encrypted export or a
 transfer of execution authority.
 
@@ -4131,3 +4195,20 @@ exact snapshot as an optimistic guard. Supply `--repo-id` and a repo-relative
 resource must already be declared, but it may be unbound on this Station;
 configuration never clones, binds, or grants compute. An unchanged request is
 idempotent and does not advance the identity timestamp.
+
+### `walkthrough`
+
+```bash
+station walkthrough import <file> --project <slug>
+station walkthrough list --project <slug> [--cursor=<nextCursor>]
+station walkthrough show <id> --project <slug>
+```
+
+The `--project=<slug>` spelling also works. Import streams a local mp4, mov or
+webm, follows its operation and prints the completed id. Errors preserve
+unavailability and download sizes, with `station media-tools download --yes`
+as the consent-required remedy. List and show print JSON. Normal
+Station target/authentication flags apply. See the [import guide](../guides/walkthroughs.md)
+for limits and privacy. Enable the default-off **Walkthroughs** preview in
+Settings → Advanced → Feature previews. Off commands exit nonzero and retain the
+server's `feature_preview_disabled`, preview ID and Settings path.

@@ -226,6 +226,8 @@ function localService() {
     ) => sessionCommands.execute(command, context),
   );
   return {
+    prepareInitialConversationForkContext: vi.fn(() => undefined),
+    assertConversationForkContextEnvironment: vi.fn(() => undefined),
     readSession: vi.fn(async (_sessionId?: string) => null),
     currentConversationSessionId: vi.fn(
       (conversationId: string) => conversationId,
@@ -442,6 +444,8 @@ function localDelegatedTaskService(
     tenantExecutionContext?: { tenantId: string };
   }) => authority.tenantExecutionContext?.tenantId === 'alpha';
   return {
+    prepareInitialConversationForkContext: vi.fn(() => undefined),
+    assertConversationForkContextEnvironment: vi.fn(() => undefined),
     listSessionReadModel: vi.fn(async (authority) =>
       canRead(authority) ? [session] : [],
     ),

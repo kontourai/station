@@ -22,7 +22,9 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 ## Index
 
 | Module | Intent | Primary source |
+| [WalkthroughService](#walkthroughservice) | Import a local recording into an immutable validated manifest and selected frames. | `src-server/services/walkthroughs/walkthrough-service.ts` |
 | --- | --- | --- |
+| [Local speech and media tools](#local-speech-and-media-tools) | Resolve consented media tools and transcribe bounded local audio/video. | `src-server/services/media-tools/media-tools-resolver.ts` |
 | [TerminalSessions](#terminalsessions) | Authorize Project/binding terminal operations and preserve bounded numbered output across reconnects. | `src-server/services/terminal/terminal-sessions.ts` |
 | [ProductTelemetryReceiver](#producttelemetryreceiver) | Commit and query disclosed product observations with scoped source credentials and explicit delivery coverage. | `packages/telemetry-broker/src/store.ts` |
 | [PluginTelemetryPublisher](#plugintelemetrypublisher) | Validate signed public publisher declarations and deliver kernel-owned, per-publisher counts under notice/consent policy. | `src-server/services/plugin-telemetry-service.ts` |
@@ -113,7 +115,7 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 | `src-server/services/board/` | The Board store for one Task or Session (tabs and ordinal widgets; contract in `packages/contracts/src/board.ts`), behind `src-server/routes/board.ts`, which authorizes the owning reference before any store read | Source |
 | `src-server/services/config/` | The idempotent log-level edit with retained terminal receipts | [Logging configuration](../reference/config.md#logging) |
 | `src-server/services/discord/` | The Discord gateway: private configuration in `<home>/security/discord-gateway.json`, allowlist and identity authorization, channel-to-session bindings and reply relay | [Gateway service](../../src-server/services/discord/discord-gateway-service.ts) |
-| `src-server/services/feature-previews/` | The registry of opt-in feature previews this build can run, persisted per Station and shown under Settings → Advanced; served by `src-server/routes/system/feature-previews.ts` | Source |
+| `src-server/services/feature-previews/` | The registry of opt-in feature previews this build can run, persisted per Station and shown under Settings → Advanced; served by `src-server/routes/system/feature-previews.ts`. [Contributor workflow](../guides/feature-previews.md) | Source |
 | `src-server/services/kits/` | Installed-Kit observability lifecycle and persistence for the host | Source |
 | `src-server/services/presence/` | Process-local, non-durable focus presence per paired device or client session (#2585) | Source |
 | `src-server/services/relay/` | Durable relay and native-relay enrollment journals; they hold references and proofs, never credentials | [Native relay enrollment](#native-relay-enrollment) |
@@ -125,6 +127,36 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 | `src-server/openapi/` | Builds the checked-in [OpenAPI subset](../reference/openapi.json) from route schemas; the documentation tests compare its output with the file | [Endpoint authorities](../reference/endpoints.md) |
 | `packages/basis-pane/` | First-party Basis Workspace Pane, answer-basis affordance and session inventory views | [Whole Task Basis collection](#whole-task-basis-collection), [README](../../packages/basis-pane/README.md) |
 | `packages/board-pane/` | The Console Board as an in-process Workspace Pane over published contracts | [README](../../packages/board-pane/README.md) |
+
+## Local speech and media tools
+
+**Interfaces.** [MediaToolsResolver](../../src-server/services/media-tools/media-tools-resolver.ts)
+finds host-installed ffmpeg/ffprobe or a previously verified pin without network
+access. [Transcriber](../../src-server/services/transcription/transcriber.ts)
+returns timed local speech, explicit unavailability or a typed failure. The
+Walkthrough importer and the preview-gated Station (local) voice provider consume these seams;
+the device decoder also uses media resolution.
+
+**Adapters and composition.** [MediaToolsAcquisition](../../src-server/services/media-tools/media-tools-acquisition.ts)
+owns pinned downloads, byte progress, integrity, safe extraction and installation
+in the Station home. Only its separate download operation accepts consent.
+[SherpaTranscriber](../../src-server/services/transcription/sherpa-transcriber.ts)
+owns temporary conversion, silence-aware chunks, absolute timing, limits and
+owned child processes. The runtime binds one acquisition instance to the
+operator routes, importer, recognizer and device decoder. One recognizer serves
+both imports and transcription requests: one runs, four wait FIFO with queued
+cancellation, and overflow returns `busy`. The 15-minute deadline includes waiting.
+[Runtime composition](../../src-server/runtime/bootstrap/local-media-runtime.ts)
+binds the default-off Walkthroughs and Local speech previews. Both media-tools
+routes require either switch; transcription requires Local speech. Existing
+device decoding uses already-present tools independently of these switches. The
+[guide](../guides/local-speech.md) owns platform choices and limits; the adjacent
+service and route tests own executable evidence. The UI reconciles the
+Station (local) registration with the live Local speech preview and selected
+Station, records with MediaRecorder, uploads through the SDK, and publishes only
+a final transcript. Its `transcribing` state and cancellation are public SDK
+contracts. Disabling removes the client provider and aborts its pending work
+when the preview query refreshes; server recognition already admitted continues.
 
 ## AccountPreferences
 
@@ -1842,16 +1874,55 @@ old aliases and require confirmed engine retirement before transfer. The compact
 history contract preserves ordered provider boundaries and explicit fork
 ancestry; neither a return request nor lineage alone proves native identity.
 
+An ordinary follow-up after a native return requires observed completion of
+that handoff's seed-bearing turn. A failed or uncertain catch-up refuses ordinary
+continuation before reuse or cursor resume; it does not reopen the accepted-start
+boundary or automatically resend context. The same synchronous handoff
+check runs at the final provider-effect boundary for fresh dispatch and prepared
+resumption, so a native rebind during awaited preparation cannot borrow proof.
+
+New cursorless continuations and history-preserving context starts also pin
+text and source cutoffs before provider start. The
+[context-start fence](../../src-server/services/orchestration/conversation-start-context.ts)
+uses the [completion witness](../../src-server/services/orchestration/conversation-context-seed-witness.ts)
+for the exact prepared invocation, terminal event and required native identity.
+Known native identities are captured with the prepared invocation. A first
+identity learned during the turn can be witnessed only by the correlated engine
+terminal; conflicting observations do not qualify delivery. A later mutable
+carrier rebind cannot borrow that acknowledgement. A failed witness projection
+rolls back only that derived update; the observed canonical terminal remains
+independently persistable. These private projections remain in the existing EventStore. A consumed start
+boundary is not a delivery acknowledgement; uncertain or failed seed delivery
+refuses ordinary reuse. Deliberate empty context and the framework's native
+memory companion retain their separate contracts.
+
+[Saved fork context](../../src-server/services/orchestration/conversation-fork-context.ts)
+is an owner-scoped immutable copy with an independent Conversation identity.
+Opening it returns `fork-ready` without inventing a provider Session. First send
+creates the actual Session and carries the saved text projection; canonical
+refresh combines copied parent rows with subsequent runtime turns. Deletion
+before first send tombstones the context under the lifecycle guard before file
+cleanup, so failed cleanup cannot reactivate the seed.
+
 A turn's outcome
 never ends its session. A finished turn rests it `idle` (at rest and reusable,
 not the terminal `completed`), and a failed or stopped turn rests it `failed`
-or `canceled`. Either way the next turn runs in that session, with its engine
-still resident, or restarted in place from its resume cursor. A child is
+or `canceled`. Once required context delivery is confirmed, the next turn runs
+in that session, with its engine still resident, or restarted in place from its
+resume cursor. A child is
 reserved only when the current session cannot take the turn:
 - it was explicitly closed (terminal `completed`);
 - its engine binding is `closed`, `dead`, or `error`;
 - the engine cannot apply a requested model switch per turn;
 - an explicit handoff or a context boundary asks for one.
+
+The conversation-open read reports that decision for the next ordinary turn
+without reserving anything (`nextTurnStartsSession`, from
+`ConversationLineage.nextTurnStartsSession`, #4179): the first two reasons, or
+a reserved child that has not started. A model switch depends on the send that
+asks for it and is not counted. It reports nothing for a turn the send would
+refuse: a handoff awaiting its target, or a continuation, fork, or handoff
+context delivery not yet completed on the current Session.
 
 `OrchestrationService` parks an at-rest engine left unused past
 `idleSessionParkAfterMs`, provided it is at rest, has no active turn or reported running child work,
@@ -2450,7 +2521,11 @@ metadata. Adjacent acquisition receipts, import originals, setup outcomes and
 creation requests remain state; Room databases join the SQLite checkpoint list.
 Rollback does not undo later external effects or grant execution authority, and
 cross-home copies can retain machine-local paths. Full home backup still includes
-in-home checkout bytes; update snapshots omit them. Restore checks saved file/link
+in-home checkout bytes; update snapshots omit them. Both backup kinds exclude
+re-acquirable `media-tools/` downloads. Update rollback retains versioned tool
+installs; missing required files report `needs-consent` without downloading.
+See [media rollback](../guides/local-speech.md#backup-and-update-rollback).
+Restore checks saved file/link
 collisions at or beneath preserved external directories and raw-spelling aliases
 of retained state containers before removing state; a conflict requires operator
 reconciliation. Older admissible POSIX snapshots keep raw filename
@@ -3180,8 +3255,14 @@ file alone grants no trust. Returned records, exports and projections are cloned
 [SQLite persistence adapter](../../src-server/services/orchestration/sqlite-revision-evidence-persistence.ts).
 It preflights count/text/byte limits before 32-row restore pages. A validated
 ledger digest is rechecked under `BEGIN IMMEDIATE` before batch persistence;
-a stale witness/response-loss path gets one bounded retry. Current persisted
-reads refresh canonical truth. Registration precedes callback-bearing restore,
+a stale witness/response-loss path gets one bounded retry. SQLite
+write batches use a temporary zero busy timeout so a room worker awaiting
+main-thread approval cannot stall that thread. A contended freeze retains its
+publication outbox; a later person or agent save drains and retries once on
+`revision-publication-pending`, with current authority rechecked.
+Proposal seeding also rechecks its empty-document precondition inside the worker
+transaction, including retries.
+Current persisted reads refresh canonical truth. Registration precedes callback-bearing restore,
 and lifecycle generations fence every external callback and successful
 projection so reentrant close cannot refill or disclose a closed module's cache.
 
@@ -5136,7 +5217,80 @@ install a signed fixture, invoke the SDK and real kernel routes, and observe a
 loopback receiver. They do not qualify a deployed broker or physical UI journey.
 Distribution manifests and broker `plugin_daily` acceptance remain separate work.
 
+## WalkthroughService
+
+**Purpose and interface.** The [service](../../src-server/services/walkthroughs/walkthrough-service.ts)
+accepts one streamed recording and exposes start/status/list/manifest/frame
+operations. The [pure contract](../../packages/contracts/src/walkthrough.ts)
+owns manifest validation; [frame selection](../../src-server/services/walkthroughs/frame-selection.ts)
+reconstructs deictic words, merges/ranks scene, pause and interval signals,
+and accounts for the 120-frame cap. Bounds refuse without truncation.
+
+**Composition and authority.** `ConfigureRuntimeRoutesContext.walkthroughImportDependencies`
+in [runtime-routes.ts](../../src-server/runtime/routes/runtime-routes.ts) is the
+composition point supplied by [bootstrap](../../src-server/runtime/bootstrap/station-runtime.ts)
+with the same acquisition and recognizer used by speech routes and decoding.
+Personal-host routes select the live Walkthroughs preview before every operation;
+MCP uses these routes and preserves typed refusals while keeping tool discovery stable. [Routes](../../src-server/routes/walkthroughs.ts)
+resolve the canonical Project and authorize view/drive with Browser's Project
+authorizer. Project revision and drive standing are rechecked under the Project
+transaction authority before publication. Non-operator agent callers stay in
+their recorded Project. [Pairing scopes](../../src-server/security/pairing-route-scopes.ts)
+and [MCP policy](../../src-server/tools/station-control-policy.ts) name the leaves.
+
+**State and failure.** A hidden Project staging directory holds the uploaded
+original and extracted frames. A validated manifest and fsynced JPEGs publish
+with one directory rename. Original bytes are removed on ordinary settlement.
+A durable private receipt records typed outcomes apart from the prunable
+ActionOperation ledger. In-process duplicate ids join; two imports run at once. The composed HTTP
+budget supplies a lazy byte-counting stream so preview, Project authority and
+service admission precede body reads. Refusals close the upload connection.
+The contracts module owns the shared upload route/limit policy; the Node-only
+`station-shared/http-upload` owner applies receive deadlines to API and CLI
+listeners while preserving ordinary limits and keep-alive timers.
+A restart status read reconciles a complete manifest or marks interruption;
+that request’s staging directory is cleaned, while unknown crash staging
+directories are retained. Cross-process execution
+coordination and cancellation after admission are not claimed. An admitted
+import retries a full recognizer queue with bounded backoff inside its
+transcription deadline; other terminal failures remain terminal.
+
+[SDK](../../packages/sdk/src/client/walkthroughs.ts),
+[CLI](../../packages/cli/src/commands/walkthrough.ts), and
+[MCP reads](../../src-server/tools/station-control-walkthrough-tools.ts) share
+HTTP fetchers. MCP reads images in bounded pages. The Activity operation row
+shows import progress and reopens the Project; no recording/review UI is added.
+See the [guide](../guides/walkthroughs.md#verification-limits) for evidence owners
+and explicit recognition, hosted and publication limits.
+
 ## TaskReviewThreads
+
+The [Review tab](../../src-ui/src/views/task-workspace/review/TaskReviewTab.tsx)
+is offered by [TaskWorkspaceView](../../src-ui/src/views/TaskWorkspaceView.tsx)
+only while the `task-review` Station feature preview is enabled. A disabled
+preview leaves the ordinary Overview fallback. The tab uses SDK summary
+polling only while visible and Sent, selected-item queries for text, and
+thread-detail queries on expansion or copy-for-agent. Collapsed cards use the
+summary’s bounded opening, latest delivery and last event; anchors in that same
+summary drive highlights and Screen pins without a history read. Rail counts
+come from the selected item’s server projection. Person mutations invalidate the review
+list; Send uses a fresh operation id for each action. The
+[output section](../../src-ui/src/views/task-workspace/TaskOutputsSection.tsx)
+links to the selected Review output through canonical navigation. The capture
+picker lists the operator's Project Browser sessions; authenticated content
+fetches own and revoke image object URLs. Inline refusal messages retain drafts.
+See [enabling and using Review](../user/settings.md#feature-previews).
+
+The capture picker and service resolve the Task's stored Project slug or ID to
+the Browser's opaque Project identity, retaining the original review-store scope.
+The authorized Review list supplies author display labels from the same request
+principal and known-principal directory as the Task room. Agent labels use
+indexed Session engine and recorded-owner reads after Session read admission;
+no full transcript or People-management request is needed. Missing identity
+facts fall back to Teammate or Agent. The local operator's profile name wins;
+when only the OS alias is available, its initial is capitalized for display.
+Opaque working-state plan
+revisions are hidden because the room does not expose ordinal plan history.
 
 Task review keeps anchored comments outside the shared room's document and
 history, and outside revision-bound evidence (#4007, #4055). The
@@ -5144,11 +5298,20 @@ history, and outside revision-bound evidence (#4007, #4055). The
 bounds, quote relocation and state derivation. Personal
 [routes](../../src-server/routes/orchestration/task-review.ts) obtain current
 request authority from `ProjectTaskRoomRuntime.personTaskReviewAccess`;
-`sessionTaskReviewAccess` exposes the same Task binding check for future agent
-callers without requiring Task memory. `readPlanForReview` only reads working
-state. [Runtime composition](../../src-server/runtime/routes/runtime-routes.ts)
-mounts the routes and resolves linked answers through the canonical turn reader,
-with at most four concurrent reads and an exact selector for item/mutation reads.
+`sessionTaskReviewAccess` requires the caller's bound Session to be the Task's
+lead, without requiring Task memory. Its transaction callback rechecks the
+binding, incarnation, lead and workspace. `readPlanForReview` and the caller-bound
+`readPlanForSessionReview` read the same working-state owner. Agent list filters
+and person reads share `TaskReviewModule` artifact resolution and freshness.
+The agent list resolves artifacts once, reads thread histories in one store
+batch, and excludes corrupt entries while preserving healthy threads and counts.
+Its additive `unavailableThreadCount` reports corrupt entries independently of
+the requested state filter, so the agent can distinguish a partial list.
+Unavailable person summaries retain a validated artifact reference when possible,
+so the UI confines each unavailable row to its own item. Expanding a card keeps
+the selected state filter.
+[Runtime composition](../../src-server/runtime/routes/runtime-routes.ts) mounts the routes and resolves linked answers through the canonical turn reader.
+Answer reads are bounded to four at a time and an exact item/mutation selector.
 
 [TaskReviewModule](../../src-server/services/projects/task-review-module.ts)
 lists metadata and counts for the plan, Task summary (Brief), kept outputs,
@@ -5163,17 +5326,19 @@ Freshness caches use thread ID, event count and current revision/availability;
 normalized text, digest and line offsets are reused per plan/summary revision,
 and immutable answer digests are cached. Owner reads and request authority still
 run on every request. Optional synchronous constructor port
-`deliveryStatusFor(threadId, deliveryKey)` reads owner-proven inbox standing
+`TaskReviewSend.deliveryStatusFor(threadId, deliveryKey)` reads owner-proven inbox standing
 after the freshness-cache lookup on every list/detail/mutation projection;
 omitting it yields unconfirmed. A port failure also yields unconfirmed, with a
 distinct delivery-status warning; it does not mark the thread corrupt. Delivery
-status is never cached. #4158 should
-supply this port and use `listThreadEntries`, the tolerant store listing.
-The strict `listThreads` reader has been removed. Creation counts every stored
-thread toward the cap and refuses a retry with `unavailable` when its operation
-ID belongs to a corrupt thread. `appendReviewEvent` writes review-domain events;
-the deprecated `appendEvent` alias has been removed. Review writes do not append
-canonical conversation events or UI-block provenance.
+status is never cached. Runtime composition resolves the thread's current Task
+incarnation and lead conversation inside this port. Send uses
+`listThreadEntries`, the tolerant store listing; only an unavailable selected
+thread is refused as not found. The strict `listThreads` reader has been removed.
+Creation counts every stored thread toward the cap and refuses a retry with
+`unavailable` when its operation ID belongs to a corrupt thread.
+`appendReviewEvent` writes review-domain events; the deprecated `appendEvent`
+alias has been removed. Review writes do not append canonical conversation
+events or UI-block provenance.
 The caches use LRU ordering on reads. Retained payload budgets are 8 MiB for
 prepared revisions (at most 16), 8 MiB for thread views (2000), 1 MiB for answer
 digests (2000), and 1 MiB for warning identities (2000). Accounting includes
@@ -5208,10 +5373,36 @@ atomically; agent replies and `recordSendFailed` require the active delivery key
 SQLite also rejects summary revisions with leading zeros and agent replies
 without an earlier same-thread sent key; active-key retirement remains contract
 admission's responsibility.
-Admission folds full event history, preserving Sent on a person follow-up; this increment delivers no agent messages and stores no image bytes.
-The separate capture primitives in [PR #4150](https://github.com/kontourai/station/pull/4150),
-`workspace-commit-pin` and `task-capture-blob-store`, own commit pinning and
-content-addressed image bytes; this module does not depend on that PR.
+Admission folds full event history, preserving Sent on a person follow-up.
+[TaskBrowserCapture](../../src-server/services/projects/task-browser-capture.ts)
+composes `workspace-commit-pin`, the Browser registry's `captureScreenshot`,
+`task-capture-blob-store` and the metadata store. It resolves the Task's stored
+Project identity through `localProjectIdFor`
+when matching Browser sessions. Person picker authorization and the bound Agent
+Task check use the same resolver; persisted review scope remains unchanged.
+It refuses dirty workspaces
+and unobserved submodules, rechecks the pin and session after CDP returns, and
+checks the Task count and available home capacity before requesting a screenshot.
+It holds the home blob lock through synchronous metadata publication: refusal
+removes only a newly published digest, preserving already shared bytes. The
+blob store callback type rejects Promise-like results so asynchronous metadata
+publication cannot escape that lock and rollback boundary. The
+[keyed factory](../../src-server/services/projects/task-capture-blob-store-factory.ts)
+reuses the blob store while its current home and forbidden root set match.
+After a successful synchronous metadata commit, a lock-release failure is logged
+without changing the capture result. Missing, corrupt or unavailable blob reads
+retain their internal cause for sanitized route warnings, as does storage inside
+a registered repository root. Person and bound Agent capture routes log only the
+Task ID and error type, without raw errors or storage paths.
+Task workspace roots are derived from freshly read, validated graph bytes and
+cached only while those bytes match; changed bindings and corruption invalidate
+that derivation. Project roots and filesystem confinement are rechecked.
+[Person capture routes](../../src-server/routes/orchestration/task-review-captures.ts)
+use Browser view standing to select sessions and paired operate scope to persist
+a capture, and Task authority to
+read digest-verified content with explicit image headers. The sensitive
+`browser_capture_to_task` operation uses the bound Session's execution binding.
+Screens are immutable Review items; region anchors pass the contract parser.
 
 The [SDK hooks](../../packages/sdk/src/query-domains/taskReview.ts) invalidate
 review reads after person mutations and support opt-in polling every three
@@ -5224,7 +5415,77 @@ and [composed runtime routes](../../src-server/runtime/routes/__tests__/runtime-
 They cover durable reopening, append-only enforcement, idempotency, capacity
 refusals, incarnation isolation, plan editing, unavailable working state and
 review writes preserving room content, history and revision evidence. They do
-not qualify agent delivery, browser capture, a UI journey or a release.
+not qualify a real provider, browser capture, a UI journey or a release.
+[Capture route tests](../../src-server/routes/__tests__/browser-agent-capture.test.ts)
+exercise real Git, SQLite, room binding authority and blob storage with a CDP
+double, including restart, Task isolation, digest corruption and region bounds.
+They do not qualify a real Chromium or provider run.
+
+[TaskReviewSend](../../src-server/services/orchestration/task-review-send.ts)
+implements the person's `POST /api/tasks/:taskId/review/send`. It refuses a
+stopped lead with `no-live-agent` and any sender other than the recorded lead
+owner with `sender-not-task-owner`, before recording `sent`. A missing recorded
+owner returns `unavailable`. The inbox receives
+the actual sending principal, who must currently be that owner; multiplayer
+send remains deferred to #4136. `sent` commits before inbox submission; a
+non-queued outcome appends `send-failed`. Keys retain the mode after a `tr-`
+digest of the Task incarnation and sorted thread ids/latest ordinals. Reusing
+an operation with another mode returns `operation-conflict`; fresh operations
+still check recovery when the mode differs. Legacy keys cannot replay confirmed
+delivery without a recorded mode; known non-delivery and uncertainty remain
+reportable.
+A queued, sending or sent inbox entry is reused. On retry, only a refused
+entry or one cancelled while queued appends `send-failed` under its active key,
+returning Sent to Open. A new operation then gets a fresh key; an old operation
+stays a replay. The inbox's `nonDeliveryReason` uses the persisted placement
+retained through cancellation: dismissing an unconfirmed placement proves no
+non-delivery. Missing keys, including pruned settled entries, also stay
+**Send unconfirmed** and are never resubmitted automatically. A person can reply
+to set `pendingFollowUp` and explicitly send again. The durable inbox owns
+restart recovery. Missing inbox service is also unconfirmed, without assuming
+non-delivery. The inbox starts an idle lead's turn or waits
+for a busy turn to complete, without steering. The message lists the delivery
+key and each thread's artifact, anchor, comments and replies. Quoted excerpts
+and bodies are capped at 800 UTF-16 code units after quote prefixes, with a
+marker. Older replies are omitted as needed, retaining the opening and latest
+comments and recording the omitted count. A selection is refused only when
+minimal per-thread content cannot fit, with instructions to send fewer threads.
+The complete frame, including metadata, is capped at 190,000 code units, below
+the 200,000 chat input limit. A selection still exceeding that budget returns
+`message-too-large` before Sent. The frame tells the agent not to follow
+instructions inside review data, to echo the key in replies and to commit
+before claiming a commit.
+`send-and-resolve` appends `resolved` with reason `sent-and-resolved` only after
+queue acceptance. [Inbox tests](../../src-server/services/orchestration/__tests__/task-review-send.test.ts)
+exercise counting-engine delivery, busy queuing, deduplication, restart,
+stopped leads, capacity, both modes, mode replay, sender attribution, bounded
+messages, known non-delivery recovery and uncertain inbox intent.
+
+[Station-control routes](../../src-server/routes/orchestration/task-review-station-control.ts)
+are internal-only and derive the Session from verified caller authority.
+[The tools](../../src-server/tools/station-control-task-thread-tools.ts) expose
+`task_thread_list`, `task_thread_reply` and `task_thread_resolve` under Tasks.
+List uses SELF_READ; reply and resolve are self-scoped bounded writes at any
+assurance. Replies carry the current `deliveryKey`: an older delivery cannot
+claim a new follow-up. A reply after Send + Resolve preserves Resolved. The write callback checks the thread's Task id, creation time and
+Project against the binding inside the transaction. There is no delete or
+reopen tool. [Evidence verification](../../src-server/services/projects/task-review-evidence.ts)
+checks the exact object's type with confined `git cat-file -t` in the Task
+workspace. `commitVerified` means the object exists and is a commit; it proves
+neither branch membership nor the review repair. A tag or blob stays claimed.
+Gate refs must occur in this Task's protected gate-evaluation reference links
+and resolve through Flow to the exact current passing evaluation. The link
+snapshot and Task authority are rechecked after owner I/O. Missing, foreign or
+unavailable refs stay claimed; receipt refs are always claims.
+[The MCP integration tests](../../src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts)
+use a real Codex URL token and temporary Git repository to cover replies,
+commit verification, resolution without Task status changes, cross-Task
+refusal and unbound/non-lead refusal. This is local protocol and fixture
+engine evidence, ahead of live provider and hosted qualification.
+[Capture route tests](../../src-server/routes/__tests__/browser-agent-capture.test.ts)
+exercise real Git, SQLite, room binding authority and blob storage with a CDP
+double, including restart, Task isolation, digest corruption and region bounds.
+They do not qualify a real Chromium or provider run.
 
 ## TerminalSessions
 

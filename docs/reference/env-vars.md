@@ -9,6 +9,11 @@ the process; a shell change does not reconfigure an already running service.
 
 ## Server
 
+`STATION_SPEECH_MODEL_DIR` optionally selects a host-installed Parakeet int8
+model directory with `encoder.int8.onnx`, `decoder.int8.onnx`, `joiner.int8.onnx`
+and `tokens.txt`. Otherwise local speech uses the consented pinned model in the
+selected Station home. See [local speech](../guides/local-speech.md).
+
 `STATION_CONFIG_WATCH_POLL=1` starts the five-second `app.json` safety poll
 before watcher readiness. The poll runs after readiness regardless of watch
 registration health and also starts immediately on watcher errors. It checks

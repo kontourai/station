@@ -47,6 +47,9 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
 // changes the system under test or turns their correctness bound into a
 // scheduler-contention measurement.
 export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // #4204 measures main-thread approval latency while a real room worker
+  // holds SQLite's write lock; overlapping suites would distort that bound.
+  'src-server/services/orchestration/__tests__/project-task-room-revision-evidence-bridge.test.ts',
   // Disposable Chromium boots retain 15s render/3s policy deadlines; keep
   // sibling runtime boots out of this lifecycle measurement (#4022).
   'src-server/services/__tests__/html-reply-preview.process.test.ts',
@@ -136,6 +139,24 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Exercises the serialized CLI UI listener in an owned Node child.
+  'src-server/runtime/frameworks/__tests__/http-receive.integration.test.ts',
+  // Runs the preview-docs CLI against private source/doc fixtures and the real repo.
+  'scripts/__tests__/feature-preview-docs-check.test.ts',
+  // Native archive tools and owned recognizer/process fixtures; every home is disposable.
+  'src-server/services/media-tools/__tests__/media-tools-acquisition.test.ts',
+  'src-server/services/transcription/__tests__/sherpa-transcriber.test.ts',
+  'src-server/services/transcription/__tests__/sherpa-transcriber.real.test.ts',
+
+  // Explicit opt-in ffmpeg fixture; owns its video, children and Project home.
+  'src-server/services/walkthroughs/__tests__/walkthrough-video.integration.test.ts',
+  'src-server/services/walkthroughs/__tests__/walkthrough-media-regressions.integration.test.ts',
+  // Real bounded Node children exercise failure receipts without running another corpus.
+  'scripts/__tests__/run-vitest-corpus.test.ts',
+  // Real private Git fixtures and hardened cat-file verification through the MCP route.
+  'src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts',
+  // Small loopback responses exercise dependency stream ownership in naturally exiting children.
+  'scripts/__tests__/dependency-http-availability.process.test.ts',
   'src-server/runtime/frameworks/__tests__/voltagent-stream-finish-flush.process.test.ts',
   // Loads node-pty with a fake PTY and mocked child-process observations.
   'src-server/adapters/__tests__/node-pty-adapter.test.ts',
@@ -1019,6 +1040,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/verify-desktop-clean-checkout.test.ts',
   // Vite's real page/worker fixture owns an esbuild service child.
   'scripts/__tests__/vite-ui-assets.test.ts',
+  // Same real Vite build fixture shape, so the same esbuild service child.
+  'scripts/__tests__/vite-third-party-licenses.test.ts',
   'scripts/__tests__/vite-loopback-default.test.ts',
   'scripts/__tests__/vitest-worktree-exclusion.test.ts',
   'scripts/__tests__/voice-realtime-live-smoke.test.ts',
@@ -1223,6 +1246,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Task binding mounts the real renderer over a public diff route and real Git fixture.
   'src-ui/src/__tests__/TaskWorkspaceView.test.tsx',
   'src-server/services/projects/__tests__/workspace-diff-service.test.ts',
+  // Capture primitives exercise real Git repositories, including storage exclusion.
+  'src-server/routes/__tests__/browser-agent-capture.test.ts',
   // Capture pinning uses real Git, including an index with >16 MiB of staged output.
   'src-server/services/projects/__tests__/workspace-commit-pin.test.ts',
   // Six independent tsx publishers race against one real home's five-blob cap.

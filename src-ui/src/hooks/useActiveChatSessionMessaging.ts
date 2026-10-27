@@ -18,6 +18,7 @@ import {
   interruptOrchestrationTurn,
   isProvablyNotSent,
   orchestrationQueries,
+  projectChatDefaultsQueryKey,
   steerOrchestrationTurn,
   useEngineConnectionsQuery,
   useInvalidateQuery,
@@ -351,8 +352,7 @@ export function useSendMessage(
     clearEphemeralMessages,
   } = useActiveChatActions();
   const { clearStreamingMessage } = useStreamingMessage();
-  // Mid-turn send gate: matrix `midTurnSteer` (via sessionAdapterSupportsSteering)
-  // chooses steer vs queue. Muse and Station queue.
+  // Only native steering fidelity permits an additive mid-turn send.
   const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
     data: ConnectionConfig[];
   };
@@ -1010,6 +1010,28 @@ export function useSendMessage(
         // recorded on receipt, before the turn. A replayed turn carries the
         // chat's CURRENT queued pick, never one captured when it was queued.
         const carriedApprovalPick = currentState?.queuedApprovalMode;
+        // An inherited personal default (queued with its account namespace,
+        // not picked) in a Project chat goes as a hint, not a pick: the
+        // server applies it only below the Agent's default and the Project's
+        // layer (`recordPersonalApprovalDefault`), so nothing here waits for
+        // the Project's answer. Outside a Project, or to a Station whose
+        // chat-defaults read answered 404 (it may predate the hint), there is
+        // no Project layer and it goes as the pick it always was.
+        const carriedAsHint =
+          carriedApprovalPick !== undefined &&
+          carriedApprovalPick !== 'connection-default' &&
+          currentState?.queuedApprovalDefaultNamespace !== undefined &&
+          !!currentState.projectSlug &&
+          !(
+            accountPreferences.requestScope &&
+            queryClient.getQueryData(
+              projectChatDefaultsQueryKey(
+                accountPreferences.requestScope,
+                experienceNamespace ?? undefined,
+                currentState.projectSlug,
+              ),
+            ) === null
+          );
         const receipt = await dispatchForeground({
           apiBase,
           sessionId,
@@ -1039,7 +1061,7 @@ export function useSendMessage(
                 )
               : undefined,
           projectSlug: currentState?.projectSlug,
-          setApprovalMode: carriedApprovalPick,
+          setApprovalMode: carriedAsHint ? undefined : carriedApprovalPick,
           setApprovalModeBasedOn: currentState?.approvalPostureSequence ?? null,
           requestedModel: options?.executionSnapshot
             ? options.executionSnapshot.requestedModel
@@ -1070,6 +1092,9 @@ export function useSendMessage(
           requestScope: sourceStart
             ? options?.experienceRequestScope
             : accountPreferences.requestScope,
+          ...(carriedAsHint
+            ? { personalApprovalDefault: carriedApprovalPick }
+            : {}),
         });
 
         stopDeliveryWatch?.();
@@ -1128,6 +1153,14 @@ export function useSendMessage(
                 carriedApprovalPick,
                 receipt.approvalMode,
               )
+            : {}),
+          // A hint the server did not apply (a higher layer decided) is
+          // spent all the same: it belongs to this first send only.
+          ...(carriedAsHint && !receipt.approvalMode
+            ? {
+                queuedApprovalMode: undefined,
+                queuedApprovalDefaultNamespace: undefined,
+              }
             : {}),
         });
         if (carriedApprovalPick && receipt.approvalMode?.recorded === false) {

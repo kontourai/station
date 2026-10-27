@@ -269,6 +269,7 @@ import {
 } from '../mcp/mcp-ui-frame-server.js';
 import { createNativeOutputDeclarationTool } from '../native-output-declaration.js';
 import { isAutoApprovedExternalTool } from '../tools/tool-executor.js';
+import { composeLocalMedia } from './local-media-runtime.js';
 
 /**
  * The recovery Adapter accepts only Station runtime connection identities.
@@ -1743,7 +1744,13 @@ export class StationRuntime {
       const failures: unknown[] = [error];
       let persistenceClosed = true;
       try {
-        openedEventStore?.close();
+        if (openedEventStore) {
+          const closed = openedEventStore.close();
+          if (closed.kind !== 'closed')
+            throw new Error(
+              `Orchestration EventStore did not close: ${closed.kind}`,
+            );
+        }
       } catch (closeError) {
         persistenceClosed = false;
         failures.push(closeError);
@@ -4587,6 +4594,7 @@ export class StationRuntime {
       transcripts: this.orchestrationService,
     });
     if (this.searchAdmissionStopped) this.runtimeSearch.stop();
+    const localMedia = composeLocalMedia(this.configLoader.getProjectHomeDir());
     const {
       schedulerService,
       notificationService,
@@ -4719,6 +4727,11 @@ export class StationRuntime {
       getMcpUiFrameOrigin: () => this.mcpUiFrameServer?.origin,
       getPluginFrameOrigin: () => this.mcpUiFrameServer?.origin,
       featurePreviews: this.featurePreviews,
+      mediaTools: localMedia.mediaTools,
+      walkthroughImportDependencies: {
+        resolver: localMedia.mediaTools,
+        transcriber: localMedia.transcriber,
+      },
       rebindBuiltinAgents: () => this.rebindBuiltinAgents(),
     });
     this.schedulerService = schedulerService;
@@ -5473,7 +5486,11 @@ export class StationRuntime {
       // SQLite connection (and its file handle on projectHomeDir) open past
       // shutdown indefinitely. POSIX tolerates deleting a directory with an
       // open file inside it, which hid this; Windows does not.
-      this.orchestrationEventStore.close();
+      const closed = this.orchestrationEventStore.close();
+      if (closed.kind !== 'closed')
+        throw new Error(
+          `Orchestration EventStore did not close: ${closed.kind}`,
+        );
     } catch (error) {
       failures.push(error);
     }

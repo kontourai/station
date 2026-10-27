@@ -587,6 +587,26 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     }),
   ),
 
+  // Issuing or revoking external bearer custody is access administration.
+  // Native file-proven operator enforcement also remains inside both handlers.
+  {
+    id: '/api/orchestration/station-control/external-clients:issue',
+    method: 'POST',
+    prefix: '/api/orchestration/station-control/external-clients',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+    personalTokens: 'refused',
+  },
+  {
+    id: '/api/orchestration/station-control/external-clients/:leaseId:revoke',
+    method: 'DELETE',
+    prefix: '/api/orchestration/station-control/external-clients/:leaseId',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+    personalTokens: 'refused',
+  },
   {
     id: '/api/home-authority/channels/:channelId/owner:administration',
     method: 'POST',
@@ -735,6 +755,15 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     method: 'POST',
     prefix: '/api/usage-telemetry/connection-checks',
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  // Retaining a capture persists Task data and requires operate scope.
+  {
+    id: '/api/tasks/:taskId/review/captures:operate',
+    method: 'POST',
+    prefix: '/api/tasks/:taskId/review/captures',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
   },
   // The preview request uses POST only so the selected file path and line
@@ -934,6 +963,28 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     method: '*',
     prefix: '/api/live-surfaces',
     scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+    origin: 'explicit',
+  },
+  // Local tools install onto the host; their routes additionally require the operator.
+  {
+    id: '/api/media-tools:read',
+    method: 'GET',
+    prefix: '/api/media-tools',
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/media-tools:terminal-operate',
+    method: 'POST',
+    prefix: '/api/media-tools',
+    scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/transcription:operate',
+    method: 'POST',
+    prefix: '/api/transcription',
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
   },
   // #90 Browser pane (personal hosts only). Reads — Chromium acquisition
@@ -3094,6 +3145,15 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // bounded Task-memory revision or record version.
     { method: 'POST', path: '/api/orchestration/station-control/task-summary' },
     { method: 'POST', path: '/api/orchestration/station-control/task-record' },
+    { method: 'GET', path: '/api/orchestration/station-control/task-threads' },
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/task-thread-reply',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/task-thread-resolve',
+    },
     // `schedule_wake_up`, `list_wake_ups`, `cancel_wake_up` and `propose_job`:
     // internal-only at the route (404 to anything the runtime boundary did not
     // accept as Station's own internal principal), acting only on the
@@ -3236,11 +3296,19 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/tasks/:taskId/work-item' },
     // Task review exposes Task content and personal comments: sensitive to the
     // exact room/Project authority. Reads use read standing; append-only person
-    // comments and transitions use operate standing. No external send occurs.
+    // comments and transitions use operate standing. Send starts an agent turn
+    // through the lead conversation inbox.
     { method: 'GET', path: '/api/tasks/:taskId/review' },
+    { method: 'GET', path: '/api/tasks/:taskId/review/capture-sessions' },
+    { method: 'POST', path: '/api/tasks/:taskId/review/captures' },
+    {
+      method: 'GET',
+      path: '/api/tasks/:taskId/review/captures/:captureId/content',
+    },
     { method: 'GET', path: '/api/tasks/:taskId/review/items/:kind/:id' },
     { method: 'GET', path: '/api/tasks/:taskId/review/threads/:threadId' },
     { method: 'POST', path: '/api/tasks/:taskId/review/threads' },
+    { method: 'POST', path: '/api/tasks/:taskId/review/send' },
     {
       method: 'POST',
       path: '/api/tasks/:taskId/review/threads/:threadId/replies',
@@ -4038,6 +4106,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'DELETE', path: '/api/projects/:slug' },
     { method: 'GET', path: '/api/projects/:slug' },
     { method: 'PUT', path: '/api/projects/:slug' },
+    // What a new chat in this Project starts with for the caller: the
+    // Project's own new-chat settings, which `GET /:slug` already returns,
+    // and the model and approval mode the caller's own last chat here
+    // started with. A read of the caller's own history; mutates nothing.
+    { method: 'GET', path: '/api/projects/:slug/chat-defaults' },
     // archive#1502 — the resolution surface. BOTH of its leaves take
     // the `/api/projects` family tier (read for `resolution`, operate for
     // `bind`) as a RECORDED decision, not by omission.
@@ -4136,6 +4209,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/projects/:slug/flow/runs/:runId/reviews/discover',
     },
     { method: 'DELETE', path: '/api/projects/:slug/knowledge' },
+    { method: 'POST', path: '/api/projects/:projectSlug/walkthroughs/import' },
+    {
+      method: 'GET',
+      path: '/api/projects/:projectSlug/walkthroughs/imports/:requestId',
+    },
+    { method: 'GET', path: '/api/projects/:projectSlug/walkthroughs' },
+    { method: 'GET', path: '/api/projects/:projectSlug/walkthroughs/:id' },
+    {
+      method: 'GET',
+      path: '/api/projects/:projectSlug/walkthroughs/:id/frames/:frameId',
+    },
     { method: 'GET', path: '/api/projects/:slug/knowledge' },
     { method: 'DELETE', path: '/api/projects/:slug/knowledge/:docId' },
     { method: 'PUT', path: '/api/projects/:slug/knowledge/:docId' },

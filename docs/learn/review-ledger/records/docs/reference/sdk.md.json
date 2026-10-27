@@ -710,6 +710,8 @@
 
     "tests/helpers/related-pane-upgrade.ts",
 
+    "src-ui/src/contexts/conversation-open-policy.ts",
+
     "packages/sdk/src/task-user-input-references.ts",
 
     "packages/sdk/src/__tests__/taskGraph-invalidation.test.tsx",
@@ -748,6 +750,14 @@
 
     "packages/sdk/src/components/ActionControl.css",
 
+    "packages/sdk/src/client/walkthroughs.ts",
+
+    "packages/sdk/src/voice/provider-session-adapter.ts",
+
+    "src-ui/src/hooks/useSTT.ts",
+
+    "src-ui/src/components/voice/VoiceOrb.tsx",
+
     "packages/sdk/src/query-domains/chatRuntimeStream.ts",
 
     "packages/sdk/src/client/sent-turn-key.ts",
@@ -760,7 +770,11 @@
 
     "packages/sdk/src/query-domains/taskReview.ts",
 
-    "packages/sdk/src/__tests__/task-review-hooks.test.tsx"
+    "packages/sdk/src/__tests__/task-review-hooks.test.tsx",
+
+    "packages/contracts/src/engine-capability-matrix.ts",
+
+    "src-ui/src/utils/execution.ts"
   ],
 
   "checks": [

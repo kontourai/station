@@ -66,7 +66,9 @@ A plan entry's `content` is spillable text. A preview is never the whole
 value; see [event content spill](../design/event-content-spill.md).
 
 | Module | Owns |
+| `@kontourai/station-contracts/walkthrough` | Versioned recording manifest, strict hand-written parser, limits, typed import outcomes and bounded list pages |
 |---|---|
+| `@kontourai/station-contracts/station-control-external-client` | Explicit initial tool selection, bounded lease request and secret-bearing client configuration response; a pure response parser grants no authority. Local operator setup, Session/Project validation and revocation remain server-owned. See [external client setup](session-api.md#external-clients-using-station-tools). |
 | `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota, optional identity/credit/model/spending/breakdown metadata and bounded capture-audit projections, plus provider-owned login; runtime validation stays in SDK consumers |
 | `@kontourai/station-contracts/engine-sign-in` | Sign-in for engines run as commands: status with its source, offered methods (id, name, kind, terms note), key names (never values), the running attempt and what the caller may do |
 | `@kontourai/station-contracts/acp` | ACP connection config, ACP connection status values, and engine catalogue entries with their install/launch/sign-in descriptor and its validator (`validateACPEngineDescriptor`), and the public agent registry's listing facts and source status |
@@ -119,6 +121,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/plugin` | Plugin manifests, previews, overrides, conflicts, install outcomes and current permission status |
 | `@kontourai/station-contracts/plugin-foreground-work` | Bounded foreground-work declarations, start intents, effect depth, run states, and safe public outcomes. Published ahead of a server implementation: Station does not admit or list plugin foreground runs yet |
 | `@kontourai/station-contracts/project` | Project config and metadata, and `projectIconProblem`: the one rule for a stored project icon (a short glyph, or a PNG/JPEG/WebP/ICO data URL of at most 128 KiB whose bytes match its type) that the create and update routes, the icon pickers and the renderer share |
+| `@kontourai/station-contracts/project-chat-defaults` | How a Project's new chat picks its model and approval mode (`fixed` or `last-used`), the `GET /api/projects/:slug/chat-defaults` view, and `resolveProjectChatApprovalDefault`, the one resolution the session start and that view share |
 | `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions, single-use or verified-email invitations and administration projections |
 | `@kontourai/station-contracts/provider` | Provider kinds and provider-facing contract enums/types |
 | `@kontourai/station-contracts/runtime` | Session metadata, workflow metadata, runtime responses |
@@ -129,7 +132,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, update-provenance issue codes, and service and server update state |
 | `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, explicit engine/model/options digest identity, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
 | `@kontourai/station-contracts/task-memory` | Task memory (#4003): the Task summary revision and keyed record shapes, limits, default importance, the stateless write check (`checkTaskRecordWrite`, `taskSummaryRefusal`), refusal wording, the person's views, `taskAwaitsAnswer` for the Tasks list's `openQuestionCount`, and the Learning shapes (`TaskLearningView`, candidates, promotion and dismissal input, limits) for a done Task's promotion candidates. Every bound is a refusal |
-| `@kontourai/station-contracts/task-review` | Task review thread, event, evidence and capture shapes; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Person routes, SQLite persistence and SDK hooks use this contract; agent delivery, captures and UI are separate increments |
+| `@kontourai/station-contracts/task-review` | Task review thread, event, evidence and capture shapes; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Runtime integration and evidence belong to the Task review API and SDK references |
 | `@kontourai/station-contracts/work-claims` | A Session's work claim as Station's routes answer it (#3413): information, not a lock. The view shape, its parser and the subject labels the Session-row chip uses |
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
 | `@kontourai/station-contracts/tool-library` | Safe source metadata, Project policy, requests, access summaries and Project agent drafts; [SDK client](sdk.md#project-tool-library) |
@@ -139,7 +142,9 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
 
 The `task-review` subpath defines the [Task review API](api.md#task-review-threads)
-and its SDK types; agent delivery and capture routes are separate increments.
+and its SDK types; runtime delivery and verification are documented in the API reference.
+The shared refusal union includes `workspace-unobservable` when a clean
+workspace pin cannot observe the Task workspace or its submodules.
 All `parseTaskReview*Request` and `parseTaskThread*Request` helpers, plus
 `parseTaskReviewArtifactRef`, `parseTaskReviewEvent`,
 `parseTaskReviewEvidenceInput`, `parseTaskReviewAnchor`, `parseTaskReviewQuote`
@@ -310,6 +315,11 @@ exclusive counts over the supplied views; count the complete view list before
 filtering a response.
 
 Task review mutation DTOs require a stable `operationId` for retries.
+`TaskReviewSendRequest` owns `mode: 'send' | 'send-and-resolve'`; its closed
+parser defaults an omitted mode to `send`, rejects other modes, and admits
+1–500 distinct bounded thread IDs. Routes and the SDK consume this same DTO.
+Send refusals also include `message-too-large`, `sender-not-task-owner` and
+`no-live-agent` when the Task has no live lead Session.
 `TaskThreadReplyRequest` requires the delivered `deliveryKey` alongside `body`
 and nested `evidence`, matching agent-reply events. The send lane must include
 that key in the delivered context; agents must echo it rather than infer it
@@ -320,8 +330,11 @@ IDs. Stored events pass through the same parser; older abbreviated hashes now
 make hydration/projection fail rather than silently remain accepted. The server must still use `git cat-file` in the Task workspace
 to verify that the ID resolves to a commit; syntax alone establishes no existence
 or type. Evidence inputs carry claims only: the server owns `commitVerified`
-and `gateVerified`. The latter permits passed gate chips only when every
-supplied gate reference resolves to a passing evaluation; otherwise gate refs
+and `gateVerified`. `commitVerified` means the exact object exists and is a
+commit, without proving branch reachability or the repair. Passed gate chips
+require every supplied gate reference to occur in the Task's own protected
+gate-evaluation links and resolve to that exact current passing evaluation;
+otherwise gate refs
 render as claimed. Receipt refs remain claims. Verification flags count toward
 the stored evidence JSON limit and are refused in evidence inputs.
 
@@ -339,14 +352,23 @@ behavior. The existing `isWellFormedUnicode` export from `task-graph` is
 intentional: Task review reuses its pure predicate. Its root-barrel exposure
 is retained for compatibility; no export is removed or renamed.
 
+The caller-bound `TaskThreadListResponse` adds `unavailableThreadCount` for
+corrupt threads omitted from its healthy full-history list. It is independent
+of the requested state filter and does not change the healthy state counts.
+
+`TaskReviewView.authors` optionally carries `TaskReviewAuthorIdentity` display
+labels, including a recorded agent starter's name. They are presentation facts,
+not authority. Unavailable summaries may carry a separately validated `artifact`
+reference so consumers can place the refusal on the right item.
+
 The review list's `TaskReviewView.threads` now contains
 `TaskReviewThreadSummary`: available entries omit `events` and include
 `eventCount`, `openingEvent`, optional `lastDeliveryEvent` and `lastEvent`.
 Summary event bodies use `TASK_REVIEW_OPENING_PREVIEW_CHARS` (500 UTF-16 units),
 removing any trailing partial surrogate; detail retains full bodies.
 `lastDeliveryEvent` is the latest sent, send-failed or agent-reply, independent
-of a later person event. Unavailable entries carry only status/state,
-thread ID, ordinal and event count. Thread-detail and mutation responses retain
+of a later person event. Unavailable entries carry status/state, thread ID,
+ordinal and event count, plus a validated artifact reference when available. Thread-detail and mutation responses retain
 `TaskReviewThreadView` with full history. Unavailable entries stay visible
 through list filters and are excluded from counts. This changes the draft list
 response; consumers must fetch expanded-card detail through the SDK.
@@ -413,7 +435,23 @@ appears in a current-answer inventory. See the
 
 Client protocol 3 admits these lineage rows in the server inventory. Older or
 undeclared HTTP clients retain contribution-only groups and typed gaps; the
-server never strips rows after computing a continuation digest. Inventory
+server never strips rows after computing a continuation digest.
+
+Client protocol 4 admits a `thread-tool-result` row with `terminalStatus:
+'unresolved'`: a command that started but never reported an outcome (#4178).
+It claims neither success nor failure; the inventory lists and counts it under
+Execution, and the reader shows it as "No result recorded". Clients of protocol
+3 or lower validate the terminal status exactly, so for them the host omits such
+rows as before (never folding them into `cancelled`). An `unresolved`
+completion is listed only while the conversation transcript still shows it:
+a later result of the same call can replace that row (station#1569), and the
+transcript projection (`projectRuntimeEventsToMessages`) decides, over the
+thread's events at or below the read's frozen high-water mark. The projection
+runs only when a listing meets an unresolved row, at most once per thread and
+high-water mark per process while cached; continuation pages reuse it, and a
+thread deleted and recreated under the same id is projected afresh. A page cursor records the owner
+events a page read, not the rows it kept, so paging past an omitted row resumes
+at the right event. Inventory
 continuations bind the client dialect as well as scope and authority. Output
 pages filter the durable declaration index by the exact turn before paging,
 and their signed cursors cannot be reused for another turn or Whole Session.
@@ -1662,6 +1700,36 @@ previews. HTML requires Station's distinct-origin frame viewer; the contract
 carries display data and does not confer workspace-read authority. The server
 reuses Project/Session admission and confines reads to that workspace or a
 verified Git worktree of the same repository.
+
+## Walkthrough
+
+[`@kontourai/station-contracts/walkthrough`](../../packages/contracts/src/walkthrough.ts)
+is a direct subpath, outside the root barrel. `parseWalkthrough(unknown)`
+returns a validated `station.walkthrough/v1` manifest or throws
+`WalkthroughValidationError`. The module is dependency-free and environment-free.
+Every channel has explicit `present | absent` coverage; absent channels refuse
+corresponding events, including element references on marks. It rejects
+unordered events, dangling mark frame IDs, duplicate frames/files, unsafe file
+names and unknown fields. Optional fields cannot silently disappear on error.
+
+Bounds reject rather than truncate: duration 30 minutes, 4,096 events, 120
+frames, 16,384 UTF-16 code units per text field, 262,144 aggregate event-text
+units (including tokens), 32,768 tokens, 256 units per token, 2,048 points per
+mark, 16,384 pixels per dimension and 8 MiB encoded manifest. Tokens stay within
+their segment's ordered time interval. Frame-selection counts account for
+intentional importer selection; `kept` equals the frame event count.
+
+`MEDIA_UPLOAD_POLICIES` and `mediaUploadPolicy(method, path, policies)` share
+the exact Walkthrough/transcription POST matches, byte ceilings, receive idle/total
+and proxy response windows across server and CLI consumers. Transcription is
+32 MiB/60 seconds; Walkthroughs is 512 MiB/two hours with a 60-second idle bound.
+These pure definitions grant no authentication, preview or Project authority.
+
+`WalkthroughImportStatus` wraps an existing `ActionOperation` plus an optional
+terminal `WalkthroughImportOutcome`: `imported`, `unavailable`, or `failed`.
+Action operations add `probe`, `transcribe`, `frames`, `write` phases and closed
+Walkthrough domain/reentry references. IDs grant no authority. See the
+[import guide](../guides/walkthroughs.md) for storage, API and qualification limits.
 
 ## Personal Project layouts (#2996)
 
