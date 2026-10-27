@@ -114,7 +114,8 @@ describe('useRetainedReadFailure', () => {
     expect(view.result.current.query.isLoading).toBe(true);
     expect(view.result.current.failure).toBeNull();
   });
-  test('a refetch paused for being offline keeps the failure, marked retrying', async () => {
+
+  test('a refetch paused for being offline keeps the failure, not marked retrying', async () => {
     const { calls, view } = setup();
     const outage = new TypeError('Failed to fetch');
     await act(async () => calls[0]!.reject(outage));
@@ -126,9 +127,34 @@ describe('useRetainedReadFailure', () => {
       expect(view.result.current.query.fetchStatus).toBe('paused'),
     );
 
+    // Nothing is on the wire while paused, so Try again stays usable.
     expect(view.result.current.query.error).toBeNull();
     expect(view.result.current.failure).toEqual({
       error: outage,
+      retrying: false,
+    });
+  });
+
+  test('a transport that rejects with one shared error instance still retains it on the next re-check', async () => {
+    const { calls, view } = setup();
+    const shared = new TypeError('Failed to fetch');
+    await act(async () => calls[0]!.reject(shared));
+    await waitFor(() => expect(view.result.current.query.isError).toBe(true));
+    const firstAt = view.result.current.query.errorUpdatedAt;
+
+    // A later failure with the SAME instance, at a later time.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    act(() => void view.result.current.query.refetch());
+    await waitFor(() => expect(calls).toHaveLength(2));
+    await act(async () => calls[1]!.reject(shared));
+    await waitFor(() =>
+      expect(view.result.current.query.errorUpdatedAt).toBeGreaterThan(firstAt),
+    );
+
+    act(() => void view.result.current.query.refetch());
+    await waitFor(() => expect(calls).toHaveLength(3));
+    expect(view.result.current.failure).toEqual({
+      error: shared,
       retrying: true,
     });
   });

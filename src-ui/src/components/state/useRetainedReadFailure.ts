@@ -10,9 +10,12 @@ export interface RetainableRead {
 }
 
 export interface RetainedReadFailure {
-  /** The failure to describe: the current one, or the last one while retrying. */
+  /** The failure to describe: the current one, or the last one while re-checking. */
   error: unknown;
-  /** A refetch is running or waiting for the network; the failure stands until it answers. */
+  /**
+   * A refetch is on the wire. False while TanStack holds it paused for the
+   * network: nothing is being retried then, and Try again stays usable.
+   */
   retrying: boolean;
 }
 
@@ -26,26 +29,36 @@ export interface RetainedReadFailure {
  * back when that retry fails too. Over a dropped connection those retries
  * repeat, and the surface flickered between the two states.
  *
- * This keeps the failure on screen, marked `retrying`, until a refetch
- * answers — including one TanStack paused because the device is offline.
- * Held data wins: a failed refresh of a read that already has data returns
- * `null`, so the view keeps drawing what it has.
+ * This keeps the failure on screen until a refetch answers — including one
+ * TanStack paused because the device is offline. Held data wins: a failed
+ * refresh of a read that already has data returns `null`, so the view keeps
+ * drawing what it has.
  */
 export function useRetainedReadFailure(
   query: RetainableRead,
 ): RetainedReadFailure | null {
   const [last, setLast] = useState<{ error: unknown; at: number } | null>(null);
   // Setting state during render is React's sanctioned way to remember a
-  // previous render's value; it re-renders before committing.
-  if (query.error != null && query.error !== last?.error) {
+  // previous render's value; it re-renders before committing. The time is
+  // compared too, so a transport that rejects with one shared error instance
+  // still advances the record.
+  if (
+    query.error != null &&
+    (query.error !== last?.error || query.errorUpdatedAt !== last.at)
+  ) {
     setLast({ error: query.error, at: query.errorUpdatedAt });
   }
   if (query.data !== undefined) return null;
-  const retrying = query.fetchStatus !== 'idle';
+  const retrying = query.fetchStatus === 'fetching';
   if (query.error != null) return { error: query.error, retrying };
   // Only this entry's own failure is retained: matching the failure time
   // keeps a previous query key's error from describing a different read.
-  if (retrying && last && last.at === query.errorUpdatedAt && last.at > 0) {
+  if (
+    query.fetchStatus !== 'idle' &&
+    last &&
+    last.at === query.errorUpdatedAt &&
+    last.at > 0
+  ) {
     return { error: last.error, retrying };
   }
   return null;

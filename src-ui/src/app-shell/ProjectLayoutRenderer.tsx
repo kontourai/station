@@ -1330,8 +1330,9 @@ export function ProjectLayoutRenderer({
    * there is no question an absent record leaves unanswered.
    *
    * Gated on `isUnplacedLayoutRecord` and not merely on `!persistedLayout`:
-   * while the request is in flight, or when it failed for any other reason,
-   * this must not run — a placed plugin layout that happens to be called
+   * before the first answer, or when it failed for any other reason, this
+   * must not run (a re-check of an already-answered 404 keeps it, above) — a
+   * placed plugin layout that happens to be called
    * `review` still owns its own rendering, and flashing the builtin over it
    * is exactly the hijack `project-layout-kind.ts` exists to prevent. That
    * predicate also excludes the 404 that means the PROJECT is missing, which
