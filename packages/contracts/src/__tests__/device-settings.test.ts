@@ -185,6 +185,7 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         'experimentalFlowEnabled',
         'experimentalReadinessEnabled',
         'experimentalTrustEnabled',
+        'experimentalSheetGesturesEnabled',
         // station#4525 — the chat dock's remembered project binding.
         'chatDockProjectSlug',
         // #928 D — which surface occupies which region on this device.

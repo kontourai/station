@@ -29,11 +29,13 @@ interface ChatDockActiveIdentityProps {
       >
     >;
   /**
-   * The Agent whose engine binding runs this chat: a conversation override's
-   * execution Agent (`executionAgentId`), else `agent`. The composer chip
-   * compares against the same Agent, so the two cannot disagree.
+   * The Agent whose engine binding runs this chat, from
+   * `chatExecutionBinding`, the resolver the composer chip uses, so the two
+   * cannot disagree. `null` when it did not resolve (an override's Agent that
+   * is deleted or not loaded): then only the Session names the engine. When
+   * omitted, `agent` is that binding.
    */
-  executionAgent?: AgentData;
+  executionAgent?: AgentData | null;
   /** ACP connections, which alone name a Session on the generic ACP provider. */
   acpConnections?: readonly { id: string; name: string }[];
   originLabel?: string;
@@ -75,7 +77,7 @@ export function ChatDockActiveIdentity({
 }: ChatDockActiveIdentityProps) {
   const closeTabShortcut = useShortcutDisplay('dock.closeTab');
 
-  const bindingAgent = executionAgent ?? agent;
+  const bindingAgent = executionAgent === undefined ? agent : executionAgent;
   const configuredEngine = bindingAgent
     ? agentEngineDescriptor({
         slug:
@@ -100,12 +102,10 @@ export function ChatDockActiveIdentity({
     currentSessionId: session.currentSessionId ?? session.conversationId,
     sessionConnectionId: session.agentConnectionId,
     connectionObservedFor: session.agentConnectionObservedFor,
-    configuredConnectionId: bindingAgent?.execution?.agentConnectionId,
+    binding: bindingAgent ?? null,
     acpConnections,
   });
-  const configurationNamesEngine =
-    engineIdentity.relation === 'no-session' ||
-    engineIdentity.relation === 'same';
+  const { configurationNamesEngine } = engineIdentity;
   const engine: EngineDescriptor | null = configurationNamesEngine
     ? configuredEngine
     : engineIdentity.sessionEngine

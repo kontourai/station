@@ -84,8 +84,9 @@ Moves so far:
 
 ### Developer previews
 
-Advanced → Developer tools reveals three independent, default-off device opt-ins:
-`experimental-flow`, `experimental-readiness`, and `experimental-trust`.
+Advanced → Developer tools reveals four independent, default-off device opt-ins:
+`experimental-flow`, `experimental-readiness`, `experimental-trust`, and
+`experimental-sheet-gestures`.
 `surface-trust` is visible only with the Trust preview enabled. Search and the
 command palette omit hidden preview settings. A deep link to an opted-out
 control announces that the tool is off rather than waiting for a missing row.
