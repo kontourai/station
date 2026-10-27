@@ -2323,7 +2323,18 @@ export interface TurnActivitySeed {
   };
 }
 
+type NativeForkNotice =
+  | { kind: 'event'; event: CanonicalRuntimeEvent; globalSequence: number }
+  | { kind: 'lineage'; conversationId: string; sessionId: string };
+interface NativeForkNoticeCapture {
+  targetId: string;
+  intentId: string;
+  eventDigests: ReadonlyMap<string, string>;
+  notices: NativeForkNotice[];
+}
+
 export class EventStore {
+  private nativeForkNoticeCapture?: NativeForkNoticeCapture;
   /** The Session inventory listing currently executing, for its SQL filter. */
   private inventoryTranscriptRead?: { threadId: string; highWater: number };
   /**
@@ -4749,6 +4760,18 @@ export class EventStore {
     event: CanonicalRuntimeEvent,
     globalSequence: number,
   ): void {
+    const capture = this.nativeForkNoticeCapture;
+    if (capture) {
+      if (
+        capture.eventDigests.get(event.eventId) !==
+        nativeForkHash(nativeForkJson(event))
+      )
+        throw new ConversationForkContextError(
+          'Unexpected event inside native fork commit.',
+        );
+      capture.notices.push({ kind: 'event', event, globalSequence });
+      return;
+    }
     if (this.commitObservers.size === 0) return;
     // Our own savepoint is released; a transaction still open here belongs
     // to a caller and can still roll this row back.
@@ -4759,6 +4782,15 @@ export class EventStore {
   }
 
   private notifyLineageChanged(conversationId: string, sessionId: string) {
+    const capture = this.nativeForkNoticeCapture;
+    if (capture) {
+      if (capture.targetId !== conversationId || capture.targetId !== sessionId)
+        throw new ConversationForkContextError(
+          'Unexpected lineage inside native fork commit.',
+        );
+      capture.notices.push({ kind: 'lineage', conversationId, sessionId });
+      return;
+    }
     if (this.commitObservers.size === 0) return;
     this.notifyCommitObservers((observer) =>
       observer.lineageChanged?.({ conversationId, sessionId }),
@@ -5307,9 +5339,9 @@ export class EventStore {
       );
       const source = this.readSessionByThread(record.source.sourceSessionId);
       const events = this.listEvents(record.source.sourceSessionId);
-      const configuredSource = [...events].reverse().find(
-        (event) => event.payload.method === 'session.configured',
-      );
+      const configuredSource = [...events]
+        .reverse()
+        .find((event) => event.payload.method === 'session.configured');
       const selected = events.find(
         (event) => event.id === record.source.selectedEventId,
       );
@@ -5473,144 +5505,257 @@ export class EventStore {
         },
         commit: (commit: NativeForkCommitInput) => {
           assertUsable();
-          return transaction(() => {
-            const record = load();
-            const snapshot = this.conversationForkContextSnapshot(
-              input.targetId,
-            );
-            const reference = this.conversationForkContextReference(
-              input.targetId,
-            );
-            const { child, configuredEvent, forkEvent } = commit;
-            const commitJson = nativeForkJson(commit);
-            const childTenant = parseTenantExecutionContext(
-              child.tenantExecutionContext,
-            );
-            const configuredTenant = parseTenantExecutionContext(
-              configuredEvent.metadata?.tenantExecutionContext,
-            );
-            const metadata = configuredEvent.metadata;
-            const coordinatesMatch =
-              !!snapshot &&
-              (child.controlMode ?? 'station-owned') === 'station-owned' &&
-              (snapshot.tenantId === undefined
-                ? child.tenantExecutionContext === undefined
-                : childTenant?.tenantId === snapshot.tenantId) &&
-              configuredEvent.method === 'session.configured' &&
-              configuredEvent.sessionId === input.targetId &&
-              configuredEvent.cwd === record.source.cwd &&
-              metadata?.environmentId === record.source.environmentId &&
-              metadata.agentSlug === snapshot.targetAgent &&
-              metadata.agentSlug === record.source.agentId &&
-              (metadata.agentId === undefined ||
-                metadata.agentId === snapshot.targetAgent) &&
-              (metadata.targetId === undefined ||
-                metadata.targetId === snapshot.targetAgent) &&
-              metadata.projectSlug === snapshot.projectSlug &&
-              metadata.connectionId === record.source.connectionId &&
-              (metadata.tenantId === undefined ||
-                metadata.tenantId === snapshot.tenantId) &&
-              (metadata.tenantExecutionContext === undefined ||
-                (snapshot.tenantId !== undefined &&
-                  configuredTenant?.tenantId === snapshot.tenantId)) &&
-              metadata.nativeResumeBindingKey ===
-                record.source.nativeResumeBindingKey &&
-              (metadata.nativeResumeIdentity === undefined ||
-                metadata.nativeResumeIdentity === 'matched') &&
-              (metadata[NATIVE_TURN_IDENTITY_METADATA_KEY] === undefined ||
-                metadata[NATIVE_TURN_IDENTITY_METADATA_KEY] ===
-                  record.childIdentity) &&
-              forkEvent.provider === 'station' &&
-              forkEvent.threadId === snapshot.sourceConversationId;
+          let capture: NativeForkNoticeCapture | undefined;
+          try {
+            const outcome = transaction(() => {
+              const record = load();
+              const snapshot = this.conversationForkContextSnapshot(
+                input.targetId,
+              );
+              const reference = this.conversationForkContextReference(
+                input.targetId,
+              );
+              const { child, startedEvent, configuredEvent, forkEvent } =
+                commit;
+              const commitJson = nativeForkJson(commit);
+              const childTenant = parseTenantExecutionContext(
+                child.tenantExecutionContext,
+              );
+              const configuredTenant = parseTenantExecutionContext(
+                configuredEvent.metadata?.tenantExecutionContext,
+              );
+              const metadata = configuredEvent.metadata;
+              const started = startedEvent.metadata;
+              const startedTenant = parseTenantExecutionContext(
+                started?.tenantExecutionContext,
+              );
+              const startedMatch =
+                !!snapshot &&
+                startedEvent.method === 'session.started' &&
+                startedEvent.threadId === input.targetId &&
+                startedEvent.sessionId === input.targetId &&
+                startedEvent.provider === child.provider &&
+                started?.userId === snapshot.ownerUserId &&
+                started.environmentId === record.source.environmentId &&
+                started.agentSlug === snapshot.targetAgent &&
+                (started.agentId === undefined ||
+                  started.agentId === snapshot.targetAgent) &&
+                (started.targetId === undefined ||
+                  started.targetId === snapshot.targetAgent) &&
+                started.projectSlug === snapshot.projectSlug &&
+                started.connectionId === record.source.connectionId &&
+                (started.tenantId === undefined ||
+                  started.tenantId === snapshot.tenantId) &&
+                (started.tenantExecutionContext === undefined ||
+                  (snapshot.tenantId !== undefined &&
+                    startedTenant?.tenantId === snapshot.tenantId)) &&
+                started.nativeResumeBindingKey ===
+                  record.source.nativeResumeBindingKey &&
+                (started.nativeResumeIdentity === undefined ||
+                  started.nativeResumeIdentity === 'matched') &&
+                (started[NATIVE_TURN_IDENTITY_METADATA_KEY] === undefined ||
+                  started[NATIVE_TURN_IDENTITY_METADATA_KEY] ===
+                    record.childIdentity);
+              const coordinatesMatch =
+                !!snapshot &&
+                (child.controlMode ?? 'station-owned') === 'station-owned' &&
+                (snapshot.tenantId === undefined
+                  ? child.tenantExecutionContext === undefined
+                  : childTenant?.tenantId === snapshot.tenantId) &&
+                configuredEvent.method === 'session.configured' &&
+                configuredEvent.sessionId === input.targetId &&
+                configuredEvent.cwd === record.source.cwd &&
+                metadata?.environmentId === record.source.environmentId &&
+                metadata.agentSlug === snapshot.targetAgent &&
+                metadata.agentSlug === record.source.agentId &&
+                (metadata.agentId === undefined ||
+                  metadata.agentId === snapshot.targetAgent) &&
+                (metadata.targetId === undefined ||
+                  metadata.targetId === snapshot.targetAgent) &&
+                metadata.projectSlug === snapshot.projectSlug &&
+                metadata.connectionId === record.source.connectionId &&
+                (metadata.tenantId === undefined ||
+                  metadata.tenantId === snapshot.tenantId) &&
+                (metadata.tenantExecutionContext === undefined ||
+                  (snapshot.tenantId !== undefined &&
+                    configuredTenant?.tenantId === snapshot.tenantId)) &&
+                metadata.nativeResumeBindingKey ===
+                  record.source.nativeResumeBindingKey &&
+                (metadata.nativeResumeIdentity === undefined ||
+                  metadata.nativeResumeIdentity === 'matched') &&
+                (metadata[NATIVE_TURN_IDENTITY_METADATA_KEY] === undefined ||
+                  metadata[NATIVE_TURN_IDENTITY_METADATA_KEY] ===
+                    record.childIdentity) &&
+                forkEvent.provider === 'station' &&
+                forkEvent.threadId === snapshot.sourceConversationId;
 
-            if (
-              !coordinatesMatch ||
-              !snapshot ||
-              !reference ||
-              reference.state === 'deleted' ||
-              child.threadId !== input.targetId ||
-              child.provider !== record.source.provider ||
-              child.cwd !== record.source.cwd ||
-              nativeForkJson(child.resumeCursor) !== record.cursorJson ||
-              this.nativeSessionBindingIdentity(input.targetId) !==
-                record.childIdentity ||
-              !this.nativeSessionOwnedBy(input.targetId) ||
-              configuredEvent.method !== 'session.configured' ||
-              configuredEvent.threadId !== input.targetId ||
-              configuredEvent.provider !== child.provider ||
-              configuredEvent.metadata?.userId !== snapshot.ownerUserId ||
-              forkEvent.method !== 'conversation.forked' ||
-              forkEvent.continuation !== 'native' ||
-              forkEvent.eventId !== snapshot.forkEventId ||
-              forkEvent.contextDigest !== snapshot.digest ||
-              forkEvent.sourceConversationId !==
-                snapshot.sourceConversationId ||
-              forkEvent.targetConversationId !== input.targetId ||
-              forkEvent.targetAgent !== snapshot.targetAgent ||
-              forkEvent.branchPointTurnId !== snapshot.branchPointTurnId ||
-              forkEvent.sourceSessionId !== snapshot.sourceSessionId
-            )
-              throw new ConversationForkContextError(
-                'Native fork commit does not match its receipt.',
-              );
-            if (record.state === 'committed') {
-              const persisted = this.readSessionByThread(input.targetId);
-              const configured = this.listEvents(input.targetId).find(
-                (event) => event.id === configuredEvent.eventId,
-              );
-              const fact = this.listEvents(snapshot.sourceConversationId).find(
-                (event) => event.id === forkEvent.eventId,
-              );
               if (
-                record.commitJson !== commitJson ||
-                record.commitDigest !== nativeForkHash(commitJson) ||
-                reference.state !== 'ready' ||
-                persisted?.provider !== child.provider ||
-                persisted.cwd !== child.cwd ||
-                nativeForkJson(persisted.resumeCursor) !== record.cursorJson ||
-                this.conversationForSession(input.targetId)?.conversationId !==
-                  input.targetId ||
-                !configured ||
-                nativeForkJson(configured.payload) !==
-                  nativeForkJson(configuredEvent) ||
-                !fact ||
-                nativeForkJson(fact.payload) !== nativeForkJson(forkEvent)
+                !startedMatch ||
+                new Set([
+                  startedEvent.eventId,
+                  configuredEvent.eventId,
+                  forkEvent.eventId,
+                ]).size !== 3 ||
+                !coordinatesMatch ||
+                !snapshot ||
+                !reference ||
+                reference.state === 'deleted' ||
+                child.threadId !== input.targetId ||
+                child.provider !== record.source.provider ||
+                child.cwd !== record.source.cwd ||
+                nativeForkJson(child.resumeCursor) !== record.cursorJson ||
+                this.nativeSessionBindingIdentity(input.targetId) !==
+                  record.childIdentity ||
+                !this.nativeSessionOwnedBy(input.targetId) ||
+                configuredEvent.method !== 'session.configured' ||
+                configuredEvent.threadId !== input.targetId ||
+                configuredEvent.provider !== child.provider ||
+                configuredEvent.metadata?.userId !== snapshot.ownerUserId ||
+                forkEvent.method !== 'conversation.forked' ||
+                forkEvent.continuation !== 'native' ||
+                forkEvent.eventId !== snapshot.forkEventId ||
+                forkEvent.contextDigest !== snapshot.digest ||
+                forkEvent.sourceConversationId !==
+                  snapshot.sourceConversationId ||
+                forkEvent.targetConversationId !== input.targetId ||
+                forkEvent.targetAgent !== snapshot.targetAgent ||
+                forkEvent.branchPointTurnId !== snapshot.branchPointTurnId ||
+                forkEvent.sourceSessionId !== snapshot.sourceSessionId
               )
                 throw new ConversationForkContextError(
-                  'Committed native fork binding conflicts.',
+                  'Native fork commit does not match its receipt.',
                 );
-              return 'already-committed' as const;
-            }
-            if (
-              record.state !== 'child-observed' ||
-              reference.state !== 'prepared' ||
-              this.hasEventId(forkEvent.eventId)
-            )
-              throw new ConversationForkContextError(
-                'Native fork cannot publish this state.',
-              );
-            this.appendEvent(forkEvent, [], () => {
-              this.upsertSession(child);
-              this.appendEvent(configuredEvent);
-              save({
-                ...record,
-                state: 'committed',
-                commitJson,
-                commitDigest: nativeForkHash(commitJson),
+              if (record.state === 'committed') {
+                this.assertCommittedNativeFork(record, commit);
+                return 'already-committed' as const;
+              }
+              if (
+                record.state !== 'child-observed' ||
+                reference.state !== 'prepared' ||
+                this.hasEventId(forkEvent.eventId)
+              )
+                throw new ConversationForkContextError(
+                  'Native fork cannot publish this state.',
+                );
+              if (this.nativeForkNoticeCapture)
+                throw new ConversationForkContextError(
+                  'Native fork notice capture is already owned.',
+                );
+              capture = {
+                targetId: input.targetId,
+                intentId: record.intentId,
+                eventDigests: new Map(
+                  [startedEvent, configuredEvent, forkEvent].map((event) => [
+                    event.eventId,
+                    nativeForkHash(nativeForkJson(event)),
+                  ]),
+                ),
+                notices: [],
+              };
+              this.nativeForkNoticeCapture = capture;
+              this.appendEvent(forkEvent, [], () => {
+                this.upsertSession(child);
+                this.appendEvent(startedEvent);
+                this.appendEvent(configuredEvent);
+                save({
+                  ...record,
+                  state: 'committed',
+                  commitJson,
+                  commitDigest: nativeForkHash(commitJson),
+                });
+                this.db
+                  .prepare(
+                    "UPDATE orchestration_conversation_fork_context SET state='ready' WHERE target_conversation_id=? AND state='prepared'",
+                  )
+                  .run(input.targetId);
               });
-              this.db
-                .prepare(
-                  "UPDATE orchestration_conversation_fork_context SET state='ready' WHERE target_conversation_id=? AND state='prepared'",
-                )
-                .run(input.targetId);
+              return 'committed' as const;
             });
-            return 'committed' as const;
-          });
+            if (capture) {
+              const committed = load();
+              if (
+                this.db.isTransaction ||
+                this.nativeForkNoticeCapture !== capture ||
+                committed.intentId !== capture.intentId
+              )
+                throw new ConversationForkContextError(
+                  'Native fork outer commit is unconfirmed.',
+                );
+              this.assertCommittedNativeFork(committed, commit);
+              this.nativeForkNoticeCapture = undefined;
+              for (const notice of capture.notices) {
+                this.notifyCommitObservers((observer) => {
+                  if (notice.kind === 'lineage')
+                    observer.lineageChanged?.({
+                      conversationId: notice.conversationId,
+                      sessionId: notice.sessionId,
+                    });
+                  else
+                    observer.eventCommitted?.({
+                      event: notice.event,
+                      globalSequence: notice.globalSequence,
+                      deferred: false,
+                    });
+                });
+              }
+            }
+            return outcome;
+          } catch (error) {
+            poisoned = true;
+            throw error;
+          } finally {
+            if (capture && this.nativeForkNoticeCapture === capture)
+              this.nativeForkNoticeCapture = undefined;
+          }
         },
         indeterminate: () => retainedState('indeterminate'),
         cleanupPending: () => retainedState('cleanup-pending'),
       }),
     };
+  }
+
+  private assertCommittedNativeFork(
+    record: NativeForkEffectRecord,
+    commit: NativeForkCommitInput,
+  ): void {
+    const snapshot = this.conversationForkContextSnapshot(record.targetId);
+    const reference = this.conversationForkContextReference(record.targetId);
+    const persisted = this.readSessionByThread(record.targetId);
+    const json = nativeForkJson(commit);
+    if (
+      !snapshot ||
+      reference?.state !== 'ready' ||
+      record.state !== 'committed' ||
+      record.commitJson !== json ||
+      record.commitDigest !== nativeForkHash(json) ||
+      persisted?.provider !== commit.child.provider ||
+      persisted.cwd !== commit.child.cwd ||
+      nativeForkJson(persisted.resumeCursor) !== record.cursorJson ||
+      this.nativeSessionBindingIdentity(record.targetId) !==
+        record.childIdentity ||
+      !this.nativeSessionOwnedBy(record.targetId) ||
+      this.conversationForSession(record.targetId)?.conversationId !==
+        record.targetId
+    )
+      throw new ConversationForkContextError(
+        'Committed native fork binding conflicts.',
+      );
+    for (const expected of [
+      commit.startedEvent,
+      commit.configuredEvent,
+      commit.forkEvent,
+    ]) {
+      const stored = this.listEvents(expected.threadId).find(
+        (event) => event.id === expected.eventId,
+      );
+      if (
+        !stored ||
+        nativeForkJson(stored.payload) !== nativeForkJson(expected)
+      )
+        throw new ConversationForkContextError(
+          'Committed native fork event conflicts.',
+        );
+    }
   }
 
   reserveConversationForkContext(

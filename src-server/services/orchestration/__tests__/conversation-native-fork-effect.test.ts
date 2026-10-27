@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { tenantId } from '@kontourai/station-contracts/tenancy';
@@ -10,6 +11,7 @@ import {
   type NativeForkEffectClaim,
   type NativeForkSourceSeal,
 } from '../conversation-fork-context.js';
+import { ConversationTurnActivityProjection } from '../conversation-turn-activity.js';
 import { EventStore } from '../event-store.js';
 import { runSessionStartWithBoundary } from '../session-turn-boundary.js';
 
@@ -21,8 +23,11 @@ const BINDING_KEY = 'c'.repeat(64);
 describe('native fork SQLite effect and publication ownership', () => {
   const temp = trackTempDirs();
   const stores = new Set<EventStore>();
+  const peers = new Set<DatabaseSync>();
   afterEach(() => {
     vi.restoreAllMocks();
+    for (const peer of peers) peer.close();
+    peers.clear();
     for (const store of stores) store.close();
     stores.clear();
   });
@@ -139,6 +144,30 @@ describe('native fork SQLite effect and publication ownership', () => {
       continuation: 'replay-seed',
     };
     const commit: NativeForkCommitInput = {
+      startedEvent: {
+        eventId: 'child-started',
+        provider: 'codex',
+        threadId: 'child',
+        sessionId: 'child',
+        method: 'session.started',
+        createdAt: NOW,
+        metadata: {
+          userId: 'owner',
+          agentSlug: 'codex',
+          environmentId: 'local',
+          nativeResumeBindingKey: BINDING_KEY,
+          ...(options.project ? { projectSlug: 'project-one' } : {}),
+          ...(options.tenant
+            ? {
+                tenantId: 'tenant-one',
+                tenantExecutionContext: {
+                  tenantId: 'tenant-one',
+                  source: 'session',
+                },
+              }
+            : {}),
+        },
+      },
       child: {
         ...sourceSession,
         threadId: 'child',
@@ -171,7 +200,10 @@ describe('native fork SQLite effect and publication ownership', () => {
       },
       forkEvent,
     };
+    const peer = new DatabaseSync(path, { readOnly: true });
+    peers.add(peer);
     return {
+      peer,
       get store() {
         return store;
       },
@@ -201,6 +233,286 @@ describe('native fork SQLite effect and publication ownership', () => {
       },
     };
   }
+
+  function watch(f: ReturnType<typeof fixture>) {
+    const notices: {
+      kind: string;
+      deferred?: boolean;
+      inTransaction: boolean;
+      sameChild: boolean;
+      peerChild: boolean;
+      peerReady: unknown;
+      peerFact: boolean;
+    }[] = [];
+    const capture = (kind: string, deferred?: boolean) =>
+      notices.push({
+        kind,
+        deferred,
+        inTransaction: f.store['db'].isTransaction,
+        sameChild: !!f.store.readSessionByThread('child'),
+        peerChild: !!f.peer
+          .prepare(
+            "SELECT 1 FROM provider_session_state WHERE thread_id='child'",
+          )
+          .get(),
+        peerReady: f.peer
+          .prepare(
+            "SELECT state FROM orchestration_conversation_fork_context WHERE target_conversation_id='child'",
+          )
+          .get()?.state,
+        peerFact: !!f.peer
+          .prepare("SELECT 1 FROM orchestration_events WHERE id='fork-event'")
+          .get(),
+      });
+    const stop = f.store.observeCommits({
+      eventCommitted: ({ event, deferred }) => capture(event.eventId, deferred),
+      lineageChanged: () => capture('lineage'),
+    });
+    return { notices, stop };
+  }
+  function activity(f: ReturnType<typeof fixture>) {
+    return new ConversationTurnActivityProjection({
+      eventStore: f.store,
+      readTurnProgress: () => undefined,
+      readRunningChildWork: () => [],
+      logger: { warn: vi.fn() },
+    });
+  }
+  test('native observers see only the complete outer commit, in global started-configured-fork order with no repeat', async () => {
+    const f = fixture();
+    const projection = activity(f);
+    try {
+      expect(projection.readConversation('child').asOfSequence).toBe(0);
+      const effect = f.reserve();
+      const observed = watch(f);
+      let insideActivity = -1;
+      const append = f.store.appendEvent.bind(f.store);
+      const barrier = vi
+        .spyOn(f.store, 'appendEvent')
+        .mockImplementation((event, outputs, participant) =>
+          event.method === 'conversation.forked'
+            ? append(event, outputs, () => {
+                participant?.();
+                expect(observed.notices).toEqual([]);
+                insideActivity =
+                  projection.readConversation('child').asOfSequence;
+              })
+            : append(event, outputs, participant),
+        );
+      await runSessionStartWithBoundary(
+        f.store.sessionTurnBoundaryAuthority(),
+        'child',
+        async () => {
+          f.observe(effect);
+          return effect.commit(f.commit);
+        },
+        effect.sessionStart,
+      );
+      barrier.mockRestore();
+      expect(insideActivity).toBe(0);
+      expect(observed.notices.map((n) => n.kind)).toEqual([
+        'lineage',
+        'child-started',
+        'child-configured',
+        'fork-event',
+      ]);
+      for (const notice of observed.notices) {
+        expect(notice.inTransaction).toBe(false);
+        expect(notice.sameChild).toBe(true);
+        expect(notice.peerChild).toBe(true);
+        expect(notice.peerReady).toBe('ready');
+        expect(notice.peerFact).toBe(true);
+        if (notice.kind !== 'lineage') expect(notice.deferred).toBe(false);
+      }
+      expect(f.store.readGlobalSequence('child-started')).toBeLessThan(
+        f.store.readGlobalSequence('child-configured')!,
+      );
+      expect(f.store.readGlobalSequence('child-configured')).toBeLessThan(
+        f.store.readGlobalSequence('fork-event')!,
+      );
+      expect(projection.readConversation('child').asOfSequence).toBeGreaterThan(
+        0,
+      );
+      const count = observed.notices.length;
+      expect(effect.commit(f.commit)).toBe('already-committed');
+      expect(observed.notices).toHaveLength(count);
+      observed.stop();
+    } finally {
+      projection.dispose();
+    }
+  });
+
+  test.each(['participant', 'before-commit', 'after-commit'] as const)(
+    '%s failure releases no event or lineage observer notice',
+    (failure) => {
+      const f = fixture();
+      const projection = activity(f);
+      try {
+        expect(projection.readConversation('child').asOfSequence).toBe(0);
+        const effect = f.reserve();
+        effect.sessionStart.beginInvocation(NOW);
+        f.observe(effect);
+        const observed = watch(f);
+        const append = f.store.appendEvent.bind(f.store);
+        const participantFault = vi
+          .spyOn(f.store, 'appendEvent')
+          .mockImplementation((event, outputs, participant) =>
+            event.method === 'conversation.forked'
+              ? append(event, outputs, () => {
+                  participant?.();
+                  expect(observed.notices).toEqual([]);
+                  expect(
+                    projection.readConversation('child').asOfSequence,
+                  ).toBe(0);
+                  if (failure === 'participant')
+                    throw new Error('injected B1 participant failure');
+                })
+              : append(event, outputs, participant),
+          );
+        const exec = f.store['db'].exec.bind(f.store['db']);
+        const commitFault = vi
+          .spyOn(f.store['db'], 'exec')
+          .mockImplementation((sql) => {
+            if (sql === 'COMMIT' && failure !== 'participant') {
+              expect(observed.notices).toEqual([]);
+              if (failure === 'after-commit') exec(sql);
+              throw new Error('injected B1 commit uncertainty');
+            }
+            return exec(sql);
+          });
+        expect(() => effect.commit(f.commit)).toThrow();
+        participantFault.mockRestore();
+        commitFault.mockRestore();
+        expect(observed.notices).toEqual([]);
+        expect(effect.sessionStart.beginInvocation(NOW).kind).not.toBe(
+          'applied',
+        );
+        if (failure !== 'after-commit')
+          expect(projection.readConversation('child').asOfSequence).toBe(0);
+        observed.stop();
+        f.reopen();
+        expect(f.store.readNativeForkEffect('child')?.state).toBe(
+          failure === 'after-commit' ? 'committed' : 'child-observed',
+        );
+        expect(f.store.hasEventId('child-started')).toBe(
+          failure === 'after-commit',
+        );
+        expect(f.store.hasEventId('fork-event')).toBe(
+          failure === 'after-commit',
+        );
+      } finally {
+        projection.dispose();
+      }
+    },
+  );
+
+  test('native observer hold is cleared before reentrant callbacks and observer throws cannot fail a commit', () => {
+    const f = fixture();
+    const effect = f.reserve();
+    effect.sessionStart.beginInvocation(NOW);
+    f.observe(effect);
+    const seen: string[] = [];
+    const stop = f.store.observeCommits({
+      lineageChanged: () => {
+        f.store.appendEvent({
+          ...f.commit.configuredEvent,
+          eventId: 'ordinary-reentrant',
+        });
+        throw new Error('observer only');
+      },
+      eventCommitted: ({ event, deferred }) => {
+        seen.push(event.eventId);
+        expect(deferred).toBe(false);
+      },
+    });
+    expect(effect.commit(f.commit)).toBe('committed');
+    expect(seen).toContain('ordinary-reentrant');
+    expect(seen).toContain('child-started');
+    stop();
+  });
+
+  test('ordinary caller-owned transaction retains its existing immediate deferred event notifications', () => {
+    const f = fixture();
+    const notices: boolean[] = [];
+    const stop = f.store.observeCommits({
+      eventCommitted: ({ deferred }) => notices.push(deferred),
+    });
+    f.store['db'].exec('BEGIN IMMEDIATE');
+    f.store.appendEvent({
+      ...f.commit.configuredEvent,
+      eventId: 'ordinary-before-rollback',
+    });
+    expect(notices).toEqual([true]);
+    f.store['db'].exec('ROLLBACK');
+    expect(f.store.hasEventId('ordinary-before-rollback')).toBe(false);
+    stop();
+  });
+
+  test.each(['event', 'lineage'] as const)(
+    'unexpected %s notice fails native composition rather than escaping or being swallowed',
+    (kind) => {
+      const f = fixture();
+      const effect = f.reserve();
+      effect.sessionStart.beginInvocation(NOW);
+      f.observe(effect);
+      const observed = watch(f);
+      const upsert = f.store.upsertSession.bind(f.store);
+      const fault = vi
+        .spyOn(f.store, 'upsertSession')
+        .mockImplementation((session) => {
+          upsert(session);
+          if (kind === 'event')
+            f.store.appendEvent({
+              ...f.commit.configuredEvent,
+              eventId: 'foreign-event',
+            });
+          else upsert({ ...f.commit.child, threadId: 'foreign-child' });
+        });
+      expect(() => effect.commit(f.commit)).toThrow(/Unexpected/);
+      fault.mockRestore();
+      expect(observed.notices).toEqual([]);
+      observed.stop();
+      expect(f.store.readSessionByThread('child')).toBeUndefined();
+      expect(f.store.hasEventId('foreign-event')).toBe(false);
+      expect(f.store.readSessionByThread('foreign-child')).toBeUndefined();
+    },
+  );
+
+  test.each([
+    'thread',
+    'provider',
+    'owner',
+    'environment',
+    'Agent',
+    'Project',
+    'native-binding',
+  ] as const)('started %s must match the complete native tuple', (field) => {
+    const f = fixture();
+    const effect = f.reserve();
+    effect.sessionStart.beginInvocation(NOW);
+    f.observe(effect);
+    const started = {
+      ...f.commit.startedEvent,
+      metadata: { ...f.commit.startedEvent.metadata },
+    };
+    if (field === 'thread') started.threadId = 'foreign';
+    if (field === 'provider') started.provider = 'claude';
+    const key = {
+      owner: 'userId',
+      environment: 'environmentId',
+      Agent: 'agentSlug',
+      Project: 'projectSlug',
+      'native-binding': 'nativeResumeBindingKey',
+    }[field];
+    if (key) started.metadata[key] = 'foreign';
+    expect(() =>
+      effect.commit({ ...f.commit, startedEvent: started }),
+    ).toThrow();
+    expect(f.store.hasEventId('child-started')).toBe(false);
+    expect(f.store.conversationForkContextReference('child')?.state).toBe(
+      'prepared',
+    );
+  });
 
   test.each([
     'prepared',

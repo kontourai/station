@@ -101,6 +101,7 @@ export function readNativeForkEffect(json: string): NativeForkEffectRecord {
   return record;
 }
 export interface NativeForkCommitInput {
+  startedEvent: Extract<CanonicalRuntimeEvent, { method: 'session.started' }>;
   child: import('@kontourai/station-contracts/provider').ProviderSession;
   configuredEvent: Extract<
     CanonicalRuntimeEvent,
