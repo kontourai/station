@@ -82,7 +82,15 @@ let monitor: ReturnType<typeof setTimeout> | undefined;
 const recent: Array<{
   unit: string;
   pid?: number;
+  /**
+   * `oom-kill` when the kernel killed any process in the scope, whatever
+   * systemd reports: under OOMPolicy=continue systemd says `success`.
+   */
   result: string;
+  /** What systemd itself reported for the scope. */
+  systemdResult: string;
+  /** The scope's own `oom_kill` count at close; absent when unreadable. */
+  oomKills?: number;
   memoryPeakBytes?: number;
   cpuUsageNSec?: number;
 }> = [];
@@ -635,10 +643,13 @@ async function closeScope(entry: ActiveWorkload): Promise<void> {
         ? parsed
         : undefined;
     };
+    const systemdResult = properties.Result ?? 'unavailable';
     const outcome = {
       unit: entry.unit,
       pid: entry.pid,
-      result: properties.Result ?? 'unavailable',
+      result: (oomKills ?? 0) > 0 ? 'oom-kill' : systemdResult,
+      systemdResult,
+      ...(oomKills === undefined ? {} : { oomKills }),
       memoryPeakBytes: finiteCounter(properties.MemoryPeak),
       cpuUsageNSec: finiteCounter(properties.CPUUsageNSec),
     };

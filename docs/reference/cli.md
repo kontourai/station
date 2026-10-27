@@ -2095,7 +2095,10 @@ per-engine and total limits and whether each came from the environment, a
 saved setting or the default, the host's memory, and whether a saved change
 applies to new engines now or after a restart, and each running scope with
 the limit it was launched with and the OOM kills seen in it. A Station without the route
-exits nonzero and says it does not report workload budgets. See
+exits nonzero and says it does not report workload budgets. Only `--station`
+and `--api-base` choose the Station; any other flag, including `--home` and
+`--instance`, is refused rather than ignored. For a local instance, pass its
+server address as `--api-base=http://127.0.0.1:<port>`. See
 [Linux service workload budgets](../guides/development.md#linux-service-workload-budgets).
 
 ### `feedback`

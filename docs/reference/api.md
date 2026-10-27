@@ -4134,7 +4134,9 @@ returns 503; unknown CPU load is never fabricated as zero. These observations
 do not grant execution authority or influence admission.
 
 `data.workloads` reports workload enforcement state, configured budgets, active
-scopes, recent outcomes and available slice measurements. Measurement failure
+scopes, recent outcomes and available slice measurements. A recent outcome's
+`result` is `oom-kill` when the kernel killed any process in the scope, with
+`oomKills` and systemd's own `systemdResult`. Measurement failure
 is separate from enforcement state; see
 [Linux service workload budgets](../guides/development.md#linux-service-workload-budgets)
 for platform scope and admission behavior.
@@ -4177,9 +4179,10 @@ continues a conversation whose latest turn ended with `engine-memory-exhausted`
 ([continuation module](../../src-server/services/orchestration/memory-exhaustion-continuation.ts)).
 It sends one Station-authored turn through the conversation inbox as the caller,
 under a key derived from the dead Session and turn, and answers 202 with that
-`clientTurnId`. The same caller again is the same entry (202); a different
-sender, or one racing Station's own automatic continuation, gets 409
-`memory_continuation_already_started`. A latest turn that did not end that way
+`clientTurnId`. Any later request for the same dead turn, from anyone and
+including after Station's own automatic continuation, gets 409
+`memory_continuation_already_started`. A `clientTurnId` starting
+`memory-continue-` is refused (400) on `POST /chat` and continue sends. A latest turn that did not end that way
 is 409 `memory_continuation_not_applicable`; a conversation the caller cannot
 read is 404; one the inbox refuses the caller is 403
 `memory_continuation_not_permitted`. A Station without a conversation inbox

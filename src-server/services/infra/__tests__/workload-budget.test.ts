@@ -24,6 +24,7 @@ import {
   ENGINE_SCOPE_WRAPPER,
   enforcedWorkloadLimits,
   inspectSessionWorkload,
+  inspectWorkloadResources,
   WorkloadSettingsRejectedError,
   workloadBudgetStatus,
 } from '../workload-resources.js';
@@ -608,6 +609,14 @@ describe('workload manager budgets (fake systemd manager)', () => {
     const outcome = engine.outcome;
     await closeChildWorkload(process.pid);
     expect(await outcome).toMatchObject({ oomKills: 1, unreportedOomKills: 1 });
+    // The settled record (resource-posture `recent`, the settle log) does not
+    // read as plain success: systemd said success, the kernel killed.
+    expect((await inspectWorkloadResources()).recent.at(-1)).toMatchObject({
+      unit,
+      result: 'oom-kill',
+      systemdResult: 'success',
+      oomKills: 1,
+    });
     expect(childWorkloadMemoryExhausted(await outcome, 'SIGKILL')).toBe(true);
     // Read before the scope was killed and stopped.
     const show = calls.findIndex(

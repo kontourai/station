@@ -260,11 +260,17 @@ Under `OOMPolicy=continue` systemd records no `oom-kill` result for a scope,
 so Station reads the kernel's own count: the `oom_kill` line of the scope's
 cgroup v2 `memory.events`. A 1-second poll announces new kills in a running
 scope, and the count is read again when the scope closes. systemd collects a
-scope as soon as its last process exits, cgroup and counters with it; for such
-a scope Station takes the slice's hierarchical `oom_kill` increase since the
-last poll, less the increases still visible in the other scopes. Each launch
-also polls at once, so an engine killed within its first second has a
-baseline.
+scope as soon as its last process exits, cgroup and counters with it, so an
+engine's own scope (a launch that names its Session) also runs a holder: the
+wrapper shell starts `sleep` with its stdio on `/dev/null` and every other
+inherited descriptor closed, then execs the engine in its own place. When the
+engine dies, the holder keeps the scope and its `memory.events` until Station
+reads the count and stops the scope. A scope that is nonetheless already gone
+has an unknown count, never one inferred from the slice. The settled record
+(`recent` in `/api/system/resource-posture` and the "Workload scope settled"
+log) reports `result: oom-kill` with `oomKills` whenever the kernel killed a
+process in the scope, and keeps systemd's own `systemdResult` (`success`
+under `continue`).
 
 Codex reports both cases. A kill while Codex runs publishes a live warning
 (`workload-command-oom-killed`, naming the budget) and a transcript marker
@@ -274,7 +280,7 @@ Codex reports that command's own failure. Codex's own death is a SIGKILL with
 an `oom_kill` no listener was told about, or a scope systemd reports as
 `oom-kill`; it produces an `engine-memory-exhausted` failure with the budget
 and peak and `session.exited` reason `memory-exhausted`. A signal alone does
-not prove OOM; an unknown count (no poll yet, or the slice unreadable) leaves
+not prove OOM; an unknown count (a scope systemd already collected) leaves
 the cause unknown, and the turn and interrupted tool/child rows still settle.
 Claude Code runs in the same scopes and is told its budget, but its adapter
 does not yet read these counts: a Claude command kill is reported only by
@@ -315,15 +321,23 @@ of memory and was restarted — continuing", with **Stop** while it runs.
 
 Automatic continuation is withheld when the turn was interrupted, when a
 request (approval or question) was still open at the kill, when the
-conversation has moved on, and after `AUTO_CONTINUE_MAX` (3) automatic
-continuations within `AUTO_CONTINUE_WINDOW_MS` (5 minutes) per conversation,
-counted in the server process (a restart resets it). Then the chat offers
+conversation has moved on, for a delegated child (its parent decides whether
+to retry), after `AUTO_CONTINUE_CHAIN_MAX` (2) automatic continuations in a row
+in the conversation's lineage (only a turn a person sends resets the chain, so
+a task that always runs out of memory stops after two restarts), and after
+`AUTO_CONTINUE_MAX` (3) automatic continuations within
+`AUTO_CONTINUE_WINDOW_MS` (5 minutes) per conversation, counted in the server
+process (a restart resets that rate cap; the chain is read from the stored
+turns). Then the chat offers
 **Continue** instead of **Send again**, because resending the original prompt
 would restart the same concurrent work. Continue posts
 `/api/orchestration/conversations/:id/memory-continuation`, which sends the
-same turn under the same inbox key, derived from the dead Session and turn: the
-same person on another device gets the same entry, anyone else a 409, and a
-click racing Station's own continuation never starts a second one. An older
+same turn under the same inbox key, derived from the dead Session and turn.
+Whoever continues first owns the one entry; every later request, including the
+owner's click after Station continued on its own, gets 409
+`memory_continuation_already_started` and never a second turn. The
+`memory-continue-` key prefix is reserved: `/chat` refuses it and the inbox
+accepts it only from Station's own origin, so nobody can pre-claim the key. An older
 Station without the route answers 404 and the client sends the short
 continuation as an ordinary message. Ordinary connection recovery still treats
 a memory kill as manual and never replays the prompt.

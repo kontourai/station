@@ -66,4 +66,18 @@ describe('station workload status', () => {
       "Unknown workload action. Use 'status'.",
     );
   });
+
+  test('a target flag it does not read is refused, not silently replaced by the default Station', async () => {
+    const { runSurfaceCommand } = await import('../commands/surfaces.js');
+    await expect(
+      runSurfaceCommand('workload', [
+        'status',
+        '--home=/tmp/other-home',
+        '--instance=wb-shot',
+      ]),
+    ).rejects.toThrow(
+      'station workload does not accept --home, --instance. Choose the Station with --station=<name> or --api-base=<url>',
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

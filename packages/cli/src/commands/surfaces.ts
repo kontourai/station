@@ -1073,8 +1073,20 @@ async function runBrandingCommand(args: string[]) {
  * predates the route answers 404, reported as "not supported" with a nonzero
  * exit rather than as an empty success.
  */
+/** The only flags `station workload` reads; anything else is refused. */
+const WORKLOAD_FLAGS = ['api-base', 'station', 'credential', 'verbose'];
+
 async function runWorkloadCommand(args: string[]) {
   const parsed = parseCoreArgs(args);
+  // A target flag this command does not read (--home, --instance) must not
+  // quietly fall back to the device's default Station.
+  const unknown = Object.keys(parsed.flags).filter(
+    (flag) => !WORKLOAD_FLAGS.includes(flag),
+  );
+  if (unknown.length > 0)
+    throw new Error(
+      `station workload does not accept ${unknown.map((flag) => `--${flag}`).join(', ')}. Choose the Station with --station=<name> or --api-base=<url> (a local instance's server address, e.g. http://127.0.0.1:<port>).`,
+    );
   const apiBase = resolveSurfaceApiBase(parsed);
   const action = requirePositional(parsed, 0, 'workload action');
   if (action !== 'status')
