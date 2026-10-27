@@ -381,8 +381,10 @@ export interface WorkloadBudgetStatus {
 
 /**
  * Why an engine scope has no holder in it: the host has no setsid(1) or
- * sleep(1) to start one, or the scope's processes do not include it.
+ * sleep(1) to start one, the scope's processes do not include it, or the
+ * holder that was found has since gone.
  */
 export type WorkloadHolderUnplacedReason =
   | 'holder-unavailable'
-  | 'not-in-scope';
+  | 'not-in-scope'
+  | 'holder-gone';

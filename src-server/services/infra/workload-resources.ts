@@ -71,6 +71,10 @@ interface ActiveWorkload {
   holderState?: 'placed' | 'unplaced';
   /** Why the holder is unplaced, as a short code. */
   holderReason?: WorkloadHolderUnplacedReason;
+  /** The holder found in the scope: its pid and kernel start time. */
+  holder?: { pid: string; start: string };
+  /** Consecutive polls that searched the scope and did not find it. */
+  holderMisses?: number;
   /** `oom_kill` count at the last poll; undefined before the first. */
   oomKillsPolled?: number;
   /** A count seen once and not yet announced (see pollOomKills). */
@@ -274,8 +278,33 @@ async function resolveControlGroup(
 }
 
 /**
- * Whether the scope's holder is among the scope's own processes: a pid other
- * than the leader whose command line is exactly the holder's.
+ * Polls that miss the holder before it is reported `not-in-scope`: the first
+ * poll can land between setsid's fork and its child's exec of sleep.
+ */
+const HOLDER_MISSES_TO_REPORT = 2;
+/** Polls that search a scope for its holder before giving up for good. */
+const HOLDER_SEARCH_LIMIT = 5;
+
+/** A process's start time in clock ticks (field 22 of /proc/<pid>/stat). */
+async function processStart(pid: string): Promise<string | undefined> {
+  const stat = await readFile(`${procRoot}/${pid}/stat`, 'utf8').catch(
+    () => undefined,
+  );
+  if (!stat) return undefined;
+  // Fields after the parenthesized command name start at field 3.
+  return stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19];
+}
+
+/**
+ * Tracks an engine scope's holder in the scope's own processes. Until found,
+ * each poll searches cgroup.procs for a pid other than the leader whose
+ * command line is exactly the holder's: two misses in a row report
+ * `not-in-scope`, and the search stops after HOLDER_SEARCH_LIMIT. Once found,
+ * each poll confirms that pid is still in the scope with the start time it
+ * had; otherwise (killed, say by an agent's `pkill sleep`) the scope reports
+ * `holder-gone`. A process in the scope that runs the same
+ * `sleep 2147483647` can pass for the holder; that misreports status only,
+ * and the scope is held all the same while it runs.
  */
 async function observeHolder(
   entry: ActiveWorkload,
@@ -283,35 +312,54 @@ async function observeHolder(
 ): Promise<void> {
   if (
     !entry.holderLaunched ||
-    entry.holderState === 'placed' ||
-    !holderBinaries
+    !holderBinaries ||
+    entry.holderReason === 'holder-gone'
   )
     return;
-  const holderCmdline = `${holderBinaries.sleep}\0${HOLDER_SLEEP_SECONDS}\0`;
-  let found = false;
+  let pids: string[];
   try {
-    const pids = (
-      await readFile(`${cgroupRoot}${controlGroup}/cgroup.procs`, 'utf8')
-    )
+    pids = (await readFile(`${cgroupRoot}${controlGroup}/cgroup.procs`, 'utf8'))
       .split('\n')
       .filter((pid) => /^\d+$/.test(pid) && Number(pid) !== entry.pid);
-    for (const pid of pids) {
-      const cmdline = await readFile(
-        `${procRoot}/${pid}/cmdline`,
-        'utf8',
-      ).catch(() => '');
-      if (cmdline === holderCmdline) {
-        found = true;
-        break;
-      }
-    }
   } catch {
     return;
   }
-  if (found) {
+  const known = entry.holder;
+  if (known) {
+    if (
+      pids.includes(known.pid) &&
+      (await processStart(known.pid)) === known.start
+    )
+      return;
+    entry.holder = undefined;
+    entry.holderState = 'unplaced';
+    entry.holderReason = 'holder-gone';
+    logger.warn(
+      'Workload scope holder is gone; an engine memory kill in it will read as unknown',
+      { unit: entry.unit },
+    );
+    return;
+  }
+  if ((entry.holderMisses ?? 0) >= HOLDER_SEARCH_LIMIT) return;
+  const holderCmdline = `${holderBinaries.sleep}\0${HOLDER_SLEEP_SECONDS}\0`;
+  for (const pid of pids) {
+    const cmdline = await readFile(`${procRoot}/${pid}/cmdline`, 'utf8').catch(
+      () => '',
+    );
+    if (cmdline !== holderCmdline) continue;
+    const start = await processStart(pid);
+    if (start === undefined) continue;
+    entry.holder = { pid, start };
+    entry.holderMisses = 0;
     entry.holderState = 'placed';
     entry.holderReason = undefined;
-  } else if (entry.holderState !== 'unplaced') {
+    return;
+  }
+  entry.holderMisses = (entry.holderMisses ?? 0) + 1;
+  if (
+    entry.holderMisses >= HOLDER_MISSES_TO_REPORT &&
+    entry.holderState !== 'unplaced'
+  ) {
     entry.holderState = 'unplaced';
     entry.holderReason = 'not-in-scope';
     logger.warn(

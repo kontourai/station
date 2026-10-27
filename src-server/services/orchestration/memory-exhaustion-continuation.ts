@@ -189,6 +189,32 @@ export function inboxEntryDelivery(inbox: {
         : 'live';
 }
 
+/**
+ * The continuation as Station composes it: submitting to, and reading
+ * delivery from, the conversation inbox. Without an inbox it can only refuse.
+ */
+export function memoryContinuationForInbox(options: {
+  readonly eventStore: MemoryExhaustionContinuationPorts['eventStore'];
+  readonly service: MemoryExhaustionContinuationPorts['service'];
+  readonly inbox:
+    | (Parameters<typeof inboxEntryDelivery>[0] & {
+        submit: NonNullable<MemoryExhaustionContinuationPorts['submit']>;
+      })
+    | undefined;
+  readonly logger: MemoryExhaustionContinuationPorts['logger'];
+  readonly now?: () => number;
+}): MemoryExhaustionContinuation {
+  const { inbox } = options;
+  return new MemoryExhaustionContinuation({
+    eventStore: options.eventStore,
+    service: options.service,
+    submit: inbox ? (input) => inbox.submit(input) : undefined,
+    ...(inbox ? { entryDelivery: inboxEntryDelivery(inbox) } : {}),
+    logger: options.logger,
+    ...(options.now ? { now: options.now } : {}),
+  });
+}
+
 export class MemoryExhaustionContinuation {
   private readonly automatic = new Map<string, number[]>();
   /** Dead turns this process already continued automatically. */

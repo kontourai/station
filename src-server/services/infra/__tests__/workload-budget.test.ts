@@ -303,16 +303,22 @@ describe('workload manager budgets (fake systemd manager)', () => {
     /** The scope's processes, as the kernel lists them, with their cmdlines. */
     const scopeProcesses = async (
       group: string,
-      processes: Array<{ pid: number; cmdline: string }>,
+      processes: Array<{ pid: number; cmdline: string; start?: string }>,
     ) => {
       await mkdir(`${cgroupRoot}${group}`, { recursive: true });
       await writeFile(
         `${cgroupRoot}${group}/cgroup.procs`,
         processes.map(({ pid }) => `${pid}\n`).join(''),
       );
-      for (const { pid, cmdline } of processes) {
+      for (const { pid, cmdline, start = '4242' } of processes) {
         await mkdir(join(procRoot, String(pid)), { recursive: true });
         await writeFile(join(procRoot, String(pid), 'cmdline'), cmdline);
+        // The kernel's stat line: start time is field 22, and the command
+        // name may itself hold spaces and parentheses.
+        await writeFile(
+          join(procRoot, String(pid), 'stat'),
+          `${pid} (sl) ee) S ${Array.from({ length: 18 }, () => '0').join(' ')} ${start} 0 0\n`,
+        );
       }
     };
     const slice = calls[0]?.[2] ?? '';
@@ -657,7 +663,8 @@ describe('workload manager budgets (fake systemd manager)', () => {
     await closeChildWorkload(process.ppid);
 
     // A scope whose processes lack the holder (only the leader, or another
-    // sleep) is reported unplaced, not assumed.
+    // sleep) is reported unplaced, not assumed; one miss is not enough (a
+    // poll can land before setsid's child execs sleep).
     const missing = launch('thread-no-holder');
     const missingUnit = unitOf(missing.args);
     controlGroups.set(missingUnit, `/app.slice/${missingUnit}`);
@@ -668,11 +675,131 @@ describe('workload manager budgets (fake systemd manager)', () => {
     ]);
     trackChildWorkload(missing, process.pid);
     await __workloadTestHooks.pollOomKills();
+    await __workloadTestHooks.pollOomKills();
     expect(
       workloadBudgetStatus().scopes?.find(
         (scope) => scope.unit === missingUnit,
       ),
     ).toMatchObject({ holder: 'unplaced', holderReason: 'not-in-scope' });
+    await closeChildWorkload(process.pid);
+  });
+
+  const holderOf = (unit: string) =>
+    workloadBudgetStatus().scopes?.find((scope) => scope.unit === unit);
+  const HOLDER = '/usr/bin/sleep\x002147483647\0';
+
+  test("a poll in the launch gap, before setsid's child execs sleep, reports nothing", async () => {
+    const { cgroupRoot, controlGroups, scopeProcesses } = await start();
+    const engine = launch('thread-launch-gap');
+    const unit = unitOf(engine.args);
+    const group = `/app.slice/${unit}`;
+    controlGroups.set(unit, group);
+    await writeScopeFixture(`${cgroupRoot}${group}`, 0);
+    await scopeProcesses(group, [
+      { pid: process.pid, cmdline: 'node\0engine\0' },
+      {
+        pid: HOLDER_PID,
+        cmdline: '/usr/bin/setsid\0-f\0/usr/bin/sleep\x002147483647\0',
+      },
+    ]);
+    trackChildWorkload(engine, process.pid);
+    await __workloadTestHooks.pollOomKills();
+    expect(holderOf(unit)?.holder).toBeUndefined();
+    expect(holderOf(unit)?.holderReason).toBeUndefined();
+    await scopeProcesses(group, [
+      { pid: process.pid, cmdline: 'node\0engine\0' },
+      { pid: HOLDER_PID, cmdline: HOLDER },
+    ]);
+    await __workloadTestHooks.pollOomKills();
+    expect(holderOf(unit)).toMatchObject({ holder: 'placed' });
+    await closeChildWorkload(process.pid);
+  });
+
+  test('a holder that later leaves the scope, or whose pid now names another process, is reported gone', async () => {
+    const { cgroupRoot, controlGroups, scopeProcesses } = await start();
+    for (const [sessionId, after] of [
+      // Killed (say, an agent's pkill sleep): no longer in the scope.
+      ['thread-holder-killed', [{ pid: process.pid, cmdline: 'node\0' }]],
+      // The pid is reused by a process that started later.
+      [
+        'thread-holder-reused',
+        [
+          { pid: process.pid, cmdline: 'node\0' },
+          { pid: HOLDER_PID, cmdline: HOLDER, start: '9999' },
+        ],
+      ],
+    ] as const) {
+      const engine = launch(sessionId);
+      const unit = unitOf(engine.args);
+      const group = `/app.slice/${unit}`;
+      controlGroups.set(unit, group);
+      await writeScopeFixture(`${cgroupRoot}${group}`, 0);
+      await scopeProcesses(group, [
+        { pid: process.pid, cmdline: 'node\0' },
+        { pid: HOLDER_PID, cmdline: HOLDER },
+      ]);
+      trackChildWorkload(engine, process.pid);
+      await __workloadTestHooks.pollOomKills();
+      expect(holderOf(unit)).toMatchObject({ holder: 'placed' });
+      // Still there, same start: still placed.
+      await __workloadTestHooks.pollOomKills();
+      expect(holderOf(unit)).toMatchObject({ holder: 'placed' });
+      await scopeProcesses(group, [...after]);
+      await __workloadTestHooks.pollOomKills();
+      expect(holderOf(unit)).toMatchObject({
+        holder: 'unplaced',
+        holderReason: 'holder-gone',
+      });
+      // Gone stays gone, even if a matching sleep shows up again.
+      await scopeProcesses(group, [
+        { pid: process.pid, cmdline: 'node\0' },
+        { pid: HOLDER_PID + 7, cmdline: HOLDER },
+      ]);
+      await __workloadTestHooks.pollOomKills();
+      expect(holderOf(unit)).toMatchObject({ holderReason: 'holder-gone' });
+      await closeChildWorkload(process.pid);
+    }
+  });
+
+  test('a scope without its holder is searched a bounded number of polls, then left not-in-scope', async () => {
+    const { cgroupRoot, controlGroups, scopeProcesses } = await start();
+    // HOLDER_SEARCH_LIMIT, private to the module.
+    const SEARCH_LIMIT = 5;
+    const scope = async (sessionId: string) => {
+      const engine = launch(sessionId);
+      const unit = unitOf(engine.args);
+      const group = `/app.slice/${unit}`;
+      controlGroups.set(unit, group);
+      await writeScopeFixture(`${cgroupRoot}${group}`, 0);
+      await scopeProcesses(group, [{ pid: process.pid, cmdline: 'node\0' }]);
+      trackChildWorkload(engine, process.pid);
+      return { unit, group };
+    };
+    // Found within the limit: placed after all.
+    const late = await scope('thread-holder-late');
+    for (let poll = 1; poll < SEARCH_LIMIT; poll += 1)
+      await __workloadTestHooks.pollOomKills();
+    expect(holderOf(late.unit)).toMatchObject({ holderReason: 'not-in-scope' });
+    await scopeProcesses(late.group, [
+      { pid: process.pid, cmdline: 'node\0' },
+      { pid: HOLDER_PID, cmdline: HOLDER },
+    ]);
+    await __workloadTestHooks.pollOomKills();
+    expect(holderOf(late.unit)).toMatchObject({ holder: 'placed' });
+    await closeChildWorkload(process.pid);
+    // Past the limit the search has stopped: the reason stays.
+    const never = await scope('thread-holder-never');
+    for (let poll = 0; poll < SEARCH_LIMIT; poll += 1)
+      await __workloadTestHooks.pollOomKills();
+    await scopeProcesses(never.group, [
+      { pid: process.pid, cmdline: 'node\0' },
+      { pid: HOLDER_PID, cmdline: HOLDER },
+    ]);
+    await __workloadTestHooks.pollOomKills();
+    expect(holderOf(never.unit)).toMatchObject({
+      holder: 'unplaced',
+      holderReason: 'not-in-scope',
+    });
     await closeChildWorkload(process.pid);
   });
 

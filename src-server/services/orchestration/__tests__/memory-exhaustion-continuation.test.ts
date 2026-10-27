@@ -17,9 +17,8 @@ import {
   AUTO_CONTINUE_CHAIN_MAX,
   AUTO_CONTINUE_MAX,
   AUTO_CONTINUE_WINDOW_MS,
-  inboxEntryDelivery,
   MEMORY_CONTINUATION_TEXT,
-  MemoryExhaustionContinuation,
+  memoryContinuationForInbox,
   memoryContinuationKey,
 } from '../memory-exhaustion-continuation.js';
 import {
@@ -59,7 +58,31 @@ describe('automatic continuation after a memory kill', () => {
 
   function coordinator() {
     const inbox = store.threadInboxStore();
-    return new MemoryExhaustionContinuation({
+    // Composed as Station composes it, over the real kernel record and the
+    // inbox's own non-delivery rule.
+    return memoryContinuationForInbox({
+      inbox: {
+        entry: (conversationId, key) => inbox.read(conversationId, key),
+        nonDeliveryReason: (conversationId, key) =>
+          threadInboxRecordNonDelivery(inbox.read(conversationId, key)),
+        // The inbox kernel's own submit: same key and payload is the same
+        // entry; the same key with another payload is a conflict.
+        submit: (input) => {
+          const result = inbox.submit({ ...input, now: clock });
+          const outcome =
+            result.kind === 'conflict'
+              ? 'conflict'
+              : result.kind === 'capacity'
+                ? 'capacity'
+                : 'queued';
+          submissions.push({ ...input, outcome });
+          return outcome === 'conflict'
+            ? { outcome: 'conflict' }
+            : outcome === 'capacity'
+              ? { outcome: 'capacity', limit: 0 }
+              : ({ outcome: 'queued' } as ThreadInboxSubmission);
+        },
+      },
       eventStore: {
         conversationForSession: (sessionId) => {
           const row = lineage.get(sessionId);
@@ -79,30 +102,6 @@ describe('automatic continuation after a memory kill', () => {
         currentConversationSessionId: (conversationId) =>
           current.get(conversationId) ?? conversationId,
         sessionRecordedOwnerId: (threadId) => owners.get(threadId),
-      },
-      // The inbox kernel's own submit: same key and payload is the same
-      // entry; the same key with another payload is a conflict.
-      // The production adapter and the inbox's own non-delivery rule, over
-      // the real kernel record.
-      entryDelivery: inboxEntryDelivery({
-        entry: (conversationId, key) => inbox.read(conversationId, key),
-        nonDeliveryReason: (conversationId, key) =>
-          threadInboxRecordNonDelivery(inbox.read(conversationId, key)),
-      }),
-      submit: (input) => {
-        const result = inbox.submit({ ...input, now: clock });
-        const outcome =
-          result.kind === 'conflict'
-            ? 'conflict'
-            : result.kind === 'capacity'
-              ? 'capacity'
-              : 'queued';
-        submissions.push({ ...input, outcome });
-        return outcome === 'conflict'
-          ? { outcome: 'conflict' }
-          : outcome === 'capacity'
-            ? { outcome: 'capacity', limit: 0 }
-            : ({ outcome: 'queued' } as ThreadInboxSubmission);
       },
       logger: { warn: vi.fn() },
       now: () => clock,
@@ -450,9 +449,9 @@ describe('automatic continuation after a memory kill', () => {
     const inbox = store.threadInboxStore();
     // Placement refused the start before any effect (the session had ended).
     const claimed = inbox.claimNext('thread-refused', 'placement-1', clock);
-    expect(claimed.kind).toBe('claimed');
+    if (claimed.kind !== 'claimed') throw new Error(claimed.kind);
     inbox.settle(
-      (claimed as { entry: never }).entry,
+      claimed.entry,
       'refused',
       { reasonCode: 'session_ended', reason: 'ended' } as never,
       clock,
@@ -481,9 +480,9 @@ describe('automatic continuation after a memory kill', () => {
     // Placement started and its outcome was never confirmed; then a person
     // dismissed it. It keeps its placement: a turn may exist.
     const claimed = inbox.claimNext('thread-unconfirmed', 'placement-1', clock);
-    expect(claimed.kind).toBe('claimed');
+    if (claimed.kind !== 'claimed') throw new Error(claimed.kind);
     inbox.settle(
-      (claimed as { entry: never }).entry,
+      claimed.entry,
       'unconfirmed',
       { reasonCode: 'unconfirmed', reason: 'no answer' } as never,
       clock,

@@ -41,10 +41,7 @@ import {
 import { AttachmentStagingService } from '../../../services/orchestration/attachment-staging-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
-import {
-  inboxEntryDelivery,
-  MemoryExhaustionContinuation,
-} from '../../../services/orchestration/memory-exhaustion-continuation.js';
+import { memoryContinuationForInbox } from '../../../services/orchestration/memory-exhaustion-continuation.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../../../services/orchestration/session-lifecycle-service.js';
@@ -573,11 +570,10 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     const inbox = makeInbox();
     inbox.start();
     const memoryContinuation = options.memoryContinuation
-      ? new MemoryExhaustionContinuation({
+      ? memoryContinuationForInbox({
           eventStore: store,
           service,
-          submit: (input) => inbox.submit(input),
-          entryDelivery: inboxEntryDelivery(inbox),
+          inbox,
           logger: { warn: vi.fn() },
         })
       : undefined;

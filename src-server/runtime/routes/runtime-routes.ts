@@ -650,10 +650,7 @@ import {
 } from '../../services/orchestration/delegation-result-delivery.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
-import {
-  inboxEntryDelivery,
-  MemoryExhaustionContinuation,
-} from '../../services/orchestration/memory-exhaustion-continuation.js';
+import { memoryContinuationForInbox } from '../../services/orchestration/memory-exhaustion-continuation.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import type { OrchestrationStreamPresence } from '../../services/orchestration/orchestration-stream-presence.js';
 import { ProjectTaskRoomRevisionEvidenceBridge } from '../../services/orchestration/project-task-room-revision-evidence-bridge.js';
@@ -5764,13 +5761,10 @@ export function configureRuntimeRoutes(
   // through the same inbox (capped, idempotent per dead turn). The person's
   // Continue reaches the same entry through the orchestration route.
   const memoryContinuation = context.orchestrationEventStore
-    ? new MemoryExhaustionContinuation({
+    ? memoryContinuationForInbox({
         eventStore: context.orchestrationEventStore,
         service: context.orchestrationService,
-        submit: threadInbox ? (input) => threadInbox.submit(input) : undefined,
-        ...(threadInbox
-          ? { entryDelivery: inboxEntryDelivery(threadInbox) }
-          : {}),
+        inbox: threadInbox,
         logger: context.logger,
       })
     : undefined;
