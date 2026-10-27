@@ -1075,6 +1075,17 @@ export function ChatInputArea({
 
       {/* Settings stay in a scrollable rail; activity and reader controls move together. */}
       <div className="chat-input__meta">
+        {agentEngineMove?.nextTurn && (
+          // A narrow composer's chip cannot hold a destination name, so the
+          // one fact that changes what the next send does gets its own line
+          // there; a wide composer says it in the chip caption.
+          <p className="chat-input__next-turn-notice">
+            Next turn starts on{' '}
+            <span className="chat-input__next-turn-destination">
+              {agentEngineMove.to}
+            </span>
+          </p>
+        )}
         <div className="chat-input__settings">
           {onOpenAgentHandoff && (
             <button
@@ -1117,7 +1128,11 @@ export function ChatInputArea({
           >
             <span className="chat-input__chip-stack">
               <span className="chat-input__chip-caption" aria-hidden="true">
-                {executionEngineLabel ?? 'Engine & model'}
+                {/* The engine name gives way first, so a narrow chip keeps
+                    the move hint rather than cutting it to an ellipsis. */}
+                <span className="chat-input__chip-caption-engine">
+                  {executionEngineLabel ?? 'Engine & model'}
+                </span>
                 {agentEngineMove && (
                   <>
                     <span className="chat-input__engine-moved--full">
@@ -1125,14 +1140,21 @@ export function ChatInputArea({
                         ? ` · Next turn on ${agentEngineMove.to}`
                         : ` · Agent now on ${agentEngineMove.to}`}
                     </span>
-                    <span className="chat-input__engine-moved--short">
-                      {agentEngineMove.nextTurn
-                        ? ` · Next: ${agentEngineMove.to}`
-                        : ' · Agent moved'}
-                    </span>
+                    {/* A narrow composer states the next-turn move in the
+                        notice above the chips instead (no chip has room for
+                        a destination name). */}
+                    {!agentEngineMove.nextTurn && (
+                      <span className="chat-input__engine-moved--short">
+                        {' · Agent moved'}
+                      </span>
+                    )}
                   </>
                 )}
-                {currentExecutionAgentId ? ' · Conversation override' : ''}
+                {currentExecutionAgentId ? (
+                  <span className="chat-input__chip-caption-engine">
+                    {' · Conversation override'}
+                  </span>
+                ) : null}
               </span>
               <span className="chat-input__model-name" aria-hidden="true">
                 {modelLabel}
