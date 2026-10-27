@@ -37,8 +37,10 @@ function moduleLabel(testModule) {
 }
 
 /**
- * Reports observed lifecycle state, not a liveness verdict. A queued module
- * has not loaded yet; an empty set establishes no teardown attribution.
+ * Reports observed lifecycle state, not a liveness verdict. Queued is the last
+ * observed enqueue: load/collection completion has not yet been observed.
+ * It can persist while imports or top-level code execute. An empty set
+ * establishes no teardown attribution.
  * The interval is unref'd so diagnostics can never keep Vitest alive.
  */
 export { DEFAULT_INTERVAL_MS, HEARTBEATS_PER_TIMEOUT_BUDGET };
