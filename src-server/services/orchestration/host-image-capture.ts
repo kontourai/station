@@ -1,6 +1,6 @@
 import { constants as fsConstants } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, isAbsolute, relative, sep } from 'node:path';
 import { crc32 } from 'node:zlib';
 import {
@@ -578,30 +578,66 @@ async function resolvedOrSelf(path: string): Promise<string> {
  * root, or a hidden folder under home is not a root: admitting it would make
  * every picture in `~` readable to a reply. The same rule decides whether a
  * workspace can be a confined write grant (`seatbeltWorkspaceRefusal`).
+ *
+ * A shared temporary directory is refused the same way: a working folder
+ * that is, or contains, the system temp directory (`os.tmpdir()`, `/tmp`,
+ * `/var/tmp`, `/dev/shm`), or any world-writable directory, would admit
+ * files every user and process on the host can write there. A Project
+ * folder inside `/tmp` is still a root; `/tmp` itself is not.
  */
+const SHARED_TEMP_DIRS = ['/tmp', '/var/tmp', '/dev/shm'];
+
+async function sharedTempRefusal(
+  directory: string,
+  sharedTemp: readonly string[],
+): Promise<boolean> {
+  if (
+    sharedTemp.some(
+      (shared) =>
+        !relative(directory, shared).startsWith('..') &&
+        !isAbsolute(relative(directory, shared)),
+    )
+  )
+    return true;
+  try {
+    return ((await lstat(directory)).mode & 0o002) !== 0;
+  } catch {
+    return true;
+  }
+}
+
 export async function hostImageCaptureRoots(input: {
   cwd?: string;
   sessionTmpDir?: string;
   home?: string;
   stationHome?: string;
   listWorktrees?: (root: string) => Promise<readonly string[]>;
+  /** Test seam; defaults to the host's shared temp directories. */
+  sharedTempDirs?: readonly string[];
 }): Promise<string[]> {
   const roots: string[] = [];
+  const sharedTemp = await Promise.all(
+    (input.sharedTempDirs ?? [tmpdir(), ...SHARED_TEMP_DIRS]).map(
+      resolvedOrSelf,
+    ),
+  );
   const bounds = {
     home: await resolvedOrSelf(input.home ?? homedir()),
     stationHome: await resolvedOrSelf(input.stationHome ?? resolveHomeDir()),
   };
-  const admissible = (directory: string) =>
-    isAbsolute(directory) && !seatbeltWorkspaceRefusal(directory, bounds);
+  const admissible = async (directory: string) =>
+    isAbsolute(directory) &&
+    !seatbeltWorkspaceRefusal(directory, bounds) &&
+    !(await sharedTempRefusal(directory, sharedTemp));
   if (input.cwd && isAbsolute(input.cwd)) {
     const cwd = await resolvedOrSelf(input.cwd);
-    if (admissible(cwd)) {
+    if (await admissible(cwd)) {
       roots.push(cwd);
       const worktrees = await (
         input.listWorktrees ?? ((root) => listVerifiedWorktrees(root, 5000))
       )(cwd).catch(() => [] as readonly string[]);
       for (const worktree of worktrees)
-        if (admissible(worktree) && !roots.includes(worktree))
+        if ((await admissible(worktree)) && !roots.includes(worktree))
           roots.push(worktree);
     }
   }

@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   linkSync,
   mkdirSync,
   readFileSync,
@@ -7,6 +8,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { crc32, deflateSync } from 'node:zlib';
 import { hostImagePathFromDestination } from '@kontourai/station-contracts/chat-host-images';
@@ -180,6 +182,35 @@ describe('captureHostImages', () => {
     expect(result.sources).toEqual([
       { path: key, refused: 'outside-allowed-roots' },
     ]);
+  });
+
+  test('a shared temp directory, an ancestor of one, or a world-writable folder is never a working-folder root', async () => {
+    const shared = join(base, 'shared-tmp');
+    const open = join(base, 'world-writable');
+    const project = join(shared, 'project');
+    mkdirSync(project, { recursive: true });
+    mkdirSync(open);
+    chmodSync(open, 0o777);
+    const rootsFor = (cwd: string) =>
+      hostImageCaptureRoots({
+        cwd,
+        home: join(base, 'home'),
+        stationHome: join(base, 'station-home'),
+        listWorktrees: async () => [],
+        sharedTempDirs: [shared],
+      });
+    expect(await rootsFor(shared)).toEqual([]);
+    expect(await rootsFor(base)).toEqual([]);
+    expect(await rootsFor(open)).toEqual([]);
+    // A Project folder inside the shared temp directory is still a root.
+    expect(await rootsFor(project)).toEqual([project]);
+    // The real defaults refuse the host's own temp directory.
+    expect(
+      await hostImageCaptureRoots({
+        cwd: tmpdir(),
+        listWorktrees: async () => [],
+      }),
+    ).toEqual([]);
   });
 
   test('a project working directory and the session temp folder are roots', async () => {
