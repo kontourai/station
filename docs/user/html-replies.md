@@ -38,10 +38,11 @@ no second hard link. Packages that pnpm installs are hard links into its
 shared store, so images inside them are refused; copy one out first. Agents started while the
 preview is on get that temporary folder as `$TMPDIR` (Claude under macOS
 confinement keeps its confinement's own temporary folder, and that exact folder
-is the one read). It is removed when Station sees the session end; if an engine
-exits without that (for example an idle ACP engine killed from outside), the
-folder stays until the session is stopped or Station next restarts and sweeps
-it. Station's built-in agent runs inside Station and has no temporary folder of
+is the one read). It is removed when the session ends, including when its
+engine dies on its own (Claude, Codex and ACP engines); a confined Claude's
+folder is removed when the session is stopped, and a `muse serve` host that
+dies keeps its folder until the session is stopped or Station next restarts
+and sweeps it. Station's built-in agent runs inside Station and has no temporary folder of
 its own.
 
 A working folder is not read at all when it is or contains your home folder or
