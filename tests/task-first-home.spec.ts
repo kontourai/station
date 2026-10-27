@@ -1444,18 +1444,19 @@ test.describe('Task-first Home (#332, mocked)', () => {
         .getByRole('navigation', { name: 'Primary navigation' })
         .getByRole('button', { name: 'Connections', exact: true }),
     ).toHaveCount(0);
-    // The advertised path from here is the footer's gear into Settings'
-    // Manage group. It is proven by pressing it in the two suites whose
-    // fixtures model the Settings page — project-architecture.spec.ts
-    // ("connections view renders") and registry.spec.ts — rather than here:
+    // The advertised path from here is the footer's Customize chooser, whose
+    // Connections row opens the hub at its Engines tab. The journey that
+    // presses it is project-architecture.spec.ts ("connections view
+    // renders"), whose fixtures model the destination, not this one:
     // `mockTaskFirstHome` models Home, and routing this test through Settings
     // made it issue five API reads the fixture has no shape for, which is the
-    // audit failure this comment replaces rather than papers over.
+    // audit failure this comment replaces rather than papers over. Here only
+    // the trigger is asserted to be on screen from a cold start.
     await page.goto('/');
     await expect(
       page
         .getByRole('navigation', { name: 'Primary navigation' })
-        .getByRole('button', { name: 'Settings', exact: true }),
+        .getByRole('button', { name: 'Customize', exact: true }),
     ).toBeVisible();
   });
 
@@ -1924,7 +1925,8 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
     // #2059 (design record D3): the mobile drawer lists PLACES, and the
     // configuration destinations it used to group under `Customize`/`System`
-    // are behind the footer's gear. This is the same accessibility contract as
+    // are behind the footer's Customize chooser and its account menu's Open
+    // settings row. This is the same accessibility contract as
     // before — every advertised navigation control a thumb must hit clears the
     // 44px floor, and nothing overflows the viewport horizontally — re-aimed
     // at the surfaces that carry it now rather than deleted with the groups.
@@ -1970,17 +1972,25 @@ test.describe('Task-first Home (#332, mocked)', () => {
         ).toHaveCount(0);
       }
 
-      // The footer's two navigation controls are the drawer's only remaining
-      // destination affordances, so they carry the floor the rows used to.
-      for (const label of ['Schedule', 'Customize', 'Settings']) {
-        const control = navigation.getByRole('button', { name: label });
+      // The footer's controls are the drawer's only remaining destination
+      // affordances, so they carry the floor the rows used to. The account
+      // control is matched by its own name: a bare /settings/ substring would
+      // also be satisfied by it, which is how a removed Settings gear could
+      // keep passing here.
+      for (const name of [
+        /^Schedule$/,
+        /^Customize$/,
+        /^Updates(: .+)?$/,
+        /^Profile and settings:/,
+      ]) {
+        const control = navigation.getByRole('button', { name });
         await expect(control).toBeVisible();
         const box = (await control.boundingBox())!;
         expect(box.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
         expect(box.width).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
       }
 
-      // The Manage group the gear lands on carries the other half of this
+      // The Manage group Settings opens on carries the other half of this
       // contract — its entries are thumb-sized too — and it is asserted in
       // settings.spec.ts, whose fixture models the Settings page. This one
       // owns the drawer.

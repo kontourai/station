@@ -769,17 +769,16 @@ export async function emitMockOrchestrationEvent(
  * Opens Settings the way the shell now offers it.
  *
  * #1552 D1 folded "Open settings" into the account menu, whose trigger is
- * the sidebar footer's account control beside Live work. On a desktop that
+ * the account control at the end of the sidebar footer. On a desktop that
  * footer is on screen (expanded or as the collapsed rail); on a phone it is
- * inside the closed drawer, whose footer also carries a Settings button, so
- * this takes whichever route the running breakpoint actually offers rather
- * than assuming one.
+ * inside the closed drawer, so the phone route opens the drawer first and
+ * then takes the same account menu. This waits to see which breakpoint is
+ * running rather than assuming one.
  *
- * The account branch is deliberately a real click through the real menu: it
- * is the only end-to-end coverage of that route, and a spec that reached
- * Settings by chord would pass with the menu completely broken. The drawer
- * branch is the same idea: a real open of the drawer plus the real footer
- * button, so a spec fails if either stops existing.
+ * Both branches are deliberately real clicks through the real menu: this is
+ * the end-to-end coverage of that route, and a spec that reached Settings by
+ * chord would pass with the menu completely broken. On a phone the drawer
+ * toggle, the drawer's account control and the menu row must all exist.
  */
 export async function openHeaderSettings(page: Page): Promise<void> {
   const avatar = page.getByRole('button', { name: /^Profile and settings:/ });
@@ -792,18 +791,19 @@ export async function openHeaderSettings(page: Page): Promise<void> {
   await expect(avatar.or(drawerToggle).first()).toBeVisible({
     timeout: 15_000,
   });
-  if (await avatar.isVisible()) {
-    await avatar.click();
+  if (!(await avatar.isVisible())) {
+    // The phone route: the hamburger opens the sidebar drawer, whose footer
+    // carries the same account control.
+    await drawerToggle.click();
     await page
-      .getByRole('menuitem', { name: 'Open settings' })
+      .getByRole('navigation', { name: 'Mobile navigation' })
+      .getByRole('button', { name: /^Profile and settings:/ })
       .click({ timeout: 10_000 });
-    return;
+  } else {
+    await avatar.click();
   }
-  // The phone route: the hamburger opens the sidebar drawer, whose footer
-  // carries the Settings button.
-  await drawerToggle.click();
   await page
-    .getByRole('button', { name: 'Settings', exact: true })
+    .getByRole('menuitem', { name: 'Open settings' })
     .click({ timeout: 10_000 });
 }
 

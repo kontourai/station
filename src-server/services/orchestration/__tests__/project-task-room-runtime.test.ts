@@ -1374,14 +1374,11 @@ describe('ProjectTaskRoomRuntime', () => {
   // stale lease. What removes it is TTL expiry — `expiresAt` is renewed by the
   // heartbeat and `#prune` drops the participant on the next read.
   //
-  // This is the server half of the sidebar presence tray's claim (#2066). The
-  // tray tells the user a participant that stops heartbeating is dropped "up
-  // to about forty seconds" later: THIS bound plus the client's poll
-  // (`LIVE_ACTIVITY_POLL_INTERVAL_MS`, pinned in
-  // `packages/sdk/src/__tests__/live-activity.test.ts`). An earlier version of
-  // the copy said "about half a minute", which quoted this constant alone and
-  // omitted the poll — so quoting the copy here means quoting the CURRENT one.
-  // Nothing else in the projection's chain expires a human participant.
+  // A reader of the live-activity projection sees a participant that stops
+  // heartbeating dropped at most this lease after its last heartbeat, plus
+  // however long that reader waits between polls (the SDK's
+  // `LIVE_ACTIVITY_POLL_INTERVAL_MS`). Nothing else in the projection's chain
+  // expires a human participant.
   test('liveActivity: a participant that stops heartbeating expires from the projection', async () => {
     // Only `Date` is faked: the runtime reads the clock through `Date.now()`
     // and its sqlite/async work must keep running for real.
@@ -1422,9 +1419,9 @@ describe('ProjectTaskRoomRuntime', () => {
       projection: { participants: [] },
     });
 
-    // The literal the tray's copy is written against, pinned alongside the
-    // derived arithmetic above so widening the bound cannot quietly keep this
-    // test green while the copy goes stale.
+    // The literal lease, pinned alongside the arithmetic above (which is
+    // derived from the same constant) so widening the bound cannot quietly
+    // keep this test green.
     expect(DEFAULT_LIVE_WORK_BOUNDS.ttlMs).toBe(30_000);
   });
 

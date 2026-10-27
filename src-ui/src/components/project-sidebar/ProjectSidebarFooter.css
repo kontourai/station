@@ -6,9 +6,6 @@
 .sidebar__update {
   display: flex;
 }
-.sidebar__update:empty {
-  display: none;
-}
 .sidebar--collapsed .sidebar__update {
   justify-content: center;
 }

@@ -33,10 +33,6 @@
 import { copyFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { AccountPreferencesView } from '@kontourai/station-contracts/account-preferences';
-import {
-  LIVE_ACTIVITY_SCHEMA_VERSION,
-  parseLiveActivityProjection,
-} from '@kontourai/station-contracts/live-activity';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { expect, type Locator, type TestInfo, test } from '@playwright/test';
 import { seedMobileTaskSwitcher } from './helpers/chat-shell-fixture';
@@ -518,31 +514,16 @@ test.describe('Activity surface at 390x844', () => {
   });
 });
 
-fixtureTest.describe('Live work in the sidebar footer', () => {
+/**
+ * Live work's phone route is the header overflow's row: the sidebar footer
+ * carries no Live work control, so the `⋯` menu's row names the active-session
+ * count and opens Activity, where that work is listed.
+ */
+fixtureTest.describe('Live work on the phone', () => {
   fixtureTest.beforeEach(async ({ page }) => {
     await seedOrchestrationRoutes(page);
     await installMockOrchestrationSse(page);
-    const observedAt = Date.now();
-    const liveProjection = {
-      schemaVersion: LIVE_ACTIVITY_SCHEMA_VERSION,
-      observedAt,
-      connectedClients: 4,
-      participants: Array.from({ length: 4 }, (_, index) => ({
-        id: (index + 1).toString(16).padStart(24, '0'),
-        actor: { kind: 'human', label: `Participant ${index + 1}` },
-        scope: { projectId: 'p1', projectSlug: 'demo', taskId: '77' },
-        work: {
-          workName: 'Reviewing work',
-          workState: 'reviewing',
-          startedAt: observedAt,
-        },
-      })),
-    };
-    if (!parseLiveActivityProjection(liveProjection))
-      throw new Error('Invalid live presence fixture');
-    await page.route('**/api/live-activity', (route) =>
-      route.fulfill({ json: { success: true, data: liveProjection } }),
-    );
+    const observedAt = new Date().toISOString();
     await page.route('**/api/orchestration/sessions/read-model*', (route) =>
       route.fulfill({
         json: {
@@ -557,53 +538,14 @@ fixtureTest.describe('Live work in the sidebar footer', () => {
             isLoaded: true,
             isPersisted: true,
             eventCount: 1,
-            createdAt: new Date(observedAt).toISOString(),
-            updatedAt: new Date(observedAt).toISOString(),
+            createdAt: observedAt,
+            updatedAt: observedAt,
           })),
         },
       }),
     );
     await page.goto('/settings');
   });
-
-  fixtureTest(
-    'populated live work fits the sidebar beside its three footer actions',
-    async ({ page }, testInfo) => {
-      await page.setViewportSize({ width: 1280, height: 900 });
-      const footer = page.locator('.sidebar__footer');
-      const presence = footer.getByRole('button', {
-        name: /4 participants.*2 active sessions/,
-      });
-      await expect(presence).toBeVisible();
-      const bounds = (await footer.boundingBox())!;
-      for (const name of ['Schedule', 'Customize', 'Settings']) {
-        const box = (await footer
-          .getByRole('button', { name, exact: true })
-          .boundingBox())!;
-        expect(box.x).toBeGreaterThanOrEqual(bounds.x);
-        expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width);
-      }
-      await page.screenshot({
-        path: testInfo.outputPath('footer-populated-desktop.png'),
-      });
-      await page
-        .getByRole('button', { name: 'Collapse workspace map' })
-        .click();
-      // Live work stays on the collapsed rail itself, outside the utilities.
-      await expect(
-        footer.getByRole('button', {
-          name: /4 participants.*2 active sessions/,
-        }),
-      ).toBeVisible();
-      await footer.getByRole('button', { name: 'Sidebar utilities' }).click();
-      const utilities = page.getByRole('dialog', { name: 'Sidebar utilities' });
-      for (const name of ['Schedule', 'Customize', 'Settings']) {
-        await expect(
-          utilities.getByRole('button', { name, exact: true }),
-        ).toBeVisible();
-      }
-    },
-  );
 
   /**
    * The phone's `⋯` menu: Live work's state trails its label at the row's
@@ -647,22 +589,15 @@ fixtureTest.describe('Live work in the sidebar footer', () => {
   );
 
   fixtureTest(
-    'opening live Activity closes mobile navigation and reveals the work',
+    'the overflow Live work row opens Activity on the running work',
     async ({ page }, testInfo) => {
       await page.setViewportSize({ width: 390, height: 844 });
-      await page.getByRole('button', { name: 'Toggle menu' }).click();
-      const navigation = page.getByRole('navigation', {
-        name: 'Mobile navigation',
+      await page.getByRole('button', { name: 'More actions' }).click();
+      const liveWork = page.getByRole('button', {
+        name: 'Live work, 2 active',
       });
-      const presence = navigation.getByRole('button', {
-        name: /4 participants.*2 active sessions/,
-      });
-      await expect(presence).toBeVisible();
-      await presence.click();
-      await page
-        .getByRole('button', { name: 'Open Activity', exact: true })
-        .click();
-      await expect(navigation).toBeHidden();
+      await liveWork.click();
+      await expect(liveWork).toBeHidden();
       await expect(
         page.getByRole('heading', { name: 'Activity', exact: true }),
       ).toBeVisible();
@@ -671,7 +606,7 @@ fixtureTest.describe('Live work in the sidebar footer', () => {
       ).toBeVisible();
       expect(await documentFitsViewportWidth(page)).toBe(true);
       await page.screenshot({
-        path: testInfo.outputPath('footer-activity-mobile.png'),
+        path: testInfo.outputPath('overflow-live-work-activity.png'),
       });
     },
   );
@@ -732,180 +667,109 @@ async function captureFooter(
 }
 
 /**
- * Live work and the account control on the 216px expanded footer (the
- * reported defect: Live work's word ran under the account control), on the
- * collapsed rail and in the phone drawer — empty and populated, in both
- * themes. Geometry from the rendered page, not class names.
+ * The sidebar footer's one row: Schedule and Customize at its start, the
+ * icon-only Updates control and the account control at its end. Measured on
+ * the 216px expanded sidebar in both themes, on the collapsed rail (where
+ * Schedule and Customize move behind Sidebar utilities while Updates and the
+ * account stay on the rail) and in the phone drawer at 390 and 320px, where
+ * every control takes the 44px touch floor. Geometry from the rendered page,
+ * not class names.
  */
-fixtureTest.describe('Live work beside the account control', () => {
-  for (const roster of ['empty', 'populated'] as const) {
-    fixtureTest(
-      `${roster} Live work never runs under the account control`,
-      async ({ page }, testInfo) => {
-        await seedOrchestrationRoutes(page);
-        await installMockOrchestrationSse(page);
-        const observedAt = Date.now();
-        const liveProjection = {
-          schemaVersion: LIVE_ACTIVITY_SCHEMA_VERSION,
-          observedAt,
-          connectedClients: roster === 'empty' ? 1 : 4,
-          participants:
-            roster === 'empty'
-              ? []
-              : Array.from({ length: 4 }, (_, index) => ({
-                  id: (index + 1).toString(16).padStart(24, '0'),
-                  actor: { kind: 'human', label: `Participant ${index + 1}` },
-                  scope: { projectId: 'p1', projectSlug: 'demo', taskId: '77' },
-                  work: {
-                    workName: 'Reviewing work',
-                    workState: 'reviewing',
-                    startedAt: observedAt,
-                  },
-                })),
-        };
-        if (!parseLiveActivityProjection(liveProjection))
-          throw new Error('Invalid live presence fixture');
-        await page.route('**/api/live-activity', (route) =>
-          route.fulfill({ json: { success: true, data: liveProjection } }),
-        );
-        await page.route('**/api/orchestration/sessions/read-model*', (route) =>
-          route.fulfill({
-            json: {
-              success: true,
-              data:
-                roster === 'empty'
-                  ? []
-                  : [1, 2].map((index) => ({
-                      provider: 'station',
-                      threadId: `station:footer-${index}`,
-                      status: 'busy',
-                      controlMode: 'station-owned',
-                      lifecycleState: 'running',
-                      hasActiveTurn: true,
-                      isLoaded: true,
-                      isPersisted: true,
-                      eventCount: 1,
-                      createdAt: new Date(observedAt).toISOString(),
-                      updatedAt: new Date(observedAt).toISOString(),
-                    })),
-            },
-          }),
-        );
-        await page.setViewportSize({ width: 1280, height: 900 });
-        await page.goto('/settings');
-        await page.evaluate(() => document.fonts.ready);
-        const footer = page.locator('.sidebar__footer');
-        const liveWork = footer.getByRole('button', { name: /^Who is here:/ });
-        const account = footer.getByRole('button', {
-          name: /^Profile and settings:/,
-        });
-        await expect(liveWork).toBeVisible({
-          timeout: FIRST_RENDER_TIMEOUT_MS,
-        });
-        if (roster === 'populated')
-          await expect(liveWork).toHaveAccessibleName(
-            /4 participants.*2 active sessions/,
+fixtureTest.describe('Sidebar footer controls', () => {
+  fixtureTest(
+    'every footer control stays inside the footer, apart and reachable',
+    async ({ page }, testInfo) => {
+      await seedOrchestrationRoutes(page);
+      await installMockOrchestrationSse(page);
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await page.goto('/settings');
+      await page.evaluate(() => document.fonts.ready);
+      const controlsIn = (root: Locator) => ({
+        Schedule: root.getByRole('button', { name: 'Schedule', exact: true }),
+        Customize: root.getByRole('button', {
+          name: 'Customize',
+          exact: true,
+        }),
+        Updates: root.getByRole('button', { name: /^Updates(: .+)?$/ }),
+        account: root.getByRole('button', { name: /^Profile and settings:/ }),
+      });
+      const footer = page.locator('.sidebar__footer');
+      const expanded = controlsIn(footer);
+      await expect(expanded.account).toBeVisible({
+        timeout: FIRST_RENDER_TIMEOUT_MS,
+      });
+      for (const theme of ['dark', 'light'] as const) {
+        await page.evaluate((value) => {
+          document.documentElement.setAttribute('data-theme', value);
+        }, theme);
+        // The expanded sidebar at its own 216px width: nothing here has more
+        // room than that.
+        expect((await footer.boundingBox())?.width).toBeLessThanOrEqual(216);
+        await expectFooterControlsApart(footer, expanded);
+        // One row, in reading order: Schedule, Customize, Updates, account.
+        const boxes: Box[] = [];
+        for (const control of Object.values(expanded))
+          boxes.push((await control.boundingBox()) as Box);
+        for (const [index, box] of boxes.slice(1).entries()) {
+          const previous = boxes[index];
+          expect(box.x).toBeGreaterThanOrEqual(
+            previous.x + previous.width - 0.5,
           );
-        for (const theme of ['dark', 'light'] as const) {
-          await page.evaluate((value) => {
-            document.documentElement.setAttribute('data-theme', value);
-          }, theme);
-          // The expanded sidebar at its own 216px width, the reported case:
-          // nothing here has more room than that.
-          expect((await footer.boundingBox())?.width).toBeLessThanOrEqual(216);
-          const triggerBox = (await liveWork.boundingBox()) as Box;
-          const accountBox = (await account.boundingBox()) as Box;
-          expect(triggerBox.x + triggerBox.width).toBeLessThanOrEqual(
-            accountBox.x + 0.5,
-          );
-          if (roster === 'empty') {
-            const word = liveWork.getByText('Live work', { exact: true });
-            const wordBox = (await word.boundingBox()) as Box;
-            expect(wordBox.x + wordBox.width).toBeLessThanOrEqual(
-              accountBox.x + 0.5,
-            );
-          }
-          await expectFooterControlsApart(footer, {
-            'Live work': liveWork,
-            account,
-            Schedule: footer.getByRole('button', {
-              name: 'Schedule',
-              exact: true,
-            }),
-            Customize: footer.getByRole('button', {
-              name: 'Customize',
-              exact: true,
-            }),
-            Settings: footer.getByRole('button', {
-              name: 'Settings',
-              exact: true,
-            }),
-          });
-          await captureFooter(
-            footer,
-            testInfo,
-            `footer-${roster}-${theme}-expanded.png`,
-          );
+          expect(
+            Math.abs(
+              box.y + box.height / 2 - (previous.y + previous.height / 2),
+            ),
+          ).toBeLessThanOrEqual(1);
         }
+        await captureFooter(footer, testInfo, `footer-${theme}-expanded.png`);
+      }
 
-        await page
-          .getByRole('button', { name: 'Collapse workspace map' })
-          .click();
-        const rail = page.locator('.sidebar--collapsed .sidebar__footer');
-        await expect(rail).toBeVisible();
-        await expectFooterControlsApart(rail, {
-          'Live work': rail.getByRole('button', { name: /^Who is here:/ }),
-          account: rail.getByRole('button', { name: /^Profile and settings:/ }),
-          utilities: rail.getByRole('button', { name: 'Sidebar utilities' }),
-        });
-        await expect(rail.getByText('Live work', { exact: true })).toBeHidden();
-        await captureFooter(rail, testInfo, `footer-${roster}-collapsed.png`);
+      await page
+        .getByRole('button', { name: 'Collapse workspace map' })
+        .click();
+      const rail = page.locator('.sidebar--collapsed .sidebar__footer');
+      await expect(rail).toBeVisible();
+      const utilitiesTrigger = rail.getByRole('button', {
+        name: 'Sidebar utilities',
+      });
+      await expectFooterControlsApart(rail, {
+        utilities: utilitiesTrigger,
+        Updates: controlsIn(rail).Updates,
+        account: controlsIn(rail).account,
+      });
+      await captureFooter(rail, testInfo, 'footer-collapsed.png');
+      await utilitiesTrigger.click();
+      const utilities = page.getByRole('dialog', { name: 'Sidebar utilities' });
+      for (const name of ['Schedule', 'Customize']) {
+        await expect(
+          utilities.getByRole('button', { name, exact: true }),
+        ).toBeVisible();
+      }
+      await page.keyboard.press('Escape');
+      await expect(utilities).toBeHidden();
 
-        for (const width of [390, 320]) {
-          await page.setViewportSize({ width, height: 844 });
-          const toggle = page.getByRole('button', { name: 'Toggle menu' });
-          await toggle.click();
-          const drawer = page
-            .getByRole('navigation', { name: 'Mobile navigation' })
-            .locator('.sidebar__footer');
-          await expect(drawer).toBeVisible();
-          const phoneControls = {
-            'Live work': drawer.getByRole('button', { name: /^Who is here:/ }),
-            account: drawer.getByRole('button', {
-              name: /^Profile and settings:/,
-            }),
-            Schedule: drawer.getByRole('button', {
-              name: 'Schedule',
-              exact: true,
-            }),
-            Customize: drawer.getByRole('button', {
-              name: 'Customize',
-              exact: true,
-            }),
-            Settings: drawer.getByRole('button', {
-              name: 'Settings',
-              exact: true,
-            }),
-          };
-          await expectFooterControlsApart(drawer, phoneControls);
-          // The phone's touch floor, measured on every footer control.
-          for (const [name, control] of Object.entries(phoneControls))
-            expect(
-              (await control.boundingBox())?.height,
-              `${name} height`,
-            ).toBeGreaterThanOrEqual(44);
-          expect(await documentFitsViewportWidth(page)).toBe(true);
-          await captureFooter(
-            drawer,
-            testInfo,
-            `footer-${roster}-phone-${width}.png`,
-          );
-          await page.keyboard.press('Escape');
-          await expect(drawer).toBeHidden();
+      for (const width of [390, 320]) {
+        await page.setViewportSize({ width, height: 844 });
+        await page.getByRole('button', { name: 'Toggle menu' }).click();
+        const drawer = page
+          .getByRole('navigation', { name: 'Mobile navigation' })
+          .locator('.sidebar__footer');
+        await expect(drawer).toBeVisible();
+        const phoneControls = controlsIn(drawer);
+        await expectFooterControlsApart(drawer, phoneControls);
+        // The phone's touch floor, measured on every footer control.
+        for (const [name, control] of Object.entries(phoneControls)) {
+          const box = (await control.boundingBox()) as Box;
+          expect(box.height, `${name} height`).toBeGreaterThanOrEqual(44);
+          expect(box.width, `${name} width`).toBeGreaterThanOrEqual(44);
         }
-      },
-    );
-  }
+        expect(await documentFitsViewportWidth(page)).toBe(true);
+        await captureFooter(drawer, testInfo, `footer-phone-${width}.png`);
+        await page.keyboard.press('Escape');
+        await expect(drawer).toBeHidden();
+      }
+    },
+  );
 });
 
 fixtureTest.describe('Earlier history paging', () => {
