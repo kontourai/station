@@ -23,6 +23,7 @@ import {
   createStationHomeUpdateBackup,
   restoreStationHomeUpdateBackup,
   STATION_HOME_BACKUP_MANIFEST,
+  STATION_HOME_RECOVERY_RECORD,
   STATION_HOME_UPDATE_BACKUP_SCHEMA,
   StationHomeArchiveError,
 } from '../station-home-archive.js';
@@ -168,6 +169,23 @@ describe('update backup and in-place restore (#2675 D)', () => {
       expect(existsSync(join(home, 'trial-state'))).toBe(false);
     },
   );
+
+  it('refuses replacement of the restore-owned recovery fence before verification', () => {
+    const root = makeTempDir('update-recovery-fence-');
+    const home = join(root, 'home');
+    ensureStationHomeSchemaSync(home);
+    const backupDir = join(root, 'backup');
+    createStationHomeUpdateBackup({ homeDir: home, backupDir });
+    expect(() =>
+      restoreStationHomeUpdateBackup({
+        homeDir: home,
+        backupDir,
+        afterRemove: () => {
+          writeFileSync(join(home, STATION_HOME_RECOVERY_RECORD), '{}\n');
+        },
+      }),
+    ).toThrow(/recovery metadata changed during restore/);
+  });
 
   it('keeps non-exempt directory entries inside the verification budget', () => {
     const root = makeTempDir('update-directory-budget-control-');

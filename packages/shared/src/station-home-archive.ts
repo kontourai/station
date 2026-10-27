@@ -651,6 +651,7 @@ function collectEntries(
     kind: BackupKind;
     includeDirectories?: boolean;
     expectedDirectories?: ReadonlySet<string>;
+    expectedRecoveryRecord?: StationHomeRecoveryRecord;
     excludeMediaTools?: boolean;
   },
 ): {
@@ -689,6 +690,16 @@ function collectEntries(
       assertSegment(entry.name);
       const path = join(directory, entry.name);
       let stats = lstatSync(path);
+      if (options.expectedRecoveryRecord && recoveryPath(segments)) {
+        const expected = `${JSON.stringify(options.expectedRecoveryRecord)}\n`;
+        if (
+          !stats.isFile() ||
+          stats.size !== Buffer.byteLength(expected) ||
+          readFileSync(path, 'utf8') !== expected
+        )
+          fail('recovery metadata changed during restore');
+        continue;
+      }
       // New snapshots omit downloads; validation still inspects archived bytes.
       if (
         (options.excludeMediaTools && segments[0] === 'media-tools') ||
@@ -1617,7 +1628,8 @@ export function restoreStationHomeUpdateBackup(
       targetAncestors,
       directoryTargets,
     );
-    publishRecoveryRecord(homeDir, recoveryRecord(manifest));
+    const recovery = recoveryRecord(manifest);
+    publishRecoveryRecord(homeDir, recovery);
     removeUpdateState(homeDir, []);
     fsyncDirectorySync(homeDir);
     options.afterRemove?.();
@@ -1637,6 +1649,7 @@ export function restoreStationHomeUpdateBackup(
     );
     const restored = collectEntries(homeDir, limits, {
       kind: 'update',
+      expectedRecoveryRecord: recovery,
       includeDirectories: directories !== undefined,
       ...(directories === undefined ? {} : { expectedDirectories }),
     });
