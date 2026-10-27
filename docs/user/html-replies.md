@@ -34,7 +34,10 @@ served like an image you attached: only to people who can read that chat.
 Station reads an image only when, after following every symbolic link, it is
 inside the chat's working folder, a verified Git worktree of it, or the chat's
 own temporary folder. Agents started while the preview is on get that folder
-as `$TMPDIR`; it is removed when the session ends. A chat whose working folder is
+as `$TMPDIR` (Claude under macOS confinement keeps its confinement's own
+temporary folder, and that exact folder is the one read); it is removed when
+the session ends. Station's built-in agent runs inside Station and has no
+temporary folder of its own. A chat whose working folder is
 your home folder (or contains it or Station's data) has no working-folder root,
 so only its temporary folder is read. Paths elsewhere, including the system
 temporary folder, are not read. The file must really be a PNG, JPEG, GIF or WebP image (checked by
@@ -44,16 +47,17 @@ the file does not change the copy.
 
 An image Station did not keep shows **Image not available on this device** and
 the reason: outside the working and temporary folders, missing, not an image,
-too large, too many pixels, too many images, unreadable, or the chat's attachment
-storage is full. While a reply is still streaming the image shows "Image appears
+too large, too many pixels, too many images, a file with more than one hard
+link, unreadable, or the chat's attachment storage is full. While a reply is still streaming the image shows "Image appears
 when the reply finishes". For a path Station has no record of (a reply from
 before the preview was on), a Project conversation falls back to the Project
 file reader described above.
 
 While the preview is on, the agent's first turn includes one line asking it to
-save images there and reference them by absolute path. Agents that run without
-a Station-owned temporary folder (Claude under macOS confinement, which uses its
-own, and Station's built-in agent) must save under the working folder instead.
+save images where they can render and reference them by absolute path. The line
+names `$TMPDIR` only when that session's agent was started with a temporary
+folder Station reads; a chat with neither a working-folder root nor such a
+folder gets no line, since none of its images could render.
 
 Publishing writes to the conversation and may require engine tool approval.
 For example, Codex configured with approval policy `never` can refuse the write;
