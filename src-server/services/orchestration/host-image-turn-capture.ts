@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { FeaturePreviewSelector } from '../feature-previews/feature-preview-registry.js';
 import {
-  sessionTempRoot,
   removeSessionTmpDir,
+  sessionTempRoot,
 } from '../infra/session-tmpdir.js';
 import type { EventStore } from './event-store.js';
 import {
