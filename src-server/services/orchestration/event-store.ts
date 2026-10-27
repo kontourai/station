@@ -56,6 +56,14 @@ import {
 } from '@kontourai/station-contracts/provider';
 import type { RunSummary } from '@kontourai/station-contracts/runs';
 import {
+  collectRuntimeEventContentRefs,
+  isRuntimeEventContentDigest,
+  isRuntimeEventContentRef,
+  type RuntimeEventContentBody,
+  resolveRuntimeEventContent,
+  runtimeEventContentForDisplay,
+} from '@kontourai/station-contracts/runtime-event-content';
+import {
   type CanonicalRuntimeEvent,
   isProviderTriggeredTurn,
   PROVIDER_TURN_TRIGGER,
@@ -138,6 +146,10 @@ import { TASK_LEARNING_PROMOTIONS_MIGRATION } from '../../domain/migrations/022-
 import { TASK_REVIEW_MIGRATION } from '../../domain/migrations/023-task-review.js';
 import { ensureProjectTaskRoomRevisionFreezeColumn } from '../../domain/migrations/024-project-task-room-revision-freeze.js';
 import {
+  EVENT_CONTENT_MIGRATION,
+  EVENT_CONTENT_ORPHAN_SWEEP,
+} from '../../domain/migrations/024-event-content.js';
+import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
   RevisionEvidenceModule,
@@ -149,6 +161,9 @@ import type { NativeOutputTerminalAdmission } from '../../runtime/native-output-
 import {
   attachmentBytesStripped,
   conversationSessionLineageMutations,
+  eventContentBytesSpilled,
+  eventContentOrphansSwept,
+  eventContentValuesSpilled,
   orchestrationEventPersistDuration,
   orchestrationEventsPersisted,
   orchestrationEventWindowElisions,
@@ -260,6 +275,14 @@ import {
   type DelegationResultStore,
   migrateDelegationResultSchema,
 } from './delegation-result-delivery.js';
+import {
+  MAX_EVENT_CONTENT_BYTES,
+  MAX_EVENT_CONTENT_CONTAINER_ENTRIES,
+  MAX_EVENT_CONTENT_DEPTH,
+  type PlannedSpill,
+  planEventContentSpill,
+  withUnavailableContent,
+} from './event-content-spill.js';
 import { createHtmlReplyPages } from './html-reply-pages.js';
 import {
   createNativeInvocationRuns,
@@ -486,7 +509,11 @@ const CANONICAL_TERMINAL_TARGET = `state NOT IN ('lifecycle','settled') AND purp
   AND prepared_settlement IS NULL
   AND (invocation_id IS NOT NULL OR input_digest IS NOT NULL OR intent_digest IS NOT NULL OR body_ref IS NOT NULL OR dedup_key IS NOT NULL)`;
 const MESSAGE_SEARCH_BACKGROUND_WRITE = Symbol('message-search-backfill');
-/** Last-resort ingress ceiling; upstream adapters own useful projection. */
+/**
+ * Last-resort ceiling on an event's STORED form. Large engine content is
+ * spilled out of line first (event-content-spill.ts), so after spilling only
+ * adapter-built fields can reach this.
+ */
 export const MAX_EVENT_STORE_INGRESS_BYTES = 64 * 1024;
 /**
  * Structural limits make the last-resort byte ceiling cheap to enforce even
@@ -496,8 +523,8 @@ export const MAX_EVENT_STORE_INGRESS_BYTES = 64 * 1024;
  * projection of arbitrary provider output.
  */
 const MAX_EVENT_STORE_INGRESS_DEPTH = 32;
+/** Per container: object properties or array items. */
 const MAX_EVENT_STORE_INGRESS_PROPERTIES = 512;
-const MAX_EVENT_STORE_INGRESS_ARRAY_ITEMS = 512;
 const MAX_UNACKNOWLEDGED_CREDENTIAL_APPLICATIONS = 64;
 const MAX_BASIS_DESCRIPTOR_ROWS = 1_000;
 const MAX_BASIS_DESCRIPTOR_BYTES = 128 * 1_024;
@@ -818,6 +845,55 @@ function hasBoundedDescriptorText(
   return true;
 }
 
+/**
+ * SQL for a string content field EventStore may have stored out of line
+ * (docs/design/event-content-spill.md): the joined body when the field is a
+ * `string` reference, otherwise the inline value. `thread` must be a
+ * QUALIFIED thread column of the outer row; unqualified, it would bind to
+ * the content table inside the subquery. A reference whose row is missing
+ * reads as NULL text, never as its preview.
+ */
+function spilledTextSql(path: string, thread: string, payload = 'payload') {
+  return `(CASE WHEN json_extract(${payload}, '${path}."$stationContent"') = 1
+                 AND json_extract(${payload}, '${path}.kind') = 'string'
+            THEN (SELECT spill.body FROM orchestration_event_content AS spill
+                   WHERE spill.thread_id = ${thread}
+                     AND spill.digest = json_extract(${payload}, '${path}.ref'))
+            ELSE json_extract(${payload}, '${path}') END)`;
+}
+
+/** `json_type` of a field, reading a `string` reference as `'text'`. */
+function spilledTypeSql(path: string, payload = 'payload') {
+  return `(CASE WHEN json_extract(${payload}, '${path}."$stationContent"') = 1
+                 AND json_extract(${payload}, '${path}.kind') = 'string'
+            THEN 'text' ELSE json_type(${payload}, '${path}') END)`;
+}
+
+/**
+ * A turn start with a typed prompt: non-blank inline text, or a prompt
+ * stored out of line (which ingress only does for a long one).
+ */
+const PROMPTED_TURN_SQL = `((typeof(json_extract(payload, '$.prompt')) = 'text'
+       AND trim(json_extract(payload, '$.prompt')) != '')
+    OR json_extract(payload, '$.prompt."$stationContent"') = 1)`;
+
+/**
+ * Indexed text per message. Both FTS projections store and tokenize what
+ * they are given inside the append savepoint, so a 16 MiB reply would cost
+ * several times that; search covers the first 256 KiB of a message.
+ */
+const MESSAGE_SEARCH_MAX_INDEXED_BYTES = 256 * 1024;
+
+function capSearchText(text: string): string {
+  if (Buffer.byteLength(text, 'utf8') <= MESSAGE_SEARCH_MAX_INDEXED_BYTES)
+    return text;
+  // A cut inside a multi-byte character decodes to U+FFFD; drop it.
+  return Buffer.from(text, 'utf8')
+    .subarray(0, MESSAGE_SEARCH_MAX_INDEXED_BYTES)
+    .toString('utf8')
+    .replace(/\uFFFD+$/u, '');
+}
+
 /** SQLite function: whether an unresolved completion stands in the transcript. */
 const UNRESOLVED_COMPLETION_STANDS_SQL_FUNCTION =
   'station_unresolved_completion_stands';
@@ -843,9 +919,9 @@ const USER_INPUT_DESCRIPTOR_FIELD_EXPRESSIONS = [
   "CASE WHEN json_valid(payload) THEN json_type(payload, '$.turnId') END",
   `CASE WHEN json_valid(payload) AND json_type(payload, '$.turnId') = 'text'
         THEN json_extract(payload, '$.turnId') END`,
-  "CASE WHEN json_valid(payload) THEN json_type(payload, '$.prompt') END",
-  `CASE WHEN json_valid(payload) AND json_type(payload, '$.prompt') = 'text'
-        THEN json_extract(payload, '$.prompt') END`,
+  `CASE WHEN json_valid(payload) THEN ${spilledTypeSql('$.prompt')} END`,
+  `CASE WHEN json_valid(payload) AND ${spilledTypeSql('$.prompt')} = 'text'
+        THEN ${spilledTextSql('$.prompt', 'orchestration_events.thread_id')} END`,
   "CASE WHEN json_valid(payload) THEN json_type(payload, '$.inputKind') END",
   `CASE WHEN json_valid(payload) AND json_type(payload, '$.inputKind') = 'text'
         THEN json_extract(payload, '$.inputKind') END`,
@@ -1043,6 +1119,15 @@ type PersistedIngressForm = {
   toolImageKey?: string;
 };
 
+/** What one ingress produced, ready to append without re-projection. */
+type PreparedEventIngress = {
+  event: CanonicalRuntimeEvent;
+  requestId: string | null;
+  persisted: PersistedIngressForm;
+  serializedPayload: string;
+  spills: PlannedSpill[];
+};
+
 /**
  * Tell the reader of a tool's output which of its images were not kept, and
  * why. An adapter marks a kept image `[image: <name>]` where its bytes were;
@@ -1084,10 +1169,24 @@ function withToolImageNotes(
   return appendToolOutputNote(rewritten, line);
 }
 
+/** The event a refusal is about, when its shape allowed reading it. */
+export interface EventStoreIngressSubject {
+  eventId?: string;
+  method?: string;
+  threadId?: string;
+}
+
 class EventStoreIngressError extends Error {
-  constructor(reason: string) {
+  /**
+   * Identity of the refused event. A residual handler must match this
+   * against the event it offered before acting on it (a coalescer flush can
+   * surface a different event's refusal).
+   */
+  readonly subject: EventStoreIngressSubject;
+  constructor(reason: string, subject: EventStoreIngressSubject = {}) {
     super(`Runtime event cannot be safely persisted by EventStore: ${reason}.`);
     this.name = 'EventStoreIngressError';
+    this.subject = subject;
   }
 }
 
@@ -1099,9 +1198,9 @@ class EventStoreIngressError extends Error {
  */
 export { EventStoreIngressError };
 
-function eventStoreIngressCeilingError(): EventStoreIngressError {
+function eventStoreIngressCeilingError(limit: number): EventStoreIngressError {
   return new EventStoreIngressError(
-    `it exceeds the ${MAX_EVENT_STORE_INGRESS_BYTES}-byte ingress ceiling`,
+    `it exceeds the ${limit}-byte ingress ceiling`,
   );
 }
 
@@ -1112,10 +1211,37 @@ function eventStoreIngressCeilingError(): EventStoreIngressError {
  * cyclic, getter-backed, or hostile Proxy value is refused before
  * `JSON.stringify` could allocate its complete payload or invoke user code.
  */
+interface EventStoreIngressLimits {
+  bytes: number;
+  depth: number;
+  entries: number;
+}
+
+const STORED_EVENT_INGRESS_LIMITS: EventStoreIngressLimits = {
+  bytes: MAX_EVENT_STORE_INGRESS_BYTES,
+  depth: MAX_EVENT_STORE_INGRESS_DEPTH,
+  entries: MAX_EVENT_STORE_INGRESS_PROPERTIES,
+};
+
+/**
+ * The raw event, before spilling: engine content up to the per-event ceiling
+ * (docs/design/event-content-spill.md). The stored form is then held to
+ * {@link STORED_EVENT_INGRESS_LIMITS}.
+ */
+const RAW_EVENT_INGRESS_LIMITS: EventStoreIngressLimits = {
+  bytes: MAX_EVENT_CONTENT_BYTES,
+  depth: MAX_EVENT_CONTENT_DEPTH,
+  entries: MAX_EVENT_CONTENT_CONTAINER_ENTRIES,
+};
+
 class BoundedEventStoreIngressProjector {
   private bytes = 0;
   private readonly ancestors = new Set<object>();
   private attachmentBytes = 0;
+
+  constructor(
+    private readonly limits: EventStoreIngressLimits = STORED_EVENT_INGRESS_LIMITS,
+  ) {}
 
   project(
     value: unknown,
@@ -1135,8 +1261,8 @@ class BoundedEventStoreIngressProjector {
 
   private addBytes(bytes: number): void {
     this.bytes += bytes;
-    if (this.bytes > MAX_EVENT_STORE_INGRESS_BYTES) {
-      throw eventStoreIngressCeilingError();
+    if (this.bytes > this.limits.bytes) {
+      throw eventStoreIngressCeilingError(this.limits.bytes);
     }
   }
 
@@ -1269,7 +1395,7 @@ class BoundedEventStoreIngressProjector {
         throw new EventStoreIngressError('it contains unsupported data');
     }
 
-    if (depth >= MAX_EVENT_STORE_INGRESS_DEPTH) {
+    if (depth >= this.limits.depth) {
       throw new EventStoreIngressError('it exceeds the structural depth limit');
     }
     const object = value as object;
@@ -1322,7 +1448,7 @@ class BoundedEventStoreIngressProjector {
       );
     }
     const length = lengthDescriptor.value;
-    if (length > MAX_EVENT_STORE_INGRESS_ARRAY_ITEMS) {
+    if (length > this.limits.entries) {
       throw new EventStoreIngressError('it exceeds the structural array limit');
     }
     if (
@@ -1369,7 +1495,7 @@ class BoundedEventStoreIngressProjector {
     } catch {
       throw new EventStoreIngressError('its own keys cannot be inspected');
     }
-    if (keys.length > MAX_EVENT_STORE_INGRESS_PROPERTIES) {
+    if (keys.length > this.limits.entries) {
       throw new EventStoreIngressError(
         'it exceeds the structural property limit',
       );
@@ -1395,7 +1521,7 @@ class BoundedEventStoreIngressProjector {
         continue;
       }
       properties += 1;
-      if (properties > MAX_EVENT_STORE_INGRESS_PROPERTIES) {
+      if (properties > this.limits.entries) {
         throw new EventStoreIngressError(
           'it exceeds the structural property limit',
         );
@@ -1643,6 +1769,9 @@ const SESSION_EVENT_WINDOW_MAX_EVENTS = 150;
  */
 const ATTACHMENT_CANDIDATE_THREAD_LIMIT = 4;
 const SNAPSHOT_TOOL_OUTPUT_MAX_CHARS = 84;
+/** Station's own HTML render tool, under every name it is exposed as. */
+const HTML_RENDER_TOOL_NAME =
+  /^(?:mcp__station-control__|station-control[_/]|Tool: station-control\/)html_render$/;
 /**
  * Per-event ceiling for a window read. Sized to clear the 16 KiB transcript
  * chunks the session sources persist (`MAX_TEXT_CHUNK_BYTES` in
@@ -1910,6 +2039,13 @@ function decodeEventWindowCursor(
 }
 
 /** Cuts one snapshot text field to its ceiling and reports whether it cut. */
+/** An output as an excerpt shows it: text as is, references as previews. */
+function displayedSnapshotOutput(output: unknown): string {
+  if (typeof output === 'string') return output;
+  const shown = runtimeEventContentForDisplay(output);
+  return typeof shown === 'string' ? shown : JSON.stringify(shown);
+}
+
 function sliceSnapshotText(value: unknown): { text: string; cut: boolean } {
   const text = String(value);
   return {
@@ -1999,26 +2135,27 @@ function snapshotEvent(
     // not silent data loss: `listEventWindowByTurn` already reports that as
     // `hasMore`/`nextCursor`, same as it does for any other byte-budget
     // crossing.
+    // A spilled output or error is already a small reference that the
+    // client resolves on demand; its stamps were derived at ingress.
     const error =
       typeof payload.error === 'string'
         ? sliceSnapshotText(payload.error)
         : undefined;
+    // A nested reference (an MCP `{content:[{text: ref}]}`) or an
+    // unavailable marker shows in the excerpt as its marked preview text,
+    // never as the raw reference object.
     const output =
-      payload.output === undefined || payload.output === null
+      payload.output === undefined ||
+      payload.output === null ||
+      isRuntimeEventContentRef(payload.output)
         ? undefined
-        : sliceSnapshotText(
-            typeof payload.output === 'string'
-              ? payload.output
-              : JSON.stringify(payload.output),
-          );
+        : sliceSnapshotText(displayedSnapshotOutput(payload.output));
     outputCut = Boolean(error?.cut) || Boolean(output?.cut);
     // Page references are bounded display metadata, like attachment refs.
     // Keep them outside the ordinary 84-character tool-output excerpt.
     const pageReference =
       typeof payload.toolName === 'string' &&
-      /^(?:mcp__station-control__|station-control[_/]|Tool: station-control\/)html_render$/.test(
-        payload.toolName,
-      )
+      HTML_RENDER_TOOL_NAME.test(payload.toolName)
         ? htmlReplyReference(payload.output)
         : undefined;
     // A station-control refusal is the tool's whole result, as JSON: the
@@ -2735,6 +2872,8 @@ export class EventStore {
       // #4003 layer 4: the store each promoted record version went to.
       this.db.exec(TASK_LEARNING_PROMOTIONS_MIGRATION);
       this.db.exec(TASK_REVIEW_MIGRATION);
+      this.db.exec(EVENT_CONTENT_MIGRATION);
+      this.sweepOrphanedEventContent();
       this.db
         .prepare(
           `INSERT OR IGNORE INTO orchestration_stream_identity(singleton, high_water)
@@ -3681,7 +3820,12 @@ export class EventStore {
       const attachmentError = validateChatAttachments(
         event.attachments as Parameters<typeof validateChatAttachments>[0],
       );
-      if (attachmentError) throw new EventStoreIngressError(attachmentError);
+      if (attachmentError)
+        throw new EventStoreIngressError(attachmentError, {
+          eventId: event.eventId,
+          method: event.method,
+          threadId: event.threadId,
+        });
     }
     // #2483: the same binding rule as a tool's images (see
     // `persistedToolImages`). A reference without bytes is bound only when this
@@ -3898,7 +4042,12 @@ export class EventStore {
       const attachmentError = validateChatAttachments(
         attachments as Parameters<typeof validateChatAttachments>[0],
       );
-      if (attachmentError) throw new EventStoreIngressError(attachmentError);
+      if (attachmentError)
+        throw new EventStoreIngressError(attachmentError, {
+          eventId: event.eventId,
+          method: event.method,
+          threadId: event.threadId,
+        });
     }
     const live = this.pendingToolImages.get(this.toolImageKey(event));
     const blobRefs: string[] = [];
@@ -4000,12 +4149,9 @@ export class EventStore {
    * following stringify therefore cannot invoke a caller's getter/proxy or
    * allocate an unbounded JSON payload.
    */
-  private prepareEventIngress(event: CanonicalRuntimeEvent): {
-    event: CanonicalRuntimeEvent;
-    requestId: ReturnType<typeof persistedRequestId>;
-    persisted: PersistedIngressForm;
-    serializedPayload: string;
-  } {
+  private prepareEventIngress(
+    event: CanonicalRuntimeEvent,
+  ): PreparedEventIngress {
     // station#2210: every deterministic ingress rejection names its subject.
     // A canonical event's method and thread are the minimum a log reader
     // needs to find the producer; the reason itself stays verbatim.
@@ -4014,7 +4160,11 @@ export class EventStore {
       options?: { allowCanonicalAttachmentDataUrls?: boolean },
     ): EventStoreIngressJson => {
       try {
-        return new BoundedEventStoreIngressProjector().project(value, options);
+        return new BoundedEventStoreIngressProjector(
+          options?.allowCanonicalAttachmentDataUrls
+            ? RAW_EVENT_INGRESS_LIMITS
+            : STORED_EVENT_INGRESS_LIMITS,
+        ).project(value, options);
       } catch (error) {
         if (error instanceof EventStoreIngressError) {
           const prefix =
@@ -4022,15 +4172,30 @@ export class EventStore {
           const reason = error.message.startsWith(prefix)
             ? error.message.slice(prefix.length).replace(/\.$/, '')
             : error.message;
-          const identity =
-            typeof (event as { method?: unknown }).method === 'string'
-              ? `method=${event.method}, threadId=${event.threadId}`
-              : 'shape unavailable';
-          throw new EventStoreIngressError(`(${identity}) ${reason}`);
+          const readable =
+            typeof (event as { method?: unknown }).method === 'string';
+          const identity = readable
+            ? `method=${event.method}, threadId=${event.threadId}`
+            : 'shape unavailable';
+          throw new EventStoreIngressError(
+            `(${identity}) ${reason}`,
+            readable
+              ? {
+                  method: event.method,
+                  threadId: event.threadId,
+                  ...(typeof event.eventId === 'string'
+                    ? { eventId: event.eventId }
+                    : {}),
+                }
+              : {},
+          );
         }
         throw error;
       }
     };
+    // The raw projection (the only one admitting attachment data URLs) may
+    // carry engine content up to the per-event ceiling; the stored form
+    // below is held to the ordinary backstop.
     const projectedEvent = projectWithIdentity(event, {
       allowCanonicalAttachmentDataUrls: true,
     }) as unknown as CanonicalRuntimeEvent;
@@ -4068,6 +4233,33 @@ export class EventStore {
       this.settleToolImageCharges(this.toolImageKey(projectedEvent));
       throw error;
     }
+    // docs/design/event-content-spill.md: large values in allowlisted
+    // content fields move out of line; reserved-key objects are escaped.
+    // The planner copies, so `projectedEvent` keeps the raw values that the
+    // derived projections (search, title) read inside the append.
+    const plan = planEventContentSpill(persisted.payload, {
+      trustedUnavailableRoots: this.residualEvents.has(event),
+    });
+    if (plan.spilledToolResult && plan.payload.method === 'tool.completed') {
+      // `snapshotEvent` derives these from the output; a reference cannot
+      // be read there, so they are stamped from the raw value here.
+      const stamped = plan.payload;
+      const raw = plan.spilledToolResult;
+      const toolName =
+        typeof stamped.toolName === 'string' ? stamped.toolName : undefined;
+      const pageReference =
+        toolName && HTML_RENDER_TOOL_NAME.test(toolName)
+          ? htmlReplyReference(raw.output)
+          : undefined;
+      if (pageReference) stamped.htmlReply = pageReference;
+      const refusal =
+        parseStationControlRefusal(
+          toolName,
+          typeof raw.error === 'string' ? raw.error : undefined,
+        ) ?? parseStationControlRefusal(toolName, raw.output);
+      if (refusal) stamped.stationControlRefusal = refusal;
+    }
+    persisted = { ...persisted, payload: plan.payload };
     // Attachment projection can replace a very small inline data URL with a
     // longer digest reference, so measure its persisted shape independently.
     // It is now a plain projected value, not caller-controlled structure.
@@ -4084,7 +4276,238 @@ export class EventStore {
       requestId: persistedRequestId(projectedEvent),
       persisted,
       serializedPayload: JSON.stringify(persistedPayload),
+      spills: plan.spills,
     };
+  }
+
+  /**
+   * Events this store marked for the residual case (see
+   * {@link markContentUnavailable}). Identity, never content, decides it.
+   */
+  private readonly residualEvents = new WeakSet<object>();
+
+  /**
+   * docs/design/event-content-spill.md#residual-refusal: a copy of `event`
+   * whose spillable roots are replaced by `exceeds-ceiling` markers, which
+   * this store keeps as markers (any other inbound marker is engine data and
+   * is escaped). Undefined when the event has no spillable root to mark.
+   */
+  markContentUnavailable<T extends CanonicalRuntimeEvent>(
+    event: T,
+  ): T | undefined {
+    const marked = withUnavailableContent(event);
+    if (marked) this.residualEvents.add(marked);
+    return marked;
+  }
+
+  /**
+   * The residual case for a turn terminal: only its identity and outcome,
+   * with the reply marked `exceeds-ceiling`, so the turn's end is recorded
+   * whatever else it carried. Undefined for any other method.
+   */
+  minimalTurnTerminal(
+    event: CanonicalRuntimeEvent,
+  ): CanonicalRuntimeEvent | undefined {
+    if (event.method !== 'turn.completed') return undefined;
+    const minimal: CanonicalRuntimeEvent = {
+      eventId: event.eventId,
+      provider: event.provider,
+      threadId: event.threadId,
+      createdAt: event.createdAt,
+      method: 'turn.completed',
+      turnId: event.turnId,
+      ...(event.invocationId !== undefined
+        ? { invocationId: event.invocationId }
+        : {}),
+      ...(event.sessionState !== undefined
+        ? { sessionState: event.sessionState }
+        : {}),
+      ...(event.previousState !== undefined
+        ? { previousState: event.previousState }
+        : {}),
+      ...(event.finishReason !== undefined
+        ? { finishReason: event.finishReason }
+        : {}),
+      ...(event.stopReason !== undefined
+        ? { stopReason: event.stopReason }
+        : {}),
+      outputText: { $stationContent: 1, unavailable: 'exceeds-ceiling' },
+    };
+    this.residualEvents.add(minimal);
+    return minimal;
+  }
+
+  /**
+   * The ingress each live projection produced, keyed by the exact object
+   * `projectLiveEvent` returned. Appending that object reuses it, so a
+   * stored reference is never re-projected (which would escape it as engine
+   * data, and drop the `mcpAppResourceUri` stamp). Identity cannot be forged
+   * by event content.
+   */
+  private readonly preparedLiveIngress = new WeakMap<
+    object,
+    PreparedEventIngress
+  >();
+
+  private ingressFor(event: CanonicalRuntimeEvent): PreparedEventIngress {
+    const prepared = this.preparedLiveIngress.get(event);
+    if (prepared) {
+      this.preparedLiveIngress.delete(event);
+      return prepared;
+    }
+    // A copy of a live projection would re-ingest its references as engine
+    // data (escaped), silently losing the content they name.
+    // `spilledContent` is EventStore's to set; an event arriving with it is
+    // such a copy or a producer's claim, and is refused either way.
+    if (event.spilledContent)
+      throw new EventStoreIngressError(
+        'it claims spilledContent; append the object projectLiveEvent returned',
+        {
+          eventId: event.eventId,
+          method: event.method,
+          threadId: event.threadId,
+        },
+      );
+    return this.prepareEventIngress(event);
+  }
+
+  /**
+   * Write an append's spilled values, inside its savepoint. Idempotent:
+   * the same value in the same thread has the same digest.
+   */
+  private recordEventContent(threadId: string, spills: PlannedSpill[]): void {
+    if (spills.length === 0) return;
+    const insert = (this.eventContentInsert ??= this.db.prepare(
+      `INSERT OR IGNORE INTO orchestration_event_content
+         (thread_id, digest, kind, body, bytes) VALUES (?, ?, ?, ?, ?)`,
+    ));
+    for (const spill of spills)
+      insert.run(threadId, spill.digest, spill.kind, spill.body, spill.bytes);
+  }
+
+  private eventContentInsert?: ReturnType<EventStore['db']['prepare']>;
+
+  private observeEventContentSpilled(
+    event: CanonicalRuntimeEvent,
+    spills: PlannedSpill[],
+  ): void {
+    if (spills.length === 0) return;
+    try {
+      const attributes = { provider: event.provider, method: event.method };
+      eventContentValuesSpilled.add(spills.length, attributes);
+      eventContentBytesSpilled.add(
+        spills.reduce((sum, spill) => sum + spill.bytes, 0),
+        attributes,
+      );
+    } catch {
+      // Observation only.
+    }
+  }
+
+  /**
+   * Stored bodies for `digests` in one thread, batched under SQLite's
+   * bound-parameter ceiling.
+   */
+  readEventContent(
+    threadId: string,
+    digests: readonly string[],
+  ): Map<string, RuntimeEventContentBody> {
+    const found = new Map<string, RuntimeEventContentBody>();
+    const wanted = [...new Set(digests)].filter(isRuntimeEventContentDigest);
+    for (let start = 0; start < wanted.length; start += 400) {
+      const slice = wanted.slice(start, start + 400);
+      const rows = this.db
+        .prepare(
+          `SELECT digest, kind, body FROM orchestration_event_content
+           WHERE thread_id = ? AND digest IN (${slice.map(() => '?').join(',')})`,
+        )
+        .all(threadId, ...slice) as Array<{
+        digest: string;
+        kind: 'string' | 'json';
+        body: string;
+      }>;
+      for (const row of rows)
+        found.set(row.digest, { kind: row.kind, body: row.body });
+    }
+    return found;
+  }
+
+  /**
+   * Remove content rows whose thread has no events: an older Station that
+   * knows nothing of the table deleted the thread after a downgrade.
+   */
+  private sweepOrphanedEventContent(): void {
+    const result = this.db.prepare(EVENT_CONTENT_ORPHAN_SWEEP).run() as {
+      changes: number;
+    };
+    if (result.changes > 0) {
+      try {
+        eventContentOrphansSwept.add(result.changes);
+      } catch {
+        // Observation only.
+      }
+    }
+  }
+
+  /** One stored body, for the content route. */
+  readEventContentBody(
+    threadId: string,
+    digest: string,
+  ): (RuntimeEventContentBody & { bytes: number }) | undefined {
+    if (!isRuntimeEventContentDigest(digest)) return undefined;
+    const row = this.db
+      .prepare(
+        `SELECT kind, body, bytes FROM orchestration_event_content
+         WHERE thread_id = ? AND digest = ?`,
+      )
+      .get(threadId, digest) as
+      | { kind: 'string' | 'json'; body: string; bytes: number }
+      | undefined;
+    return row
+      ? { kind: row.kind, body: row.body, bytes: Number(row.bytes) }
+      : undefined;
+  }
+
+  /**
+   * Opt-in resolution (docs/design/event-content-spill.md#resolution-seam):
+   * replace every reference in these events with its stored value, with one
+   * batched lookup per thread. Events without `spilledContent` pass through
+   * untouched (literal wrappers are still unwrapped).
+   */
+  resolveEventContent<T extends PersistedRuntimeEvent>(
+    events: readonly T[],
+  ): T[] {
+    const byThread = new Map<string, Set<string>>();
+    for (const event of events) {
+      if (!event.payload.spilledContent) continue;
+      const refs = collectRuntimeEventContentRefs(event.payload);
+      if (refs.length === 0) continue;
+      const set = byThread.get(event.threadId) ?? new Set<string>();
+      for (const ref of refs) set.add(ref.ref);
+      byThread.set(event.threadId, set);
+    }
+    const bodies = new Map<string, Map<string, RuntimeEventContentBody>>();
+    for (const [threadId, digests] of byThread)
+      bodies.set(threadId, this.readEventContent(threadId, [...digests]));
+    return events.map((event) => {
+      const found = bodies.get(event.threadId);
+      const payload = resolveRuntimeEventContent(event.payload, (ref) =>
+        found?.get(ref),
+      );
+      return { ...event, payload };
+    });
+  }
+
+  /** {@link resolveEventContent} for a single canonical event of `threadId`. */
+  resolveCanonicalEventContent<T extends CanonicalRuntimeEvent>(event: T): T {
+    if (!event.spilledContent)
+      return resolveRuntimeEventContent(event, () => undefined);
+    const refs = collectRuntimeEventContentRefs(event);
+    const found = this.readEventContent(
+      event.threadId,
+      refs.map((ref) => ref.ref),
+    );
+    return resolveRuntimeEventContent(event, (ref) => found.get(ref));
   }
 
   /**
@@ -4093,7 +4516,10 @@ export class EventStore {
    * throws rather than falling back to a data URL.
    */
   projectLiveEvent(event: CanonicalRuntimeEvent): CanonicalRuntimeEvent {
-    return this.prepareEventIngress(event).persisted.payload;
+    const prepared = this.prepareEventIngress(event);
+    const live = prepared.persisted.payload;
+    this.preparedLiveIngress.set(live, prepared);
+    return live;
   }
 
   /**
@@ -4260,7 +4686,7 @@ export class EventStore {
         'Declared output admission requires a durable completed turn.',
       );
     }
-    const ingress = this.prepareEventIngress(event);
+    const ingress = this.ingressFor(event);
     // A tool image's quota charge is written inside this append's savepoint
     // (`chargeCommittedToolImages`); afterwards the pending entry is dropped.
     try {
@@ -4271,7 +4697,7 @@ export class EventStore {
   }
 
   private appendIngressedEvent(
-    ingress: ReturnType<EventStore['prepareEventIngress']>,
+    ingress: PreparedEventIngress,
     declaredOutputs: readonly NativeOutputTerminalAdmission[],
     coCommit: (() => void) | undefined,
   ): number {
@@ -4423,6 +4849,7 @@ export class EventStore {
           'UPDATE orchestration_stream_identity SET high_water = ? WHERE singleton = 1',
         )).run(globalSequence);
         this.recordAttachmentRefs(event.threadId, persisted.blobRefs);
+        this.recordEventContent(event.threadId, ingress.spills);
         this.chargeCommittedToolImages(persisted.toolImageKey);
         this.projectConversationHistoryEvent(event);
         this.projectMessageSearchEvent(event);
@@ -4470,6 +4897,7 @@ export class EventStore {
       performance.now() - startedAt,
       { provider: event.provider, method: event.method },
     );
+    this.observeEventContentSpilled(event, ingress.spills);
     this.notifyEventCommitted(event, globalSequence);
     return nextSequence;
   }
@@ -5661,7 +6089,7 @@ export class EventStore {
   }
 
   appendEventIfAbsent(event: CanonicalRuntimeEvent): number | undefined {
-    const ingress = this.prepareEventIngress(event);
+    const ingress = this.ingressFor(event);
     try {
       return this.appendIngressedEventIfAbsent(ingress);
     } finally {
@@ -5670,7 +6098,7 @@ export class EventStore {
   }
 
   private appendIngressedEventIfAbsent(
-    ingress: ReturnType<EventStore['prepareEventIngress']>,
+    ingress: PreparedEventIngress,
   ): number | undefined {
     const event = ingress.event;
     const startedAt = performance.now();
@@ -5711,6 +6139,7 @@ export class EventStore {
           )
           .run(globalSequence);
         this.recordAttachmentRefs(event.threadId, persisted.blobRefs);
+        this.recordEventContent(event.threadId, ingress.spills);
         this.chargeCommittedToolImages(persisted.toolImageKey);
         this.projectConversationHistoryEvent(event);
         this.projectMessageSearchEvent(event);
@@ -5738,6 +6167,7 @@ export class EventStore {
       performance.now() - startedAt,
       { provider: event.provider, method: event.method },
     );
+    this.observeEventContentSpilled(event, ingress.spills);
     this.notifyEventCommitted(event, globalSequence);
     return nextSequence;
   }
@@ -6238,7 +6668,7 @@ export class EventStore {
     const starts = this.db
       .prepare(
         `SELECT thread_id, turn_id, created_at, global_sequence,
-                substr(json_extract(payload, '$.prompt'), 1, ${TURN_DIGEST_PROMPT_PREFIX_CHARS}) AS prompt,
+                substr(${spilledTextSql('$.prompt', 'orchestration_events.thread_id')}, 1, ${TURN_DIGEST_PROMPT_PREFIX_CHARS}) AS prompt,
                 json_extract(payload, '$.metadata.trigger') AS turn_trigger,
                 json_extract(payload, '$.invocationId') AS invocation_id,
                 json_quote(json_extract(payload, '$.clientOrigin.sender')) AS sender_json
@@ -6917,15 +7347,15 @@ export class EventStore {
                 CASE WHEN json_valid(payload) THEN json_type(payload, '$.delta') END AS delta_type,
                 CASE WHEN c.method = 'content.text-delta' AND json_valid(payload) AND json_type(payload, '$.delta') = 'text'
                        AND length(CAST(json_extract(payload, '$.delta') AS BLOB)) BETWEEN 1 AND ? THEN 1 ELSE 0 END AS text_delta,
-                CASE WHEN c.method = 'turn.completed' AND json_valid(payload) THEN json_type(payload, '$.outputText') END AS output_text_type,
-                CASE WHEN c.method = 'turn.completed' AND json_valid(payload) AND json_type(payload, '$.outputText') = 'text'
-                       AND length(CAST(json_extract(payload, '$.outputText') AS BLOB)) BETWEEN 1 AND ? THEN 1 ELSE 0 END AS output_text,
-                CASE WHEN c.method = 'turn.completed' AND json_valid(payload) AND json_type(payload, '$.outputText') = 'text'
-                       THEN length(CAST(json_extract(payload, '$.outputText') AS BLOB)) ELSE 0 END AS output_text_bytes,
-                CASE WHEN json_valid(payload) THEN json_type(payload, '$.prompt') END AS prompt_type,
-                CASE WHEN json_valid(payload) AND json_type(payload, '$.prompt') = 'text'
-                       AND length(CAST(json_extract(payload, '$.prompt') AS BLOB)) <= ?
-                     THEN json_extract(payload, '$.prompt') END AS prompt,
+                CASE WHEN c.method = 'turn.completed' AND json_valid(payload) THEN ${spilledTypeSql('$.outputText')} END AS output_text_type,
+                CASE WHEN c.method = 'turn.completed' AND json_valid(payload) AND ${spilledTypeSql('$.outputText')} = 'text'
+                       AND length(CAST(${spilledTextSql('$.outputText', 'c.thread_id')} AS BLOB)) BETWEEN 1 AND ? THEN 1 ELSE 0 END AS output_text,
+                CASE WHEN c.method = 'turn.completed' AND json_valid(payload) AND ${spilledTypeSql('$.outputText')} = 'text'
+                       THEN length(CAST(${spilledTextSql('$.outputText', 'c.thread_id')} AS BLOB)) ELSE 0 END AS output_text_bytes,
+                CASE WHEN json_valid(payload) THEN ${spilledTypeSql('$.prompt')} END AS prompt_type,
+                CASE WHEN json_valid(payload) AND ${spilledTypeSql('$.prompt')} = 'text'
+                       AND length(CAST(${spilledTextSql('$.prompt', 'c.thread_id')} AS BLOB)) <= ?
+                     THEN ${spilledTextSql('$.prompt', 'c.thread_id')} END AS prompt,
                 CASE WHEN json_valid(payload) THEN json_type(payload, '$.inputKind') END AS input_kind_type,
                 CASE WHEN json_valid(payload) AND json_type(payload, '$.inputKind') = 'text'
                        AND length(CAST(json_extract(payload, '$.inputKind') AS BLOB)) <= ?
@@ -6951,14 +7381,14 @@ export class EventStore {
                 CASE WHEN json_valid(payload) THEN json_type(payload, '$.status') END AS tool_status_type,
                 CASE WHEN json_valid(payload) AND json_type(payload, '$.status') = 'text'
                        AND length(CAST(json_extract(payload, '$.status') AS BLOB)) <= ? THEN json_extract(payload, '$.status') END AS tool_status,
-                CASE WHEN json_valid(payload) THEN json_type(payload, '$.output') END AS output_type,
-                CASE WHEN json_valid(payload) AND json_type(payload, '$.output') = 'text'
-                       AND length(CAST(json_extract(payload, '$.output') AS BLOB)) <= ?
-                     THEN json_extract(payload, '$.output') END AS tool_output,
-                CASE WHEN json_valid(payload) THEN json_type(payload, '$.error') END AS error_type,
-                CASE WHEN json_valid(payload) AND json_type(payload, '$.error') = 'text'
-                       AND length(CAST(json_extract(payload, '$.error') AS BLOB)) <= ?
-                     THEN json_extract(payload, '$.error') END AS tool_error,
+                CASE WHEN json_valid(payload) THEN ${spilledTypeSql('$.output')} END AS output_type,
+                CASE WHEN json_valid(payload) AND ${spilledTypeSql('$.output')} = 'text'
+                       AND length(CAST(${spilledTextSql('$.output', 'c.thread_id')} AS BLOB)) <= ?
+                     THEN ${spilledTextSql('$.output', 'c.thread_id')} END AS tool_output,
+                CASE WHEN json_valid(payload) THEN ${spilledTypeSql('$.error')} END AS error_type,
+                CASE WHEN json_valid(payload) AND ${spilledTypeSql('$.error')} = 'text'
+                       AND length(CAST(${spilledTextSql('$.error', 'c.thread_id')} AS BLOB)) <= ?
+                     THEN ${spilledTextSql('$.error', 'c.thread_id')} END AS tool_error,
                 CASE WHEN json_valid(payload) THEN json_type(payload, '$.policyDenied') END AS denied_type,
                 CASE WHEN json_valid(payload) THEN json_extract(payload, '$.policyDenied') END AS denied
            FROM candidate c
@@ -7245,8 +7675,7 @@ export class EventStore {
       `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, sequence, global_sequence
          FROM orchestration_events
          WHERE thread_id = ? AND method = 'turn.started'
-           AND typeof(json_extract(payload, '$.prompt')) = 'text'
-           AND trim(json_extract(payload, '$.prompt')) != ''
+           AND ${PROMPTED_TURN_SQL}
          ORDER BY sequence ASC
          LIMIT 1`,
     ).get(threadId);
@@ -7267,12 +7696,12 @@ export class EventStore {
     limitPerThread = 256,
   ): Array<{ prompt: string; actor?: unknown }> {
     const statement = this.db.prepare(
-      `SELECT json_extract(payload, '$.prompt') AS prompt,
+      `SELECT ${spilledTextSql('$.prompt', 'orchestration_events.thread_id')} AS prompt,
               json_extract(payload, '$.clientOrigin.actor') AS actor
        FROM orchestration_events
        WHERE thread_id = ? AND method = 'turn.started'
-         AND typeof(json_extract(payload, '$.prompt')) = 'text'
-         AND instr(json_extract(payload, '$.prompt'), ?) > 0
+         AND typeof(${spilledTextSql('$.prompt', 'orchestration_events.thread_id')}) = 'text'
+         AND instr(${spilledTextSql('$.prompt', 'orchestration_events.thread_id')}, ?) > 0
        ORDER BY sequence ASC
        LIMIT ?`,
     );
@@ -8604,8 +9033,7 @@ export class EventStore {
                ROW_NUMBER() OVER (PARTITION BY thread_id ORDER BY sequence ASC) AS rn
              FROM orchestration_events
              WHERE thread_id IN (${placeholders}) AND method = 'turn.started'
-               AND typeof(json_extract(payload, '$.prompt')) = 'text'
-               AND trim(json_extract(payload, '$.prompt')) != ''
+               AND ${PROMPTED_TURN_SQL}
            )
            SELECT * FROM ranked WHERE rn = 1`,
         )
@@ -9169,6 +9597,52 @@ export class EventStore {
    * already unique, so a thread-scoped point lookup is both complete and
    * bounded.
    */
+  /**
+   * The stored `tool.started` events of `threadId` whose call id is one of
+   * `callIds`: the calls an approval request gates
+   * (`requestBoundCallIds`). Reference-only form.
+   */
+  boundToolStartedEvents(
+    threadId: string,
+    callIds: readonly string[],
+  ): CanonicalRuntimeEvent[] {
+    if (callIds.length === 0) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
+           FROM orchestration_events
+          WHERE thread_id = ? AND method = 'tool.started'
+            AND json_extract(payload, '$.toolCallId') IN (${callIds.map(() => '?').join(', ')})
+          ORDER BY sequence DESC
+          LIMIT 16`,
+      )
+      .all(threadId, ...callIds);
+    // The newest 16 (a re-emitted call's latest arguments are what runs),
+    // returned oldest first.
+    return rows.reverse().map((row) => this.mapEventRow(row, false).payload);
+  }
+
+  /**
+   * The stored, reference-only form of one event: what the live bus and SSE
+   * carry (out-of-line content stays a reference, attachments stay blob
+   * references). For publishers that appended a raw event and must emit what
+   * was stored, never the raw value.
+   */
+  storedLiveEvent(
+    threadId: string,
+    eventId: string,
+  ): CanonicalRuntimeEvent | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
+         FROM orchestration_events
+         WHERE thread_id = ? AND id = ?
+         LIMIT 1`,
+      )
+      .get(threadId, eventId) as any;
+    return row ? this.mapEventRow(row, false).payload : undefined;
+  }
+
   eventById(
     threadId: string,
     eventId: string,
@@ -9254,25 +9728,25 @@ export class EventStore {
                    AND length(CAST(json_extract(payload, '$.toolName') AS BLOB)) > ?
                   THEN 1 ELSE 0 END AS tool_name_over_limit,
                 json_extract(payload, '$.status') AS status,
-                json_type(payload, '$.output') AS output_type,
+                ${spilledTypeSql('$.output')} AS output_type,
                 CASE
-                  WHEN json_type(payload, '$.output') = 'text'
-                   AND length(CAST(json_extract(payload, '$.output') AS BLOB)) <= ?
-                    THEN json_extract(payload, '$.output')
+                  WHEN ${spilledTypeSql('$.output')} = 'text'
+                   AND length(CAST(${spilledTextSql('$.output', 'orchestration_events.thread_id')} AS BLOB)) <= ?
+                    THEN ${spilledTextSql('$.output', 'orchestration_events.thread_id')}
                   ELSE NULL
                 END AS output,
                 CASE
-                  WHEN json_type(payload, '$.output') = 'text'
-                   AND length(CAST(json_extract(payload, '$.output') AS BLOB)) > ?
+                  WHEN ${spilledTypeSql('$.output')} = 'text'
+                   AND length(CAST(${spilledTextSql('$.output', 'orchestration_events.thread_id')} AS BLOB)) > ?
                     THEN 1
                   ELSE 0
                 END AS output_over_limit,
-                json_type(payload, '$.error') AS error_type,
-                CASE WHEN json_type(payload, '$.error') = 'text'
-                   AND length(CAST(json_extract(payload, '$.error') AS BLOB)) <= ?
-                    THEN json_extract(payload, '$.error') ELSE NULL END AS error,
-                CASE WHEN json_type(payload, '$.error') = 'text'
-                   AND length(CAST(json_extract(payload, '$.error') AS BLOB)) > ?
+                ${spilledTypeSql('$.error')} AS error_type,
+                CASE WHEN ${spilledTypeSql('$.error')} = 'text'
+                   AND length(CAST(${spilledTextSql('$.error', 'orchestration_events.thread_id')} AS BLOB)) <= ?
+                    THEN ${spilledTextSql('$.error', 'orchestration_events.thread_id')} ELSE NULL END AS error,
+                CASE WHEN ${spilledTypeSql('$.error')} = 'text'
+                   AND length(CAST(${spilledTextSql('$.error', 'orchestration_events.thread_id')} AS BLOB)) > ?
                     THEN 1 ELSE 0 END AS error_over_limit,
                 json_type(payload, '$.policyDenied') AS policy_denied_type,
                 json_extract(payload, '$.policyDenied') AS policy_denied
@@ -14528,6 +15002,10 @@ export class EventStore {
         .prepare('DELETE FROM orchestration_prepared_turns WHERE thread_id = ?')
         .run(threadId);
       this.htmlReplyPages().deleteThread(threadId);
+      // Out-of-line event content lives exactly as long as its thread.
+      this.db
+        .prepare('DELETE FROM orchestration_event_content WHERE thread_id = ?')
+        .run(threadId);
       // Every retired or active search projection retains bodies independently
       // of canonical events, so none may outlive a deliberately deleted thread.
       this.db
@@ -15221,12 +15699,23 @@ export class EventStore {
     event: CanonicalRuntimeEvent,
     projection?: MessageSearchProjection,
   ): void {
+    // The live append passes the raw event (full text); the backfill reads
+    // the stored form, whose long text is a reference to its content row.
+    const text = (value: unknown): string | undefined => {
+      if (typeof value === 'string') return value;
+      if (isRuntimeEventContentRef(value) && value.kind === 'string')
+        return this.readEventContentBody(event.threadId, value.ref)?.body;
+      return undefined;
+    };
+    const prompt =
+      event.method === 'turn.started' ? text(event.prompt) : undefined;
+    const reply =
+      event.method === 'turn.completed' ? text(event.outputText) : undefined;
     const entry =
-      event.method === 'turn.started' && typeof event.prompt === 'string'
-        ? { role: 'user' as const, content: event.prompt }
-        : event.method === 'turn.completed' &&
-            typeof event.outputText === 'string'
-          ? { role: 'assistant' as const, content: event.outputText }
+      prompt !== undefined
+        ? { role: 'user' as const, content: capSearchText(prompt) }
+        : reply !== undefined
+          ? { role: 'assistant' as const, content: capSearchText(reply) }
           : undefined;
     if (!entry?.content.trim()) return;
     const scope = this.db

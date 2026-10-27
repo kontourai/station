@@ -781,7 +781,14 @@ export async function initializeRuntime(
         (message, meta) => logger.warn(message, meta),
       );
       orchestrationEventStore.appendEvent(sanitized);
-      eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, { event: sanitized });
+      // Emit what was stored (docs/design/event-content-spill.md).
+      eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
+        event:
+          orchestrationEventStore.storedLiveEvent(
+            sanitized.threadId,
+            sanitized.eventId,
+          ) ?? sanitized,
+      });
     },
     logger,
   });

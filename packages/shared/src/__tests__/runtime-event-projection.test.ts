@@ -2614,6 +2614,54 @@ describe('#2316 request.opened binds the approval card to the request it answers
     expect(toolPart(messages, 'bash-second')).not.toHaveProperty('approvalId');
   });
 
+  // docs/design/event-content-spill.md: a bound call whose spilled
+  // arguments arrive after the request marks the card as needing a load,
+  // so it shows Review before the server has to refuse an allow.
+  it('a spilled bound call that arrives after its request marks the card as needing a load', () => {
+    const requestOpened = ev({
+      method: 'request.opened',
+      requestId: 'req-late',
+      requestType: 'approval',
+      payload: { toolName: 'apply_patch', toolCallId: 'patch-1' },
+    });
+    const ref = {
+      $stationContent: 1,
+      ref: `sha256-${'c'.repeat(64)}`,
+      kind: 'string',
+      bytes: 90_000,
+      preview: '+line',
+    };
+    const before = [
+      ev({ method: 'turn.started', turnId: 'turn-l', prompt: 'Patch' }),
+      ev({
+        method: 'tool.started',
+        turnId: 'turn-l',
+        toolCallId: 'patch-1',
+        toolName: 'apply_patch',
+        arguments: { changes: {} },
+      }),
+      requestOpened,
+    ];
+    expect(
+      toolPart(projectRuntimeEventsToMessages(before), 'patch-1'),
+    ).not.toHaveProperty('approvalContentEvent');
+    const messages = projectRuntimeEventsToMessages([
+      ...before,
+      ev({
+        method: 'tool.started',
+        turnId: 'turn-l',
+        toolCallId: 'patch-1',
+        toolName: 'apply_patch',
+        spilledContent: { v: 1, count: 1, bytes: 90_000 },
+        arguments: { changes: { 'a.ts': { diff: ref } } },
+      }),
+    ]);
+    expect(toolPart(messages, 'patch-1')).toMatchObject({
+      approvalId: 'req-late',
+      approvalContentEvent: requestOpened,
+    });
+  });
+
   it('never binds a subagent’s request whose exact call id misses onto a same-named main-thread call', () => {
     const messages = projectRuntimeEventsToMessages([
       ev({ method: 'turn.started', turnId: 'turn-m', prompt: 'Delegate' }),

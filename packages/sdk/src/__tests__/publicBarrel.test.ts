@@ -113,6 +113,8 @@ const INTERNAL_QUERY_DOMAINS: Record<string, string> = {
     'lazy parser used only by the summary fetcher so strict persisted-data validation does not enter the application shell.',
   developerRuntime:
     'lazy-only developer-surface hooks, intentionally published only from the `@kontourai/station-sdk/developer-runtime` subpath to keep them out of the root entry bundle.',
+  runtimeEventContent:
+    'Lazy subpath `@kontourai/station-sdk/runtime-event-content` (out-of-line event content reads and the approval content gate), kept out of the first-paint barrel like action-operations.',
   actionOperations:
     'Activity-only operation query, intentionally published from the `@kontourai/station-sdk/action-operations` subpath to preserve the lazy Activity bundle boundary.',
   mobileDevices:

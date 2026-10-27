@@ -5627,14 +5627,18 @@ export function configureRuntimeRoutes(
     return new DelegationResultDelivery({
       ...conversationDeliveryPorts(eventStore),
       store: eventStore.delegationResultStore(),
+      // Opt-in resolution: a delegation result reports the exact reply,
+      // even one EventStore stored out of line (event-content-spill).
       turnEvents: (threadId, turnId, methods, limit, invocationId) =>
         eventStore
-          .listTurnEventsByMethods(
-            threadId,
-            turnId,
-            methods,
-            limit,
-            invocationId,
+          .resolveEventContent(
+            eventStore.listTurnEventsByMethods(
+              threadId,
+              turnId,
+              methods,
+              limit,
+              invocationId,
+            ),
           )
           .map((stored) => ({
             ...(stored.turnId ? { turnId: stored.turnId } : {}),

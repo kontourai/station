@@ -1,0 +1,7 @@
+{
+  "revision": "3a71d62a3fa80c4c8fc697acde28e70aa0aa15d7",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"'bounded context seed' and the event-content-spill reference re-checked: seeds stay budgeted; they now read out-of-line replies at full size, which the design note documents. No contract change. No prose change.","inputs":["docs/reference/contracts.md","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-transcript-reads.ts"]}
+  ]
+}

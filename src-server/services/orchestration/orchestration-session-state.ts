@@ -40,6 +40,7 @@ import {
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
+import { runtimeEventContentText } from '@kontourai/station-contracts/runtime-event-content';
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
@@ -936,12 +937,14 @@ export function extractDisplayTitle(
   events: CanonicalRuntimeEvent[],
 ): string | undefined {
   for (const event of events) {
-    if (event.method !== 'turn.started' || typeof event.prompt !== 'string') {
-      continue;
-    }
+    if (event.method !== 'turn.started') continue;
+    // A long prompt stored out of line titles from its preview: a title is
+    // a short prefix either way.
+    const text = runtimeEventContentText(event.prompt)?.text;
+    if (!text) continue;
     const prompt = clientOriginSender(event.clientOrigin)
-      ? (unframeAgentMessage(event.prompt) ?? event.prompt)
-      : event.prompt;
+      ? (unframeAgentMessage(text) ?? text)
+      : text;
     const title = displayPromptTitle(prompt);
     if (title) return title;
   }

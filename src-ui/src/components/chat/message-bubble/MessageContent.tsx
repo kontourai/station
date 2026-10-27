@@ -8,6 +8,7 @@ import {
 import { FilePartPreview } from '../FilePartPreview';
 import { InputRequestRecordRow } from '../InputRequestRecordRow';
 import { LazyMarkdown } from '../LazyMarkdown';
+import { LoadFullContent } from '../LoadFullContent';
 import { PublishedHtmlReply } from '../PublishedHtmlReply';
 import { ReasoningSection } from '../ReasoningSection';
 import {
@@ -257,6 +258,24 @@ function MessageContentComponent({
                   </div>
                 );
               }
+            }
+            // docs/design/event-content-spill.md: a prompt or reply shown as
+            // its stored preview offers the rest on demand.
+            if (part.spilledText) {
+              const spilled = part.spilledText;
+              return (
+                <LoadFullContent
+                  key={block.key ?? index}
+                  threadId={spilled.threadId}
+                  value={spilled.ref}
+                >
+                  {(full) => (
+                    <LazyMarkdown>
+                      {typeof full === 'string' ? full : part.content}
+                    </LazyMarkdown>
+                  )}
+                </LoadFullContent>
+              );
             }
             // archive#3354: persisted text parts keep their highlighting —
             // they previously rendered plain once the turn settled.

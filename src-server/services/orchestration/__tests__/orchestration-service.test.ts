@@ -22950,25 +22950,30 @@ describe('OrchestrationService', () => {
         itemId: 'huge-tool',
         toolName: 'read_file',
         status: 'success',
-        output: 'x'.repeat(100000),
-      });
+        output: 'ok',
+        // Tool output is stored out of line now; only a field outside the
+        // spill allowlist can still exceed EventStore's backstop.
+        adapterNote: 'x'.repeat(100000),
+      } as CanonicalRuntimeEvent);
+      // docs/design/event-content-spill.md#residual-refusal: the unstorable
+      // event is skipped with a warning on its own thread; the stream is not
+      // interrupted, so no other thread hears about it.
       await vi.waitFor(() =>
         expect(
           eventStore
-            .listEvents('unrelated-owner')
+            .listEvents('oversized-owner')
             .some(
               (entry) =>
                 entry.payload.method === 'runtime.warning' &&
-                entry.payload.code === 'adapter-event-stream-interrupted',
+                entry.payload.code === 'event-not-stored',
             ),
         ).toBe(true),
       );
-      const unrelatedWarning = eventStore
-        .listEvents('unrelated-owner')
-        .find((entry) => entry.payload.method === 'runtime.warning');
-      expect(JSON.stringify(unrelatedWarning?.payload)).not.toContain(
-        'oversized-owner',
-      );
+      expect(
+        eventStore
+          .listEvents('unrelated-owner')
+          .some((entry) => entry.payload.method === 'runtime.warning'),
+      ).toBe(false);
       for (const threadId of ['oversized-owner', 'unrelated-owner']) {
         expect(await isolated.readSession(threadId)).toMatchObject({
           session: { lifecycleState: 'running' },
@@ -28607,8 +28612,10 @@ describe('OrchestrationService', () => {
       eventId: 'window-elided-turn',
       createdAt: '2026-08-19T00:00:01.000Z',
       method: 'turn.started',
-      // Past `snapshotEvent`'s serialized ceiling (24 KiB).
-      prompt: 'p'.repeat(32_000),
+      // Past `snapshotEvent`'s serialized ceiling (24 KiB), in a field
+      // outside the spill allowlist (a long prompt is stored out of line).
+      prompt: 'short',
+      metadata: { note: 'p'.repeat(32_000) },
     } as never);
     eventStore.appendEvent({
       provider: 'claude',
@@ -28631,7 +28638,9 @@ describe('OrchestrationService', () => {
     );
     const elidedTurn = byId.get('window-elided-turn');
     expect(elidedTurn?.elided).toBe('byte_limit');
-    expect((elidedTurn?.event as { prompt?: string })?.prompt).toBeUndefined();
+    expect(
+      (elidedTurn?.event as { metadata?: unknown })?.metadata,
+    ).toBeUndefined();
     // Absence is the other half of the contract: a whole event must not
     // carry a label, or the label distinguishes nothing.
     expect(byId.get('window-whole-tool')?.elided).toBeUndefined();
