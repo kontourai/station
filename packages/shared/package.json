@@ -37,6 +37,8 @@
     "./agent-message-frame": "./src/agent-message-frame.ts",
     "./build": "./src/build.ts",
     "./ui-document-policy": "./src/ui-document-policy.ts",
+    "./visual-viewport": "./src/visual-viewport.ts",
+    "./strict-indexeddb": "./src/strict-indexeddb.ts",
     "./build-provenance": "./src/build-provenance.ts",
     "./checkpoints": "./src/checkpoints.ts",
     "./child-workload": "./src/child-workload.ts",

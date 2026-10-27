@@ -21,6 +21,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { useDocumentVisible } from '../lib/documentVisibility';
 
 /**
  * Viewer side of a live surface (#90): one authenticated, length-prefixed
@@ -153,19 +154,6 @@ const HOST_BUSY_NOTICE_MS = 5_000;
 const LIVE_SURFACE_RECONNECT_DELAYS_MS = [
   500, 1_000, 2_000, 4_000, 8_000, 10_000,
 ] as const;
-
-function useDocumentVisible(): boolean {
-  const [visible, setVisible] = useState(
-    () =>
-      typeof document === 'undefined' || document.visibilityState !== 'hidden',
-  );
-  useEffect(() => {
-    const update = () => setVisible(document.visibilityState !== 'hidden');
-    document.addEventListener('visibilitychange', update);
-    return () => document.removeEventListener('visibilitychange', update);
-  }, []);
-  return visible;
-}
 
 function useIntersecting(ref: RefObject<Element | null>): boolean {
   const [intersecting, setIntersecting] = useState(true);
