@@ -188,9 +188,8 @@ describe('OverflowMenu region section (#917)', () => {
   });
 
   /**
-   * The footer's presence tray is inside the phone drawer, so with the drawer
-   * closed this row is Live work's route: it states the inventory's active
-   * count with the tray's own derivation and opens Activity.
+   * With the drawer closed this row is Live work's route: it states the
+   * inventory's active count (`activeLiveWorkSessions`) and opens Activity.
    */
   test('Live work names the active sessions and opens Activity', () => {
     harness.sessions = {

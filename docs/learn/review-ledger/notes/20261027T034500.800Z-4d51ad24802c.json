@@ -1,0 +1,7 @@
+{
+  "revision": "03de66577b851284970e0e9ed397dd8487597327",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"HeaderActions.tsx change is a comment: no phone Settings gear; Settings is the account menu Open settings row in the drawer footer. Connections guide makes no header-gear claim. No prose change.","inputs":["docs/guides/connections.md","src-ui/src/components/header/HeaderActions.tsx"]}
+  ]
+}

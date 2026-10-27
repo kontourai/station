@@ -573,12 +573,13 @@ export function HeaderActions({
         )}
       </div>
 
-      {/* No phone-only Settings gear: Settings lives in the sidebar drawer's
-          footer (`ProjectSidebarFooter`), which the hamburger beside the brand
-          opens on every viewport — so a phone reaches it in two taps without
-          spending a permanent slot in the row that runs out of width first.
-          The account menu that used to sit at this row's end is the footer's
-          `SidebarAccountControl`; the region glyphs took its place. */}
+      {/* No phone-only Settings gear: Settings is the "Open settings" row of
+          the account menu in the sidebar drawer's footer
+          (`SidebarAccountControl` in `ProjectSidebarFooter`), which the
+          hamburger beside the brand opens on every viewport — so a phone
+          reaches it without spending a permanent slot in the row that runs
+          out of width first. That account menu used to sit at this row's
+          end; the region glyphs took its place. */}
     </div>
   );
 }

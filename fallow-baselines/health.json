@@ -15082,14 +15082,6 @@
         "count": 1
       }
     },
-    "src-ui/src/components/project-sidebar/ProjectSidebarPresenceTray.tsx": {
-      "complexity_critical": {
-        "count": 1
-      },
-      "crap_critical": {
-        "count": 1
-      }
-    },
     "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx": {
       "complexity_critical": {
         "count": 1
@@ -19421,7 +19413,6 @@
     "src-server/services/connections/credential-usage-metadata.ts:complexity",
     "src-ui/src/components/chat-dock/ChatInboxHoverCard.tsx:complexity",
     "scripts/dependency-advisory-policy.mjs:complexity",
-    "src-ui/src/components/project-sidebar/ProjectSidebarPresenceTray.tsx:complexity",
     "src-ui/src/components/chat/markdown-blocks.ts:complexity",
     "src-server/services/projects/plugin-publish-snapshot.ts:complexity",
     "src-ui/src/components/chat/markdown-images.tsx:circular dependency",
