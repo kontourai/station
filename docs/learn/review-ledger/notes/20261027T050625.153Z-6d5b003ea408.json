@@ -1,0 +1,7 @@
+{
+  "revision": "4a7de6f46167fdac25e1b85cf248358c8a4e3698",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked inbox-card claims against approval-inbox.ts: the change only skips re-remembering a card that settled during a Deny-only rewrite; offered actions, the one-call accept from the inbox and the absent session option are unchanged. No prose change.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/services/approvals/approval-inbox.ts"]}
+  ]
+}
