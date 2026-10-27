@@ -15,10 +15,13 @@ vi.mock('../contexts/PreviewContext', () => ({
   usePreview: () => ({ openPreview }),
 }));
 
+import { renderToStaticMarkup } from 'react-dom/server';
 import {
   attachmentBlobForObjectUrl,
+  attachmentObjectUrlKey,
   releaseAttachmentObjectUrl,
   resetAttachmentObjectUrls,
+  seedAttachmentObjectUrl,
   storeAttachmentObjectUrl,
 } from '../components/chat/attachment-object-urls';
 import { FilePartPreview } from '../components/chat/FilePartPreview';
@@ -40,6 +43,30 @@ afterEach(() => {
 });
 
 describe('FilePartPreview', () => {
+  // A sent bubble switches from its inline bytes to the recorded reference at
+  // turn.started, with those bytes seeded under the reference. The chip's very
+  // first render (no effects have run: server markup) must already be the
+  // tappable picture, or it flashes to an untappable placeholder.
+  test('a reference whose bytes are already cached is a preview button on its first render, without a fetch', () => {
+    seedAttachmentObjectUrl(
+      attachmentObjectUrlKey(REF, 'image/png'),
+      new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }),
+    );
+    const markup = renderToStaticMarkup(
+      <FilePartPreview
+        part={{
+          type: 'file',
+          blobRef: REF,
+          mediaType: 'image/png',
+          name: 'screen.png',
+        }}
+      />,
+    );
+    expect(markup).toContain('aria-label="Preview screen.png"');
+    expect(markup).toContain('src="blob:station-attachment"');
+    expect(authenticatedFetch).not.toHaveBeenCalled();
+  });
+
   test('renders an inline restored image without fetching anything', async () => {
     render(
       <FilePartPreview

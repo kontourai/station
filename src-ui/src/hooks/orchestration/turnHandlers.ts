@@ -36,6 +36,7 @@ import { settlePendingApprovalsOnTurnEnd } from './approvalHandlers';
 import { finalizeAssistantTurn } from './assistantTurn';
 import { createAssistantStreamingMessage } from './messageParts';
 import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
+import { withRecordedAttachments } from './recordedAttachments';
 import { isReplayThread } from './replay/replay-registry';
 import { notifyTurnTerminal } from './turnAttentionNotifications';
 import type { OrchestrationEvent } from './types';
@@ -192,12 +193,16 @@ export function handleTurnStartedEvent(
       : currentChat?.pendingClientTurnId
         ? [...userMessages]
             .reverse()
-            .find((message) => message.role === 'user' && message.clientId)
+            .find(
+              (message) =>
+                message.role === 'user' && message.clientId && !message.turnId,
+            )
         : undefined;
     if (pending) {
       const index = userMessages.indexOf(pending);
       userMessages[index] = {
         ...pending,
+        ...withRecordedAttachments(pending, event.attachments),
         turnId: event.turnId,
         sourceEventId: event.eventId,
       };

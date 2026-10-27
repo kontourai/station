@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
 import type { SkillExperienceDefinitionV1 } from '@kontourai/station-contracts/skill-experience';
 import { projectChatDefaultsQueryKey } from '@kontourai/station-sdk';
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
   fireEvent,
@@ -13,7 +13,16 @@ import {
   screen,
 } from '@testing-library/react';
 import { createElement, useState } from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from 'vitest';
+import { resetAttachmentObjectUrls } from '../components/chat/attachment-object-urls';
 import { SkillExperienceForm } from '../components/skill-experiences/SkillExperienceForm';
 
 vi.mock('../contexts/AuthorityPersistenceContext', () => ({
@@ -21,6 +30,15 @@ vi.mock('../contexts/AuthorityPersistenceContext', () => ({
     namespace: 'authority-1',
     status: 'verified',
   }),
+}));
+
+// The rendered bubble below asks only about its attachment chip: its avatar
+// reads the signed-in account.
+vi.mock('../components/icons/UserIcon', () => ({ UserIcon: () => null }));
+// Its file chip resolves a blob reference against the Station it talks to.
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ApiBaseContext')>()),
+  useApiBase: () => ({ apiBase: 'http://api.test' }),
 }));
 
 const accountPreferenceFixture = vi.hoisted(() => ({
@@ -764,6 +782,131 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       status: 'sending',
       orchestrationSessionStarted: true,
     });
+  });
+
+  // The owner saw this on Android: right after sending a picture, while the
+  // reply streamed, the user's own bubble showed a blank chip that could not
+  // be opened, and only a reload (which brings the server's blobRef) fixed
+  // it. The bubble here is the one the real send path wrote to the store.
+  it('the bubble a picture send writes previews and opens that picture before any reload', async () => {
+    const png = 'data:image/png;base64,iVBORw0KGgo=';
+    const attachment = {
+      id: 'screen-live',
+      name: 'screen.png',
+      type: 'image/png',
+      size: 8,
+      data: png,
+      preview: png,
+    };
+    activeChatsStore.updateChat(sessionId, {
+      attachmentStages: [
+        {
+          clientAttachmentId: attachment.id,
+          name: attachment.name,
+          mimeType: 'image/png',
+          size: attachment.size,
+          state: 'complete',
+          progress: 1,
+          delivery: 'legacy-inline',
+        },
+      ],
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(sessionId, 'codex', undefined, 'Look at this', [
+        attachment,
+      ]);
+    });
+    const storedBubble = () =>
+      activeChatsStore
+        .getSnapshot()
+        [sessionId].messages?.find((message) => message.role === 'user');
+    expect(storedBubble()).toBeDefined();
+
+    const [{ MessageBubble }, { PreviewProvider }, { handleTurnStartedEvent }] =
+      await Promise.all([
+        import('../components/chat/MessageBubble'),
+        import('../contexts/PreviewContext'),
+        import('../hooks/orchestration/turnHandlers'),
+      ]);
+    const renderBubble = () =>
+      render(
+        createElement(
+          QueryClientProvider,
+          { client: new QueryClient() },
+          createElement(
+            PreviewProvider,
+            null,
+            createElement(MessageBubble, {
+              msg: storedBubble()!,
+              idx: 0,
+              activeSession: {
+                id: sessionId,
+                agentSlug: 'codex',
+                agentName: 'Codex',
+                messageCount: 1,
+              },
+              agents: [],
+              chatFontSize: 14,
+              showReasoning: false,
+              showToolDetails: false,
+              onCopy: () => {},
+            }),
+          ),
+        ),
+      );
+
+    const live = renderBubble();
+    const chip = screen.getByRole('button', { name: 'Preview screen.png' });
+    expect(screen.getByAltText('screen.png').getAttribute('src')).toBe(png);
+    fireEvent.click(chip);
+    const dialog = await screen.findByRole('dialog', { name: 'Preview' });
+    expect(dialog.textContent).toContain('screen.png');
+    live.unmount();
+
+    // The turn starts and records the attachment by reference. The stored
+    // bubble must let go of its multi-megabyte bytes, and its chip must still
+    // be the picture — from the bytes this client sent, not a refetch.
+    const { createObjectURL, revokeObjectURL } = URL;
+    Object.assign(URL, {
+      createObjectURL: vi.fn(() => 'blob:sent-picture'),
+      revokeObjectURL: vi.fn(),
+    });
+    onTestFinished(() => {
+      Object.assign(URL, { createObjectURL, revokeObjectURL });
+      resetAttachmentObjectUrls();
+    });
+    const { clientTurnId } = sendExecutionMessageMock.mock.calls[0][1];
+    act(() => {
+      handleTurnStartedEvent({
+        eventId: 'started-picture',
+        method: 'turn.started',
+        provider: 'codex',
+        threadId: sessionId,
+        turnId: 'turn-picture',
+        createdAt: '2026-09-12T00:00:00Z',
+        prompt: 'Look at this',
+        clientTurnId,
+        attachments: [
+          {
+            kind: 'image',
+            name: 'screen.png',
+            mimeType: 'image/png',
+            size: 8,
+            blobRef: `sha256-${'d'.repeat(64)}`,
+          },
+        ],
+      });
+    });
+    expect(storedBubble()?.turnId).toBe('turn-picture');
+    expect(JSON.stringify(storedBubble())).not.toContain('data:');
+    renderBubble();
+    expect(
+      screen.getByRole('button', { name: 'Preview screen.png' }),
+    ).toBeTruthy();
+    expect(screen.getByAltText('screen.png').getAttribute('src')).toBe(
+      'blob:sent-picture',
+    );
   });
 
   // A send the client refuses before any request (an attachment that never
