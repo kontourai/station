@@ -756,14 +756,14 @@ export function translateProjectedRuntimeError(
   return repeatSuffix ? `${display}\n${repeatSuffix.trim()}` : display;
 }
 
-/**
- * Renders a `ChatErrorTranslation` as the markdown chat copy shown to the
- * user. Raw engine text is not inlined — `disclosureRaw` is a Details control.
- */
 /** What the Continue action sends after a memory kill; Station adds the rest. */
 export const MEMORY_EXHAUSTION_CONTINUE_TEXT =
   'Continue the task from where it stopped.';
 
+/**
+ * Renders a `ChatErrorTranslation` as the markdown chat copy shown to the
+ * user. Raw engine text is not inlined — `disclosureRaw` is a Details control.
+ */
 export function formatChatErrorDisplay(
   translation: ChatErrorTranslation,
 ): string {
