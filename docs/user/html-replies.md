@@ -25,20 +25,19 @@ are not retained published pages.
 ## Images saved on the host
 
 With the **Chat images from the host** Feature Preview on (**Settings →
-Advanced → Feature previews**), an image a reply names by host path, such as
-`![Before and after](/home/me/project/compare.png)` or a `file:` URL, is shown on
-every device, including the phone app, without a Project. When the reply
-finishes, Station reads each named image once and keeps a copy as a chat
-attachment, so it is served like an image you attached: only to people who can
-read that chat.
+Advanced → Feature previews**), a Markdown image in a reply whose address is an
+absolute path on the Station host, or a `file:` URL, is shown on every device,
+including the phone app, without a Project. When the reply finishes, Station
+reads each named image once and keeps a copy as a chat attachment, so it is
+served like an image you attached: only to people who can read that chat.
 
 Station reads an image only when, after following every symbolic link, it is
 inside the chat's working folder, a verified Git worktree of it, or the chat's
 own temporary folder. Agents started while the preview is on get that folder
 as `$TMPDIR`; it is removed when the session ends. A chat whose working folder is
 your home folder (or contains it or Station's data) has no working-folder root,
-so only its temporary folder is read. Paths elsewhere, including `/tmp`, are
-not read. The file must really be a PNG, JPEG, GIF or WebP image (checked by
+so only its temporary folder is read. Paths elsewhere, including the system
+temporary folder, are not read. The file must really be a PNG, JPEG, GIF or WebP image (checked by
 content, not name), at most 512 KiB and 4,194,304 pixels, and a reply keeps at
 most 5. A file a path names is read when the reply finishes; a later change to
 the file does not change the copy.
