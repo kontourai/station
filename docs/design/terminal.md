@@ -92,8 +92,8 @@ The Settings controls for persistence/location, age and aggregate retention,
 clear-history actions, supervisor survival, doctor reporting, explicit restart,
 and command sessions remain follow-ups within phase 1. `terminal:observe` is
 governed by the Admin ceiling; no preset gains it. Its description names future
-remote-watch admission. The complete scope vocabulary uses 236 of the parser's
-256 characters, leaving 20 characters. Part b1 adds the personal-operator socket
+remote-watch admission. The complete scope vocabulary uses 253 of the parser's
+256 characters, leaving three characters. Part b1 adds the personal-operator socket
 below. Part b2 retains remote egress changes, SDK runtime and Coding cutover. Ghostty remains
 phase 3; no interim TerminalView is introduced.
 
