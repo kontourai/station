@@ -135,7 +135,7 @@ describe('host images in a reply', () => {
     expect(screen.queryByRole('note')).toBeNull();
   });
 
-  test('a reply that writes the placeholder scheme itself renders blank and fetches nothing', () => {
+  test('a placeholder written by the reply itself is blanked by react-markdown default transform (an unknown scheme), so no lookup or fetch happens', () => {
     const { container } = renderRow(
       `![x](${HOST_IMAGE_SRC_PREFIX}${encodeURIComponent(PATH)})`,
       settledHostImages(MAP),
