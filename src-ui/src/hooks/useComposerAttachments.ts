@@ -27,6 +27,9 @@ type StageTask = {
   file: FileAttachment;
   controller: AbortController;
   requestScope?: ApiRequestScope & { isCurrent?: () => boolean };
+  /** Resolves once this task leaves the scheduler, however it ended. */
+  settled: Promise<void>;
+  settle: () => void;
 };
 
 function snapshotFor(
@@ -183,7 +186,10 @@ export function useComposerAttachments(options: {
     () => () => {
       if (!options.cancelOnUnmount) return;
       owned.generation.current += 1;
-      for (const task of owned.tasks.current.values()) task.controller.abort();
+      for (const task of owned.tasks.current.values()) {
+        task.controller.abort();
+        task.settle();
+      }
       owned.pending.current = [];
     },
     [options.cancelOnUnmount, owned],
@@ -209,7 +215,10 @@ export function useComposerAttachments(options: {
     ) {
       const clientAttachmentId = owned.pending.current.shift()!;
       const task = owned.tasks.current.get(clientAttachmentId);
-      if (!task || task.controller.signal.aborted) continue;
+      if (!task || task.controller.signal.aborted) {
+        task?.settle();
+        continue;
+      }
       owned.running.current.add(clientAttachmentId);
       void (async () => {
         try {
@@ -262,6 +271,7 @@ export function useComposerAttachments(options: {
         } finally {
           owned.running.current.delete(clientAttachmentId);
           owned.tasks.current.delete(clientAttachmentId);
+          task.settle();
           owned.pumpRef.current();
         }
       })();
@@ -273,20 +283,56 @@ export function useComposerAttachments(options: {
     (
       files: readonly FileAttachment[],
       requestScope?: StageTask['requestScope'],
-    ) => {
-      for (const file of files) {
+    ): Promise<void>[] => {
+      const settled = files.map((file) => {
+        let settle!: () => void;
+        const done = new Promise<void>((resolve) => {
+          settle = resolve;
+        });
         owned.filesById.current.set(file.id, file);
         owned.fileScopes.current.set(file.id, requestScope);
         owned.tasks.current.set(file.id, {
           file,
           controller: new AbortController(),
           requestScope,
+          settled: done,
+          settle,
         });
         owned.pending.current.push(file.id);
-      }
+        return done;
+      });
       owned.pumpRef.current();
+      return settled;
     },
     [owned],
+  );
+
+  /**
+   * Stage files that already hold their bytes (a failed turn's recovered
+   * attachments) through this same supervised queue, as composer chips.
+   * Resolves whether every one completed; a failure stays visible on its chip.
+   */
+  const stageFiles = useCallback(
+    async (files: readonly FileAttachment[]): Promise<boolean> => {
+      if (files.length === 0) return true;
+      const ids = new Set(files.map((file) => file.id));
+      replaceStages([
+        ...currentStages().filter(
+          (stage) => !ids.has(stage.clientAttachmentId),
+        ),
+        ...files.map(snapshotFor),
+      ]);
+      if (options.onReplaceAttachment)
+        for (const file of files) options.onReplaceAttachment(file);
+      else options.onAddAttachments([...files]);
+      await Promise.all(enqueue(files, options.requestScope));
+      return files.every(
+        (file) =>
+          currentStages().find((stage) => stage.clientAttachmentId === file.id)
+            ?.state === 'complete',
+      );
+    },
+    [enqueue, options, replaceStages, currentStages],
   );
 
   const selectFilesWithResult = useCallback(
@@ -431,6 +477,7 @@ export function useComposerAttachments(options: {
     async (clientAttachmentId: string) => {
       const task = owned.tasks.current.get(clientAttachmentId);
       task?.controller.abort();
+      task?.settle();
       owned.tasks.current.delete(clientAttachmentId);
       owned.pending.current = owned.pending.current.filter(
         (id) => id !== clientAttachmentId,
@@ -651,6 +698,7 @@ export function useComposerAttachments(options: {
     error,
     selectFiles,
     selectFilesWithResult,
+    stageFiles,
     replaceFile,
     setError,
     retry,

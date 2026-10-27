@@ -476,6 +476,11 @@ export function useChatInput({
     [sessionId, updateChat, flushDraft],
   );
 
+  // Assigned below, once the attachment scheduler exists.
+  const stageFilesRef = useRef<
+    (files: readonly FileAttachment[]) => Promise<boolean>
+  >(async () => false);
+
   const handleSend = useCallback(
     async (
       overrideText?: string,
@@ -554,6 +559,27 @@ export function useChatInput({
         (stage) => stage.state !== 'complete',
       );
       if (incomplete) return;
+      // Supplied attachments (Send again's recovered turn) were never staged;
+      // a turn's earlier stage was released when that turn was accepted. Send
+      // refuses unstaged files, so stage them first, as composer chips.
+      if (overrideAttachments?.length) {
+        const staged =
+          activeChatsStore.getSnapshot()[sessionId]?.attachmentStages ?? [];
+        const unstaged = overrideAttachments.filter(
+          (attachment) =>
+            !staged.some(
+              (stage) =>
+                stage.clientAttachmentId === attachment.id &&
+                stage.state === 'complete',
+            ),
+        );
+        if (unstaged.length > 0 && !(await stageFilesRef.current(unstaged))) {
+          // Leave the whole turn in the composer beside the chip's error.
+          if (!activeChatsStore.getSnapshot()[sessionId]?.input)
+            updateChat(sessionId, { input: text });
+          return;
+        }
+      }
 
       if (text.trim()) {
         addToInputHistory(sessionId, text.trim());
@@ -654,6 +680,7 @@ export function useChatInput({
       attachments,
       attachmentStages,
       sendMessageAction,
+      updateChat,
       activeChatState?.skillExperienceDraft,
       addToInputHistory,
       clearDraft,
@@ -727,6 +754,7 @@ export function useChatInput({
     error: attachmentError,
     selectFiles: selectAttachmentFiles,
     selectFilesWithResult,
+    stageFiles,
     replaceFile: replaceAttachmentFile,
     setError: setAttachmentError,
     retry: retryAttachmentStage,
@@ -770,6 +798,8 @@ export function useChatInput({
       if (sessionId) updateChat(sessionId, { attachmentStages: nextStages });
     },
   });
+
+  stageFilesRef.current = stageFiles;
 
   const intakeOwner = useRef({ apiBase, sessionId, isChatVisible });
   intakeOwner.current = { apiBase, sessionId, isChatVisible };
