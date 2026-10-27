@@ -97,7 +97,15 @@ let savedSettings: WorkloadMemorySettings = {};
 let cgroupRoot = '/sys/fs/cgroup';
 let procRoot = '/proc';
 /** The binaries an engine scope's wrapper starts its holder with. */
-let holderBinaries: { setsid: string; sleep: string } | undefined;
+let holderBinaries: HolderBinaries | undefined;
+
+/** What an engine scope's wrapper starts its holder with. */
+export interface HolderBinaries {
+  setsid: string;
+  sleep: string;
+  /** bash(1), when the host has it: the holder then closes every fd >= 3. */
+  bash?: string;
+}
 const active = new Map<string, ActiveWorkload>();
 let monitor: ReturnType<typeof setTimeout> | undefined;
 const recent: Array<{
@@ -597,9 +605,7 @@ const HOLDER_SLEEP_SECONDS = '2147483647';
  * with, or undefined when the host has none (engine scopes then run without
  * one, reported `holder-unavailable`).
  */
-async function resolveHolderBinaries(): Promise<
-  { setsid: string; sleep: string } | undefined
-> {
+async function resolveHolderBinaries(): Promise<HolderBinaries | undefined> {
   const first = async (candidates: string[]) => {
     for (const candidate of candidates) {
       try {
@@ -613,7 +619,10 @@ async function resolveHolderBinaries(): Promise<
   };
   const setsid = await first(['/usr/bin/setsid', '/bin/setsid']);
   const sleep = await first(['/usr/bin/sleep', '/bin/sleep']);
-  return setsid && sleep ? { setsid, sleep } : undefined;
+  const bash = await first(['/usr/bin/bash', '/bin/bash']);
+  return setsid && sleep
+    ? { setsid, sleep, ...(bash ? { bash } : {}) }
+    : undefined;
 }
 
 /**
@@ -624,10 +633,15 @@ async function resolveHolderBinaries(): Promise<
  * engine is exec'd, so it is there however soon the engine dies, and nothing
  * is migrated between cgroups. `setsid -f` gives it its own session and
  * process group, out of reach of the group kill that tears a Codex engine
- * down. Its descriptors 0-9 are /dev/null or closed, so it holds none of
- * Station's pipes: Node maps a child's stdio, IPC and extra pipes onto the
- * lowest descriptors and opens everything else close-on-exec. dash only
- * redirects descriptors 0-9. The scope's stop kills the holder with the rest.
+ * down. Its descriptors 0-2 are /dev/null and 3-9 closed, which covers every
+ * pipe Station maps to the engine (Node maps a child's stdio, IPC and extra
+ * pipes onto the lowest descriptors and opens everything else close-on-exec).
+ * Descriptors Station itself inherited without close-on-exec (from a harness,
+ * a terminal, a CI step) can sit at 10 and above, where dash cannot name
+ * them; a parent waiting for EOF on one would wait as long as the holder
+ * lives. So where the host has bash, the holder first closes every descriptor
+ * from 3 up that /dev/fd lists, then execs sleep; without bash it keeps the
+ * 3-9 closure only. The scope's stop kills the holder with the rest.
  */
 function scopeWrapper(holder: boolean): string {
   return holder && holderBinaries
@@ -636,12 +650,15 @@ function scopeWrapper(holder: boolean): string {
 }
 
 /** The wrapper of an engine's own scope, with its holder (see scopeWrapper). */
-export function engineScopeWrapper(binaries: {
-  setsid: string;
-  sleep: string;
-}): string {
+export function engineScopeWrapper(binaries: HolderBinaries): string {
+  for (const path of Object.values(binaries))
+    if (!/^[A-Za-z0-9/._-]+$/.test(path))
+      throw new Error(`Unsafe holder binary path: ${path}`);
   const closed = [3, 4, 5, 6, 7, 8, 9].map((fd) => `${fd}>&-`).join(' ');
-  return `'${binaries.setsid}' -f '${binaries.sleep}' ${HOLDER_SLEEP_SECONDS} </dev/null >/dev/null 2>&1 ${closed}; exec "$@"`;
+  const holder = binaries.bash
+    ? `'${binaries.bash}' -c 'for fd in /dev/fd/*; do fd=\${fd##*/}; case $fd in 0|1|2) ;; *) eval "exec $fd>&-" ;; esac; done; exec ${binaries.sleep} ${HOLDER_SLEEP_SECONDS}' station-holder`
+    : `'${binaries.sleep}' ${HOLDER_SLEEP_SECONDS}`;
+  return `'${binaries.setsid}' -f ${holder} </dev/null >/dev/null 2>&1 ${closed}; exec "$@"`;
 }
 
 function installScopeLauncher(
@@ -1192,7 +1209,7 @@ export const __workloadTestHooks = {
     serviceUnit?: string;
     version?: number;
     /** null: the host has no setsid(1) or sleep(1). */
-    holderBinaries?: { setsid: string; sleep: string } | null;
+    holderBinaries?: HolderBinaries | null;
   }): Promise<void> {
     manager.run = options.run;
     cgroupRoot = options.cgroupRoot;

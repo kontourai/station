@@ -78,11 +78,19 @@ describe('engine scope holder', () => {
       existsSync('/usr/bin/sleep') ? '/usr/bin/sleep' : '/bin/sleep',
       sleep,
     );
+    const bash = ['/usr/bin/bash', '/bin/bash'].find((path) =>
+      existsSync(path),
+    );
+    if (!bash) throw new Error('this test needs bash(1)');
     const script = engineScopeWrapper({
       setsid: await setsidBinary(directory),
       sleep,
+      bash,
     });
-    // Stdio, Node IPC-style and browser extra pipes: descriptors 0-4.
+    // Stdio, Node IPC-style and browser extra pipes at descriptors 0-4, and a
+    // pipe at 11 standing for a descriptor Station itself inherited without
+    // close-on-exec (a harness, a terminal, a CI step): above what dash can
+    // name, so only the holder's own sweep closes it.
     const engine: ChildProcess = spawn(
       '/bin/sh',
       [
@@ -95,7 +103,20 @@ describe('engine scope holder', () => {
       ],
       {
         detached: true,
-        stdio: ['pipe', 'pipe', 'pipe', 'pipe', 'pipe'],
+        stdio: [
+          'pipe',
+          'pipe',
+          'pipe',
+          'pipe',
+          'pipe',
+          'ignore',
+          'ignore',
+          'ignore',
+          'ignore',
+          'ignore',
+          'ignore',
+          'pipe',
+        ],
         windowsHide: true,
       },
     );
@@ -124,17 +145,24 @@ describe('engine scope holder', () => {
     expect(holder.pgid).not.toBe(
       processes().find((entry) => entry.pid === process.pid)?.pgid,
     );
-    if (existsSync(`/proc/${holder.pid}/fd`))
-      expect(
-        readdirSync(`/proc/${holder.pid}/fd`).map((fd) => [
-          fd,
-          readlinkSync(`/proc/${holder.pid}/fd/${fd}`),
-        ]),
-      ).toEqual([
+    // Exactly /dev/null on 0-2 and nothing else, whatever the parent left
+    // open: the full list (each link's target) is in the failure message.
+    if (existsSync(`/proc/${holder.pid}/fd`)) {
+      const fds = readdirSync(`/proc/${holder.pid}/fd`).map((fd) => {
+        let target: string;
+        try {
+          target = readlinkSync(`/proc/${holder.pid}/fd/${fd}`);
+        } catch (error) {
+          target = String(error);
+        }
+        return [fd, target];
+      });
+      expect(fds, JSON.stringify(fds)).toEqual([
         ['0', '/dev/null'],
         ['1', '/dev/null'],
         ['2', '/dev/null'],
       ]);
+    }
     process.kill(-enginePid, 'SIGKILL');
     // Every engine pipe closes: the holder kept none of them open.
     const late = new Promise((resolve) => setTimeout(resolve, 5_000, 'late'));
