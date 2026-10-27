@@ -33,7 +33,9 @@ served like an image you attached: only to people who can read that chat.
 
 Station reads an image only when, after following every symbolic link, it is
 inside the chat's working folder, a verified Git worktree of it, or the chat's
-own temporary folder, and it has no second hard link. Agents started while the
+own temporary folder, not inside a folder every user can write to, and it has
+no second hard link. Packages that pnpm installs are hard links into its
+shared store, so images inside them are refused; copy one out first. Agents started while the
 preview is on get that temporary folder as `$TMPDIR` (Claude under macOS
 confinement keeps its confinement's own temporary folder, and that exact folder
 is the one read). It is removed when Station sees the session end; if an engine
@@ -44,8 +46,9 @@ its own.
 
 A working folder is not read at all when it is or contains your home folder or
 Station's data (a chat with no Project uses the home folder), or when it is or
-contains a shared temporary directory such as the system temporary folder, or
-is writable by every user. Such a chat reads only its own temporary folder; a
+contains a shared temporary directory such as the system temporary folder, is
+writable by every user, or sits under a folder every user can write to without
+the sticky bit. Such a chat reads only its own temporary folder; a
 Project folder inside the system temporary folder is still read. Paths
 elsewhere are not read. The file must really be a PNG, JPEG, GIF or WebP image
 (checked by content, not name), at most 512 KiB and 4,194,304 pixels, and a
@@ -54,8 +57,8 @@ later change to the file does not change the copy.
 
 An image Station did not keep shows **Image not available on this device** and
 the reason: outside the working and temporary folders, missing, not an image,
-too large, too many pixels, too many images, a file with more than one hard
-link, unreadable, or the chat's attachment storage is full. While a reply is still streaming the image shows "Image appears
+too large, too many pixels, too many images, in a folder every user can write
+to, a file with more than one hard link, unreadable, or the chat's attachment storage is full. While a reply is still streaming the image shows "Image appears
 when the reply finishes". For a path Station has no record of (a reply from
 before the preview was on), a Project conversation falls back to the Project
 file reader described above.
