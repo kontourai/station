@@ -1,3 +1,4 @@
+import type { ChatHostImageMap } from '@kontourai/station-contracts/chat-host-images';
 import type {
   AgentExecutionConfig,
   AgentSource,
@@ -284,6 +285,8 @@ export interface ChatMessage {
   }>;
   /** archive#1410: the canonical turn this assistant row projects, when known. */
   turnId?: string;
+  /** chat-host-images: host image paths this turn's reply named, by path. */
+  hostImages?: ChatHostImageMap;
   /** Execution Session that produced this historical assistant row. */
   sessionId?: string;
   /**

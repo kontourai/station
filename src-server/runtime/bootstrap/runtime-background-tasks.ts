@@ -3,6 +3,7 @@ import type { ServerEventName } from '@kontourai/station-contracts/runtime-event
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { listProviders } from '../../providers/registries/registry.js';
 import { reapStaleSeatbeltSessionDirs } from '../../security/confinement/seatbelt.js';
+import { reapStaleSessionTmpDirs } from '../../services/infra/session-tmpdir.js';
 import {
   engineSpawnTmpDirPath,
   reapEngineSpawnTmpDir,
@@ -111,6 +112,8 @@ export function scheduleRuntimeEngineSpawnTmpReaping(
         // gone (from boot, and on the same schedule), whether or not the
         // sweep above failed.
         reapStaleSeatbeltSessionDirs(resolveHomeDir());
+        // Per-session engine TMPDIRs (chat-host-images) a crashed Station left.
+        reapStaleSessionTmpDirs(resolveHomeDir());
       }
     });
   const runReap = () => {

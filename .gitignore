@@ -49,6 +49,9 @@ archive/
 !docs/learn/media/*.png
 !src-ui/public/favicon-beta.png
 !src-ui/public/favicon-nightly.png
+# Real-writer images (macOS sips, Chromium) the chat-host-images capture tests
+# read: generated fixtures would not prove what real writers emit.
+!src-server/services/orchestration/__tests__/fixtures/host-images/*.png
 # Platform icon sets are source-controlled build INPUT, not build output, and
 # the negation below is single-level so nested sets need their own entries.
 # Without them Android fails resource linking outright (mipmap-anydpi-v26/

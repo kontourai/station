@@ -1,3 +1,4 @@
+import type { ChatHostImageMap } from '@kontourai/station-contracts/chat-host-images';
 import type {
   ChildWorkModel,
   ChildWorkTerminalStatus,
@@ -214,6 +215,8 @@ export type ChatMessage = {
    */
   provenance?: unknown;
   changedFiles?: TurnChangedFiles;
+  /** See `ChatMessage.hostImages` in types.ts. */
+  hostImages?: ChatHostImageMap;
 };
 
 /**

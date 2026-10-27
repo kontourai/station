@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -125,6 +126,10 @@ import {
 } from '../../runtime/mcp/station-control-mcp-token.js';
 import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
+import {
+  installSessionTmpDirPolicy,
+  sessionTmpDirPath,
+} from '../../services/infra/session-tmpdir.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
 import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';
@@ -10576,6 +10581,53 @@ echo '{"loggedIn":true}'
           );
         }
       } finally {
+        if (previousStationHome === undefined) delete process.env.STATION_HOME;
+        else process.env.STATION_HOME = previousStationHome;
+        rmSync(stationHome, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('chat-host-images: per-session engine TMPDIR', () => {
+    test('a session the preview admits gets its own Station-owned TMPDIR; the catalog probe keeps the shared one', async () => {
+      const stationHome = join(
+        tmpdir(),
+        `station-claude-session-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      );
+      const previousStationHome = process.env.STATION_HOME;
+      process.env.STATION_HOME = stationHome;
+      const uninstall = installSessionTmpDirPolicy(
+        (threadId) => threadId === 'thread-session-tmp-on',
+      );
+      try {
+        mockQuery.mockClear();
+        mockAugmentedSpawnEnv.mockReset();
+        mockQuery.mockReturnValue(createMockQuery([]));
+        const adapter = new ClaudeAdapter();
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-session-tmp-on',
+        });
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-session-tmp-off',
+        });
+        await adapter.listModelCatalog?.();
+        const [onCall, offCall, catalogCall] = mockQuery.mock.calls.map(
+          ([call]) => call,
+        );
+        const own = sessionTmpDirPath('thread-session-tmp-on', stationHome);
+        expect(onCall.options.env.TMPDIR).toBe(own);
+        expect(statSync(own).isDirectory()).toBe(true);
+        expect(statSync(own).mode & 0o777).toBe(0o700);
+        expect(offCall.options.env.TMPDIR).toBe(
+          engineSpawnTmpDirPath(stationHome),
+        );
+        expect(catalogCall.options.env.TMPDIR).toBe(
+          engineSpawnTmpDirPath(stationHome),
+        );
+      } finally {
+        uninstall();
         if (previousStationHome === undefined) delete process.env.STATION_HOME;
         else process.env.STATION_HOME = previousStationHome;
         rmSync(stationHome, { recursive: true, force: true });

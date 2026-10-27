@@ -74,6 +74,7 @@ import {
 import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js';
 import type { InvocationContext } from '../../runtime/types.js';
 import { createACPBridgeClient } from '../../services/acp/acp-bridge-client.js';
+import { engineSessionTmpDir } from '../../services/infra/session-tmpdir.js';
 import type { ManagedTerminal } from '../../services/acp/acp-bridge-types.js';
 import { registryLaunchEnvFor } from '../../services/acp/acp-engine-descriptors.js';
 import {
@@ -1220,12 +1221,16 @@ export class AcpAdapter implements ProviderAdapterShape {
     // merged into whatever inline configuration it already had; the same
     // launch is reused to move the session onto another floor.
     const launchEnv = registryLaunchEnvFor(config);
+    // Resolved once: a relaunch onto another approval floor keeps the same
+    // session directory.
+    const tmpDir = engineSessionTmpDir(input.threadId);
     const launch = (floor: OpenCodeApprovalFloor | undefined) =>
       processFactory({
         command: config.command,
         args: config.args,
         cwd,
         launchEnv,
+        ...(tmpDir ? { tmpDir } : {}),
         credentialEnv: () => engineCredentialEnvFor(config),
         // #3957: not offered, because OpenCode's own tools already write
         // every edit; its client write would only be a redundant copy. The

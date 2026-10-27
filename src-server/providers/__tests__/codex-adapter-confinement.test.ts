@@ -9,8 +9,14 @@
  * its `sandbox` replaced where a case needs Codex to report something else.
  */
 import { EventEmitter } from 'node:events';
-import { mkdirSync, readFileSync, realpathSync } from 'node:fs';
-import { homedir } from 'node:os';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+} from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import type { ConfinementPlan } from '@kontourai/station-contracts/execution-confinement';
@@ -23,6 +29,10 @@ import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { ConfinementRefusedError } from '../../security/confinement/confinement-provider.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
+import {
+  installSessionTmpDirPolicy,
+  sessionTmpDirPath,
+} from '../../services/infra/session-tmpdir.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 
 class FakeWritable extends Writable {
@@ -177,9 +187,11 @@ async function start(input: {
 }) {
   const process = new FakeCodexProcess();
   let spawnArgs: string[] | undefined;
+  let spawnTmpDir: string | undefined;
   const adapter = new CodexAdapter({
-    processFactory: (_env, args) => {
+    processFactory: (_env, args, tmpDir) => {
       spawnArgs = args;
+      spawnTmpDir = tmpDir;
       return process as never;
     },
     ...(input.connectionArgs
@@ -260,6 +272,7 @@ async function start(input: {
     sessionStarted,
     process,
     spawnArgs,
+    spawnTmpDir,
     adapter,
     cleanup,
   };
@@ -492,6 +505,41 @@ describe('#2494: Codex confinement posture is read back from its response', () =
         await run.cleanup();
       },
     );
+
+    test('chat-host-images: a session the preview admits spawns with its own TMPDIR, and a root there is still confined', async () => {
+      const home = mkdtempSync(join(tmpdir(), 'codex-session-tmp-'));
+      const previousHome = process.env.STATION_HOME;
+      process.env.STATION_HOME = home;
+      const uninstall = installSessionTmpDirPolicy(
+        (threadId) => threadId === 'session-tmp',
+      );
+      try {
+        const own = sessionTmpDirPath('session-tmp', home);
+        const run = await start({
+          threadId: 'session-tmp',
+          approvalMode: 'never',
+          confinement: 'workspace',
+          plan: REQUIRED,
+          reported: workspaceWrite([own]),
+        });
+        expect(run.spawnTmpDir).toBe(own);
+        expect(run.outcome).toEqual({ ok: true });
+        await run.cleanup();
+        const other = await start({
+          threadId: 'no-session-tmp',
+          approvalMode: 'never',
+          confinement: 'workspace',
+          plan: REQUIRED,
+        });
+        expect(other.spawnTmpDir).toBeUndefined();
+        await other.cleanup();
+      } finally {
+        uninstall();
+        if (previousHome === undefined) delete process.env.STATION_HOME;
+        else process.env.STATION_HOME = previousHome;
+        rmSync(home, { recursive: true, force: true });
+      }
+    });
 
     test('the refusal names the operator-configured roots outside the workspace and how to fix it (D3)', async () => {
       const cargo = join(homedir(), '.cargo');

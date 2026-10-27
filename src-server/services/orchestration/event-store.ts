@@ -3805,6 +3805,9 @@ export class EventStore {
     if (event.method === 'tool.completed' && event.attachments?.length) {
       return this.persistedToolImages(event);
     }
+    if (event.method === 'content.host-images') {
+      return this.persistedHostImages(event);
+    }
     if (event.method !== 'turn.started' || !event.attachments?.length) {
       return { payload: event, blobRefs: [] };
     }
@@ -4035,7 +4038,60 @@ export class EventStore {
   private persistedToolImages(
     event: Extract<CanonicalRuntimeEvent, { method: 'tool.completed' }>,
   ): PersistedIngressForm {
-    const attachments = event.attachments ?? [];
+    const { persisted, notKept, blobRefs, changed, stripped, key } =
+      this.persistEngineImages(event, event.attachments ?? []);
+    if (!changed) return { payload: event, blobRefs, toolImageKey: key };
+    if (stripped > 0)
+      this.observeAttachmentBytesStripped(stripped, event.provider);
+    return {
+      payload: {
+        ...event,
+        attachments: persisted,
+        ...(notKept.length > 0
+          ? { output: withToolImageNotes(event.output, notKept) }
+          : {}),
+      },
+      blobRefs,
+      toolImageKey: key,
+    };
+  }
+
+  /**
+   * The persisted form of a `content.host-images` event: its images go
+   * through exactly the tool-image path (type check by content, the chat's
+   * attachment budget, blob write, binding to this thread), and a source
+   * whose image was not kept says so as `not-stored` rather than pointing at
+   * a descriptor with no bytes.
+   */
+  private persistedHostImages(
+    event: Extract<CanonicalRuntimeEvent, { method: 'content.host-images' }>,
+  ): PersistedIngressForm {
+    const { persisted, blobRefs, changed, stripped, key } =
+      this.persistEngineImages(event, event.attachments ?? []);
+    if (!changed) return { payload: event, blobRefs, toolImageKey: key };
+    if (stripped > 0)
+      this.observeAttachmentBytesStripped(stripped, event.provider);
+    const sources = (event.sources ?? []).map((source) =>
+      source.attachmentIndex !== undefined &&
+      !persisted[source.attachmentIndex]?.blobRef
+        ? { path: source.path, refused: 'not-stored' as const }
+        : source,
+    );
+    return {
+      payload: { ...event, attachments: persisted, sources },
+      blobRefs,
+      toolImageKey: key,
+    };
+  }
+
+  /**
+   * Store an engine-side event's images (a tool's, or a reply's host images)
+   * and keep each as a reference, or as a bare descriptor with the reason.
+   */
+  private persistEngineImages(
+    event: CanonicalRuntimeEvent,
+    attachments: PersistedChatAttachment[],
+  ) {
     if (attachments.some((attachment) => attachment.dataUrl !== undefined)) {
       const attachmentError = validateChatAttachments(
         attachments as Parameters<typeof validateChatAttachments>[0],
@@ -4125,20 +4181,7 @@ export class EventStore {
     const pending = this.pendingToolImages.get(key);
     if (pending && pending.refs.size === 0 && pending.charges.size === 0)
       this.pendingToolImages.delete(key);
-    if (!changed) return { payload: event, blobRefs, toolImageKey: key };
-    if (stripped > 0)
-      this.observeAttachmentBytesStripped(stripped, event.provider);
-    return {
-      payload: {
-        ...event,
-        attachments: persisted,
-        ...(notKept.length > 0
-          ? { output: withToolImageNotes(event.output, notKept) }
-          : {}),
-      },
-      blobRefs,
-      toolImageKey: key,
-    };
+    return { persisted, notKept, blobRefs, changed, stripped, key };
   }
 
   /**

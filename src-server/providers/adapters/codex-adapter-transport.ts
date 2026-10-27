@@ -82,13 +82,14 @@ export function createCodexProcess(
   processFactory?: () => CodexProcessLike,
   extraEnv?: Record<string, string>,
   extraArgs?: string[],
+  tmpDir?: string,
 ): CodexProcessLike {
   // archive#896 wave 2 / archive#1195: `extraEnv`/`extraArgs` only reach the real
   // spawn path — test-double factories are unaffected (they don't take
   // these arguments at all).
   return processFactory
     ? processFactory()
-    : spawnCodexProcess(extraEnv, extraArgs);
+    : spawnCodexProcess(extraEnv, extraArgs, tmpDir);
 }
 
 export function createCodexSessionRecord(options: {
@@ -1452,6 +1453,8 @@ export class CodexAdapterTransport {
 function spawnCodexProcess(
   extraEnv?: Record<string, string>,
   extraArgs?: string[],
+  /** A session's own Station-owned TMPDIR (`session-tmpdir.ts`), never env-supplied. */
+  tmpDir?: string,
 ): ChildProcessWithoutNullStreams {
   const binary = findCliBinary('codex') ?? 'codex';
   // archive#1195: `extraArgs` carries `-c mcp_servers.<id>....` session-layer
@@ -1495,7 +1498,7 @@ function spawnCodexProcess(
       env: childProcessEnvironment({
         PATH: resolveAugmentedPathSync(),
         ...extraEnv,
-        TMPDIR: ensureEngineSpawnTmpDir(),
+        TMPDIR: tmpDir ?? ensureEngineSpawnTmpDir(),
       }),
     },
   );

@@ -50,6 +50,7 @@ import {
   handleToolCompletedEvent,
   handleToolProgressEvent,
   handleToolStartedEvent,
+  handleHostImagesEvent,
 } from './streamHandlers';
 import { recordEventPosition } from './streamPosition';
 import {
@@ -378,6 +379,9 @@ function dispatchProjectedOrchestrationEvent(
       return;
     case 'conversation.forked':
       handleConversationForkedEvent(event);
+      return;
+    case 'content.host-images':
+      handleHostImagesEvent(event);
       return;
     default: {
       const _exhaustive: never = event;

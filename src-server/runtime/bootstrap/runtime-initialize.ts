@@ -162,6 +162,7 @@ import {
   isHostedTenantExecutionRequired,
   loadHostedTenantRegistryFromEnvironment,
 } from './runtime-tenant-context.js';
+import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 
 type RuntimeFramework = VoltAgentFramework | StrandsFramework;
 
@@ -233,6 +234,8 @@ export interface InitializeRuntimeDeps {
   /** Reconcile the built-in role after background ACP readiness settles. */
   onACPConnectionsReady?: () => void | Promise<void>;
   orchestrationEventStore: EventStore;
+  /** The `chat-host-images` Feature Preview selector, passed to orchestration. */
+  hostImagesPreview?: FeaturePreviewSelector;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
   /** archive#3245: lifetime analytics' read of the orchestration substrate. */
@@ -565,6 +568,9 @@ export async function initializeRuntime(
     process.env.STATION_IDLE_SESSION_PARK_AFTER_MS,
   );
   const orchestrationService = new OrchestrationService({
+    ...(deps.hostImagesPreview
+      ? { hostImagesPreview: deps.hostImagesPreview }
+      : {}),
     ...(idleSessionParkAfterMs !== undefined ? { idleSessionParkAfterMs } : {}),
     // #1796: revoking a device's full access re-confines the sessions its
     // grant unconfined, from their next turn.

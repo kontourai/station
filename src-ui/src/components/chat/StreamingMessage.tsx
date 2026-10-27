@@ -19,6 +19,7 @@ import { INLINE_RUN_LIMIT } from './message-bubble/MessageContent';
 import { blockHasVisibleContent } from './message-bubble/visibleContent';
 import { PublishedHtmlReply } from './PublishedHtmlReply';
 import { StreamingMarkdown } from './StreamingMarkdown';
+import { HostImagesContext, STREAMING_HOST_IMAGES } from './HostImagesContext';
 import {
   SubagentCardsForCalls,
   SubagentTranscriptCard,
@@ -293,7 +294,9 @@ function StreamingMessageWithApps({
                 className={current ? 'streaming-tip' : undefined}
                 key={block.key ?? i}
               >
-                <StreamingMarkdown content={part.content} />
+                <HostImagesContext.Provider value={STREAMING_HOST_IMAGES}>
+                  <StreamingMarkdown content={part.content} />
+                </HostImagesContext.Provider>
                 {current && block === blocks.at(-1) && (
                   <div className="stream-caret-line" aria-hidden="true">
                     <span className="stream-caret" />

@@ -57,10 +57,23 @@ function useAttachmentObjectUrl(
   ref: string | undefined,
   mediaType: string | undefined,
 ): string | undefined {
+  return useAttachmentObjectUrlState(ref, mediaType).url;
+}
+
+/**
+ * The same fetch, also saying whether it failed, so a caller that has no
+ * chip to fall back to can tell "still loading" from "not available".
+ */
+export function useAttachmentObjectUrlState(
+  ref: string | undefined,
+  mediaType: string | undefined,
+): { url: string | undefined; failed: boolean } {
   const { apiBase } = useApiBase();
   const [objectUrl, setObjectUrl] = useState<string | undefined>(undefined);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
+    setFailed(false);
     if (!ref) {
       setObjectUrl(undefined);
       return;
@@ -100,7 +113,10 @@ function useAttachmentObjectUrl(
           held = true;
           setObjectUrl(url);
         } catch {
-          if (active) setObjectUrl(undefined);
+          if (active) {
+            setObjectUrl(undefined);
+            setFailed(true);
+          }
         }
       })();
     }
@@ -111,7 +127,7 @@ function useAttachmentObjectUrl(
     };
   }, [ref, mediaType, apiBase]);
 
-  return objectUrl;
+  return { url: objectUrl, failed };
 }
 
 type ChipThumbnail = AttachmentObjectUrlSize & { url: string };

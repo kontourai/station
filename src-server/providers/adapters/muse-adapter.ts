@@ -29,6 +29,7 @@ import type {
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
+import { engineSessionTmpDir } from '../../services/infra/session-tmpdir.js';
 import {
   spawnOwnedChild,
   terminateProcessTree,
@@ -118,7 +119,11 @@ export interface MuseAdapterOptions {
    * suite has to import `node:child_process` (the Vitest resource manifest
    * gate would then demand an explicit process-heavy classification).
    */
-  processFactory?: (args: string[], cwd?: string) => MuseSpawnResult;
+  processFactory?: (
+    args: string[],
+    cwd?: string,
+    tmpDir?: string,
+  ) => MuseSpawnResult;
   now?: () => Date;
   /** Mints the durable `--session-id` handed to every turn of a session. */
   newSessionId?: () => string;
@@ -652,7 +657,12 @@ type MuseTurnSettleOutcome =
       outputText?: string;
     };
 
-function createMuseProcess(args: string[], cwd?: string): MuseSpawnResult {
+function createMuseProcess(
+  args: string[],
+  cwd?: string,
+  /** A session's own Station-owned TMPDIR (`session-tmpdir.ts`). */
+  tmpDir?: string,
+): MuseSpawnResult {
   const binary = findCliBinary('muse') ?? 'muse';
   // Mirrors the Codex spawn recipe (windowsHide + detached + piped stdio +
   // a Station-owned TMPDIR), routed through `spawnOwnedChild` so a per-turn
@@ -664,7 +674,7 @@ function createMuseProcess(args: string[], cwd?: string): MuseSpawnResult {
     // off the service PATH can find its interpreter (see spawnCodexProcess).
     env: childProcessEnvironment({
       PATH: resolveAugmentedPathSync(),
-      TMPDIR: ensureEngineSpawnTmpDir(),
+      TMPDIR: tmpDir ?? ensureEngineSpawnTmpDir(),
     }),
     stdio: ['pipe', 'pipe', 'pipe'],
   });
@@ -689,6 +699,7 @@ function createMuseServeHost(
   posture: MuseServeHostPosture,
   cwd?: string,
   dataHome?: string,
+  tmpDir?: string,
 ): MuseServeSpawnResult {
   const binary = findCliBinary('muse') ?? 'muse';
   if (dataHome) mkdirSync(dataHome, { recursive: true });
@@ -699,7 +710,7 @@ function createMuseServeHost(
       cwd,
       env: childProcessEnvironment({
         PATH: resolveAugmentedPathSync(),
-        TMPDIR: ensureEngineSpawnTmpDir(),
+        TMPDIR: tmpDir ?? ensureEngineSpawnTmpDir(),
         ...museServeEnvOverrides(dataHome),
       }),
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -845,6 +856,7 @@ export class MuseAdapter implements ProviderAdapterShape {
   private readonly processFactory: (
     args: string[],
     cwd?: string,
+    tmpDir?: string,
   ) => MuseSpawnResult;
   private readonly now: () => Date;
   private readonly newSessionId: () => string;
@@ -1261,7 +1273,12 @@ export class MuseAdapter implements ProviderAdapterShape {
     const spawnHost =
       serve.spawnHost ??
       ((posture: MuseServeHostPosture, hostCwd?: string) =>
-        createMuseServeHost(posture, hostCwd, serve.dataHome));
+        createMuseServeHost(
+          posture,
+          hostCwd,
+          serve.dataHome,
+          engineSessionTmpDir(threadId),
+        ));
     return new MuseServeSession({
       threadId,
       now: this.now,
@@ -1413,7 +1430,11 @@ export class MuseAdapter implements ProviderAdapterShape {
 
     let spawned: MuseSpawnResult;
     try {
-      spawned = this.processFactory(args, record.cwd);
+      spawned = this.processFactory(
+        args,
+        record.cwd,
+        engineSessionTmpDir(input.threadId),
+      );
     } catch (error) {
       cleanupImages();
       throw error;

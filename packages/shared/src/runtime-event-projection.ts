@@ -1,4 +1,8 @@
 import { isStationCheckBackTurn } from '@kontourai/station-contracts/agent-schedule';
+import {
+  type ChatHostImageMap,
+  chatHostImageMapFromEvent,
+} from '@kontourai/station-contracts/chat-host-images';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import {
   hasRuntimeEventContentRefs,
@@ -279,6 +283,27 @@ export function projectRuntimeEventsToMessages(
       envelope,
     ]),
   );
+  // chat-host-images: the images a settled turn's reply named, recorded by a
+  // `content.host-images` event that arrives AFTER the turn's terminal, so
+  // it is gathered up front like the envelope above. A later event for the
+  // same turn adds to (and overrides paths in) an earlier one.
+  const hostImagesByTurn = new Map<string, ChatHostImageMap>();
+  for (const event of events) {
+    if (event.method !== 'content.host-images') continue;
+    const key = turnKey(event.threadId, event.turnId);
+    if (!key) continue;
+    const next = chatHostImageMapFromEvent(event);
+    const prior = hostImagesByTurn.get(key);
+    hostImagesByTurn.set(
+      key,
+      prior
+        ? {
+            images: { ...prior.images, ...next.images },
+            refused: { ...prior.refused, ...next.refused },
+          }
+        : next,
+    );
+  }
   // The turn whose events are currently being folded, read straight off the
   // events' own `turnId` — never inferred from ordering.
   let turnIdentity: string | undefined;
@@ -456,6 +481,12 @@ export function projectRuntimeEventsToMessages(
       role === 'assistant' && !beforeSteer && turnIdentity
         ? envelopesByTurn.get(turnKey(turnSessionId, turnIdentity) ?? '')
         : undefined;
+    // Every assistant row of the turn, pre-steer segments included: an image
+    // can be named in any of them.
+    const hostImages =
+      role === 'assistant' && turnIdentity
+        ? hostImagesByTurn.get(turnKey(turnSessionId, turnIdentity) ?? '')
+        : undefined;
     const metadata = {
       ...(turnTimestamp !== undefined ? { timestamp: turnTimestamp } : {}),
       ...(role === 'user' && inputKind ? { inputKind } : {}),
@@ -481,6 +512,7 @@ export function projectRuntimeEventsToMessages(
         ? { answerEligible: true }
         : {}),
       ...(provenance ? { provenance } : {}),
+      ...(hostImages ? { hostImages } : {}),
     };
     messages.push({
       id:

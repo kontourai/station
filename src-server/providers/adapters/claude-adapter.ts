@@ -96,6 +96,7 @@ import {
 } from '../../security/confinement/seatbelt.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
+import { engineSessionTmpDir } from '../../services/infra/session-tmpdir.js';
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
 import type { EngineMcpOAuthResolver } from '../../services/plugins/engine-mcp-oauth.js';
 import {
@@ -3801,7 +3802,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // describe blocks in claude-adapter.test.ts.
       // TMPDIR must be final: both augmentedEnv and appHomeEnv can contain a
       // caller/ambient value, but every Claude SDK spawn must use Station's
-      // reaped engine-spawn directory (archive#1908).
+      // reaped engine-spawn directory (archive#1908), or the session's own
+      // Station-owned one when the chat-host-images preview gives it one
+      // (`session-tmpdir.ts`). Seatbelt confinement replaces it again with
+      // its per-launch directory.
       //
       // station#2072: the per-connection env layer (proxy routing) merges
       // BEFORE the app-home layer, so the connection's routing keys always
@@ -3820,7 +3824,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                 input.agent.toolServerLoading === 'always' ? 'false' : 'true',
             }
           : {}),
-        TMPDIR: ensureEngineSpawnTmpDir(),
+        TMPDIR:
+          engineSessionTmpDir(input.threadId) ?? ensureEngineSpawnTmpDir(),
       }),
       // #2932: the SDK reads stdout from the process this returns, after
       // Station's tap has recorded each permission ask on it.

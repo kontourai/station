@@ -654,6 +654,9 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
           : {}),
         answerEligible: message.metadata?.answerEligible,
         provenance: message.metadata?.provenance,
+        ...(message.metadata?.hostImages
+          ? { hostImages: message.metadata.hostImages }
+          : {}),
         turnEnded: message.metadata?.turnEnded,
         turnEndedReason: message.metadata?.turnEndedReason,
         turnStoppedBy: message.metadata?.turnStoppedBy,

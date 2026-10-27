@@ -37,6 +37,7 @@ import type { StagedPreToolPolicyEvaluator } from '../agents/pre-tool-policy.js'
 import type { RuntimeEventLog } from '../conversation/runtime-event-log.js';
 import type { IAgentFramework } from '../types.js';
 import type { InitializeRuntimeDeps } from './runtime-initialize.js';
+import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 
 type RuntimeIntegrationMetadata = Map<
   string,
@@ -106,6 +107,8 @@ interface RuntimeInitializationContext {
   ) => Promise<BuiltinAgentEngineBinding | null>;
   onACPConnectionsReady?: () => void | Promise<void>;
   orchestrationEventStore: EventStore;
+  /** The `chat-host-images` Feature Preview selector (station-runtime binds it). */
+  hostImagesPreview?: FeaturePreviewSelector;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
   /** archive#3245: lifetime analytics' read of the orchestration substrate. */
@@ -195,6 +198,7 @@ export function createRuntimeInitializationDeps(
     resolveBuiltinEngineBinding: context.resolveBuiltinEngineBinding,
     onACPConnectionsReady: context.onACPConnectionsReady,
     orchestrationEventStore: context.orchestrationEventStore,
+    hostImagesPreview: context.hostImagesPreview,
     credentialProfileRecoveryAdapter: context.credentialProfileRecoveryAdapter,
     usageAggregator: context.usageAggregator,
     orchestrationUsageRef: context.orchestrationUsageRef,
