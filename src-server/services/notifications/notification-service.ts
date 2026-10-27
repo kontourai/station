@@ -867,6 +867,14 @@ export class NotificationService {
     } catch (error) {
       const restored = await this.releaseActionLease(id, reservation.id);
       if (restored) this.scheduleExpiryTimer(restored);
+      try {
+        await provider?.handleActionFailed?.(id, actionId, error);
+      } catch (followUpError) {
+        logger.warn('Notification provider failed to follow up an action', {
+          id,
+          error: followUpError,
+        });
+      }
       throw error;
     }
 

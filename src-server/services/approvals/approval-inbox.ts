@@ -3,7 +3,10 @@ import {
   BLOCKING_NOTIFICATION_CATEGORIES,
   type Notification,
 } from '@kontourai/station-contracts/notification';
-import { runtimeEventContentDisplayText } from '@kontourai/station-contracts/runtime-event-content';
+import {
+  requestBoundCallIds,
+  runtimeEventContentDisplayText,
+} from '@kontourai/station-contracts/runtime-event-content';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
@@ -24,6 +27,12 @@ import type { NotificationService } from '../notifications/notification-service.
 import type { EventBus } from '../orchestration/event-bus.js';
 import type { RequestReplayOutcome } from '../orchestration/open-requests.js';
 import type { OrchestrationService } from '../orchestration/orchestration-service.js';
+import { RequestEventGuardError } from '../orchestration/request-inspection.js';
+
+type RequestOpenedEvent = Extract<
+  CanonicalRuntimeEvent,
+  { method: 'request.opened' }
+>;
 
 type InboxTarget =
   | {
@@ -60,8 +69,8 @@ interface ApprovalInboxDependencies {
     | 'isReadOnlyAttachedSession'
     | 'readRequestOutcome'
     | 'resolveSessionProjectSlug'
-  > &
-    Partial<Pick<OrchestrationService, 'readApprovalContentBinding'>>;
+    | 'readApprovalContentBinding'
+  >;
 }
 
 const APPROVAL_INBOX_SOURCE = 'approval-inbox';
@@ -83,8 +92,24 @@ export class ApprovalInboxNotificationProvider
 
   private readonly targetsByNotificationId = new Map<string, InboxTarget>();
   private readonly notificationIdByRequestKey = new Map<string, string>();
+  private contentNeedsLoadHandler?: (
+    threadId: string,
+    requestId: string,
+  ) => Promise<void>;
 
   constructor(private readonly deps: ApprovalInboxDependencies) {}
+
+  /**
+   * docs/design/event-content-spill.md: called when the server refuses an
+   * allow from a card because the request needs its content loaded (a bound
+   * call stored out of line arrived after the card was built), so the
+   * wiring can rewrite that card's actions.
+   */
+  onContentNeedsLoad(
+    handler: (threadId: string, requestId: string) => Promise<void>,
+  ): void {
+    this.contentNeedsLoadHandler = handler;
+  }
 
   hydrate(notifications: Notification[]): void {
     for (const notification of notifications) {
@@ -216,6 +241,27 @@ export class ApprovalInboxNotificationProvider
     this.forget(notificationId);
   }
 
+  /**
+   * docs/design/event-content-spill.md: the server refused an allow from
+   * this card because the request needs its content loaded (a bound call
+   * stored out of line arrived after the card was built). The card is
+   * rewritten to offer only Deny once its action lease is released.
+   */
+  async handleActionFailed(
+    notificationId: string,
+    _actionId: string,
+    error: unknown,
+  ): Promise<void> {
+    const target = this.targetsByNotificationId.get(notificationId);
+    if (
+      target?.kind !== 'orchestration' ||
+      !(error instanceof RequestEventGuardError) ||
+      error.code !== 'request_content_not_loaded'
+    )
+      return;
+    await this.contentNeedsLoadHandler?.(target.threadId, target.requestId);
+  }
+
   async handleDismiss(
     notificationId: string,
     clientOrigin?: ClientOrigin,
@@ -267,23 +313,73 @@ export class ApprovalInboxNotificationProvider
   /**
    * docs/design/event-content-spill.md: whether an allow of this request
    * needs its content loaded first, by the server's own binding (the request
-   * or a tool call it gates was spilled). Fails closed: an unreadable binding
-   * counts as needing a load, so the card offers only Deny.
+   * or a tool call it gates was spilled). Fails closed: a binding that is
+   * missing (the stored request cannot be read) or unreadable counts as
+   * needing a load, so the card offers only Deny.
    */
-  requiresContentLoad(
-    event: Extract<CanonicalRuntimeEvent, { method: 'request.opened' }>,
-  ): boolean {
+  requiresContentLoad(event: RequestOpenedEvent): boolean {
     if (event.spilledContent) return true;
     try {
-      return (
-        this.deps.orchestrationService.readApprovalContentBinding?.(
-          event.threadId,
-          event.requestId,
-          INTERNAL_SESSION_READ_SCOPE,
-        )?.required ?? false
+      const binding = this.deps.orchestrationService.readApprovalContentBinding(
+        event.threadId,
+        event.requestId,
+        INTERNAL_SESSION_READ_SCOPE,
       );
+      return binding === null || binding.required;
     } catch {
       return true;
+    }
+  }
+
+  /**
+   * The open orchestration requests in this thread that gate one of these
+   * tool calls and whose cards must now offer only Deny: their binding needs
+   * a content load. Each is returned as its stored request event, which the
+   * wiring schedules again.
+   */
+  openRequestsNeedingLoad(
+    threadId: string,
+    callIds: readonly string[],
+  ): RequestOpenedEvent[] {
+    const requests: RequestOpenedEvent[] = [];
+    for (const target of this.targetsByNotificationId.values()) {
+      if (target.kind !== 'orchestration' || target.threadId !== threadId)
+        continue;
+      const request = this.storedRequestNeedingLoad(
+        target.threadId,
+        target.requestId,
+      );
+      if (
+        request &&
+        requestBoundCallIds(request).some((id) => callIds.includes(id))
+      )
+        requests.push(request);
+    }
+    return requests;
+  }
+
+  /** The stored request event when it is still open here and needs a load. */
+  storedRequestNeedingLoad(
+    threadId: string,
+    requestId: string,
+  ): RequestOpenedEvent | undefined {
+    if (
+      !this.notificationIdByRequestKey.has(
+        buildOrchestrationRequestKey({ threadId, requestId }),
+      )
+    )
+      return undefined;
+    try {
+      const binding = this.deps.orchestrationService.readApprovalContentBinding(
+        threadId,
+        requestId,
+        INTERNAL_SESSION_READ_SCOPE,
+      );
+      return binding?.required && binding.request.method === 'request.opened'
+        ? binding.request
+        : undefined;
+    } catch {
+      return undefined;
     }
   }
 
@@ -393,6 +489,122 @@ export function wireApprovalInboxNotifications(
   notificationService: NotificationService,
   logger: ApprovalInboxLogger,
 ): () => void {
+  // One card per orchestration request, written again (same dedupe tag)
+  // when its actions must change.
+  const scheduleOrchestrationApproval = async (
+    event: RequestOpenedEvent,
+    needsLoad: boolean,
+  ) => {
+    const projectSlug = provider.resolveProjectSlug(event.threadId);
+    // #1545: the standing grant has to say what it grants. "Allow for
+    // Session" reads as a grant for the one call in front of you, and it is
+    // a grant for every later call to the same tool in this session. This
+    // label is PERSISTED on the notification and rendered verbatim by
+    // `AttentionCard`'s `ApprovalActions`, so naming the tool here is the
+    // only way the durable card says it — fixing the live toast alone left
+    // the inbox row still reading "Allow for Session".
+    //
+    // `toolRequestGrantLabel` is the label the toast and inline card use:
+    // it collapses an `mcp__<server>__<tool>` wire name, stays generic
+    // rather than reaching for `event.title` (adapter display text; for
+    // Codex the literal shell command), names a folder grant as one
+    // (#2915), and is undefined for a plan exit, which offers none (#2916).
+    //
+    // #2915: an edit-mode answer lasts until the user changes mode only
+    // because the answering caller records an Auto posture, which only
+    // the orchestration command route (the `setApprovalMode` authority)
+    // may do. An answer from this card is sent as a one-call accept, so
+    // the card does not offer "Auto-accept file edits for this session".
+    const grant = toolRequestSessionGrantFromPayload(event.payload);
+    const grantLabel =
+      grant === 'edit-mode'
+        ? undefined
+        : toolRequestGrantLabel(
+            toolRequestFromPayload(event.payload).toolName,
+            grant,
+          );
+    const notification = await notificationService.schedule(
+      APPROVAL_INBOX_SOURCE,
+      {
+        category: APPROVAL_NOTIFICATION_CATEGORY,
+        title: event.title || 'Provider approval needed',
+        body:
+          runtimeEventContentDisplayText(event.description) ||
+          formatOrchestrationBody(event),
+        priority: 'high',
+        // #3390: a form is answered with content on its own card, against
+        // the exact event the person saw; this card's decisions carry
+        // neither and would be refused, so it offers only the way there.
+        //
+        // docs/design/event-content-spill.md: a request whose content
+        // (or a tool call it gates) was stored out of line, or whose
+        // binding cannot be read, must be loaded whole before it can be
+        // allowed, so its card offers only Deny; opening the card is
+        // the way to review and allow it. A bound call that arrives
+        // later, or a refused allow, rewrites the card (below).
+        actions: inputRequestFromRequestEvent(event)
+          ? []
+          : needsLoad
+            ? [{ id: 'decline', label: 'Deny', variant: 'danger' }]
+            : [
+                { id: 'accept', label: 'Allow Once', variant: 'primary' },
+                ...(grantLabel
+                  ? [
+                      {
+                        id: 'acceptForSession',
+                        label: grantLabel,
+                        variant: 'secondary' as const,
+                      },
+                    ]
+                  : []),
+                ...(toolRequestServerGrantFromPayload(event.payload) ===
+                'server'
+                  ? [
+                      {
+                        id: ACCEPT_SERVER_FOR_SESSION_ACTION,
+                        label: STATION_BROWSER_SERVER_GRANT_LABEL,
+                        variant: 'secondary' as const,
+                      },
+                    ]
+                  : []),
+                { id: 'decline', label: 'Deny', variant: 'danger' },
+              ],
+        dedupeTag: buildOrchestrationRequestKey(event),
+        metadata: {
+          detail: runtimeEventContentDisplayText(event.description),
+          provider: event.provider,
+          ...(projectSlug ? { projectSlug } : {}),
+          requestId: event.requestId,
+          requestEventId: event.eventId,
+          requestKey: buildOrchestrationRequestKey(event),
+          requestKind: 'orchestration',
+          requestType: event.requestType,
+          // #2589: the card carries this request unless its session is
+          // left out of the read model the card is built from.
+          ...(provider.isListedSession(event.threadId)
+            ? { [ON_ACTIVITY_CARD_METADATA_KEY]: true }
+            : {}),
+          sessionId: event.threadId,
+          sessionKind: ORCHESTRATION_SESSION_KIND,
+          threadId: event.threadId,
+          // Raw, not the display form: this is provenance for consumers,
+          // and `grantLabel` above is the display form for the button.
+          toolName: toolRequestFromPayload(event.payload).toolName,
+        },
+      },
+    );
+    provider.remember(notification);
+  };
+  // docs/design/event-content-spill.md: a card built before the server saw a
+  // spilled bound call (or refused an allow for one) offers only Deny now.
+  const rescheduleNeedingLoad = async (requests: RequestOpenedEvent[]) => {
+    for (const request of requests)
+      await scheduleOrchestrationApproval(request, true);
+  };
+  provider.onContentNeedsLoad(async (threadId, requestId) => {
+    const request = provider.storedRequestNeedingLoad(threadId, requestId);
+    if (request) await rescheduleNeedingLoad([request]);
+  });
   const unsubscribe = eventBus.subscribe((message) => {
     notificationService.dispatch('approval-inbox-event', async () => {
       if (message.event === SERVER_EVENTS.APPROVAL_OPENED) {
@@ -466,109 +678,22 @@ export function wireApprovalInboxNotifications(
       const event = message.data.event as CanonicalRuntimeEvent;
       if (event.method === 'request.opened') {
         if (provider.isReadOnlyAttachedSession(event.threadId)) return;
-        // archive#1284 (AC4): resolved synchronously (no adapter I/O — see
-        // OrchestrationService.resolveSessionProjectSlug's doc comment) so the
-        // approval card can deep-link into the project chat dock like a
-        // lifecycle card already does, instead of always falling back to
-        // /sessions.
-        const projectSlug = provider.resolveProjectSlug(event.threadId);
-        // #1545: the standing grant has to say what it grants. "Allow for
-        // Session" reads as a grant for the one call in front of you, and it is
-        // a grant for every later call to the same tool in this session. This
-        // label is PERSISTED on the notification and rendered verbatim by
-        // `AttentionCard`'s `ApprovalActions`, so naming the tool here is the
-        // only way the durable card says it — fixing the live toast alone left
-        // the inbox row still reading "Allow for Session".
-        //
-        // `toolRequestGrantLabel` is the label the toast and inline card use:
-        // it collapses an `mcp__<server>__<tool>` wire name, stays generic
-        // rather than reaching for `event.title` (adapter display text; for
-        // Codex the literal shell command), names a folder grant as one
-        // (#2915), and is undefined for a plan exit, which offers none (#2916).
-        //
-        // #2915: an edit-mode answer lasts until the user changes mode only
-        // because the answering caller records an Auto posture, which only
-        // the orchestration command route (the `setApprovalMode` authority)
-        // may do. An answer from this card is sent as a one-call accept, so
-        // the card does not offer "Auto-accept file edits for this session".
-        const grant = toolRequestSessionGrantFromPayload(event.payload);
-        const grantLabel =
-          grant === 'edit-mode'
-            ? undefined
-            : toolRequestGrantLabel(
-                toolRequestFromPayload(event.payload).toolName,
-                grant,
-              );
-        const notification = await notificationService.schedule(
-          APPROVAL_INBOX_SOURCE,
-          {
-            category: APPROVAL_NOTIFICATION_CATEGORY,
-            title: event.title || 'Provider approval needed',
-            body:
-              runtimeEventContentDisplayText(event.description) ||
-              formatOrchestrationBody(event),
-            priority: 'high',
-            // #3390: a form is answered with content on its own card, against
-            // the exact event the person saw; this card's decisions carry
-            // neither and would be refused, so it offers only the way there.
-            //
-            // docs/design/event-content-spill.md: a request whose content
-            // was stored out of line must be loaded whole before it can be
-            // allowed, so its card offers only Deny; opening the card is
-            // the way to review and allow it.
-            actions: inputRequestFromRequestEvent(event)
-              ? []
-              : provider.requiresContentLoad(event)
-                ? [{ id: 'decline', label: 'Deny', variant: 'danger' }]
-                : [
-                    { id: 'accept', label: 'Allow Once', variant: 'primary' },
-                    ...(grantLabel
-                      ? [
-                          {
-                            id: 'acceptForSession',
-                            label: grantLabel,
-                            variant: 'secondary' as const,
-                          },
-                        ]
-                      : []),
-                    ...(toolRequestServerGrantFromPayload(event.payload) ===
-                    'server'
-                      ? [
-                          {
-                            id: ACCEPT_SERVER_FOR_SESSION_ACTION,
-                            label: STATION_BROWSER_SERVER_GRANT_LABEL,
-                            variant: 'secondary' as const,
-                          },
-                        ]
-                      : []),
-                    { id: 'decline', label: 'Deny', variant: 'danger' },
-                  ],
-            dedupeTag: buildOrchestrationRequestKey(event),
-            metadata: {
-              detail: runtimeEventContentDisplayText(event.description),
-              provider: event.provider,
-              ...(projectSlug ? { projectSlug } : {}),
-              requestId: event.requestId,
-              requestEventId: event.eventId,
-              requestKey: buildOrchestrationRequestKey(event),
-              requestKind: 'orchestration',
-              requestType: event.requestType,
-              // #2589: the card carries this request unless its session is
-              // left out of the read model the card is built from.
-              ...(provider.isListedSession(event.threadId)
-                ? { [ON_ACTIVITY_CARD_METADATA_KEY]: true }
-                : {}),
-              sessionId: event.threadId,
-              sessionKind: ORCHESTRATION_SESSION_KIND,
-              threadId: event.threadId,
-              // Raw, not the display form: this is provenance for consumers,
-              // and `grantLabel` above is the display form for the button.
-              toolName: toolRequestFromPayload(event.payload).toolName,
-            },
-          },
+        await scheduleOrchestrationApproval(
+          event,
+          !inputRequestFromRequestEvent(event) &&
+            provider.requiresContentLoad(event),
         );
-        provider.remember(notification);
         approvalInboxOps.add(1, { action: 'opened', target: 'orchestration' });
+        return;
+      }
+
+      if (event.method === 'tool.started' && event.spilledContent) {
+        await rescheduleNeedingLoad(
+          provider.openRequestsNeedingLoad(event.threadId, [
+            event.toolCallId,
+            ...(event.itemId ? [event.itemId] : []),
+          ]),
+        );
         return;
       }
 
@@ -747,7 +872,7 @@ function mapRegistryApprovalDecision(actionId: string): boolean {
 }
 
 function buildOrchestrationRequestKey(
-  event: Pick<CanonicalRuntimeEvent, 'method' | 'threadId' | 'requestId'>,
+  event: Pick<RequestOpenedEvent, 'threadId' | 'requestId'>,
 ): string {
   return `orchestration:${event.threadId}:${event.requestId}`;
 }

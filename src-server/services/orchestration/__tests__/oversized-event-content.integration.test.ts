@@ -36,6 +36,11 @@ import { mapServerRequestToEvent } from '../../../providers/adapters/codex-adapt
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { createOrchestrationRoutes } from '../../../routes/orchestration/orchestration.js';
+import {
+  ApprovalInboxNotificationProvider,
+  wireApprovalInboxNotifications,
+} from '../../approvals/approval-inbox.js';
+import { NotificationService } from '../../notifications/notification-service.js';
 import { DELTA_SPLIT_MAX_BYTES } from '../delta-splitting.js';
 import { EventBus } from '../event-bus.js';
 import {
@@ -816,6 +821,74 @@ describe('oversized event content through the live adapter loop', () => {
         await new Promise((resolve) => listener.close(resolve));
       }
     };
+
+    // The approval inbox reads the real service binding: a card built
+    // before the spilled bound call arrives offers Allow, and is rewritten
+    // to offer only Deny when that call is stored.
+    test('the inbox card follows the real binding when a spilled bound call arrives late', async () => {
+      const notifications = new NotificationService(
+        bus,
+        makeTempDir('inbox-binding-'),
+        999_999,
+        { acquireMutationLock: async () => async () => {} },
+      );
+      const provider = new ApprovalInboxNotificationProvider({
+        approvalRegistry: { has: () => false, resolve: () => false },
+        orchestrationService: service,
+      });
+      notifications.addProvider(provider);
+      const unwire = wireApprovalInboxNotifications(
+        bus,
+        provider,
+        notifications,
+        { debug: vi.fn(), warn: vi.fn() },
+      );
+      await notifications.start();
+      const labels = async () => {
+        await notifications.drainAsyncDispatch();
+        const [card] = await notifications.list();
+        return card?.actions?.map((action) => action.label);
+      };
+      try {
+        const opened = mapServerRequestToEvent(
+          threadId,
+          'req-inbox',
+          'item/fileChange/requestApproval',
+          {
+            threadId: 'codex-thread',
+            turnId: 'turn-1',
+            itemId: 'item-inbox',
+            reason: null,
+          },
+          at(),
+        )!;
+        adapter.events.push({
+          ...opened,
+          provider: 'claude',
+          eventId: 'open-inbox',
+          turnId: 'turn-1',
+        } as CanonicalRuntimeEvent);
+        await vi.waitFor(async () =>
+          expect(await labels()).toContain('Allow Once'),
+        );
+        adapter.events.push({
+          eventId: 'start-inbox',
+          provider: 'claude',
+          threadId,
+          turnId: 'turn-1',
+          itemId: 'item-inbox',
+          createdAt: at(),
+          method: 'tool.started',
+          toolCallId: 'item-inbox',
+          toolName: 'apply_patch',
+          arguments: { changes: diff },
+        } as CanonicalRuntimeEvent);
+        await vi.waitFor(async () => expect(await labels()).toEqual(['Deny']));
+      } finally {
+        unwire();
+        await notifications.shutdown();
+      }
+    });
 
     test('the HTTP command route refuses an accept without the digest', async () => {
       await openFileChange();

@@ -7,6 +7,7 @@ import { isCardAlerted } from '../../notifications/delivery/card-alerted-categor
 import { NotificationService } from '../../notifications/notification-service.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import type { OrchestrationService } from '../../orchestration/orchestration-service.js';
+import { RequestEventGuardError } from '../../orchestration/request-inspection.js';
 import { AttentionProjectionService } from '../../projects/attention-projection.js';
 import {
   ApprovalInboxNotificationProvider,
@@ -62,6 +63,7 @@ describe('approval inbox notifications', () => {
     | 'isReadOnlyAttachedSession'
     | 'readRequestOutcome'
     | 'resolveSessionProjectSlug'
+    | 'readApprovalContentBinding'
   >;
   let provider: ApprovalInboxNotificationProvider;
 
@@ -111,6 +113,25 @@ describe('approval inbox notifications', () => {
       isEphemeralSession: vi
         .fn<OrchestrationService['isEphemeralSession']>()
         .mockReturnValue(false),
+      // A stored request with nothing spilled: Allow is offered.
+      readApprovalContentBinding: vi
+        .fn<OrchestrationService['readApprovalContentBinding']>()
+        .mockImplementation((threadId, requestId) => ({
+          requestEventId: `event-${requestId}`,
+          request: {
+            eventId: `event-${requestId}`,
+            provider: 'codex',
+            threadId,
+            createdAt: new Date().toISOString(),
+            method: 'request.opened',
+            requestId,
+            requestType: 'approval',
+            title: 'Needs approval',
+          },
+          bound: [],
+          required: false,
+          viewedContentDigest: `sha256-${'0'.repeat(64)}`,
+        })),
     };
     provider = new ApprovalInboxNotificationProvider({
       approvalRegistry,
@@ -169,10 +190,97 @@ describe('approval inbox notifications', () => {
   // docs/design/event-content-spill.md: a request whose gated call holds
   // spilled content (a Codex file change's diff) must be loaded before it
   // is allowed, so its card offers only Deny; opening it is the review.
+  const fileChangeRequest = {
+    createdAt: new Date().toISOString(),
+    eventId: 'event-fc',
+    method: 'request.opened' as const,
+    payload: { itemId: 'item-fc', threadId: 'codex-thread' },
+    provider: 'codex',
+    requestId: 'req-fc',
+    requestType: 'approval' as const,
+    threadId: 'thread-fc',
+    title: 'Approve file changes',
+  };
+  const needsLoad = () =>
+    vi
+      .mocked(orchestrationService.readApprovalContentBinding)
+      .mockImplementation(() => ({
+        requestEventId: 'event-fc',
+        request: fileChangeRequest,
+        bound: [],
+        required: true,
+        viewedContentDigest: `sha256-${'d'.repeat(64)}`,
+      }));
+  const cardLabels = async () =>
+    (await notificationService.list())[0]!.actions?.map(
+      (action) => action.label,
+    );
+
+  test('offers only Deny when the request cannot be read back', async () => {
+    vi.mocked(orchestrationService.readApprovalContentBinding).mockReturnValue(
+      null,
+    );
+    await emit('orchestration:event', { event: fileChangeRequest });
+    expect(await cardLabels()).toEqual(['Deny']);
+  });
+
+  test('a spilled bound call that arrives later turns the card into Deny only', async () => {
+    await emit('orchestration:event', { event: fileChangeRequest });
+    expect(await cardLabels()).toContain('Allow Once');
+    needsLoad();
+    // A call this request does not gate changes nothing.
+    await emit('orchestration:event', {
+      event: {
+        eventId: 'start-other',
+        provider: 'codex',
+        threadId: 'thread-fc',
+        createdAt: new Date().toISOString(),
+        method: 'tool.started',
+        toolCallId: 'item-other',
+        toolName: 'apply_patch',
+        spilledContent: { v: 1, count: 1, bytes: 40_000 },
+      },
+    });
+    expect(await cardLabels()).toContain('Allow Once');
+    await emit('orchestration:event', {
+      event: {
+        eventId: 'start-fc',
+        provider: 'codex',
+        threadId: 'thread-fc',
+        createdAt: new Date().toISOString(),
+        method: 'tool.started',
+        toolCallId: 'item-fc',
+        itemId: 'item-fc',
+        toolName: 'apply_patch',
+        spilledContent: { v: 1, count: 1, bytes: 40_000 },
+      },
+    });
+    expect(await cardLabels()).toEqual(['Deny']);
+  });
+
+  test('an allow the server refuses for unloaded content leaves the card offering only Deny', async () => {
+    await emit('orchestration:event', { event: fileChangeRequest });
+    const [card] = await notificationService.list();
+    needsLoad();
+    vi.mocked(orchestrationService.dispatch).mockRejectedValueOnce(
+      new RequestEventGuardError(
+        'request_content_not_loaded',
+        'Load the full request before allowing it.',
+      ),
+    );
+    await expect(
+      notificationService.action(card!.id, 'accept'),
+    ).rejects.toMatchObject({ code: 'request_content_not_loaded' });
+    expect(await cardLabels()).toEqual(['Deny']);
+    // Still answerable: Deny goes through.
+    await notificationService.action(card!.id, 'decline');
+    expect(orchestrationService.dispatch).toHaveBeenLastCalledWith(
+      expect.objectContaining({ requestId: 'req-fc', decision: 'decline' }),
+    );
+  });
+
   test('offers only Deny when the server binding needs a content load', async () => {
-    (
-      orchestrationService as Record<string, unknown>
-    ).readApprovalContentBinding = vi.fn(() => ({ required: true }));
+    needsLoad();
     emit('orchestration:event', {
       event: {
         createdAt: new Date().toISOString(),
