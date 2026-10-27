@@ -1,6 +1,7 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import crypto from 'node:crypto';
 import { createInterface } from 'node:readline';
+import { ENGINE_MEMORY_EXHAUSTED_CODE } from '@kontourai/station-contracts/provider';
 import type {
   ApprovalStatus,
   ProviderRuntimeEvent as CanonicalRuntimeEvent,
@@ -1270,12 +1271,15 @@ export class CodexAdapterTransport {
       record,
       nowIso,
       outcome?.result === 'oom-kill'
-        ? `Codex was killed because memory was exhausted.${outcome.memoryMaxBytes ? ` Its workload budget was ${Math.round(outcome.memoryMaxBytes / 1024 / 1024)} MiB.` : ''} Commands and delegated work were interrupted. Run memory-heavy checks sequentially before continuing.`
+        ? memoryExhaustedMessage(outcome)
         : `Codex app-server exited before the turn finished (${signal ? `signal: ${signal}` : `code: ${code ?? 'unknown'}`}).`,
       {
         skipSynthesis: interruptWasInFlight,
         workloadOutcome: outcome,
         exitSignal: signal,
+        ...(outcome?.result === 'oom-kill'
+          ? { code: ENGINE_MEMORY_EXHAUSTED_CODE }
+          : {}),
       },
     );
     this.publish({
@@ -1380,6 +1384,7 @@ export class CodexAdapterTransport {
       skipSynthesis: boolean;
       workloadOutcome?: ChildWorkloadOutcome;
       exitSignal?: NodeJS.Signals | null;
+      code?: string;
     },
   ): void {
     if (
@@ -1403,7 +1408,7 @@ export class CodexAdapterTransport {
         severity: 'error',
         turnId,
         message,
-        code: 'codex-turn-orphaned',
+        code: options.code ?? 'codex-turn-orphaned',
         ...(options.exitSignal || options.workloadOutcome
           ? {
               details: {
@@ -1447,6 +1452,16 @@ export class CodexAdapterTransport {
     record.pendingRpcRequests.clear();
     return interruptedTurnId;
   }
+}
+
+const toMiB = (bytes: number) => Math.round(bytes / 1024 / 1024);
+
+/** User-facing copy: what happened, and what Station does on the next turn. */
+function memoryExhaustedMessage(outcome: ChildWorkloadOutcome): string {
+  const budget = outcome.memoryMaxBytes
+    ? ` Its workload budget is ${toMiB(outcome.memoryMaxBytes)} MiB${outcome.memoryPeakBytes ? ` (peak ${toMiB(outcome.memoryPeakBytes)} MiB)` : ''}, shared by Codex and every command it runs.`
+    : '';
+  return `Codex ran out of memory and was stopped, along with the commands it was running.${budget} When the chat continues, Station tells Codex which commands were interrupted and to run memory-heavy steps one at a time.`;
 }
 
 function spawnCodexProcess(

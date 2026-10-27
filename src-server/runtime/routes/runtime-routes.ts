@@ -484,6 +484,7 @@ import { createNativeDeviceProofSelfReceiptRoutes } from '../../routes/system/na
 import { createSettingsRegistryRoutes } from '../../routes/system/settings-registry.js';
 import { createSystemRoutes } from '../../routes/system/system.js';
 import { resolveThisServerProvenance } from '../../routes/system/system-update-routes.js';
+import { WORKLOAD_BUDGET_SETTINGS_PREVIEW } from '../../routes/system/workload-routes.js';
 import { createTelemetryProducerRoutes } from '../../routes/telemetry-producers.js';
 import { createInboundWebhookRoutes } from '../../routes/webhooks/inbound-webhooks.js';
 import { createWebhookTurnStarter } from '../../routes/webhooks/webhook-turn-starter.js';
@@ -3119,11 +3120,32 @@ export function configureRuntimeRoutes(
       context.eventBus.emit(SERVER_EVENTS.SERVER_UPDATE_CHANGED, state),
     logger: context.logger,
   });
+  // Host workload budgets belong to the personal host's operator; a hosted
+  // tenant neither reads nor sets them. Bound here, at composition, so the
+  // preview is offered whether or not it is enabled.
+  const workloadOperator =
+    !hostedTenantRegistry && !isHostedTenantExecutionRequired()
+      ? {
+          settingsPreview: context.featurePreviews.bind({
+            id: 'workload-budget-settings',
+            label: WORKLOAD_BUDGET_SETTINGS_PREVIEW.label,
+            description: WORKLOAD_BUDGET_SETTINGS_PREVIEW.description,
+          }),
+        }
+      : undefined;
   context.app.route(
     '/api/system',
     createSystemRoutes(
       {
         ...createRuntimeSystemRouteDeps(context),
+        workload: {
+          ...(workloadOperator ? { operator: workloadOperator } : {}),
+          resolveCallerSession: (request) =>
+            resolveStationControlCallerForRequest(
+              request,
+              resolveStationControlCallerRecord,
+            )?.sessionId ?? null,
+        },
         serverUpdate,
         listRunningTurnsFor: async (c) => {
           // What the restart would stop: every session with an active turn,

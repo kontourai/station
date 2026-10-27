@@ -787,6 +787,15 @@ export const ACP_APPROVAL_TAKEOVER_FAILED_CODE = 'acp-approval-takeover-failed';
 export const ENGINE_SESSION_BINDING_DEAD_CODE = 'engine-session-binding-dead';
 
 /**
+ * `runtime.error` code for a turn whose engine process was killed because its
+ * workload scope exhausted its memory budget (a positively observed systemd
+ * `oom-kill`, never inferred from a signal). `details.workload` carries the
+ * scope's `result`, `memoryPeakBytes` and `memoryMaxBytes` when observed.
+ * The next turn of the conversation receives a Station recovery note.
+ */
+export const ENGINE_MEMORY_EXHAUSTED_CODE = 'engine-memory-exhausted';
+
+/**
  * A provider reported a failed query/turn without disproving its native binding.
  * This is not a completed turn, a retry instruction, or a resumability claim.
  */

@@ -1400,6 +1400,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     builtin: true,
     engineId: engineId('claude'),
     abortSettlement: 'await',
+    workloadScope: 'engine-process' as const,
     recovery: {
       sameSession: true,
       maxAttempts: 1,
@@ -2050,9 +2051,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // #2932: Station owns the engine spawn so it can read the permission
     // asks on the engine's stdout (see claude-code-spawn.ts). #2494: a
     // confined start's spawn goes through the provider's `confine`.
-    const engineProcess = seatbeltSpawn
-      ? createClaudeEngineProcess(undefined, seatbeltSpawn.wrap)
-      : createClaudeEngineProcess();
+    const engineProcess = createClaudeEngineProcess(
+      undefined,
+      seatbeltSpawn?.wrap,
+      input.threadId,
+    );
     let sdkQuery: ReturnType<typeof query>;
     // After station-control, so the browser server reuses its credential.
     let builtinServers: Record<string, McpServerConfig> | undefined;

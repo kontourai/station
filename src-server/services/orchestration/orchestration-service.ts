@@ -273,6 +273,7 @@ import {
   ConcurrentEngineStartCapacityError,
   type RuntimeResourcePostureProbe,
 } from '../infra/resource-posture.js';
+import { workloadBudgetEngineContext } from '../infra/workload-budget.js';
 import { withEngineMcpAccountOwner } from '../plugins/engine-mcp-oauth.js';
 import {
   isPersonChatStart,
@@ -389,6 +390,7 @@ import {
   type InterruptedTurnMemoryAdapter,
   InterruptedTurnRecovery,
 } from './interrupted-turn-recovery.js';
+import { memoryExhaustionRecoveryNote } from './memory-exhaustion-recovery.js';
 import {
   listLaunchableAdapterModels,
   ModelLaunchPlanning,
@@ -946,6 +948,14 @@ interface OrchestrationServiceOptions {
   monitoringEmitter?: MonitoringEmitter;
   eventBus: EventBus;
   eventStore?: EventStore;
+  /**
+   * The workload limits an engine launched now receives, or undefined where
+   * no workload scope is enforced (`enforcedWorkloadLimits`). Read at each
+   * first turn so a settings change or unavailable enforcement is current.
+   */
+  workloadEngineLimits?: () =>
+    | { memoryMaxBytes: number; swapMaxBytes: number; tasksMax: number }
+    | undefined;
   /**
    * Optional write-time catalog authority. The service calls it only while a
    * token event is entering the canonical log; read paths use the persisted
@@ -8022,7 +8032,29 @@ export class OrchestrationService {
           const pendingBrief = current
             ? pendingTaskBrief(current.events)
             : undefined;
+          // Station's own first-turn context, on every engine whose adapter
+          // declares a bounded engine scope: the workload budget it runs
+          // under (only while enforcement is live), and after a memory kill
+          // of the predecessor Session, what was interrupted.
+          const genuineFirstTurn =
+            !!current &&
+            !current.events.some((event) => event.method === 'turn.started');
+          const workloadLimits =
+            genuineFirstTurn &&
+            adapter.metadata.workloadScope === 'engine-process'
+              ? this.options.workloadEngineLimits?.()
+              : undefined;
+          const recoveryNote = genuineFirstTurn
+            ? this.predecessorMemoryExhaustionNote(submittedInput.threadId)
+            : undefined;
+          const stationContext = [
+            workloadLimits
+              ? workloadBudgetEngineContext(workloadLimits)
+              : undefined,
+            recoveryNote,
+          ].filter((part): part is string => part !== undefined);
           const firstTurnContext = [
+            ...stationContext,
             pendingPrompt,
             pendingBrief?.text,
             publicTurnInput.ambientContext?.trim()
@@ -8030,7 +8062,7 @@ export class OrchestrationService {
               : undefined,
           ].filter((part): part is string => part !== undefined);
           const turnInputWithFirstTurnPrompt =
-            pendingPrompt || pendingBrief
+            pendingPrompt || pendingBrief || stationContext.length > 0
               ? {
                   ...publicTurnInput,
                   ambientContext: firstTurnContext.join('\n'),
@@ -13832,6 +13864,35 @@ export class OrchestrationService {
           : withSessionConfinementRoot(resolved, this.options.listProjects);
       },
     };
+  }
+
+  /**
+   * The recovery note for a successor whose predecessor Session's newest turn
+   * ended because its engine exhausted its workload memory budget. Reads only
+   * that one turn window of the predecessor recorded in this conversation's
+   * lineage; any read failure composes nothing rather than failing the turn.
+   */
+  private predecessorMemoryExhaustionNote(
+    threadId: string,
+  ): string | undefined {
+    const store = this.options.eventStore;
+    const predecessor =
+      store?.conversationForSession(threadId)?.predecessorSessionId;
+    if (!store || !predecessor) return undefined;
+    try {
+      return memoryExhaustionRecoveryNote(
+        store.listEventWindowByTurn(predecessor, {
+          turnLimit: 1,
+          direction: 'newest',
+        }).events,
+      );
+    } catch (error) {
+      this.options.logger.warn('Could not read the predecessor failure', {
+        threadId,
+        error,
+      });
+      return undefined;
+    }
   }
 
   /**

@@ -1138,13 +1138,29 @@ describe('CodexAdapterTransport — host image reads keep publish order', () => 
 
 describe('Codex workload exit evidence', () => {
   test.each([
-    { result: 'oom-kill', message: 'workload budget was 3072 MiB' },
-    { result: 'success', message: 'signal: SIGKILL' },
-    { result: 'unavailable', message: 'signal: SIGKILL' },
-    { result: 'observation-rejected', message: 'signal: SIGKILL' },
+    {
+      result: 'oom-kill',
+      message: 'workload budget is 3072 MiB',
+      code: 'engine-memory-exhausted',
+    },
+    {
+      result: 'success',
+      message: 'signal: SIGKILL',
+      code: 'codex-turn-orphaned',
+    },
+    {
+      result: 'unavailable',
+      message: 'signal: SIGKILL',
+      code: 'codex-turn-orphaned',
+    },
+    {
+      result: 'observation-rejected',
+      message: 'signal: SIGKILL',
+      code: 'codex-turn-orphaned',
+    },
   ])(
     'reports only positively observed memory kills: $result',
-    async ({ result, message }) => {
+    async ({ result, message, code }) => {
       const observation = vi
         .spyOn(workload, 'childWorkloadOutcome')
         .mockReturnValue(
@@ -1174,6 +1190,7 @@ describe('Codex workload exit evidence', () => {
         expect(await nextEvent(iterator, 'workload terminal')).toMatchObject({
           method: 'runtime.error',
           message: expect.stringContaining(message),
+          code,
           turnId: 'turn-1',
         });
         expect(await nextEvent(iterator, 'session terminal')).toMatchObject({

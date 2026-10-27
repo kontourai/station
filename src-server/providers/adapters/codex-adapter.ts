@@ -45,6 +45,7 @@ import {
 } from '../../security/confinement/confinement-provider.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
+import { WORKLOAD_SESSION_ENV } from '../../services/infra/workload-budget.js';
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
 import { SESSION_CONFINEMENT_ROOT_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
 import type { EngineMcpOAuthResolver } from '../../services/plugins/engine-mcp-oauth.js';
@@ -785,6 +786,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     builtin: true,
     engineId: engineId('codex'),
     abortSettlement: 'await',
+    workloadScope: 'engine-process' as const,
     recovery: {
       sameSession: true,
       maxAttempts: 1,
@@ -1968,8 +1970,9 @@ export class CodexAdapter implements ProviderAdapterShape {
       ...(toolServers.configArgs ?? []),
       ...codexConfinementConfigArgs(input.confinement),
     ];
+    // The workload launcher attributes this engine's scope to the session.
     const processHandle = this.processFactory(
-      spawnEnv,
+      { ...spawnEnv, [WORKLOAD_SESSION_ENV]: input.threadId },
       spawnArgs.length ? spawnArgs : undefined,
     );
     const record = createCodexSessionRecord({
