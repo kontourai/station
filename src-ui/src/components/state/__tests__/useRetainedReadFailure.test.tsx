@@ -157,7 +157,9 @@ describe('useRetainedReadFailure', () => {
     );
     const missing = new Error('Layout not found');
     await act(async () => calls.get('a')![0]!.reject(missing));
-    await waitFor(() => expect(view.result.current.failure?.error).toBe(missing));
+    await waitFor(() =>
+      expect(view.result.current.failure?.error).toBe(missing),
+    );
 
     // B fails while this hook is not watching it, then the hook moves to B
     // and refetches: B's own failure was never seen here, so A's must not

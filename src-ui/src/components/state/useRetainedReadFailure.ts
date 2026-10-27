@@ -34,9 +34,7 @@ export interface RetainedReadFailure {
 export function useRetainedReadFailure(
   query: RetainableRead,
 ): RetainedReadFailure | null {
-  const [last, setLast] = useState<{ error: unknown; at: number } | null>(
-    null,
-  );
+  const [last, setLast] = useState<{ error: unknown; at: number } | null>(null);
   // Setting state during render is React's sanctioned way to remember a
   // previous render's value; it re-renders before committing.
   if (query.error != null && query.error !== last?.error) {
