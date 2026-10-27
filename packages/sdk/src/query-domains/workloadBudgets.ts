@@ -1,6 +1,7 @@
 import type { WorkloadBudgetStatus } from '@kontourai/station-contracts/system-status';
 import { apiErrorMessage } from '../api-core';
 import { authenticatedFetch } from '../client/http';
+import { unlessDeadline } from '../client/request-deadline';
 import {
   type QueryConfig,
   resolveApiBase,
@@ -24,7 +25,7 @@ export class WorkloadBudgetsUnsupportedError extends Error {
 }
 
 async function readEnvelope(response: Response): Promise<WorkloadBudgetStatus> {
-  const result = (await response.json().catch(() => ({}))) as {
+  const result = (await response.json().catch(unlessDeadline(() => ({})))) as {
     success?: boolean;
     data?: WorkloadBudgetStatus;
     error?: string;
@@ -101,7 +102,7 @@ export async function continueAfterMemoryExhaustion(
     `${base}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/memory-continuation`,
     { method: 'POST' },
   );
-  const result = (await response.json().catch(() => ({}))) as {
+  const result = (await response.json().catch(unlessDeadline(() => ({})))) as {
     success?: boolean;
     code?: string;
     error?: string;
