@@ -96,7 +96,10 @@ import {
 } from '../../security/confinement/seatbelt.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
-import { engineSessionTmpDir } from '../../services/infra/session-tmpdir.js';
+import {
+  engineSessionTmpDir,
+  noteEngineTmpDir,
+} from '../../services/infra/session-tmpdir.js';
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
 import type { EngineMcpOAuthResolver } from '../../services/plugins/engine-mcp-oauth.js';
 import {
@@ -2080,8 +2083,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           claudeExecutable,
           builtinServers,
           Boolean(seatbelt) || permissionMode === 'bypassPermissions',
+          seatbelt?.launch.tmpDir,
         ),
       });
+      // chat-host-images: the confined engine's real TMPDIR is Seatbelt's
+      // per-launch directory; record exactly that one as the session's root.
+      if (seatbelt) noteEngineTmpDir(input.threadId, seatbelt.launch.tmpDir);
     } catch (error) {
       this.options.revokeStationControlCallerToken?.(input.threadId);
       seatbelt?.launch.cleanup();
@@ -3639,6 +3646,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     claudeExecutable?: string | null,
     builtinServers?: Record<string, McpServerConfig>,
     grantBypassPermissions = permissionMode === 'bypassPermissions',
+    /** Set when Seatbelt confines this spawn: its wrapper sets TMPDIR to this. */
+    confinedTmpDir?: string,
   ): Options {
     const modelOptions = claudeAppliedModelOptions(input.modelOptions);
     // #2947: the approval guardian's allows, by the engine's tool-use id,
@@ -3824,8 +3833,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                 input.agent.toolServerLoading === 'always' ? 'false' : 'true',
             }
           : {}),
+        // A confined spawn's TMPDIR is replaced by Seatbelt's own directory,
+        // so no per-session directory is created for it.
         TMPDIR:
-          engineSessionTmpDir(input.threadId) ?? ensureEngineSpawnTmpDir(),
+          (confinedTmpDir ? undefined : engineSessionTmpDir(input.threadId)) ??
+          ensureEngineSpawnTmpDir(),
       }),
       // #2932: the SDK reads stdout from the process this returns, after
       // Station's tap has recorded each permission ask on it.

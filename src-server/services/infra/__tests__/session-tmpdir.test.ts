@@ -1,8 +1,10 @@
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   realpathSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { basename, join } from 'node:path';
@@ -11,10 +13,11 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { HostImageTurnCapture } from '../../orchestration/host-image-turn-capture.js';
 import {
   engineSessionTmpDir,
-  existingSessionTmpDir,
   installSessionTmpDirPolicy,
+  noteEngineTmpDir,
   reapStaleSessionTmpDirs,
   removeSessionTmpDir,
+  sessionTempRoot,
   sessionTmpDirPath,
   sessionTmpRoot,
 } from '../session-tmpdir.js';
@@ -54,9 +57,45 @@ describe('per-session engine TMPDIR (chat-host-images)', () => {
       new RegExp(`^session-${process.pid}-[0-9a-f]{24}$`),
     );
     expect(statSync(dir!).mode & 0o777).toBe(0o700);
-    expect(existingSessionTmpDir('thread/../with:odd chars')).toBe(dir);
+    expect(sessionTempRoot('thread/../with:odd chars')).toBe(dir);
     removeSessionTmpDir('thread/../with:odd chars');
     expect(existsSync(dir!)).toBe(false);
+  });
+
+  test('an existing directory is tightened to 0700; a link in its place is refused', () => {
+    uninstall = installSessionTmpDirPolicy(() => true);
+    const loose = sessionTmpDirPath('loose', home);
+    mkdirSync(loose, { recursive: true, mode: 0o755 });
+    chmodSync(loose, 0o755);
+    expect(engineSessionTmpDir('loose')).toBe(loose);
+    expect(statSync(loose).mode & 0o777).toBe(0o700);
+    const elsewhere = join(home, 'elsewhere');
+    mkdirSync(elsewhere, { mode: 0o700 });
+    symlinkSync(elsewhere, sessionTmpDirPath('linked', home));
+    expect(engineSessionTmpDir('linked')).toBeUndefined();
+    expect(sessionTempRoot('linked')).toBeUndefined();
+  });
+
+  test('a confinement own TMPDIR is a root only while admitted, and its owner removes it', () => {
+    const confined = join(home, 'confined-session');
+    mkdirSync(confined, { mode: 0o700 });
+    noteEngineTmpDir('confined', confined);
+    expect(sessionTempRoot('confined')).toBeUndefined();
+    uninstall = installSessionTmpDirPolicy(() => true);
+    noteEngineTmpDir('confined', confined);
+    expect(sessionTempRoot('confined')).toBe(confined);
+    removeSessionTmpDir('confined');
+    expect(sessionTempRoot('confined')).toBeUndefined();
+    expect(existsSync(confined)).toBe(true);
+  });
+
+  test('a session that never launched with a root has none', () => {
+    uninstall = installSessionTmpDirPolicy(() => true);
+    mkdirSync(sessionTmpDirPath('not-launched', home), {
+      recursive: true,
+      mode: 0o700,
+    });
+    expect(sessionTempRoot('not-launched')).toBeUndefined();
   });
 
   test('a policy that throws never blocks a start', () => {

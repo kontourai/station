@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import {
+  chmodSync,
   lstatSync,
   mkdirSync,
   readdirSync,
@@ -20,7 +21,8 @@ import { resolveHomeDir } from '../../utils/paths.js';
  * `<home>/tmp/session-tmp/session-<station pid>-<thread digest>`: the
  * digest keeps the thread id out of the path and the name derivable, so the
  * capture side recomputes it from the thread instead of trusting a stored
- * path. The directory is removed when the session exits; one a crash left
+ * path. Capture reads the root recorded when the engine launched
+ * ({@link sessionTempRoot}). The directory is removed when the session exits; one a crash left
  * behind is removed once its owning Station process is gone
  * ({@link reapStaleSessionTmpDirs}).
  *
@@ -50,6 +52,17 @@ export function sessionTmpDirPath(
 let policy: ((threadId: string) => boolean) | undefined;
 
 /**
+ * The temp root each live session's engine was actually launched with, by
+ * thread: this module's own per-session directory, or one an engine's
+ * confinement created for it (Claude under Seatbelt uses its own
+ * `<home>/tmp/confined-sessions/session-…`). Capture and the agent
+ * instruction read this rather than recomputing a path, so a session whose
+ * engine never got a per-session root (preview off when it started, an
+ * in-process engine, a confinement Station did not record) has none.
+ */
+const launchedRoots = new Map<string, string>();
+
+/**
  * Install the start-time decision (runtime composition binds it to the
  * preview's selector). Returns the uninstall used by tests and shutdown.
  */
@@ -62,46 +75,90 @@ export function installSessionTmpDirPolicy(
   };
 }
 
+function admitted(threadId: string): boolean {
+  try {
+    return policy?.(threadId) === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A directory this process owns outright: a real directory (not a link),
+ * owned by this user, and private (mode tightened to 0700 when it is not).
+ * Anything else is refused rather than used as a session's temp root.
+ */
+function ownedPrivateDir(dir: string): boolean {
+  try {
+    const stats = lstatSync(dir);
+    if (!stats.isDirectory() || stats.isSymbolicLink()) return false;
+    const uid = process.getuid?.();
+    if (uid !== undefined && stats.uid !== uid) return false;
+    if ((stats.mode & 0o777) !== 0o700) {
+      chmodSync(dir, 0o700);
+      if ((lstatSync(dir).mode & 0o777) !== 0o700) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The `TMPDIR` an engine starting for `threadId` gets: its own directory
- * (created, owner-only) when the policy admits it, otherwise `undefined`, and
- * the caller keeps the shared engine-spawn directory. A directory that cannot
- * be created also leaves the shared one: a temp folder must never block an
- * engine start.
+ * (created owner-only, or an existing one re-tightened to 0700 and checked to
+ * be this user's) when the policy admits it, otherwise `undefined`, and the
+ * caller keeps the shared engine-spawn directory. A directory that cannot be
+ * created or trusted also leaves the shared one: a temp folder must never
+ * block an engine start.
  */
 export function engineSessionTmpDir(threadId: string): string | undefined {
-  let admitted = false;
-  try {
-    admitted = policy?.(threadId) === true;
-  } catch {
-    admitted = false;
-  }
-  if (!admitted) return undefined;
+  if (!admitted(threadId)) return undefined;
   const dir = sessionTmpDirPath(threadId);
   try {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
-    return dir;
   } catch {
     return undefined;
   }
+  if (!ownedPrivateDir(dir)) return undefined;
+  launchedRoots.set(threadId, dir);
+  return dir;
 }
 
-/** The thread's directory when it exists as a real directory, else undefined. */
-export function existingSessionTmpDir(threadId: string): string | undefined {
+/**
+ * Record a temp directory an engine's confinement created for this session
+ * (and set as its `TMPDIR`), when the policy admits the session. Only that
+ * exact directory becomes a root; its owner keeps removing it.
+ */
+export function noteEngineTmpDir(threadId: string, dir: string): void {
+  if (admitted(threadId) && ownedPrivateDir(dir))
+    launchedRoots.set(threadId, dir);
+}
+
+/** Whether a policy is installed and admits `threadId` now. */
+export function sessionTmpDirAdmitted(threadId: string): boolean {
+  return admitted(threadId);
+}
+
+/**
+ * The session's temp root as its engine was launched with it, while it still
+ * exists as a private directory this user owns; otherwise undefined.
+ */
+export function sessionTempRoot(threadId: string): string | undefined {
+  const dir = launchedRoots.get(threadId);
+  return dir && ownedPrivateDir(dir) ? dir : undefined;
+}
+
+/**
+ * The session ended: forget its root, and remove it when it is this module's
+ * own directory (a confinement's directory is removed by its owner).
+ */
+export function removeSessionTmpDir(threadId: string): void {
+  launchedRoots.delete(threadId);
   const dir = sessionTmpDirPath(threadId);
   try {
     const stats = lstatSync(dir);
-    return stats.isDirectory() && !stats.isSymbolicLink() ? dir : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** Remove the thread's directory. Best-effort; a missing one is not an error. */
-export function removeSessionTmpDir(threadId: string): void {
-  const dir = existingSessionTmpDir(threadId);
-  if (!dir) return;
-  try {
+    if (!stats.isDirectory() || stats.isSymbolicLink()) return;
     rmSync(dir, { recursive: true, force: true });
   } catch {
     // Best-effort; the stale-owner sweep retries after this process exits.
