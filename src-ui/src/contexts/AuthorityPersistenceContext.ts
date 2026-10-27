@@ -13,6 +13,13 @@ interface AuthorityPersistenceContextValue {
    * ready yet). Absent means false.
    */
   refused?: boolean;
+  /**
+   * Present while the observation failed for a reason other than a refusal:
+   * reads it again. The connection health signal calls it on reconnect, since
+   * a route-only outage (a VPN dropping while Wi-Fi stays up) fires no
+   * browser `online` event for the observation's own reconnect retry.
+   */
+  reobserve?: () => void;
 }
 
 export const AuthorityPersistenceContext =

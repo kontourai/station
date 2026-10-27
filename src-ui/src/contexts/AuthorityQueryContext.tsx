@@ -123,7 +123,14 @@ import {
   type AsyncStorage,
   PersistQueryClientProvider,
 } from '@tanstack/react-query-persist-client';
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { OfflineSessionIndex } from '../components/OfflineSessionIndex';
 import {
   isPluginCommandEffectCookieAuthEligible,
@@ -145,7 +152,10 @@ import {
   clearOfflineReading,
   discardForeignOfflineReading,
 } from '../lib/offlineReading';
-import { stationQueryDefaults } from '../lib/queryDefaults';
+import {
+  stationMutationDefaults,
+  stationQueryDefaults,
+} from '../lib/queryDefaults';
 import {
   applyPersistedQueryGcTimeDefaults,
   buildPersistOptions,
@@ -205,7 +215,10 @@ interface ActiveAuthorityClient {
 
 export function createAuthorityClient(): QueryClient {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: stationQueryDefaults() },
+    defaultOptions: {
+      queries: stationQueryDefaults(),
+      mutations: stationMutationDefaults(),
+    },
   });
   applyPersistedQueryGcTimeDefaults(queryClient);
   return queryClient;
@@ -335,7 +348,17 @@ export function AuthorityQueryProvider({
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: false,
+    // A reconnect without a switch keeps key and namespace (module header).
+    // Re-reading a VERIFIED observation on the browser's `online` event would
+    // unverify it for the length of the fetch and replace the whole protected
+    // tree, so every Wi-Fi/cellular handoff discarded each mounted view's
+    // state. Only a FAILED observation is retried on reconnect.
+    refetchOnReconnect: (query) => query.state.status === 'error',
   });
+  const refetchObservation = observationQuery.refetch;
+  const reobserve = useCallback(() => {
+    void refetchObservation();
+  }, [refetchObservation]);
 
   // A cached success from a previous activation must never verify the
   // current one: while the current key's fetch is in flight React Query
@@ -654,6 +677,7 @@ export function AuthorityQueryProvider({
           namespace: null,
           observation: null,
           refused: unauthorized,
+          ...(unauthorized ? {} : { reobserve }),
         }}
       >
         <EphemeralTree key={ephemeralKey}>
