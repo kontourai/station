@@ -48,10 +48,13 @@ afterEach(() => {
   resetAttachmentObjectUrls();
 });
 
-const filePart = () =>
-  activeChatsStore
+function filePart() {
+  const part = activeChatsStore
     .getSnapshot()
-    [chat].messages?.[0].contentParts?.find((part) => part.type === 'file')!;
+    [chat].messages?.[0].contentParts?.find((entry) => entry.type === 'file');
+  if (!part) throw new Error('The bubble has no file part.');
+  return part;
+}
 
 test('a large sent picture keeps its thumbnail through turn.started, and no cache entry stays keyed by its data URL', () => {
   const { messages } = buildOutgoingUserMessage(
