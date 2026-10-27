@@ -4166,7 +4166,9 @@ under `/api/system/workload`:
 
 `GET /api/system/workload` also lists running `scopes`, each with the limit
 it was launched with (a saved change reaches only later launches), its OOM
-kill count and `lastOomKillAt`. The session read's measured scope carries
+kill count and `lastOomKillAt`, and for an engine scope `holder: placed | unplaced`
+(an unplaced holder means that scope's OOM count will be unknown after the
+engine dies). The session read's measured scope carries
 `lastOomKillAt` too. A save refuses a total below the slice's current usage
 (400 `workload_settings_invalid`), because the total binds running engines at
 once.

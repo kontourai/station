@@ -269,7 +269,8 @@ group with no stdio, asks the user manager to move it into the scope
 process-group kill that tears a Codex engine down cannot reach it. When the
 engine dies, the holder keeps the scope and its `memory.events` until Station
 reads the count and stops the scope, which kills the holder. A holder that
-cannot be placed is killed and logged; that scope's count at close, like any
+cannot be placed is killed, logged and reported as `holder: unplaced` in
+`GET /api/system/workload`; that scope's count at close, like any
 scope already gone, is unknown and never inferred. The settled record
 (`recent` in `/api/system/resource-posture` and the "Workload scope settled"
 log) reports `result: oom-kill-in-scope` with `oomKills` whenever the kernel

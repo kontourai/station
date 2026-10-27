@@ -65,6 +65,8 @@ interface ActiveWorkload {
   oomKillsReported: number;
   /** An engine scope's holder, once placed and verified in the scope. */
   holder?: ChildProcess;
+  /** Set for an engine scope once placement settled. */
+  holderState?: 'placed' | 'unplaced';
   holderPlacement?: Promise<void>;
   /** `oom_kill` count at the last poll; undefined before the first. */
   oomKillsPolled?: number;
@@ -484,7 +486,9 @@ async function placeScopeHolder(entry: ActiveWorkload): Promise<void> {
     if (!procs.split('\n').includes(String(pid)))
       throw new Error('holder is not in the scope');
     entry.holder = holder;
+    entry.holderState = 'placed';
   } catch (error) {
+    entry.holderState = 'unplaced';
     holder?.kill('SIGKILL');
     logger.warn(
       'Workload scope holder not placed; an engine memory kill in it will read as unknown',
@@ -906,6 +910,7 @@ export function workloadBudgetStatus(): WorkloadBudgetStatus {
           : { memoryMaxBytes: entry.memoryMaxBytes }),
         oomKills: entry.oomKillsPolled ?? entry.oomKillsReported,
         ...(entry.lastOomKillAt ? { lastOomKillAt: entry.lastOomKillAt } : {}),
+        ...(entry.holderState ? { holder: entry.holderState } : {}),
       })),
   };
 }
@@ -1099,6 +1104,12 @@ export const __workloadTestHooks = {
     );
   },
   pollOomKills,
+  /** Waits until every pending holder placement settled. */
+  async settleHolders(): Promise<void> {
+    await Promise.all(
+      [...active.values()].map((entry) => entry.holderPlacement),
+    );
+  },
   reset(): void {
     manager.run = systemctl;
     Object.assign(holderOps, defaultHolderOps);

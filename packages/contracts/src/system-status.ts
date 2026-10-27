@@ -368,5 +368,11 @@ export interface WorkloadBudgetStatus {
     oomKills: number;
     /** When Station first saw the latest kill (to its 1 s poll interval). */
     lastOomKillAt?: string;
+    /**
+     * An engine scope's holder: `placed` keeps the scope's own OOM count
+     * readable after the engine dies; `unplaced` means that count will be
+     * unknown. Absent for command scopes.
+     */
+    holder?: 'placed' | 'unplaced';
   }>;
 }

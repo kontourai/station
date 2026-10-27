@@ -628,6 +628,13 @@ describe('workload manager budgets (fake systemd manager)', () => {
     trackChildWorkload(engine, process.pid);
     const command = launch();
     trackChildWorkload(command, process.ppid);
+    await __workloadTestHooks.settleHolders();
+    expect(
+      workloadBudgetStatus().scopes?.map((scope) => [scope.unit, scope.holder]),
+    ).toEqual([
+      [unit, 'placed'],
+      [unitOf(command.args), undefined],
+    ]);
     await closeChildWorkload(process.pid);
     expect(holders).toHaveLength(1);
     expect(holders[0]).toMatchObject({ unit, killed: ['SIGKILL'] });
@@ -653,8 +660,15 @@ describe('workload manager budgets (fake systemd manager)', () => {
     await mkdir(`${cgroupRoot}/app.slice/${unmovedUnit}`, { recursive: true });
     await writeFile(`${cgroupRoot}/app.slice/${unmovedUnit}/cgroup.procs`, '');
     trackChildWorkload(unmoved, process.pid);
-    await closeChildWorkload(process.pid);
+    await __workloadTestHooks.settleHolders();
+    // Reported as unplaced, and killed at once rather than kept.
+    expect(
+      workloadBudgetStatus().scopes?.find(
+        (scope) => scope.unit === unmovedUnit,
+      ),
+    ).toMatchObject({ holder: 'unplaced' });
     expect(holders[2]).toMatchObject({ killed: ['SIGKILL'] });
+    await closeChildWorkload(process.pid);
   });
 
   test("an engine killed alone is attributed from its own scope's count, read before the scope is stopped", async () => {
