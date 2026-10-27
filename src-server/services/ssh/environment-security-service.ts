@@ -407,8 +407,8 @@ export class EnvironmentSecurityService {
         pairing.resetEnvironment(reset.environmentId);
         return reset;
       });
-      // Again, for a token minted while the reset ran. A mint finishing after
-      // this can still survive, but its person's devices are gone by then.
+      // Clear again before releasing the same home lease; participating token
+      // mints cannot interleave with either pass.
       await pairing.clearPersonalTokens(lease);
       return reset;
     });

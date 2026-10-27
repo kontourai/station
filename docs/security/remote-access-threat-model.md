@@ -673,11 +673,13 @@ revoked or expired; dead records are dropped, and each person holds at most
 keeps showing its owner for the operator to revoke. An unsafe (not
 owner-only, or a link) or unreadable token file authenticates no one, and
 Station refuses to mint or revoke over it (`503 tokens_unavailable`). The
-20-token limit is decided under the lock, so it holds across processes. An
-environment reset revokes every token first, and fails without changing
-anything if it cannot; it revokes them again once done, which catches a
-token minted while it ran (a mint completing after that second pass is not
-caught, though the person's devices are gone by then).
+20-token limit is decided under the lock, so it holds across participating
+processes. Environment reset clears tokens before changing the environment
+identity and clears them again before releasing one shared home-writer lease.
+Token mints using that owner cannot interleave with the reset; queued HTTP
+mints recheck current caller and target authority after acquisition. This
+coordination does not make reset a rollback transaction or cover older binaries
+and direct same-user file edits that bypass the shared writer.
 
 Telemetry producer tokens (`sti_…`) are a separate, write-only credential for
 programs that report activity, such as Flow Agents' telemetry hooks. The auth
