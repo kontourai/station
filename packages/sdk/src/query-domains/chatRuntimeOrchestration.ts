@@ -58,6 +58,7 @@ import {
   steerTurn as steerTurnClient,
 } from '../client/orchestration';
 import { StationRequestTimeoutError } from '../client/request-deadline';
+import { hasRecordedTurnFailure } from '../client/sent-turn-key';
 import { isStationAnswer } from '../client/station-envelope';
 import { OrchestrationSessionsContext } from '../orchestrationSessionsContext';
 import {
@@ -684,15 +685,16 @@ export async function dispatchOrchestrationCommand<T = unknown>(
 
 /** Create a Station-owned continuation from a read-only attached session. */
 /**
- * True only for failures that PROVE the request never left this client:
- * request-construction errors and the connection-level refusals the runtime
- * names explicitly. A bare TypeError ('Failed to fetch') is NOT proof — the
- * browser uses it for post-send failures too.
+ * Errors recorded by keyed direct chat stay uncertain, even if reused for
+ * another call. Outside that set, only the explicit read-only refusal and
+ * named connection refusals prove no send. SyntaxError can come from parsing
+ * a response, and browsers use TypeError for post-send failures too.
  */
 export function isProvablyNotSent(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
+  if (!(error instanceof Error) || hasRecordedTurnFailure(error)) return false;
   const name = error.name;
-  if (name === 'StationReadOnlyError' || name === 'SyntaxError') return true;
+  if (name === 'SyntaxError') return false;
+  if (name === 'StationReadOnlyError') return true;
   const message = error.message;
   return (
     /ECONNREFUSED|ENOTFOUND|ERR_NAME_NOT_RESOLVED|refused the connection/i.test(
@@ -1134,6 +1136,8 @@ export async function resolveOrchestrationRequest(input: {
   answers?: HarnessQuestionAnswers;
   /** #3390: accepted content for a form input request. */
   content?: InputRequestContent;
+  /** docs/design/event-content-spill.md: proof the full request was loaded. */
+  viewedContentDigest?: string;
   apiBase?: string;
   /** Deadline for decision admission; a timeout does not cancel the server-side decision. */
   timeoutMs?: number;
@@ -1152,6 +1156,9 @@ export async function resolveOrchestrationRequest(input: {
         : {}),
       ...(input.answers ? { answers: input.answers } : {}),
       ...(input.content ? { content: input.content } : {}),
+      ...(input.viewedContentDigest
+        ? { viewedContentDigest: input.viewedContentDigest }
+        : {}),
     },
     input.apiBase,
     input.timeoutMs,

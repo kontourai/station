@@ -32,8 +32,10 @@ an explicit Details action.
 
 Message action rows reserve their layout space. Hover and keyboard focus may
 reveal controls, but must not change bubble size or the position of later messages.
-The chat header's **Inventory** button opens the full Chat inventory directly
-on desktop and mobile. Select **View details** on an item to read its authored
+The desktop chat header's **Inventory** button opens the full Chat inventory
+directly; on a phone it is the **Chat inventory** row of the header's **⋯**
+sheet, because a third trailing control wrapped the one-row header (#4192).
+Select **View details** on an item to read its authored
 message, attachment metadata or safe tool result; the cue then reads **Hide
 details** and a second press closes it. Recorded decisions and other
 rows expose their metadata and link to the Session for surrounding context.
@@ -217,7 +219,11 @@ The shared New chat action remains directly reachable in mobile chrome and at
 the lower right of the inbox; footer space keeps it from covering rows.
 
 Choosing on a chip does not start an engine; a choice is remembered (Agent per
-context, Model per binding, project as the dock's binding). Start hands the
+context, Model per binding, project as the dock's binding). A Project set to
+**Last model used in this project** puts the model its person's last chat there
+started with (server-recorded, per Agent) above that memory, and its approval
+layer replaces the personal default in **Permissions**
+([Project new-chat defaults](../reference/api.md#project-new-chat-defaults)). Start hands the
 message to the dock’s existing sender once; Home's Start hands the dock its
 exact chip selection, which the dock starts through the same path. Setup actions retain the draft
 through the authority-fenced return journey. A removed preference requires an
@@ -520,7 +526,9 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
    sits in the composer's meta row beside the model picker it measures (2026-10-20:
    it had moved to the dock header, where it crowded the chat's identity); the dock
    header holds session identity only (see placement.md, "What the dock header
-   holds").
+   holds"). On a phone the meta row scrolls sideways and hides while typing on a
+   short screen, so the dock's Actions sheet (⋯) repeats the meter as a
+   Conversation stats row naming the share used; it opens the same stats panel.
 
 ### 3.1 Provider and model picker
 
@@ -541,11 +549,18 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   for that Session (conversation open, the Session's own `session.started`, or the
   receipt of the send that started it); otherwise the caption names only a native
   engine's product and claims no move. When the Agent now points elsewhere, the caption
-  adds "Agent now on …" (a narrow composer: "Agent moved"), and the accessible name says
+  adds "Agent now on …" (a narrow composer: "Agent moved", kept visible by letting the
+  engine name shrink to an ellipsis first), and the accessible name says
   the conversation runs on its engine and the Agent now uses another. Once the Session's
   engine binding has ended (`exited`, `closed`, `dead` or `error`), the caption says
-  "Next turn on …" ("Next: …" when narrow), because the next turn starts a successor
-  there. The picker distinguishes duplicate model
+  "Next turn on …", because the next turn starts a successor
+  there. A narrow composer has no chip room for a destination name, so it says this on
+  its own line above the chips instead ("Next turn starts on …"). A tab that has observed no status for the Session, such as a freshly opened
+  conversation, reads that from the open read's `nextTurnStartsSession` (#4179), the
+  server's continuation rule, while it still describes the chat's current Session.
+  Both surfaces resolve the execution Agent with `chatExecutionBinding`: an override
+  whose Agent is deleted or not loaded borrows nothing from the chat's own Agent, so
+  both name only the Session's engine. The picker distinguishes duplicate model
   names by Provider identity. Compact neutral controls use clear hover/focus states and
   preserve the 44px mobile touch floor.
 - Choosing or resetting a Model closes the picker, in a chat, in the start
@@ -565,8 +580,11 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 - Compact value pickers use the shared `.choice-trigger` / `.choice-caret` styles
   and `ArrowDownGlyph`, also used by the layout switcher and scheduler agent picker.
   Standard actions continue to use `Button`.
-- Startup permissions show the requested mode and source before Start. The running
-  chip shows engine-confirmed values or a pending/restart state. Personal defaults
+- Startup permissions show the requested mode and source before Start, and the
+  chip opens the same approval picker as a running chat (full access still
+  takes its confirmation); the pick is the new chat's own and rides its first
+  send. Inside the dock's New chat dialog the picker opens on the dialog layer.
+  The running chip shows engine-confirmed values or a pending/restart state. Personal defaults
   apply to new interactive chats; saving a future default is explicit.
 - Agent, Model, and approval mode share control geometry and chevrons. Values size
   naturally and truncate with an ellipsis before the chevron, never under it;
@@ -825,7 +843,7 @@ orchestration command union is broader than the public `/commands` schema:
 | Start/send through an authored Agent, including an external-engine binding | `POST /api/orchestration/chat` with `target` and `message` |
 | Continue an existing conversation | `POST /api/orchestration/chat/:conversationId/continue` with `message`; the persisted binding owns execution identity |
 | Request model/options for a turn | `target.model.override` / `target.model.options` on `/chat`, or a `model` object on `/continue`; support is engine-specific |
-| Respond to permission request | `POST /api/orchestration/commands` with `type:'respondToRequest'`, `threadId`, `requestId`, and `decision` (an `acceptForSession` may add the typed `sessionGrantScope:'server'` for the Station browser) |
+| Respond to permission request | `POST /api/orchestration/commands` with `type:'respondToRequest'`, `threadId`, `requestId`, and `decision` (an `acceptForSession` may add the typed `sessionGrantScope:'server'` for the Station browser; allowing a request whose content was stored out of line also needs `viewedContentDigest`, see [Session API](../reference/session-api.md)) |
 
 The [Session API](../reference/session-api.md) owns request details and refusal
 behavior. `POST /api/agents/:id/chat` is the Station-engine route; an
@@ -888,7 +906,7 @@ names the project. This revises the earlier independent-sidebar/default behavior
 Chat actions offers **New Task from this** for a writable Station conversation,
 sending shaping instructions immediately in the same conversation. Further focus can be typed as the next message. The
 agent shapes a proposal; only **Create Task** on its card accepts the brief
-and links the source Session without assigning an Agent or execution Session. The Goal sentence is the description; the complete accepted markdown seeds the shared Task document through its authorized human edit path. Acceptance also clears shaping mode when the conversation has moved to another Session. A mismatched proposal asks for a fresh proposal; an oversized brief asks for a shorter one, including a brief over the 12,000-character proposal limit and one the Task document cannot hold (413, about 5,400 characters of plain text). When the Station-wide revision history is full ([#4055](https://github.com/kontourai/station/issues/4055)) the card shows the server's refusal and promises no retry; when the Task was created without its brief, the card offers **Open Task**. A transient seed failure retains the Task and shows a recoverable acceptance error; retry reuses the source identity and never overwrites a populated document. Shaping instructions use model context, leaving
+and links the source Session without assigning an Agent or execution Session. The Goal sentence is the description; the complete accepted markdown seeds the shared Task document through its authorized human edit path. Acceptance also clears shaping mode when the conversation has moved to another Session. A mismatched proposal asks for a fresh proposal; an oversized brief asks for a shorter one, including a brief over the 12,000-character proposal limit and one the Task document cannot hold (413, about 5,400 characters of plain text). The accepted brief is a replaceable revision candidate; a full immutable revision ledger no longer prevents seeding ([freeze policy](../decisions/revision-evidence-freeze-policy.md)). When the Task was created without its brief, the card offers **Open Task**. A transient seed failure retains the Task and shows a recoverable acceptance error; retry reuses the source identity and never overwrites a populated document. Shaping instructions use model context, leaving
 the person's idea as the visible message. The answer/input **Add to Task**
 picker offers **New Task from this** even with an empty Task catalog.
 

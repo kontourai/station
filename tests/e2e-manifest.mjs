@@ -376,6 +376,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/component-style.spec.ts',
     'tests/server-older-banner.spec.ts',
     'tests/toggle-contrast.spec.ts',
+    'tests/chat-dock-open-helper.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
     'tests/answer-quoting.spec.ts',
     'tests/code-block-actions.spec.ts',
@@ -422,6 +423,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/orchestration-chat-flow.spec.ts',
     'tests/mcp-elicitation-form.spec.ts',
     'tests/mobile-request-sheet.spec.ts',
+    'tests/approval-spilled-content.spec.ts',
     'tests/input-request.spec.ts',
     'tests/acp-orchestration-plan.spec.ts',
     'tests/flow-gate-verdicts.spec.ts',
@@ -1426,6 +1428,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/chat-dock-open-helper.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      '#4175: the shared ensureChatDockOpen helper against the race the PR smoke trace recorded — the product opens the dock itself between the helper resolving "Show Chat" and its click landing, so the click hits "Hide Chat" and closes the dock. A static page puts that open on the first pointer arrival, deterministically; the helper must still end with the dock open, and must not touch a dock that is already open. No live instance or server.',
+    exceptions: [],
+  },
+  {
     path: 'tests/toggle-contrast.spec.ts',
     bucket: 'product',
     surface: 'Shell',
@@ -1609,6 +1621,15 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/approval-spilled-content.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    rationale:
+      'docs/design/event-content-spill.md: an approval whose content was stored out of line offers only Deny until the card loads the whole request through the content route, then shows the loaded content and offers Allow, and the allow carries viewedContentDigest; desktop 1440 and phone 390 in both themes.',
+    exceptions: [],
+  },
+  {
     path: 'tests/mobile-request-sheet.spec.ts',
     bucket: 'product',
     surface: 'Chat / Orchestration',
@@ -1780,6 +1801,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Real isolated Station lifecycle proof for durable Task workspace binding, inline local references and diff inspection, Direct/Deliver/Learn/Operate authority and unavailable-state boundaries (including hostile owner-shaped metadata), task switching isolation, plus a real Ollama-generated project answer pinned through the keyboard-safe Task basis UI and reopened after same-home restart.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/task-review.spec.ts',
+    bucket: 'extended',
+    surface: 'Task review',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "Credential-free isolated Station comment, relocation, Send refusal, resolve/reopen and real Chromium capture/pin journeys. The room revision-publication prerequisite passes after #4211. PR-smoke admission remains deferred: the full nine-spec candidate lane failed its existing orchestration-chat approval assertion, and the strict receipt also rejected this spec's explicit live-provider skip. Credential-free Review cases passed, but three clean full-lane runs are not qualified. A separate live-Claude text-reply/commit-verification test is explicitly skipped as NOT_QUALIFIED unless STATION_REVIEW_USE_CLAUDE=1 and signed-in Claude are supplied; there is no ACP fallback. Missing Chromium is explicitly NOT_VERIFIED.",
     exceptions: [],
   },
   {
@@ -2258,7 +2289,7 @@ export const e2eManifest = [
     tierTarget: 'screenshot',
     primary: false,
     rationale:
-      'Screenshot capture is a visual artifact lane until product assertions are added.',
+      'Full-app gallery: every screen is photographed and audited for hit targets, horizontal overflow and blocking axe violations, judged against a shrink-only allowlist; exact pixels stay advisory.',
     exceptions: ['waitForTimeout'],
   },
   {

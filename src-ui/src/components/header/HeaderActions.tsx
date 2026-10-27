@@ -480,7 +480,9 @@ export function HeaderActions({
           className="app-toolbar__icon-btn"
           {...notificationTrigger}
           title={notificationLabel}
-          aria-label={`${notificationLabel}${notificationBadge ? ` (${notificationBadge.label})` : ''}`}
+          // A comma, not parentheses: the visible count must be a word of
+          // the name for label-in-name (WCAG 2.5.3), and "(3" is not "3".
+          aria-label={`${notificationLabel}${notificationBadge ? `, ${notificationBadge.label}` : ''}`}
         >
           {/* #1552 D1: the shared `Glyph` family, not a hand-rolled `strokeWidth:
               2` SVG. This row's three glyphs were drawn at three weights (2 here
@@ -503,7 +505,7 @@ export function HeaderActions({
                assumption about how many notifications a person has.
 
                The exact count is not lost: it is in this button's accessible
-               name (`${notificationLabel} (${notificationBadge.label})` above,
+               name (`${notificationLabel}, ${notificationBadge.label}` above,
                "N need attention"), and the panel the button opens lists them.
                What the cap does cost: above nine, the visible "9+" is no
                longer a substring of that name, where the uncapped count was.
@@ -571,12 +573,13 @@ export function HeaderActions({
         )}
       </div>
 
-      {/* No phone-only Settings gear: Settings lives in the sidebar drawer's
-          footer (`ProjectSidebarFooter`), which the hamburger beside the brand
-          opens on every viewport — so a phone reaches it in two taps without
-          spending a permanent slot in the row that runs out of width first.
-          The account menu that used to sit at this row's end is the footer's
-          `SidebarAccountControl`; the region glyphs took its place. */}
+      {/* No phone-only Settings gear: Settings is the "Open settings" row of
+          the account menu in the sidebar drawer's footer
+          (`SidebarAccountControl` in `ProjectSidebarFooter`), which the
+          hamburger beside the brand opens on every viewport — so a phone
+          reaches it without spending a permanent slot in the row that runs
+          out of width first. That account menu used to sit at this row's
+          end; the region glyphs took its place. */}
     </div>
   );
 }

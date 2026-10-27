@@ -3,7 +3,8 @@
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
 import type { SkillExperienceDefinitionV1 } from '@kontourai/station-contracts/skill-experience';
-import { QueryClient } from '@tanstack/react-query';
+import { projectChatDefaultsQueryKey } from '@kontourai/station-sdk';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
   fireEvent,
@@ -12,7 +13,16 @@ import {
   screen,
 } from '@testing-library/react';
 import { createElement, useState } from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from 'vitest';
+import { resetAttachmentObjectUrls } from '../components/chat/attachment-object-urls';
 import { SkillExperienceForm } from '../components/skill-experiences/SkillExperienceForm';
 
 vi.mock('../contexts/AuthorityPersistenceContext', () => ({
@@ -20,6 +30,15 @@ vi.mock('../contexts/AuthorityPersistenceContext', () => ({
     namespace: 'authority-1',
     status: 'verified',
   }),
+}));
+
+// The rendered bubble below asks only about its attachment chip: its avatar
+// reads the signed-in account.
+vi.mock('../components/icons/UserIcon', () => ({ UserIcon: () => null }));
+// Its file chip resolves a blob reference against the Station it talks to.
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ApiBaseContext')>()),
+  useApiBase: () => ({ apiBase: 'http://api.test' }),
 }));
 
 const accountPreferenceFixture = vi.hoisted(() => ({
@@ -37,6 +56,12 @@ vi.mock('../contexts/AccountPreferencesContext', () => ({
   useAccountPreferences: () => accountPreferenceFixture,
 }));
 const outboundQueueMode = vi.hoisted(() => ({ useActual: false }));
+/** The first send's bounded read of a Project answer it does not have. */
+const getProjectChatDefaultsMock = vi.hoisted(() =>
+  vi.fn(async (..._args: unknown[]): Promise<unknown> => {
+    throw new Error('chat defaults unreadable');
+  }),
+);
 
 class CodedOrchestrationError extends Error {
   constructor(
@@ -125,6 +150,9 @@ const queryClientMock = {
     JSON.stringify(key) === JSON.stringify(['agents'])
       ? cachedAgentCatalog
       : sessionCache.getQueryData(key),
+  // The Project new-chat defaults a composer already read.
+  setQueryData: (key: unknown[], value: unknown) =>
+    sessionCache.setQueryData(key, value),
 };
 // `isProvablyNotSent` is deliberately the REAL implementation, not a stub:
 // it is the one derivation that decides whether a failed Stop reads "Stop
@@ -139,6 +167,11 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
       inventory: () => ({ queryKey: ['conversation-inventory'] }),
     },
     orchestrationQueries: actual.orchestrationQueries,
+    PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX:
+      actual.PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX,
+    projectChatDefaultsQueryKey: actual.projectChatDefaultsQueryKey,
+    getProjectChatDefaults: (...args: unknown[]) =>
+      getProjectChatDefaultsMock(...args),
     useEngineConnectionsQuery: () => agentConnectionsMock(),
     useConfigQuery: () => configQueryMock(),
     // The Agent-record link of the engine-connection chain; this fixture's
@@ -751,6 +784,161 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     });
   });
 
+  // The owner saw this on Android: right after sending a picture, while the
+  // reply streamed, the user's own bubble showed a blank chip that could not
+  // be opened, and only a reload (which brings the server's blobRef) fixed
+  // it. The bubble here is the one the real send path wrote to the store.
+  it('the bubble a picture send writes previews and opens that picture before any reload', async () => {
+    const png = 'data:image/png;base64,iVBORw0KGgo=';
+    const attachment = {
+      id: 'screen-live',
+      name: 'screen.png',
+      type: 'image/png',
+      size: 8,
+      data: png,
+      preview: png,
+    };
+    activeChatsStore.updateChat(sessionId, {
+      attachmentStages: [
+        {
+          clientAttachmentId: attachment.id,
+          name: attachment.name,
+          mimeType: 'image/png',
+          size: attachment.size,
+          state: 'complete',
+          progress: 1,
+          delivery: 'legacy-inline',
+        },
+      ],
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(sessionId, 'codex', undefined, 'Look at this', [
+        attachment,
+      ]);
+    });
+    const storedBubble = () =>
+      activeChatsStore
+        .getSnapshot()
+        [sessionId].messages?.find((message) => message.role === 'user');
+    expect(storedBubble()).toBeDefined();
+
+    const [{ MessageBubble }, { PreviewProvider }, { handleTurnStartedEvent }] =
+      await Promise.all([
+        import('../components/chat/MessageBubble'),
+        import('../contexts/PreviewContext'),
+        import('../hooks/orchestration/turnHandlers'),
+      ]);
+    const renderBubble = () =>
+      render(
+        createElement(
+          QueryClientProvider,
+          { client: new QueryClient() },
+          createElement(
+            PreviewProvider,
+            null,
+            createElement(MessageBubble, {
+              msg: storedBubble()!,
+              idx: 0,
+              activeSession: {
+                id: sessionId,
+                agentSlug: 'codex',
+                agentName: 'Codex',
+                messageCount: 1,
+              },
+              agents: [],
+              chatFontSize: 14,
+              showReasoning: false,
+              showToolDetails: false,
+              onCopy: () => {},
+            }),
+          ),
+        ),
+      );
+
+    const live = renderBubble();
+    const chip = screen.getByRole('button', { name: 'Preview screen.png' });
+    expect(screen.getByAltText('screen.png').getAttribute('src')).toBe(png);
+    fireEvent.click(chip);
+    const dialog = await screen.findByRole('dialog', { name: 'Preview' });
+    expect(dialog.textContent).toContain('screen.png');
+    live.unmount();
+
+    // The turn starts and records the attachment by reference. The stored
+    // bubble must let go of its multi-megabyte bytes, and its chip must still
+    // be the picture — from the bytes this client sent, not a refetch.
+    const { createObjectURL, revokeObjectURL } = URL;
+    Object.assign(URL, {
+      createObjectURL: vi.fn(() => 'blob:sent-picture'),
+      revokeObjectURL: vi.fn(),
+    });
+    onTestFinished(() => {
+      Object.assign(URL, { createObjectURL, revokeObjectURL });
+      resetAttachmentObjectUrls();
+    });
+    const { clientTurnId } = sendExecutionMessageMock.mock.calls[0][1];
+    act(() => {
+      handleTurnStartedEvent({
+        eventId: 'started-picture',
+        method: 'turn.started',
+        provider: 'codex',
+        threadId: sessionId,
+        turnId: 'turn-picture',
+        createdAt: '2026-09-12T00:00:00Z',
+        prompt: 'Look at this',
+        clientTurnId,
+        attachments: [
+          {
+            kind: 'image',
+            name: 'screen.png',
+            mimeType: 'image/png',
+            size: 8,
+            blobRef: `sha256-${'d'.repeat(64)}`,
+          },
+        ],
+      });
+    });
+    expect(storedBubble()?.turnId).toBe('turn-picture');
+    expect(JSON.stringify(storedBubble())).not.toContain('data:');
+    renderBubble();
+    expect(
+      screen.getByRole('button', { name: 'Preview screen.png' }),
+    ).toBeTruthy();
+    expect(screen.getByAltText('screen.png').getAttribute('src')).toBe(
+      'blob:sent-picture',
+    );
+  });
+
+  // A send the client refuses before any request (an attachment that never
+  // completed staging) reached no Station: it must leave no user bubble, and
+  // the message returns to the composer.
+  it('a send refused before it reaches Station leaves no user bubble', async () => {
+    const attachment = {
+      id: 'unstaged-1',
+      name: 'screen.png',
+      type: 'image/png',
+      size: 3,
+      data: 'data:image/png;base64,YWJj',
+    };
+    const before = activeChatsStore.getSnapshot()[sessionId]?.messages ?? [];
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'codex', undefined, 'Inspect this', [
+        attachment,
+      ]);
+    });
+
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    const chat = activeChatsStore.getSnapshot()[sessionId];
+    expect(chat?.messages ?? []).toEqual(before);
+    expect(chat?.input).toBe('Inspect this');
+    expect(chat?.attachments).toEqual([attachment]);
+    expect(chat?.error).toBe(
+      'Attachments must complete supervised staging before Send.',
+    );
+  });
+
   it('omits every model override after the picker explicitly requests the default', async () => {
     activeChatsStore.updateChat(sessionId, {
       requestedModel: null,
@@ -824,7 +1012,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       expect(body).not.toHaveProperty('setApprovalMode');
     });
 
-    it('applies a saved personal default only to the first interactive send and carries its decision basis', async () => {
+    it('sends a saved personal default as a hint on the first interactive send only, never as a pick', async () => {
       const requestScope = {
         apiBase: 'http://api.test',
         authorityKey: 'person-a',
@@ -839,20 +1027,138 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       };
       try {
         const body = await bodyAfterSend();
-        expect(body).toMatchObject({
-          setApprovalMode: 'never',
-          setApprovalModeBasedOn: null,
-        });
+        // The server decides whether it applies (below the Agent's and the
+        // Project's defaults); nothing here waits to find out.
+        expect(body).toMatchObject({ personalApprovalDefault: 'never' });
+        expect(body).not.toHaveProperty('setApprovalMode');
+        expect(getProjectChatDefaultsMock).not.toHaveBeenCalled();
         expect(sendExecutionMessageMock.mock.calls[0][2].requestScope).toBe(
           requestScope,
         );
         activeChatsStore.updateChat(sessionId, {
-          queuedApprovalMode: undefined,
           orchestrationSessionStarted: true,
           status: 'idle',
           orchestrationStatus: 'idle',
         });
-        expect(await bodyAfterSend()).not.toHaveProperty('setApprovalMode');
+        const later = await bodyAfterSend();
+        expect(later).not.toHaveProperty('personalApprovalDefault');
+        expect(later).not.toHaveProperty('setApprovalMode');
+      } finally {
+        accountPreferenceFixture.data.values.interactiveApprovalModes = {};
+      }
+    });
+
+    it('a Station that answered "no Project layer here" (404) gets the default as the pick it always was', async () => {
+      const requestScope = {
+        apiBase: 'http://api.test',
+        authorityKey: 'person-a',
+        isCurrent: () => true,
+      };
+      accountPreferenceFixture.requestScope = requestScope;
+      accountPreferenceFixture.data.values.interactiveApprovalModes = {
+        codex: 'never',
+      };
+      cachedAgentCatalog = {
+        agents: [{ slug: 'codex', execution: { agentConnectionId: 'codex' } }],
+      };
+      // The SDK's scoped key, spelled out: prefix, Station, the verified
+      // authority namespace, slug (the fixture chat is in `station`).
+      const key = [
+        'project-chat-defaults',
+        'http://api.test',
+        'authority-1',
+        'station',
+      ];
+      expect(
+        projectChatDefaultsQueryKey(requestScope, 'authority-1', 'station'),
+      ).toEqual(key);
+      sessionCache.setQueryData(key, null);
+      try {
+        const body = await bodyAfterSend();
+        expect(body).toMatchObject({
+          setApprovalMode: 'never',
+          setApprovalModeBasedOn: null,
+        });
+        expect(body).not.toHaveProperty('personalApprovalDefault');
+      } finally {
+        sessionCache.removeQueries({ queryKey: key });
+        accountPreferenceFixture.data.values.interactiveApprovalModes = {};
+      }
+    });
+
+    it('outside a Project there is no Project layer: the default goes as the pick it always was', async () => {
+      accountPreferenceFixture.requestScope = {
+        apiBase: 'http://api.test',
+        authorityKey: 'person-a',
+        isCurrent: () => true,
+      };
+      accountPreferenceFixture.data.values.interactiveApprovalModes = {
+        codex: 'never',
+      };
+      cachedAgentCatalog = {
+        agents: [{ slug: 'codex', execution: { agentConnectionId: 'codex' } }],
+      };
+      activeChatsStore.updateChat(sessionId, { projectSlug: undefined });
+      try {
+        const body = await bodyAfterSend();
+        expect(body).toMatchObject({
+          setApprovalMode: 'never',
+          setApprovalModeBasedOn: null,
+        });
+        expect(body).not.toHaveProperty('personalApprovalDefault');
+      } finally {
+        accountPreferenceFixture.data.values.interactiveApprovalModes = {};
+      }
+    });
+
+    it('a hint the server did not apply is spent with the first send', async () => {
+      accountPreferenceFixture.requestScope = {
+        apiBase: 'http://api.test',
+        authorityKey: 'person-a',
+        isCurrent: () => true,
+      };
+      accountPreferenceFixture.data.values.interactiveApprovalModes = {
+        codex: 'auto',
+      };
+      cachedAgentCatalog = {
+        agents: [{ slug: 'codex', execution: { agentConnectionId: 'codex' } }],
+      };
+      try {
+        await bodyAfterSend();
+        expect(
+          activeChatsStore.getSnapshot()[sessionId]?.queuedApprovalMode,
+        ).toBeUndefined();
+      } finally {
+        accountPreferenceFixture.data.values.interactiveApprovalModes = {};
+      }
+    });
+
+    it('a hint the server recorded becomes the chat’s folded decision', async () => {
+      accountPreferenceFixture.requestScope = {
+        apiBase: 'http://api.test',
+        authorityKey: 'person-a',
+        isCurrent: () => true,
+      };
+      accountPreferenceFixture.data.values.interactiveApprovalModes = {
+        codex: 'auto',
+      };
+      cachedAgentCatalog = {
+        agents: [{ slug: 'codex', execution: { agentConnectionId: 'codex' } }],
+      };
+      sendExecutionMessageMock.mockResolvedValueOnce({
+        ...successReceipt(),
+        approvalMode: {
+          threadId: 'thread-1',
+          recorded: true,
+          approvalMode: 'auto',
+          sequence: 7,
+        },
+      });
+      try {
+        await bodyAfterSend();
+        expect(
+          activeChatsStore.getSnapshot()[sessionId]?.approvalPostureSequence,
+        ).toBe(7);
       } finally {
         accountPreferenceFixture.data.values.interactiveApprovalModes = {};
       }

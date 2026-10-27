@@ -1,0 +1,7 @@
+{
+  "revision": "729f575d435e0af9c77a79c4c8c0891ff16ba01a",
+
+  "notes": [
+    {"path":"docs/guides/walkthroughs.md","note":"EXECUTED: isolated macOS Station build 6f092921fff7bb9eed808eb51da726915ad768e9 refused the off-state CLI import with the preview code and Settings path, then downloaded verified tools with explicit CLI consent (62.293 seconds to readiness). A real captured Settings recording with macOS synthesized narration imported in 4.042 seconds: 32 seconds, 16 candidates and 13 JPEG frames; CLI show read the persisted manifest. A real session-bound streamable-HTTP MCP client read four pages/all 13 images byte-exactly and matched the CLI manifest, then both cached/advertised tools returned typed isError preview refusals after live disabling. The agentless read was correctly refused; the bearer-exposed session needed ordinary explicit Project owner membership, now documented. The test session and instance were stopped, all task listeners disappeared, and the isolated home plus temporary credentials were deleted. Recognition misheard Walkthroughs as Walkrow; this synthesized local pipeline proof does not qualify unsynthesized human accuracy, Windows/Linux, hosted deployments, voice-provider UI or published artifacts.","inputs":["docs/guides/walkthroughs.md"]}
+  ]
+}

@@ -211,6 +211,23 @@ describe('createPublicIngressOriginResolver', () => {
     ]);
   });
 
+  test('reports the MagicDNS name from the same cached lookup, even without Serve', async () => {
+    const calls: string[][] = [];
+    const { cli } = cliFrom(
+      { 'status --json': { stdout: STATUS_JSON, exitCode: 0 } },
+      calls,
+    );
+    const resolver = createPublicIngressOriginResolver({
+      localPorts: [3000],
+      cli,
+    });
+    await expect(resolver.resolve()).resolves.toBeUndefined();
+    await expect(resolver.magicDnsHost()).resolves.toBe(
+      'station.example.ts.net',
+    );
+    expect(calls).toHaveLength(2);
+  });
+
   test('caches within the TTL and re-reads after it', async () => {
     // An operator can change `tailscale serve` while Station runs, so a value
     // pinned forever would go silently stale; a value never cached would

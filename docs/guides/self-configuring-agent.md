@@ -87,6 +87,19 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
   for, and `task_summary_update` and `task_record` to keep that Task's summary,
   decisions, open questions and dead ends; none of them changes Task status or
   the Task document ([Tracker-backed Tasks](../design/tracker-backed-tasks.md#session-brief))
+- `task_thread_list {state?}` to read the bound Task's review threads,
+  `task_thread_reply {threadId, deliveryKey, body, evidence?}` to answer a sent thread, and
+  `task_thread_resolve {threadId, reason}` to resolve it. Only the Task's lead
+  Session can use these tools. Copy `deliveryKey` from the owner message or list:
+  a stale delivery cannot claim a newer follow-up. A reply to an automatically
+  resolved delivery keeps it resolved. They never change Task status. Commit before
+  claiming a commit: Station checks that the exact object exists and has type
+  `commit` with `git cat-file -t` in the Task workspace. This does not establish
+  branch reachability or that the repair is correct. Gate evidence verifies
+  only when every ref is linked to this Task and the existing gate reader
+  returns that exact current passing evaluation; other refs stay claimed. Pass
+  an optional stable `operationId` when retrying a write. Reopening is
+  person-only; no delete tool exists. See [Task review](../reference/api.md#task-review-threads).
 - `get_answer_assessment_target`, `publish_answer_assessment`, and
   `remove_answer_assessment` for a personal-mode producer's frozen Surface
   assessment of one completed answer. Copy the target's exact answer binding
@@ -404,7 +417,8 @@ Session by its `sessionId`, without creating a task.
   Once a completed key has been dropped (more than 300 later sends from that
   session, or seven days), a retry under it acts again unless the downstream
   client-turn claim still answers it: a start's claim is kept as a replay row
-  or, once evicted from the 2,000-row table, as an `expired` tombstone that
+  or, once evicted from the shared resolved replay budget (2,000 by default),
+  as an `expired` tombstone that
   refuses the resend until the target Session is deleted; a retry from another
   branch of the work is not caught at all. A start whose turn may already have reached the engine can
   stay `indeterminate` on every repeat, so 300 such keys block that session's

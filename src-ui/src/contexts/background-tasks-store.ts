@@ -26,6 +26,7 @@ import type {
   ChildWorkStatus,
 } from '@kontourai/station-contracts/child-work';
 import type { OrchestrationDelegationContext } from '@kontourai/station-contracts/orchestration';
+import { runtimeEventContentText } from '@kontourai/station-contracts/runtime-event-content';
 import type {
   OrchestrationEvent,
   OrchestrationSnapshotPayload,
@@ -413,7 +414,7 @@ function foldDelegateTurnStarted(
 
   const title =
     existing?.delegationTitle ??
-    firstLine(event.prompt) ??
+    firstLine(runtimeEventContentText(event.prompt)?.text) ??
     existing?.title ??
     'Delegated task';
   if (existing) {

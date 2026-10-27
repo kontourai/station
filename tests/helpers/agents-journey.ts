@@ -266,20 +266,24 @@ export async function ensureChatDockOpen(page: Page): Promise<void> {
   const expand = page.getByRole('button', {
     name: /^(?:Expand chat(?: dock)?|Show Chat)$/,
   });
-  if (await expand.isVisible()) {
-    try {
-      await expand.click({ timeout: 2_000 });
-    } catch (error) {
-      // The product can open the dock while this locator waits to act.
-      // Only the expanded-state assertion below can accept that transition.
-      if (!(error instanceof errors.TimeoutError)) throw error;
+  const collapse = page.getByRole('button', {
+    name: /^(?:Collapse chat(?: dock)?|Hide Chat)$/,
+  });
+  // One button whose name flips with the dock's state. The product can open
+  // the dock itself (a chat start) after `expand` resolves and before the
+  // click lands; the click then hits "Hide Chat" and closes it (#4175). So the
+  // state is read again after every click instead of from one look.
+  await expect(async () => {
+    if (!(await collapse.isVisible()) && (await expand.isVisible())) {
+      try {
+        await expand.click({ timeout: 2_000 });
+      } catch (error) {
+        // The product can open the dock while this locator waits to act.
+        if (!(error instanceof errors.TimeoutError)) throw error;
+      }
     }
-  }
-  await expect(
-    page.getByRole('button', {
-      name: /^(?:Collapse chat(?: dock)?|Hide Chat)$/,
-    }),
-  ).toBeVisible({ timeout: 10_000 });
+    await expect(collapse).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 10_000 });
 }
 
 /**

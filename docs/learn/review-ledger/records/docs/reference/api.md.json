@@ -538,6 +538,18 @@
 
     "src-ui/src/lib/project-onboarding-recovery.ts",
 
+    "src-server/analytics/source-grant-store.ts",
+
+    "src-server/analytics/source-export-proof.ts",
+
+    "src-server/analytics/recipient-store.ts",
+
+    "src-server/routes/operations/source-grant-export.ts",
+
+    "src-server/routes/operations/source-grant-approvals.ts",
+
+    "src-server/routes/operations/__tests__/source-credential-delivery.test.ts",
+
     "src-server/routes/orchestration/task-room-attachment-http.ts",
 
     "src-server/routes/orchestration/project-task-rooms.ts",
@@ -547,6 +559,18 @@
     "src-server/runtime/consent/consent-listener.ts",
 
     "src-server/services/identity/operator-sessions.ts",
+
+    "src-server/routes/walkthroughs.ts",
+
+    "src-server/routes/chat/chat-primary-stream.ts",
+
+    "src-server/routes/orchestration/task-review.ts",
+
+    "src-server/services/projects/task-review-module.ts",
+
+    "src-server/services/orchestration/task-review-store.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts",
 
     "src-server/services/terminal/shell-host.ts",
 
@@ -570,7 +594,19 @@
 
     "src-server/adapters/pty-process-groups.ts",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts",
+
+    "src-server/services/projects/task-browser-capture.ts",
+
+    "src-server/routes/orchestration/task-review-captures.ts",
+
+    "src-server/routes/__tests__/browser-agent-capture.test.ts",
+
+    "src-server/services/orchestration/task-review-send.ts",
+
+    "src-server/routes/orchestration/task-review-station-control.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts"
   ],
 
   "checks": [

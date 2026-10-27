@@ -7,6 +7,7 @@ import {
   type ApprovalFullAccessRefusalDetails,
   parseApprovalFullAccessRefusalDetails,
 } from '@kontourai/station-contracts/orchestration';
+import type { ProjectChatApprovalDefault } from '@kontourai/station-contracts/project-chat-defaults';
 import {
   type ApprovalMode,
   isApprovalMode,
@@ -207,6 +208,9 @@ export function approvalModeChipLabel(mode: ApprovalMode): string {
 type ApprovalModeSource =
   | 'session override'
   | 'agent default'
+  | 'project default'
+  | 'project last used'
+  | 'project unavailable'
   | 'account default'
   | 'station default'
   | 'adapter default';
@@ -237,6 +241,8 @@ export function resolveEffectiveApprovalMode({
   engineConnectionId,
   sessionOverride,
   agentDefault,
+  projectDefault,
+  projectDefaultUnavailable,
   personalDefault,
   stationDefault,
 }: {
@@ -244,6 +250,21 @@ export function resolveEffectiveApprovalMode({
   sessionOverride?: unknown;
   /** The session's Agent's own default (`execution.approvalMode`). */
   agentDefault?: unknown;
+  /**
+   * A NEW chat's Project layer, as the server resolved it for this person
+   * (`ProjectChatDefaultsView.approvalMode.resolved`). The server applies it
+   * below the Agent's default and above the Station's; it also replaces the
+   * personal default, which the first send then does not queue. Pass it only
+   * for a chat that has not started.
+   */
+  projectDefault?: ProjectChatApprovalDefault;
+  /**
+   * A NEW chat in a Project whose new-chat defaults could not be read (or are
+   * still being read). The server applies the Project layer whatever this
+   * client knows, so the chat shows that the mode is decided at start rather
+   * than claiming a personal or Station default the server may not apply.
+   */
+  projectDefaultUnavailable?: boolean;
   personalDefault?: unknown;
   /**
    * This Station's `AppConfig.defaultApprovalMode`. Applies only to an
@@ -255,6 +276,11 @@ export function resolveEffectiveApprovalMode({
   const override = isApprovalMode(sessionOverride)
     ? sessionOverride
     : undefined;
+  // An explicit Default pick is recorded as a decision, and the server
+  // resolves it to the Agent's default, then the Station's
+  // (`ApprovalPosture.resolveDefaultPick`): no Project layer and no personal
+  // default, which the first send queues only when nothing was picked.
+  const defaultPicked = override === 'connection-default';
   if (override && override !== 'connection-default') {
     return {
       mode: override,
@@ -278,6 +304,36 @@ export function resolveEffectiveApprovalMode({
   }
 
   if (
+    !defaultPicked &&
+    projectDefaultUnavailable &&
+    approvalModeKnobSupported(engineConnectionId)
+  ) {
+    return {
+      mode: 'connection-default',
+      label: 'Set when the chat starts',
+      source: 'project unavailable',
+    };
+  }
+
+  const projectDefaultMode =
+    !defaultPicked &&
+    approvalModeKnobSupported(engineConnectionId) &&
+    isApprovalMode(projectDefault?.approvalMode)
+      ? projectDefault.approvalMode
+      : undefined;
+  if (projectDefaultMode) {
+    const lastUsed = projectDefault?.source === 'last-used';
+    return {
+      mode: projectDefaultMode,
+      label: `${approvalModeLabel(projectDefaultMode)} (${
+        lastUsed ? 'last used in project' : 'project default'
+      })`,
+      source: lastUsed ? 'project last used' : 'project default',
+    };
+  }
+
+  if (
+    !defaultPicked &&
     approvalModeKnobSupported(engineConnectionId) &&
     isApprovalMode(personalDefault) &&
     personalDefault !== 'connection-default'

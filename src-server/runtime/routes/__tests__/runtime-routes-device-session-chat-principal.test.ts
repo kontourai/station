@@ -1,3 +1,7 @@
+import { z } from 'zod/v3';
+import { recipientCandidateSchema } from '../../../analytics/recipient-candidate.js';
+import { enrollmentIntentSchema } from '../../../analytics/source-enrollment-protocol.js';
+import { ConsentChannelService } from '../../../services/consent/consent-channel.js';
 /**
  * station#4518: a freshly APPROVED paired-device session (the Android app
  * over tailscale-served HTTPS, exactly the owner-reproduced repro) sent a
@@ -580,7 +584,10 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           (value) => pairing.identifyDevice(value),
         )
       : undefined;
+    const consentChannel = new ConsentChannelService();
+    consentChannel.markListening(4322);
     const context = deepStub({
+      consentChannel,
       projectMembership: membership?.service,
       projectSharedTasks: membership?.sharedTasks,
       ...(membershipStorage ? { storageAdapter: membershipStorage } : {}),
@@ -689,6 +696,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
                 orchestration!.attachmentCandidateOwnerIds.bind(orchestration),
               readUsageReceiptExport:
                 orchestration!.readUsageReceiptExport.bind(orchestration),
+              usageExportOwnerIds:
+                orchestration!.usageExportOwnerIds.bind(orchestration),
               ...(orchestrationExtras.flowReads
                 ? {
                     listSessionReadModel:
@@ -2910,7 +2919,165 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           REMOTE_TAILNET_ENV,
         );
         expect(boundResponse.status, await boundResponse.text()).toBe(200);
+        const enrollmentPath = '/api/analytics/source-enrollments';
+        const enrollmentId = '01234567-89ab-4cde-8fab-0123456789ab';
+        const enrollmentBody = JSON.stringify({
+          operationId: enrollmentId,
+          proposedDestination: {
+            stationId: h.pairing.environmentId(),
+            origin: 'https://destination.example.test',
+          },
+          scope: 'individual',
+          expiresAt: new Date(Date.now() + 86400000).toISOString(),
+          retention: { mode: 'live-mirror' },
+        });
+        const unboundEnrollment = await h.app.request(
+          enrollmentPath,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${h.paired.credential}` },
+            body: enrollmentBody,
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(unboundEnrollment.status, await unboundEnrollment.text()).toBe(
+          403,
+        );
+        const enrollment = await h.app.request(
+          enrollmentPath,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${bound.credential}` },
+            body: enrollmentBody,
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        const enrollmentResult = await enrollment.json();
+        expect(enrollment.status, JSON.stringify(enrollmentResult)).toBe(200);
+        expect(enrollmentResult).toMatchObject({
+          data: {
+            phase: 'prepared',
+            destinationVerified: false,
+            exportAuthority: false,
+          },
+        });
+        const heldEnrollment = await h.app.request(
+          `${enrollmentPath}/${enrollmentId}`,
+          {
+            headers: { Authorization: `Bearer ${bound.credential}` },
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(heldEnrollment.status).toBe(200);
+        if (
+          !enrollmentResult ||
+          typeof enrollmentResult !== 'object' ||
+          !('data' in enrollmentResult)
+        )
+          throw new Error('Missing source intent');
+        const recipientPath = '/api/analytics/recipient-candidates';
+        const recipientId = '11234567-89ab-4cde-8fab-0123456789ab';
+        const recipientBody = JSON.stringify({
+          operationId: recipientId,
+          proposedSourceOrigin: 'https://station.example.test',
+          sourceIntent: enrollmentIntentSchema.parse(enrollmentResult.data),
+        });
+        const unboundRecipient = await h.app.request(
+          recipientPath,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${h.paired.credential}` },
+            body: recipientBody,
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(unboundRecipient.status, await unboundRecipient.text()).toBe(
+          403,
+        );
+        const recipient = await h.app.request(
+          recipientPath,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${bound.credential}` },
+            body: recipientBody,
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        const recipientResult = await recipient.json();
+        expect(recipient.status, JSON.stringify(recipientResult)).toBe(200);
+        expect(recipientResult).toMatchObject({
+          data: {
+            phase: 'candidate',
+            verification: 'key-possession-only',
+            exportAuthority: false,
+            sourceVerified: false,
+            candidate: {
+              claims: {
+                destinationStationId: h.pairing.environmentId(),
+                recipientPrincipalId: 'human:tailscale-serve:owner@github',
+              },
+            },
+          },
+        });
+        const heldRecipient = await h.app.request(
+          `${recipientPath}/${recipientId}`,
+          {
+            headers: { Authorization: `Bearer ${bound.credential}` },
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(heldRecipient.status).toBe(200);
+        const sourceApprovalBody = JSON.stringify({
+          operationId: '21234567-89ab-4cde-8fab-0123456789ab',
+          sourceOperationId: enrollmentId,
+          recipientCandidate: z
+            .object({ data: z.object({ candidate: recipientCandidateSchema }) })
+            .parse(recipientResult).data.candidate,
+        });
+        const sourceApprovalPath = '/api/analytics/source-grant-approvals';
+        const unboundApproval = await h.app.request(
+          sourceApprovalPath,
+          {
+            method: 'POST',
+            headers: {
+              host: 'station.example.test',
+              Authorization: `Bearer ${h.paired.credential}`,
+            },
+            body: sourceApprovalBody,
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(unboundApproval.status, await unboundApproval.text()).toBe(403);
+        const sourceApproval = await h.app.request(
+          sourceApprovalPath,
+          {
+            method: 'POST',
+            headers: {
+              host: 'station.example.test',
+              Authorization: `Bearer ${bound.credential}`,
+            },
+            body: sourceApprovalBody,
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        const sourceApprovalResult = await sourceApproval.json();
+        expect(
+          sourceApproval.status,
+          JSON.stringify(sourceApprovalResult),
+        ).toBe(200);
+        expect(sourceApprovalResult).toMatchObject({
+          approval: { status: 'pending' },
+        });
+        expect(sourceApproval.headers.get('set-cookie')).toContain(
+          'station-consent=',
+        );
         h.pairing.revokeDevice(bound.device.id, 'operator-credential');
+        await expect(heldRecipient.text()).rejects.toThrow(
+          'Authority observation ended',
+        );
+        await expect(heldEnrollment.text()).rejects.toThrow(
+          'Authority observation ended',
+        );
         expect(
           (
             await h.app.request(

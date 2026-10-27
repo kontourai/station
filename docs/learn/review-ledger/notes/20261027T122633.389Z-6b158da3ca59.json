@@ -1,0 +1,9 @@
+{
+  "revision": "5339419e21c07c763fc35055a15d84d898b39bd4",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#4246 delta-review round: the bridge suite now also covers a present but unavailable (closed) bridge refusing a plan freeze before any claim, and later saves still commit; a weakened absent-only check fails that case. Re-read the RevisionEvidenceModule section; its claim-before-anchor, full-ledger refusal and deterministic release statements are unchanged and still accurate.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/__tests__/project-task-room-revision-evidence-bridge.test.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"#4246 delta-review round: the bridge suite now also covers a present but unavailable (closed) bridge refusing a plan freeze before any claim, and later saves still commit; a weakened absent-only check fails that case. Narrowed the pre-claim sentence to 'that refusal leaves no claim to block later saves', since a refusal after the claim (record, mark or link failure) can still leave a pending publication that later saves drain. Executed: bridge suite 16/16, weakened-check injection red, restored 16/16.","inputs":["docs/design/revision-bound-evidence.md"]}
+  ]
+}

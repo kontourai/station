@@ -463,29 +463,6 @@
   font-weight: 600;
 }
 
-/* ── Workspace Modal ── */
-@keyframes modal-fade-in {
-  from {
-    opacity: 0;
-    backdrop-filter: blur(0px);
-  }
-  to {
-    opacity: 1;
-    backdrop-filter: blur(8px);
-  }
-}
-
-@keyframes modal-slide-up {
-  from {
-    transform: translateY(20px) scale(0.95);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0) scale(1);
-    opacity: 1;
-  }
-}
-
 /* ── MessageBubble ── */
 .message-row {
   display: flex;
@@ -903,6 +880,37 @@
   transition:
     background-color var(--motion-base) var(--ease-standard),
     outline-color var(--motion-base) var(--ease-standard);
+}
+/* docs/design/event-content-spill.md: "Load full content" under a preview.
+   Inside the person's filled bubble the default secondary button is the
+   accent on the accent; it takes the bubble's own foreground instead. */
+.load-full-content {
+  margin-top: var(--k-space-1);
+}
+.message.user .load-full-content {
+  color: inherit;
+  border-color: currentColor;
+}
+.message.user .load-full-content:hover:not(:disabled) {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  border-color: currentColor;
+}
+/* The wait for spilled content is a line-high placeholder on its own row,
+   not a region beside the approval's Deny. */
+.tool-call__approval-loading {
+  flex: 1 0 100%;
+}
+.tool-call__approval-loading .skeleton-block > *,
+.load-full-content__status.skeleton-block > * {
+  height: 2rem;
+  /* The shared raised-panel fill disappears on the light approval sheet. */
+  background: var(--k-line);
+  border-color: var(--k-line-strong);
+}
+/* A multi-line text argument (a file body) reads like a command block. */
+.tool-call__code--text {
+  font-family: var(--k-font-mono);
+  font-size: 0.85em;
 }
 /* A check-back Station sent: sent as the person, written by nobody. A
    quiet panel with Station's label instead of the person's filled bubble. */
@@ -1774,6 +1782,7 @@
 }
 
 .chat-input__chip-caption {
+  display: flex;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1784,10 +1793,43 @@
   text-transform: uppercase;
 }
 
+/* The caption's parts in priority order: the engine name (and an override
+   marker) shrink to an ellipsis first; the move hint keeps its width, since a
+   flex item's default `min-width: auto` will not go below its unwrapped text. */
+.chat-input__chip-caption-engine {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.chat-input__engine-moved--full,
+.chat-input__engine-moved--short {
+  white-space: pre;
+}
+
 /* A narrow composer states only that the Agent moved; the chip's tooltip and
    accessible name keep the full sentence (see the container query below). */
 .chat-input__engine-moved--short {
   display: none;
+}
+
+/* Said in the chip caption on a wide composer; its own line on a narrow one
+   (see the container query below). */
+.chat-input__next-turn-notice {
+  display: none;
+  flex-basis: 100%;
+  margin: 0;
+  padding-inline: var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  overflow-wrap: anywhere;
+}
+
+.chat-input__next-turn-destination {
+  color: var(--k-text);
+  font-weight: 600;
 }
 
 .chat-input__agent-name,
@@ -3492,6 +3534,10 @@
 
   .chat-input__engine-moved--short {
     display: inline;
+  }
+
+  .chat-input__next-turn-notice {
+    display: block;
   }
 
   .chat-input__activity .chat-scroll-to-bottom,

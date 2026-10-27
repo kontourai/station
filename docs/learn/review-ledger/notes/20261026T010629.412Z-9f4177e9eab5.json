@@ -1,0 +1,11 @@
+{
+  "revision": "bcb331353c4e03eab9f1df9af52b58f08cd7c9b8",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the screenshot-helper source delta: Appearance is driven through its real radio label, and a changed mode now waits for the matching /api/me/preferences PATCH acknowledgement and returned values before navigation. Reload still verifies the applied theme and waits for the real Review read; image focus is moved with the existing J shortcut before asserting that the hint hides. This is test-readiness repair, not new product or provider qualification; final journey results are recorded separately.","inputs":["docs/architecture/module-map.md","tests/task-review.spec.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed the screenshot-helper source delta: Appearance is driven through its real radio label, and a changed mode now waits for the matching /api/me/preferences PATCH acknowledgement and returned values before navigation. Reload still verifies the applied theme and waits for the real Review read; image focus is moved with the existing J shortcut before asserting that the hint hides. This is test-readiness repair, not new product or provider qualification; final journey results are recorded separately.","inputs":["docs/guides/browser-workspace.md","tests/task-review.spec.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed the screenshot-helper source delta: Appearance is driven through its real radio label, and a changed mode now waits for the matching /api/me/preferences PATCH acknowledgement and returned values before navigation. Reload still verifies the applied theme and waits for the real Review read; image focus is moved with the existing J shortcut before asserting that the hint hides. This is test-readiness repair, not new product or provider qualification; final journey results are recorded separately.","inputs":["docs/user/settings.md","tests/task-review.spec.ts"]}
+  ]
+}

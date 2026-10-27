@@ -24,7 +24,9 @@ import {
 import {
   dispatchNewChatIntent,
   type NewChatHandoff,
+  type NewChatStartSelection,
 } from '../../lib/newChatIntent';
+import type { ApprovalMode } from '../../utils/approvalMode';
 import type { AgentFixRoute } from '../AgentReadinessCell';
 import { agentRunnability } from '../agent-runnability';
 import { Button } from '../Button';
@@ -42,6 +44,7 @@ import {
 import {
   GLOBAL_CONTEXT,
   NO_PROJECT_LABEL,
+  newChatProjectModelNote,
   resolveNewChatAgentEnable,
   resolveNewChatWorkspaceHint,
   withProjectRunLocations,
@@ -255,7 +258,18 @@ export function HomeStartComposer({
     agentConnections,
     selectedContextResolved,
   } = selection;
-  const start = useStartSelection(selection, context);
+  const baseStart = useStartSelection(selection, context);
+  // The Permissions chip's pick rides every selection this composer sends.
+  const [approvalPick, setApprovalPick] = useState<ApprovalMode>();
+  const start = {
+    ...baseStart,
+    startSelection: (
+      ...args: Parameters<typeof baseStart.startSelection>
+    ): NewChatStartSelection => {
+      const chosen = baseStart.startSelection(...args);
+      return approvalPick ? { ...chosen, approvalMode: approvalPick } : chosen;
+    },
+  };
   const bindProject = useBindStartProject();
   const [prompt, setPromptState] = useState('');
   // The field's current text, readable synchronously by a draft that comes
@@ -388,6 +402,7 @@ export function HomeStartComposer({
     if (projectSlug) setDockState(true);
     const text = prompt;
     const files = startFiles;
+    const sentPick = approvalPick;
     const accepted = dispatchNewChatIntent({
       initialPrompt: text,
       ...(files.length ? { initialFiles: files } : {}),
@@ -397,7 +412,14 @@ export function HomeStartComposer({
       // back; started: it lives in its chat now.
       onClosed: (outcome, dockDraft) => {
         if (outcome === 'dismissed') draftStore.hold(dockDraft ?? text);
-        else clearSentFiles(files);
+        else {
+          clearSentFiles(files);
+          // The pick was that chat's own; the next start begins from defaults,
+          // unless a newer pick was made meanwhile.
+          setApprovalPick((current) =>
+            current === sentPick ? undefined : current,
+          );
+        }
       },
     });
     if (!accepted) {
@@ -445,6 +467,20 @@ export function HomeStartComposer({
           ? start.modelChoiceFor(agent)?.environmentId
           : undefined,
         needsSetup: agent ? !agentRunnability(agent).runnable : false,
+        modelNote: agent
+          ? newChatProjectModelNote({
+              projectChatDefaults: selection.projectChatDefaults,
+              agentSlug: agent.slug,
+              effectiveModel: selection.defaultEffectiveModelForAgent(agent),
+              chosen: !!start.modelChoiceFor(agent),
+            })
+          : undefined,
+        approvalProjectDefault:
+          selection.projectChatDefaults?.approvalMode.resolved,
+        approvalProjectDefaultUnavailable:
+          selection.projectChatDefaultsUnavailable,
+        approvalPick,
+        onApprovalPick: setApprovalPick,
       };
   // The sidebar's colours, from the one project list it shows.
   const accents = useProjectAccents();
@@ -563,6 +599,7 @@ export function HomeStartComposer({
           if (projectSlug) setDockState(true);
           const sentText = prompt;
           const sentFiles = startFiles;
+          const sentPick = approvalPick;
           const accepted = dispatchNewChatIntent({
             startWithDefault: true,
             initialPrompt: prompt,
@@ -590,6 +627,11 @@ export function HomeStartComposer({
               if (outcome === 'started') {
                 clearSent(sentText);
                 clearSentFiles(sentFiles);
+                // The pick was that chat's own; the next start begins from
+                // the defaults again, unless a newer pick was made meanwhile.
+                setApprovalPick((current) =>
+                  current === sentPick ? undefined : current,
+                );
               }
             },
           });

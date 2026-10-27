@@ -5,6 +5,7 @@ import {
   ConversationLineage,
   canResolveConversationContinuation,
 } from '../conversation-lineage.js';
+import type { EventStore } from '../event-store.js';
 
 function detail(
   overrides: Partial<OrchestrationSessionDetail['session']> = {},
@@ -28,10 +29,34 @@ function detail(
   };
 }
 
+// Eligibility fixtures have empty source history; reservation still uses the
+// production pin builder and returns its pin without inventing delivery proof.
+function emptyStartContextStore(): Pick<
+  EventStore,
+  | 'conversationStartContext'
+  | 'conversationForSession'
+  | 'readSessionInventoryHighWater'
+  | 'reserveConversationStartContext'
+> {
+  return {
+    conversationStartContext: () => undefined,
+    conversationForSession: (sessionId) => ({
+      conversationId: 'conversation-policy',
+      sessionId,
+      ordinal: 1,
+      createdAt: '2026-08-29T00:00:00.000Z',
+    }),
+    readSessionInventoryHighWater: () => 0,
+    reserveConversationStartContext: (_sessionId, pin) => pin,
+  };
+}
+
 function lineageFor(current: OrchestrationSessionDetail) {
   const reserveNextConversationSession = vi.fn();
   const lineage = new ConversationLineage({
     eventStore: {
+      conversationHandoffForSession: () => undefined,
+      ...emptyStartContextStore(),
       conversationSessions: () => [
         {
           conversationId: 'conversation-policy',
@@ -45,6 +70,7 @@ function lineageFor(current: OrchestrationSessionDetail) {
     logger: { warn: vi.fn() },
     readSession: async () => current,
     readSessionMessages: () => [],
+    readSessionSeedMessages: () => [],
     listSessionReadModel: async () => [],
     canReadSession: () => true,
   });
@@ -304,6 +330,8 @@ describe('#749 shared continuation control eligibility', () => {
       });
       const lineage = new ConversationLineage({
         eventStore: {
+          conversationHandoffForSession: () => undefined,
+          ...emptyStartContextStore(),
           conversationSessions: () => [
             {
               conversationId: 'conversation-policy',
@@ -320,6 +348,7 @@ describe('#749 shared continuation control eligibility', () => {
         logger: { warn: vi.fn() },
         readSession: async () => current,
         readSessionMessages: () => [],
+        readSessionSeedMessages: () => [],
         listSessionReadModel: async () => [],
         canReadSession: () => true,
         perTurnModelOverride: (provider) => provider !== 'acp',
@@ -338,6 +367,8 @@ describe('#749 shared continuation control eligibility', () => {
     function restartLineage(current: OrchestrationSessionDetail) {
       const lineage = new ConversationLineage({
         eventStore: {
+          conversationHandoffForSession: () => undefined,
+          ...emptyStartContextStore(),
           conversationSessions: () => [
             {
               conversationId: 'conversation-policy',
@@ -354,6 +385,7 @@ describe('#749 shared continuation control eligibility', () => {
         logger: { warn: vi.fn() },
         readSession: async () => current,
         readSessionMessages: () => [],
+        readSessionSeedMessages: () => [],
         listSessionReadModel: async () => [],
         canReadSession: () => true,
         perTurnModelOverride: () => false,

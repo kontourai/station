@@ -3,6 +3,20 @@
 The Station CLI controls running Stations and supports selected local and
 checkout operations. Availability depends on how it was launched.
 
+## Local speech and media tools
+
+### `media-tools`
+
+`station media-tools status [--json]` prints component IDs, versions, pinned
+download bytes, resolution, byte progress and failures. It performs no download.
+`station media-tools download --yes [--json]` requires explicit consent before
+contacting the selected Station, then starts its missing component downloads.
+Both accept `--station`, or `--api-base` and the usual credential selection.
+These commands require the Station operator and either the Walkthroughs or Local
+speech preview, enabled in Settings → Advanced → Feature previews. A 202 response means downloading
+has started; inspect `status` for readiness or failure. See
+[local speech](../guides/local-speech.md) for platforms and limits.
+
 ## Invocation
 
 There are three entry points, and they are not the same program surface.
@@ -377,6 +391,18 @@ When a Station is selected, its credential reference is resolved through the
 operating-system keyring. Bearer material is absent from saved Station metadata,
 exports, status output, and ordinary app-data files. Unavailable keyrings fail
 closed without a plaintext fallback.
+
+On macOS the CLI reaches the login Keychain through Apple's `/usr/bin/security`
+tool rather than an addon inside `node`. Keychain approval therefore belongs to
+that stable tool and survives CLI and runtime upgrades. `station stations list`,
+`stations show`, and other status displays check only whether a credential
+exists, and never trigger a Keychain dialog. A command that reads, stores, or
+deletes a credential gives up after 5 seconds in a non-interactive shell, or
+after 2 minutes from a terminal. It exits non-zero with an error saying macOS
+is waiting for Keychain approval or that the keychain is locked. To fix it, run
+the command once from a terminal at the Mac and choose **Always Allow**, or
+unlock the keychain with `security unlock-keychain`. Credentials saved by
+earlier versions ask for approval once more, this time for `security`.
 
 `--api-base` accepts either the bare server origin
 or that origin with a trailing `/api` (e.g. copied from a browser Network-tab request
@@ -914,6 +940,48 @@ the UI and REST API. Payload-bearing commands accept JSON via:
 - `--data='{"key":"value"}'`
 - `--file=/absolute/or/relative/path.json`
 - piped stdin
+
+### `mcp-clients`
+
+Expose a bounded set of Station tools to an existing external MCP client on the
+same host. This is the opposite direction from `tools` connecting Station to
+external MCP servers. It does not start an engine or transfer Session execution.
+
+```bash
+station mcp-clients authorize --station=<installed-local-profile>
+station mcp-clients create --station=<installed-local-profile> --session=<existing-session-id> --tools=read_conversation,board_read,board_pin --ttl-seconds=300 --output=/absolute/private/path/station-client.json
+station mcp-clients revoke <lease-id> --station=<installed-local-profile>
+```
+
+`authorize` explicitly uses the existing local owner-home proof and OS credential
+store. It neither starts a service nor prints the resulting device credential.
+Issuance requires that file-proven local device, `access:manage`, and a real
+operator-owned Session with a recorded, current Project identity. Browser
+bootstrap grants, ordinary pairing, personal access tokens and internal process
+credentials cannot substitute. The target must be an IP-literal loopback profile.
+
+`create` requires explicit tools and a TTL from 60 through 3600 seconds. The
+initial tools are only `read_conversation`, `board_read`, and `board_pin`; omitted,
+empty, duplicate or other selections refuse. Output must be a new absolute file.
+The CLI creates it with mode 0600 and prints metadata only. Initial private-file
+creation is POSIX-only; Windows creation explicitly refuses instead of claiming
+unverified ACL protection. No existing file is overwritten.
+
+Creating a lease does not rotate runtime tokens or another client lease.
+`revoke` targets its exact ID. Expiry, Session revocation and server restart also
+invalidate it. A disconnect is not revocation. Issuance is not automatically
+retried after an uncertain response. Failed file storage attempts revocation and
+reports whether it was confirmed; a partial private file may remain. See the
+[external-client recipe](session-api.md#external-clients-using-station-tools)
+for client configuration, mutation approval and qualification limits.
+
+Each HTTP request uses the normal CLI deadline (30 seconds by default), including
+the separate compensating revoke after a file-write failure. There is no
+independent deadline for the entire create-and-compensate command. Setting
+`STATION_REQUEST_TIMEOUT_MS=0` disables the request deadline and can leave either
+request waiting without a wall-clock bound. A timeout remains an unknown outcome,
+not proof that issuance or revocation failed; the CLI does not automatically
+retry it.
 
 ### `agents`
 
@@ -2214,7 +2282,8 @@ running version, backs up the home once, and starts the new version as a
 trial. The backup holds Station's own state: every entry but the service
 manifests, `instances.json`, logs, monitoring, quarantine, `tmp` and the update
 restore marker `update-restore.json` (which the service and its updates own),
-the default project directories under `workspaces/`, real acquired working-copy
+versioned re-acquirable `media-tools/`, the default project directories under
+`workspaces/`, real acquired working-copy
 directories at `repository-acquisitions/<request UUID>/checkout-N`, and the
 browser's `browser/chromium` and `browser/profiles`: an update neither copies
 nor rolls them back. Acquisition receipts and mutation files remain backed-up
@@ -2452,10 +2521,50 @@ on a `service PATH` line:
 `{ position, unit, current }` with `position` counted from 0 within the shared
 directories. Drift is advice and does not change `healthy` or the exit code.
 The comparison reads the unit file Station wrote, not systemd drop-ins or the
-loaded job, and uses the environment of the shell that runs `status`. A
-reinstall command is prefixed with `STATION_ROOT=…` when the registration's
-recorded root differs from the one a shell without `STATION_ROOT` would
-derive.
+loaded job, and uses the environment of the shell that runs `status`.
+
+On macOS and Linux the reinstall command (here, for stale scheduling, and in
+`station upgrade` guidance) repeats the installed unit's own `service run`
+arguments: instance, home, ports, host, features and allowed origins. The
+unit is named by instance alone, so a manifest in the home `status` read can
+describe an earlier install. On Windows the command comes from the manifest
+beside the task's wrapper. A service that runs an installer-owned archive is
+reinstalled through that install's channel launcher (`station`,
+`station-beta`, or `station-nightly`); the launcher sets `STATION_ROOT`
+itself, so when the unit records another root no command is given. Otherwise
+the command is prefixed with `STATION_ROOT=…` when the unit's recorded root
+differs from the one a shell without `STATION_ROOT` would derive. When no
+command can be given, the explanation names the installed unit file to
+inspect.
+
+If the installed unit's `--base` is another home than the one `status` read,
+this home's manifest is left over from an earlier install. Two spellings of
+one home (a symlinked parent, or macOS `/tmp` and `/private/tmp`) are not
+stale: a manifest is stale only when it is a different file, by device and
+inode, from the one in the unit's home. `status` prints a
+`manifest       stale` line naming that manifest, the unit file, and the
+`--base` to use. It also prints an `rm -- <manifest>` command that removes
+only the leftover manifest, offered only while the unit's home holds its own
+readable manifest. When that manifest is missing, or its `service/` directory
+cannot be listed, `status` says so and offers no removal. A manifest file that
+exists but cannot be read (for example mode `0000`) is unsafe rather than
+unreadable: `status` refuses with the same "expected owned mode 0600" error it
+gives for the home it read. Station never runs the command, and
+`service uninstall` would remove the installed unit instead. An unsafe or
+invalid manifest in the unit's home refuses `status`, as it does in the home
+`status` read. The remaining lines (manifest, registry, origins, instance
+health and update) are read from the unit's home, and the origins are the
+unit's own `--allowed-origin` flags. `--json` carries the same facts as
+`staleManifest: { path, removeCommand, unitHome, unitManifest, unitPath }`,
+where `unitManifest` is `present`, `absent`, or `unreadable` (with
+`unitManifestReason`) and `removeCommand` is null when no removal is offered.
+`service start`, `stop`, and `uninstall` from such a home act on nothing,
+exit 1, and name the `--base` that addresses the installed service. When the
+unit's home has no readable manifest, `start` and `stop` there cannot converge
+either, so the refusal instead names the two commands that resolve it:
+`service install --instance=<id>` from this home, which rewrites the unit to
+run from it, or `service uninstall --instance=<id> --base=<unit home>`, which
+removes the installed unit and reports it as uninstalled.
 
 `service start` and `service stop` require the private service manifest that
 `service install` creates; they never infer a service registration from a
@@ -2641,6 +2750,10 @@ required to reach Station from:
 - a LAN or tailnet IP/hostname (e.g. `http://192.168.1.42:3010` or a Tailscale
   MagicDNS name), or
 - a single-origin HTTPS reverse proxy that only forwards the UI port.
+
+Malformed or reset upstream response bodies close the downstream connection
+without a clean end, so clients observe truncation. The listener contains
+response errors and continues serving subsequent requests.
 
 `STATION_API_BASE` (set before `station start`) is the explicit override: when
 set, it is the **only** case where the UI server injects an absolute
@@ -3181,7 +3294,10 @@ WAL and shared-memory sidecars are not copied. Symlinks in included content,
 corrupt databases, detected active instances, and
 configured size/count limits fail closed. Volatile logs, monitoring output,
 service state, temporary files, live instance records, and the top-level
-quarantine directory are excluded. Defaults are 100,000 files, 20 GiB total,
+quarantine directory are excluded. Re-acquirable `media-tools/` downloads are
+also excluded; a restored home requires host tools or fresh download consent.
+See [media backup and rollback](../guides/local-speech.md#backup-and-update-rollback).
+Defaults are 100,000 entries (files and directories), 20 GiB total,
 and 2 GiB per file. This is a private local copy, not an encrypted export or a
 transfer of execution authority.
 
@@ -3192,6 +3308,12 @@ station home backup [--output=<directory>] [--home=<dir>] [--base=<dir>] [--json
 If `--output` is omitted, Station creates a timestamped sibling of the home.
 The destination must not already exist or be inside the home.
 
+New backups use `station.home-backup/v2` and retain empty directories as well
+as file content. Restore them with a CLI that supports v2; older tools refuse
+this archive version. The current reader also accepts v1 backups, whose
+unrecorded empty directories cannot be recovered. Update snapshots use their
+separate v2 format and additionally count recorded links toward their entry cap.
+
 ### `home restore`
 
 Validate manifest entries and content hashes, stage the copied home, then
@@ -3200,6 +3322,10 @@ rename the previous home aside and publish the staged directory. The
 maintenance lease, checks recorded live instances and attempts rollback on
 publication failure. The two renames are not a single crash-atomic exchange:
 the retained previous home is the recovery copy if publication is interrupted.
+For v2 archives, directory paths and contents must match the manifest before
+the current home is replaced. Duplicate, aliased, unsafe or incomplete directory
+plans are refused. Directory preservation does not reconcile effect history
+created after the backup or grant a restored home execution authority.
 
 The CLI identifies the result as **recovered from a copy**, prints the backup's
 snapshot time, and notes that work after that snapshot may be missing. Its JSON
@@ -4091,3 +4217,20 @@ exact snapshot as an optimistic guard. Supply `--repo-id` and a repo-relative
 resource must already be declared, but it may be unbound on this Station;
 configuration never clones, binds, or grants compute. An unchanged request is
 idempotent and does not advance the identity timestamp.
+
+### `walkthrough`
+
+```bash
+station walkthrough import <file> --project <slug>
+station walkthrough list --project <slug> [--cursor=<nextCursor>]
+station walkthrough show <id> --project <slug>
+```
+
+The `--project=<slug>` spelling also works. Import streams a local mp4, mov or
+webm, follows its operation and prints the completed id. Errors preserve
+unavailability and download sizes, with `station media-tools download --yes`
+as the consent-required remedy. List and show print JSON. Normal
+Station target/authentication flags apply. See the [import guide](../guides/walkthroughs.md)
+for limits and privacy. Enable the default-off **Walkthroughs** preview in
+Settings → Advanced → Feature previews. Off commands exit nonzero and retain the
+server's `feature_preview_disabled`, preview ID and Settings path.

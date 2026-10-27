@@ -601,9 +601,12 @@ terminal, plugin, pairing, consent and generic operator routes refuse proof
 authority even when the proven Device holds broad scopes. A separate closed
 relay-management and Project access management inventory now has native
 transport and fixed account-proof preparation; it requires explicit management
-scope and independent Project IAM. The account-bound gate admits only exact
-native relay-management leaves with current Device/account binding and separate
-management scope; credential-only account-bound Devices remain gated.
+scope and independent Project IAM. For relay management, the account-bound gate
+admits only exact native leaves with current Device/account binding and separate
+management scope; credential-only account-bound Devices remain gated on those leaves.
+The independent [personal analytics leaves](../guides/monitoring.md#connect-a-personal-source-in-insights)
+require a person-bound Device, matching current account session and
+`orchestration:read`; this exception does not qualify native analytics transport.
 Capabilities return neutral false without management authority. The one [native Device request
 authority](../../src-server/security/native-device-request-authority.ts) mints
 the credential-free principal on the final Request, and every later seam

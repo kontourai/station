@@ -1,3 +1,4 @@
+import { StatusBadge } from '@kontourai/ui/react';
 import { type ReactNode, useEffect, useId, useRef } from 'react';
 import type {
   SessionInventoryAction,
@@ -151,6 +152,7 @@ export function SessionInventory({
   scopeOptions = [model.scope],
   onScopeChange,
   focusGroupToken,
+  titleOwner = 'pane',
 }: {
   model: SessionInventoryViewModel;
   onSelect(selection: SessionInventorySelection): void;
@@ -167,6 +169,12 @@ export function SessionInventory({
   scopeOptions?: readonly SessionInventorySelection['scope'][];
   onScopeChange?(scope: SessionInventorySelection['scope']): void;
   focusGroupToken?: number;
+  /**
+   * Who names this surface. A host whose chrome already titles it (the
+   * Chat inventory dialog) passes `host`, so the pane does not repeat that
+   * title under it (#4176); the pane keeps its description and Scope.
+   */
+  titleOwner?: 'pane' | 'host';
 }) {
   const selected =
     model.groups.find((group) => group.selected) ?? model.groups[0]!;
@@ -181,14 +189,23 @@ export function SessionInventory({
   return (
     <section
       className="session-inventory"
-      aria-labelledby={`${occurrenceId}-session-inventory-heading`}
+      {...(titleOwner === 'host'
+        ? { 'aria-label': 'Chat inventory' }
+        : { 'aria-labelledby': `${occurrenceId}-session-inventory-heading` })}
     >
       <header className="session-inventory__header">
         <div>
-          <p className="session-inventory__eyebrow">Basis</p>
-          <h2 id={`${occurrenceId}-session-inventory-heading`} tabIndex={-1}>
-            Chat inventory
-          </h2>
+          {titleOwner === 'pane' ? (
+            <>
+              <p className="session-inventory__eyebrow">Basis</p>
+              <h2
+                id={`${occurrenceId}-session-inventory-heading`}
+                tabIndex={-1}
+              >
+                Chat inventory
+              </h2>
+            </>
+          ) : null}
           <p className="session-inventory__header-copy">
             A navigable record of what Station is authorized to show.
           </p>
@@ -400,6 +417,15 @@ export function SessionInventory({
                     <span className="session-inventory__classification">
                       {item.classification === 'kept' ? 'Kept' : 'Current'}
                     </span>
+                    {item.status ? (
+                      // Neutral: an outcome nobody observed is neither a
+                      // success nor a failure.
+                      <StatusBadge
+                        status={item.status}
+                        tone="neutral"
+                        className="session-inventory__item-status"
+                      />
+                    ) : null}
                     <button
                       type="button"
                       aria-pressed={

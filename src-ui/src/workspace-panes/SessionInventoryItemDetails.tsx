@@ -12,7 +12,7 @@ import {
   TaskToolResultRequestError,
   useSessionToolResultQuery,
 } from '@kontourai/station-sdk/task-tool-results';
-import type { ReactNode } from 'react';
+import { type ReactNode, type RefObject, useEffect, useRef } from 'react';
 import { Button } from '../components/Button';
 import { ErrorState, SkeletonBlock } from '../components/state';
 import { useShowSurface } from '../contexts/useShowSurface';
@@ -66,8 +66,12 @@ function ReadFailure({
   fallback,
 }: {
   title: string;
-  description: string;
-  retry?: { label: string; onRetry(): void };
+  description: ReactNode;
+  retry?: {
+    label: string;
+    onRetry(): void;
+    pending?: boolean;
+  };
   fallback?: ReactNode;
 }) {
   return (
@@ -80,7 +84,20 @@ function ReadFailure({
         retry || fallback ? (
           <div className="session-inventory__item-details-actions">
             {retry ? (
-              <Button variant="primary" onClick={retry.onRetry}>
+              // A pending check keeps the button focusable (busy, not
+              // `disabled` as ActionControl's `pending` would make it):
+              // disabling the focused control drops focus to the page and
+              // takes Escape and keyboard travel with it. Same spinner.
+              <Button
+                variant="primary"
+                className={retry.pending ? 'is-pending' : undefined}
+                onClick={retry.pending ? undefined : retry.onRetry}
+                aria-busy={retry.pending || undefined}
+                aria-disabled={retry.pending || undefined}
+              >
+                {retry.pending ? (
+                  <span className="button__spinner" aria-hidden="true" />
+                ) : null}
                 {retry.label}
               </Button>
             ) : null}
@@ -97,11 +114,14 @@ function InputDetails({
   requestScope,
   footer,
   fallback,
+  focusTarget,
 }: {
   row: ThreadAuthoredInputRow;
   requestScope: ApiRequestScope;
   footer: ReactNode;
   fallback: ReactNode;
+  /** Where focus goes when the failure panel holding it goes away. */
+  focusTarget: RefObject<HTMLElement | null>;
 }) {
   const query = useSessionInventoryInput(
     row.sessionId,
@@ -109,15 +129,47 @@ function InputDetails({
     row.turnId,
     requestScope,
   );
-  if (query.hostSupport === 'unsupported')
+  // A recheck that finds the host now serves the read unmounts the failure
+  // panel and the Check again button that had focus. Focus would fall to the
+  // page, outside the dialog's Escape handling, so it moves to this item's
+  // details instead, but only when it was actually lost.
+  const wasUnsupported = useRef(false);
+  useEffect(() => {
+    if (query.hostSupport === 'unsupported') {
+      wasUnsupported.current = true;
+      return;
+    }
+    if (!wasUnsupported.current) return;
+    wasUnsupported.current = false;
+    const active = document.activeElement;
+    if (!active || active === document.body)
+      focusTarget.current?.focus({ preventScroll: true });
+  }, [query.hostSupport, focusTarget]);
+  if (query.hostSupport === 'unsupported') {
+    // Unsupported is not proof of an old host: a hosted deployment never
+    // serves this read (#4177). The recheck result says only what it saw.
+    const stillUnsupported = query.hostRecheck === 'still-unsupported';
     return (
       <ReadFailure
-        title="Update Station to see this input"
-        description="The Station host this app is connected to runs an older version that can't show input details. Update Station on the host and check again, or open the session to read the message in the conversation."
-        retry={{ label: 'Check again', onRetry: query.recheckHost }}
+        title={
+          stillUnsupported
+            ? "This Station still can't show input details"
+            : "This Station can't show input details"
+        }
+        description={
+          stillUnsupported
+            ? "Checked again just now: the Station host this app is connected to still doesn't offer input details. If it runs an older version, update Station on the host and check again. You can also open the session to read the message in the conversation."
+            : "The Station host this app is connected to doesn't offer input details. It may run an older version: update Station on the host and check again. You can also open the session to read the message in the conversation."
+        }
+        retry={{
+          label: 'Check again',
+          onRetry: () => void query.recheckHost(),
+          pending: query.hostRecheck === 'checking',
+        }}
         fallback={fallback}
       />
     );
+  }
   if (query.error) {
     const failure = describeItemReadFailure(query.error, 'input');
     return (
@@ -226,6 +278,7 @@ export function SessionInventoryItemDetails({
   onDismiss?(): void;
 }) {
   const showSurface = useShowSurface();
+  const detailsRef = useRef<HTMLElement>(null);
   const openSession = (session: string) => {
     onDismiss?.();
     showSurface('activity', { session });
@@ -285,8 +338,10 @@ export function SessionInventoryItemDetails({
     row.kind === 'thread-authored-input' || row.kind === 'thread-tool-result';
   return (
     <section
+      ref={detailsRef}
       className="session-inventory__item-details"
       aria-label={`${item.label} details`}
+      tabIndex={-1}
     >
       {row.kind === 'thread-authored-input' ? (
         <InputDetails
@@ -294,9 +349,23 @@ export function SessionInventoryItemDetails({
           requestScope={requestScope}
           footer={footer}
           fallback={openSessionButton}
+          focusTarget={detailsRef}
         />
       ) : null}
-      {row.kind === 'thread-tool-result' ? (
+      {row.kind === 'thread-tool-result' &&
+      row.terminalStatus === 'unresolved' ? (
+        // Nothing to read: the command never reported an outcome, and the
+        // result read refuses it. The same two facts as the adapters'
+        // UNRESOLVED_TOOL_OUTPUT, without naming which boundary passed
+        // (most engines settle at session end, Muse at turn end).
+        <>
+          <p>
+            No result recorded. This command never reported an outcome, so
+            whether it ran is unknown.
+          </p>
+          {footer}
+        </>
+      ) : row.kind === 'thread-tool-result' ? (
         <ToolDetails
           row={row}
           requestScope={requestScope}

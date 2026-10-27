@@ -10,6 +10,7 @@ import {
   UI_PROXY_EXCLUDED_PREFIXES,
 } from './packages/cli/src/commands/ui-proxy-prefixes';
 import { offlineShell } from './scripts/vite-offline-shell';
+import { thirdPartyLicenses } from './scripts/vite-third-party-licenses';
 import { sharedShikiGrammars, uiAssetDelivery } from './scripts/vite-ui-assets';
 import tauriConfig from './src-desktop/tauri.conf.json';
 
@@ -315,7 +316,19 @@ export default defineConfig(({ command, mode }) => {
   return {
     plugins: [
       sharedShikiGrammars(),
-      ...(mode === 'native' ? [] : [offlineShell()]),
+      ...(mode === 'native'
+        ? []
+        : [
+            offlineShell({
+              // Chat is the surface a phone opens first after a dropped link.
+              warmModules: [
+                'src-ui/src/components/chat-dock/ChatDock.tsx',
+                'src-ui/src/components/chat/ChatMessageList.tsx',
+                'src-ui/src/components/chat/ChatInputArea.tsx',
+              ].map((module) => path.resolve(__dirname, module)),
+            }),
+          ]),
+      thirdPartyLicenses(),
       uiAssetDelivery({ precompress: mode !== 'native' }),
       tailwindcss(),
       react(),

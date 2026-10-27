@@ -3,6 +3,7 @@
 import {
   PAIRING_SCOPE_ENGINE_LOGIN,
   PAIRING_SCOPE_GRANT_PATHS,
+  PAIRING_SCOPE_TELEMETRY_MANAGE,
   PAIRING_SCOPES,
   type PairingScope,
 } from '@kontourai/station-contracts/environment-security';
@@ -48,6 +49,21 @@ function openEditor(
 
 const apply = () =>
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+test('companion management is an explicit elevated choice applied against the captured device grant', () => {
+  const onApply = openEditor('orchestration:read');
+  const control = screen.getByRole('checkbox', {
+    name: /Manage telemetry companion/,
+  });
+  expect(control).toHaveProperty('checked', false);
+  fireEvent.click(control);
+  expect(onApply).not.toHaveBeenCalled();
+  apply();
+  expect(onApply).toHaveBeenCalledWith(
+    ['orchestration:read', PAIRING_SCOPE_TELEMETRY_MANAGE],
+    'orchestration:read',
+  );
+});
 
 test('initialises from the device’s CURRENT scope, base and capabilities alike', () => {
   openEditor(
@@ -254,6 +270,7 @@ test('the derivations agree with the contracts vocabulary', () => {
 test.each([
   { token: 'engine:login', label: /Start engine sign-in/ },
   { token: 'relay:manage', label: /Manage remote access/ },
+  { token: 'terminal:observe', label: /Watch terminals/ },
 ] satisfies ReadonlyArray<{ token: PairingScope; label: RegExp }>)(
   'an operator can grant $token, and it is marked elevated',
   ({ token, label }) => {
@@ -409,6 +426,7 @@ test('an account-bound grant with extras still opens as Delegation, extras intac
 test.each([
   { token: 'engine:login', label: /Start engine sign-in/ },
   { token: 'relay:manage', label: /Manage remote access/ },
+  { token: 'terminal:observe', label: /Watch terminals/ },
 ] satisfies ReadonlyArray<{ token: PairingScope; label: RegExp }>)(
   'an existing $token grant survives an unrelated base edit',
   ({ token, label }) => {

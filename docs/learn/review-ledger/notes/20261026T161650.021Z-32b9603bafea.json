@@ -1,0 +1,7 @@
+{
+  "revision": "75f2209ade3bc600f13ccb8b689def33fc030bac",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Updated in this change for out-of-line runtime event content (event-content-spill): checked the new and edited claims against event-store.ts, event-content-spill.ts, the content route, the respondToRequest digest gate and their tests; remaining claims are unaffected by the changed inputs.","inputs":["docs/reference/contracts.md","packages/contracts/package.json","packages/contracts/package.json#/exports","packages/contracts/src/orchestration.ts","packages/contracts/src/runtime-events.ts","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-server/services/orchestration/delta-coalescer.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/orchestration-session-state.ts","src-server/tools/station-control-delegation.ts"]}
+  ]
+}

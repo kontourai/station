@@ -28,7 +28,10 @@ npm run hooks:install    # git config core.hooksPath .githooks
 `npm run gate:for [-- <paths...>]` prints which of the scoped checks below a
 change surface feeds, using the hook's scope deciders. Run it before editing;
 its output selects evidence and prints guidance but does not execute those
-checks or grant permission to publish.
+checks or grant permission to publish. For `.tsx`/`.css` under `src-ui/src` or
+a pane package it also names the gallery screens whose module graph loads the
+path and the commands to capture just those
+([gallery product assertions](testing.md#gallery-product-assertions)).
 
 The pre-push hook runs six checks, in this order. Costs in this table are
 historical measurements, not deadlines or guarantees on the current host. The hook file,

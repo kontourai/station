@@ -16,6 +16,7 @@ export const DOCS_TRUTH_GATE_LANES = [
   { id: 'docs:hygiene:repo', script: 'docs:hygiene:repo' },
   { id: 'docs:index:check', script: 'docs:index:check' },
   { id: 'docs:cli-parity:check', script: 'docs:cli-parity:check' },
+  { id: 'docs:feature-previews:check', script: 'docs:feature-previews:check' },
   { id: 'docs:metrics:check', script: 'docs:metrics:check' },
   {
     id: 'docs:public:contract-examples',

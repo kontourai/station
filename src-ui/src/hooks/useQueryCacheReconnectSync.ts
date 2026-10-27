@@ -21,6 +21,7 @@
 import { useConnectionStatus } from '@kontourai/station-connect';
 import { useIsRestoring, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
+import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
 import { invalidatePersistedQueries } from '../lib/queryPersistence';
 import { checkServerHealth, probeServerConnection } from '../lib/serverHealth';
 
@@ -32,6 +33,7 @@ export function useQueryCacheReconnectSync(): void {
   });
   const queryClient = useQueryClient();
   const isRestoring = useIsRestoring();
+  const { reobserve } = useAuthorityPersistence();
   // #2319: `null` until the first observation, NOT the status at mount. App
   // mounts beneath the authority gate, which only verifies after the server
   // has answered, so the shared connection coordinator is usually already
@@ -79,6 +81,14 @@ export function useQueryCacheReconnectSync(): void {
       void queryClient.refetchQueries({
         predicate: (query) => query.state.status === 'error',
       });
+      // The authority observation itself lives on the bootstrap client above
+      // this tree. While it is failed (this tree is then the unverified
+      // fallback), a reconnect this tree saw re-reads it, so a route-only
+      // outage recovers into the verified workspace without an app restart.
+      // Never on mount: the failed read that mounted this tree is current,
+      // and re-reading it unmounts the tree behind the access check, which
+      // remounts it connected and re-reads again, without end.
+      if (previousStatus !== null) reobserve?.();
     }
-  }, [status, isRestoring, queryClient]);
+  }, [status, isRestoring, queryClient, reobserve]);
 }

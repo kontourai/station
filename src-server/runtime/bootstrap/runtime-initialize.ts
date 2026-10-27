@@ -100,6 +100,7 @@ import type {
   RegistryTrustPolicyApplication,
   RegistryTrustPolicyAuthority,
 } from '../../services/plugins/registry-trust-policy.js';
+import { createProjectChatDefaultsService } from '../../services/projects/project-chat-defaults.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
 import { observeCwdShadow } from '../../services/projects/project-resource-shadow.js';
 import { createProjectSessionDirectoryResolver } from '../../services/projects/project-session-directory.js';
@@ -660,6 +661,12 @@ export async function initializeRuntime(
     // per call for the same reason as the workspace default above.
     resolveStationDefaultApprovalMode: async () =>
       (await configLoader.loadAppConfig()).defaultApprovalMode,
+    // A Project's new-chat approval layer and its last-used record, over the
+    // same Project store and home the project routes read.
+    projectChatDefaults: createProjectChatDefaultsService(
+      configLoader.getProjectHomeDir(),
+      storageAdapter,
+    ),
     // #3157: read when a usage-limit resume is armed and when it is due.
     resolveUsageLimitAutoResume: async () =>
       (await configLoader.loadAppConfig()).usageLimitAutoResume,
@@ -774,7 +781,14 @@ export async function initializeRuntime(
         (message, meta) => logger.warn(message, meta),
       );
       orchestrationEventStore.appendEvent(sanitized);
-      eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, { event: sanitized });
+      // Emit what was stored (docs/design/event-content-spill.md).
+      eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
+        event:
+          orchestrationEventStore.storedLiveEvent(
+            sanitized.threadId,
+            sanitized.eventId,
+          ) ?? sanitized,
+      });
     },
     logger,
   });
@@ -910,6 +924,10 @@ export async function initializeRuntime(
   // inputs is the archive#1588/#3063 reload-loop anti-pattern.
   await materializeBuiltinIntegrations(deps.configLoader);
 
+  // First-run engine adoption persists AppConfig; finish that owned write before
+  // fencing agent construction against subsequent configuration changes.
+  const builtinEngineBinding =
+    await deps.resolveBuiltinEngineBinding?.(appConfig);
   const registryPolicyApplication =
     await deps.registryTrustPolicyAuthority?.captureApplication();
   const configurationBefore = deps.captureAgentConfigurationRevisions?.();
@@ -919,8 +937,7 @@ export async function initializeRuntime(
     bootstrapDefaultAgent: async () =>
       (await bootstrapRuntimeDefaultAgent({
         appConfig,
-        builtinEngineBinding:
-          await deps.resolveBuiltinEngineBinding?.(appConfig),
+        builtinEngineBinding,
         configLoader: deps.configLoader as any,
         framework,
         logger,

@@ -32,6 +32,7 @@ import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { conversationOpenPhase } from '../../contexts/conversation-open-policy';
 import { useMessageContextContext } from '../../contexts/MessageContextContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
+import { useScopedProjectChatDefaultsQuery } from '../../contexts/ProjectsContext';
 import { useWorkObservation } from '../../contexts/work-observation';
 import { resyncOrchestrationEventStream } from '../../hooks/orchestration/ensureOrchestrationEventStream';
 import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
@@ -67,7 +68,11 @@ import {
   elidedHistoryNoticeText,
   summarizeElidedReasons,
 } from '../../utils/elidedHistory';
-import { chatEngineIdentity } from '../../utils/engine';
+import {
+  chatEngineIdentity,
+  chatExecutionBinding,
+  chatNextTurnStartsSession,
+} from '../../utils/engine';
 import {
   isSessionExecutionActive,
   isTurnStreamLive,
@@ -527,6 +532,19 @@ export function ChatDockBody({
   const { navigate } = useNavigationActions();
   const { user } = useAuth();
   const { activeConnection, captureCredentialEvidence } = useConnections();
+  const approvalModeIsNewSession =
+    !activeSession?.orchestrationSessionStarted &&
+    !activeSession?.conversationId;
+  // A new chat in a Project starts in that Project's approval layer
+  // (`project-chat-defaults.ts`). Read only while the chat has not started:
+  // a started session reports what its engine applied. The cached answer is
+  // also what the first send consults before queuing a personal default.
+  // `null`: this Station applies no Project layer here; `undefined`: no
+  // answer yet (loading or failed).
+  const { data: projectChatDefaultsAnswer } = useScopedProjectChatDefaultsQuery(
+    approvalModeIsNewSession ? activeSession?.projectSlug : undefined,
+  );
+  const projectChatDefaults = projectChatDefaultsAnswer ?? undefined;
   const mentionCredentialEvidence = captureCredentialEvidence();
   const mentionAuthority = mentionCredentialEvidence
     ? durableMentionAuthority({
@@ -1187,20 +1205,17 @@ export function ChatDockBody({
         }
       : model,
   );
-  const executionBinding = activeSession.executionAgentId
-    ? agents.find(
-        (candidate) => candidate.slug === activeSession.executionAgentId,
-      )
-    : agent;
-  // `chatEngineIdentity` (utils/engine.ts) owns which engine this chat names;
-  // the dock header reads the same rule.
+  // `chatExecutionBinding` and `chatEngineIdentity` (utils/engine.ts) own
+  // which Agent runs this chat and which engine it names; the dock header
+  // reads the same two rules.
+  const executionBinding = chatExecutionBinding(activeSession, agents);
   const engineIdentity = chatEngineIdentity({
     orchestrationProvider: activeSession.orchestrationProvider,
     currentSessionId:
       activeSession.currentSessionId ?? activeSession.conversationId,
     sessionConnectionId: activeSession.agentConnectionId,
     connectionObservedFor: activeSession.agentConnectionObservedFor,
-    configuredConnectionId: executionBinding?.execution?.agentConnectionId,
+    binding: executionBinding,
     acpConnections,
   });
   const configuredEngineLabel =
@@ -1209,29 +1224,23 @@ export function ChatDockBody({
     modelProviderLabel;
   // Undefined while the Session's engine cannot be named: the chip then reads
   // its neutral "Engine & model" rather than a guess.
-  const executionEngineLabel =
-    engineIdentity.relation === 'no-session' ||
-    engineIdentity.relation === 'same'
-      ? (configuredEngineLabel ?? engineIdentity.sessionEngine)
-      : engineIdentity.sessionEngine;
+  const executionEngineLabel = engineIdentity.configurationNamesEngine
+    ? (configuredEngineLabel ?? engineIdentity.sessionEngine)
+    : engineIdentity.sessionEngine;
   // Set only once a Session exists: the engine that Session runs on.
   const sessionEngineLabel =
     engineIdentity.relation === 'no-session' ? undefined : executionEngineLabel;
   // The Agent now points somewhere else. While the Session can still take a
   // turn it keeps its engine, so that is said as a fact about the Agent. Once
-  // its engine binding has ended (`exited`/`closed`/`dead`/`error`), the next
-  // turn starts a successor Session on the Agent's engine
-  // (`resolveConversationContinuation`), the one case worth saying outright.
-  // `errored` is excluded: it can be a failed turn on a Session that continues.
+  // the next turn starts a successor Session on the Agent's engine
+  // (`chatNextTurnStartsSession`), that is the one case worth saying outright.
   const agentEngineMove =
     engineIdentity.relation === 'moved' &&
     executionBinding?.engineDisplayName &&
     executionBinding.engineDisplayName !== executionEngineLabel
       ? {
           to: executionBinding.engineDisplayName,
-          nextTurn: ['exited', 'closed', 'dead', 'error'].includes(
-            activeSession.orchestrationStatus ?? '',
-          ),
+          nextTurn: chatNextTurnStartsSession(activeSession),
         }
       : undefined;
 
@@ -2483,11 +2492,16 @@ export function ChatDockBody({
             agentHandoffDisabled={secondaryActions?.handoffDisabled}
             agentHandoffDisabledReason={secondaryActions?.handoffDisabledReason}
             executionMode={activeSession.executionMode}
-            approvalModeIsNewSession={
-              !activeSession?.orchestrationSessionStarted &&
-              !activeSession?.conversationId
-            }
+            approvalModeIsNewSession={approvalModeIsNewSession}
             approvalModeAgentDefault={agentApprovalModeDefault}
+            approvalModeProjectDefault={
+              projectChatDefaults?.approvalMode.resolved
+            }
+            approvalModeProjectDefaultUnavailable={
+              approvalModeIsNewSession &&
+              !!activeSession?.projectSlug &&
+              projectChatDefaultsAnswer === undefined
+            }
             approvalModeStationDefault={stationApprovalModeDefault}
             toolPolicyDelivery={toolPolicyDelivery}
             lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}

@@ -1,0 +1,7 @@
+{
+  "revision": "f96106459eedca3b458054fbeabdc8e8d336af9b",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Source delta (#4178): STATION_COMPAT_PROTOCOL_VERSION is 4; a protocol-4 client receives Session inventory thread-tool-result rows with terminalStatus 'unresolved' (listed and counted under Execution, shown as a neutral StatusBadge 'No result recorded'), older clients keep the omission; every inventory fold carries the client protocol and page cursors record events read; ThreadToolResultRow accepts 'unresolved'. The ADR's client API protocol section states the host advertises protocolVersion/minClientProtocol and the #2962 rejection path; it pins no protocol number. No prose change.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/contracts/src/environment-security.ts","src-server/runtime/__tests__/client-protocol-admission.test.ts"]}
+  ]
+}

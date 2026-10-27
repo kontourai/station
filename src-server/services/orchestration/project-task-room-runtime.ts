@@ -143,6 +143,8 @@ interface RequestPrincipal {
   readonly displayName?: string;
 }
 export interface ProjectTaskRoomRequestAuthority {
+  /** Synchronous grant recheck for SQLite transactions; absent support refuses writes. */
+  isCurrent?(request: Request, principal: RequestPrincipal): boolean;
   resolve(
     request: Request,
   ): Promise<RequestPrincipal | { readonly kind: 'revoked' | 'unavailable' }>;
@@ -240,6 +242,7 @@ interface IssuedEditPlan {
   readonly scope: { projectId: string; taskId: string; documentId: string };
   readonly principal: RequestPrincipal;
   readonly issuedAt: number;
+  readonly onlyIfEmpty?: true;
 }
 interface LiveMaterialAuthority {
   readonly principal: RequestPrincipal;
@@ -654,6 +657,7 @@ export class ProjectTaskRoomRuntime {
       scope: association.document,
       intentId: plan.batch.intentId,
       intentDigest: plan.batch.digest,
+      coalesceRevisionPublication: true,
       actorId,
       actorLabel: input.agentId,
       actorKind: 'agent',
@@ -710,13 +714,6 @@ export class ProjectTaskRoomRuntime {
       ),
     });
     await this.#notify(association.document, { type: 'document', ...result });
-    const revisionEvidence = await this.#drainRevisionPublication({
-      taskId: input.taskId,
-      scope: association.document,
-      systemRecovery: true,
-    });
-    if (revisionEvidence.kind === 'linked')
-      await this.#publishHistory(association.document);
     return {
       kind: result.kind,
       revision: result.revision,
@@ -987,12 +984,72 @@ export class ProjectTaskRoomRuntime {
    * immutable journal record of this incarnation, so the incarnation check
    * covers it.
    */
-  async #sessionMemoryAccess(
-    sessionId: string,
-  ): Promise<TaskMemoryAccess | { readonly kind: 'no-task' | 'unavailable' }> {
+  async #sessionMemoryAccess(sessionId: string) {
     const memory = this.#deps.memory;
-    if (this.#closed || this.#deps.hosted?.() || !memory)
-      return { kind: 'unavailable' };
+    if (!memory) return { kind: 'unavailable' as const };
+    const access = await this.#sessionTaskAccess(sessionId);
+    return access.kind === 'granted' ? { ...access, memory } : access;
+  }
+
+  async #personMemoryAccess(taskId: string, request: Request) {
+    const memory = this.#deps.memory;
+    if (!memory) return { kind: 'unavailable' as const };
+    const access = await this.#personTaskAccess(taskId, request);
+    return access.kind === 'granted' ? { ...access, memory } : access;
+  }
+
+  personTaskReviewAccess(input: { taskId: string; request: Request }) {
+    return this.#personTaskAccess(input.taskId, input.request);
+  }
+
+  async sessionTaskReviewAccess(sessionId: string) {
+    const access = await this.#sessionTaskAccess(sessionId);
+    if (access.kind !== 'granted') return access;
+    const workspace = JSON.stringify(
+      this.#deps.taskGraph.readTaskView(access.write.taskId)?.workspaceBinding,
+    );
+    const isLead = () => {
+      const task = this.#deps.taskGraph.readTaskView(access.write.taskId);
+      return (
+        task?.sessionId === sessionId &&
+        JSON.stringify(task.workspaceBinding) === workspace
+      );
+    };
+    if (!isLead()) return { kind: 'no-task' as const };
+    return {
+      ...access,
+      write: {
+        ...access.write,
+        beforeCommit: () => isLead() && access.write.beforeCommit(),
+      },
+    };
+  }
+
+  async readPlanForReview(taskId: string, request: Request) {
+    const access = await this.#personTaskAccess(taskId, request);
+    if (access.kind !== 'granted') return { kind: 'unavailable' as const };
+    return this.#readReviewPlan(access);
+  }
+
+  async readPlanForSessionReview(taskId: string, sessionId: string) {
+    const access = await this.sessionTaskReviewAccess(sessionId);
+    if (access.kind !== 'granted' || access.write.taskId !== taskId)
+      return { kind: 'unavailable' as const };
+    return this.#readReviewPlan(access);
+  }
+
+  async #readReviewPlan(access: TaskReviewAccess) {
+    const result = await this.readTaskDocumentForBrief(access.write.taskId);
+    const scope = this.#scope(access.write.taskId);
+    if (!access.write.beforeCommit() || !scope || result.kind !== 'available')
+      return { kind: 'unavailable' as const };
+    return { ...result, documentId: documentIdFor(scope) };
+  }
+
+  async #sessionTaskAccess(
+    sessionId: string,
+  ): Promise<TaskReviewAccess | { readonly kind: 'no-task' | 'unavailable' }> {
+    if (this.#closed || this.#deps.hosted?.()) return { kind: 'unavailable' };
     const binding = this.#readExecutionBinding(sessionId);
     if (binding === 'unavailable') return { kind: 'unavailable' };
     if (!binding) return { kind: 'no-task' };
@@ -1010,7 +1067,6 @@ export class ProjectTaskRoomRuntime {
     const lead = task.sessionId === sessionId;
     return {
       kind: 'granted',
-      memory,
       staleOutcome: { kind: 'no-task' },
       write: {
         projectId: scope.projectId,
@@ -1039,14 +1095,12 @@ export class ProjectTaskRoomRuntime {
   }
 
   /** A person's write access: the same request authority as document edits. */
-  async #personMemoryAccess(
+  async #personTaskAccess(
     taskId: string,
     request: Request,
   ): Promise<
-    TaskMemoryAccess | { readonly kind: 'not-found' | 'unavailable' }
+    TaskReviewAccess | { readonly kind: 'not-found' | 'unavailable' }
   > {
-    const memory = this.#deps.memory;
-    if (!memory) return { kind: 'unavailable' };
     const authorized = await this.#authorizedDocumentWithPrincipal(
       taskId,
       request,
@@ -1056,7 +1110,6 @@ export class ProjectTaskRoomRuntime {
     if (!authorized || !task || !scope) return { kind: 'not-found' };
     return {
       kind: 'granted',
-      memory,
       staleOutcome: { kind: 'not-found' },
       write: {
         projectId: scope.projectId,
@@ -1071,6 +1124,10 @@ export class ProjectTaskRoomRuntime {
           const nowScope = this.#scope(task.id);
           return Boolean(
             !this.#closed &&
+              this.#deps.requestAuthority.isCurrent?.(
+                request,
+                authorized.principal,
+              ) === true &&
               now &&
               now.createdAt === task.createdAt &&
               nowScope &&
@@ -1959,10 +2016,12 @@ export class ProjectTaskRoomRuntime {
     const current = await this.#principal(input.request);
     if (!current || !samePrincipal(current, plan.principal))
       return { kind: 'not-found' as const };
-    const result = await this.#deps.working.settle({
+    const settlement = {
       scope,
       intentId: input.intentId,
       intentDigest: input.intentDigest,
+      coalesceRevisionPublication: true,
+      ...(plan.onlyIfEmpty ? { onlyIfEmpty: true } : {}),
       actorId: actorIdFor(plan.principal),
       actorLabel: plan.principal.operatorId,
       publicationPrincipal: {
@@ -1979,7 +2038,37 @@ export class ProjectTaskRoomRuntime {
           scope,
           plan.principal,
         ),
-    });
+    } as const;
+    let result = await this.#deps.working.settle(settlement);
+    if (
+      result.kind === 'rejected' &&
+      result.reason === 'revision-publication-pending'
+    ) {
+      if (
+        !(await this.#sameAuthorizedDocument(
+          input.taskId,
+          input.request,
+          scope,
+          plan.principal,
+        ))
+      )
+        return { kind: 'not-found' } as const;
+      await this.#drainRevisionPublication({
+        taskId: input.taskId,
+        request: input.request,
+        scope,
+      });
+      if (
+        !(await this.#sameAuthorizedDocument(
+          input.taskId,
+          input.request,
+          scope,
+          plan.principal,
+        ))
+      )
+        return { kind: 'not-found' } as const;
+      result = await this.#deps.working.settle(settlement);
+    }
     // Do not accept or publish a result that crossed an asynchronous worker
     // boundary after its initiating paired-device grant was revoked.
     if (
@@ -1996,18 +2085,73 @@ export class ProjectTaskRoomRuntime {
       await this.#notify(scope, { type: 'document', ...result });
       if (result.kind === 'committed')
         this.#deps.afterRevisionPublicationStep?.('document-commit');
-      const revisionEvidence = await this.#drainRevisionPublication({
-        taskId: input.taskId,
-        request: input.request,
-        scope,
-      });
-      return { ...result, revisionEvidence };
+      const discover = await this.#issue(
+        input.taskId,
+        input.request,
+        'discover',
+      );
+      if (discover) await this.#history.open({ grant: discover });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      return { ...result, revisionEvidence: { kind: 'unavailable' as const } };
     }
     if (result.kind === 'conflict')
       return { kind: 'rejected', reason: 'idempotency-conflict' } as const;
     return result.kind === 'unavailable'
       ? ({ kind: 'unavailable' } as const)
       : result;
+  }
+
+  /** Freeze only the exact revision requested by a consumer, before it links. */
+  async freezeDocumentRevision(input: {
+    taskId: string;
+    documentId: string;
+    workingRevision: string;
+    beforeCommit: () => boolean;
+  }): Promise<boolean> {
+    const scope = this.#scope(input.taskId);
+    if (
+      !scope ||
+      this.#closed ||
+      this.#deps.hosted?.() ||
+      !input.beforeCommit() ||
+      documentIdFor(scope) !== input.documentId
+    )
+      return false;
+    // Refuse before claiming: a claim the bridge cannot drain blocks every
+    // later save in this room until evidence becomes available again.
+    if (!this.#deps.revisionEvidence?.available()) return false;
+    const document = { ...scope, documentId: input.documentId };
+    const task = this.#deps.taskGraph.readTaskView(input.taskId);
+    if (!task) return false;
+    const initialPrincipal = {
+      operatorId: task.createdBy,
+      deviceId: 'initial-revision',
+      policyRevision: this.#roomPolicyRevision(scope),
+    };
+    const requested = await this.#deps.working.requestRevisionPublication?.({
+      scope: document,
+      workingRevision: input.workingRevision,
+      initialPrincipal,
+      initialActorId: actorIdFor({ kind: 'granted', ...initialPrincipal }),
+      beforeCommit: async () => input.beforeCommit(),
+    });
+    if (!input.beforeCommit()) return false;
+    if (requested?.kind === 'existing')
+      return (
+        this.#deps.revisionEvidence?.matchesCommittedRevision?.({
+          scope: document,
+          workingRevision: input.workingRevision,
+          evidenceRevision: requested.evidenceRevision,
+        }) === true
+      );
+    if (requested?.kind !== 'requested') return false;
+    const result = await this.#drainRevisionPublication({
+      taskId: input.taskId,
+      scope: document,
+      systemRecovery: true,
+      expectedWorkingRevision: input.workingRevision,
+    });
+    return input.beforeCommit() && result.kind === 'linked';
   }
 
   async #drainRevisionPublication(input: {
@@ -2017,6 +2161,7 @@ export class ProjectTaskRoomRuntime {
     historyOpened?: boolean;
     systemRecovery?: boolean;
     expectedIntentId?: string;
+    expectedWorkingRevision?: string;
   }): Promise<
     | { readonly kind: 'linked'; readonly revisionId: string }
     | { readonly kind: 'unavailable' }
@@ -2029,12 +2174,19 @@ export class ProjectTaskRoomRuntime {
       // turn before the synchronous ledger restore in available()/freeze().
       // Persistence remains awaited; delivery is not evidence-link completion.
       await new Promise<void>((resolve) => setImmediate(resolve));
-      if (this.#closed || !bridge.available()) return { kind: 'unavailable' };
+      if (this.#closed) return { kind: 'unavailable' };
       const read = await this.#deps.working.readRevisionPublication({
         scope: input.scope,
       });
       if (read.kind !== 'available') return { kind: 'unavailable' };
       const publication = read.publication;
+      if (
+        publication.freezeRequested === false ||
+        (input.expectedWorkingRevision &&
+          publication.workingRevision !== input.expectedWorkingRevision) ||
+        !bridge.available()
+      )
+        return { kind: 'unavailable' };
       if (
         input.expectedIntentId &&
         publication.intentId !== input.expectedIntentId
@@ -2043,6 +2195,13 @@ export class ProjectTaskRoomRuntime {
       let revisionId = publication.evidenceRevision;
       if (!revisionId) {
         const recorded = bridge.recordPublication(publication);
+        if (recorded.kind === 'refused') {
+          await this.#deps.working.releaseRevisionPublication?.({
+            scope: input.scope,
+            intentId: publication.intentId,
+          });
+          return { kind: 'unavailable' };
+        }
         if (recorded.kind !== 'recorded') return { kind: 'unavailable' };
         revisionId = recorded.revisionId;
         this.#deps.afterRevisionPublicationStep?.('freeze');
@@ -2118,20 +2277,13 @@ export class ProjectTaskRoomRuntime {
   }
 
   /**
-   * Why a proposal brief cannot seed a new Task document, checked before the
-   * Task exists (#4007): the document's own bound, then the Station-wide
-   * revision ledger as room admission counts it (#4055). Advisory: a write
-   * between this check and the seed is still refused by the seed itself.
+   * Check the document's own bounds before creating a Task (#4007).
+   * Seeding keeps an unlinked candidate and does not reserve ledger capacity.
    */
   async proposalBriefRefusal(
     text: string,
   ): Promise<RevisionEvidenceAdmissionRefusal | null> {
-    const document = taskRoomDocumentSeedRefusal(text);
-    if (document || this.#closed || this.#deps.hosted?.()) return document;
-    const usage = await this.#deps.working.revisionLedgerUsage?.();
-    return usage?.kind === 'available'
-      ? taskRoomDocumentSeedRefusal(text, usage)
-      : null;
+    return taskRoomDocumentSeedRefusal(text);
   }
 
   /**
@@ -2226,6 +2378,7 @@ export class ProjectTaskRoomRuntime {
       scope,
       principal,
       issuedAt: Date.now(),
+      ...(input.onlyIfEmpty ? { onlyIfEmpty: true } : {}),
     });
     return {
       kind: 'planned' as const,
@@ -4557,9 +4710,12 @@ function parsePendingAgentLifecycle(
     : undefined;
 }
 
-interface TaskMemoryAccess {
-  readonly kind: 'granted';
+interface TaskMemoryAccess extends TaskReviewAccess {
   readonly memory: TaskMemoryStore;
+}
+
+export interface TaskReviewAccess {
+  readonly kind: 'granted';
   /** What a write the in-transaction re-check stopped reports. */
   readonly staleOutcome: { readonly kind: 'no-task' | 'not-found' };
   readonly write: {

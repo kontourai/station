@@ -103,6 +103,45 @@ vi.mock(
   },
 );
 
+const companionProbe = vi.hoisted(() =>
+  vi.fn(async () => ({
+    kind: 'unavailable',
+    checkedAt: '2026-10-23T00:00:00.000Z',
+    reason: 'container-daemon-unavailable',
+  })),
+);
+const companionInstall = vi.hoisted(() =>
+  vi.fn(async () => {
+    throw new Error('fixture installation unavailable');
+  }),
+);
+vi.mock(
+  '../../../services/telemetry-companion-install.js',
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import('../../../services/telemetry-companion-install.js')
+    >()),
+    installTelemetryCompanion: companionInstall,
+  }),
+);
+vi.mock('../../../services/telemetry-companion.js', () => ({
+  readTelemetryCompanionPrerequisites: companionProbe,
+}));
+const companionPrepare = vi.hoisted(() =>
+  vi.fn(async () => {
+    throw new Error('fixture preparation unavailable');
+  }),
+);
+vi.mock(
+  '../../../services/telemetry-companion-archive.js',
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import('../../../services/telemetry-companion-archive.js')
+    >()),
+    prepareTelemetryCompanionArchive: companionPrepare,
+  }),
+);
+
 vi.mock('../runtime-route-support.js', () => {
   const stub = new Proxy({}, { get: () => () => undefined });
   return {
@@ -131,6 +170,7 @@ function deepStub<T extends object>(overrides: T): T {
 }
 
 const OPERATOR_CREDENTIAL = 'test-only-operator-credential-read-scope';
+const TELEMETRY_OPERATOR_CREDENTIAL = 'test-only-telemetry-operator-credential';
 const A = LOCAL_OPERATOR_PRINCIPAL_ID;
 const B_REF = deploymentAccountPrincipal(
   'https://id.example.test',
@@ -424,15 +464,20 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
       projectService: projects,
       environmentSecurityService: deepStub({
         verifyCredential: (credential: string) =>
-          credential === OPERATOR_CREDENTIAL,
+          credential === OPERATOR_CREDENTIAL ||
+          credential === TELEMETRY_OPERATOR_CREDENTIAL,
         authorizeCredential: (credential: string) =>
-          credential === OPERATOR_CREDENTIAL,
+          credential === OPERATOR_CREDENTIAL ||
+          credential === TELEMETRY_OPERATOR_CREDENTIAL,
         verifyOperatorCredential: (credential: string) =>
-          credential === OPERATOR_CREDENTIAL,
+          credential === OPERATOR_CREDENTIAL ||
+          credential === TELEMETRY_OPERATOR_CREDENTIAL,
         resolveGrantedScope: (credential: string) =>
-          credential === OPERATOR_CREDENTIAL
-            ? `orchestration:read orchestration:operate${terminalProof ? ' terminal:operate' : ''}`
-            : undefined,
+          credential === TELEMETRY_OPERATOR_CREDENTIAL
+            ? 'orchestration:read orchestration:operate telemetry:manage'
+            : credential === OPERATOR_CREDENTIAL
+              ? `orchestration:read orchestration:operate${terminalProof ? ' terminal:operate' : ''}`
+              : undefined,
         identifyDevice: ():
           | {
               id?: string;
@@ -692,6 +737,108 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     });
     return response.json();
   }
+
+  test('companion host prerequisites require the operator in person through the production auth boundary', async () => {
+    const { base } = await setup();
+    companionProbe.mockClear();
+    const path = '/api/operator/telemetry-companion/prerequisites';
+    expect(await asOperatorUi(base, path)).toEqual({
+      data: {
+        kind: 'unavailable',
+        checkedAt: '2026-10-23T00:00:00.000Z',
+        reason: 'container-daemon-unavailable',
+      },
+    });
+    expect(companionProbe).toHaveBeenCalledTimes(1);
+    expect(companionProbe).toHaveBeenLastCalledWith(undefined);
+    await asOperatorUi(base, `${path}?artifactEvidence=1`);
+    expect(companionProbe).toHaveBeenCalledTimes(2);
+    expect(companionProbe).toHaveBeenLastCalledWith(
+      expect.objectContaining({ installKind: expect.any(String) }),
+    );
+    const agentMarked = await fetch(`${base}${path}`, {
+      headers: {
+        authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+        [STATION_CONTROL_ORIGIN_HEADER]: STATION_CONTROL_ORIGIN_AGENT_TOOL,
+      },
+    });
+    expect(agentMarked.status).toBe(403);
+    for (const caller of [
+      BOUND_OPERATOR,
+      DELEGATED_OPERATOR,
+      ...Object.values(B_CALLERS),
+      'raw-token' as const,
+    ]) {
+      const response = await asTool(caller, path);
+      expect(response.data).toBeUndefined();
+      expect(response.code ?? response.error?.code).toBeTruthy();
+    }
+    expect(companionProbe).toHaveBeenCalledTimes(2);
+  });
+
+  test('archive preparation accepts operator identity or management authority while refusing agent calls', async () => {
+    const { base } = await setup();
+    companionPrepare.mockClear();
+    const path = '/api/operator/telemetry-companion/archive-preparations';
+    const post = (credential: string, agent = false) =>
+      fetch(`${base}${path}`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${credential}`,
+          'content-type': 'application/json',
+          ...(agent
+            ? {
+                [STATION_CONTROL_ORIGIN_HEADER]:
+                  STATION_CONTROL_ORIGIN_AGENT_TOOL,
+              }
+            : {}),
+        },
+        body: JSON.stringify({
+          operationId: '01234567-89ab-4cde-8fab-0123456789ab',
+        }),
+      });
+    expect((await post(OPERATOR_CREDENTIAL)).status).toBe(503);
+    expect(companionPrepare).toHaveBeenCalledTimes(1);
+    expect((await post(TELEMETRY_OPERATOR_CREDENTIAL, true)).status).toBe(403);
+    expect(companionPrepare).toHaveBeenCalledTimes(1);
+    const allowed = await post(TELEMETRY_OPERATOR_CREDENTIAL);
+    expect(allowed.status).toBe(503);
+    expect(await allowed.json()).toEqual({
+      error: { code: 'companion_preparation_unavailable' },
+    });
+    expect(companionPrepare).toHaveBeenCalledTimes(2);
+  });
+
+  test('installation admission retains operator identity and management scope while refusing agent calls', async () => {
+    const { base } = await setup();
+    companionInstall.mockClear();
+    const post = (credential: string, agent = false) =>
+      fetch(`${base}/api/operator/telemetry-companion/installations`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${credential}`,
+          'content-type': 'application/json',
+          ...(agent
+            ? {
+                [STATION_CONTROL_ORIGIN_HEADER]:
+                  STATION_CONTROL_ORIGIN_AGENT_TOOL,
+              }
+            : {}),
+        },
+        body: JSON.stringify({
+          installationId: '01234567-89ab-4cde-8fab-0123456789ab',
+          preparationId: '11234567-89ab-4cde-8fab-0123456789ab',
+          host: 'selected-station',
+          storage: 'managed-docker-volumes',
+        }),
+      });
+    expect((await post(OPERATOR_CREDENTIAL)).status).toBe(503);
+    expect(companionInstall).toHaveBeenCalledTimes(1);
+    expect((await post(TELEMETRY_OPERATOR_CREDENTIAL, true)).status).toBe(403);
+    expect(companionInstall).toHaveBeenCalledTimes(1);
+    expect((await post(TELEMETRY_OPERATOR_CREDENTIAL)).status).toBe(503);
+    expect(companionInstall).toHaveBeenCalledTimes(2);
+  });
 
   const conversationIds = (body: any): string[] =>
     ((body?.data?.items ?? []) as { id: string }[]).map((item) => item.id);

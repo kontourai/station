@@ -283,6 +283,8 @@ export function handleToolStartedEvent(
     ...(event.toolKind !== undefined ? { toolKind: event.toolKind } : {}),
     purpose: toolPurposeView(event),
     args: event.arguments || {},
+    // docs/design/event-content-spill.md: lets the row load spilled values.
+    ...(event.spilledContent ? { contentThreadId: event.threadId } : {}),
     state: 'running',
     activityAt: event.createdAt,
     // `activityAt` moves with every progress frame; this is the start the
@@ -365,6 +367,7 @@ export function handleToolCompletedEvent(
             ? 'unresolved'
             : 'error',
     result: event.output,
+    ...(event.spilledContent ? { contentThreadId: event.threadId } : {}),
     ...(event.htmlReply ? { htmlReply: event.htmlReply } : {}),
     error: event.error,
     ...(event.outputReceipt?.truncated

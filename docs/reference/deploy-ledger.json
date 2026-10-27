@@ -1,5 +1,662 @@
 [
   {
+    "timestampUtc": "2026-10-27T18:04:28Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2491.2",
+    "sha": "091ef3d8d3e895c3d7f8f321dbe856f9198be6cd",
+    "artifactBuiltAt": "2026-10-27T17:07:59.420Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40545006749",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40545006749)"
+    ],
+    "changelog": {
+      "previousSha": "663143356c0abef8fdb166fd488a188c2fb0544d",
+      "groups": {
+        "feat": [
+          "[#4254](https://github.com/kontourai/station/pull/4254) feat(approvals): pick the approval mode when starting a chat, and switch Claude to full access mid-chat",
+          "[#4237](https://github.com/kontourai/station/pull/4237) feat(contracts): prepare multiplayer task collaboration shapes",
+          "[#4247](https://github.com/kontourai/station/pull/4247) feat(orchestration): store large event content out of line instead of refusing it"
+        ],
+        "fix": [
+          "[#4253](https://github.com/kontourai/station/pull/4253) fix(icons): fill Android and iOS launcher masks with the map face",
+          "[#4246](https://github.com/kontourai/station/pull/4246) fix(rooms): coalesce revision evidence until referenced",
+          "[#4251](https://github.com/kontourai/station/pull/4251) fix(ui): simplify the sidebar footer to one row"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 6
+    }
+  },
+  {
+    "timestampUtc": "2026-10-27T18:04:25Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2491.2",
+    "sha": "091ef3d8d3e895c3d7f8f321dbe856f9198be6cd",
+    "artifactBuiltAt": "2026-10-27T17:07:42.040Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40545006749",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40545006749)"
+    ],
+    "changelog": {
+      "previousSha": "663143356c0abef8fdb166fd488a188c2fb0544d",
+      "groups": {
+        "feat": [
+          "[#4254](https://github.com/kontourai/station/pull/4254) feat(approvals): pick the approval mode when starting a chat, and switch Claude to full access mid-chat",
+          "[#4237](https://github.com/kontourai/station/pull/4237) feat(contracts): prepare multiplayer task collaboration shapes",
+          "[#4247](https://github.com/kontourai/station/pull/4247) feat(orchestration): store large event content out of line instead of refusing it"
+        ],
+        "fix": [
+          "[#4253](https://github.com/kontourai/station/pull/4253) fix(icons): fill Android and iOS launcher masks with the map face",
+          "[#4246](https://github.com/kontourai/station/pull/4246) fix(rooms): coalesce revision evidence until referenced",
+          "[#4251](https://github.com/kontourai/station/pull/4251) fix(ui): simplify the sidebar footer to one row"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 6
+    }
+  },
+  {
+    "timestampUtc": "2026-10-27T17:10:31Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2491.40545006749",
+    "sha": "091ef3d8d3e895c3d7f8f321dbe856f9198be6cd",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40545006749",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2491.40545006749 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "663143356c0abef8fdb166fd488a188c2fb0544d",
+      "groups": {
+        "feat": [
+          "[#4254](https://github.com/kontourai/station/pull/4254) feat(approvals): pick the approval mode when starting a chat, and switch Claude to full access mid-chat",
+          "[#4237](https://github.com/kontourai/station/pull/4237) feat(contracts): prepare multiplayer task collaboration shapes",
+          "[#4247](https://github.com/kontourai/station/pull/4247) feat(orchestration): store large event content out of line instead of refusing it"
+        ],
+        "fix": [
+          "[#4253](https://github.com/kontourai/station/pull/4253) fix(icons): fill Android and iOS launcher masks with the map face",
+          "[#4246](https://github.com/kontourai/station/pull/4246) fix(rooms): coalesce revision evidence until referenced",
+          "[#4251](https://github.com/kontourai/station/pull/4251) fix(ui): simplify the sidebar footer to one row"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 6
+    }
+  },
+  {
+    "timestampUtc": "2026-10-27T10:25:49Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2491.1",
+    "sha": "663143356c0abef8fdb166fd488a188c2fb0544d",
+    "artifactBuiltAt": "2026-10-27T09:36:43.329Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40480667915",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40480667915)"
+    ],
+    "changelog": {
+      "previousSha": "8ba48bfa3ea62dc5ca2d3ad2f88e8f9a9bd64428",
+      "groups": {
+        "feat": [
+          "[#4244](https://github.com/kontourai/station/pull/4244) feat(station-routes): reach a saved Station over every route it reports",
+          "[#4242](https://github.com/kontourai/station/pull/4242) feat(ui): drag phone sheets to expand or dismiss (device preview); show context use in the mobile Actions sheet",
+          "[#4241](https://github.com/kontourai/station/pull/4241) feat(settings): About page with licenses and legal; one spacing rhythm for settings cards"
+        ],
+        "fix": [
+          "[#4250](https://github.com/kontourai/station/pull/4250) fix(runtime): restore the literal personal-host gate around Browser and device routes",
+          "[#4248](https://github.com/kontourai/station/pull/4248) fix(home): preserve archive directories and recorded legacy media",
+          "[#4194](https://github.com/kontourai/station/pull/4194) fix(chat): say when a reopened chat's next turn starts a Session (#4179)",
+          "[#4234](https://github.com/kontourai/station/pull/4234) fix(chat): derive live steering from native durability fidelity"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4249](https://github.com/kontourai/station/pull/4249) test(contracts): pin existing conversation context refusal semantics",
+          "[#4243](https://github.com/kontourai/station/pull/4243) perf(mobile): lean entry, offline Chat, steady reconnects, revalidated reads",
+          "[#4245](https://github.com/kontourai/station/pull/4245) test(docs): serve atlas assets outside the DevTools pipe"
+        ]
+      },
+      "note": null,
+      "commitCount": 10
+    }
+  },
+  {
+    "timestampUtc": "2026-10-27T10:25:45Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2491.1",
+    "sha": "663143356c0abef8fdb166fd488a188c2fb0544d",
+    "artifactBuiltAt": "2026-10-27T09:36:10.384Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40480667915",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40480667915)"
+    ],
+    "changelog": {
+      "previousSha": "8ba48bfa3ea62dc5ca2d3ad2f88e8f9a9bd64428",
+      "groups": {
+        "feat": [
+          "[#4244](https://github.com/kontourai/station/pull/4244) feat(station-routes): reach a saved Station over every route it reports",
+          "[#4242](https://github.com/kontourai/station/pull/4242) feat(ui): drag phone sheets to expand or dismiss (device preview); show context use in the mobile Actions sheet",
+          "[#4241](https://github.com/kontourai/station/pull/4241) feat(settings): About page with licenses and legal; one spacing rhythm for settings cards"
+        ],
+        "fix": [
+          "[#4250](https://github.com/kontourai/station/pull/4250) fix(runtime): restore the literal personal-host gate around Browser and device routes",
+          "[#4248](https://github.com/kontourai/station/pull/4248) fix(home): preserve archive directories and recorded legacy media",
+          "[#4194](https://github.com/kontourai/station/pull/4194) fix(chat): say when a reopened chat's next turn starts a Session (#4179)",
+          "[#4234](https://github.com/kontourai/station/pull/4234) fix(chat): derive live steering from native durability fidelity"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4249](https://github.com/kontourai/station/pull/4249) test(contracts): pin existing conversation context refusal semantics",
+          "[#4243](https://github.com/kontourai/station/pull/4243) perf(mobile): lean entry, offline Chat, steady reconnects, revalidated reads",
+          "[#4245](https://github.com/kontourai/station/pull/4245) test(docs): serve atlas assets outside the DevTools pipe"
+        ]
+      },
+      "note": null,
+      "commitCount": 10
+    }
+  },
+  {
+    "timestampUtc": "2026-10-27T09:37:03Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2491.40480667915",
+    "sha": "663143356c0abef8fdb166fd488a188c2fb0544d",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40480667915",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2491.40480667915 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "8ba48bfa3ea62dc5ca2d3ad2f88e8f9a9bd64428",
+      "groups": {
+        "feat": [
+          "[#4244](https://github.com/kontourai/station/pull/4244) feat(station-routes): reach a saved Station over every route it reports",
+          "[#4242](https://github.com/kontourai/station/pull/4242) feat(ui): drag phone sheets to expand or dismiss (device preview); show context use in the mobile Actions sheet",
+          "[#4241](https://github.com/kontourai/station/pull/4241) feat(settings): About page with licenses and legal; one spacing rhythm for settings cards"
+        ],
+        "fix": [
+          "[#4250](https://github.com/kontourai/station/pull/4250) fix(runtime): restore the literal personal-host gate around Browser and device routes",
+          "[#4248](https://github.com/kontourai/station/pull/4248) fix(home): preserve archive directories and recorded legacy media",
+          "[#4194](https://github.com/kontourai/station/pull/4194) fix(chat): say when a reopened chat's next turn starts a Session (#4179)",
+          "[#4234](https://github.com/kontourai/station/pull/4234) fix(chat): derive live steering from native durability fidelity"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4249](https://github.com/kontourai/station/pull/4249) test(contracts): pin existing conversation context refusal semantics",
+          "[#4243](https://github.com/kontourai/station/pull/4243) perf(mobile): lean entry, offline Chat, steady reconnects, revalidated reads",
+          "[#4245](https://github.com/kontourai/station/pull/4245) test(docs): serve atlas assets outside the DevTools pipe"
+        ]
+      },
+      "note": null,
+      "commitCount": 10
+    }
+  },
+  {
+    "timestampUtc": "2026-10-27T01:02:28Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2491",
+    "sha": "8ba48bfa3ea62dc5ca2d3ad2f88e8f9a9bd64428",
+    "artifactBuiltAt": "2026-10-27T00:16:31.935Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40424055540",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40424055540)"
+    ],
+    "changelog": {
+      "previousSha": "fc94935b97e585390ff7d72fa96ad3b41e82cf0f",
+      "groups": {
+        "feat": [
+          "[#4167](https://github.com/kontourai/station/pull/4167) feat(projects): start new chats on a project's set or last-used model and approval mode",
+          "[#4203](https://github.com/kontourai/station/pull/4203) feat(inventory): list commands with no recorded result",
+          "[#4214](https://github.com/kontourai/station/pull/4214) feat(walkthroughs): narrated recordings agents can read, local speech, and preview gating",
+          "[#4127](https://github.com/kontourai/station/pull/4127) feat(continuity): preserve context and onboard scoped MCP clients",
+          "[#4173](https://github.com/kontourai/station/pull/4173) feat(review): wire gated Task Review (integration, lands last)",
+          "[#4157](https://github.com/kontourai/station/pull/4157) feat(tasks): capture browser screens in Task review",
+          "[#4158](https://github.com/kontourai/station/pull/4158) feat(tasks): send review threads to the lead agent"
+        ],
+        "fix": [
+          "[#4231](https://github.com/kontourai/station/pull/4231) fix(orchestration): keep leaked attachment keys out of retained turn input so terminals record",
+          "[#4229](https://github.com/kontourai/station/pull/4229) fix(ci): retain bounded corpus failure captures and exit evidence",
+          "[#4228](https://github.com/kontourai/station/pull/4228) fix(runtime): retain home custody until EventStore closes"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 10
+    }
+  },
+  {
+    "timestampUtc": "2026-10-27T01:02:24Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2491",
+    "sha": "8ba48bfa3ea62dc5ca2d3ad2f88e8f9a9bd64428",
+    "artifactBuiltAt": "2026-10-27T00:16:18.122Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40424055540",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40424055540)"
+    ],
+    "changelog": {
+      "previousSha": "fc94935b97e585390ff7d72fa96ad3b41e82cf0f",
+      "groups": {
+        "feat": [
+          "[#4167](https://github.com/kontourai/station/pull/4167) feat(projects): start new chats on a project's set or last-used model and approval mode",
+          "[#4203](https://github.com/kontourai/station/pull/4203) feat(inventory): list commands with no recorded result",
+          "[#4214](https://github.com/kontourai/station/pull/4214) feat(walkthroughs): narrated recordings agents can read, local speech, and preview gating",
+          "[#4127](https://github.com/kontourai/station/pull/4127) feat(continuity): preserve context and onboard scoped MCP clients",
+          "[#4173](https://github.com/kontourai/station/pull/4173) feat(review): wire gated Task Review (integration, lands last)",
+          "[#4157](https://github.com/kontourai/station/pull/4157) feat(tasks): capture browser screens in Task review",
+          "[#4158](https://github.com/kontourai/station/pull/4158) feat(tasks): send review threads to the lead agent"
+        ],
+        "fix": [
+          "[#4231](https://github.com/kontourai/station/pull/4231) fix(orchestration): keep leaked attachment keys out of retained turn input so terminals record",
+          "[#4229](https://github.com/kontourai/station/pull/4229) fix(ci): retain bounded corpus failure captures and exit evidence",
+          "[#4228](https://github.com/kontourai/station/pull/4228) fix(runtime): retain home custody until EventStore closes"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 10
+    }
+  },
+  {
+    "timestampUtc": "2026-10-27T00:16:20Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2491.40424055540",
+    "sha": "8ba48bfa3ea62dc5ca2d3ad2f88e8f9a9bd64428",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40424055540",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2491.40424055540 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "fc94935b97e585390ff7d72fa96ad3b41e82cf0f",
+      "groups": {
+        "feat": [
+          "[#4167](https://github.com/kontourai/station/pull/4167) feat(projects): start new chats on a project's set or last-used model and approval mode",
+          "[#4203](https://github.com/kontourai/station/pull/4203) feat(inventory): list commands with no recorded result",
+          "[#4214](https://github.com/kontourai/station/pull/4214) feat(walkthroughs): narrated recordings agents can read, local speech, and preview gating",
+          "[#4127](https://github.com/kontourai/station/pull/4127) feat(continuity): preserve context and onboard scoped MCP clients",
+          "[#4173](https://github.com/kontourai/station/pull/4173) feat(review): wire gated Task Review (integration, lands last)",
+          "[#4157](https://github.com/kontourai/station/pull/4157) feat(tasks): capture browser screens in Task review",
+          "[#4158](https://github.com/kontourai/station/pull/4158) feat(tasks): send review threads to the lead agent"
+        ],
+        "fix": [
+          "[#4231](https://github.com/kontourai/station/pull/4231) fix(orchestration): keep leaked attachment keys out of retained turn input so terminals record",
+          "[#4229](https://github.com/kontourai/station/pull/4229) fix(ci): retain bounded corpus failure captures and exit evidence",
+          "[#4228](https://github.com/kontourai/station/pull/4228) fix(runtime): retain home custody until EventStore closes"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 10
+    }
+  },
+  {
+    "timestampUtc": "2026-10-26T15:45:33Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2490",
+    "sha": "fc94935b97e585390ff7d72fa96ad3b41e82cf0f",
+    "artifactBuiltAt": "2026-10-26T14:48:34.245Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40340783898",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery abandoned (run 40340783898)"
+    ],
+    "changelog": {
+      "previousSha": "8fa16170bedd4c86fc127a194f1bb8b4e44f87f4",
+      "groups": {
+        "feat": [
+          "[#4193](https://github.com/kontourai/station/pull/4193) feat(sdk): preserve direct-chat turn keys across uncertain sends",
+          "[#4202](https://github.com/kontourai/station/pull/4202) feat(gallery): measure select elements; fix the findings at source",
+          "[#4153](https://github.com/kontourai/station/pull/4153) feat(tasks): persist anchored Task review threads",
+          "[#4172](https://github.com/kontourai/station/pull/4172) feat(gallery): photograph the Chat inventory drill-down",
+          "[#4186](https://github.com/kontourai/station/pull/4186) feat(agent-runtime): scope SQLite validation and expose offline audit",
+          "[#4187](https://github.com/kontourai/station/pull/4187) feat(terminal): durable personal terminal sessions with bounded journal and scoped routes",
+          "[#4188](https://github.com/kontourai/station/pull/4188) feat(plugins): record install trust decisions and grandfather pre-existing plugins",
+          "[#4170](https://github.com/kontourai/station/pull/4170) feat(gallery): fail the PR gallery on product assertions",
+          "[#4181](https://github.com/kontourai/station/pull/4181) feat(mcp): outside-agent MCP router with audience-bound tokens (R4a, inert)"
+        ],
+        "fix": [
+          "[#4211](https://github.com/kontourai/station/pull/4211) fix(rooms): prevent revision publication deadlock (closes #4204)",
+          "[#4219](https://github.com/kontourai/station/pull/4219) fix(security): update compatible parser and HTTP dependencies",
+          "[#4218](https://github.com/kontourai/station/pull/4218) fix(verification): qualify shared component style gates and motion",
+          "[#4226](https://github.com/kontourai/station/pull/4226) fix(connect): offer and preserve terminal observation grants",
+          "[#4225](https://github.com/kontourai/station/pull/4225) fix(runtime): await configured Volt stream finish flush",
+          "[#4223](https://github.com/kontourai/station/pull/4223) fix(gallery): open the phone inventory reader from the actions sheet",
+          "[#4190](https://github.com/kontourai/station/pull/4190) fix(capabilities): withdraw sessionInventoryInputRead on hosted deployments",
+          "[#4191](https://github.com/kontourai/station/pull/4191) fix(chat): retain claims after possible Agent invocation",
+          "[#4207](https://github.com/kontourai/station/pull/4207) fix(gallery): do not count content behind a pinned layer as an overlap",
+          "[#4213](https://github.com/kontourai/station/pull/4213) fix(gallery): accept an intended name change as a reviewed REKEY",
+          "[#4199](https://github.com/kontourai/station/pull/4199) fix(chat): open phone Chat inventory from the actions sheet and de-race the dock-open helper",
+          "[#4200](https://github.com/kontourai/station/pull/4200) fix(service): report a stale service manifest and read status from the unit's home (#4196)",
+          "[#4215](https://github.com/kontourai/station/pull/4215) fix(tests): settle public Git query fixture teardown",
+          "[#4201](https://github.com/kontourai/station/pull/4201) fix(gallery): pin the New Project layout screen to its scroll end",
+          "[#4197](https://github.com/kontourai/station/pull/4197) fix(inventory): one reader title, list only readable inputs, Check again feedback",
+          "[#4195](https://github.com/kontourai/station/pull/4195) fix(service): build the reinstall remedy from the installed unit and its launcher (#4189)",
+          "[#4174](https://github.com/kontourai/station/pull/4174) fix(agent-runtime): verify admitted request and replay bytes",
+          "[#4166](https://github.com/kontourai/station/pull/4166) fix(security): deliver Desktop plugin assets through a scoped protocol instead of inline nonce execution"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4227](https://github.com/kontourai/station/pull/4227) test(preview): retain bounded CDP phase diagnostics",
+          "[#4220](https://github.com/kontourai/station/pull/4220) test(identity): retain safe lock-shape failure diagnostics",
+          "[#4198](https://github.com/kontourai/station/pull/4198) test(e2e): repair three stale browser specs red on main"
+        ]
+      },
+      "note": null,
+      "commitCount": 30
+    }
+  },
+  {
+    "timestampUtc": "2026-10-26T15:45:29Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2490",
+    "sha": "fc94935b97e585390ff7d72fa96ad3b41e82cf0f",
+    "artifactBuiltAt": "2026-10-26T14:46:25.910Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40340783898",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery abandoned (run 40340783898)"
+    ],
+    "changelog": {
+      "previousSha": "8fa16170bedd4c86fc127a194f1bb8b4e44f87f4",
+      "groups": {
+        "feat": [
+          "[#4193](https://github.com/kontourai/station/pull/4193) feat(sdk): preserve direct-chat turn keys across uncertain sends",
+          "[#4202](https://github.com/kontourai/station/pull/4202) feat(gallery): measure select elements; fix the findings at source",
+          "[#4153](https://github.com/kontourai/station/pull/4153) feat(tasks): persist anchored Task review threads",
+          "[#4172](https://github.com/kontourai/station/pull/4172) feat(gallery): photograph the Chat inventory drill-down",
+          "[#4186](https://github.com/kontourai/station/pull/4186) feat(agent-runtime): scope SQLite validation and expose offline audit",
+          "[#4187](https://github.com/kontourai/station/pull/4187) feat(terminal): durable personal terminal sessions with bounded journal and scoped routes",
+          "[#4188](https://github.com/kontourai/station/pull/4188) feat(plugins): record install trust decisions and grandfather pre-existing plugins",
+          "[#4170](https://github.com/kontourai/station/pull/4170) feat(gallery): fail the PR gallery on product assertions",
+          "[#4181](https://github.com/kontourai/station/pull/4181) feat(mcp): outside-agent MCP router with audience-bound tokens (R4a, inert)"
+        ],
+        "fix": [
+          "[#4211](https://github.com/kontourai/station/pull/4211) fix(rooms): prevent revision publication deadlock (closes #4204)",
+          "[#4219](https://github.com/kontourai/station/pull/4219) fix(security): update compatible parser and HTTP dependencies",
+          "[#4218](https://github.com/kontourai/station/pull/4218) fix(verification): qualify shared component style gates and motion",
+          "[#4226](https://github.com/kontourai/station/pull/4226) fix(connect): offer and preserve terminal observation grants",
+          "[#4225](https://github.com/kontourai/station/pull/4225) fix(runtime): await configured Volt stream finish flush",
+          "[#4223](https://github.com/kontourai/station/pull/4223) fix(gallery): open the phone inventory reader from the actions sheet",
+          "[#4190](https://github.com/kontourai/station/pull/4190) fix(capabilities): withdraw sessionInventoryInputRead on hosted deployments",
+          "[#4191](https://github.com/kontourai/station/pull/4191) fix(chat): retain claims after possible Agent invocation",
+          "[#4207](https://github.com/kontourai/station/pull/4207) fix(gallery): do not count content behind a pinned layer as an overlap",
+          "[#4213](https://github.com/kontourai/station/pull/4213) fix(gallery): accept an intended name change as a reviewed REKEY",
+          "[#4199](https://github.com/kontourai/station/pull/4199) fix(chat): open phone Chat inventory from the actions sheet and de-race the dock-open helper",
+          "[#4200](https://github.com/kontourai/station/pull/4200) fix(service): report a stale service manifest and read status from the unit's home (#4196)",
+          "[#4215](https://github.com/kontourai/station/pull/4215) fix(tests): settle public Git query fixture teardown",
+          "[#4201](https://github.com/kontourai/station/pull/4201) fix(gallery): pin the New Project layout screen to its scroll end",
+          "[#4197](https://github.com/kontourai/station/pull/4197) fix(inventory): one reader title, list only readable inputs, Check again feedback",
+          "[#4195](https://github.com/kontourai/station/pull/4195) fix(service): build the reinstall remedy from the installed unit and its launcher (#4189)",
+          "[#4174](https://github.com/kontourai/station/pull/4174) fix(agent-runtime): verify admitted request and replay bytes",
+          "[#4166](https://github.com/kontourai/station/pull/4166) fix(security): deliver Desktop plugin assets through a scoped protocol instead of inline nonce execution"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4227](https://github.com/kontourai/station/pull/4227) test(preview): retain bounded CDP phase diagnostics",
+          "[#4220](https://github.com/kontourai/station/pull/4220) test(identity): retain safe lock-shape failure diagnostics",
+          "[#4198](https://github.com/kontourai/station/pull/4198) test(e2e): repair three stale browser specs red on main"
+        ]
+      },
+      "note": null,
+      "commitCount": 30
+    }
+  },
+  {
+    "timestampUtc": "2026-10-26T14:46:01Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2490.40340783898",
+    "sha": "fc94935b97e585390ff7d72fa96ad3b41e82cf0f",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40340783898",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2490.40340783898 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "8fa16170bedd4c86fc127a194f1bb8b4e44f87f4",
+      "groups": {
+        "feat": [
+          "[#4193](https://github.com/kontourai/station/pull/4193) feat(sdk): preserve direct-chat turn keys across uncertain sends",
+          "[#4202](https://github.com/kontourai/station/pull/4202) feat(gallery): measure select elements; fix the findings at source",
+          "[#4153](https://github.com/kontourai/station/pull/4153) feat(tasks): persist anchored Task review threads",
+          "[#4172](https://github.com/kontourai/station/pull/4172) feat(gallery): photograph the Chat inventory drill-down",
+          "[#4186](https://github.com/kontourai/station/pull/4186) feat(agent-runtime): scope SQLite validation and expose offline audit",
+          "[#4187](https://github.com/kontourai/station/pull/4187) feat(terminal): durable personal terminal sessions with bounded journal and scoped routes",
+          "[#4188](https://github.com/kontourai/station/pull/4188) feat(plugins): record install trust decisions and grandfather pre-existing plugins",
+          "[#4170](https://github.com/kontourai/station/pull/4170) feat(gallery): fail the PR gallery on product assertions",
+          "[#4181](https://github.com/kontourai/station/pull/4181) feat(mcp): outside-agent MCP router with audience-bound tokens (R4a, inert)"
+        ],
+        "fix": [
+          "[#4211](https://github.com/kontourai/station/pull/4211) fix(rooms): prevent revision publication deadlock (closes #4204)",
+          "[#4219](https://github.com/kontourai/station/pull/4219) fix(security): update compatible parser and HTTP dependencies",
+          "[#4218](https://github.com/kontourai/station/pull/4218) fix(verification): qualify shared component style gates and motion",
+          "[#4226](https://github.com/kontourai/station/pull/4226) fix(connect): offer and preserve terminal observation grants",
+          "[#4225](https://github.com/kontourai/station/pull/4225) fix(runtime): await configured Volt stream finish flush",
+          "[#4223](https://github.com/kontourai/station/pull/4223) fix(gallery): open the phone inventory reader from the actions sheet",
+          "[#4190](https://github.com/kontourai/station/pull/4190) fix(capabilities): withdraw sessionInventoryInputRead on hosted deployments",
+          "[#4191](https://github.com/kontourai/station/pull/4191) fix(chat): retain claims after possible Agent invocation",
+          "[#4207](https://github.com/kontourai/station/pull/4207) fix(gallery): do not count content behind a pinned layer as an overlap",
+          "[#4213](https://github.com/kontourai/station/pull/4213) fix(gallery): accept an intended name change as a reviewed REKEY",
+          "[#4199](https://github.com/kontourai/station/pull/4199) fix(chat): open phone Chat inventory from the actions sheet and de-race the dock-open helper",
+          "[#4200](https://github.com/kontourai/station/pull/4200) fix(service): report a stale service manifest and read status from the unit's home (#4196)",
+          "[#4215](https://github.com/kontourai/station/pull/4215) fix(tests): settle public Git query fixture teardown",
+          "[#4201](https://github.com/kontourai/station/pull/4201) fix(gallery): pin the New Project layout screen to its scroll end",
+          "[#4197](https://github.com/kontourai/station/pull/4197) fix(inventory): one reader title, list only readable inputs, Check again feedback",
+          "[#4195](https://github.com/kontourai/station/pull/4195) fix(service): build the reinstall remedy from the installed unit and its launcher (#4189)",
+          "[#4174](https://github.com/kontourai/station/pull/4174) fix(agent-runtime): verify admitted request and replay bytes",
+          "[#4166](https://github.com/kontourai/station/pull/4166) fix(security): deliver Desktop plugin assets through a scoped protocol instead of inline nonce execution"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4227](https://github.com/kontourai/station/pull/4227) test(preview): retain bounded CDP phase diagnostics",
+          "[#4220](https://github.com/kontourai/station/pull/4220) test(identity): retain safe lock-shape failure diagnostics",
+          "[#4198](https://github.com/kontourai/station/pull/4198) test(e2e): repair three stale browser specs red on main"
+        ]
+      },
+      "note": null,
+      "commitCount": 30
+    }
+  },
+  {
+    "timestampUtc": "2026-10-26T01:12:13Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2489.2",
+    "sha": "8fa16170bedd4c86fc127a194f1bb8b4e44f87f4",
+    "artifactBuiltAt": "2026-10-25T23:55:40.557Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40245274028",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40245274028)"
+    ],
+    "changelog": {
+      "previousSha": "8930cc98aadd87c5dee1e1b1c19c0e91bcb27e77",
+      "groups": {
+        "feat": [
+          "[#4160](https://github.com/kontourai/station/pull/4160) feat(layouts): required Home and Inbox/Chat slots with pane recovery",
+          "[#4152](https://github.com/kontourai/station/pull/4152) feat(ui): add task review presentation components (L3a)",
+          "[#4155](https://github.com/kontourai/station/pull/4155) feat(layouts): personal layout subjects, templates, clone, and promotion",
+          "[#4151](https://github.com/kontourai/station/pull/4151) feat(contracts): add task review threads and anchors",
+          "[#4154](https://github.com/kontourai/station/pull/4154) feat(mcp): outside-agent OAuth server endpoints (R3, inert)",
+          "[#4150](https://github.com/kontourai/station/pull/4150) feat(projects): add workspace pins and capture blob primitives",
+          "[#4095](https://github.com/kontourai/station/pull/4095) feat(browser-device): add Browser tabs and host-qualified Agent reveal"
+        ],
+        "fix": [
+          "[#4184](https://github.com/kontourai/station/pull/4184) fix(monument): preserve resolved replay under unresolved pressure",
+          "[#4161](https://github.com/kontourai/station/pull/4161) fix(chat): name the live session's engine on the composer chip",
+          "[#4171](https://github.com/kontourai/station/pull/4171) fix(agent-runtime): preserve verified coordinator entry custody",
+          "[#4180](https://github.com/kontourai/station/pull/4180) fix(consent): hide guarded outside-agent transactions from native review routes",
+          "[#4169](https://github.com/kontourai/station/pull/4169) fix(inventory): explain unreadable inputs and fix the phone drill-down layout",
+          "[#4168](https://github.com/kontourai/station/pull/4168) fix(agent-runtime): own verified memory body bytes",
+          "[#4159](https://github.com/kontourai/station/pull/4159) fix(mcp): isolate outside-agent budgets and consent refusals"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4163](https://github.com/kontourai/station/pull/4163) chore(ui): add a UI definition of done and reject hand-rolled alert retries"
+        ]
+      },
+      "note": null,
+      "commitCount": 15
+    }
+  },
+  {
+    "timestampUtc": "2026-10-26T01:12:08Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2489.2",
+    "sha": "8fa16170bedd4c86fc127a194f1bb8b4e44f87f4",
+    "artifactBuiltAt": "2026-10-26T00:05:45.159Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40245274028",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40245274028)"
+    ],
+    "changelog": {
+      "previousSha": "8930cc98aadd87c5dee1e1b1c19c0e91bcb27e77",
+      "groups": {
+        "feat": [
+          "[#4160](https://github.com/kontourai/station/pull/4160) feat(layouts): required Home and Inbox/Chat slots with pane recovery",
+          "[#4152](https://github.com/kontourai/station/pull/4152) feat(ui): add task review presentation components (L3a)",
+          "[#4155](https://github.com/kontourai/station/pull/4155) feat(layouts): personal layout subjects, templates, clone, and promotion",
+          "[#4151](https://github.com/kontourai/station/pull/4151) feat(contracts): add task review threads and anchors",
+          "[#4154](https://github.com/kontourai/station/pull/4154) feat(mcp): outside-agent OAuth server endpoints (R3, inert)",
+          "[#4150](https://github.com/kontourai/station/pull/4150) feat(projects): add workspace pins and capture blob primitives",
+          "[#4095](https://github.com/kontourai/station/pull/4095) feat(browser-device): add Browser tabs and host-qualified Agent reveal"
+        ],
+        "fix": [
+          "[#4184](https://github.com/kontourai/station/pull/4184) fix(monument): preserve resolved replay under unresolved pressure",
+          "[#4161](https://github.com/kontourai/station/pull/4161) fix(chat): name the live session's engine on the composer chip",
+          "[#4171](https://github.com/kontourai/station/pull/4171) fix(agent-runtime): preserve verified coordinator entry custody",
+          "[#4180](https://github.com/kontourai/station/pull/4180) fix(consent): hide guarded outside-agent transactions from native review routes",
+          "[#4169](https://github.com/kontourai/station/pull/4169) fix(inventory): explain unreadable inputs and fix the phone drill-down layout",
+          "[#4168](https://github.com/kontourai/station/pull/4168) fix(agent-runtime): own verified memory body bytes",
+          "[#4159](https://github.com/kontourai/station/pull/4159) fix(mcp): isolate outside-agent budgets and consent refusals"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4163](https://github.com/kontourai/station/pull/4163) chore(ui): add a UI definition of done and reject hand-rolled alert retries"
+        ]
+      },
+      "note": null,
+      "commitCount": 15
+    }
+  },
+  {
+    "timestampUtc": "2026-10-25T23:50:17Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2489.40245274028",
+    "sha": "8fa16170bedd4c86fc127a194f1bb8b4e44f87f4",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40245274028",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2489.40245274028 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "8930cc98aadd87c5dee1e1b1c19c0e91bcb27e77",
+      "groups": {
+        "feat": [
+          "[#4160](https://github.com/kontourai/station/pull/4160) feat(layouts): required Home and Inbox/Chat slots with pane recovery",
+          "[#4152](https://github.com/kontourai/station/pull/4152) feat(ui): add task review presentation components (L3a)",
+          "[#4155](https://github.com/kontourai/station/pull/4155) feat(layouts): personal layout subjects, templates, clone, and promotion",
+          "[#4151](https://github.com/kontourai/station/pull/4151) feat(contracts): add task review threads and anchors",
+          "[#4154](https://github.com/kontourai/station/pull/4154) feat(mcp): outside-agent OAuth server endpoints (R3, inert)",
+          "[#4150](https://github.com/kontourai/station/pull/4150) feat(projects): add workspace pins and capture blob primitives",
+          "[#4095](https://github.com/kontourai/station/pull/4095) feat(browser-device): add Browser tabs and host-qualified Agent reveal"
+        ],
+        "fix": [
+          "[#4184](https://github.com/kontourai/station/pull/4184) fix(monument): preserve resolved replay under unresolved pressure",
+          "[#4161](https://github.com/kontourai/station/pull/4161) fix(chat): name the live session's engine on the composer chip",
+          "[#4171](https://github.com/kontourai/station/pull/4171) fix(agent-runtime): preserve verified coordinator entry custody",
+          "[#4180](https://github.com/kontourai/station/pull/4180) fix(consent): hide guarded outside-agent transactions from native review routes",
+          "[#4169](https://github.com/kontourai/station/pull/4169) fix(inventory): explain unreadable inputs and fix the phone drill-down layout",
+          "[#4168](https://github.com/kontourai/station/pull/4168) fix(agent-runtime): own verified memory body bytes",
+          "[#4159](https://github.com/kontourai/station/pull/4159) fix(mcp): isolate outside-agent budgets and consent refusals"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4163](https://github.com/kontourai/station/pull/4163) chore(ui): add a UI definition of done and reject hand-rolled alert retries"
+        ]
+      },
+      "note": null,
+      "commitCount": 15
+    }
+  },
+  {
     "timestampUtc": "2026-10-25T15:33:06Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2489.1",

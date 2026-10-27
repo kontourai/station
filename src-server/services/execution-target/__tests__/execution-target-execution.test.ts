@@ -69,6 +69,7 @@ function dependencies(): ExecutionTargetExecutionDependencies {
           },
         }) as any,
     ),
+    readInitialConversationContext: async () => undefined,
     readSessionBinding: vi.fn(async () => null),
     startSession: vi.fn(async () => undefined),
     sendTurn: vi.fn(async () => ({ turnId: 'provider-turn-1' })),

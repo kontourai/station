@@ -257,6 +257,21 @@ exact instance destination grants, never account, Project or peer inference gran
 See [usage telemetry](../reference/usage-telemetry.md#delivery-status-and-connection-checks)
 for the status/probe boundary and failure limits.
 
+The companion host-prerequisite GET has `orchestration:read` scope and an
+additional current operator-in-person check before the bounded local Docker
+probe and before its response. A read scope alone never admits an ordinary
+paired Device or agent. It returns capability metadata, not credentials,
+installation authority or personal analytics access. No bootstrap grant was
+expanded for this route. The archive-preparation POST separately requires
+`telemetry:manage`. Existing operator identities act by identity; an eligible
+human device needs both explicit operator promotion to that permission and a
+current verified operator role. Actor eligibility is checked before and after
+asynchronous role resolution, and preparation rechecks authority at effect
+boundaries. Agents and delegation callers are refused. The permission is absent
+from presets/defaults; `home:control` remains a continuity fence. Preparation
+accepts an operation UUID, not caller commands, URLs, paths or signing policy.
+It grants no sending, personal-source or service-activation authority.
+
 The [external-surface table](../../src-server/security/pairing-route-scopes.ts)
 owns the method/path-specific exceptions; a public classification at the Device
 gate does not waive the endpoint's own checks. The station-control HTTP/SSE
@@ -283,7 +298,7 @@ commit or executable identity. Its schema is:
   "transports": { "http": 1, "sse": 1, "websocket": 1 },
   "compatibility": {
     "serverVersion": "<station package version>",
-    "protocolVersion": 2,
+    "protocolVersion": 4,
     "minClientProtocol": 1,
     "capabilities": { "remoteAuth": 1, "devicePairing": 1, "environmentProof": 1, "clientProtocolHeader": 1, "productTelemetryAcknowledgement": 2 }
   },
@@ -431,15 +446,35 @@ qualification receipt. See [the connection controls](../guides/connections.md#in
 ## Credentialed consumers (station#2051)
 
 The removed loopback/SSH compatibility floor has no silent replacement. These
-are the supported request contracts established from the live runtime callers:
+are the supported request contracts; source composition and live consumer
+qualification remain separate evidence:
 
 | Consumer | Explicit credential path | Missing or malformed credential |
 | --- | --- | --- |
 | Browser UI, desktop shell, and mobile shell | Device-session cookie after the public pairing/access-request exchange; the desktop may use its native request broker | Protected route returns `401 authentication_required`; public pairing paths remain available |
 | CLI | `--credential`, `STATION_API_CREDENTIAL`, or an OS-keyring-backed paired profile credential | The command reaches the same `401`; the CLI must pair or supply a credential |
-| `station-control` MCP | Per-boot `x-station-internal-token` plus `x-station-proxy-caller: local` from a direct loopback process | Runtime rejects it as ordinary uncredentialed traffic; `station-docs` is read-only and makes no live API request |
+| Station-owned `station-control` runtime | Per-boot `x-station-internal-token` plus `x-station-proxy-caller: local` from a direct loopback process | Runtime rejects ordinary uncredentialed traffic; `station-docs` is read-only and makes no live API request |
+| Explicit local external MCP client | Independently revocable, header-only scoped lease from the personal-host operator setup surface | The MCP endpoint refuses missing, expired, revoked or out-of-scope leases; no internal token is exported |
 | SSH delegation | Paired outbound peer bearer attached to the tunnel request | The remote runtime returns `401`; a tunnel alone grants no API authority |
 | Station-owned UI/Tailscale proxy | It always classifies browser traffic as remote and relays its device-session cookie or bearer; the shared token carries only bounded proxy metadata | `401`; a loopback socket, Host, or SSH forward never becomes internal authority |
+
+External-client setup requires the file-proven personal-host operator and
+`access:manage`, with current device/account/group authority checked after body
+consumption and again during lease verification. It binds an existing recorded,
+operator-owned Session and its current Project; it creates no Session or
+Environment. Tools are explicitly selected from `read_conversation`, `board_read`
+and `board_pin`, with a 60–3600 second lifetime. Board tools remain self-owned
+rather than Project-partitioned. Each request and call rechecks
+recorded ownership and Project identity. These leases use loopback transport,
+remain `delegated-custody`, and cannot satisfy browser tools' bound-caller rule.
+Explicit revoke, expiry and process restart invalidate them. Session revocation
+removes existing client leases; an operator may deliberately issue a new lease
+against a retained stopped Session record afterwards. That is record binding,
+not Session liveness. See the [Session API](../reference/session-api.md#external-clients-using-station-tools)
+for the setup contract and [CLI](../reference/cli.md#mcp-clients) for private-file
+configuration. Browser/plugin consent flows retain their existing transactions;
+this personal-host surface grants no remote OAuth/TLS or external-execution
+ownership.
 
 The public pairing, access-request, exchange, proof, liveness, share-token, and
 MCP-token routes remain separately declared authentication contracts; this
@@ -454,12 +489,16 @@ proof), not the boolean feature flags below — see
 The top-level `capabilities` (station#1095) is additive and entirely
 optional: every key is an optional boolean, and a host may omit the whole
 object. Absence of the object, or of a specific key, always means
-"unsupported" — either the host predates this field, or it never seeded that
-flag — never an error. This is the client feature-detection story for a
-rolling upgrade: a client checks `capabilities.<name> === true` instead of
-branching on a version number. Station's own seeded flags live in one
-registry,
-`src-server/capabilities/station-capability-flags.ts`; the sdk exposes a
+"unsupported" — either the host predates this field, it never seeded that
+flag, or its deployment mode cannot serve the route behind it — never an error.
+This is the client feature-detection story for a rolling upgrade: a client
+checks `capabilities.<name> === true` instead of branching on a version number.
+Station's own seeded flags live in one registry,
+`src-server/capabilities/station-capability-flags.ts`, whose resolver withdraws
+a flag in a deployment mode that refuses every call to its route (hosted mode
+omits `sessionInventoryInputRead` and `webPushNotifications`). That discloses nothing new: a hosted
+Station answers the handshake only through tenant ingress and refuses an
+unadmitted caller with 421 `tenant_context_required`; the sdk exposes a
 `hasCapability(descriptor, name)` accessor (`@kontourai/station-sdk`) that
 treats every absence case as `false`.
 
@@ -483,7 +522,8 @@ contracts retain their own admission and body/rate limits.
 **Body-size.** `Content-Length` is checked first; an oversized request is
 rejected `413` before any body read. A lying or absent `Content-Length` is
 caught by a streaming byte counter that aborts past the ceiling and re-buffers
-the bounded body for the handler — `Content-Length` alone is not trusted.
+the bounded body for ordinary handlers. The two media upload paths below
+retain a lazy bounded stream — `Content-Length` alone is not trusted.
 
 **Rate budget.** The budget key is the **server-derived principal**, never a
 caller-supplied header, body field, or query parameter. A budget keyed on
@@ -525,6 +565,25 @@ rate bucket but uses the 22 MiB attachment-command body ceiling so bounded
 base64 image data fits. Adjacent Task mutations retain the standard body limit.
 Room upload, reference resolution and byte reads also enforce their current
 Task capability and incarnation; a paired route-family grant alone is insufficient.
+
+The exact `POST /api/projects/:projectSlug/walkthroughs/import` and
+`POST /api/transcription` uploads also retain the standard principal rate
+bucket. Their body ceilings derive from their owning upload limits: 512 MiB
+for Walkthrough video and 32 MiB for browser audio. Adjacent paths and other
+methods retain their ordinary ceilings; a large upload is not a rate exemption.
+Only these media uploads get the extended receive policy: 60-second progress/idle
+bounds, a two-hour Walkthrough total and a 60-second transcription total.
+Authentication, principal rate admission and declared-size checks precede route
+admission. Preview and Project/authority refusals, and the importer's two-slot
+capacity refusal, precede body reads and close the connection. The middleware
+passes a lazy byte-counting stream; admitted routes stream to disk with their
+own bounds. Ordinary mutation ceilings and buffering remain unchanged.
+The API and built-UI listeners retain header limits and socket timeout values.
+Node's server-wide parser total is finite at two hours; a shared per-request timer
+retains ordinary receives' 300-second total, counting header receipt. This timer
+can fire before Node's periodic timeout sweep would have done so. See
+[Walkthrough limits](../guides/walkthroughs.md#limits-and-storage) and
+[local speech](../guides/local-speech.md) for processing and proxy deadlines.
 
 **Defaults** (configurable via `RuntimeHttpSecurityOptions`):
 
@@ -743,8 +802,10 @@ promotion. Raw operator request-time approval and explicitly promoted
 `access:devices` administrators retain their existing authority. Ordinary
 Devices with inherited `access:manage` remain refused. This deliberately trusts
 the host-issued browser session, including code on its origin, with Device
-administration; the native consent broker still requires `local-grant`, so
-browser custody never becomes native consent authority. The chosen
+administration. The operator native-consent path still requires `local-grant`;
+the separate personal-analytics requester path uses only its transaction-bound,
+host-retained session and cannot borrow operator authority. Browser Device
+administration custody grants neither native path. The chosen
 scope is shown before the grant is created and again on the resulting offer.
 
 Operator-created invitations can record approval at creation (`approval:
@@ -946,13 +1007,40 @@ credential/account and owner/source facts before queued chunks leave. Cursor
 fields and request-supplied identifiers confer no authority.
 
 This source path is not a companion analytics grant. It does not reuse a peer,
-provider, product or OTel credential for private sync. Grants and person-scoped
-destination custody, deletion/restore invalidation and receiver indexing remain
-open under #3459/#3460. Focused mounted-route and runtime-composition controls
-have exercised scope, queued revocation and cumulative-history refusal with
-controlled identity fixtures. They do not establish live enrollment, deployment,
-measured query performance or new person-identity assurance. See
-[the API reference](../reference/api.md#export-retained-canonical-usage-observations).
+provider, product or OTel credential for private sync. The separately enrolled
+flow binds current source consent to one verified person/tenant/owner set and
+receiving public keys, delivers a purpose-specific encrypted credential, then
+requires separate exact-origin review before sending it. A key-possession proof
+is not remote-person authentication. Explicit sync, invalidation replay and
+bounded receiver indexing preserve source/receiver epochs and current access
+checks; a saved view or historical receipt grants no read authority.
+
+Normal home restore and in-place update rollback publish fresh recovery
+provenance. Private approvals, receiving keys and export epochs bind to that
+activation, so copied pre-revocation state cannot reactivate them. Legacy unbound
+records refuse rather than being silently adopted. Generic stream identity is
+unchanged. This negative fence is not canonical clone/mirror identity, source
+shutdown proof or a companion database restore certificate.
+
+Requester-only native consent retains the transaction secret and render nonce
+in the native host, bound to profile, origin, request and expiry. Generic native
+HTTP refuses the consent route family and requester-secret header; operator or
+promoted Device authority cannot decide a personal transaction instead.
+Current runtime/person/source checks fence queued private responses. Observed
+source or person denial invalidates retained UI snapshots, so a later outage
+cannot revive a known-denied copy.
+
+Controlled mounted-route, recovery, receiver-store and SDK tests exercise these
+boundaries. They do not establish real two-Station TLS enrollment, a new identity
+assurance, arbitrary raw-clone detection, native OS-dialog behavior, deployed
+storage durability or installed/release acceptance. Optional immutable
+`terminal-outcomes/v1` grants now admit content-free completed/aborted/failed
+retained summaries in Personal Insights and Profile. Reads require current
+source/person authority and a synchronized checkpoint; coverage remains unknown.
+See [private terminal observations](../guides/monitoring.md#optional-private-terminal-observations).
+Personal incident detail remains unfinished. See
+[the API reference](../reference/api.md#export-retained-canonical-usage-observations)
+and [source approval](../guides/monitoring.md#source-approval-review).
 
 ### Coding routes: command execution and client paths (#2412)
 
@@ -1237,7 +1325,8 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   - `PUT /config/app` when `terminalShell` changes. An agent's station-control
     call (the Station-internal principal, otherwise exempt) may not change it,
     in the tool (`update_config`) and in the route, as it may not raise the
-    default approval mode to full access;
+    default approval mode (the Station's, or a Project's new-chat mode through
+    `PUT /api/projects/:slug`) to full access;
   - `/api/secret-bindings`, which the default grant reaches (it includes
     `access:manage`, which is not `coding:exec`): `POST /:id/bind` with an
     `integrationId`, `POST /integrations/:id/migrate-stored-env` and its alias
@@ -2055,6 +2144,11 @@ clears on explicit deletion, sign-out or authority changes. A disconnected brows
 cannot learn about a remote revocation until reconnect. Live protected query
 shelves still require fresh authority observation. The worker caches an anonymous
 static shell and anonymous assets, never authenticated navigation or API bodies.
+The browser's own HTTP cache may keep authenticated JSON reads and attachment
+bytes under `private, no-cache` with `Vary: Authorization, Cookie`. Each reuse
+is revalidated at the host, which authorizes the request before answering
+`304`, so a kept copy is never shown to a caller the host would refuse. The
+bytes remain on that browser profile's disk like any other cached response.
 
 
 ## Outside-agent OAuth remains inert

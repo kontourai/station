@@ -1,3 +1,4 @@
+import { requestBoundCallIds } from '@kontourai/station-contracts/runtime-event-content';
 import {
   approvalDecisionBody,
   decisionOptionResponse,
@@ -23,6 +24,7 @@ import {
 import { navigationStore } from '../../contexts/NavigationContext';
 import { toastStore } from '../../contexts/ToastContext';
 import { isChatInForeground } from './chatForeground';
+import { contentRefreshVersion } from './contentRefresh';
 import { isReplayThread } from './replay/replay-registry';
 import {
   openInputRequestRecordPart,
@@ -203,6 +205,10 @@ function showApprovalToast(
   event: Extract<OrchestrationEvent, { method: 'request.opened' }>,
   view: ApprovalToastView,
 ) {
+  // docs/design/event-content-spill.md: a request whose content (or the
+  // content of the call it gates, such as a Codex file change's diff) was
+  // stored out of line is allowed only from its card, once loaded.
+  const needsContentLoad = requestNeedsContentLoad(event);
   const answer = (
     decision: 'accept' | 'acceptForSession' | 'decline',
     sessionGrantScope?: 'server',
@@ -233,26 +239,77 @@ function showApprovalToast(
     // and the sheet render. The session option's label says what the grant
     // covers: "Allow for Session" reads as a grant for this one call, and it
     // is a standing grant for every later call to the same tool.
-    actions: approvalDecisionBody(
-      view.grantLabel,
-      view.serverGrantLabel,
-    ).options.map((option) => ({
-      label: option.label,
-      variant:
-        option.effect === 'deny'
-          ? ('danger' as const)
-          : option.scope === 'session'
-            ? ('secondary' as const)
-            : ('primary' as const),
-      onClick: () =>
-        answer(decisionOptionResponse(option), option.sessionGrantScope),
-    })),
+    // docs/design/event-content-spill.md: a request whose content was
+    // stored out of line is allowed only from its card, after the card has
+    // loaded all of it. The toast offers the way there, and Deny.
+    actions: [
+      ...(needsContentLoad
+        ? [
+            {
+              label: 'Review',
+              variant: 'primary' as const,
+              onClick: () => {
+                const chat = activeChatsStore.getChatForExecutionSession(
+                  event.threadId,
+                );
+                navigationStore.navigate('/', {
+                  chat: chat?.conversationId ?? event.threadId,
+                  dock: 'open',
+                });
+              },
+            },
+          ]
+        : []),
+      ...(needsContentLoad
+        ? approvalDecisionBody(undefined).options.filter(
+            (option) => option.effect === 'deny',
+          )
+        : approvalDecisionBody(view.grantLabel, view.serverGrantLabel).options
+      ).map((option) => ({
+        label: option.label,
+        variant:
+          option.effect === 'deny'
+            ? ('danger' as const)
+            : option.scope === 'session'
+              ? ('secondary' as const)
+              : ('primary' as const),
+        onClick: () =>
+          answer(decisionOptionResponse(option), option.sessionGrantScope),
+      })),
+    ],
   });
 
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   const approvalToasts = new Map(chat?.approvalToasts || []);
   approvalToasts.set(event.requestId, toastId);
   activeChatsStore.updateChat(event.threadId, { approvalToasts });
+}
+
+/**
+ * Whether allowing this request needs its content loaded first: the request
+ * itself was spilled, the server refused an allow of it for content this
+ * surface had not loaded (a 409 marks it), or a tool call it gates (by call
+ * id or Codex item id) shows spilled arguments in this chat.
+ */
+export function requestNeedsContentLoad(
+  event: Extract<OrchestrationEvent, { method: 'request.opened' }>,
+): boolean {
+  if (event.spilledContent) return true;
+  if (event.eventId && contentRefreshVersion(event.threadId, event.eventId) > 0)
+    return true;
+  const callIds = requestBoundCallIds(event);
+  if (callIds.length === 0) return false;
+  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  const parts = [
+    ...(chat?.messages ?? []).flatMap((message) => message.contentParts ?? []),
+    ...(chat?.streamingMessage?.contentParts ?? []),
+  ];
+  return parts.some(
+    (part) =>
+      typeof part.toolCallId === 'string' &&
+      callIds.includes(part.toolCallId) &&
+      Boolean(part.contentThreadId),
+  );
 }
 
 /** Marks or unmarks a request as answered here; see `answeredApprovals`. */
