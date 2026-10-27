@@ -858,10 +858,7 @@ describe('ProjectTaskRoomRevisionEvidenceBridge production composition', () => {
   ] as const)(
     'a refused freeze with an %s bridge leaves later saves committing',
     async (_label, bridge) => {
-      const home = mkdtempSync(
-        join(tmpdir(), 'station-room-revision-nobridge-'),
-      );
-      homes.push(home);
+      const home = makeTempDir('station-room-revision-refused-');
       const absent = await composition(home, { bridge });
       const first = await commitText(absent.runtime, 'plan before comment');
       expect(first.settled).toMatchObject({ kind: 'committed' });
