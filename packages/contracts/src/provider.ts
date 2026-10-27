@@ -796,6 +796,15 @@ export const ENGINE_SESSION_BINDING_DEAD_CODE = 'engine-session-binding-dead';
 export const ENGINE_MEMORY_EXHAUSTED_CODE = 'engine-memory-exhausted';
 
 /**
+ * `runtime.warning` code: the kernel OOM killer killed a process inside an
+ * engine's workload scope (normally a command the engine started) while the
+ * engine kept running. `details` carries `newKills`, `oomKills` and
+ * `memoryMaxBytes`. Which command it was is not known to Station; the engine
+ * reports that command's own failure.
+ */
+export const WORKLOAD_COMMAND_OOM_KILLED_CODE = 'workload-command-oom-killed';
+
+/**
  * A provider reported a failed query/turn without disproving its native binding.
  * This is not a completed turn, a retry instruction, or a resumability claim.
  */

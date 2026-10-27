@@ -581,7 +581,7 @@ export async function initializeRuntime(
     eventBus,
     eventStore: orchestrationEventStore,
     // The budget an engine is told about is the one its scope enforces.
-    workloadEngineLimits: enforcedWorkloadLimits,
+    workloadEngineLimits: (sessionId) => enforcedWorkloadLimits(sessionId),
     pricingSnapshotCapture: {
       capture: async (input) => usagePricingSnapshotCapture?.capture(input),
     },

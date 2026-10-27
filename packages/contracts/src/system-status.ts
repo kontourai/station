@@ -356,4 +356,17 @@ export interface WorkloadBudgetStatus {
   settingsWritable: boolean;
   applies: 'new-scopes' | 'restart';
   activeScopes: number;
+  /**
+   * Running scopes, each with the per-engine limit it was launched with
+   * (a saved change reaches only scopes launched after it) and the OOM kills
+   * Station has observed inside it. Absent from older hosts.
+   */
+  scopes?: Array<{
+    unit: string;
+    sessionId?: string;
+    memoryMaxBytes?: number;
+    oomKills: number;
+    /** When Station first saw the latest kill (to its 1 s poll interval). */
+    lastOomKillAt?: string;
+  }>;
 }

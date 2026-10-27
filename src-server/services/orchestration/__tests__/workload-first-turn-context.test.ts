@@ -147,7 +147,7 @@ describe('Station first-turn workload context', () => {
 
   function start(
     adapter: FakeAdapter,
-    limits: (() => typeof LIMITS | undefined) | undefined,
+    limits: ((sessionId: string) => typeof LIMITS | undefined) | undefined,
   ) {
     service = new OrchestrationService({
       adapterRegistry: registry(adapter),
@@ -194,13 +194,16 @@ describe('Station first-turn workload context', () => {
 
   test('an engine in an enforced scope is told its budget on its first turn only', async () => {
     const adapter = new FakeAdapter(true);
-    const orchestration = start(adapter, () => LIMITS);
+    const limits = vi.fn((_sessionId: string) => LIMITS);
+    const orchestration = start(adapter, limits);
     await startSession(orchestration, 'thread-budget');
     const first = await send(orchestration, adapter, 'thread-budget', 'Hello');
     expect(first?.input).toContain('## Station workload budget');
     expect(first?.input).toContain('4915 MiB plus 256 MiB of swap');
     expect(first?.input.endsWith('\nHello')).toBe(true);
     expect(first?.displayInput).toBe('Hello');
+    // Asked for this Session's own scope, whose limit may predate a change.
+    expect(limits).toHaveBeenCalledWith('thread-budget');
     const second = await send(orchestration, adapter, 'thread-budget', 'Again');
     expect(second?.input).toBe('Again');
   });

@@ -953,7 +953,9 @@ interface OrchestrationServiceOptions {
    * no workload scope is enforced (`enforcedWorkloadLimits`). Read at each
    * first turn so a settings change or unavailable enforcement is current.
    */
-  workloadEngineLimits?: () =>
+  workloadEngineLimits?: (
+    sessionId: string,
+  ) =>
     | { memoryMaxBytes: number; swapMaxBytes: number; tasksMax: number }
     | undefined;
   /**
@@ -8042,7 +8044,7 @@ export class OrchestrationService {
           const workloadLimits =
             genuineFirstTurn &&
             adapter.metadata.workloadScope === 'engine-process'
-              ? this.options.workloadEngineLimits?.()
+              ? this.options.workloadEngineLimits?.(submittedInput.threadId)
               : undefined;
           const recoveryNote = genuineFirstTurn
             ? this.predecessorMemoryExhaustionNote(submittedInput.threadId)

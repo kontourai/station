@@ -8,12 +8,15 @@ import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
 import {
+  type ChildWorkloadOomKill,
+  childWorkloadMemoryExhausted,
   childWorkloadOutcome,
   closeChildWorkload,
   execFileChildWorkload,
   ownWorkloadTransport,
   prepareChildWorkload,
   spawnChildWorkload,
+  watchChildWorkloadOomKills,
 } from '@kontourai/station-shared/child-workload';
 import { createMCPTransport } from '@kontourai/station-shared/mcp';
 import { Client } from '@modelcontextprotocol/client';
@@ -98,6 +101,39 @@ const server = createServer(async (request, response) => {
         JSON.stringify({
           events: await terminal,
           workloads: await inspectWorkloadResources(),
+        }),
+      );
+      return;
+    }
+    if (url.pathname === '/command-oom') {
+      // An engine-shaped leader that starts a memory-hungry command in its own
+      // scope and keeps running: OOMPolicy=continue kills only the command.
+      const { proc } = spawnOwnedChild(process.execPath, [
+        '-e',
+        'const {spawn}=require("node:child_process");console.log("ready");process.stdin.once("data",()=>{const c=spawn(process.execPath,["-e","Buffer.alloc(128*1048576,7);setInterval(()=>{},1000)"],{stdio:"ignore"});c.on("exit",(code,signal)=>console.log(JSON.stringify({code,signal})))});setInterval(()=>{},1000)',
+      ]);
+      if (!hasPipedStdio(proc)) throw new Error('Leader requires piped stdio');
+      const kills: ChildWorkloadOomKill[] = [];
+      const stop = watchChildWorkloadOomKills(proc, (kill) => kills.push(kill));
+      await once(proc.stdout, 'data');
+      const commandExit = once(proc.stdout, 'data');
+      proc.stdin.write('go');
+      const [line] = await commandExit;
+      const deadline = Date.now() + 10_000;
+      while (kills.length === 0 && Date.now() < deadline)
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      const leaderAlive = proc.exitCode === null && proc.signalCode === null;
+      const workloads = await inspectWorkloadResources();
+      stop?.();
+      proc.kill('SIGKILL');
+      await closeChildWorkload(proc.pid);
+      response.end(
+        JSON.stringify({
+          watched: stop !== undefined,
+          command: JSON.parse(String(line)),
+          kills,
+          leaderAlive,
+          workloads,
         }),
       );
       return;
@@ -437,12 +473,14 @@ const server = createServer(async (request, response) => {
       child.stdin!.write('go');
       const [code, signal] = await exit;
       await closeChildWorkload(child.pid);
+      const outcome = await childWorkloadOutcome(child);
       response.end(
         JSON.stringify({
           first,
           code,
           signal,
-          outcome: await childWorkloadOutcome(child),
+          outcome,
+          memoryExhausted: childWorkloadMemoryExhausted(outcome, signal),
           workloads: await inspectWorkloadResources(),
         }),
       );

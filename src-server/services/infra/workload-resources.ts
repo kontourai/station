@@ -5,6 +5,7 @@ import { availableParallelism, totalmem } from 'node:os';
 import type { WorkloadBudgetStatus } from '@kontourai/station-contracts/system-status';
 import {
   type ChildWorkloadLaunch,
+  type ChildWorkloadOomKill,
   type ChildWorkloadOutcome,
   closeChildWorkload,
   installChildWorkloadLauncher,
@@ -54,6 +55,15 @@ interface ActiveWorkload {
   birth?: string | null;
   closing?: Promise<void>;
   observed?: (outcome: ChildWorkloadOutcome | undefined) => void;
+  /** The scope's cgroup path, resolved once the scope exists. */
+  controlGroup?: string;
+  /** `oom_kill` count already announced to {@link oomListeners}. */
+  oomKillsReported: number;
+  /** `oom_kill` count at the last poll; undefined before the first. */
+  oomKillsPolled?: number;
+  /** When a poll first saw the count rise (within the 1 s poll interval). */
+  lastOomKillAt?: string;
+  oomListeners: Set<(kill: ChildWorkloadOomKill) => void>;
 }
 
 let state: 'unmanaged' | 'ready' | 'unavailable' | 'stopping' = 'unmanaged';
@@ -67,6 +77,9 @@ let settingsHome: string | undefined;
 let settingsError: string | undefined;
 let savedSettings: WorkloadMemorySettings = {};
 let cgroupRoot = '/sys/fs/cgroup';
+let sliceControlGroup: string | undefined;
+/** The slice's hierarchical `oom_kill` count at the last poll. */
+let sliceOomKillsPolled: number | undefined;
 const active = new Map<string, ActiveWorkload>();
 let monitor: ReturnType<typeof setTimeout> | undefined;
 const recent: Array<{
@@ -201,9 +214,100 @@ function systemctl(args: string[]): Promise<string> {
   });
 }
 
+/** `oom_kill` from a cgroup's `memory.events`, or undefined when unreadable. */
+async function readOomKills(controlGroup: string): Promise<number | undefined> {
+  try {
+    return (await readScopeMemory(`${cgroupRoot}${controlGroup}`)).oomKills;
+  } catch {
+    return undefined;
+  }
+}
+
+async function resolveControlGroup(
+  entry: ActiveWorkload,
+): Promise<string | undefined> {
+  if (entry.controlGroup) return entry.controlGroup;
+  try {
+    const cgroup = (
+      await runManager([
+        'show',
+        entry.unit,
+        '--property=ControlGroup',
+        '--value',
+      ])
+    ).trim();
+    if (cgroup.startsWith('/') && !cgroup.split('/').includes('..'))
+      entry.controlGroup = cgroup;
+  } catch {
+    /* the next poll tries again */
+  }
+  return entry.controlGroup;
+}
+
+/**
+ * One pass over watched scopes: announce kernel OOM kills inside a running
+ * scope. Under `OOMPolicy=continue` the kernel kills one process (normally
+ * the largest command) and the engine keeps running, so this is the only
+ * report of it besides the command's own failure.
+ */
+async function sliceOomKills(): Promise<number | undefined> {
+  if (!slice) return undefined;
+  if (!sliceControlGroup) {
+    try {
+      const cgroup = (
+        await runManager(['show', slice, '--property=ControlGroup', '--value'])
+      ).trim();
+      if (cgroup.startsWith('/') && !cgroup.split('/').includes('..'))
+        sliceControlGroup = cgroup;
+    } catch {
+      return undefined;
+    }
+  }
+  return sliceControlGroup ? readOomKills(sliceControlGroup) : undefined;
+}
+
+async function pollOomKills(): Promise<void> {
+  // The slice first: a kill landing between the two reads then shows up as a
+  // scope increase, never as an unexplained slice increase.
+  sliceOomKillsPolled = await sliceOomKills();
+  await Promise.allSettled(
+    [...active.values()].map(async (entry) => {
+      if (entry.closing || entry.pid === undefined) return;
+      const controlGroup = await resolveControlGroup(entry);
+      if (!controlGroup) return;
+      const oomKills = await readOomKills(controlGroup);
+      if (oomKills !== undefined && oomKills > (entry.oomKillsPolled ?? 0))
+        entry.lastOomKillAt = new Date().toISOString();
+      if (oomKills !== undefined) entry.oomKillsPolled = oomKills;
+      if (entry.oomListeners.size === 0) return;
+      if (oomKills === undefined || oomKills <= entry.oomKillsReported) return;
+      const kill: ChildWorkloadOomKill = Object.freeze({
+        oomKills,
+        newKills: oomKills - entry.oomKillsReported,
+        ...(entry.memoryMaxBytes === undefined
+          ? {}
+          : { memoryMaxBytes: entry.memoryMaxBytes }),
+      });
+      entry.oomKillsReported = oomKills;
+      logger.warn('A process in a workload scope was killed for memory', {
+        unit: entry.unit,
+        ...kill,
+      });
+      for (const listener of entry.oomListeners) {
+        try {
+          listener(kill);
+        } catch (error) {
+          logger.warn('Workload OOM listener failed', { error });
+        }
+      }
+    }),
+  );
+}
+
 function monitorLeaders(): void {
   if (monitor || state !== 'ready' || active.size === 0) return;
   monitor = setTimeout(async () => {
+    await pollOomKills();
     // MCP transports report close only after inherited stdio pipes close.
     // Observe leader identity independently so retained pipes cannot hide exit.
     await Promise.allSettled(
@@ -372,6 +476,8 @@ function installScopeLauncher(
       ...(sessionId ? { sessionId } : {}),
       observed,
       memoryMaxBytes: limits.memoryMaxBytes,
+      oomKillsReported: 0,
+      oomListeners: new Set(),
     };
     active.set(unit, entry);
     // Only the two user-bus coordinates are borrowed. Restore the target's
@@ -403,7 +509,10 @@ function installScopeLauncher(
         `--property=After=${serviceUnit}`,
         `--property=MemoryMax=${limits.memoryMaxBytes}`,
         `--property=MemorySwapMax=${limits.swapMaxBytes}`,
-        '--property=OOMPolicy=kill',
+        // The kernel OOM killer picks one process in the scope (normally the
+        // largest command) and the engine survives to see that command fail.
+        // `kill` would set memory.oom.group and end the engine with it.
+        '--property=OOMPolicy=continue',
         `--property=TasksMax=${limits.tasksMax}`,
         '--',
         '/usr/bin/env',
@@ -422,10 +531,45 @@ function installScopeLauncher(
         entry.pid = pid;
         entry.birth = lookupProcessBirthFingerprint(pid);
         monitorLeaders();
+        // Take the OOM baselines now, not at the next tick: an engine killed
+        // within its first second is otherwise unattributable.
+        void pollOomKills().catch(() => {});
       },
       close: () => closeScope(entry),
+      watchOomKills(listener) {
+        entry.oomListeners.add(listener);
+        monitorLeaders();
+        return () => entry.oomListeners.delete(listener);
+      },
     } satisfies ChildWorkloadLaunch;
   });
+}
+
+/**
+ * systemd collects a scope as soon as its last process exits, cgroup and
+ * `memory.events` with it: an engine the OOM killer took while it ran alone
+ * leaves nothing to read. The slice's `oom_kill` is hierarchical and
+ * survives, so this scope's kills since the last poll are the slice's
+ * increase less the increases still visible in the other scopes. Undefined
+ * when there is no poll to compare with.
+ */
+async function oomKillsOfVanishedScope(
+  entry: ActiveWorkload,
+): Promise<number | undefined> {
+  const baseline = sliceOomKillsPolled;
+  if (baseline === undefined) return undefined;
+  const now = await sliceOomKills();
+  if (now === undefined) return undefined;
+  let others = 0;
+  for (const other of active.values()) {
+    if (other === entry || other.oomKillsPolled === undefined) continue;
+    const current = other.controlGroup
+      ? await readOomKills(other.controlGroup)
+      : undefined;
+    if (current !== undefined) others += current - other.oomKillsPolled;
+  }
+  const own = Math.max(0, now - baseline - others);
+  return (entry.oomKillsPolled ?? 0) + own;
 }
 
 async function closeScope(entry: ActiveWorkload): Promise<void> {
@@ -443,23 +587,54 @@ async function closeScope(entry: ActiveWorkload): Promise<void> {
         await runManager([
           'show',
           entry.unit,
-          '--property=LoadState,ActiveState,Result,MemoryPeak,CPUUsageNSec',
+          '--property=LoadState,ActiveState,Result,MemoryPeak,CPUUsageNSec,ControlGroup',
         ])
       )
         .trim()
         .split('\n')
-        .map((line) => line.split('=')),
+        .map((line) => {
+          const at = line.indexOf('=');
+          return at < 0 ? [line, ''] : [line.slice(0, at), line.slice(at + 1)];
+        }),
     );
     const memoryPeakBytes = Number(properties.MemoryPeak);
+    // Read the kernel's kill count before the scope is stopped and its
+    // cgroup removed. A scope whose last process already exited may have no
+    // cgroup left; the count is then unknown, never zero.
+    const controlGroup =
+      typeof properties.ControlGroup === 'string' &&
+      properties.ControlGroup.startsWith('/') &&
+      !properties.ControlGroup.split('/').includes('..')
+        ? properties.ControlGroup
+        : entry.controlGroup;
+    const oomKills =
+      (controlGroup ? await readOomKills(controlGroup) : undefined) ??
+      (await oomKillsOfVanishedScope(entry));
+    const oomCounts =
+      oomKills === undefined
+        ? {}
+        : {
+            oomKills,
+            unreportedOomKills: Math.max(0, oomKills - entry.oomKillsReported),
+          };
     entry.observed?.(
       properties.LoadState === 'not-found'
-        ? undefined
+        ? // systemd already collected the scope. Its kill counts, when the
+          // slice still accounts for them, are the only evidence left.
+          oomKills === undefined
+          ? undefined
+          : Object.freeze({
+              result: 'collected',
+              memoryMaxBytes: entry.memoryMaxBytes,
+              ...oomCounts,
+            })
         : Object.freeze({
             result: properties.Result ?? 'unavailable',
             ...(Number.isSafeInteger(memoryPeakBytes) && memoryPeakBytes >= 0
               ? { memoryPeakBytes }
               : {}),
             memoryMaxBytes: entry.memoryMaxBytes,
+            ...oomCounts,
           }),
     );
     if (properties.LoadState !== 'not-found') {
@@ -580,14 +755,34 @@ export type WorkloadEnforcementState = typeof state;
  * The limits an engine launched now would receive, only while enforcement
  * is actually configured. Absent everywhere a scope would not be created.
  */
-export function enforcedWorkloadLimits():
+export function enforcedWorkloadLimits(
+  sessionId?: string,
+):
   | Readonly<
       Pick<WorkloadLimits, 'memoryMaxBytes' | 'swapMaxBytes' | 'tasksMax'>
     >
   | undefined {
   if (state !== 'ready' || !limits) return undefined;
   const { memoryMaxBytes, swapMaxBytes, tasksMax } = limits;
-  return { memoryMaxBytes, swapMaxBytes, tasksMax };
+  // A Session whose engine scope already exists runs under the limit that
+  // scope was launched with, even if the setting changed since.
+  const launched = sessionId
+    ? sessionScope(sessionId)?.memoryMaxBytes
+    : undefined;
+  return {
+    memoryMaxBytes: launched ?? memoryMaxBytes,
+    swapMaxBytes,
+    tasksMax,
+  };
+}
+
+function sessionScope(sessionId: string): ActiveWorkload | undefined {
+  return [...active.values()]
+    .reverse()
+    .find(
+      (candidate) =>
+        candidate.sessionId === sessionId && candidate.pid !== undefined,
+    );
 }
 
 function enforcementSummary() {
@@ -630,6 +825,18 @@ export function workloadBudgetStatus(): WorkloadBudgetStatus {
     // anything else reads the settings only when enforcement starts.
     applies: state === 'ready' ? ('new-scopes' as const) : ('restart' as const),
     activeScopes: active.size,
+    // Each running scope keeps the per-engine limit it was launched with.
+    scopes: [...active.values()]
+      .filter((entry) => entry.pid !== undefined)
+      .map((entry) => ({
+        unit: entry.unit,
+        ...(entry.sessionId ? { sessionId: entry.sessionId } : {}),
+        ...(entry.memoryMaxBytes === undefined
+          ? {}
+          : { memoryMaxBytes: entry.memoryMaxBytes }),
+        oomKills: entry.oomKillsPolled ?? entry.oomKillsReported,
+        ...(entry.lastOomKillAt ? { lastOomKillAt: entry.lastOomKillAt } : {}),
+      })),
   };
 }
 
@@ -746,12 +953,7 @@ export async function inspectSessionWorkload(sessionId: string) {
       : {}),
   };
   if (state !== 'ready') return { ...base, scope: { state: 'none' as const } };
-  const entry = [...active.values()]
-    .reverse()
-    .find(
-      (candidate) =>
-        candidate.sessionId === sessionId && candidate.pid !== undefined,
-    );
+  const entry = sessionScope(sessionId);
   if (!entry) return { ...base, scope: { state: 'unattributed' as const } };
   try {
     const cgroup = (
@@ -774,6 +976,7 @@ export async function inspectSessionWorkload(sessionId: string) {
         unit: entry.unit,
         launchedMemoryMaxBytes: entry.memoryMaxBytes,
         memory,
+        ...(entry.lastOomKillAt ? { lastOomKillAt: entry.lastOomKillAt } : {}),
       },
     };
   } catch (error) {
@@ -823,9 +1026,12 @@ export const __workloadTestHooks = {
       options.version ?? 255,
     );
   },
+  pollOomKills,
   reset(): void {
     manager.run = systemctl;
     cgroupRoot = '/sys/fs/cgroup';
+    sliceControlGroup = undefined;
+    sliceOomKillsPolled = undefined;
     state = 'unmanaged';
     reason = undefined;
     limits = undefined;

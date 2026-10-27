@@ -18,12 +18,18 @@
 
 export type ExtensionTranscriptMarkerKind =
   | 'context-compacted'
-  | 'conversation-rewound';
+  | 'conversation-rewound'
+  | 'workload-command-oom-killed';
 
 /** The Station session source that mints the tuple. */
 export type ExtensionTranscriptMarkerEmitter =
   | 'codex-rollout-session-source'
-  | 'grok-session-source';
+  | 'grok-session-source'
+  | 'codex-adapter-transport';
+
+/** Station's own workload notices (`codex-adapter-transport.ts`). */
+export const WORKLOAD_TRANSCRIPT_NAMESPACE = 'station-workload';
+export const WORKLOAD_COMMAND_OOM_KILLED_TYPE = 'command-oom-killed';
 
 export interface ExtensionTranscriptMarkerSource {
   readonly namespace: string;
@@ -50,6 +56,12 @@ export const EXTENSION_TRANSCRIPT_MARKER_TEXT: Readonly<
   'conversation-rewound': Object.freeze({
     betweenTurns: 'Rewound to an earlier prompt',
     duringTurn: 'Rewound to an earlier prompt during this turn',
+  }),
+  'workload-command-oom-killed': Object.freeze({
+    betweenTurns:
+      "A command was killed for exceeding the engine's workload memory budget",
+    duringTurn:
+      "A command was killed during this turn for exceeding the engine's workload memory budget",
   }),
 });
 
@@ -80,6 +92,15 @@ const DECLARED_EXTENSION_TRANSCRIPT_MARKERS = [
     type: 'conversation-rewound',
     marker: 'conversation-rewound',
     emitter: 'grok-session-source',
+  },
+  {
+    // A kernel OOM kill inside a running engine's workload scope, under
+    // OOMPolicy=continue: the engine survived, a process (normally a command)
+    // did not.
+    namespace: 'station-workload',
+    type: 'command-oom-killed',
+    marker: 'workload-command-oom-killed',
+    emitter: 'codex-adapter-transport',
   },
 ] as const satisfies readonly ExtensionTranscriptMarkerSource[];
 

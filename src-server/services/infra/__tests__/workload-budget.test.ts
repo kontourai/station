@@ -1,6 +1,8 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
+  type ChildWorkloadOomKill,
+  childWorkloadMemoryExhausted,
   closeChildWorkload,
   prepareChildWorkload,
   trackChildWorkload,
@@ -178,6 +180,38 @@ describe('workload guidance text', () => {
   });
 });
 
+describe('engine memory-exhaustion verdict', () => {
+  test('needs a SIGKILL and an OOM kill nobody was told about, or systemd oom-kill', () => {
+    expect(
+      childWorkloadMemoryExhausted(
+        { result: 'success', oomKills: 1, unreportedOomKills: 1 },
+        'SIGKILL',
+      ),
+    ).toBe(true);
+    // Every kill was a command already reported while the engine ran.
+    expect(
+      childWorkloadMemoryExhausted(
+        { result: 'success', oomKills: 2, unreportedOomKills: 0 },
+        'SIGKILL',
+      ),
+    ).toBe(false);
+    expect(
+      childWorkloadMemoryExhausted(
+        { result: 'success', oomKills: 1, unreportedOomKills: 1 },
+        'SIGTERM',
+      ),
+    ).toBe(false);
+    // Count unknown (cgroup already gone): not claimed.
+    expect(childWorkloadMemoryExhausted({ result: 'success' }, 'SIGKILL')).toBe(
+      false,
+    );
+    expect(childWorkloadMemoryExhausted({ result: 'oom-kill' }, null)).toBe(
+      true,
+    );
+    expect(childWorkloadMemoryExhausted(undefined, 'SIGKILL')).toBe(false);
+  });
+});
+
 describe('cgroup v2 scope reading', () => {
   test('parses the kernel files of one scope', async () => {
     const directory = join(tempDir(), 'scope');
@@ -239,6 +273,10 @@ describe('workload manager budgets (fake systemd manager)', () => {
           throw new Error('Failed to set unit properties');
         if (args[0] === 'show' && args.includes('--property=ControlGroup'))
           return `${controlGroups.get(args[1]) ?? ''}\n`;
+        if (args[0] === 'show' && args[2]?.startsWith('--property=LoadState'))
+          return controlGroups.has(args[1])
+            ? `LoadState=loaded\nActiveState=active\nResult=success\nMemoryPeak=3221225472\nCPUUsageNSec=1\nControlGroup=${controlGroups.get(args[1])}\n`
+            : 'LoadState=not-found\nActiveState=inactive\n';
         if (args[0] === 'show')
           return 'LoadState=not-found\nActiveState=inactive\n';
         return '';
@@ -445,6 +483,93 @@ describe('workload manager budgets (fake systemd manager)', () => {
       ),
     ).toEqual({ memoryMiB: 700, totalMemoryMiB: 1000 });
     expect(enforcedWorkloadLimits()?.memoryMaxBytes).toBe(700 * MIB);
+  });
+
+  test('engine scopes keep the engine alive on OOM: OOMPolicy=continue', async () => {
+    await start();
+    const args = launch('thread-1').args;
+    expect(args).toContain('--property=OOMPolicy=continue');
+    expect(args).not.toContain('--property=OOMPolicy=kill');
+  });
+
+  test('command OOM kills are read from memory.events and reported once', async () => {
+    const { cgroupRoot, controlGroups } = await start();
+    const engine = launch('thread-oom');
+    const unit = engine.args
+      .find((arg) => arg.startsWith('--unit='))
+      ?.slice('--unit='.length) as string;
+    const group = `/user.slice/user-1000.slice/user@1000.service/app.slice/${unit}`;
+    controlGroups.set(unit, group);
+    const scope = `${cgroupRoot}${group}`;
+    await writeScopeFixture(scope, 0);
+    trackChildWorkload(engine, process.pid);
+    const kills: ChildWorkloadOomKill[] = [];
+    const stop = engine.watchOomKills?.((kill) => kills.push(kill));
+    try {
+      await __workloadTestHooks.pollOomKills();
+      expect(kills).toEqual([]);
+      // Exactly the kernel's format: one "key value" pair per line.
+      await writeFile(
+        join(scope, 'memory.events'),
+        'low 0\nhigh 0\nmax 4182\noom 2\noom_kill 2\noom_group_kill 0\n',
+      );
+      await __workloadTestHooks.pollOomKills();
+      await __workloadTestHooks.pollOomKills();
+      expect(kills).toEqual([
+        { oomKills: 2, newKills: 2, memoryMaxBytes: expect.any(Number) },
+      ]);
+      expect(workloadBudgetStatus().scopes).toEqual([
+        expect.objectContaining({
+          unit,
+          sessionId: 'thread-oom',
+          oomKills: 2,
+          lastOomKillAt: expect.any(String),
+        }),
+      ]);
+      expect((await inspectSessionWorkload('thread-oom')).scope).toMatchObject({
+        state: 'measured',
+        memory: { oomKills: 2 },
+        lastOomKillAt: expect.any(String),
+      });
+      // A third kill right before the scope closes was never announced: the
+      // outcome says so, which is what makes it the engine's own death.
+      await writeFile(
+        join(scope, 'memory.events'),
+        'low 0\nhigh 0\nmax 4190\noom 3\noom_kill 3\noom_group_kill 0\n',
+      );
+      const outcome = engine.outcome;
+      await closeChildWorkload(process.pid);
+      expect(await outcome).toMatchObject({
+        result: 'success',
+        oomKills: 3,
+        unreportedOomKills: 1,
+      });
+    } finally {
+      stop?.();
+    }
+  });
+
+  test('an engine whose scope exists is told the limit it was launched with', async () => {
+    process.env = { ...env };
+    delete process.env.STATION_WORKLOAD_MEMORY_MIB;
+    delete process.env.STATION_WORKLOAD_TOTAL_MEMORY_MIB;
+    await start({ settings: { memoryMiB: 600, totalMemoryMiB: 1000 } });
+    const engine = launch('thread-launched');
+    trackChildWorkload(engine, process.pid);
+    try {
+      await applyWorkloadBudgetSettings({
+        memoryMiB: 800,
+        totalMemoryMiB: 1000,
+      });
+      expect(enforcedWorkloadLimits('thread-launched')?.memoryMaxBytes).toBe(
+        600 * MIB,
+      );
+      expect(enforcedWorkloadLimits('thread-new')?.memoryMaxBytes).toBe(
+        800 * MIB,
+      );
+    } finally {
+      await closeChildWorkload(process.pid);
+    }
   });
 
   test('without enforcement no limit is claimed', async () => {

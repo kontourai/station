@@ -206,21 +206,50 @@ describe.skipIf(!manager)('running server workload containment', () => {
     const result = await request<{
       code: number | null;
       signal: string;
-      outcome: { result: string; memoryMaxBytes?: number };
+      outcome: {
+        result: string;
+        memoryMaxBytes?: number;
+        oomKills?: number;
+        unreportedOomKills?: number;
+      };
+      memoryExhausted: boolean;
       workloads: Snapshot;
     }>('/launch?mode=oom');
     expect(result.signal).toBe('SIGKILL');
+    // OOMPolicy=continue: systemd records no oom-kill result. The kernel's
+    // oom_kill count (the scope's, or the slice's once systemd collected the
+    // emptied scope) is the evidence the process died for memory.
     expect(result.outcome).toMatchObject({
-      result: 'oom-kill',
       memoryMaxBytes: 64 * 1024 * 1024,
+      unreportedOomKills: expect.any(Number),
     });
-    expect(
-      result.workloads.recent.some((entry) => entry.result === 'oom-kill'),
-    ).toBe(true);
+    expect(result.outcome.unreportedOomKills).toBeGreaterThanOrEqual(1);
+    expect(result.memoryExhausted).toBe(true);
     expect(await gone(sibling.pid)).toBe(false);
     expect(
       (await request<{ workloads: Snapshot }>('/status')).workloads.state,
     ).toBe('ready');
+  });
+
+  test('a command OOM kills only the command: the engine keeps running and Station observes the kill', async () => {
+    const result = await request<{
+      watched: boolean;
+      command: { code: number | null; signal: string | null };
+      kills: Array<{
+        oomKills: number;
+        newKills: number;
+        memoryMaxBytes?: number;
+      }>;
+      leaderAlive: boolean;
+    }>('/command-oom');
+    expect(result.watched).toBe(true);
+    expect(result.command.signal).toBe('SIGKILL');
+    expect(result.leaderAlive).toBe(true);
+    expect(result.kills[0]).toMatchObject({
+      newKills: 1,
+      memoryMaxBytes: 64 * 1024 * 1024,
+    });
+    expect(await gone(sibling.pid)).toBe(false);
   });
 
   test.each(['oom', 'signal'])(
@@ -229,20 +258,32 @@ describe.skipIf(!manager)('running server workload containment', () => {
       const result = await request<{
         events: Array<{
           method: string;
+          code?: string;
           message?: string;
-          details?: { workload?: { result: string } };
+          reason?: string;
+          details?: { workload?: { unreportedOomKills?: number } };
         }>;
         workloads: Snapshot;
       }>(`/codex-exit?cause=${cause}`);
       const error = result.events.find(
         (event) => event.method === 'runtime.error',
       );
-      expect(error?.message).toContain(
-        cause === 'oom' ? 'memory was exhausted' : 'signal: SIGKILL',
+      const exited = result.events.find(
+        (event) => event.method === 'session.exited',
       );
-      if (cause === 'oom')
-        expect(error?.details?.workload?.result).toBe('oom-kill');
-      else expect(error?.message).not.toContain('memory was exhausted');
+      if (cause === 'oom') {
+        // The engine itself was the process the kernel killed.
+        expect(error?.code).toBe('engine-memory-exhausted');
+        expect(error?.message).toContain('Codex ran out of memory');
+        expect(
+          error?.details?.workload?.unreportedOomKills,
+        ).toBeGreaterThanOrEqual(1);
+        expect(exited?.reason).toBe('memory-exhausted');
+      } else {
+        expect(error?.code).toBe('codex-turn-orphaned');
+        expect(error?.message).toContain('signal: SIGKILL');
+        expect(exited?.reason).not.toBe('memory-exhausted');
+      }
       expect(await gone(sibling.pid)).toBe(false);
       expect(
         (await request<{ workloads: Snapshot }>('/status')).workloads.state,
