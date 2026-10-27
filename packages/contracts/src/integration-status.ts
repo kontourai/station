@@ -1,8 +1,8 @@
 import {
-  boundedText,
+  boundaryText,
   closedRecord,
   enumValue,
-} from './integration-validation.js';
+} from './contract-validation.js';
 
 export const INTEGRATION_ACTION_STATES = [
   'works',
@@ -22,18 +22,32 @@ export const INTEGRATION_PROVIDERS = [
 ] as const;
 export type IntegrationProvider = (typeof INTEGRATION_PROVIDERS)[number];
 
+export const INTEGRATION_ACTIONS = [
+  'notify',
+  'start',
+  'continue',
+  'approve',
+  'read',
+  'write',
+  'link-pr',
+  'update-status',
+  'close-issue',
+] as const;
+export type IntegrationAction = (typeof INTEGRATION_ACTIONS)[number];
+
 /** Bounds use UTF-16 code units and refuse rather than truncate. */
 export const INTEGRATION_STATUS_LIMITS = Object.freeze({
   idChars: 256,
-  actionChars: 64,
   probeIdChars: 256,
   reasonChars: 1000,
-  actionsPerConnection: 32,
+  actionsPerConnection: INTEGRATION_ACTIONS.length,
   connections: 100,
 });
 
-export interface IntegrationActionStatus {
-  readonly action: string;
+export interface IntegrationActionStatus<
+  Action extends IntegrationAction = IntegrationAction,
+> {
+  readonly action: Action;
   /** Probe identifier, including the owner of an upstream availability check. */
   readonly computedBy: string;
   readonly state: IntegrationActionState;
@@ -56,10 +70,10 @@ export function parseIntegrationActionStatus(
 ): IntegrationActionStatus | null {
   if (
     !closedRecord(value, ['action', 'computedBy', 'state', 'reason']) ||
-    !boundedText(value.action, INTEGRATION_STATUS_LIMITS.actionChars) ||
-    !boundedText(value.computedBy, INTEGRATION_STATUS_LIMITS.probeIdChars) ||
+    !enumValue(value.action, INTEGRATION_ACTIONS) ||
+    !boundaryText(value.computedBy, INTEGRATION_STATUS_LIMITS.probeIdChars) ||
     !enumValue(value.state, INTEGRATION_ACTION_STATES) ||
-    !boundedText(value.reason, INTEGRATION_STATUS_LIMITS.reasonChars)
+    !boundaryText(value.reason, INTEGRATION_STATUS_LIMITS.reasonChars)
   )
     return null;
   return {
@@ -75,7 +89,7 @@ export function parseIntegrationConnectionStatus(
 ): IntegrationConnectionStatus | null {
   if (
     !closedRecord(value, ['connectionId', 'provider', 'actions']) ||
-    !boundedText(value.connectionId, INTEGRATION_STATUS_LIMITS.idChars) ||
+    !boundaryText(value.connectionId, INTEGRATION_STATUS_LIMITS.idChars) ||
     !enumValue(value.provider, INTEGRATION_PROVIDERS) ||
     !Array.isArray(value.actions) ||
     value.actions.length > INTEGRATION_STATUS_LIMITS.actionsPerConnection

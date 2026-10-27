@@ -121,7 +121,7 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, explicit engine/model/options digest identity, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
 | `@kontourai/station-contracts/task-memory` | Task memory (#4003): the Task summary revision and keyed record shapes, limits, default importance, the stateless write check (`checkTaskRecordWrite`, `taskSummaryRefusal`), refusal wording, the person's views, `taskAwaitsAnswer` for the Tasks list's `openQuestionCount`, and the Learning shapes (`TaskLearningView`, candidates, promotion and dismissal input, limits) for a done Task's promotion candidates. Every bound is a refusal |
 | `@kontourai/station-contracts/task-review` | Task review thread, event, evidence and capture shapes; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Runtime integration and evidence belong to the Task review API and SDK references |
-| `@kontourai/station-contracts/chat-app` | Discord/Slack capability chips with required probe IDs, principal links and revocation, Project/conversation channel bindings, delivery attempts and refusal reasons, per-app kill switches, one-time link-code records and confirmation requests; [source](../../packages/contracts/src/chat-app.ts), [boundary tests](../../packages/contracts/src/__tests__/chat-app.test.ts) |
+| `@kontourai/station-contracts/chat-app` | Discord/Slack chips sharing status action shapes, principal links and explicit legacy import provenance, Project/conversation channel bindings, approval-correlated delivery attempts, per-app kill switches, hashed two-step link-code records and confirmation requests; [source](../../packages/contracts/src/chat-app.ts), [boundary tests](../../packages/contracts/src/__tests__/chat-app.test.ts) |
 | `@kontourai/station-contracts/integration-status` | Per-connection actions for GitHub, Discord, Slack, webhooks, Linear and Jira. Each action requires a `computedBy` probe ID, `works`, `waiting-on-provider`, `unsupported` or `failed` state, and a diagnostic/upstream reason; [source](../../packages/contracts/src/integration-status.ts), [boundary tests](../../packages/contracts/src/__tests__/integration-status.test.ts) |
 | `@kontourai/station-contracts/work-claims` | A Session's work claim as Station's routes answer it (#3413): information, not a lock. The view shape, its parser and the subject labels the Session-row chip uses |
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
@@ -135,27 +135,71 @@ The chat-app and integration-status subpaths publish contracts ahead of their
 runtime lanes (#4143–#4146). A parsed probe ID does not prove that a live probe
 ran or that its action is authorized. These contracts add no SDK query domain.
 Existing Discord v1 configuration remains unchanged, including optional grants
-and its permissive handling of extra keys; [compatibility coverage](../../packages/contracts/src/__tests__/discord-compatibility.test.ts)
-reads legacy JSON through the existing private configuration store.
+and its permissive handling of extra keys. The
+[compatibility tests](../../packages/contracts/src/__tests__/discord-compatibility.test.ts)
+use the real private store's writer and reader before calling the pure
+`importLegacyDiscordConfiguration` projection. This is contract preparation,
+not a completed runtime migration.
 
 All new `parseChat*` and `parseIntegration*` functions return `null` for invalid
 input and extra keys, including nested records. They refuse max+1 without
 truncating. Text uses well-formed Unicode and UTF-16 code units: IDs and probe
-IDs max 256, reasons max 1000, action names max 64. Status lists max 32 distinct
-actions per connection and 100 distinct connections. Timestamps use canonical
-UTC ISO strings with milliseconds; revocation cannot predate linking.
+IDs max 256 and reasons max 1000. Leading/trailing whitespace, DEL, C0/C1
+controls, bidi controls and zero-width format characters are refused. Discord
+external IDs are 17–20 ASCII digits. Slack users use U/W, teams T, and channels
+C/G/D followed by uppercase base-36 characters; thread and message timestamps
+use `digits.digits`. Timestamps use canonical UTC ISO strings with milliseconds.
 
-Link codes use 8–128 ASCII letters, digits, underscores or hyphens and live for
-at most ten minutes. The private `ChatLinkCode` binds app, external user and
-principal, plus issue/expiry times and optional consumption time. Parsing a
-consumed record is allowed for storage reads. The runtime must generate an
-unguessable code, compare the confirmation principal to both the code record
-and authenticated caller, check expiry, and consume it atomically once.
-Channel binding writes and kill switches require operator authorization in
-the runtime. A binding or identity link grants no Project membership. Slack
-tokens stay in secret bindings, outside these shapes; one Slack workspace per
-Station and the one-time import of legacy Discord identities belong to the
-runtime lanes.
+`ChatAppCapabilityChip` is an `IntegrationActionStatus` restricted to chat
+actions. Both use `{action, computedBy, state, reason}`. The closed integration
+action set is `notify`, `start`, `continue`, `approve`, `read`, `write`, `link-pr`,
+`update-status`, `close-issue`; each connection can report each action once,
+with at most 100 distinct connections. This vocabulary describes status, not
+an authorization grant. Delivery entries may retain an `approval` reference
+`{sessionId, requestId}`. An `unlinked-sender` refusal cannot name a principal.
+
+New identity links require a real `linkedAt`, and revocation cannot predate it.
+Imported Discord links instead carry `importedAt` and legacy provenance, so an
+earlier revocation remains representable. Presence of `revokedAt` revokes the
+link immediately, even when the timestamp is in the future, preserving v1
+semantics. The projection keeps `stationIdentity`
+in its legacy userId namespace and omits `principalId`; the runtime must resolve
+it against verified principals before access. It must retain first-match order
+for duplicate legacy identity mappings. Imported binding IDs are exactly
+`legacy-discord:<guildId>:<channelId>`, independent of the selected conversation.
+They carry `{source:'legacy-import'}` in place of invented operator/time metadata.
+
+The projection retains `enabled === true`; absent/false remains disabled.
+It retains all four per-person legacy grants (`turn:start`, `turn:stop`,
+`transcript:read`, `project-files:read`) and the `projectFileProjects` slug list,
+with absent lists becoming empty lists. The runtime must continue to check
+these exact grants as ceilings alongside current membership; none implies
+`approve`. File reads require both the grant and an explicitly listed project
+slug. Guild/channel allow-lists are retained separately from routing bindings:
+an explicitly listed channel in a matching guild is required, and absent or
+empty lists deny all. A binding must never bypass that check. Unrepresentable
+legacy records refuse the entire projection rather than silently skipping them.
+The runtime owns one-time persistence, revocation, and token transfer to secrets.
+
+Raw confirmation codes use 10–128 symbols from
+`23456789ABCDEFGHJKLMNPQRSTUVWXYZ` (32 unambiguous symbols). The runtime must use
+uniform cryptographic randomness with at least 50 bits of entropy; format
+validation alone cannot establish randomness. The private `ChatLinkCode` stores
+only a lowercase SHA-256 `codeHash`, app, external user, issue/expiry times and
+`failedAttempts` in 0–5. At 5 failures the record is locked. Issue precedes
+principal resolution, so an unconsumed record has no principal. A consumed
+record requires both `principalId` and `consumedAt` in the issue/expiry window,
+with fewer than 5 failures. Lifetime is at most ten minutes. Parsing retained
+expired, locked or consumed records does not grant redemption.
+
+The confirm request carries only app and raw code. Its principal comes from
+the authenticated caller. The runtime must compare digests, recheck expiry,
+attempt budget and single use, atomically increment failed attempts, and
+atomically bind the caller principal with consumption. It must never accept a
+client-supplied principal. Channel binding writes and kill switches require
+operator authorization. A binding or identity link grants no Project membership.
+Slack tokens stay in secret bindings, outside these shapes; one Slack workspace
+per Station and the Discord import remain responsibilities of the runtime lanes.
 
 The `task-review` subpath defines the [Task review API](api.md#task-review-threads)
 and its SDK types; runtime delivery and verification are documented in the API reference.

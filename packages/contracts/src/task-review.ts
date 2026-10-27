@@ -1,3 +1,4 @@
+import { boundedText, isRecord, onlyKeys } from './contract-validation.js';
 import {
   isWellFormedUnicode,
   type TaskGateEvaluationReferenceInput,
@@ -425,22 +426,6 @@ export type TaskThreadResolveResponse = TaskReviewResponse<{
   readonly thread: TaskReviewThreadView;
 }>;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value))
-    return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
-
-function onlyKeys(
-  record: Record<string, unknown>,
-  keys: readonly string[],
-): boolean {
-  return Reflect.ownKeys(record).every(
-    (key) => typeof key === 'string' && keys.includes(key),
-  );
-}
-
 function safeInteger(value: unknown, min: number): value is number {
   return (
     typeof value === 'number' && Number.isSafeInteger(value) && value >= min
@@ -532,15 +517,6 @@ export function parseTaskReviewAnchor(value: unknown): TaskReviewAnchor | null {
   return JSON.stringify(anchor).length <= TASK_REVIEW_LIMITS.anchorJsonChars
     ? anchor
     : null;
-}
-
-function boundedText(value: unknown, max: number, min = 1): value is string {
-  return (
-    typeof value === 'string' &&
-    value.length >= min &&
-    value.length <= max &&
-    isWellFormedUnicode(value)
-  );
 }
 
 function identity(value: unknown): value is string {

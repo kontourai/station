@@ -1,4 +1,5 @@
 import {
+  INTEGRATION_ACTIONS,
   parseIntegrationActionStatus,
   parseIntegrationConnectionStatus,
   parseIntegrationStatus,
@@ -56,6 +57,27 @@ describe('integration status boundary', () => {
     ).toBeNull();
   });
 
+  test('refuses arbitrary action names, whitespace, DEL and invisible diagnostics', () => {
+    expect(
+      parseIntegrationActionStatus({ ...action, action: 'foo' }),
+    ).toBeNull();
+    for (const invalid of [
+      ' probe',
+      'probe ',
+      'a\u007fb',
+      'a\u0085b',
+      'a\u200bb',
+      'a\u202eb',
+    ]) {
+      expect(
+        parseIntegrationActionStatus({ ...action, computedBy: invalid }),
+      ).toBeNull();
+      expect(
+        parseIntegrationActionStatus({ ...action, reason: invalid }),
+      ).toBeNull();
+    }
+  });
+
   test.each(['github', 'discord', 'slack', 'webhook', 'linear', 'jira'])(
     'lists actions per %s connection',
     (provider) => {
@@ -99,7 +121,6 @@ describe('integration status boundary', () => {
   });
 
   test.each([
-    ['action', 64],
     ['computedBy', 256],
     ['reason', 1000],
   ] as const)('accepts max and refuses max+1 or empty %s', (key, max) => {
@@ -112,9 +133,9 @@ describe('integration status boundary', () => {
   });
 
   test('bounds connection ids, action counts and connection counts without truncating', () => {
-    const actions = Array.from({ length: 32 }, (_, i) => ({
+    const actions = INTEGRATION_ACTIONS.map((name) => ({
       ...action,
-      action: `action-${i}`,
+      action: name,
     }));
     const atMax = { ...connection, connectionId: 'x'.repeat(256), actions };
     expect(parseIntegrationConnectionStatus(atMax)).toEqual(atMax);
@@ -127,7 +148,7 @@ describe('integration status boundary', () => {
     expect(
       parseIntegrationConnectionStatus({
         ...connection,
-        actions: [...actions, { ...action, action: 'extra' }],
+        actions: [...actions, action],
       }),
     ).toBeNull();
     const connections = Array.from({ length: 100 }, (_, i) => ({
