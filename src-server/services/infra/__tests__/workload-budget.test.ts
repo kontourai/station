@@ -822,12 +822,10 @@ describe('workload manager budgets (fake systemd manager)', () => {
     const unit = engine.args
       .find((arg) => arg.startsWith('--unit='))
       ?.slice('--unit='.length) as string;
+    await writeScopeFixture(`${cgroupRoot}/app.slice/${unit}`, 0);
     // The manager knows the unit only a while after the launch.
     trackChildWorkload(engine, process.pid);
-    setTimeout(() => {
-      controlGroups.set(unit, `/app.slice/${unit}`);
-      void writeScopeFixture(`${cgroupRoot}/app.slice/${unit}`, 0);
-    }, 50);
+    setTimeout(() => controlGroups.set(unit, `/app.slice/${unit}`), 50);
     await __workloadTestHooks.settleHolders();
     expect(
       workloadBudgetStatus().scopes?.find((scope) => scope.unit === unit),
