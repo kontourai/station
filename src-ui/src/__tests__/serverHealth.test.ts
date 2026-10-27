@@ -1,4 +1,5 @@
 import { HEALTH_PROBE_TIMEOUT_MS } from '@kontourai/station-connect';
+import { STATION_COMPAT_PROTOCOL_VERSION } from '@kontourai/station-contracts/environment-security';
 import {
   clientProtocolHeaders,
   resetClientProtocolObservations,
@@ -584,7 +585,10 @@ describe('probeServerConnection', () => {
         );
         vi.restoreAllMocks();
       }
-      expect(protectedHeaders).toEqual([null, '4']);
+      expect(protectedHeaders).toEqual([
+        null,
+        String(STATION_COMPAT_PROTOCOL_VERSION),
+      ]);
     });
 
     it('does not read an uncoded 426 as a client-protocol refusal', async () => {

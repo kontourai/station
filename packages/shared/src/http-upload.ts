@@ -10,6 +10,20 @@ export class UploadBodyLimitError extends Error {
 
 type UploadPolicy = (typeof MEDIA_UPLOAD_POLICIES)['walkthrough'];
 
+/**
+ * Keeps an idle connection open for 65 seconds instead of Node's 5. The UI's
+ * polls run 2 to 30 seconds apart, so a client polling directly reuses one
+ * connection instead of a new handshake each time, and a reverse proxy with
+ * the common 60-second idle limit closes its upstream connection before Node
+ * does, rather than reusing one Node has just closed. Only idle time between
+ * requests changes: `headersTimeout` still bounds how long a client may take
+ * to send a request's headers. Also serialized into the CLI listener; keep
+ * runtime dependencies in parameters.
+ */
+export function configureHttpKeepAlive(server: Server, idleMs = 65_000) {
+  server.keepAliveTimeout = idleMs;
+}
+
 /** Also serialized into the CLI listener; keep runtime dependencies in parameters. */
 export function configureHttpReceive(
   server: Server,

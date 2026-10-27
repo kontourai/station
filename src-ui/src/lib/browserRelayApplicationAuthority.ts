@@ -10,6 +10,11 @@ import {
 import type { ClientCredential } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
+  type StrictIndexedDbStore,
+  strictIndexedDbRequest,
+  strictIndexedDbTransaction,
+} from '@kontourai/station-shared/strict-indexeddb';
+import {
   beginBrowserRelayAccountScopeChange,
   browserRelayAccountScopeKey,
   getBrowserRelayAccountScope,
@@ -17,8 +22,13 @@ import {
 } from './browserRelayAccountScope';
 import { captureBrowserRelayRoute } from './browserRelayRouteBinding';
 
-const DATABASE = 'station-browser-relay-application-authority-v1';
-const STORE = 'authorities';
+const AUTHORITY_CUSTODY: StrictIndexedDbStore = {
+  database: 'station-browser-relay-application-authority-v1',
+  store: 'authorities',
+  unavailable: () =>
+    new Error('Relay application authority storage is unavailable.'),
+  failed: () => new Error('Relay application authority storage failed.'),
+};
 const OPAQUE = /^[A-Za-z0-9_-]{43}$/;
 
 function authorityError(code: string, message: string) {
@@ -180,115 +190,7 @@ function transaction<T>(
   } catch (error) {
     return Promise.reject(error);
   }
-  if (!globalThis.isSecureContext || !globalThis.indexedDB)
-    return Promise.reject(
-      new Error('Relay application authority storage is unavailable.'),
-    );
-  return new Promise((resolve, reject) => {
-    let open: IDBOpenDBRequest;
-    try {
-      open = indexedDB.open(DATABASE, 1);
-    } catch {
-      reject(new Error('Relay application authority storage is unavailable.'));
-      return;
-    }
-    const abortOpen = () => reject(signal?.reason);
-    signal?.addEventListener('abort', abortOpen, { once: true });
-    open.onupgradeneeded = () => {
-      if (!open.result.objectStoreNames.contains(STORE))
-        open.result.createObjectStore(STORE);
-    };
-    open.onerror = open.onblocked = () => {
-      signal?.removeEventListener('abort', abortOpen);
-      reject(
-        signal?.aborted
-          ? signal.reason
-          : new Error('Relay application authority storage is unavailable.'),
-      );
-    };
-    open.onsuccess = () => {
-      signal?.removeEventListener('abort', abortOpen);
-      const db = open.result;
-      if (signal?.aborted) {
-        db.close();
-        reject(signal.reason);
-        return;
-      }
-      db.onversionchange = () => db.close();
-      let tx: IDBTransaction;
-      try {
-        tx = db.transaction(
-          STORE,
-          mode,
-          mode === 'readwrite' ? { durability: 'strict' } : undefined,
-        );
-      } catch {
-        db.close();
-        reject(
-          new Error('Relay application authority storage is unavailable.'),
-        );
-        return;
-      }
-      if (mode === 'readwrite' && tx.durability !== 'strict') {
-        tx.abort();
-        db.close();
-        reject(
-          new Error('Relay application authority storage is unavailable.'),
-        );
-        return;
-      }
-      let result: T | undefined;
-      let failed = false;
-      const abortTransaction = () => {
-        failed = true;
-        try {
-          tx.abort();
-        } catch {
-          /* already settled */
-        }
-        reject(signal?.reason);
-      };
-      signal?.addEventListener('abort', abortTransaction, { once: true });
-      tx.onerror = () => {
-        if (!failed)
-          reject(
-            signal?.aborted
-              ? signal.reason
-              : new Error('Relay application authority storage failed.'),
-          );
-        failed = true;
-      };
-      tx.onabort = () => {
-        signal?.removeEventListener('abort', abortTransaction);
-        db.close();
-        if (!failed)
-          reject(new Error('Relay application authority storage failed.'));
-        failed = true;
-      };
-      tx.oncomplete = () => {
-        signal?.removeEventListener('abort', abortTransaction);
-        db.close();
-        resolve(result);
-      };
-      try {
-        const request = apply(tx.objectStore(STORE));
-        if (request) {
-          request.onsuccess = () => {
-            result = request.result;
-          };
-          request.onerror = () => {
-            failed = true;
-            reject(new Error('Relay application authority storage failed.'));
-            tx.abort();
-          };
-        }
-      } catch {
-        failed = true;
-        reject(new Error('Relay application authority storage failed.'));
-        tx.abort();
-      }
-    };
-  });
+  return strictIndexedDbRequest(AUTHORITY_CUSTODY, mode, apply, signal);
 }
 
 class IndexedDbBrowserRelayAuthorityStorage
@@ -417,106 +319,12 @@ function atomicAuthorityUpdate(
   } catch (error) {
     return Promise.reject(error);
   }
-  if (!globalThis.isSecureContext || !globalThis.indexedDB)
-    return Promise.reject(
-      new Error('Relay application authority storage is unavailable.'),
-    );
-  return new Promise((resolve, reject) => {
-    let open: IDBOpenDBRequest;
-    try {
-      open = indexedDB.open(DATABASE, 1);
-    } catch {
-      reject(new Error('Relay application authority storage is unavailable.'));
-      return;
-    }
-    const abortOpen = () => reject(signal?.reason);
-    signal?.addEventListener('abort', abortOpen, { once: true });
-    open.onupgradeneeded = () => {
-      if (!open.result.objectStoreNames.contains(STORE))
-        open.result.createObjectStore(STORE);
-    };
-    open.onerror = open.onblocked = () => {
-      signal?.removeEventListener('abort', abortOpen);
-      reject(
-        signal?.aborted
-          ? signal.reason
-          : new Error('Relay application authority storage is unavailable.'),
-      );
-    };
-    open.onsuccess = () => {
-      signal?.removeEventListener('abort', abortOpen);
-      const db = open.result;
-      if (signal?.aborted) {
-        db.close();
-        reject(signal.reason);
-        return;
-      }
-      db.onversionchange = () => db.close();
-      let tx: IDBTransaction;
-      try {
-        tx = db.transaction(STORE, 'readwrite', { durability: 'strict' });
-      } catch {
-        db.close();
-        reject(
-          new Error('Relay application authority storage is unavailable.'),
-        );
-        return;
-      }
-      if (tx.durability !== 'strict') {
-        tx.abort();
-        db.close();
-        reject(
-          new Error('Relay application authority storage is unavailable.'),
-        );
-        return;
-      }
-      let configured: ReturnType<typeof configure>;
-      let failed = false;
-      const abortTransaction = () => {
-        failed = true;
-        try {
-          tx.abort();
-        } catch {
-          /* already settled */
-        }
-        reject(signal?.reason);
-      };
-      signal?.addEventListener('abort', abortTransaction, { once: true });
-      tx.onerror = () => {
-        if (!failed)
-          reject(
-            signal?.aborted
-              ? signal.reason
-              : new Error('Relay application authority storage failed.'),
-          );
-        failed = true;
-      };
-      tx.onabort = () => {
-        signal?.removeEventListener('abort', abortTransaction);
-        db.close();
-        if (!failed)
-          reject(new Error('Relay application authority storage failed.'));
-        failed = true;
-      };
-      tx.oncomplete = () => {
-        signal?.removeEventListener('abort', abortTransaction);
-        db.close();
-        resolve(configured.result());
-      };
-      try {
-        configured = configure(tx.objectStore(STORE));
-        configured.request?.addEventListener('error', () => {
-          failed = true;
-          reject(new Error('Relay application authority storage failed.'));
-          tx.abort();
-        });
-      } catch {
-        failed = true;
-        reject(new Error('Relay application authority storage failed.'));
-        tx.abort();
-      }
-    };
-  });
+  return strictIndexedDbTransaction(
+    AUTHORITY_CUSTODY,
+    'readwrite',
+    configure,
+    signal,
+  );
 }
 
 const defaultStorage = new IndexedDbBrowserRelayAuthorityStorage();

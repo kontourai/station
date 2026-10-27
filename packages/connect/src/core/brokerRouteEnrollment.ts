@@ -11,10 +11,17 @@ import {
   copyStationConnectionTrust,
   stationConnectionSigningKeyId,
 } from '@kontourai/station-shared/connection-proof';
+import {
+  type StrictIndexedDbStore,
+  strictIndexedDbRequest,
+} from '@kontourai/station-shared/strict-indexeddb';
 import type { BrowserRoutingCredentialProvider } from './selfHostedBrokerBrowserClient.js';
 
-const DATABASE = 'station-browser-routing-grants-v1';
-const STORE = 'grants';
+const GRANT_CUSTODY: StrictIndexedDbStore = {
+  database: 'station-browser-routing-grants-v1',
+  store: 'grants',
+  unavailable: () => new Error('broker_grant_storage_unavailable'),
+};
 const MAX_RESPONSE_BYTES = 64 * 1024;
 const MAX_RESPONSE_CHUNKS = 256;
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -456,77 +463,11 @@ function readWithOperation<T>(
 export class IndexedDbBrowserRoutingGrantStorage
   implements BrowserRoutingGrantStorage
 {
-  private async transact<T>(
+  private transact<T>(
     mode: IDBTransactionMode,
     operation: (store: IDBObjectStore) => IDBRequest<T> | undefined,
   ): Promise<T | undefined> {
-    if (!globalThis.isSecureContext || !globalThis.indexedDB)
-      throw new Error('broker_grant_storage_unavailable');
-    const database = await new Promise<IDBDatabase>((resolve, reject) => {
-      let request: IDBOpenDBRequest;
-      try {
-        request = globalThis.indexedDB.open(DATABASE, 1);
-      } catch {
-        reject(new Error('broker_grant_storage_unavailable'));
-        return;
-      }
-      request.onupgradeneeded = () => {
-        if (!request.result.objectStoreNames.contains(STORE))
-          request.result.createObjectStore(STORE);
-      };
-      request.onerror = () =>
-        reject(new Error('broker_grant_storage_unavailable'));
-      request.onblocked = () =>
-        reject(new Error('broker_grant_storage_unavailable'));
-      request.onsuccess = () => resolve(request.result);
-    });
-    database.onversionchange = () => database.close();
-    try {
-      return await new Promise<T | undefined>((resolve, reject) => {
-        let transaction: IDBTransaction;
-        try {
-          transaction = database.transaction(
-            STORE,
-            mode,
-            mode === 'readwrite' ? { durability: 'strict' } : undefined,
-          );
-        } catch {
-          reject(new Error('broker_grant_storage_unavailable'));
-          return;
-        }
-        if (mode === 'readwrite' && transaction.durability !== 'strict') {
-          transaction.abort();
-          reject(new Error('broker_grant_storage_unavailable'));
-          return;
-        }
-        let result: T | undefined;
-        let failed = false;
-        transaction.onabort = transaction.onerror = () => {
-          if (!failed) reject(new Error('broker_grant_storage_unavailable'));
-          failed = true;
-        };
-        transaction.oncomplete = () => resolve(result);
-        try {
-          const request = operation(transaction.objectStore(STORE));
-          if (request) {
-            request.onsuccess = () => {
-              result = request.result;
-            };
-            request.onerror = () => {
-              failed = true;
-              reject(new Error('broker_grant_storage_unavailable'));
-              transaction.abort();
-            };
-          }
-        } catch {
-          failed = true;
-          reject(new Error('broker_grant_storage_unavailable'));
-          transaction.abort();
-        }
-      });
-    } finally {
-      database.close();
-    }
+    return strictIndexedDbRequest(GRANT_CUSTODY, mode, operation);
   }
 
   async read(key: string): Promise<unknown | null> {

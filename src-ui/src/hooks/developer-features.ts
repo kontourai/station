@@ -14,6 +14,7 @@ export function developerFeatures(
     | 'experimentalReadinessEnabled'
     | 'experimentalTrustEnabled'
     | 'experimentalSheetGesturesEnabled'
+    | 'experimentalStationRoutesEnabled'
   >,
 ) {
   return {
@@ -29,5 +30,8 @@ export function developerFeatures(
     sheetGestures:
       settings.developerToolsEnabled &&
       settings.experimentalSheetGesturesEnabled === true,
+    stationRoutes:
+      settings.developerToolsEnabled &&
+      settings.experimentalStationRoutesEnabled === true,
   };
 }
