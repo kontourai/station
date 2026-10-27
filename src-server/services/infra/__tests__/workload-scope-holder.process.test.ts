@@ -174,7 +174,9 @@ describe('engine scope holder', () => {
 
   test('ignores an inherited BASH_ENV and noglob, and still becomes the holder', async () => {
     const directory = tempDir('scope-holder-env-');
-    const sleep = join(directory, 'holder-sleep-env');
+    // Multi-call coreutils (uutils) pick the tool from the link name's last
+    // segment, so the link must still end in sleep.
+    const sleep = join(directory, 'env-holder-sleep');
     await symlink(
       existsSync('/usr/bin/sleep') ? '/usr/bin/sleep' : '/bin/sleep',
       sleep,
