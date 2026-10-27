@@ -121,6 +121,8 @@ import {
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import {
   engineSessionTmpDir,
+  launchedRootOf,
+  removeLaunchedRoot,
   stampLaunchExit,
 } from '../../services/infra/session-tmpdir.js';
 import {
@@ -1227,7 +1229,8 @@ export class AcpAdapter implements ProviderAdapterShape {
     // Resolved once: a relaunch onto another approval floor keeps the same
     // session directory.
     const tmpDir = engineSessionTmpDir(input.threadId);
-    const launch = (floor: OpenCodeApprovalFloor | undefined) =>
+    const hostImageLaunch = launchedRootOf(input.threadId);
+    const launchProcess = (floor: OpenCodeApprovalFloor | undefined) =>
       processFactory({
         command: config.command,
         args: config.args,
@@ -1261,6 +1264,23 @@ export class AcpAdapter implements ProviderAdapterShape {
           }),
         logger,
       });
+    // chat-host-images: an engine that exits on its own publishes no
+    // session.exited, so the launch's temp root is released when that
+    // process exits while it is still this session's current process (a
+    // relaunch swaps `record.process` before destroying the old one).
+    const launch = (floor: OpenCodeApprovalFloor | undefined) => {
+      const engine = launchProcess(floor);
+      (
+        engine as { once?: (event: string, listener: () => void) => unknown }
+      ).once?.('exit', () => {
+        if (
+          this.sessions.get(input.threadId) === record &&
+          record.process === engine
+        )
+          removeLaunchedRoot(input.threadId, hostImageLaunch);
+      });
+      return engine;
+    };
     const acpProcess = launch(startApprovalFloor);
     record.process = acpProcess;
     record.relaunch = launch;

@@ -128,6 +128,7 @@ import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
   installSessionTmpDirPolicy,
+  sessionTempRoot,
   sessionTmpDirPath,
 } from '../../services/infra/session-tmpdir.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
@@ -10626,6 +10627,49 @@ echo '{"loggedIn":true}'
         expect(catalogCall.options.env.TMPDIR).toBe(
           engineSpawnTmpDirPath(stationHome),
         );
+      } finally {
+        uninstall();
+        if (previousStationHome === undefined) delete process.env.STATION_HOME;
+        else process.env.STATION_HOME = previousStationHome;
+        rmSync(stationHome, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('chat-host-images: an engine that dies on its own', () => {
+    test('releases its launch temp folder though no session.exited follows', async () => {
+      const stationHome = join(
+        tmpdir(),
+        `station-claude-crash-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      );
+      const previousStationHome = process.env.STATION_HOME;
+      process.env.STATION_HOME = stationHome;
+      const uninstall = installSessionTmpDirPolicy(() => true);
+      try {
+        mockQuery.mockClear();
+        mockAugmentedSpawnEnv.mockReset();
+        let fail: (error: Error) => void = () => undefined;
+        const failed = new Promise<never>((_resolve, reject) => {
+          fail = reject;
+        });
+        failed.catch(() => undefined);
+        mockQuery.mockReturnValue({
+          ...createMockQuery([]),
+          [Symbol.asyncIterator]: () => ({ next: () => failed }),
+        } as never);
+        const adapter = new ClaudeAdapter();
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-crash',
+        });
+        const own = sessionTmpDirPath('thread-crash', stationHome);
+        expect(sessionTempRoot('thread-crash')).toBe(own);
+        fail(new Error('Claude Code process exited with code 1'));
+        await vi.waitFor(() =>
+          expect(sessionTempRoot('thread-crash')).toBeUndefined(),
+        );
+        expect(existsSync(own)).toBe(false);
+        await adapter.stopAll();
       } finally {
         uninstall();
         if (previousStationHome === undefined) delete process.env.STATION_HOME;

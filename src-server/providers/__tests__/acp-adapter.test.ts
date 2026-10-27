@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { EventEmitter } from 'node:events';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -27,6 +28,7 @@ import {
 } from '@kontourai/station-shared/tool-request-preview';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { createStagedPreToolPolicyEvaluator } from '../../runtime/agents/pre-tool-policy.js';
 import {
   builtinStationControlServerPath,
@@ -34,6 +36,11 @@ import {
 } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { requiredMissingPrerequisites } from '../../runtime/frameworks/runtime-adapter-readiness.js';
 import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js';
+import {
+  installSessionTmpDirPolicy,
+  sessionTempRoot,
+  sessionTmpDirPath,
+} from '../../services/infra/session-tmpdir.js';
 
 // The genuine built-in station-control server as it appears in a resolved
 // agent's toolServers — required for `station-control_*` auto-approval to be
@@ -7123,5 +7130,42 @@ describe('AcpAdapter provider-plan quota projection (#2265)', () => {
       turnId: followUp.turnId,
     });
     await adapter.stopAll();
+  });
+});
+
+describe('chat-host-images: an ACP engine that exits on its own', () => {
+  const makeHome = trackTempDirs();
+
+  test('releases its launch temp folder when its process exits, only while it is the current one', async () => {
+    const home = makeHome('acp-crash-tmp-');
+    const previous = process.env.STATION_HOME;
+    process.env.STATION_HOME = home;
+    const uninstall = installSessionTmpDirPolicy(() => true);
+    try {
+      const exits: Array<() => void> = [];
+      const { adapter } = createAdapter({
+        onProcess: (proc) => {
+          const emitter = new EventEmitter();
+          Object.assign(proc, { once: emitter.once.bind(emitter) });
+          exits.push(() => emitter.emit('exit', 1));
+        },
+      });
+      await adapter.startSession({
+        provider: 'acp',
+        threadId: 'thread-acp-crash',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+      });
+      const own = sessionTmpDirPath('thread-acp-crash', home);
+      expect(sessionTempRoot('thread-acp-crash')).toBe(own);
+      exits[0]!();
+      expect(sessionTempRoot('thread-acp-crash')).toBeUndefined();
+      expect(existsSync(own)).toBe(false);
+      await adapter.stopAll();
+    } finally {
+      uninstall();
+      if (previous === undefined) delete process.env.STATION_HOME;
+      else process.env.STATION_HOME = previous;
+    }
   });
 });

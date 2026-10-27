@@ -98,7 +98,10 @@ import type { engineProxyLaunch } from '../../services/connections/engine-proxy-
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
   engineSessionTmpDir,
+  type LaunchedRoot,
+  launchedRootOf,
   noteEngineTmpDir,
+  removeLaunchedRoot,
   stampLaunchExit,
 } from '../../services/infra/session-tmpdir.js';
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
@@ -816,6 +819,8 @@ type ClaudeSessionRecord = {
   engineProcess?: ClaudeEngineProcess;
   /** #2494: removes a Seatbelt-confined session's Station temp directory. */
   confinementCleanup?: () => void;
+  /** chat-host-images: the temp-root launch this engine was started with. */
+  hostImageLaunch?: LaunchedRoot;
   /**
    * #2494: set while a confined start waits for its posture to be observed;
    * a turn is refused until it is, so none runs before the profile is known.
@@ -2141,6 +2146,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       currentModelOptions: claudeAppliedModelOptions(input.modelOptions),
       skillsOverlayDir,
       ...(seatbelt ? { confinementCleanup: seatbelt.launch.cleanup } : {}),
+      hostImageLaunch: launchedRootOf(input.threadId),
       // #3163: where this session's subagent transcripts are written, so a
       // later read (even after a restart) opens the same config home.
       claudeConfigHome: claudeSpawnConfigHome(
@@ -4411,6 +4417,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         record.session.status = 'ready';
         return;
       }
+      // The engine's stream ended in failure: this launch is over even though
+      // no session.exited follows, so its temp root goes now (only while it
+      // is still the thread's current launch).
+      removeLaunchedRoot(record.session.threadId, record.hostImageLaunch);
       // archive#1827: once `mapMessage` has already published a structured
       // `runtime.error` for a failed `result` message
       // (`classifyClaudeResultOutcome`, `claude-adapter-events.ts`), the SDK
