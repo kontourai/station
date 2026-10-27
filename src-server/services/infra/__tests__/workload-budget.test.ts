@@ -1,3 +1,5 @@
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
@@ -754,6 +756,29 @@ describe('workload manager budgets (fake systemd manager)', () => {
     expect(kills).toEqual([]);
     expect(await outcome).toMatchObject({ oomKills: 1, unreportedOomKills: 1 });
     expect(childWorkloadMemoryExhausted(await outcome, 'SIGKILL')).toBe(true);
+  });
+
+  test('a kill is not announced once the engine is gone, even before Station starts closing it', async () => {
+    const { cgroupRoot, controlGroups } = await start();
+    const exited = spawn(process.execPath, ['-e', ''], {
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    await once(exited, 'exit');
+    const engine = launch('thread-dead-leader');
+    const unit = engine.args
+      .find((arg) => arg.startsWith('--unit='))
+      ?.slice('--unit='.length) as string;
+    const group = `/app.slice/${unit}`;
+    controlGroups.set(unit, group);
+    await writeScopeFixture(`${cgroupRoot}${group}`, 1);
+    trackChildWorkload(engine, exited.pid as number);
+    const kills: ChildWorkloadOomKill[] = [];
+    engine.watchOomKills?.((kill) => kills.push(kill));
+    await __workloadTestHooks.pollOomKills();
+    await __workloadTestHooks.pollOomKills();
+    expect(kills).toEqual([]);
+    await closeChildWorkload(exited.pid as number);
   });
 
   test("a terminal scope systemd collected before close keeps the last poll's kill count, labelled", async () => {
