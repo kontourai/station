@@ -24,6 +24,93 @@ import type { SessionReadScope } from './orchestration-service.js';
 import type { TurnDeduplicator } from './turn-deduplicator.js';
 
 const FORK_CONTEXT_MAX_BYTES = 2 * 1024 * 1024;
+const nativeForkId = z.string().min(1).max(512);
+const nativeForkDigest = z.string().regex(/^[a-f0-9]{64}$/);
+const nativeForkSourceSchema = z
+  .object({
+    sourceConversationId: nativeForkId,
+    sourceSessionId: nativeForkId,
+    selectedEventId: nativeForkId,
+    selectedTurnId: nativeForkId,
+    headEventId: nativeForkId,
+    nativeIdentityKey: nativeForkDigest,
+    provider: z.enum(['codex', 'claude']),
+    environmentId: nativeForkId,
+    agentId: nativeForkId,
+    cwd: z.string().min(1).max(4096),
+    credentialProfileRef: nativeForkId.optional(),
+  })
+  .strict();
+export type NativeForkSourceSeal = z.infer<typeof nativeForkSourceSchema>;
+const nativeForkRecordSchema = z
+  .object({
+    version: z.literal(1),
+    targetId: nativeForkId,
+    contextDigest: nativeForkDigest,
+    intentId: z.uuid(),
+    source: nativeForkSourceSchema,
+    state: z.enum([
+      'prepared',
+      'invoking',
+      'child-observed',
+      'indeterminate',
+      'cleanup-pending',
+      'committed',
+    ]),
+    cursorJson: z.string().optional(),
+    cursorDigest: nativeForkDigest.optional(),
+    childIdentity: nativeForkDigest.optional(),
+    commitJson: z.string().optional(),
+    commitDigest: nativeForkDigest.optional(),
+  })
+  .strict();
+export type NativeForkEffectRecord = z.infer<typeof nativeForkRecordSchema>;
+export function nativeForkJson(value: unknown): string {
+  const json = JSON.stringify(value);
+  if (
+    typeof json !== 'string' ||
+    Buffer.byteLength(json) > FORK_CONTEXT_MAX_BYTES
+  )
+    throw new ConversationForkContextError(
+      'Native fork data exceeds its retained context budget.',
+    );
+  return json;
+}
+export function nativeForkHash(json: string): string {
+  return createHash('sha256').update(json).digest('hex');
+}
+export function readNativeForkEffect(json: string): NativeForkEffectRecord {
+  nativeForkJson(JSON.parse(json));
+  const record = nativeForkRecordSchema.parse(JSON.parse(json));
+  const hasCursor = record.cursorJson !== undefined;
+  if (
+    hasCursor !== (record.cursorDigest !== undefined) ||
+    hasCursor !== (record.childIdentity !== undefined) ||
+    (hasCursor && nativeForkHash(record.cursorJson!) !== record.cursorDigest) ||
+    (['child-observed', 'committed'].includes(record.state) && !hasCursor) ||
+    (record.commitJson !== undefined) !== (record.commitDigest !== undefined) ||
+    (record.commitJson !== undefined &&
+      nativeForkHash(record.commitJson) !== record.commitDigest) ||
+    (record.state === 'committed') !== (record.commitJson !== undefined)
+  )
+    throw new ConversationForkContextError(
+      'Native fork receipt is unavailable.',
+    );
+  return record;
+}
+export interface NativeForkCommitInput {
+  child: import('@kontourai/station-contracts/provider').ProviderSession;
+  configuredEvent: CanonicalRuntimeEvent;
+  forkEvent: CanonicalRuntimeEvent;
+}
+export interface NativeForkEffectClaim {
+  /** A stable wrapper; the captured authority claim is never exposed. */
+  readonly sessionStart: import('./session-turn-boundary.js').SessionStartBoundaryClaim;
+  observeChild(cursor: unknown, nativeIdentityKey: string): void;
+  commit(input: NativeForkCommitInput): 'committed' | 'already-committed';
+  indeterminate(): void;
+  cleanupPending(): void;
+}
 
 export class ConversationForkContextError extends Error {
   readonly code = CONVERSATION_CONTEXT_UNAVAILABLE_CODE;
