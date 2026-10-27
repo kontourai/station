@@ -103,6 +103,7 @@ describe('WorkloadBudgetSettings', () => {
         .disabled,
     ).toBe(true);
     expect(screen.getByText(/Set by STATION_WORKLOAD_MEMORY_MIB/)).toBeTruthy();
+    expect(screen.getByText('Resolves to: 8192 MiB (default).')).toBeTruthy();
     expect(
       screen.getByText(/Not enforced on this host \(darwin\)/),
     ).toBeTruthy();

@@ -115,14 +115,14 @@ function WorkloadBudgetEditor() {
           {fromEnv(key)
             ? `Set by ${SOURCE_ENV[key]} in Station's environment, which overrides this setting.`
             : effectiveBytes !== undefined
-              ? `In effect: ${mib(effectiveBytes)} MiB (${data.sources?.[key] === 'settings' ? 'saved setting' : 'default'}).`
+              ? `${data.enforcement.state === 'ready' ? 'In effect' : 'Resolves to'}: ${mib(effectiveBytes)} MiB (${data.sources?.[key] === 'settings' ? 'saved setting' : 'default'}).`
               : 'Leave empty for the default.'}
         </span>
       </div>
     );
     body = (
       <>
-        <p className="settings__field-hint">
+        <p className="settings__field-hint workload-budgets__status">
           {enforcementSentence(data)} This host has {gib(data.hostMemoryBytes)}{' '}
           GiB of memory.
         </p>
