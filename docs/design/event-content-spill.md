@@ -706,4 +706,3 @@ above:
 - **Delegated-agent approve tools** send the stored-event digest without
   returning the full content to the agent first.
 - **Plan panel** loading has component tests, no browser screenshot.
-
