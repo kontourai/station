@@ -405,7 +405,7 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
     expect(screen.getByRole('alert').textContent).toContain(
       'Could not reach Station',
     );
-    const retry = screen.getByRole('button', { name: 'Retrying…' });
+    const retry = screen.getByRole('button', { name: 'Try again' });
     expect(retry.getAttribute('aria-busy')).toBe('true');
     expect((retry as HTMLButtonElement).disabled).toBe(true);
   });

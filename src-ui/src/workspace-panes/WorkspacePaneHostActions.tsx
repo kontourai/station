@@ -248,7 +248,7 @@ export function WorkspacePaneHostActions({
             pending={failure.retrying}
             onClick={() => void query.refetch()}
           >
-            {failure.retrying ? 'Retrying…' : 'Try again'}
+            Try again
           </Button>
         }
       />

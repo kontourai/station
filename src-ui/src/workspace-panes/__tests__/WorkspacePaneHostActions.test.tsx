@@ -285,6 +285,6 @@ test('a failed catalog stays a failure while it retries instead of flickering to
     'Could not reach Station',
   );
   expect(
-    screen.getByRole('button', { name: 'Retrying…' }).getAttribute('aria-busy'),
+    screen.getByRole('button', { name: 'Try again' }).getAttribute('aria-busy'),
   ).toBe('true');
 });

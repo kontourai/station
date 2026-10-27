@@ -18,3 +18,7 @@
 .layout-view-pending > button {
   align-self: flex-start;
 }
+
+.layout-view-state {
+  margin: var(--k-space-3);
+}

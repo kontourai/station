@@ -50,6 +50,9 @@ interface QueryState<T> {
    */
   isPending?: boolean;
   isError?: boolean;
+  error?: unknown;
+  errorUpdatedAt?: number;
+  fetchStatus?: 'fetching' | 'paused' | 'idle';
 }
 
 interface ProjectFixture {
@@ -1459,6 +1462,45 @@ describe('App home route resolution', () => {
       // regions), with Chat still the centre's, never the dock's.
       expect(registerRegionSurfaceHost).toHaveBeenCalledTimes(1);
       expect(screen.queryByTestId('ambient-chat-controller')).toBeNull();
+    });
+
+    /**
+     * The on-device loop: a failed layout read mounted the dock, the dock's
+     * new observer re-ran the errored query, the query went pending, and the
+     * dock unmounted, about once a second for as long as the read failed.
+     * Re-checking a failure must leave the dock host where it is.
+     */
+    test('re-checking a failed layout read keeps the dock host mounted', async () => {
+      window.history.replaceState({}, '', '/projects/demo/layouts/coding');
+      const outage = new TypeError('Failed to fetch');
+      hooks.layout = {
+        data: undefined,
+        isLoading: false,
+        isPending: false,
+        isError: true,
+        error: outage,
+        errorUpdatedAt: 1,
+        fetchStatus: 'idle',
+      };
+      hooks.regionModel = openBottom();
+      const { rerender } = render(<App />);
+      await act(async () => undefined);
+      expect(registerRegionSurfaceHost).toHaveBeenCalledTimes(1);
+
+      // What TanStack reports once that re-check starts.
+      hooks.layout = {
+        data: undefined,
+        isLoading: true,
+        isPending: true,
+        isError: false,
+        error: null,
+        errorUpdatedAt: 1,
+        fetchStatus: 'fetching',
+      };
+      await act(async () => rerender(<App />));
+
+      // An unmount and remount would register the host a second time.
+      expect(registerRegionSurfaceHost).toHaveBeenCalledTimes(1);
     });
 
     test('a plugin layout typed coding keeps Chat in the dock', async () => {

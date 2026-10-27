@@ -9,6 +9,7 @@ import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { isLayoutRecordAbsent } from '../app-shell/layout-record-absent';
 import { Button } from '../components/Button';
+import { ResponsiveSurfaceActions } from '../components/ResponsiveDialogSurface';
 import {
   describeReadFailure,
   ErrorState,
@@ -323,6 +324,7 @@ export function LayoutView({
   if (layoutMissing) {
     return (
       <ErrorState
+        className="layout-view-state"
         title="Layout not found"
         description={
           <>
@@ -341,19 +343,20 @@ export function LayoutView({
   if (layoutFailure) {
     return (
       <ErrorState
+        className="layout-view-state"
         title="Couldn't open this layout"
         description={describeReadFailure(layoutFailure.error)}
         action={
-          <>
+          <ResponsiveSurfaceActions>
             <Button
               variant="primary"
               pending={layoutFailure.retrying}
               onClick={() => void refetchLayout()}
             >
-              {layoutFailure.retrying ? 'Retrying…' : 'Try again'}
+              Try again
             </Button>
             {backToProject}
-          </>
+          </ResponsiveSurfaceActions>
         }
       />
     );
@@ -375,15 +378,16 @@ export function LayoutView({
   if (!layout) {
     return (
       <ErrorState
+        className="layout-view-state"
         title="This layout could not be loaded"
         description="Station received an answer for this layout but could not read it."
         action={
-          <>
+          <ResponsiveSurfaceActions>
             <Button variant="primary" onClick={() => void refetchLayout()}>
               Try again
             </Button>
             {backToProject}
-          </>
+          </ResponsiveSurfaceActions>
         }
       />
     );
