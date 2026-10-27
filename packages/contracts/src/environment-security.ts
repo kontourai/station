@@ -731,7 +731,10 @@ export function isPairingScopeSubset(
  */
 // Protocol 3 admits exact-turn inventory lineage. Older readers keep the
 // contribution-only shape; protocol-1 callers remain admitted.
-export const STATION_COMPAT_PROTOCOL_VERSION = 3;
+// Protocol 4 admits Session inventory tool-result rows whose outcome was never
+// observed (`terminalStatus: 'unresolved'`, #4178). Older readers validate
+// that vocabulary exactly, so they keep the omission.
+export const STATION_COMPAT_PROTOCOL_VERSION = 4;
 
 /**
  * Oldest client protocol this host still serves. A client advertising less

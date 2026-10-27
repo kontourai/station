@@ -1,7 +1,8 @@
 # Settings launch triage
 
 Status: source-based decision inventory, 2026-10-19. Covers all **76 catalog
-entries** in this branch (73 existing entries plus three developer opt-ins),
+entries** in this branch (73 existing entries plus three developer opt-ins;
+a fourth opt-in added later is listed with its date),
 and additional nested controls below. Baseline:
 `ac9a23234b1e5ec036b3c240b1ed910de24db19c`. This is a Settings review, not an
 app-wide launch certification. “Keep” means the option has a clear purpose;
@@ -81,6 +82,7 @@ changed. No inventory item below is silently marked launch-hardened.
 | Flow delivery preview (`experimental-flow`) | Gate (implemented) | Independent device opt-in; no live complete delivery/value qualification claimed. | [source](../../src-ui/src/hooks/useDeveloperFeatures.ts) |
 | Veritas readiness preview (`experimental-readiness`) | Gate (implemented) | Independent device opt-in; readiness output is not merge approval. | [source](../../src-ui/src/hooks/useDeveloperFeatures.ts) |
 | Trust preview (`experimental-trust`) | Gate (implemented) | Independent device opt-in; evidence display is not an independent trust verdict. | [source](../../src-ui/src/hooks/useDeveloperFeatures.ts) |
+| Sheet gestures preview (`experimental-sheet-gestures`) | Gate (implemented) | Added 2026-10-26, after this inventory's baseline. Independent device opt-in for the phone-sheet drag handle; no physical-device qualification claimed. | [source](../../src-ui/src/components/useResponsiveSheetGesture.ts) |
 | Shared answers (`shared-answers`) | Keep | Manage existing public answer links; revocation and target visibility are the value. | [source](../../src-ui/src/views/settings/AnswerSharesSection.tsx) |
 | Plugin visibility (`plugin-visibility`) | Keep | Installed-plugin discoverability control, separate from permissions; make the distinction clear. | [source](../../src-ui/src/views/settings/PluginVisibilitySection.tsx) |
 | Device hosts (`device-hosts`) | Move / qualify | SSH device-helper hosts are developer infrastructure; move under Developer tools after connect/capture/revoke qualification. | [source](../../src-ui/src/views/settings/DeviceHostsPanel.tsx) |

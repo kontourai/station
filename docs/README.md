@@ -75,8 +75,11 @@ clearly mark the stale document.
 
 ## Repository Documentation
 
+- **[Walkthrough imports](guides/walkthroughs.md)** — local recording manifests, CLI/MCP reads, limits and staged media dependency composition.
 - **[Guides](guides/)** — task-oriented operator, plugin, and contributor docs.
+- **[Feature previews](guides/feature-previews.md)** — ship unfinished capabilities off by default, gate every entry point, and keep the offered-preview user table in sync.
 - **[Starter Work](guides/starter-work.md)** — how first-use actions bind to real Tasks, Sessions, approvals, and Scheduler receipts, including recovery.
+- **[Local speech and media tools](guides/local-speech.md)** — consented tool downloads, local transcription, limits and platform evidence.
 - **[Browser workspace](guides/browser-workspace.md)** — server-owned browser sessions, profile and target boundaries, Agent permissions and live viewing.
 - **[Mobile device workspace](guides/mobile-device-workspace.md)** — managed or SSH device hosts, shared live viewing/control, and the separate single-frame API.
 - **[Outside-agent OAuth](reference/outside-agent-oauth.md)** — inert R3 protocol contract and exposure limits; R6 owns enablement.

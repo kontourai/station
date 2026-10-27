@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
 import type { SkillExperienceDefinitionV1 } from '@kontourai/station-contracts/skill-experience';
+import { projectChatDefaultsQueryKey } from '@kontourai/station-sdk';
 import { QueryClient } from '@tanstack/react-query';
 import {
   act,
@@ -37,6 +38,12 @@ vi.mock('../contexts/AccountPreferencesContext', () => ({
   useAccountPreferences: () => accountPreferenceFixture,
 }));
 const outboundQueueMode = vi.hoisted(() => ({ useActual: false }));
+/** The first send's bounded read of a Project answer it does not have. */
+const getProjectChatDefaultsMock = vi.hoisted(() =>
+  vi.fn(async (..._args: unknown[]): Promise<unknown> => {
+    throw new Error('chat defaults unreadable');
+  }),
+);
 
 class CodedOrchestrationError extends Error {
   constructor(
@@ -125,6 +132,9 @@ const queryClientMock = {
     JSON.stringify(key) === JSON.stringify(['agents'])
       ? cachedAgentCatalog
       : sessionCache.getQueryData(key),
+  // The Project new-chat defaults a composer already read.
+  setQueryData: (key: unknown[], value: unknown) =>
+    sessionCache.setQueryData(key, value),
 };
 // `isProvablyNotSent` is deliberately the REAL implementation, not a stub:
 // it is the one derivation that decides whether a failed Stop reads "Stop
@@ -139,6 +149,11 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
       inventory: () => ({ queryKey: ['conversation-inventory'] }),
     },
     orchestrationQueries: actual.orchestrationQueries,
+    PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX:
+      actual.PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX,
+    projectChatDefaultsQueryKey: actual.projectChatDefaultsQueryKey,
+    getProjectChatDefaults: (...args: unknown[]) =>
+      getProjectChatDefaultsMock(...args),
     useEngineConnectionsQuery: () => agentConnectionsMock(),
     useConfigQuery: () => configQueryMock(),
     // The Agent-record link of the engine-connection chain; this fixture's
@@ -824,7 +839,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       expect(body).not.toHaveProperty('setApprovalMode');
     });
 
-    it('applies a saved personal default only to the first interactive send and carries its decision basis', async () => {
+    it('sends a saved personal default as a hint on the first interactive send only, never as a pick', async () => {
       const requestScope = {
         apiBase: 'http://api.test',
         authorityKey: 'person-a',
@@ -839,20 +854,138 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       };
       try {
         const body = await bodyAfterSend();
-        expect(body).toMatchObject({
-          setApprovalMode: 'never',
-          setApprovalModeBasedOn: null,
-        });
+        // The server decides whether it applies (below the Agent's and the
+        // Project's defaults); nothing here waits to find out.
+        expect(body).toMatchObject({ personalApprovalDefault: 'never' });
+        expect(body).not.toHaveProperty('setApprovalMode');
+        expect(getProjectChatDefaultsMock).not.toHaveBeenCalled();
         expect(sendExecutionMessageMock.mock.calls[0][2].requestScope).toBe(
           requestScope,
         );
         activeChatsStore.updateChat(sessionId, {
-          queuedApprovalMode: undefined,
           orchestrationSessionStarted: true,
           status: 'idle',
           orchestrationStatus: 'idle',
         });
-        expect(await bodyAfterSend()).not.toHaveProperty('setApprovalMode');
+        const later = await bodyAfterSend();
+        expect(later).not.toHaveProperty('personalApprovalDefault');
+        expect(later).not.toHaveProperty('setApprovalMode');
+      } finally {
+        accountPreferenceFixture.data.values.interactiveApprovalModes = {};
+      }
+    });
+
+    it('a Station that answered "no Project layer here" (404) gets the default as the pick it always was', async () => {
+      const requestScope = {
+        apiBase: 'http://api.test',
+        authorityKey: 'person-a',
+        isCurrent: () => true,
+      };
+      accountPreferenceFixture.requestScope = requestScope;
+      accountPreferenceFixture.data.values.interactiveApprovalModes = {
+        codex: 'never',
+      };
+      cachedAgentCatalog = {
+        agents: [{ slug: 'codex', execution: { agentConnectionId: 'codex' } }],
+      };
+      // The SDK's scoped key, spelled out: prefix, Station, the verified
+      // authority namespace, slug (the fixture chat is in `station`).
+      const key = [
+        'project-chat-defaults',
+        'http://api.test',
+        'authority-1',
+        'station',
+      ];
+      expect(
+        projectChatDefaultsQueryKey(requestScope, 'authority-1', 'station'),
+      ).toEqual(key);
+      sessionCache.setQueryData(key, null);
+      try {
+        const body = await bodyAfterSend();
+        expect(body).toMatchObject({
+          setApprovalMode: 'never',
+          setApprovalModeBasedOn: null,
+        });
+        expect(body).not.toHaveProperty('personalApprovalDefault');
+      } finally {
+        sessionCache.removeQueries({ queryKey: key });
+        accountPreferenceFixture.data.values.interactiveApprovalModes = {};
+      }
+    });
+
+    it('outside a Project there is no Project layer: the default goes as the pick it always was', async () => {
+      accountPreferenceFixture.requestScope = {
+        apiBase: 'http://api.test',
+        authorityKey: 'person-a',
+        isCurrent: () => true,
+      };
+      accountPreferenceFixture.data.values.interactiveApprovalModes = {
+        codex: 'never',
+      };
+      cachedAgentCatalog = {
+        agents: [{ slug: 'codex', execution: { agentConnectionId: 'codex' } }],
+      };
+      activeChatsStore.updateChat(sessionId, { projectSlug: undefined });
+      try {
+        const body = await bodyAfterSend();
+        expect(body).toMatchObject({
+          setApprovalMode: 'never',
+          setApprovalModeBasedOn: null,
+        });
+        expect(body).not.toHaveProperty('personalApprovalDefault');
+      } finally {
+        accountPreferenceFixture.data.values.interactiveApprovalModes = {};
+      }
+    });
+
+    it('a hint the server did not apply is spent with the first send', async () => {
+      accountPreferenceFixture.requestScope = {
+        apiBase: 'http://api.test',
+        authorityKey: 'person-a',
+        isCurrent: () => true,
+      };
+      accountPreferenceFixture.data.values.interactiveApprovalModes = {
+        codex: 'auto',
+      };
+      cachedAgentCatalog = {
+        agents: [{ slug: 'codex', execution: { agentConnectionId: 'codex' } }],
+      };
+      try {
+        await bodyAfterSend();
+        expect(
+          activeChatsStore.getSnapshot()[sessionId]?.queuedApprovalMode,
+        ).toBeUndefined();
+      } finally {
+        accountPreferenceFixture.data.values.interactiveApprovalModes = {};
+      }
+    });
+
+    it('a hint the server recorded becomes the chat’s folded decision', async () => {
+      accountPreferenceFixture.requestScope = {
+        apiBase: 'http://api.test',
+        authorityKey: 'person-a',
+        isCurrent: () => true,
+      };
+      accountPreferenceFixture.data.values.interactiveApprovalModes = {
+        codex: 'auto',
+      };
+      cachedAgentCatalog = {
+        agents: [{ slug: 'codex', execution: { agentConnectionId: 'codex' } }],
+      };
+      sendExecutionMessageMock.mockResolvedValueOnce({
+        ...successReceipt(),
+        approvalMode: {
+          threadId: 'thread-1',
+          recorded: true,
+          approvalMode: 'auto',
+          sequence: 7,
+        },
+      });
+      try {
+        await bodyAfterSend();
+        expect(
+          activeChatsStore.getSnapshot()[sessionId]?.approvalPostureSequence,
+        ).toBe(7);
       } finally {
         accountPreferenceFixture.data.values.interactiveApprovalModes = {};
       }

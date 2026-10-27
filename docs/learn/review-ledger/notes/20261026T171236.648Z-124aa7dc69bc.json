@@ -1,0 +1,7 @@
+{
+  "revision": "5b99bcd46ef69a1ddd2d172a1d717162b0c4d9a2",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed LocalSpeechSTTProvider subscription and disposal after removing SDK runtime inheritance. Listener storage and stable subscription are instance-owned; recording, final transcript notification, preview reconciliation and cancellation remain as documented. EXECUTED: 334 tests across 15 suites and clean-tree SDK import fault/restoration checks. Real microphone and provider qualification remain NOT_VERIFIED.","inputs":["docs/architecture/module-map.md","src-ui/src/providers/voice/LocalSpeechSTTProvider.ts"]}
+  ]
+}

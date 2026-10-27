@@ -436,6 +436,14 @@ Common commands:
 
 See [../reference/cli.md](../reference/cli.md) for the complete command reference.
 
+## New user-facing capabilities
+
+Ship new capabilities that are not yet hardened behind a Station-wide Feature
+Preview, off by default. Follow [Ship a feature preview](feature-previews.md)
+for scope, runtime binding, entry-point gating, refusal behavior, tests, user
+documentation, and promotion. Device developer previews serve local developer
+UI experiments and do not gate shared server behavior.
+
 ## Plugin Development
 
 Use the [plugin guide](plugins.md) for scaffold templates, package formats,

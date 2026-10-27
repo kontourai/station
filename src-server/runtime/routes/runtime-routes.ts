@@ -20,6 +20,7 @@ import {
   type SourceApprovalActor,
   SourceGrantApprovalStore,
 } from '../../analytics/source-grant-store.js';
+import { ProjectFileTransactions } from '../../domain/project-file-transactions.js';
 import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
@@ -31,6 +32,7 @@ import { createHomeTransferRoomRoutes } from '../../routes/environments/home-tra
 import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
 import { createEngineOAuthProxyRoutes } from '../../routes/mcp/engine-oauth-proxy-route.js';
 import { createAccountPreferencesRoutes } from '../../routes/me/account-preferences.js';
+import { createMediaToolsRoutes } from '../../routes/media-tools.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createAnalyticsSavedViewRoutes } from '../../routes/operations/analytics-saved-views.js';
 import { createRecipientCandidateRoutes } from '../../routes/operations/recipient-candidates.js';
@@ -55,6 +57,8 @@ import { createRelayManagementRoutes } from '../../routes/system/relay-managemen
 import { createTelemetryCompanionRoutes } from '../../routes/system/telemetry-companion-routes.js';
 import { createTelemetryIncidentLinkRoutes } from '../../routes/system/telemetry-incident-link-routes.js';
 import { createToolLibraryRoutes } from '../../routes/tool-library.js';
+import { createTranscriptionRoutes } from '../../routes/transcription.js';
+import { createWalkthroughRoutes } from '../../routes/walkthroughs.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
   isOperatorInPersonNotAgent,
@@ -155,8 +159,10 @@ import {
 } from '../../services/identity/relay-enrollment-service.js';
 import { PULL_REQUEST_GUIDE_SERVICE_PRINCIPAL } from '../../services/identity/service-principals.js';
 import { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
+import type { MediaToolsAcquisition } from '../../services/media-tools/media-tools-acquisition.js';
 import { LocalMobileDeviceHost } from '../../services/mobile-device/mobile-device-host.js';
 import { sessionOwnerStampFor } from '../../services/orchestration/session-owner-attribution.js';
+import { createProjectChatDefaultsService } from '../../services/projects/project-chat-defaults.js';
 import type {
   ProjectMembershipAuthority,
   ProjectMembershipService,
@@ -204,8 +210,10 @@ import {
   readTelemetryCompanionInstallation,
 } from '../../services/telemetry-companion-install.js';
 import { TelemetryIncidentLinks } from '../../services/telemetry-incident-links.js';
+import { WalkthroughService } from '../../services/walkthroughs/walkthrough-service.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { canonicalPath } from '../../utils/path-containment.js';
+import { bindLocalMediaPreviews } from '../bootstrap/local-media-runtime.js';
 import { STATION_KNOWLEDGE_MCP_PATH } from '../mcp/station-control-mcp-token.js';
 import { createRuntimeFrameworkModel } from '../plugins/runtime-provider-resolution.js';
 import {
@@ -1067,6 +1075,12 @@ export interface ConfigureRuntimeRoutesContext {
   resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
   /** Runtime-owned durable operation authority shared with fleet dispatch. */
   actionOperations: ActionOperationService;
+  /** One acquisition shared by import, speech routes and existing device decoding. */
+  mediaTools: MediaToolsAcquisition;
+  walkthroughImportDependencies: {
+    resolver: import('../../services/media-tools/media-tools-resolver.js').MediaToolsResolver;
+    transcriber: import('../../services/transcription/transcriber.js').Transcriber;
+  };
   /**
    * #485 receiver request-claim slice: the runtime-owned durable claim
    * owner for opt-in portable delegation attempts. Separate from the
@@ -2358,6 +2372,15 @@ export function configureRuntimeRoutes(
   ]) {
     context.app.use(path, bindConversationReadAuthority);
   }
+  context.app.on(
+    ['GET', 'POST'],
+    [
+      '/api/projects/:projectSlug/walkthroughs',
+      '/api/projects/:projectSlug/walkthroughs/*',
+    ],
+    primeRoomRequestPrincipal,
+    bindConversationReadAuthority,
+  );
   // `/api/board` is classified per method leaf in the pairing-scope table, so
   // an all-method `use` would register unclassified routes. (`/api/attachments`
   // binds below, with the conversation routes.)
@@ -4139,6 +4162,10 @@ export function configureRuntimeRoutes(
   // never a shared tenant: neither is mounted on a hosted deployment.
   const isPersonalHost =
     !hostedTenantRegistry && !isHostedTenantExecutionRequired();
+  const mediaTools = context.mediaTools;
+  const localMediaPreviews = isPersonalHost
+    ? bindLocalMediaPreviews(context.featurePreviews)
+    : undefined;
   // Who may use which device (D5/D12): bound in the mobile-device block
   // below (`deviceAccessFromShares`); read at request time, so every request
   // sees the bound implementation and one with none bound is refused.
@@ -4336,7 +4363,7 @@ export function configureRuntimeRoutes(
     const deviceHost = new LocalMobileDeviceHost({ hub: deviceHubEndpoint });
     const sessionSurfaces = liveSurfaceRegistry;
     // Android frames from ANY host are decoded here, on the Station host.
-    const deviceDecoder = createFfmpegDecoderProvider();
+    const deviceDecoder = createFfmpegDecoderProvider({ mediaTools });
     const onDeviceError = (message: string, error: unknown) =>
       context.logger.warn(message, {
         error:
@@ -6947,7 +6974,26 @@ export function configureRuntimeRoutes(
   );
   // #90 Browser pane: personal hosts only (same gate as the device routes),
   // and every request is authorized per Project (operator or Project admin).
-  if (isPersonalHost) {
+  if (localMediaPreviews) {
+    context.app.route(
+      '/api/media-tools',
+      createMediaToolsRoutes({
+        tools: mediaTools,
+        preview: localMediaPreviews.mediaToolsPreview,
+        authorizeOperator: createBrowserOperatorAuthorizer({
+          operator: (request) => projectMembershipAuthority(request).operator(),
+        }),
+        isRequestPrincipalCurrent,
+      }),
+    );
+    context.app.route(
+      '/api/transcription',
+      createTranscriptionRoutes({
+        transcriber: context.walkthroughImportDependencies.transcriber,
+        preview: localMediaPreviews.localSpeechPreview,
+        isRequestPrincipalCurrent,
+      }),
+    );
     const browserMembership = context.projectMembership;
     const browserAccess = {
       operator: (request: Request) =>
@@ -7873,6 +7919,12 @@ export function configureRuntimeRoutes(
     context.projectService,
     projectCatalogueDeps,
   );
+  // The same home and Project store the session start's approval layer and
+  // its last-used record use (`runtime-initialize.ts`).
+  const projectChatDefaults = createProjectChatDefaultsService(
+    context.configLoader.getProjectHomeDir(),
+    context.storageAdapter,
+  );
   context.app.route(
     '/api/projects',
     createProjectRoutes(
@@ -7880,6 +7932,14 @@ export function configureRuntimeRoutes(
       context.storageAdapter,
       context.configLoader.getProjectHomeDir(),
       {
+        // The caller's id is the one a chat start records under
+        // (`resolveActorPrincipal` reads this same resolver).
+        chatDefaults: (c, project, options) =>
+          projectChatDefaults.view(
+            project,
+            resolveOrchestrationRequestPrincipal(c).id,
+            options,
+          ),
         identityMutationCurrent: (request, choosingDirectory) => {
           return (
             isRequestPrincipalCurrent(request) &&
@@ -8380,6 +8440,44 @@ export function configureRuntimeRoutes(
       data: conversations.slice(0, limit),
     });
   });
+  if (localMediaPreviews) {
+    const walkthroughs = new WalkthroughService({
+      ...context.walkthroughImportDependencies,
+      files: new ProjectFileTransactions(
+        context.configLoader.getProjectHomeDir(),
+      ),
+      operations: actionOperations,
+      diagnostic: (error) =>
+        context.logger.warn('Walkthrough import failed', { error }),
+    });
+    context.app.route(
+      '/api/projects/:projectSlug/walkthroughs',
+      createWalkthroughRoutes({
+        service: walkthroughs,
+        preview: localMediaPreviews.walkthroughsPreview,
+        project: (slug) => context.projectService.getProject(slug),
+        authorize: createBrowserProjectAuthorizer({
+          operator: (request) => projectMembershipAuthority(request).operator(),
+          authority: projectMembershipAuthority,
+          membership: context.projectMembership,
+        }),
+        actor: (request) => {
+          const authority = conversationReadAuthorityForRequest(request);
+          return actionOperationActorForRequest(
+            request,
+            authority,
+            (sessionId) =>
+              context.orchestrationService.canUserReadSession(
+                sessionId,
+                authority,
+              ),
+          );
+        },
+        diagnostic: (error) =>
+          context.logger.warn('Walkthrough request failed', { error }),
+      }),
+    );
+  }
   context.app.route(
     '/api/projects/:slug/knowledge',
     createKnowledgeRoutes(context.knowledgeService),

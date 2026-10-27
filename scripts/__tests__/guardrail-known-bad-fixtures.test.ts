@@ -1517,6 +1517,7 @@ describe('typecheck:scripts refuses a scripts/ tree it does not fully account fo
       'docs:index:check': 'scripts/docs-index.mjs',
       'docs:cli-parity:check': 'scripts/cli-doc-parity.mjs',
       'docs:metrics:check': 'scripts/generate-metric-reference.mjs',
+      'docs:feature-previews:check': 'scripts/feature-preview-docs-check.mjs',
       'docs:public:contract-examples':
         'scripts/public-doc-contract-examples.mjs',
       'docs:links:check': 'scripts/check-markdown-links.mjs',

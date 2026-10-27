@@ -3,9 +3,12 @@
  * Station's API server provider: the VoltAgent app, bound through the
  * listener link.
  */
+
+import type { Server as HttpServer } from 'node:http';
 import net from 'node:net';
+import type { HttpBindings } from '@hono/node-server';
 import type { ServerProviderDeps } from '@voltagent/core';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DIRECT_LISTENER_LINK,
   type ListenerLink,
@@ -77,6 +80,8 @@ describe('stationHonoServer', () => {
     expect(provider.isRunning()).toBe(false);
     const { port } = await provider.start();
     expect(provider.isRunning()).toBe(true);
+    const api = calls[0]!.server as HttpServer;
+    expect(api.headersTimeout).toBeLessThanOrEqual(60_000);
     expect(calls.map(({ name, host }) => ({ name, host }))).toEqual([
       { name: 'api', host: '0.0.0.0' },
     ]);
@@ -180,4 +185,208 @@ describe('stationHonoServer', () => {
     });
     expect(reply).toMatch(/^HTTP\/1\.1 405/);
   });
+});
+
+it('bodyless responses do not inherit upload receive-idle timeouts', async () => {
+  const { link } = recordingLink();
+  const provider = stationHonoServer(
+    config({
+      hostname: '127.0.0.1',
+      configureFullApp: ({ app }) => {
+        app.get('/receive-timeout', (c) =>
+          c.text(String((c.env as HttpBindings).incoming.socket.timeout ?? 0)),
+        );
+      },
+    }),
+    () => link,
+  )(deps);
+  const { port } = await provider.start();
+  cleanups.push(() => provider.stop());
+  expect(
+    await (await fetch(`http://127.0.0.1:${port}/receive-timeout`)).text(),
+  ).toBe('0');
+});
+
+it.each([401, 413])(
+  'ordinary %s response racing body end retains Node keep-alive close',
+  async (status) => {
+    const { link, calls } = recordingLink();
+    const provider = stationHonoServer(
+      config({
+        hostname: '127.0.0.1',
+        configureFullApp: ({ app }) => {
+          app.post('/api/ordinary', (c) =>
+            c.json({ refused: true }, status as 401),
+          );
+        },
+      }),
+      () => link,
+    )(deps);
+    const { port } = await provider.start();
+    cleanups.push(() => provider.stop());
+    const server = calls[0]!.server as HttpServer;
+    server.keepAliveTimeout = 100;
+    server.keepAliveTimeoutBuffer = 0;
+    const closed = await new Promise<boolean>((resolve, reject) => {
+      const socket = net.connect(port, '127.0.0.1');
+      const guard = setTimeout(() => {
+        resolve(false);
+        socket.destroy();
+      }, 700);
+      socket.once('data', () => setTimeout(() => socket.write('B'), 20));
+      socket.once('close', () => {
+        clearTimeout(guard);
+        resolve(true);
+      });
+      socket.once('error', reject);
+      socket.write(
+        'POST /api/ordinary HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\n\r\nA',
+      );
+    });
+    expect(closed, 'body end cleared the keep-alive timer').toBe(true);
+  },
+);
+it('ordinary receive total and upload idle refresh survive several idle windows', async () => {
+  const original = globalThis.setTimeout;
+  const timers = vi
+    .spyOn(globalThis, 'setTimeout')
+    .mockImplementation(((
+      fn: (...args: unknown[]) => void,
+      ms: number,
+      ...args: unknown[]
+    ) =>
+      original(
+        fn,
+        ms >= 299_000 && ms <= 300_000
+          ? 120
+          : ms === 60_000
+            ? 150
+            : ms === 7_200_000
+              ? 700
+              : ms,
+        ...args,
+      )) as typeof setTimeout);
+  const { link } = recordingLink();
+  const provider = stationHonoServer(
+    config({
+      hostname: '127.0.0.1',
+      configureFullApp: ({ app }) => {
+        app.post('*', async (c) => {
+          await c.req.text();
+          return c.text('complete');
+        });
+      },
+    }),
+    () => link,
+  )(deps);
+  try {
+    const { port } = await provider.start();
+    cleanups.push(() => provider.stop());
+    for (const [path, expected] of [
+      ['/api/ordinary', 408],
+      ['/api/projects/a/walkthroughs/import', 200],
+    ] as const) {
+      const reply = await new Promise<string>((resolve, reject) => {
+        const socket = net.connect(port, '127.0.0.1');
+        let reply = '';
+        const guard = original(() => {
+          socket.destroy();
+          reject(new Error('no receive answer'));
+        }, 1500);
+        socket.on('data', (b) => {
+          reply += b.toString();
+          if (reply.includes('\r\n\r\n')) {
+            clearTimeout(guard);
+            resolve(reply);
+            socket.destroy();
+          }
+        });
+        socket.on('error', reject);
+        socket.write(
+          `POST ${path} HTTP/1.1\r\nHost: x\r\nContent-Length: 6\r\n\r\nA`,
+        );
+        for (let i = 1; i <= 5; i++) {
+          original(() => {
+            if (!socket.destroyed) {
+              if (i === 5) socket.end('B');
+              else socket.write('B');
+            }
+          }, i * 80);
+        }
+      });
+      expect(reply).toContain(`HTTP/1.1 ${expected}`);
+    }
+  } finally {
+    timers.mockRestore();
+    await provider.stop();
+  }
+});
+
+it('ordinary receive total includes time already spent receiving headers', async () => {
+  let now = 0;
+  const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+  const nativeTimer = globalThis.setTimeout;
+  const timer = vi
+    .spyOn(globalThis, 'setTimeout')
+    .mockImplementation(((
+      fn: (...args: unknown[]) => void,
+      ms: number,
+      ...args: unknown[]
+    ) =>
+      nativeTimer(
+        fn,
+        ms === 300_000 ? 250 : ms,
+        ...args,
+      )) as typeof setTimeout);
+  const { link, calls } = recordingLink();
+  const provider = stationHonoServer(
+    config({
+      hostname: '127.0.0.1',
+      configureFullApp: ({ app }) => {
+        app.post('*', async (c) => {
+          await c.req.text();
+          return c.text('complete');
+        });
+      },
+    }),
+    () => link,
+  )(deps);
+  try {
+    const { port } = await provider.start();
+    const server = calls[0]!.server as HttpServer;
+    const firstData = new Promise<void>((resolve) =>
+      server.once('connection', (socket) =>
+        socket.once('data', () => resolve()),
+      ),
+    );
+    const socket = net.connect(port, '127.0.0.1');
+    cleanups.push(() => socket.destroy());
+    socket.write(
+      'POST /api/ordinary HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\n',
+    );
+    await firstData;
+    now = 299_950;
+    const started = performance.now();
+    const reply = new Promise<string>((resolve, reject) => {
+      const guard = nativeTimer(
+        () => reject(new Error('no header-inclusive timeout')),
+        1000,
+      );
+      socket.once('data', (bytes) => {
+        clearTimeout(guard);
+        resolve(bytes.toString());
+      });
+      socket.once('error', reject);
+    });
+    socket.write('\r\nA');
+    expect(await reply).toContain('HTTP/1.1 408');
+    expect(
+      performance.now() - started,
+      'headers must spend the same receive-total budget',
+    ).toBeLessThan(180);
+  } finally {
+    timer.mockRestore();
+    clock.mockRestore();
+    await provider.stop();
+  }
 });
