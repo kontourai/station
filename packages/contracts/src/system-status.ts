@@ -374,5 +374,7 @@ export interface WorkloadBudgetStatus {
      * unknown. Absent for command scopes.
      */
     holder?: 'placed' | 'unplaced';
+    /** Why an engine scope's holder is unplaced. */
+    holderReason?: string;
   }>;
 }

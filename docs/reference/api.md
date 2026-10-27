@@ -4167,7 +4167,8 @@ under `/api/system/workload`:
 
 `GET /api/system/workload` also lists running `scopes`, each with the limit
 it was launched with (a saved change reaches only later launches), its OOM
-kill count and `lastOomKillAt`, and for an engine scope `holder: placed | unplaced`
+kill count and `lastOomKillAt`, and for an engine scope `holder: placed | unplaced` with a `holderReason` when
+unplaced
 (an unplaced holder means that scope's OOM count will be unknown after the
 engine dies). The session read's measured scope carries
 `lastOomKillAt` too. A save refuses a total below the slice's current usage
@@ -4185,8 +4186,10 @@ It sends one Station-authored turn through the conversation inbox as the caller,
 under a key derived from the dead Session and turn, and answers 202 with that
 `clientTurnId`. Any later request for the same dead turn while a live entry exists, from anyone
 and including after Station's own automatic continuation, gets 409
-`memory_continuation_already_started`; after a cancelled or refused entry a
-person's Continue is sent under the next person key. A `clientTurnId` starting
+`memory_continuation_already_started`; after an entry the inbox proves unsent
+(refused, or cancelled before placement) a person's Continue is sent under the
+next person key, and once all are spent the answer is 409
+`memory_continuation_retries_exhausted`. A `clientTurnId` starting
 `memory-continue-` is refused (400) on `POST /chat` and continue sends. A latest turn that did not end that way
 is 409 `memory_continuation_not_applicable`; a conversation the caller cannot
 read is 404; one the inbox refuses the caller is 403

@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { type ChildProcess, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -26,6 +26,7 @@ import {
   enforcedWorkloadLimits,
   inspectSessionWorkload,
   inspectWorkloadResources,
+  spawnScopeHolder,
   WorkloadSettingsRejectedError,
   workloadBudgetStatus,
 } from '../workload-resources.js';
@@ -254,7 +255,9 @@ describe('workload manager budgets (fake systemd manager)', () => {
     __workloadTestHooks.reset();
   });
 
-  async function start(options: { settings?: object } = {}) {
+  async function start(
+    options: { settings?: object; spawnHolder?: () => ChildProcess } = {},
+  ) {
     const home = tempDir();
     const cgroupRoot = join(home, 'sys-fs-cgroup');
     if (options.settings) {
@@ -287,12 +290,19 @@ describe('workload manager budgets (fake systemd manager)', () => {
           holders.push(holder);
           return {
             pid: holder.pid,
+            // As a real ChildProcess: 'spawn' on a later tick.
+            once: (event: string, listener: () => void) => {
+              if (event === 'spawn') setImmediate(listener);
+            },
             kill: (signal: string) => {
               holder.killed.push(signal);
               return true;
             },
           } as never;
         },
+        deadlineMs: 300,
+        retryMs: 10,
+        ...(options.spawnHolder ? { spawn: options.spawnHolder } : {}),
         attach: async (unit, pid) => {
           if (control.failAttach) throw new Error('Access denied');
           if (control.attachWithoutMove) return '';
@@ -804,6 +814,64 @@ describe('workload manager budgets (fake systemd manager)', () => {
       oomKills: 1,
       oomKillsSource: 'last-poll',
     });
+  });
+
+  test('a holder waits for a scope that loads after systemd-run starts', async () => {
+    const { cgroupRoot, controlGroups } = await start();
+    const engine = launch('thread-late-scope');
+    const unit = engine.args
+      .find((arg) => arg.startsWith('--unit='))
+      ?.slice('--unit='.length) as string;
+    // The manager knows the unit only a while after the launch.
+    trackChildWorkload(engine, process.pid);
+    setTimeout(() => {
+      controlGroups.set(unit, `/app.slice/${unit}`);
+      void writeScopeFixture(`${cgroupRoot}/app.slice/${unit}`, 0);
+    }, 50);
+    await __workloadTestHooks.settleHolders();
+    expect(
+      workloadBudgetStatus().scopes?.find((scope) => scope.unit === unit),
+    ).toMatchObject({ holder: 'placed' });
+    await closeChildWorkload(process.pid);
+  });
+
+  test('a scope that never loads, or a holder that cannot spawn, is reported unplaced with a reason, never a crash', async () => {
+    const { controlGroups, cgroupRoot } = await start({
+      // A real spawn of a binary that does not exist: ENOENT arrives as an
+      // 'error' event on a later tick.
+      spawnHolder: () => spawnScopeHolder('/nonexistent/station-sleep'),
+    });
+    const never = launch('thread-never-loads');
+    const neverUnit = never.args
+      .find((arg) => arg.startsWith('--unit='))
+      ?.slice('--unit='.length) as string;
+    trackChildWorkload(never, process.pid);
+    await __workloadTestHooks.settleHolders();
+    expect(
+      workloadBudgetStatus().scopes?.find((scope) => scope.unit === neverUnit),
+    ).toMatchObject({
+      holder: 'unplaced',
+      holderReason: 'the scope did not load within the placement deadline',
+    });
+    await closeChildWorkload(process.pid);
+
+    const unspawned = launch('thread-holder-enoent');
+    const unspawnedUnit = unspawned.args
+      .find((arg) => arg.startsWith('--unit='))
+      ?.slice('--unit='.length) as string;
+    controlGroups.set(unspawnedUnit, `/app.slice/${unspawnedUnit}`);
+    await writeScopeFixture(`${cgroupRoot}/app.slice/${unspawnedUnit}`, 0);
+    trackChildWorkload(unspawned, process.pid);
+    await __workloadTestHooks.settleHolders();
+    expect(
+      workloadBudgetStatus().scopes?.find(
+        (scope) => scope.unit === unspawnedUnit,
+      ),
+    ).toMatchObject({
+      holder: 'unplaced',
+      holderReason: expect.stringMatching(/ENOENT/),
+    });
+    await closeChildWorkload(process.pid);
   });
 
   test('without enforcement no limit is claimed', async () => {

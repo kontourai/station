@@ -267,14 +267,19 @@ a command kill. The count is read again when the scope closes. systemd collects 
 scope as soon as its last process exits, cgroup and counters with it, so an
 engine's own scope (a launch that names its Session) also gets a holder.
 Station spawns `/bin/sleep` itself, detached into its own session and process
-group with no stdio, asks the user manager to move it into the scope
-(`AttachProcessesToUnit` through `/usr/bin/busctl`), and checks the scope's
-`cgroup.procs`. The holder therefore holds no engine pipe, and the
+group with no stdio, waits up to 5 seconds for the just-launched scope to load,
+moves the holder into it, and checks the scope's `cgroup.procs`. The move
+writes the scope's `cgroup.procs` directly (the user manager's subtree is
+delegated to the user, so no D-Bus is needed); where that is refused it asks the
+user manager with `AttachProcessesToUnit` through `/usr/bin/busctl`, first over
+systemd's private socket and then over the user bus, each bounded to 3 seconds.
+A spawn failure is handled, not fatal. The holder therefore holds no engine pipe, and the
 process-group kill that tears a Codex engine down cannot reach it. When the
 engine dies, the holder keeps the scope and its `memory.events` until Station
 reads the count and stops the scope, which kills the holder. A holder that
-cannot be placed is killed, logged and reported as `holder: unplaced` in
-`GET /api/system/workload`; that scope's count at close, like any
+cannot be placed is killed, logged and reported as `holder: unplaced` with a
+`holderReason` in `GET /api/system/workload`; a closing scope waits at most 3
+seconds for a placement still running; that scope's count at close, like any
 scope already gone, is unknown and never inferred. The settled record
 (`recent` in `/api/system/resource-posture` and the "Workload scope settled"
 log) reports `result: oom-kill-in-scope` with `oomKills` whenever the kernel
@@ -352,9 +357,11 @@ same turn under a key derived from the dead Session and turn (Station's bare
 key, or the `-p` person key). Whoever continues first owns the one live entry;
 every later request, including the owner's click after Station continued on
 its own, gets 409 `memory_continuation_already_started` and never a second
-turn. A cancelled or refused entry sent nothing: a person's Continue then takes
-the next person key (`-p2` … `-p5`), so two devices clicking still name one
-entry. The
+turn. Only an entry the inbox proves sent nothing (refused, or cancelled before
+it was ever placed) is spent: a person's Continue then takes the next person key
+(`-p2` … `-p5`), so two devices clicking still name one entry. A dismissed
+unconfirmed entry may have started a turn and still counts as continued. Once
+every key is spent, Continue answers 409 `memory_continuation_retries_exhausted`. The
 `memory-continue-` key prefix is reserved: `/chat` refuses it and the inbox
 accepts it only from Station's own origin, so nobody can pre-claim the key. An older
 Station without the route answers 404 and the client sends the short

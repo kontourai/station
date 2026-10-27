@@ -3502,6 +3502,16 @@ export function createOrchestrationRoutes(
         },
         409,
       );
+    if (outcome.kind === 'skipped' && outcome.reason === 'withdrawn')
+      return c.json(
+        {
+          success: false,
+          code: 'memory_continuation_retries_exhausted',
+          error:
+            "This turn's continuation was cancelled or refused too many times. Send a message to continue the conversation.",
+        },
+        409,
+      );
     if (outcome.kind === 'skipped')
       return c.json(
         {

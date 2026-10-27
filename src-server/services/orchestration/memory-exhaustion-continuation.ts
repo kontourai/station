@@ -57,9 +57,6 @@ export const AUTO_CONTINUE_WINDOW_MS = 5 * 60_000;
  */
 export const AUTO_CONTINUE_CHAIN_MAX = 2;
 
-/** Inbox entry states that sent nothing. */
-const DEAD_ENTRY_STATES = new Set(['refused', 'cancelled']);
-
 /** Client-origin actors that are a person (`ClientOrigin` kinds). */
 const PERSON_ACTOR_KINDS = new Set(['operator', 'device']);
 
@@ -143,13 +140,16 @@ export interface MemoryExhaustionContinuationPorts {
     'currentConversationSessionId' | 'sessionRecordedOwnerId'
   >;
   /**
-   * The conversation inbox's entry state under `key`, or undefined when it
-   * holds none. `refused` and `cancelled` entries never sent anything.
+   * Whether the conversation inbox holds an entry under `key`, and whether it
+   * provably sent nothing (`not-delivered`: refused, or cancelled before it
+   * was ever placed, as `ThreadInboxDelivery.nonDeliveryReason` decides). An
+   * entry that may have started a turn, including a dismissed unconfirmed
+   * one, is `live`.
    */
-  readonly entryState?: (
+  readonly entryDelivery?: (
     conversationId: string,
     key: string,
-  ) => string | undefined;
+  ) => 'live' | 'not-delivered' | undefined;
   readonly submit:
     | ((input: {
         readonly conversationId: string;
@@ -272,9 +272,9 @@ export class MemoryExhaustionContinuation {
     conversationId: string,
     key: string,
   ): 'live' | 'dead' | undefined {
-    const state = this.ports.entryState?.(conversationId, key);
-    if (state === undefined) return undefined;
-    return DEAD_ENTRY_STATES.has(state) ? 'dead' : 'live';
+    const delivery = this.ports.entryDelivery?.(conversationId, key);
+    if (delivery === undefined) return undefined;
+    return delivery === 'not-delivered' ? 'dead' : 'live';
   }
 
   /**

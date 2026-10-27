@@ -80,9 +80,18 @@ describe('automatic continuation after a memory kill', () => {
       },
       // The inbox kernel's own submit: same key and payload is the same
       // entry; the same key with another payload is a conflict.
-      entryState: (conversationId, key) =>
-        (inbox.read(conversationId, key) as { state?: string } | undefined)
-          ?.state,
+      // ThreadInboxDelivery.nonDeliveryReason's rule over the real record:
+      // refused, or cancelled before it was ever placed, sent nothing.
+      entryDelivery: (conversationId, key) => {
+        const entry = inbox.read(conversationId, key) as
+          | { state?: string; placement?: string | null }
+          | undefined;
+        if (!entry) return undefined;
+        return entry.state === 'refused' ||
+          (entry.state === 'cancelled' && entry.placement === null)
+          ? 'not-delivered'
+          : 'live';
+      },
       submit: (input) => {
         const result = inbox.submit({ ...input, now: clock });
         const outcome =
@@ -433,6 +442,64 @@ describe('automatic continuation after a memory kill', () => {
         actor: { userId: 'person-1' },
       }),
     ).toEqual({ kind: 'skipped', reason: 'already-claimed' });
+  });
+
+  test('a dismissed unconfirmed continuation may have started a turn: a person cannot send a second', () => {
+    const continuation = coordinator();
+    killedTurn('thread-unconfirmed');
+    const automatic = continuation.continueAutomatically(
+      'thread-unconfirmed',
+    ) as { clientTurnId: string };
+    const inbox = store.threadInboxStore();
+    // Placement started and its outcome was never confirmed; then a person
+    // dismissed it. It keeps its placement: a turn may exist.
+    const claimed = inbox.claimNext('thread-unconfirmed', 'placement-1', clock);
+    expect(claimed.kind).toBe('claimed');
+    inbox.settle(
+      (claimed as { entry: never }).entry,
+      'unconfirmed',
+      { reasonCode: 'unconfirmed', reason: 'no answer' } as never,
+      clock,
+    );
+    inbox.cancel('thread-unconfirmed', automatic.clientTurnId, clock);
+    expect(
+      continuation.continueOnRequest({
+        conversationId: 'thread-unconfirmed',
+        actor: { userId: 'person-1' },
+      }),
+    ).toEqual({ kind: 'skipped', reason: 'already-claimed' });
+  });
+
+  test('after every person key was cancelled unsent, Continue reports retries exhausted', () => {
+    const continuation = coordinator();
+    killedTurn('thread-exhausted');
+    const base = memoryContinuationKey(
+      'thread-exhausted',
+      'thread-exhausted-turn',
+    );
+    const inbox = store.threadInboxStore();
+    for (const key of [
+      base,
+      `${base}-p`,
+      ...[2, 3, 4, 5].map((n) => `${base}-p${n}`),
+    ]) {
+      inbox.submit({
+        conversationId: 'thread-exhausted',
+        clientTurnId: key,
+        payload: {
+          message: MEMORY_CONTINUATION_TEXT,
+          actor: { userId: 'person-1' },
+        },
+        now: clock,
+      });
+      inbox.cancel('thread-exhausted', key, clock);
+    }
+    expect(
+      continuation.continueOnRequest({
+        conversationId: 'thread-exhausted',
+        actor: { userId: 'person-1' },
+      }),
+    ).toEqual({ kind: 'skipped', reason: 'withdrawn' });
   });
 
   test('Station does not retry on its own after its continuation was withdrawn', () => {
