@@ -83,9 +83,12 @@ export function useQueryCacheReconnectSync(): void {
       });
       // The authority observation itself lives on the bootstrap client above
       // this tree. While it is failed (this tree is then the unverified
-      // fallback), the same transition re-reads it, so a route-only outage
-      // recovers into the verified workspace without an app restart.
-      reobserve?.();
+      // fallback), a reconnect this tree saw re-reads it, so a route-only
+      // outage recovers into the verified workspace without an app restart.
+      // Never on mount: the failed read that mounted this tree is current,
+      // and re-reading it unmounts the tree behind the access check, which
+      // remounts it connected and re-reads again, without end.
+      if (previousStatus !== null) reobserve?.();
     }
   }, [status, isRestoring, queryClient, reobserve]);
 }
