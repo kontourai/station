@@ -63,6 +63,7 @@ import {
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
+import { isRuntimeEventContentDigest } from '@kontourai/station-contracts/runtime-event-content';
 import {
   ORCHESTRATION_STREAM_ACTIVITY_EVENT,
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
@@ -514,6 +515,14 @@ const respondToRequestCommandSchema = z.object({
   // Only an `acceptForSession` answer reads it, and only an authentic
   // Station browser request honours it (the adapter's grant computation).
   sessionGrantScope: z.literal('server').optional(),
+  // docs/design/event-content-spill.md: proof the client loaded a spilled
+  // request's full content before allowing it. Checked by the service.
+  viewedContentDigest: z
+    .string()
+    // 'sha256-' plus 64 hex digits; the regex fixes the exact shape.
+    .max(71)
+    .regex(/^sha256-[0-9a-f]{64}$/)
+    .optional(),
   // Deprecated (#3390): a pre-0.9 client's harness answer; translated to
   // `content` by the service. Retained for compatibility; new callers use `content`.
   answers: z
@@ -5331,6 +5340,71 @@ export function createOrchestrationRoutes(
     return c.json({ success: true, data });
   });
 
+  /**
+   * docs/design/event-content-spill.md: the full value behind a runtime
+   * event's out-of-line content reference, as its raw body (a string as
+   * text, a subtree as JSON) with no JSON-in-JSON escaping. Authorized like
+   * the window read that delivered the reference, so it works in hosted
+   * mode under the same tenant scope and for paired devices. `maxChars`
+   * returns a prefix for bounded readers, marked incomplete.
+   */
+  app.get('/sessions/:threadId/content/:ref', (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    const threadId = param(c, 'threadId');
+    const digest = param(c, 'ref');
+    const maxCharsQuery = c.req.query('maxChars');
+    const maxChars =
+      maxCharsQuery === undefined ? undefined : Number(maxCharsQuery);
+    if (
+      !isRuntimeEventContentDigest(digest) ||
+      (maxChars !== undefined &&
+        (!Number.isSafeInteger(maxChars) || maxChars < 1))
+    )
+      return c.json(
+        { success: false, error: 'Invalid content reference' },
+        400,
+      );
+    const found = orchestrationService.readEventContent(
+      threadId,
+      digest,
+      readAuthorityFor(c),
+    );
+    if (!found)
+      return c.json({ success: false, error: 'Content not found' }, 404);
+    const complete = maxChars === undefined || found.body.length <= maxChars;
+    c.header('X-Station-Content-Kind', found.kind);
+    c.header('X-Station-Content-Bytes', String(found.bytes));
+    c.header('X-Station-Content-Complete', complete ? 'true' : 'false');
+    c.header(
+      'Content-Type',
+      found.kind === 'string' || !complete
+        ? 'text/plain; charset=utf-8'
+        : 'application/json; charset=utf-8',
+    );
+    const prefix = complete
+      ? found.body
+      : found.body.slice(0, maxChars).replace(/[\uD800-\uDBFF]$/u, '');
+    return c.body(prefix);
+  });
+
+  /**
+   * docs/design/event-content-spill.md: what an allow of this request must
+   * load and the viewed-content digest the gate will check, as the server
+   * defines them (the request and the tool calls bound to it). Authorized
+   * like the window read.
+   */
+  app.get('/sessions/:threadId/requests/:requestId/content-binding', (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    const binding = orchestrationService.readApprovalContentBinding(
+      param(c, 'threadId'),
+      param(c, 'requestId'),
+      readAuthorityFor(c),
+    );
+    if (!binding)
+      return c.json({ success: false, error: 'Request not found' }, 404);
+    return c.json({ success: true, data: binding });
+  });
+
   app.get('/conversations/:conversationId/event-window', async (c) => {
     const parsed = sessionEventWindowQuerySchema.safeParse({
       cursor: c.req.query('cursor'),
@@ -6522,7 +6596,8 @@ export function createOrchestrationRoutes(
             indeterminate ||
             (error instanceof OrchestrationCommandDispatchError &&
               (error.code === 'request_event_changed' ||
-                error.code === 'request_verification_unavailable'))
+                error.code === 'request_verification_unavailable' ||
+                error.code === 'request_content_not_loaded'))
             ? 409
             : 400,
         );

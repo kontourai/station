@@ -247,6 +247,14 @@ interface ConversationLineageDeps {
     threadId: string,
     authority: SessionReadScope,
   ) => ConversationMessage[];
+  /**
+   * The Session's messages with content stored out of line resolved, for the
+   * transcript seeds an engine receives (docs/design/event-content-spill.md).
+   */
+  readSessionSeedMessages: (
+    threadId: string,
+    authority: SessionReadScope,
+  ) => ConversationMessage[];
   listSessionReadModel: (
     authority: SessionReadScope,
   ) => Promise<OrchestrationSessionSummary[]>;
@@ -1311,7 +1319,7 @@ export class ConversationLineage {
       ),
     }));
     const messages = sources.flatMap((entry) =>
-      this.deps.readSessionMessages(entry.sessionId, authority),
+      this.deps.readSessionSeedMessages(entry.sessionId, authority),
     );
     const seedSource = transcriptSeedSource(messages);
     const seed = buildTranscriptSeed({
@@ -1618,7 +1626,7 @@ export class ConversationLineage {
     return (
       this.deps.eventStore?.conversationSessions(conversationId) ?? []
     ).flatMap((lineage) =>
-      this.deps.readSessionMessages(lineage.sessionId, authority),
+      this.deps.readSessionSeedMessages(lineage.sessionId, authority),
     );
   }
 

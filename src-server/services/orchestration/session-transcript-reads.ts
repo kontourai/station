@@ -48,6 +48,11 @@ interface SessionTranscriptReadsDeps {
   ) => { conversationId: string; slug?: string } | null | undefined;
   listEventPayloads: (threadId: string) => CanonicalRuntimeEvent[];
   /**
+   * The same payloads with content stored out of line resolved
+   * (docs/design/event-content-spill.md). Read only for engine-facing seeds.
+   */
+  listResolvedEventPayloads: (threadId: string) => CanonicalRuntimeEvent[];
+  /**
    * #3112: the durable conversation an execution Session belongs to (the
    * thread itself when it has no lineage). A successor Session is not a
    * conversation of its own.
@@ -116,6 +121,25 @@ export class SessionTranscriptReads {
     }
     return projectRuntimeEventsToMessages(
       this.deps.listEventPayloads(threadId),
+    );
+  }
+
+  /**
+   * {@link readSessionMessages} with content stored out of line resolved, for
+   * the transcript seeds an engine receives: a seed carries whole messages
+   * under its own budget, so a long reply must count at its real size. The
+   * read check runs first; nothing is listed or resolved for a caller that
+   * may not read the Session.
+   */
+  readSessionSeedMessages(
+    threadId: string,
+    authority: SessionReadScope,
+  ): ConversationMessage[] {
+    if (!this.deps.canReadSession(threadId, authority)) {
+      return [];
+    }
+    return projectRuntimeEventsToMessages(
+      this.deps.listResolvedEventPayloads(threadId),
     );
   }
 

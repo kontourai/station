@@ -3937,6 +3937,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/event-window',
     },
+    // docs/design/event-content-spill.md: the full value behind a content
+    // reference in an event this family already reads. A paired phone must
+    // load an approval's full content before it can allow it.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/content/:ref',
+    },
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/requests/:requestId/content-binding',
+    },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/events' },
     // station#1877: stops ONE provider-reported subagent inside a session the
     // caller already reaches through this family. It mutates, but no more

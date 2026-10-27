@@ -21,7 +21,10 @@ import { __resetStationServerSelfAttestationForTests } from '../../../security/s
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { NotificationService } from '../../../services/notifications/notification-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
-import { EventStore } from '../../../services/orchestration/event-store.js';
+import {
+  EventStore,
+  type PersistedRuntimeEvent,
+} from '../../../services/orchestration/event-store.js';
 import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../../tools/station-control-shared.js';
 import {
   getInternalApiToken,
@@ -197,6 +200,11 @@ async function composeOver(
           limit,
           invocationId,
         ),
+      // Delivery resolves content stored out of line on the real store
+      // before reading the terminal (event-content-spill).
+      resolveEventContent: <T extends PersistedRuntimeEvent>(
+        events: readonly T[],
+      ) => store.resolveEventContent(events),
       readSessionInventoryHighWater: (threadId: string) =>
         store.readSessionInventoryHighWater(threadId),
       readInputlessTurnDisposition: (threadId: string) =>

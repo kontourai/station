@@ -48,6 +48,11 @@ export function conversationPartToContentParts(
     approvalId: part.approvalId,
     approvalThreadId: part.approvalThreadId,
     approvalEventId: part.approvalEventId,
+    ...(part.approvalContentEvent
+      ? { approvalContentEvent: part.approvalContentEvent }
+      : {}),
+    ...(part.spilledText ? { spilledText: part.spilledText } : {}),
+    ...(part.contentThreadId ? { contentThreadId: part.contentThreadId } : {}),
     ...(part.approvalToolName !== undefined
       ? { approvalToolName: part.approvalToolName }
       : {}),
