@@ -1096,6 +1096,117 @@ describe('ChromiumServerHost with a fake browser', () => {
 });
 
 describe('effective preview WebRTC policy at browser startup', () => {
+  test('cold target startup leaves time to verify policy before admitting authored content', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    let attaches = 0;
+    let h: ReturnType<typeof harness>;
+    h = harness(
+      async (call) => {
+        if (call.sessionId === 'S-T1' && call.method === 'Page.enable')
+          await new Promise((resolve) => setTimeout(resolve, 700));
+        if (call.sessionId === 'S-T1' && call.method === 'Page.navigate')
+          setTimeout(
+            () => h.emit('Page.loadEventFired', {}, call.sessionId),
+            800,
+          );
+        if (call.method === 'Runtime.evaluate') {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          return {
+            result: {
+              value: {
+                policy: 'disable_non_proxied_udp',
+                urlOverrides: false,
+              },
+            },
+          };
+        }
+        return {};
+      },
+      {
+        beforeAttach: async () => {
+          if (attaches++ === 0)
+            await new Promise((resolve) => setTimeout(resolve, 1700));
+        },
+      },
+      { requireRestrictedWebRtc: true },
+    );
+    try {
+      const opening = h.host.openTarget({
+        profileDir: h.profileDir,
+        viewport: VIEWPORT,
+      });
+      const settled = opening.then(
+        (target) => ({ target }),
+        (error: unknown) => ({ error }),
+      );
+      await new Promise(setImmediate);
+      await vi.advanceTimersByTimeAsync(3001);
+      expect(await settled).toEqual({
+        target: { targetId: 'T2', cdpSessionId: 'S-T2' },
+      });
+    } finally {
+      await h.host.shutdown();
+      vi.useRealTimers();
+    }
+  });
+
+  test('a policy read beyond three seconds refuses authored targets and closes its probe', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    let policyRead = false;
+    let h: ReturnType<typeof harness>;
+    h = harness(
+      (call) => {
+        if (call.method === 'Page.navigate')
+          h.emit('Page.loadEventFired', {}, call.sessionId);
+        if (call.method === 'Runtime.evaluate') {
+          policyRead = true;
+          return new Promise((resolve) =>
+            setTimeout(
+              () =>
+                resolve({
+                  result: {
+                    value: {
+                      policy: 'disable_non_proxied_udp',
+                      urlOverrides: false,
+                    },
+                  },
+                }),
+              3001,
+            ),
+          );
+        }
+        return {};
+      },
+      undefined,
+      { requireRestrictedWebRtc: true },
+    );
+    try {
+      const opening = h.host.openTarget({
+        profileDir: h.profileDir,
+        viewport: VIEWPORT,
+      });
+      const rejected = expect(opening).rejects.toMatchObject({
+        code: 'webrtc-policy-unverified',
+      });
+      await new Promise(setImmediate);
+      await vi.advanceTimersByTimeAsync(3001);
+      await rejected;
+      expect(policyRead).toBe(true);
+      expect(
+        h.calls.filter((call) => call.method === 'Target.createTarget'),
+      ).toHaveLength(1);
+      expect(h.calls).toContainEqual({
+        method: 'Target.closeTarget',
+        params: { targetId: 'T1' },
+        sessionId: undefined,
+      });
+      expect(h.terminate).toHaveBeenCalledOnce();
+    } finally {
+      await h.host.shutdown();
+      vi.useRealTimers();
+    }
+  });
+
   test.each([
     [
       'restrictive',

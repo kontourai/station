@@ -776,7 +776,6 @@ export class ChromiumServerHost implements BrowserHost {
   private async verifyWebRtcPolicy(running: Running): Promise<void> {
     const transport = running.launch.transport;
     let targetId: string | undefined;
-    let off: (() => void) | undefined;
     let verified = false;
     try {
       const check = async () => {
@@ -784,7 +783,7 @@ export class ChromiumServerHost implements BrowserHost {
         try {
           ({ targetId } = await transport.send<{ targetId: string }>(
             'Target.createTarget',
-            { url: ABOUT_BLANK },
+            { url: 'chrome://prefs-internals/' },
           ));
           running.created.add(targetId);
         } finally {
@@ -794,18 +793,6 @@ export class ChromiumServerHost implements BrowserHost {
           'Target.attachToTarget',
           { targetId, flatten: true },
         );
-        await transport.send('Page.enable', {}, sessionId);
-        const loaded = new Promise<void>((resolve) => {
-          off = transport.on('Page.loadEventFired', (_params, session) => {
-            if (session === sessionId) resolve();
-          });
-        });
-        await transport.send(
-          'Page.navigate',
-          { url: 'chrome://prefs-internals/' },
-          sessionId,
-        );
-        await loaded;
         const result = await transport.send<{
           result: { value?: { policy?: unknown; urlOverrides?: unknown } };
         }>(
@@ -813,8 +800,9 @@ export class ChromiumServerHost implements BrowserHost {
           {
             // This internal page reports resolved values, including managed policy.
             // Return only the network-policy fields, never the full preference dump.
-            expression: `(()=>{try{const p=JSON.parse(document.body.innerText).webrtc;return {policy:p?.ip_handling_policy?.value,urlOverrides:p?.ip_handling_url===undefined?false:!Array.isArray(p.ip_handling_url.value)||p.ip_handling_url.value.length!==0};}catch{return null}})()`,
+            expression: `(async()=>{try{if(document.readyState!=='complete')await new Promise(resolve=>addEventListener('load',resolve,{once:true}));if(location.href!=='chrome://prefs-internals/')return null;const p=JSON.parse(document.body.innerText).webrtc;return {policy:p?.ip_handling_policy?.value,urlOverrides:p?.ip_handling_url===undefined?false:!Array.isArray(p.ip_handling_url.value)||p.ip_handling_url.value.length!==0};}catch{return null}})()`,
             returnByValue: true,
+            awaitPromise: true,
           },
           sessionId,
         );
@@ -831,7 +819,6 @@ export class ChromiumServerHost implements BrowserHost {
     } catch {
       verified = false;
     } finally {
-      off?.();
       if (targetId) {
         try {
           await withTimeout(
