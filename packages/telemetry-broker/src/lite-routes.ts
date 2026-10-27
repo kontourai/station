@@ -135,6 +135,10 @@ export function registerLiteRoutes(
     c.header('X-Content-Type-Options', 'nosniff');
     const cursor = cursorFor(c.req.url);
     c.header('Cache-Control', 'no-store');
+    if (await store.isPublicationSuppressed()) {
+      pages.clear();
+      return c.json(await store.publicAggregates());
+    }
     const today = new Date().toISOString().slice(0, 10);
     if (cachedDay !== today || Date.now() >= cacheUntil) {
       pages.clear();

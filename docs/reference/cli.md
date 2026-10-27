@@ -392,6 +392,18 @@ operating-system keyring. Bearer material is absent from saved Station metadata,
 exports, status output, and ordinary app-data files. Unavailable keyrings fail
 closed without a plaintext fallback.
 
+On macOS the CLI reaches the login Keychain through Apple's `/usr/bin/security`
+tool rather than an addon inside `node`. Keychain approval therefore belongs to
+that stable tool and survives CLI and runtime upgrades. `station stations list`,
+`stations show`, and other status displays check only whether a credential
+exists, and never trigger a Keychain dialog. A command that reads, stores, or
+deletes a credential gives up after 5 seconds in a non-interactive shell, or
+after 2 minutes from a terminal. It exits non-zero with an error saying macOS
+is waiting for Keychain approval or that the keychain is locked. To fix it, run
+the command once from a terminal at the Mac and choose **Always Allow**, or
+unlock the keychain with `security unlock-keychain`. Credentials saved by
+earlier versions ask for approval once more, this time for `security`.
+
 `--api-base` accepts either the bare server origin
 or that origin with a trailing `/api` (e.g. copied from a browser Network-tab request
 URL) — both normalize to the same value. The CLI's own resource paths already

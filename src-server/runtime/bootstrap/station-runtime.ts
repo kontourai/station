@@ -1,6 +1,7 @@
 import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-contracts/deployment-authentication';
 import { isProjectKnowledgeRoot } from '@kontourai/station-contracts/knowledge-store';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
+import { analyticsHomeExportActivation } from '../../analytics/analytics-activation.js';
 import { getBrandingProvider } from '../../providers/registries/registry.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
@@ -1113,6 +1114,9 @@ export class StationRuntime {
   private fleetConsumerProbesPreview!: FeaturePreviewSelector;
   private sshEnvironmentService: SshEnvironmentService;
   private timers: NodeJS.Timeout[] = [];
+  private analyticsMaintenance?: (
+    assertRuntime: () => Promise<void>,
+  ) => Promise<void>;
   public readonly eventBus = new EventBus();
   // archive#1225: shared per-user live-`/events`-subscriber presence for
   // `createOrchestrationRoutes` — see
@@ -1380,6 +1384,9 @@ export class StationRuntime {
       this.orchestrationDatabasePath = orchestrationDatabasePath;
       this.orchestrationEventStore = openedEventStore = new EventStore(
         orchestrationDatabasePath,
+      );
+      this.orchestrationEventStore.bindUsageExportActivation(
+        analyticsHomeExportActivation(projectHomeDir),
       );
       this.operationalEventPublisher =
         this.orchestrationEventStore.createOperationalEventPublisher({
@@ -4610,6 +4617,7 @@ export class StationRuntime {
       agentActivityPublisher,
       notificationDeliveryRouter,
       serverUpdate,
+      analyticsMaintenance,
     } = configureRuntimeRoutes({
       retainProjectRoomRuntime: (runtime) => {
         this.projectRoomRuntime = runtime;
@@ -4745,6 +4753,7 @@ export class StationRuntime {
     this.agentActivityPublisher = agentActivityPublisher;
     this.notificationDeliveryRouter = notificationDeliveryRouter;
     this.serverUpdate = serverUpdate;
+    this.analyticsMaintenance = analyticsMaintenance;
     this.liveSurfaceRegistry = liveSurfaceRegistry;
     this.pluginDraftService = pluginDraftService;
     this.deviceHosts = deviceHosts;
@@ -4859,15 +4868,25 @@ export class StationRuntime {
     await startRuntimeHealthChecks({
       timers: this.timers,
       logger: this.logger,
-      runHealthChecks: async () =>
-        runRuntimeHealthChecks({
+      runHealthChecks: async () => {
+        if (!this.shutdownPromise) {
+          try {
+            await this.analyticsMaintenance?.(async () => {
+              if (this.shutdownPromise) throw new Error('Runtime closing');
+            });
+          } catch {
+            this.logger.warn('Analytics sync outbox expiry did not complete');
+          }
+        }
+        return runRuntimeHealthChecks({
           activeAgents: this.activeAgents,
           agentSpecs: this.agentSpecs,
           memoryAdapters: this.memoryAdapters,
           mcpConnectionStatus: this.mcpConnectionStatus,
           integrationMetadata: this.integrationMetadata,
           monitoringEmitter: this.monitoringEmitter,
-        }),
+        });
+      },
     });
     // archive#3218. The reactive watch (archive#3215) sees corruption a query
     // touches; this sees the pages nothing reads. It runs in a child process

@@ -101,6 +101,7 @@ describe('public handshake capability flags (station#1095)', () => {
 
     expect(handshake.capabilities).toEqual(STATION_CAPABILITY_FLAGS);
     expect(handshake.capabilities).toEqual({
+      privateOperationalOutcomes: true,
       sshEnvironments: true,
       webPushNotifications: true,
       eventStreamResume: true,
@@ -138,6 +139,7 @@ describe('public handshake capability flags (station#1095)', () => {
     // affordance no human can reach. Add it here only in the change that
     // ships those surfaces.
     expect(body.capabilities).toEqual({
+      privateOperationalOutcomes: true,
       sshEnvironments: true,
       webPushNotifications: true,
       eventStreamResume: true,

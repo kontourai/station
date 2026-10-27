@@ -261,6 +261,17 @@ describe('Project new-chat defaults at session start', () => {
     });
   });
 
+  test('an explicit fixed choice with no mode ignores the history', async () => {
+    const h = createHarness({
+      project: { defaultApprovalModeSelection: 'fixed' },
+      stationDefault: 'ask',
+    });
+    await h.start({ approvalMode: 'auto', modelId: 'model-a' });
+    await h.recorded();
+    await h.start();
+    expect(h.adapter.lastStartPosture()).toBe('ask');
+  });
+
   test('fixed: the Project mode applies and the recorded history is ignored', async () => {
     const h = createHarness({
       project: { defaultApprovalMode: 'ask' },

@@ -1477,10 +1477,41 @@ export {
   useTaskReviewQuery,
   useTaskReviewThreadQuery,
 } from './query-domains/taskReview';
+export type { TelemetryIncidentLinkMutation } from './query-domains/telemetryCompanion';
+export {
+  controlTelemetryCompanion,
+  fetchTelemetryCompanionAction,
+  fetchTelemetryCompanionIncidentLinks,
+  fetchTelemetryCompanionInstallation,
+  fetchTelemetryCompanionManagedState,
+  fetchTelemetryCompanionProductIncidents,
+  fetchTelemetryCompanionProductTrends,
+  installTelemetryCompanion,
+  mutateTelemetryCompanionIncidentLink,
+  useControlTelemetryCompanionMutation,
+  useInstallTelemetryCompanionMutation,
+  usePrepareTelemetryPrivateUsageMutation,
+  useTelemetryCompanionActionQuery,
+  useTelemetryCompanionIncidentLinkMutation,
+  useTelemetryCompanionIncidentLinksQuery,
+  useTelemetryCompanionInstallationQuery,
+  useTelemetryCompanionManagedStateQuery,
+  useTelemetryCompanionProductIncidentsQuery,
+  useTelemetryCompanionProductTrendsQuery,
+  useTelemetryPrivateUsagePreparationQuery,
+} from './query-domains/telemetryCompanion';
 export {
   checkTelemetryConnection,
+  fetchTelemetryCompanionArchivePreparation,
+  fetchTelemetryCompanionPreparationState,
+  fetchTelemetryCompanionPrerequisites,
   fetchTelemetryDeliveryStatus,
+  prepareTelemetryCompanionArchive,
   useCheckTelemetryConnectionMutation,
+  usePrepareTelemetryCompanionArchiveMutation,
+  useTelemetryCompanionArchivePreparationQuery,
+  useTelemetryCompanionPreparationStateQuery,
+  useTelemetryCompanionPrerequisitesQuery,
   useTelemetryDeliveryStatusQuery,
 } from './query-domains/telemetryDelivery';
 export { extractUIBlocks } from './query-domains/uiBlocks.js';

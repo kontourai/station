@@ -1,5 +1,110 @@
 [
   {
+    "timestampUtc": "2026-10-27T18:04:28Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2491.2",
+    "sha": "091ef3d8d3e895c3d7f8f321dbe856f9198be6cd",
+    "artifactBuiltAt": "2026-10-27T17:07:59.420Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40545006749",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40545006749)"
+    ],
+    "changelog": {
+      "previousSha": "663143356c0abef8fdb166fd488a188c2fb0544d",
+      "groups": {
+        "feat": [
+          "[#4254](https://github.com/kontourai/station/pull/4254) feat(approvals): pick the approval mode when starting a chat, and switch Claude to full access mid-chat",
+          "[#4237](https://github.com/kontourai/station/pull/4237) feat(contracts): prepare multiplayer task collaboration shapes",
+          "[#4247](https://github.com/kontourai/station/pull/4247) feat(orchestration): store large event content out of line instead of refusing it"
+        ],
+        "fix": [
+          "[#4253](https://github.com/kontourai/station/pull/4253) fix(icons): fill Android and iOS launcher masks with the map face",
+          "[#4246](https://github.com/kontourai/station/pull/4246) fix(rooms): coalesce revision evidence until referenced",
+          "[#4251](https://github.com/kontourai/station/pull/4251) fix(ui): simplify the sidebar footer to one row"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 6
+    }
+  },
+  {
+    "timestampUtc": "2026-10-27T18:04:25Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2491.2",
+    "sha": "091ef3d8d3e895c3d7f8f321dbe856f9198be6cd",
+    "artifactBuiltAt": "2026-10-27T17:07:42.040Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40545006749",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40545006749)"
+    ],
+    "changelog": {
+      "previousSha": "663143356c0abef8fdb166fd488a188c2fb0544d",
+      "groups": {
+        "feat": [
+          "[#4254](https://github.com/kontourai/station/pull/4254) feat(approvals): pick the approval mode when starting a chat, and switch Claude to full access mid-chat",
+          "[#4237](https://github.com/kontourai/station/pull/4237) feat(contracts): prepare multiplayer task collaboration shapes",
+          "[#4247](https://github.com/kontourai/station/pull/4247) feat(orchestration): store large event content out of line instead of refusing it"
+        ],
+        "fix": [
+          "[#4253](https://github.com/kontourai/station/pull/4253) fix(icons): fill Android and iOS launcher masks with the map face",
+          "[#4246](https://github.com/kontourai/station/pull/4246) fix(rooms): coalesce revision evidence until referenced",
+          "[#4251](https://github.com/kontourai/station/pull/4251) fix(ui): simplify the sidebar footer to one row"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 6
+    }
+  },
+  {
+    "timestampUtc": "2026-10-27T17:10:31Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2491.40545006749",
+    "sha": "091ef3d8d3e895c3d7f8f321dbe856f9198be6cd",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40545006749",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2491.40545006749 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "663143356c0abef8fdb166fd488a188c2fb0544d",
+      "groups": {
+        "feat": [
+          "[#4254](https://github.com/kontourai/station/pull/4254) feat(approvals): pick the approval mode when starting a chat, and switch Claude to full access mid-chat",
+          "[#4237](https://github.com/kontourai/station/pull/4237) feat(contracts): prepare multiplayer task collaboration shapes",
+          "[#4247](https://github.com/kontourai/station/pull/4247) feat(orchestration): store large event content out of line instead of refusing it"
+        ],
+        "fix": [
+          "[#4253](https://github.com/kontourai/station/pull/4253) fix(icons): fill Android and iOS launcher masks with the map face",
+          "[#4246](https://github.com/kontourai/station/pull/4246) fix(rooms): coalesce revision evidence until referenced",
+          "[#4251](https://github.com/kontourai/station/pull/4251) fix(ui): simplify the sidebar footer to one row"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 6
+    }
+  },
+  {
     "timestampUtc": "2026-10-27T10:25:49Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2491.1",

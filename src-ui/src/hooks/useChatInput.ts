@@ -5,6 +5,7 @@ import {
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import { setOrchestrationApprovalMode } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
 import {
   useCallback,
@@ -476,6 +477,11 @@ export function useChatInput({
     [sessionId, updateChat, flushDraft],
   );
 
+  // Assigned below, once the attachment scheduler exists.
+  const stageFilesRef = useRef<
+    (files: readonly FileAttachment[]) => Promise<boolean>
+  >(async () => false);
+
   const handleSend = useCallback(
     async (
       overrideText?: string,
@@ -543,7 +549,7 @@ export function useChatInput({
         );
         return;
       }
-      const selectedAttachments = overrideAttachments ?? attachments;
+      let selectedAttachments = overrideAttachments ?? attachments;
       if (
         !text.trim() &&
         selectedAttachments.length === 0 &&
@@ -554,6 +560,47 @@ export function useChatInput({
         (stage) => stage.state !== 'complete',
       );
       if (incomplete) return;
+      // Supplied attachments (Send again's recovered turn) were never staged;
+      // a turn's earlier stage was released when that turn was accepted. Send
+      // refuses unstaged files, so stage them first, as composer chips.
+      if (overrideAttachments?.length) {
+        const staged =
+          activeChatsStore.getSnapshot()[sessionId]?.attachmentStages ?? [];
+        const isStaged = (attachment: FileAttachment) =>
+          staged.some(
+            (stage) =>
+              stage.clientAttachmentId === attachment.id &&
+              stage.state === 'complete',
+          );
+        // Each staging takes a fresh identity: the server keeps a used
+        // clientAttachmentId (per login, across chats) as a completed stage or
+        // accepted tombstone and refuses to stage it again, and recovered ids
+        // (`retry-<index>-<n>`) repeat across chats and repeated clicks.
+        selectedAttachments = overrideAttachments.map((attachment) =>
+          isStaged(attachment)
+            ? attachment
+            : { ...attachment, id: randomCorrelationId() },
+        );
+        const unstaged = selectedAttachments.filter(
+          (attachment) => !isStaged(attachment),
+        );
+        if (unstaged.length > 0 && !(await stageFilesRef.current(unstaged))) {
+          // The files stay as chips showing their error. The recovered text
+          // fills an empty composer; a draft already there is kept. Send again
+          // stays blocked by the failed chip until it is retried or removed.
+          if (
+            overrideText !== undefined &&
+            !activeChatsStore.getSnapshot()[sessionId]?.input
+          )
+            updateChat(sessionId, { input: canonicalDraft });
+          else if (overrideText)
+            showToast(
+              'An attachment did not upload. Your draft was kept with the attachment; retry it in the composer, then send.',
+              'error',
+            );
+          return;
+        }
+      }
 
       if (text.trim()) {
         addToInputHistory(sessionId, text.trim());
@@ -654,6 +701,7 @@ export function useChatInput({
       attachments,
       attachmentStages,
       sendMessageAction,
+      updateChat,
       activeChatState?.skillExperienceDraft,
       addToInputHistory,
       clearDraft,
@@ -727,6 +775,7 @@ export function useChatInput({
     error: attachmentError,
     selectFiles: selectAttachmentFiles,
     selectFilesWithResult,
+    stageFiles,
     replaceFile: replaceAttachmentFile,
     setError: setAttachmentError,
     retry: retryAttachmentStage,
@@ -770,6 +819,8 @@ export function useChatInput({
       if (sessionId) updateChat(sessionId, { attachmentStages: nextStages });
     },
   });
+
+  stageFilesRef.current = stageFiles;
 
   const intakeOwner = useRef({ apiBase, sessionId, isChatVisible });
   intakeOwner.current = { apiBase, sessionId, isChatVisible };

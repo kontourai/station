@@ -1078,6 +1078,20 @@ interface SeatbeltStart {
   configuredKeys: ReadonlySet<string>;
 }
 
+/**
+ * Whether the engine refuses a spawn granted `allowDangerouslySkipPermissions`
+ * here: Claude Code exits when run as root with that grant, outside a
+ * sandbox it recognizes (`IS_SANDBOX=1`, or its bubblewrap mode). Read from
+ * Station's own process, which the engine inherits.
+ */
+function claudeRefusesBypassGrant(): boolean {
+  return (
+    process.getuid?.() === 0 &&
+    process.env.IS_SANDBOX !== '1' &&
+    !process.env.CLAUDE_CODE_BUBBLEWRAP
+  );
+}
+
 /** #2494: the warning a start that fell back to Auto publishes. */
 
 const DEFAULT_CONFINEMENT_HANDSHAKE_TIMEOUT_MS = 60_000;
@@ -1998,6 +2012,26 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       seatbelt && requestedPermissionMode === 'bypassPermissions'
         ? ('acceptEdits' as const)
         : requestedPermissionMode;
+    // A `host` start's caller proved it may grant full access (or the
+    // conversation already recorded `never`), so the SDK's spawn-only bypass
+    // grant is taken now even when the session starts at a stricter mode. It
+    // only permits `bypassPermissions`: the engine runs at `permissionMode`
+    // until the server applies a recorded `never` at a turn start, so a
+    // mid-chat switch to full access needs no restart. Not granted:
+    // - to a `workspace` start without a Seatbelt plan, whose `never` the
+    //   server applies as Auto (approval-posture.ts);
+    // - when Station sends no mode: the engine's own settings cascade then
+    //   decides, and the grant must not let a settings `defaultMode` (a
+    //   repository's checked-in one included) reach bypass on its own;
+    // - as root outside a sandbox, where the engine refuses to start with it
+    //   at all (its own root guard), so an Ask start would fail to spawn;
+    // - to a raw `plan` start: the engine treats plan mode as bypass when
+    //   bypass is available, which a planning pass never asked for.
+    const hostBypassGrant =
+      input.confinement === 'host' &&
+      requestedPermissionMode !== undefined &&
+      requestedPermissionMode !== 'plan' &&
+      !claudeRefusesBypassGrant();
     if (seatbelt && !seatbelt.launch.writeGrants) {
       seatbelt.launch.cleanup();
       assertRequiredConfinementObserved(
@@ -2081,7 +2115,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           preToolPolicy,
           claudeExecutable,
           builtinServers,
-          Boolean(seatbelt) || permissionMode === 'bypassPermissions',
+          Boolean(seatbelt) ||
+            hostBypassGrant ||
+            permissionMode === 'bypassPermissions',
         ),
       });
     } catch (error) {
@@ -2131,7 +2167,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       streamTask: Promise.resolve(),
       currentPermissionMode: permissionMode,
       requestedPermissionMode: permissionMode,
-      allowsBypassPermissions: permissionMode === 'bypassPermissions',
+      // A Seatbelt start is lifted (and marked) only once its profile is
+      // observed, below.
+      allowsBypassPermissions:
+        (hostBypassGrant && !seatbelt) ||
+        permissionMode === 'bypassPermissions',
       currentModelOptions: claudeAppliedModelOptions(input.modelOptions),
       skillsOverlayDir,
       ...(seatbelt ? { confinementCleanup: seatbelt.launch.cleanup } : {}),
@@ -2974,7 +3014,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       context?.sessionGrantScope === 'server'
         ? undefined
         : pending.suggestions &&
-            sessionGrantPermissionUpdates(grant, pending.suggestions),
+            // Full access is the server's recorded decision alone: an
+            // engine-suggested switch into it is never forwarded, even under
+            // a tool grant that forwards every other suggestion.
+            sessionGrantPermissionUpdates(grant, pending.suggestions).filter(
+              (update) =>
+                !(
+                  update.type === 'setMode' &&
+                  update.mode === 'bypassPermissions'
+                ),
+            ),
     );
     // #2915: a forwarded mode change is Station's own request and now the
     // engine's mode. Both records follow it, so a turn whose posture differs

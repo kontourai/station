@@ -1,0 +1,13 @@
+{
+  "revision": "bdbdb27b84a66326935881a12005f18af07b2cfd",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"#4237 delta-review round: the write-version selector now treats any present attachments key (including []) as selecting at least v4, so every selected version parses the body it was selected for; a new test checks that for v2-v5 and fails with the old length-based selector. Re-read; this document does not describe version selection, so no claim changed.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#4237 delta-review round: the write-version selector now treats any present attachments key (including []) as selecting at least v4, so every selected version parses the body it was selected for; a new test checks that for v2-v5 and fails with the old length-based selector. Re-read; this document does not describe version selection, so no claim changed.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"#4237 delta-review round: the write-version selector now treats any present attachments key (including []) as selecting at least v4, so every selected version parses the body it was selected for; a new test checks that for v2-v5 and fails with the old length-based selector. Documented the attachments rule beside the mentions rule; all other claims unchanged. Contract suites pass.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/project-task-room.test.ts","packages/contracts/src/project-task-room.ts"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"#4237 delta-review round: the write-version selector now treats any present attachments key (including []) as selecting at least v4, so every selected version parses the body it was selected for; a new test checks that for v2-v5 and fails with the old length-based selector. Re-read; this document does not describe version selection, so no claim changed.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

@@ -153,7 +153,9 @@ import type { OrchestrationSessionUsage } from '../../analytics/usage-aggregator
 import {
   readAuthorizedUsageExport,
   UsageExportRejected,
+  usageExportOwnerIds,
 } from '../../analytics/usage-export-reader.js';
+import { readAuthorizedUsageInvalidations } from '../../analytics/usage-invalidation-reader.js';
 import type { UsagePricingSnapshotCapture } from '../../analytics/usage-pricing-snapshot-capture.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import { engineIdForAdapter } from '../../providers/adapter-identity.js';
@@ -310,6 +312,10 @@ import {
 } from './attached-session-adoption.js';
 import { resolveContinuationPlace } from './attached-session-continuation-place.js';
 import { type AttachedProjectRoot } from './attached-session-follow-service.js';
+import {
+  canonicalTerminalOutcome,
+  terminalEngineFamily,
+} from './canonical-terminal-outcome.js';
 import { ChildWorkProjection } from './child-work-projection.js';
 import {
   type ChildWorkTranscriptModule,
@@ -542,13 +548,9 @@ type UsageTelemetryObserver = {
 function telemetryEngine(
   provider: string,
 ): UsageTelemetryProperties<'engine_turn'>['engine'] {
-  return (
-    ['station', 'acp', 'bedrock', 'claude', 'codex', 'muse', 'ollama'].includes(
-      provider,
-    )
-      ? provider
-      : 'other'
-  ) as UsageTelemetryProperties<'engine_turn'>['engine'];
+  return terminalEngineFamily(
+    provider,
+  ) satisfies UsageTelemetryProperties<'engine_turn'>['engine'];
 }
 
 /**
@@ -6366,10 +6368,48 @@ export class OrchestrationService {
     );
   }
 
+  usageExportOwnerIds(
+    authority: SessionReadAuthority,
+    scope: import('@kontourai/station-contracts/usage-export').UsageExportScope,
+  ) {
+    return usageExportOwnerIds(authority, scope, () =>
+      this.options.personalConversationAccess?.ownerIds(authority.userId),
+    );
+  }
+
+  usageExportRevision(): number {
+    this.initialize();
+    const store = this.options.eventStore;
+    if (!store) throw new UsageExportRejected('usage_export_unavailable', 503);
+    return store.usageExportRevision();
+  }
+
+  readUsageReceiptInvalidations(
+    authority: SessionReadAuthority,
+    stationId: string,
+    request: import('@kontourai/station-contracts/usage-export').UsageInvalidationRequest,
+    authorizationContext: string,
+  ) {
+    this.initialize();
+    const store = this.options.eventStore;
+    if (!store) throw new UsageExportRejected('usage_export_unavailable', 503);
+    return readAuthorizedUsageInvalidations({
+      store,
+      authority,
+      stationId,
+      request,
+      authorizationContext,
+      personalOwnerIds: () =>
+        this.options.personalConversationAccess?.ownerIds(authority.userId),
+    });
+  }
+
   readUsageReceiptExport(
     authority: SessionReadAuthority,
     stationId: string,
     request: import('@kontourai/station-contracts/usage-export').UsageExportRequest,
+    authorizationContext?: string,
+    operationalConsent?: import('@kontourai/station-contracts/usage-export').AnalyticsOperationalConsent,
   ) {
     this.initialize();
     const store = this.options.eventStore;
@@ -6379,6 +6419,8 @@ export class OrchestrationService {
       authority,
       stationId,
       request,
+      authorizationContext,
+      ...(operationalConsent ? { operationalConsent } : {}),
       personalOwnerIds: () =>
         this.options.personalConversationAccess?.ownerIds(authority.userId),
     });
@@ -13305,22 +13347,14 @@ export class OrchestrationService {
     // the deferred case is not a terminal outcome yet, so counting it now
     // would both undercount the eventual real terminal and, if one never
     // arrives, over-attribute failures that were really still retrying.
-    if (
-      projectedEvent.method === 'turn.completed' ||
-      projectedEvent.method === 'turn.aborted' ||
-      (projectedEvent.method === 'runtime.error' &&
-        projectedEvent.turnId &&
-        !isDeferredRetriableTurnError(projectedEvent))
-    ) {
+    // #3460: the consented private operational export reuses this exact
+    // classifier, so product telemetry and private outcomes cannot disagree.
+    const terminalOutcome = canonicalTerminalOutcome(projectedEvent);
+    if (terminalOutcome) {
       try {
         this.usageTelemetry?.trackEngineTurn({
           engine: telemetryEngine(projectedEvent.provider),
-          outcome:
-            projectedEvent.method === 'turn.completed'
-              ? 'completed'
-              : event.method === 'turn.aborted'
-                ? 'aborted'
-                : 'failed',
+          outcome: terminalOutcome,
         });
       } catch {
         // Terminal event projection remains authoritative when telemetry fails.
