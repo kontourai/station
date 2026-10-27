@@ -6,11 +6,11 @@ import {
   PROJECT_TASK_ROOM_MAX_PAGE_JSON_ITEMS,
   PROJECT_TASK_ROOM_MAX_RECORD_JSON_ITEMS,
   PROJECT_TASK_ROOM_SCHEMA_VERSION,
+  type ProjectTaskRoomAppendBody,
   parseProjectTaskRoomHumanMessage,
   parseProjectTaskRoomPresenceLocation,
   parseProjectTaskRoomPrincipal,
   projectTaskRoomWriteSchemaVersion,
-  type ProjectTaskRoomAppendBody,
 } from '../project-task-room.js';
 
 const member = {
