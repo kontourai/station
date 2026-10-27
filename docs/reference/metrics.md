@@ -7,7 +7,7 @@ These source declarations do **not** establish producers, live collection, corre
 The [Monitoring guide](../guides/monitoring.md) owns producer semantics, configuration and current limitations. Follow a declaration’s source link to find its callers before making an operational claim. Observable declarations inside a function do not establish that the function is called or its callback runs.
 
 Source: [`src-server/telemetry/metrics.ts`](../../src-server/telemetry/metrics.ts).
-Source SHA-256: `3728884434665973f9820c14ba7c8993f7f0d74e0e47edaec21380bba45763c7`. This identifies the input file, not a running build or collection receipt.
+Source SHA-256: `1a6ec63f046a3f953f91e199810abab93fb7f54a7dbe6f800e4d8be78750c4d6`. This identifies the input file, not a running build or collection receipt.
 
 The TypeScript AST contains **312 creation calls**, listed in source order. Binding/export labels describe the creation declaration, not later aliases or re-exports. String cells use JSON notation, preserving quotes, backslashes and control characters; “not declared” does not infer an SDK default.
 
@@ -134,7 +134,7 @@ Regenerate with `npm run docs:metrics:generate`; verify exact output with `npm r
 | "station.chat.attachment\_blob\_bytes\_stored" | createCounter | "attachmentBlobBytesStored (exported declaration)" | "Attachment bytes newly written to the blob store, excluding content-addressed deduplication hits" | "By" | [line 851](../../src-server/telemetry/metrics.ts#L851) |
 | "station.chat.attachment\_blob\_bytes\_reclaimed" | createCounter | "attachmentBlobBytesReclaimed (exported declaration)" | "Attachment blob bytes removed by retention" | "By" | [line 860](../../src-server/telemetry/metrics.ts#L860) |
 | "station.chat.attachment\_bytes\_stripped" | createCounter | "attachmentBytesStripped (exported declaration)" | "Attachment data-URL bytes kept out of a persisted event payload by replacing them with a blob reference" | "By" | [line 868](../../src-server/telemetry/metrics.ts#L868) |
-| "station.chat.attachment\_blob\_requests" | createCounter | "attachmentBlobRequests (exported declaration)" | "GET /api/attachments requests by outcome (served/not\_found/rejected)" | not declared | [line 877](../../src-server/telemetry/metrics.ts#L877) |
+| "station.chat.attachment\_blob\_requests" | createCounter | "attachmentBlobRequests (exported declaration)" | "GET /api/attachments requests by outcome (served/not\_modified/not\_found/rejected)" | not declared | [line 877](../../src-server/telemetry/metrics.ts#L877) |
 | "station.chat.attachment\_replay\_refusals" | createCounter | "attachmentReplayRefusals (exported declaration)" | "Recovery replays refused because a recorded turn's attachment bytes could no longer be resolved" | not declared | [line 885](../../src-server/telemetry/metrics.ts#L885) |
 | "station.orchestration.commands\_dispatched" | createCounter | "orchestrationCommandsDispatched (exported declaration)" | "Orchestration commands routed to provider adapters" | not declared | [line 893](../../src-server/telemetry/metrics.ts#L893) |
 | "station.orchestration.steer\_dispatches" | createCounter | "orchestrationSteerDispatches (exported declaration)" | "Mid-turn steer dispatch outcomes at the orchestration capability gate" | not declared | [line 900](../../src-server/telemetry/metrics.ts#L900) |
