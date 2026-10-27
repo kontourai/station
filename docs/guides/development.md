@@ -270,7 +270,7 @@ as soon as its last process exits, cgroup and counters with it, so an engine's
 own scope (a launch that names its Session) also runs a holder: the scope's
 shell wrapper first runs `setsid -f` on a holder with descriptors 0-2 on
 `/dev/null` and 3-9 closed, then execs the engine. Where the host has bash the
-holder is a bash that closes every remaining descriptor from 3 up (as listed in
+holder is a bash, run with `-p` so an inherited `BASH_ENV` or `SHELLOPTS` cannot change it, that closes every remaining descriptor from 3 up (as listed in
 `/dev/fd`) and execs `sleep 2147483647`; otherwise it is that sleep directly. The holder is forked inside
 the scope before the engine starts, so it is there however soon the engine
 dies, and nothing is moved between cgroups (a transient scope is the user
