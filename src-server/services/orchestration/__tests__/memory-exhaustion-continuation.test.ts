@@ -441,6 +441,36 @@ describe('automatic continuation after a memory kill', () => {
     ).toEqual({ kind: 'skipped', reason: 'already-claimed' });
   });
 
+  test("a continuation the inbox refused sent nothing: a person's Continue proceeds", () => {
+    const continuation = coordinator();
+    killedTurn('thread-refused');
+    const automatic = continuation.continueAutomatically('thread-refused') as {
+      clientTurnId: string;
+    };
+    const inbox = store.threadInboxStore();
+    // Placement refused the start before any effect (the session had ended).
+    const claimed = inbox.claimNext('thread-refused', 'placement-1', clock);
+    expect(claimed.kind).toBe('claimed');
+    inbox.settle(
+      (claimed as { entry: never }).entry,
+      'refused',
+      { reasonCode: 'session_ended', reason: 'ended' } as never,
+      clock,
+    );
+    expect(inbox.read('thread-refused', automatic.clientTurnId)).toMatchObject({
+      state: 'refused',
+    });
+    expect(
+      continuation.continueOnRequest({
+        conversationId: 'thread-refused',
+        actor: { userId: 'person-1' },
+      }),
+    ).toMatchObject({
+      kind: 'queued',
+      clientTurnId: `${automatic.clientTurnId}-p`,
+    });
+  });
+
   test('a dismissed unconfirmed continuation may have started a turn: a person cannot send a second', () => {
     const continuation = coordinator();
     killedTurn('thread-unconfirmed');
