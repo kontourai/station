@@ -10,7 +10,7 @@ import {
   useConnectionStatus,
   useConnections,
 } from '@kontourai/station-connect';
-import { type SemanticTone, StatusBadge } from '@kontourai/ui/react';
+import { Badge, type SemanticTone } from '@kontourai/ui/react';
 import { type FormEvent, useId, useState } from 'react';
 import {
   checkServerHealth,
@@ -138,8 +138,11 @@ function StationRoutes({ connection }: { connection: SavedConnection }) {
           return (
             <li key={endpoint.id} className="station-routes__row">
               <div className="station-routes__main">
-                <span className="station-routes__label">
-                  {CONNECTION_ROUTE_LABELS[kind]}
+                <span className="station-routes__heading">
+                  <span className="station-routes__label">
+                    {CONNECTION_ROUTE_LABELS[kind]}
+                  </span>
+                  <Badge value={badge.label} tone={badge.tone} />
                 </span>
                 <span className="station-routes__address">{endpoint.url}</span>
                 {detail.length > 0 && (
@@ -148,22 +151,20 @@ function StationRoutes({ connection }: { connection: SavedConnection }) {
                   </span>
                 )}
               </div>
-              <div className="station-routes__aside">
-                <StatusBadge status={badge.label} tone={badge.tone} />
-                {editable && connectionRouteRemovable(connection, endpoint) && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    aria-label={`Remove route ${endpoint.url}`}
-                    onClick={() => {
-                      removeRoute?.(connection.id, endpoint.id);
-                      if (isActive) health.recheck();
-                    }}
-                  >
-                    Remove
-                  </Button>
-                )}
-              </div>
+              {editable && connectionRouteRemovable(connection, endpoint) && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="station-routes__remove"
+                  aria-label={`Remove route ${endpoint.url}`}
+                  onClick={() => {
+                    removeRoute?.(connection.id, endpoint.id);
+                    if (isActive) health.recheck();
+                  }}
+                >
+                  Remove
+                </Button>
+              )}
             </li>
           );
         })}
@@ -200,7 +201,12 @@ function StationRoutes({ connection }: { connection: SavedConnection }) {
               value={address}
               onChange={(event) => setAddress(event.target.value)}
             />
-            <Button type="submit" size="sm" disabled={!address.trim()}>
+            <Button
+              type="submit"
+              size="sm"
+              className="station-routes__add-button"
+              disabled={!address.trim()}
+            >
               Add
             </Button>
           </div>

@@ -44,6 +44,7 @@
 
 .station-routes__main {
   display: flex;
+  flex: 1;
   min-width: 0;
   flex-direction: column;
   gap: var(--k-space-1);
@@ -61,11 +62,17 @@
   overflow-wrap: anywhere;
 }
 
-.station-routes__aside {
+.station-routes__heading {
   display: flex;
-  flex: 0 0 auto;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--k-space-2);
+}
+
+.station-routes__remove,
+.station-routes__add-button {
+  flex: 0 0 auto;
+  min-height: 44px;
 }
 
 .station-routes__add {
@@ -103,11 +110,4 @@
   margin: 0;
   color: var(--k-negative);
   font-size: var(--k-text-sm);
-}
-
-@media (max-width: 480px) {
-  .station-routes__row {
-    flex-direction: column;
-    align-items: stretch;
-  }
 }

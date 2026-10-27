@@ -53,7 +53,7 @@ The route's kind is derived from its address, never stored separately:
 | `localhost`, `127.*` | local | This computer |
 | private IPv4 (10/8, 172.16/12, 192.168/16), `*.local` | lan | Local network |
 | 100.64.0.0/10 | tailscale | Tailscale |
-| `https://*.ts.net` | tailscale-https | Tailscale HTTPS |
+| an HTTPS Tailscale MagicDNS name | tailscale-https | Tailscale HTTPS |
 | broker route | relay | Relay |
 | anything else | internet | Internet |
 
