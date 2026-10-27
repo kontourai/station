@@ -13,8 +13,8 @@ name away from home, and later a relay. The device tries them in order, uses
 the first that answers as the same Station, and says which one it is using.
 When none answers, it says why, once, for the Station as a whole.
 
-The reference is T3 Code's environment screen: one status line, then a
-**Routes** list with each address, how it was found, and which one is in use.
+One list answers the questions a person has when a Station is out of reach:
+which addresses exist, how each was found, and which one is in use.
 
 ## What exists today
 
