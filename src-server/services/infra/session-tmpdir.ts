@@ -1,8 +1,12 @@
 import { createHash } from 'node:crypto';
 import {
-  chmodSync,
+  closeSync,
+  fchmodSync,
+  constants as fsConstants,
+  fstatSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readdirSync,
   realpathSync,
   rmSync,
@@ -60,7 +64,18 @@ let policy: ((threadId: string) => boolean) | undefined;
  * engine never got a per-session root (preview off when it started, an
  * in-process engine, a confinement Station did not record) has none.
  */
-const launchedRoots = new Map<string, string>();
+export interface LaunchedRoot {
+  readonly dir: string;
+  /** This module created it (a confinement's directory is its owner's). */
+  readonly own: boolean;
+}
+
+/**
+ * One record per launch. Its identity is the launch's generation: a removal
+ * queued for one launch must not touch the record (or the same-named folder)
+ * of a later launch of the same thread.
+ */
+const launchedRoots = new Map<string, LaunchedRoot>();
 
 /**
  * Install the start-time decision (runtime composition binds it to the
@@ -89,18 +104,39 @@ function admitted(threadId: string): boolean {
  * Anything else is refused rather than used as a session's temp root.
  */
 function ownedPrivateDir(dir: string): boolean {
+  if (process.platform === 'win32') {
+    // No no-follow directory descriptors or POSIX modes: a real directory,
+    // not a link, is the check available.
+    try {
+      const stats = lstatSync(dir);
+      return stats.isDirectory() && !stats.isSymbolicLink();
+    } catch {
+      return false;
+    }
+  }
+  let fd: number | undefined;
   try {
-    const stats = lstatSync(dir);
-    if (!stats.isDirectory() || stats.isSymbolicLink()) return false;
+    // Opened without following a link, so the mode is checked and tightened
+    // on the directory itself (fchmod), never on whatever a link points at.
+    fd = openSync(
+      dir,
+      fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW,
+    );
+    const stats = fstatSync(fd);
+    if (!stats.isDirectory()) return false;
     const uid = process.getuid?.();
     if (uid !== undefined && stats.uid !== uid) return false;
     if ((stats.mode & 0o777) !== 0o700) {
-      chmodSync(dir, 0o700);
-      if ((lstatSync(dir).mode & 0o777) !== 0o700) return false;
+      fchmodSync(fd, 0o700);
+      if ((fstatSync(fd).mode & 0o777) !== 0o700) return false;
     }
-    return true;
+    // The path must still name the directory that was checked.
+    const current = lstatSync(dir);
+    return current.dev === stats.dev && current.ino === stats.ino;
   } catch {
     return false;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
   }
 }
 
@@ -121,7 +157,7 @@ export function engineSessionTmpDir(threadId: string): string | undefined {
     return undefined;
   }
   if (!ownedPrivateDir(dir)) return undefined;
-  launchedRoots.set(threadId, dir);
+  launchedRoots.set(threadId, { dir, own: true });
   return dir;
 }
 
@@ -132,7 +168,7 @@ export function engineSessionTmpDir(threadId: string): string | undefined {
  */
 export function noteEngineTmpDir(threadId: string, dir: string): void {
   if (admitted(threadId) && ownedPrivateDir(dir))
-    launchedRoots.set(threadId, dir);
+    launchedRoots.set(threadId, { dir, own: false });
 }
 
 /** Whether a policy is installed and admits `threadId` now. */
@@ -145,24 +181,41 @@ export function sessionTmpDirAdmitted(threadId: string): boolean {
  * exists as a private directory this user owns; otherwise undefined.
  */
 export function sessionTempRoot(threadId: string): string | undefined {
-  const dir = launchedRoots.get(threadId);
+  const dir = launchedRoots.get(threadId)?.dir;
   return dir && ownedPrivateDir(dir) ? dir : undefined;
 }
 
+/** The launch record a session holds now (taken when it exits). */
+export function launchedRootOf(threadId: string): LaunchedRoot | undefined {
+  return launchedRoots.get(threadId);
+}
+
 /**
- * The session ended: forget its root, and remove it when it is this module's
- * own directory (a confinement's directory is removed by its owner).
+ * A launch ended: forget its root and remove it when this module created it
+ * (a confinement's directory is removed by its owner). Only while that same
+ * launch is still the thread's current one: if the thread restarted first,
+ * the new launch may own a folder at the very same path, and a late removal
+ * must leave both it and its record alone.
  */
-export function removeSessionTmpDir(threadId: string): void {
+export function removeLaunchedRoot(
+  threadId: string,
+  launched: LaunchedRoot | undefined,
+): void {
+  if (!launched || launchedRoots.get(threadId) !== launched) return;
   launchedRoots.delete(threadId);
-  const dir = sessionTmpDirPath(threadId);
+  if (!launched.own) return;
   try {
-    const stats = lstatSync(dir);
+    const stats = lstatSync(launched.dir);
     if (!stats.isDirectory() || stats.isSymbolicLink()) return;
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(launched.dir, { recursive: true, force: true });
   } catch {
     // Best-effort; the stale-owner sweep retries after this process exits.
   }
+}
+
+/** The session ended now: remove its current launch's root. */
+export function removeSessionTmpDir(threadId: string): void {
+  removeLaunchedRoot(threadId, launchedRootOf(threadId));
 }
 
 function processAlive(pid: number): boolean {

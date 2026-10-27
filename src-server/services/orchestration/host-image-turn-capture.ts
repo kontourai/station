@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { FeaturePreviewSelector } from '../feature-previews/feature-preview-registry.js';
 import {
-  removeSessionTmpDir,
+  launchedRootOf,
+  removeLaunchedRoot,
   sessionTempRoot,
 } from '../infra/session-tmpdir.js';
 import type { EventStore } from './event-store.js';
@@ -104,9 +105,13 @@ export class HostImageTurnCapture {
       this.enqueue(event.threadId, () => this.capture(event));
     } else if (event.method === 'session.exited') {
       // After any capture still reading from it; whatever the preview says
-      // now, a directory created while it was on is removed.
+      // now, a directory created while it was on is removed. The launch is
+      // taken now, at the exit: if the thread restarts before the queued
+      // removal runs, the new launch's folder (possibly the same path) and
+      // record are left alone.
+      const launched = launchedRootOf(event.threadId);
       this.enqueue(event.threadId, async () =>
-        removeSessionTmpDir(event.threadId),
+        removeLaunchedRoot(event.threadId, launched),
       );
     }
   }

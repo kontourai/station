@@ -14,8 +14,10 @@ import { HostImageTurnCapture } from '../../orchestration/host-image-turn-captur
 import {
   engineSessionTmpDir,
   installSessionTmpDirPolicy,
+  launchedRootOf,
   noteEngineTmpDir,
   reapStaleSessionTmpDirs,
+  removeLaunchedRoot,
   removeSessionTmpDir,
   sessionTempRoot,
   sessionTmpDirPath,
@@ -96,6 +98,73 @@ describe('per-session engine TMPDIR (chat-host-images)', () => {
       mode: 0o700,
     });
     expect(sessionTempRoot('not-launched')).toBeUndefined();
+  });
+
+  test('a removal queued for one launch leaves a later launch of the same thread alone', () => {
+    uninstall = installSessionTmpDirPolicy(() => true);
+    const first = engineSessionTmpDir('restarted')!;
+    const exited = launchedRootOf('restarted');
+    // The thread restarts before the removal for the first launch runs.
+    const second = engineSessionTmpDir('restarted')!;
+    expect(second).toBe(first);
+    writeFileSync(join(second, 'live.png'), 'x');
+    removeLaunchedRoot('restarted', exited);
+    expect(existsSync(join(second, 'live.png'))).toBe(true);
+    expect(sessionTempRoot('restarted')).toBe(second);
+  });
+
+  test('exit, restart, then the late removal behind an in-flight capture: the live folder survives', async () => {
+    uninstall = installSessionTmpDirPolicy(() => true);
+    const workspace = makeTempDir('session-tmpdir-ws-');
+    writeFileSync(join(workspace, 'shot.png'), 'not really an image');
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const capture = new HostImageTurnCapture({
+      preview: { select: (branches) => branches.enabled() },
+      eventStore: {
+        listTurnEventsByMethods: () =>
+          [
+            {
+              payload: {
+                method: 'content.text-delta',
+                itemId: 'i',
+                delta: `![x](${join(workspace, 'shot.png')})`,
+              },
+            },
+          ] as never,
+        resolveEventContent: (events) => events as never,
+      },
+      sessionCwd: () => workspace,
+      publish: () => {},
+      logger: { warn: () => {} },
+      hooks: { beforeOpen: () => gate },
+    });
+    engineSessionTmpDir('late');
+    const base = {
+      provider: 'codex' as const,
+      threadId: 'late',
+      createdAt: new Date().toISOString(),
+    };
+    capture.observe({
+      ...base,
+      eventId: 'done',
+      method: 'turn.completed',
+      turnId: 't1',
+    });
+    capture.observe({
+      ...base,
+      eventId: 'exit',
+      method: 'session.exited',
+      sessionId: 'late',
+    });
+    const restarted = engineSessionTmpDir('late')!;
+    writeFileSync(join(restarted, 'live.png'), 'x');
+    release();
+    await capture.settled();
+    expect(existsSync(join(restarted, 'live.png'))).toBe(true);
+    expect(sessionTempRoot('late')).toBe(restarted);
   });
 
   test('a policy that throws never blocks a start', () => {
