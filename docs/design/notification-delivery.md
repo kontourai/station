@@ -84,7 +84,10 @@ line carries only Deny there: allowing it needs the whole request loaded,
 which the conversation's card does ([event content spill](event-content-spill.md)).
 The same holds when Station cannot read the request back, and a card that
 offered Allow before such content arrived is rewritten when it does, or when
-Station refuses an Allow from it.
+Station refuses an Allow from it. The rewrite emits `notification:updated`,
+so open notification history and Attention views refetch and stop offering
+Allow. It is not pushed again, so a native notification already delivered is
+not updated; any Allow that still reaches Station is refused.
 While its request is open the item still counts as waiting on you: the
 session's generic composer stays hidden and Dismiss stays secondary.
 
