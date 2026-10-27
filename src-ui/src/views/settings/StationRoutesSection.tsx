@@ -105,7 +105,7 @@ function StationRoutes({ connection }: { connection: SavedConnection }) {
 
   return (
     <SettingsSection
-      icon="⇄"
+      icon="◉"
       title="Routes"
       id="section-station-routes"
       action={
