@@ -7,13 +7,12 @@
  * real event store.
  */
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import { ENGINE_MEMORY_EXHAUSTED_CODE } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
   ProviderAdapterMetadata,
   ProviderAdapterShape,
@@ -129,20 +128,21 @@ async function waitFor(check: () => boolean) {
   throw new Error('condition not reached');
 }
 
+const makeTempDir = trackTempDirs();
+
 describe('Station first-turn workload context', () => {
   let tmp: string;
   let eventStore: EventStore;
   let service: OrchestrationService | undefined;
 
   beforeEach(() => {
-    tmp = mkdtempSync(join(tmpdir(), 'workload-first-turn-'));
+    tmp = makeTempDir('workload-first-turn-');
     eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
   });
   afterEach(async () => {
     await service?.shutdown();
     service = undefined;
     eventStore.close();
-    rmSync(tmp, { recursive: true, force: true });
   });
 
   function start(
