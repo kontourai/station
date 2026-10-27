@@ -926,6 +926,9 @@
 .tool-call__approval-loading .skeleton-block > *,
 .load-full-content__status.skeleton-block > * {
   height: 2rem;
+  /* The shared raised-panel fill disappears on the light approval sheet. */
+  background: var(--k-line);
+  border-color: var(--k-line-strong);
 }
 /* A multi-line text argument (a file body) reads like a command block. */
 .tool-call__code--text {
