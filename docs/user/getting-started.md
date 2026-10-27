@@ -218,7 +218,11 @@ remain local. Different Stations keep separate account preferences.
 The approval chip shows the known mode, including **Full access**, **Auto** or
 **Ask**. **Engine default** means the engine's active mode has not been confirmed.
 Open the picker to see the source, the confirmed mode and whether a request takes
-effect next turn or requires restarting the session.
+effect next turn or requires restarting the session. A Claude chat started in a
+chosen mode by someone who may grant full access can switch to full access on
+its next turn. A chat left on Claude's own settings, one that started before
+this was available, or one on a Station running as root outside a sandbox
+needs a restart.
 
 ## Read recent conversations offline
 
@@ -519,8 +523,9 @@ why. The approval mode can be set for the Project (Ask first, Auto or full
 access) or follow your last chat there. It applies below the Agent's own mode
 and replaces your personal default for that engine, and full access is only
 reused when you can grant it. **Permissions** on the composer names where its
-mode came from; picking **Default** there uses the Agent's, then the Station's
-default instead.
+mode came from, and opens the approval picker to choose this chat's mode
+before you start; picking **Default** there uses the Agent's, then the
+Station's default instead.
 
 Until Station has loaded your projects, the chips show placeholders and
 **Start** waits, so a start never runs in a project Station has guessed. If

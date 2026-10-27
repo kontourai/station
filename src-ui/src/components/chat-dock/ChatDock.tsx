@@ -115,6 +115,7 @@ import {
   WORKSPACE_CHAT_OPENER,
 } from '../../regions/pane-opener';
 import type { ChatSession, DockMode, FileAttachment } from '../../types';
+import { approvalPickUpdate } from '../../utils/approvalMode';
 import { chatExecutionBinding } from '../../utils/engine';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import {
@@ -3670,6 +3671,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             executionOnCurrentStation,
             initialFiles,
             ambientContext,
+            approvalMode,
           ) => {
             // station#4525: an explicit project choice inside the New Chat
             // modal is exactly as deliberate as a picker pick (#4524's
@@ -3710,6 +3712,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             );
             if (sessionId && ambientContext?.includes(TASK_SHAPING_INSTRUCTION))
               updateChat(sessionId, { taskShaping: true });
+            // Before the first send is scheduled: that send carries a queued
+            // pick to the server, which records it before the engine starts.
+            if (sessionId && approvalMode)
+              updateChat(
+                sessionId,
+                approvalPickUpdate(undefined, approvalMode),
+              );
             if (sessionId && experienceDraft)
               updateChat(sessionId, {
                 skillExperienceDraft: experienceDraft,
