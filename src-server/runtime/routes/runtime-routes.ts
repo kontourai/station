@@ -650,7 +650,10 @@ import {
 } from '../../services/orchestration/delegation-result-delivery.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
-import { MemoryExhaustionContinuation } from '../../services/orchestration/memory-exhaustion-continuation.js';
+import {
+  inboxEntryDelivery,
+  MemoryExhaustionContinuation,
+} from '../../services/orchestration/memory-exhaustion-continuation.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import type { OrchestrationStreamPresence } from '../../services/orchestration/orchestration-stream-presence.js';
 import { ProjectTaskRoomRevisionEvidenceBridge } from '../../services/orchestration/project-task-room-revision-evidence-bridge.js';
@@ -5765,12 +5768,9 @@ export function configureRuntimeRoutes(
         eventStore: context.orchestrationEventStore,
         service: context.orchestrationService,
         submit: threadInbox ? (input) => threadInbox.submit(input) : undefined,
-        entryDelivery: (conversationId, key) =>
-          !threadInbox?.entry(conversationId, key)
-            ? undefined
-            : threadInbox.nonDeliveryReason(conversationId, key)
-              ? 'not-delivered'
-              : 'live',
+        ...(threadInbox
+          ? { entryDelivery: inboxEntryDelivery(threadInbox) }
+          : {}),
         logger: context.logger,
       })
     : undefined;

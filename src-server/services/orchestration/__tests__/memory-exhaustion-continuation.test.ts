@@ -17,13 +17,15 @@ import {
   AUTO_CONTINUE_CHAIN_MAX,
   AUTO_CONTINUE_MAX,
   AUTO_CONTINUE_WINDOW_MS,
+  inboxEntryDelivery,
   MEMORY_CONTINUATION_TEXT,
   MemoryExhaustionContinuation,
   memoryContinuationKey,
 } from '../memory-exhaustion-continuation.js';
-import type {
-  ThreadInboxPayload,
-  ThreadInboxSubmission,
+import {
+  type ThreadInboxPayload,
+  type ThreadInboxSubmission,
+  threadInboxRecordNonDelivery,
 } from '../thread-inbox.js';
 
 const makeTempDir = trackTempDirs();
@@ -80,18 +82,13 @@ describe('automatic continuation after a memory kill', () => {
       },
       // The inbox kernel's own submit: same key and payload is the same
       // entry; the same key with another payload is a conflict.
-      // ThreadInboxDelivery.nonDeliveryReason's rule over the real record:
-      // refused, or cancelled before it was ever placed, sent nothing.
-      entryDelivery: (conversationId, key) => {
-        const entry = inbox.read(conversationId, key) as
-          | { state?: string; placement?: string | null }
-          | undefined;
-        if (!entry) return undefined;
-        return entry.state === 'refused' ||
-          (entry.state === 'cancelled' && entry.placement === null)
-          ? 'not-delivered'
-          : 'live';
-      },
+      // The production adapter and the inbox's own non-delivery rule, over
+      // the real kernel record.
+      entryDelivery: inboxEntryDelivery({
+        entry: (conversationId, key) => inbox.read(conversationId, key),
+        nonDeliveryReason: (conversationId, key) =>
+          threadInboxRecordNonDelivery(inbox.read(conversationId, key)),
+      }),
       submit: (input) => {
         const result = inbox.submit({ ...input, now: clock });
         const outcome =

@@ -24,6 +24,7 @@ import {
   __workloadTestHooks,
   applyWorkloadBudgetSettings,
   enforcedWorkloadLimits,
+  HOLDER_BUS_TIMEOUT_MS,
   inspectSessionWorkload,
   inspectWorkloadResources,
   spawnScopeHolder,
@@ -256,7 +257,11 @@ describe('workload manager budgets (fake systemd manager)', () => {
   });
 
   async function start(
-    options: { settings?: object; spawnHolder?: () => ChildProcess } = {},
+    options: {
+      settings?: object;
+      spawnHolder?: () => ChildProcess;
+      holderTiming?: { deadlineMs?: number; closeWaitMs?: number };
+    } = {},
   ) {
     const home = tempDir();
     const cgroupRoot = join(home, 'sys-fs-cgroup');
@@ -268,19 +273,45 @@ describe('workload manager budgets (fake systemd manager)', () => {
       );
     }
     const calls: string[][] = [];
+    const timeouts: Array<{ args: string[]; timeoutMs?: number }> = [];
     const controlGroups = new Map<string, string>();
+    type Bus =
+      | 'moves'
+      | 'unavailable'
+      | 'refused'
+      | 'answers-without-move'
+      | 'hangs';
     const control = {
       failSetProperty: false,
-      failAttach: false,
-      /** The manager answers but the holder never reaches the scope. */
-      attachWithoutMove: false,
+      /** How each D-Bus route to the user manager behaves. */
+      bus: { private: 'moves', user: 'moves' } as Record<
+        'private' | 'user',
+        Bus
+      >,
+      /** Delay before the manager answers a ControlGroup lookup. */
+      controlGroupDelayMs: 0,
     };
+    const busCalls: Array<{
+      address: string;
+      args: string[];
+      timeoutMs: number;
+    }> = [];
+    const procsWrites: Array<{ path: string; pid: number }> = [];
     // A stand-in holder: attaching writes its pid into the scope's fixture
     // cgroup.procs, as the user manager would move it there.
     const holders: Array<{ pid: number; killed: string[]; unit?: string }> = [];
+    const moveInto = async (unit: string, pid: number) => {
+      const group = controlGroups.get(unit);
+      if (!group) throw new Error('Unit not found');
+      await mkdir(`${cgroupRoot}${group}`, { recursive: true });
+      await writeFile(`${cgroupRoot}${group}/cgroup.procs`, `${pid}\n`);
+      const holder = holders.find((candidate) => candidate.pid === pid);
+      if (holder) holder.unit = unit;
+    };
     await __workloadTestHooks.start({
       homeDir: home,
       cgroupRoot,
+      runtimeDir: '/run/user/1000',
       holder: {
         spawn: () => {
           const holder = {
@@ -303,20 +334,46 @@ describe('workload manager budgets (fake systemd manager)', () => {
         deadlineMs: 300,
         retryMs: 10,
         ...(options.spawnHolder ? { spawn: options.spawnHolder } : {}),
-        attach: async (unit, pid) => {
-          if (control.failAttach) throw new Error('Access denied');
-          if (control.attachWithoutMove) return '';
-          const group = controlGroups.get(unit);
-          if (!group) throw new Error('Unit not found');
-          await mkdir(`${cgroupRoot}${group}`, { recursive: true });
-          await writeFile(`${cgroupRoot}${group}/cgroup.procs`, `${pid}\n`);
-          const holder = holders.find((candidate) => candidate.pid === pid);
-          if (holder) holder.unit = unit;
+        ...options.holderTiming,
+        // busctl's failures as execFile reports them: a nonzero exit with
+        // busctl's own stderr.
+        busctl: async (address, args, timeoutMs) => {
+          busCalls.push({ address, args, timeoutMs });
+          const mode = control.bus[address === '--user' ? 'user' : 'private'];
+          const failed = (stderr: string) =>
+            Object.assign(new Error('Command failed: /usr/bin/busctl'), {
+              code: 1,
+              stderr,
+            });
+          if (mode === 'unavailable')
+            throw failed(
+              'Failed to connect to bus: No such file or directory\n',
+            );
+          if (mode === 'refused') throw failed('Call failed: Access denied\n');
+          if (mode === 'hangs') return new Promise<string>(() => {});
+          if (mode === 'moves')
+            await moveInto(args[6] as string, Number(args[9]));
           return '';
         },
+        writeProcs: async (path, pid) => {
+          procsWrites.push({ path, pid });
+          const unit = [...controlGroups].find(
+            ([, group]) => path === `${cgroupRoot}${group}/cgroup.procs`,
+          )?.[0];
+          if (unit) await moveInto(unit, pid);
+        },
       },
-      run: async (args) => {
+      run: async (args, timeoutMs?: number) => {
         calls.push(args);
+        timeouts.push({ args, timeoutMs });
+        if (
+          args[0] === 'show' &&
+          args.includes('--property=ControlGroup') &&
+          control.controlGroupDelayMs > 0
+        )
+          await new Promise((resolve) =>
+            setTimeout(resolve, control.controlGroupDelayMs),
+          );
         if (args[0] === 'set-property' && control.failSetProperty)
           throw new Error('Failed to set unit properties');
         if (args[0] === 'show' && args.includes('--property=ControlGroup'))
@@ -336,7 +393,18 @@ describe('workload manager budgets (fake systemd manager)', () => {
       },
     });
     const slice = calls[0]?.[2] ?? '';
-    return { home, cgroupRoot, calls, controlGroups, control, slice, holders };
+    return {
+      home,
+      cgroupRoot,
+      calls,
+      timeouts,
+      controlGroups,
+      control,
+      slice,
+      holders,
+      busCalls,
+      procsWrites,
+    };
   }
 
   function launch(sessionId?: string) {
@@ -653,7 +721,7 @@ describe('workload manager budgets (fake systemd manager)', () => {
     await closeChildWorkload(process.ppid);
     expect(holders).toHaveLength(1);
 
-    control.failAttach = true;
+    control.bus.private = 'refused';
     const unplaced = launch('thread-unplaced');
     const unplacedUnit = unitOf(unplaced.args);
     controlGroups.set(unplacedUnit, `/app.slice/${unplacedUnit}`);
@@ -664,8 +732,7 @@ describe('workload manager budgets (fake systemd manager)', () => {
 
     // An attach that answers without moving it is caught by the cgroup.procs
     // check: the holder is killed, not trusted.
-    control.failAttach = false;
-    control.attachWithoutMove = true;
+    control.bus.private = 'answers-without-move';
     const unmoved = launch('thread-unmoved');
     const unmovedUnit = unitOf(unmoved.args);
     controlGroups.set(unmovedUnit, `/app.slice/${unmovedUnit}`);
@@ -678,7 +745,7 @@ describe('workload manager budgets (fake systemd manager)', () => {
       workloadBudgetStatus().scopes?.find(
         (scope) => scope.unit === unmovedUnit,
       ),
-    ).toMatchObject({ holder: 'unplaced' });
+    ).toMatchObject({ holder: 'unplaced', holderReason: 'not-in-scope' });
     expect(holders[2]).toMatchObject({ killed: ['SIGKILL'] });
     await closeChildWorkload(process.pid);
   });
@@ -849,7 +916,7 @@ describe('workload manager budgets (fake systemd manager)', () => {
       workloadBudgetStatus().scopes?.find((scope) => scope.unit === neverUnit),
     ).toMatchObject({
       holder: 'unplaced',
-      holderReason: 'the scope did not load within the placement deadline',
+      holderReason: 'scope-not-loaded',
     });
     await closeChildWorkload(process.pid);
 
@@ -867,8 +934,271 @@ describe('workload manager budgets (fake systemd manager)', () => {
       ),
     ).toMatchObject({
       holder: 'unplaced',
-      holderReason: expect.stringMatching(/ENOENT/),
+      holderReason: 'spawn-failed',
     });
+    await closeChildWorkload(process.pid);
+  });
+
+  const unitOf = (args: readonly string[]) =>
+    args
+      .find((arg) => arg.startsWith('--unit='))
+      ?.slice('--unit='.length) as string;
+  const holderOf = (unit: string) =>
+    workloadBudgetStatus().scopes?.find((scope) => scope.unit === unit);
+  const PRIVATE_SOCKET = '--address=unix:path=/run/user/1000/systemd/private';
+  const SLICE_GROUP =
+    '/user.slice/user-1000.slice/user@1000.service/station.slice';
+
+  test('the holder is moved by the user manager: private socket, then user bus, and cgroup.procs is written directly only when neither bus is reachable', async () => {
+    const { cgroupRoot, controlGroups, control, slice, busCalls, procsWrites } =
+      await start();
+    controlGroups.set(slice, SLICE_GROUP);
+    const place = async (
+      sessionId: string,
+      group?: (unit: string) => string,
+    ) => {
+      busCalls.length = 0;
+      procsWrites.length = 0;
+      const engine = launch(sessionId);
+      const unit = unitOf(engine.args);
+      const controlGroup = group?.(unit) ?? `${SLICE_GROUP}/${unit}`;
+      controlGroups.set(unit, controlGroup);
+      await writeScopeFixture(`${cgroupRoot}${controlGroup}`, 0);
+      trackChildWorkload(engine, process.pid);
+      await __workloadTestHooks.settleHolders();
+      const status = holderOf(unit);
+      await closeChildWorkload(process.pid);
+      return {
+        unit,
+        controlGroup,
+        status,
+        buses: busCalls.map((call) => call.address),
+        busCalls: [...busCalls],
+        writes: [...procsWrites],
+      };
+    };
+
+    // The private socket answers: nothing else is tried.
+    const first = await place('thread-private');
+    expect(first.status).toMatchObject({ holder: 'placed' });
+    expect(first.buses).toEqual([PRIVATE_SOCKET]);
+    expect(first.busCalls[0]?.args).toEqual([
+      'call',
+      'org.freedesktop.systemd1',
+      '/org/freedesktop/systemd1',
+      'org.freedesktop.systemd1.Manager',
+      'AttachProcessesToUnit',
+      'ssau',
+      first.unit,
+      '',
+      '1',
+      expect.stringMatching(/^\d+$/),
+    ]);
+    expect(first.writes).toEqual([]);
+
+    // No private socket: the user bus.
+    control.bus.private = 'unavailable';
+    const second = await place('thread-user-bus');
+    expect(second.status).toMatchObject({ holder: 'placed' });
+    expect(second.buses).toEqual([PRIVATE_SOCKET, '--user']);
+    expect(second.writes).toEqual([]);
+
+    // Neither bus reachable: the scope's own cgroup.procs, under the slice.
+    control.bus.user = 'unavailable';
+    const third = await place('thread-direct');
+    expect(third.status).toMatchObject({ holder: 'placed' });
+    expect(third.buses).toEqual([PRIVATE_SOCKET, '--user']);
+    expect(third.writes).toEqual([
+      {
+        path: `${cgroupRoot}${third.controlGroup}/cgroup.procs`,
+        pid: expect.any(Number),
+      },
+    ]);
+
+    // A refusal is final: no other bus, and no direct write around it.
+    control.bus.private = 'refused';
+    const refused = await place('thread-refused');
+    expect(refused.status).toMatchObject({
+      holder: 'unplaced',
+      holderReason: 'attach-refused',
+    });
+    expect(refused.buses).toEqual([PRIVATE_SOCKET]);
+    expect(refused.writes).toEqual([]);
+    control.bus.private = 'unavailable';
+    control.bus.user = 'refused';
+    const userRefused = await place('thread-user-refused');
+    expect(userRefused.status).toMatchObject({
+      holderReason: 'attach-refused',
+    });
+    expect(userRefused.writes).toEqual([]);
+
+    // The direct write goes only to this scope, under Station's slice.
+    control.bus.user = 'unavailable';
+    for (const [sessionId, group] of [
+      ['thread-elsewhere', (unit: string) => `/app.slice/${unit}`],
+      ['thread-other-unit', () => `${SLICE_GROUP}/other.scope`],
+      ['thread-slice-prefix', (unit: string) => `${SLICE_GROUP}-x/${unit}`],
+    ] as const) {
+      const outside = await place(sessionId, group);
+      expect(outside.status).toMatchObject({
+        holder: 'unplaced',
+        holderReason: 'outside-station-slice',
+      });
+      expect(outside.writes).toEqual([]);
+    }
+  });
+
+  test('placement bounds every manager call by the time left: bus calls at most HOLDER_BUS_TIMEOUT_MS', async () => {
+    expect(HOLDER_BUS_TIMEOUT_MS).toBe(3_000);
+    const roomy = await start({ holderTiming: { deadlineMs: 60_000 } });
+    const engine = launch('thread-bus-timeout');
+    const unit = unitOf(engine.args);
+    roomy.controlGroups.set(unit, `/app.slice/${unit}`);
+    await writeScopeFixture(`${roomy.cgroupRoot}/app.slice/${unit}`, 0);
+    trackChildWorkload(engine, process.pid);
+    await __workloadTestHooks.settleHolders();
+    // A minute of room: the bus call still gets its own 3 s bound.
+    expect(roomy.busCalls.map((call) => call.timeoutMs)).toEqual([3_000]);
+    await closeChildWorkload(process.pid);
+    __workloadTestHooks.reset();
+
+    // A 300 ms deadline: every lookup and the bus call get what is left.
+    const tight = await start();
+    const late = launch('thread-tight');
+    const lateUnit = unitOf(late.args);
+    await writeScopeFixture(`${tight.cgroupRoot}/app.slice/${lateUnit}`, 0);
+    trackChildWorkload(late, process.pid);
+    setTimeout(
+      () => tight.controlGroups.set(lateUnit, `/app.slice/${lateUnit}`),
+      50,
+    );
+    await __workloadTestHooks.settleHolders();
+    const lookups = tight.timeouts.filter(
+      (call) =>
+        call.args[0] === 'show' &&
+        call.args[1] === lateUnit &&
+        call.args.includes('--property=ControlGroup'),
+    );
+    expect(lookups.length).toBeGreaterThan(1);
+    for (const lookup of lookups) {
+      expect(lookup.timeoutMs).toBeGreaterThan(0);
+      expect(lookup.timeoutMs).toBeLessThanOrEqual(300);
+    }
+    expect(tight.busCalls).toHaveLength(1);
+    expect(tight.busCalls[0]?.timeoutMs).toBeGreaterThan(0);
+    expect(tight.busCalls[0]?.timeoutMs).toBeLessThanOrEqual(300);
+    await closeChildWorkload(process.pid);
+  });
+
+  test('closing waits for a stuck holder placement only up to its bound', async () => {
+    const { cgroupRoot, controlGroups, control } = await start({
+      holderTiming: { deadlineMs: 60_000, closeWaitMs: 50 },
+    });
+    control.bus.private = 'hangs';
+    const engine = launch('thread-stuck-attach');
+    const unit = unitOf(engine.args);
+    controlGroups.set(unit, `/app.slice/${unit}`);
+    await writeScopeFixture(`${cgroupRoot}/app.slice/${unit}`, 0);
+    trackChildWorkload(engine, process.pid);
+    const closed = closeChildWorkload(process.pid).then(() => 'closed');
+    const late = new Promise((resolve) => setTimeout(resolve, 2_000, 'late'));
+    expect(await Promise.race([closed, late])).toBe('closed');
+  });
+
+  test('a scope closed before it ever loaded ends placement at once, with no holder spawned', async () => {
+    const { holders, busCalls } = await start({
+      holderTiming: { deadlineMs: 60_000, closeWaitMs: 60_000 },
+    });
+    const engine = launch('thread-closed-early');
+    trackChildWorkload(engine, process.pid);
+    const closed = closeChildWorkload(process.pid).then(() => 'closed');
+    const late = new Promise((resolve) => setTimeout(resolve, 2_000, 'late'));
+    expect(await Promise.race([closed, late])).toBe('closed');
+    expect(holders).toEqual([]);
+    expect(busCalls).toEqual([]);
+  });
+
+  test('the poll and the holder placement share one control-group lookup in flight', async () => {
+    const { calls, control, controlGroups, cgroupRoot } = await start();
+    control.controlGroupDelayMs = 40;
+    const engine = launch('thread-shared-lookup');
+    const unit = unitOf(engine.args);
+    controlGroups.set(unit, `/app.slice/${unit}`);
+    await writeScopeFixture(`${cgroupRoot}/app.slice/${unit}`, 0);
+    trackChildWorkload(engine, process.pid);
+    await __workloadTestHooks.pollOomKills();
+    await __workloadTestHooks.settleHolders();
+    expect(
+      calls.filter(
+        (call) =>
+          call[0] === 'show' &&
+          call[1] === unit &&
+          call.includes('--property=ControlGroup'),
+      ),
+    ).toHaveLength(1);
+    await closeChildWorkload(process.pid);
+  });
+
+  test('a steady stream of command kills is announced, each count once the engine is seen alive after it', async () => {
+    const { cgroupRoot, controlGroups } = await start();
+    const engine = launch('thread-kill-stream');
+    const unit = unitOf(engine.args);
+    const scope = `${cgroupRoot}/app.slice/${unit}`;
+    controlGroups.set(unit, `/app.slice/${unit}`);
+    await writeScopeFixture(scope, 0);
+    trackChildWorkload(engine, process.pid);
+    const kills: ChildWorkloadOomKill[] = [];
+    engine.watchOomKills?.((kill) => kills.push(kill));
+    const pollAt = async (count: number) => {
+      await writeFile(
+        join(scope, 'memory.events'),
+        `low 0\nhigh 0\nmax 9\noom ${count}\noom_kill ${count}\noom_group_kill 0\n`,
+      );
+      await __workloadTestHooks.pollOomKills();
+    };
+    // A new kill lands before every poll.
+    await pollAt(1);
+    expect(kills).toEqual([]);
+    await pollAt(2);
+    await pollAt(3);
+    await pollAt(5);
+    expect(kills.map(({ oomKills, newKills }) => [oomKills, newKills])).toEqual(
+      [
+        [1, 1],
+        [2, 1],
+        [3, 1],
+      ],
+    );
+    // The stream stops: the last count follows one poll later, then nothing.
+    await pollAt(5);
+    await pollAt(5);
+    expect(kills.map(({ oomKills, newKills }) => [oomKills, newKills])).toEqual(
+      [
+        [1, 1],
+        [2, 1],
+        [3, 1],
+        [5, 2],
+      ],
+    );
+    await closeChildWorkload(process.pid);
+  });
+
+  test('a kill is not announced when the pid now belongs to another process', async () => {
+    const { cgroupRoot, controlGroups } = await start();
+    const engine = launch('thread-reused-pid');
+    const unit = unitOf(engine.args);
+    controlGroups.set(unit, `/app.slice/${unit}`);
+    await writeScopeFixture(`${cgroupRoot}/app.slice/${unit}`, 1);
+    trackChildWorkload(engine, process.pid);
+    const kills: ChildWorkloadOomKill[] = [];
+    engine.watchOomKills?.((kill) => kills.push(kill));
+    // The process at the pid is alive, but it started at another time than
+    // the engine Station launched.
+    __workloadTestHooks.recordLeaderBirth('thread-reused-pid', 'another-start');
+    await __workloadTestHooks.pollOomKills();
+    await __workloadTestHooks.pollOomKills();
+    await __workloadTestHooks.pollOomKills();
+    expect(kills).toEqual([]);
     await closeChildWorkload(process.pid);
   });
 

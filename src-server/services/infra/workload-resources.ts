@@ -6,7 +6,10 @@ import {
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { availableParallelism, totalmem } from 'node:os';
-import type { WorkloadBudgetStatus } from '@kontourai/station-contracts/system-status';
+import type {
+  WorkloadBudgetStatus,
+  WorkloadHolderUnplacedReason,
+} from '@kontourai/station-contracts/system-status';
 import {
   type ChildWorkloadLaunch,
   type ChildWorkloadOomKill,
@@ -67,8 +70,10 @@ interface ActiveWorkload {
   holder?: ChildProcess;
   /** Set for an engine scope once placement settled. */
   holderState?: 'placed' | 'unplaced';
-  /** Why the holder is unplaced. */
-  holderReason?: string;
+  /** Why the holder is unplaced, as a short code. */
+  holderReason?: HolderUnplacedReason;
+  /** A control-group lookup in flight (see resolveControlGroup). */
+  resolving?: Promise<string | undefined>;
   holderPlacement?: Promise<void>;
   /** `oom_kill` count at the last poll; undefined before the first. */
   oomKillsPolled?: number;
@@ -213,14 +218,15 @@ function sliceProperties(value: WorkloadLimits): string[] {
 }
 
 const manager = {
-  run: (args: string[]): Promise<string> => systemctl(args),
+  run: (args: string[], timeoutMs?: number): Promise<string> =>
+    systemctl(args, timeoutMs),
 };
 
-function runManager(args: string[]): Promise<string> {
-  return manager.run(args);
+function runManager(args: string[], timeoutMs?: number): Promise<string> {
+  return manager.run(args, timeoutMs);
 }
 
-function systemctl(args: string[]): Promise<string> {
+function systemctl(args: string[], timeoutMs = 10_000): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
       '/usr/bin/systemctl',
@@ -229,7 +235,7 @@ function systemctl(args: string[]): Promise<string> {
         env: managerEnv,
         windowsHide: true,
         encoding: 'utf8',
-        timeout: 10_000,
+        timeout: Math.max(1, timeoutMs),
         killSignal: 'SIGKILL',
         maxBuffer: 256 * 1024,
       },
@@ -247,33 +253,37 @@ async function readOomKills(controlGroup: string): Promise<number | undefined> {
   }
 }
 
-async function resolveControlGroup(
+/**
+ * The scope's control group once systemd has loaded it. One lookup per entry
+ * is in flight at a time, shared by the poll and the holder placement, so a
+ * launch does not fork a systemctl per caller under memory pressure.
+ */
+function resolveControlGroup(
   entry: ActiveWorkload,
+  timeoutMs?: number,
 ): Promise<string | undefined> {
-  if (entry.controlGroup) return entry.controlGroup;
-  try {
-    const cgroup = (
-      await runManager([
-        'show',
-        entry.unit,
-        '--property=ControlGroup',
-        '--value',
-      ])
-    ).trim();
-    if (cgroup.startsWith('/') && !cgroup.split('/').includes('..'))
-      entry.controlGroup = cgroup;
-  } catch {
-    /* the next poll tries again */
-  }
-  return entry.controlGroup;
+  if (entry.controlGroup) return Promise.resolve(entry.controlGroup);
+  entry.resolving ??= (async () => {
+    try {
+      const cgroup = (
+        await runManager(
+          ['show', entry.unit, '--property=ControlGroup', '--value'],
+          timeoutMs,
+        )
+      ).trim();
+      if (cgroup.startsWith('/') && !cgroup.split('/').includes('..'))
+        entry.controlGroup = cgroup;
+    } catch {
+      /* the next caller tries again */
+    } finally {
+      entry.resolving = undefined;
+    }
+    return entry.controlGroup;
+  })();
+  return entry.resolving;
 }
 
-/**
- * One pass over watched scopes: announce kernel OOM kills inside a running
- * scope. Under `OOMPolicy=continue` the kernel kills one process (normally
- * the largest command) and the engine keeps running, so this is the only
- * report of it besides the command's own failure.
- */
+/** The scope's leader is the very process launched, still running. */
 async function leaderAlive(entry: ActiveWorkload): Promise<boolean> {
   if (entry.pid === undefined) return false;
   const owner = await probeExactProcessIdentityAsync(entry.pid);
@@ -283,6 +293,13 @@ async function leaderAlive(entry: ActiveWorkload): Promise<boolean> {
   );
 }
 
+/**
+ * One pass over running scopes: record each scope's kernel OOM kill count
+ * and announce kills inside a running engine's scope. Under
+ * `OOMPolicy=continue` the kernel kills one process (normally the largest
+ * command) and the engine keeps running, so this is the only report of it
+ * besides the command's own failure.
+ */
 async function pollOomKills(): Promise<void> {
   await Promise.allSettled(
     [...active.values()].map(async (entry) => {
@@ -296,23 +313,28 @@ async function pollOomKills(): Promise<void> {
       if (entry.oomListeners.size === 0) return;
       if (oomKills === undefined || oomKills <= entry.oomKillsReported) return;
       // A kill is a command's only once the engine is seen alive after it:
-      // the first sighting waits a poll. Announcing at once could take the
-      // engine's own death (a poll landing between the kernel's kill and the
-      // exit reaching Station) for a command kill, and hide it from the
-      // close-time verdict, which counts only unannounced kills.
-      if (entry.oomKillsPending !== oomKills) {
+      // a count waits one poll as pending, and the next poll that finds the
+      // exact engine alive announces that earlier count, while any newer
+      // kills wait in turn. Announcing at once could take the engine's own
+      // death (a poll landing between the kernel's kill and the exit reaching
+      // Station) for a command kill and hide it from the close-time verdict,
+      // which counts only unannounced kills. A steady stream of command kills
+      // is still announced, one poll behind.
+      const pending = entry.oomKillsPending;
+      if (pending === undefined || pending <= entry.oomKillsReported) {
         entry.oomKillsPending = oomKills;
         return;
       }
       if (entry.closing || !(await leaderAlive(entry))) return;
       const kill: ChildWorkloadOomKill = Object.freeze({
-        oomKills,
-        newKills: oomKills - entry.oomKillsReported,
+        oomKills: pending,
+        newKills: pending - entry.oomKillsReported,
         ...(entry.memoryMaxBytes === undefined
           ? {}
           : { memoryMaxBytes: entry.memoryMaxBytes }),
       });
-      entry.oomKillsReported = oomKills;
+      entry.oomKillsReported = pending;
+      entry.oomKillsPending = oomKills > pending ? oomKills : undefined;
       logger.warn('A process in a workload scope was killed for memory', {
         unit: entry.unit,
         ...kill,
@@ -508,76 +530,99 @@ const HOLDER_CLOSE_WAIT_MS = 3_000;
  * it cannot be placed it is killed and the scope's kill count at close is
  * knowingly unknown. The scope's stop kills it with everything else.
  */
+/** Why an engine scope's holder is unplaced; details go to the log only. */
+type HolderUnplacedReason = WorkloadHolderUnplacedReason;
+
+class HolderUnplaced extends Error {
+  constructor(
+    readonly code: HolderUnplacedReason,
+    detail: string,
+  ) {
+    super(detail);
+  }
+}
+
 async function placeScopeHolder(entry: ActiveWorkload): Promise<void> {
   let holder: ChildProcess | undefined;
-  const unplaced = (reason: string) => {
+  const unplaced = (code: HolderUnplacedReason, detail = '') => {
     entry.holderState = 'unplaced';
-    entry.holderReason = reason;
+    entry.holderReason = code;
     holder?.kill('SIGKILL');
     logger.warn(
       'Workload scope holder not placed; an engine memory kill in it will read as unknown',
-      { unit: entry.unit, reason },
+      { unit: entry.unit, reason: code, detail: detail.slice(0, 500) },
     );
   };
   // `started` fires when systemd-run is spawned, usually before the scope
-  // exists: wait for it to load.
+  // exists: wait for it to load. Every manager call is bounded by the time
+  // left, so placement as a whole ends near the deadline.
   const deadline = Date.now() + holderOps.deadlineMs;
-  let controlGroup = await resolveControlGroup(entry);
+  const left = () => Math.max(1, deadline - Date.now());
+  let controlGroup = await resolveControlGroup(entry, left());
   while (!controlGroup) {
-    if (entry.closing) return unplaced('the scope closed before it loaded');
-    if (Date.now() >= deadline)
-      return unplaced('the scope did not load within the placement deadline');
+    if (entry.closing) return unplaced('scope-closed-before-load');
+    if (Date.now() >= deadline) return unplaced('scope-not-loaded');
     await new Promise((resolve) =>
       setTimeout(resolve, holderOps.retryMs).unref(),
     );
-    controlGroup = await resolveControlGroup(entry);
+    controlGroup = await resolveControlGroup(entry, left());
   }
   try {
-    holder = holderOps.spawn();
-    const spawned = holder;
-    await new Promise<void>((resolve, reject) => {
-      spawned.once('spawn', () => resolve());
-      spawned.once('error', reject);
-    });
+    try {
+      holder = holderOps.spawn();
+      const spawned = holder;
+      await new Promise<void>((resolve, reject) => {
+        spawned.once('spawn', () => resolve());
+        spawned.once('error', reject);
+      });
+    } catch (error) {
+      throw new HolderUnplaced('spawn-failed', String(error));
+    }
     const pid = holder.pid;
-    if (pid === undefined) throw new Error('holder has no pid');
-    const method = await holderOps.attach(
-      entry.unit,
-      pid,
-      `${cgroupRoot}${controlGroup}`,
-    );
+    if (pid === undefined) throw new HolderUnplaced('spawn-failed', 'no pid');
+    const method = await attachHolder(entry.unit, pid, controlGroup, left);
     const procs = await holderOps.readProcs(
       `${cgroupRoot}${controlGroup}/cgroup.procs`,
     );
     if (!procs.split('\n').includes(String(pid)))
-      throw new Error('holder is not in the scope');
+      throw new HolderUnplaced('not-in-scope', 'cgroup.procs lacks the holder');
     entry.holder = holder;
     entry.holderState = 'placed';
     logger.debug('Workload scope holder placed', { unit: entry.unit, method });
   } catch (error) {
-    unplaced(error instanceof Error ? error.message : String(error));
+    if (error instanceof HolderUnplaced) unplaced(error.code, error.message);
+    else unplaced('attach-refused', String(error));
   }
 }
 
 /**
- * Moves the holder into the scope. The user manager's subtree is delegated
- * to the user, so writing the scope's cgroup.procs needs no D-Bus. Where
- * that is refused, the user manager is asked (AttachProcessesToUnit) over
- * its private socket, the one systemctl uses, then over the user bus.
- * Returns which way worked.
+ * Whether a busctl failure means the bus could not be reached (no socket,
+ * no busctl), as opposed to the manager answering with a refusal.
+ */
+function busUnavailable(error: unknown): boolean {
+  const failure = error as { code?: unknown; stderr?: unknown };
+  if (failure?.code === 'ENOENT') return true;
+  const text = `${String(failure?.stderr ?? '')} ${String(error)}`;
+  return /Failed to (connect|set address)|No such file or directory|Connection refused|Transport endpoint/i.test(
+    text,
+  );
+}
+
+/**
+ * Moves the holder into the scope. The scope belongs to the user manager
+ * (systemd-run --scope, no delegation to Station), so the manager does it:
+ * `AttachProcessesToUnit` over its private socket (the one systemctl uses),
+ * then over the user bus. A refusal is final, notably for a unit that is no
+ * longer active. Only when neither bus can be reached at all is the holder
+ * written into the scope's cgroup.procs directly, and only for a control
+ * group that is this scope's own, under Station's workload slice.
  */
 async function attachHolder(
   unit: string,
   pid: number,
-  scopeDirectory: string,
+  controlGroup: string,
+  left: () => number,
 ): Promise<string> {
-  const failures: string[] = [];
-  try {
-    await writeFile(`${scopeDirectory}/cgroup.procs`, `${pid}\n`);
-    return 'cgroup.procs';
-  } catch (error) {
-    failures.push(`cgroup.procs: ${String(error)}`);
-  }
   const runtime = managerEnv.XDG_RUNTIME_DIR;
   const addresses = [
     ...(runtime ? [`--address=unix:path=${runtime}/systemd/private`] : []),
@@ -585,37 +630,94 @@ async function attachHolder(
   ];
   for (const address of addresses) {
     try {
-      await busctl(address, [
-        'call',
-        'org.freedesktop.systemd1',
-        '/org/freedesktop/systemd1',
-        'org.freedesktop.systemd1.Manager',
-        'AttachProcessesToUnit',
-        'ssau',
-        unit,
-        '',
-        '1',
-        String(pid),
-      ]);
-      return `busctl ${address}`;
+      await holderOps.busctl(
+        address,
+        [
+          'call',
+          'org.freedesktop.systemd1',
+          '/org/freedesktop/systemd1',
+          'org.freedesktop.systemd1.Manager',
+          'AttachProcessesToUnit',
+          'ssau',
+          unit,
+          '',
+          '1',
+          String(pid),
+        ],
+        Math.min(HOLDER_BUS_TIMEOUT_MS, left()),
+      );
+      return address === '--user' ? 'user-bus' : 'private-socket';
     } catch (error) {
-      failures.push(`busctl ${address}: ${String(error)}`);
+      if (!busUnavailable(error))
+        throw new HolderUnplaced('attach-refused', String(error));
     }
   }
-  throw new Error(failures.join('; '));
+  const sliceGroup = await sliceControlGroup(left());
+  if (
+    !sliceGroup ||
+    !controlGroup.startsWith(`${sliceGroup}/`) ||
+    !controlGroup.endsWith(`/${unit}`)
+  )
+    throw new HolderUnplaced(
+      'outside-station-slice',
+      `${controlGroup} is not ${unit} under ${sliceGroup ?? 'an unknown slice'}`,
+    );
+  try {
+    await holderOps.writeProcs(
+      `${cgroupRoot}${controlGroup}/cgroup.procs`,
+      pid,
+    );
+  } catch (error) {
+    throw new HolderUnplaced('attach-unavailable', String(error));
+  }
+  return 'cgroup.procs';
 }
+
+let sliceGroupCache: string | undefined;
+async function sliceControlGroup(
+  timeoutMs: number,
+): Promise<string | undefined> {
+  if (sliceGroupCache || !slice) return sliceGroupCache;
+  try {
+    const cgroup = (
+      await runManager(
+        ['show', slice, '--property=ControlGroup', '--value'],
+        timeoutMs,
+      )
+    ).trim();
+    if (cgroup.startsWith('/') && !cgroup.split('/').includes('..'))
+      sliceGroupCache = cgroup;
+  } catch {
+    /* unknown: the direct write is refused */
+  }
+  return sliceGroupCache;
+}
+
+/** Each AttachProcessesToUnit call is bounded by this or the time left. */
+export const HOLDER_BUS_TIMEOUT_MS = 3_000;
 
 const defaultHolderOps = {
   spawn: (): ChildProcess => spawnScopeHolder(),
-  attach: attachHolder,
+  busctl: busctl as (
+    address: string,
+    args: string[],
+    timeoutMs: number,
+  ) => Promise<string>,
+  writeProcs: (path: string, pid: number): Promise<void> =>
+    writeFile(path, `${pid}\n`),
   readProcs: (path: string): Promise<string> => readFile(path, 'utf8'),
   deadlineMs: HOLDER_PLACEMENT_DEADLINE_MS,
   retryMs: HOLDER_PLACEMENT_RETRY_MS,
+  closeWaitMs: HOLDER_CLOSE_WAIT_MS,
 };
 
 const holderOps = { ...defaultHolderOps };
 
-function busctl(address: string, args: string[]): Promise<string> {
+function busctl(
+  address: string,
+  args: string[],
+  timeoutMs: number,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
       '/usr/bin/busctl',
@@ -624,11 +726,12 @@ function busctl(address: string, args: string[]): Promise<string> {
         env: managerEnv,
         windowsHide: true,
         encoding: 'utf8',
-        timeout: 3_000,
+        timeout: Math.max(1, timeoutMs),
         killSignal: 'SIGKILL',
         maxBuffer: 64 * 1024,
       },
-      (error, stdout) => (error ? reject(error) : resolve(stdout)),
+      (error, stdout, stderr) =>
+        error ? reject(Object.assign(error, { stderr })) : resolve(stdout),
     );
   });
 }
@@ -742,7 +845,7 @@ async function closeScope(entry: ActiveWorkload): Promise<void> {
       await Promise.race([
         entry.holderPlacement,
         new Promise((resolve) =>
-          setTimeout(resolve, HOLDER_CLOSE_WAIT_MS).unref(),
+          setTimeout(resolve, holderOps.closeWaitMs).unref(),
         ),
       ]);
     // Successful empty scopes may disappear before inspection. A failed stop
@@ -1190,17 +1293,21 @@ export async function inspectSessionWorkload(sessionId: string) {
  */
 export const __workloadTestHooks = {
   async start(options: {
-    run: (args: string[]) => Promise<string>;
+    run: (args: string[], timeoutMs?: number) => Promise<string>;
     homeDir: string;
     cgroupRoot: string;
     serviceUnit?: string;
     version?: number;
     holder?: Partial<typeof holderOps>;
+    /** XDG_RUNTIME_DIR for the user manager's private socket. */
+    runtimeDir?: string;
   }): Promise<void> {
     manager.run = options.run;
     Object.assign(holderOps, defaultHolderOps, options.holder ?? {});
     cgroupRoot = options.cgroupRoot;
-    managerEnv = {};
+    managerEnv = options.runtimeDir
+      ? { XDG_RUNTIME_DIR: options.runtimeDir }
+      : {};
     settingsHome = options.homeDir;
     await loadSavedSettings(options.homeDir);
     serviceUnit = options.serviceUnit ?? 'station-test.service';
@@ -1221,6 +1328,14 @@ export const __workloadTestHooks = {
     );
   },
   pollOomKills,
+  /**
+   * Replaces the recorded start time of a running scope's leader, as if its
+   * pid now belonged to a different process (pid reuse).
+   */
+  recordLeaderBirth(sessionId: string, birth: string): void {
+    for (const entry of active.values())
+      if (entry.sessionId === sessionId) entry.birth = birth;
+  },
   /** Waits until every pending holder placement settled. */
   async settleHolders(): Promise<void> {
     await Promise.all(
@@ -1231,6 +1346,7 @@ export const __workloadTestHooks = {
     manager.run = systemctl;
     Object.assign(holderOps, defaultHolderOps);
     cgroupRoot = '/sys/fs/cgroup';
+    sliceGroupCache = undefined;
     state = 'unmanaged';
     reason = undefined;
     limits = undefined;

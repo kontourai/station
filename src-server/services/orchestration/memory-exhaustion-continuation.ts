@@ -146,10 +146,7 @@ export interface MemoryExhaustionContinuationPorts {
    * entry that may have started a turn, including a dismissed unconfirmed
    * one, is `live`.
    */
-  readonly entryDelivery?: (
-    conversationId: string,
-    key: string,
-  ) => 'live' | 'not-delivered' | undefined;
+  readonly entryDelivery?: EntryDelivery;
   readonly submit:
     | ((input: {
         readonly conversationId: string;
@@ -167,6 +164,29 @@ function record(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
+}
+
+/** What the conversation inbox says of a continuation key. */
+export type EntryDelivery = (
+  conversationId: string,
+  key: string,
+) => 'live' | 'not-delivered' | undefined;
+
+/**
+ * The `entryDelivery` port over a conversation inbox: undefined for a key it
+ * does not hold, `not-delivered` for one its own rule proves never sent
+ * (ThreadInboxDelivery.nonDeliveryReason), `live` otherwise.
+ */
+export function inboxEntryDelivery(inbox: {
+  entry(conversationId: string, key: string): unknown;
+  nonDeliveryReason(conversationId: string, key: string): string | undefined;
+}): EntryDelivery {
+  return (conversationId, key) =>
+    !inbox.entry(conversationId, key)
+      ? undefined
+      : inbox.nonDeliveryReason(conversationId, key)
+        ? 'not-delivered'
+        : 'live';
 }
 
 export class MemoryExhaustionContinuation {
