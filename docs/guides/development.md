@@ -278,11 +278,18 @@ Codex engine down, and holds none of the engine's pipes: Node maps a child's
 stdio, IPC and extra pipes onto the lowest descriptors and opens the rest
 close-on-exec. When the engine dies, the holder keeps the scope and its
 `memory.events` until Station reads the count and stops the scope, which kills
-the holder with everything else. Each poll checks the scope's own
-`cgroup.procs` for it, and `GET /api/system/workload` reports an engine
-scope's `holder` as `placed` or `unplaced` from the first poll that finds the
-scope, with `holderReason` `not-in-scope`, or `holder-unavailable` when the
-host has no `setsid`(1) or `sleep`(1) (then engine scopes run without one). An
+the holder with everything else. Until the holder is found, each poll searches
+the scope's own `cgroup.procs` for a pid other than the engine whose command
+line is exactly the holder's; once found, each poll confirms that pid is still
+in the scope with the same start time. `GET /api/system/workload` reports an
+engine scope's `holder` as `placed`, or `unplaced` with `holderReason`
+`not-in-scope` after two polls in a row miss it (the search stops after five
+polls without it),
+`holder-gone` once a found holder has left the scope or its pid names another
+process (an agent's `pkill sleep`, say), or `holder-unavailable` when the
+host has no `setsid`(1) or `sleep`(1) (then engine scopes run without one).
+A process in the scope running the same `sleep 2147483647` can pass for the
+holder; that misreports status only. An
 engine scope without a holder has its count at close unknown, like any
 scope already gone: unknown, never inferred. The settled record
 (`recent` in `/api/system/resource-posture` and the "Workload scope settled"
