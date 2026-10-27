@@ -10,6 +10,10 @@ and a separate authenticated OTel Collector, Prometheus, Tempo and Grafana.
 [`compose.yaml`](compose.yaml) holds the receiver and PostgreSQL and includes
 the diagnostic services from [`compose.diagnostics.yaml`](compose.diagnostics.yaml).
 The Grafana dashboard is [`dashboards/station.json`](dashboards/station.json).
+Grafana uses the plugins bundled in its pinned image. Plugin preinstallation and
+automatic updates are disabled: startup must not replace a bundled datasource
+with an unpinned download or unload it while an update fails on the read-only
+filesystem.
 The [developer profile](#developer-profile) runs the diagnostic half alone.
 The trace transform clears typed span-event and span-link slices with `nil`.
 An empty OTTL list (`[]`) is not a typed slice in the pinned Collector and
@@ -39,12 +43,145 @@ and cannot build from the caller's checkout. Verification rejects changed
 files, extra payloads, links, and special files. Keep the output outside the
 checkout so it cannot become an input to a later build.
 
+The packager uses the server-owned byte/inventory verifier in
+[`telemetry-companion-artifact.mjs`](../../src-server/services/telemetry-companion-artifact.mjs),
+including receiver provenance and deployment image pins. These checks retain
+the build-only boundary. New `install.sh` public-manifest archive installs retain
+their signed parent envelope in the sealed version directory. Conditional
+lifecycle admission re-verifies that envelope and archive; retention alone grants
+no install permit.
+
 `companion-manifest.json` binds the exact file bytes, image digests and source
 revision. Its `build-only` scope is mandatory: this unsigned integrity record
 is neither publisher authentication nor a release qualification receipt.
 It does not authorize installation, change consent or configure a destination.
-The managed in-Station lifecycle and qualified release descriptor remain
-pending; these commands do not implement that journey.
+Conditional managed lifecycle controls are implemented separately below; these
+build commands do not install or start services. Qualified release production,
+remote connection, managed upgrade/rollback and complete journey acceptance
+remain unfinished.
+
+The maintained source-checkout runtime exercise takes an exact candidate and a
+new private output directory outside the checkout:
+
+```sh
+npm run qualify:telemetry-companion -- /absolute/candidate /absolute/new-private-output
+```
+
+It requires clean matching source and a local Unix Docker endpoint, captures and
+verifies the candidate, builds a labelled image, and uses a unique Compose
+project, private generated credentials and unused loopback ports. It checks
+host storage readiness, credential refusals, network placement, authenticated
+synthetic DELTA metric samples (2+3) queried as cumulative 5 through Grafana's
+Prometheus datasource and synthetic product commit/replay. After quiescing the
+receiver, it captures a bounded logical PostgreSQL backup to a private file with
+a SHA-256 digest, restores into a new project and volume before activation, and
+compares row digests for every owned application table. The managed restore fence
+revokes copied product keys and permanently suppresses publication. Public and
+publisher queries must return no cells, no cursor and `no-store` across process
+recreation; product operator queries remain usable. A synthetic sealed-history
+row, noise key and other retained tables must survive unchanged. This fixture
+does not establish privacy-safe historical publication. A separate fresh restore
+with copied revoked private custody must refuse the fence atomically and never
+activate its receiver. It also stops and restarts the diagnostic
+services on their retained volumes, then queries the exact previously observed
+metric timestamp without sending any more samples. A synthetic trace containing
+privacy canaries is queried through the authenticated Tempo datasource: its IDs,
+timestamps and allowed attributes must survive, while private resource/scope/span
+fields, events, links, status text and trace state must be absent. The same
+projected trace must remain queryable after the diagnostic restart without resend.
+The command also boots the real source Station entrypoint using the installed
+development graph, a separate Station home, temp root and process registry, and
+OS-selected ports. Product telemetry stays Off. It checks an unauthenticated
+refusal, then uses only the fresh fixture's generated operator credential for an
+authenticated HTTP request. Prometheus must return Station's boot counter under
+its persisted OTel identity; Tempo must return that request's trace with the same
+resource identity and no exported credential. The Station child must stop without
+forced termination before qualification completes.
+Docker/HTTP mutation intents precede effects; uncertain outcomes require manual
+inspection rather than retry. Commands and response bodies are bounded, and
+completed phases retire serially before the next fresh project starts. Retirement
+stops and removes only exact owned containers and releases only inspected empty
+owned networks, retaining private files, backups, images and volumes. Final cleanup
+repeats the same idempotent retirement for every owned project.
+
+`report.json` is explicitly `source-Station-OTel-and-component-runtime-only` with
+`installationAuthority: false`. This command does not yet exercise trace retention
+beyond the same-volume diagnostic restart, product restart durability beyond the
+managed restore, installed-release export, version rollback, publisher
+reconciliation, personal grants or native
+acceptance. It is diagnostic evidence, not a qualified release or install permit.
+
+The optional prior-version inputs are all required together:
+
+```sh
+npm run qualify:telemetry-companion -- /absolute/candidate /absolute/new-private-output \
+  --prior-companion /absolute/prior/station/telemetry-companion \
+  --prior-parent-archive /absolute/station-server-linux-arm64.tar.gz \
+  --prior-signed-manifest /absolute/station-portable-nightly-manifest.json
+```
+
+The existing release verifier authenticates the Nightly envelope with pinned
+Ed25519 keys. The archive size and SHA must match its signed Linux/host-architecture
+artifact. The command extracts its companion and verifies both payloads and their
+source equality before building the prior image. A prior `verification.json` or
+build-only payload metadata alone supplies no trust. No download is performed.
+The prior receiver starts on its own fresh database, accepts a product event,
+and is stopped before upgrading to the current captured image. The query,
+receipt and preexisting data-table rows must survive exactly. For both product and
+private schemas, every prior migration version and digest must remain unchanged,
+and the upgraded history must exactly match the history captured from the current
+image’s migrated original database before its retirement.
+The original pre-upgrade backup is retained privately with its SHA.
+
+Schema 9 cannot be served by the schema 8 prior binary. In-place rollback is
+`NOT_SUPPORTED`; the command never runs the prior binary against that database.
+Restoring the original backup as a rollback is `NOT_VERIFIED`, a separate policy
+and execution boundary. Upgrade evidence does not pass `version-upgrade-rollback`.
+Failures retain their private command logs; missing authentication or runtime
+prerequisites fail closed.
+
+The separately versioned diagnostic profile is
+`station-companion-product-diagnostics-permanent-publication-suppression/v2`.
+It replaces only `publisher-privacy-reconciliation` with
+`publisher-permanent-publication-suppression`, retaining the other twelve checks,
+including upgrade **and** rollback. The old
+`station-companion-product-diagnostics/v1` still requires exactly its original
+thirteen checks. Packaging checks source, content digest, architecture and complete
+passed-check metadata; metadata does not execute controls or authenticate the
+signed parent. Both profiles retain `installationAuthority: false`. This source
+command emits a diagnostic report with `qualificationEligible: false`, never a
+complete installation receipt. Installed release export, native and private-sync
+legs remain outside its scope.
+
+### Station host prerequisite API
+
+`GET /api/operator/telemetry-companion/prerequisites` is an uncached read for
+the operator or an explicitly promoted human operator device, excluding
+agent-originated, internal-token and delegation callers. It probes the selected
+local container host. Paired callers need `orchestration:read` and explicit
+`telemetry:manage` promotion plus verified operator role; neither scope replaces
+operator authorization. The
+route checks current operator authority before probing and before returning its
+result. It does not start Docker, pull images, create services or enable export.
+
+`artifactEvidence=1` opts into retained-envelope evidence on an available host
+result; the SDK requests it, while legacy requests keep the original shape.
+For an installer-owned archive, the server re-verifies the retained envelope
+with pinned channel-authorized keys, checks source/version and host artifact
+selection, and verifies the local companion file inventory. The pane reports
+missing or invalid evidence explicitly. `parent-envelope-verified` is still
+build-only with `installationAuthority:false`: no original archive-byte
+authentication, runtime qualification or installation permission is inferred.
+
+The probe requires a local Unix socket or Windows named-pipe context, Linux
+containers on amd64 or arm64, and Compose 2.24 or later. It pins the selected
+endpoint for the daemon query instead of resolving a possibly changed context
+again. Each CLI invocation has a five-second deadline and bounded output.
+Missing CLI, unavailable daemon, remote context, unsupported host and unavailable
+Compose are separate typed results; raw daemon errors and socket paths are not
+returned. A successful prerequisite read proves host capability only. Qualified
+artifact admission, installation and storage readiness require their own checks;
+the conditional pane controls below do not turn a host probe into that evidence.
 
 Portable-server builds can include this candidate with
 `build:portable-server -- --with-telemetry-companion` after the receiver build.
@@ -55,6 +192,30 @@ whole archive, including these bytes; no additional signing key is introduced.
 That authenticates a build candidate, not a qualified companion deployment.
 The lifecycle installer must still require companion-specific runtime evidence
 before accepting it for installation.
+
+Build tooling can attach a complete profile declaration with
+`--companion-qualification-receipt /absolute/receipt.json` together with
+`--with-telemetry-companion`. The bounded receipt uses
+`station-companion-qualification/v1` and the
+`station-companion-product-diagnostics/v1` profile. It binds the source and
+SHA-256 of the payload's source, target, image pins and file inventory. Excluding
+the qualification field from that digest avoids a self-referential hash.
+Each Linux amd64/arm64 entry names its evidence digest and every required check;
+duplicate architectures, omitted/failed checks, extra fields or mismatched
+payloads are refused. The [profile validator](../../src-server/services/telemetry-companion-qualification.mjs)
+owns the required delivery, disclosure, privacy, restart, restore, rollback and
+isolation check names.
+
+This is metadata consistency validation, not evidence that those checks ran.
+The release producer must supply actual qualified evidence before the existing
+parent-release issuer signs the containing archive. No new signing key or
+issuer is introduced. The current diagnostic command does not produce this
+complete receipt, and its passed report is refused as a substitute. No complete
+profile has been issued or qualified by the packaging fixtures. Embedded
+metadata retains `installationAuthority:false`. The conditional installation API
+below composes signed artifact admission with current operator intent;
+qualified release production remains unfinished. Conditional pane controls are
+implemented as described below.
 
 
 The root Dockerfile's explicit `telemetry-runtime` target bundles the receiver
@@ -170,6 +331,161 @@ responses are not cached. Failed credential refresh beyond 60 seconds returns
 downtime delays them. No production endpoint or data flow is enabled by this
 source change.
 
+## Signed parent archive preparation API
+
+The Unix backend accepts `POST /api/operator/telemetry-companion/archive-preparations`
+with exactly `{ "operationId": "<lowercase UUID v4>" }`. It requires both the
+operator authority and companion-management permission. Existing operator
+credentials and proven host operators act by identity. Other human devices need
+explicit operator promotion to `telemetry:manage` and a verified operator role;
+agent and delegation callers are refused. Default and preset grants are unchanged.
+`home:control` remains a continuity fence and grants no companion authority.
+The server selects the archive from its re-verified retained envelope. Callers
+cannot supply a URL, path, key table or command. Windows preparation is explicitly
+unsupported by this backend; this is not Windows or native qualification.
+
+Preparation records and syncs private intent before the HTTP request, downloads
+without credentials or automatic retries, permits at most three HTTPS redirects,
+and verifies the exact signed size and SHA-256. The download is capped at 1 GiB
+and has a 120-second deadline. Original and partial files remain under the
+Station home's `telemetry-companion/archive-preparations/<operationId>`.
+An incomplete directory or interrupted lock requires explicit reconciliation;
+it is not overwritten or automatically resumed.
+
+`GET /api/operator/telemetry-companion/archive-preparations/<operationId>` reads
+the retained receipt under current operator authority. Reusing an operation ID
+returns its receipt without another download. `pending` records intent, not
+process liveness; `authenticated` records the successful byte check, not a fresh
+execution permit. Every receipt has `installationAuthority:false`. The backend
+materializes the fixed companion files into the operation's private `payload`
+directory, but does not execute them, install or start services, or enable telemetry.
+It rehashes the retained archive and requires each extraction descriptor to name
+the same unchanged regular file. The fixed members are read through tar stdout;
+tar never extracts paths onto the host filesystem. Station writes only its fixed
+file names, bounds output, verifies the complete inventory and matching source,
+and syncs files and directories before recording `payloadPrepared:true`.
+Preparation and the prerequisite evidence read also apply the packager's shared
+receiver-provenance and deployment-image consistency checks. A valid signature
+and matching file hashes cannot substitute for a matching pinned image inventory.
+Failed or interrupted preparation retains partial files without granting that
+state. Older authenticated receipts without the field prove archive bytes only.
+
+Developer → Monitoring → Companion exposes **Prepare signed archive** to an
+authorized operator when the host and retained release evidence are available.
+The SDK mutation submits one caller-generated operation ID without automatic
+retries. **Check preparation status** performs reads only. If the response is
+lost, the pane looks up that same operation rather than starting another
+download. Reopening the pane reads the durable latest-operation pointer through
+`GET /api/operator/telemetry-companion/archive-preparations`. A lock, pending
+receipt or missing receipt blocks another preparation and requires reconciliation;
+none proves a process is running. Conditional install/start controls use separate
+managed installation and action receipts.
+
+### Conditional stopped-service installation API
+
+`POST /api/operator/telemetry-companion/installations` accepts exactly
+`installationId`, `preparationId`, `host:"selected-station"` and
+`storage:"managed-docker-volumes"`. Both IDs are lowercase UUIDv4 values.
+The selected Station performs the work; the viewing device supplies neither a
+Docker endpoint nor a filesystem path. Current human operator authority and
+`telemetry:manage` admission are required, with the same explicit operator
+identity exception as preparation. Sending and personal grants are separate.
+
+The backend re-verifies its signed parent, authenticates and re-extracts the
+archive into a new private operation, and requires the complete profile for the
+observed Docker architecture. It records intent before Docker effects, pins the
+local daemon identity, generates a private project name and credentials, builds
+the receiver and pulls pinned dependencies. An owned network-isolated setup
+container creates private credential copies for the profile's service UIDs.
+Installation creates and inspects six stopped services using unique loopback
+ports and managed volumes. It does not start them or change Station's sending
+configuration. Interrupted or failed effects retain evidence and require
+reconciliation before another installation.
+
+`GET /api/operator/telemetry-companion/installations/<installationId>` reads the
+durable receipt under current authority. Repeating the same ID and preparation
+returns that receipt without repeating installation; a changed preparation
+conflicts. An `installed` operation receipt is historical, not current container
+liveness, storage readiness or ingestion proof.
+
+The stopped-service effect path has executed with a controlled throwaway-signed
+fixture, including default production-key refusal, private credential UID/byte
+checks and stored-receipt replay. Those fixture declarations are not real profile
+qualification, an official release or an installed Station UI journey. No complete
+official profile has been issued. The Companion pane provides conditional
+installation after an explicit managed-volume choice, separate start/stop buttons,
+fresh runtime/storage observations and read-only recovery after a lost reply.
+Those controls have mounted integration coverage and simulated visual evidence;
+a qualified installed-Station UI journey remains unfinished. The product-only
+in-Station view is implemented below; personal analytics remain separate work.
+
+### Core-mediated product trends
+
+`GET /api/operator/telemetry-companion/product-trends?from=<ISO>&to=<ISO>`
+requires current human operator authority before and after the read. Bounds are
+canonical UTC ISO timestamps, exclusive at the end, at most 365 days apart;
+duplicate or unknown query parameters are refused. Core verifies managed custody,
+current running containers and artifact identity before using the private
+receiver operator key against the owned loopback receiver. The key never enters
+the pane response. The response is bounded to 512 KiB and validated against
+`ProductTelemetryTrends`, including the exact requested window.
+
+The Companion pane shows this product-only query after runtime/storage readiness,
+with time and release filters and bounded group pages. It preserves retention,
+producer-clock and unknown delivery-coverage labels. A failed refresh hides old
+results. Mounted integration fixtures establish that composition; real qualified
+artifact installation through rendered data remains an acceptance requirement.
+This does not enroll personal sources or query canonical personal usage.
+
+The corresponding `GET /api/operator/telemetry-companion/product-incidents`
+uses the same current operator, managed custody and runtime/storage checks. Core
+bounds the reply to 1 MiB, validates `ProductTelemetryIncidents` and requires the
+exact requested window. The expandable incident view preserves separate outcome
+populations, observed denominators, retained coverage and immutable builds.
+Review/copy refreshes evidence before producing a local draft; storage probes
+and private usage facts are not incident populations.
+
+[Local issue-link operations](../../docs/reference/api.md#telemetry-delivery-status-and-connection-checks)
+keep explicitly supplied GitHub references in Core's private home, scoped to the
+current installation and group. They never publish externally or authorize
+attachments. References expire logically after 30 days and are physically pruned
+on later successful creation, not by a timer. Operator aggregate/source tests do
+not qualify deployed PostgreSQL, native rendering or personal incident access.
+
+### Managed state and explicit start/stop API
+
+`GET /api/operator/telemetry-companion/installations` recovers the current
+installation and latest action receipt. It reports observed container state and
+separate authenticated storage readiness. A missing, copied or inconsistent
+deployment cannot become a healthy empty result. Lock presence and pending
+receipts do not establish a live operation.
+
+`POST /api/operator/telemetry-companion/installations/<installationId>/actions`
+accepts exactly `operationId` (UUIDv4) and `action` (`start` or `stop`). It requires
+current operator management authority before admission and through effects.
+`GET .../actions/<operationId>` reads the retained action receipt. Reusing an ID
+returns its receipt without repeating effects; changing the action conflicts.
+Unconfirmed actions require inspection rather than automatic retry.
+
+The controller compares current home path/device/inode and daemon identity with
+custody labels on the actual image, containers, networks and volumes. These are
+local resource pins, not personal identity or home-transfer authority. Editing a
+copied home's cached custody fields cannot change the Docker witnesses. Unmanaged
+manual stacks use the label `unmanaged` and are not silently adopted. Start also
+re-verifies parent signing trust, qualified snapshot bytes and image binding;
+copied metadata alone is never an execution permit.
+
+Start uses only the verified container IDs, waits for PostgreSQL health, then
+starts the remaining services and requires authenticated schema readiness. Stop
+targets only those owned IDs and preserves volumes. Neither action changes
+Station's sending configuration or acknowledges disclosure. A current operator
+can stop owned resources even when artifact trust prevents another start.
+
+The conditional path has executed install → start/storage-ready → stop →
+restart/storage-ready → stop with a throwaway-signed fixture. The forged-clone
+and production-trust refusals also executed. This is backend interoperability,
+not an official qualified profile, native/installed release or rendered UI proof.
+
 ## Render, validate, then run
 
 Use a unique, persistent `COMPOSE_PROJECT_NAME`. Keep it stable across upgrades
@@ -214,6 +530,13 @@ These are pending qualification commands, not recorded successes. All published
 ports bind numeric loopback: product 44481, authenticated OTLP HTTP 44482 and
 authenticated Grafana 44484. PostgreSQL, Prometheus and Tempo publish no host
 port. Dedicated internal product/diagnostic networks separate their stores.
+The receiver additionally joins `product-ingress`; Collector and Grafana join
+`diagnostics-ingress`. These separate regular bridges enable the explicit
+loopback port publications. PostgreSQL, Prometheus and Tempo do not join an
+ingress bridge. The front-end services have outbound network connectivity;
+the profile does not claim a network-level egress deny for them. Authentication,
+separate credentials and disabled Grafana reporting remain required. Neither
+bridge joins the product and diagnostic namespaces together.
 Use an explicitly owned SSH forward or separately qualified private TLS ingress
 to reach the profile from another computer; do not change a binding to `0.0.0.0`
 as a connectivity workaround. Existing user ports 3141 and 3000 remain outside
@@ -392,8 +715,16 @@ not present missing samples, dropped streams or exporter refusal as zero.
 
 Trace processing projects the declared operational attributes, replaces span
 names, removes status text/events/links, and propagates transformation failures.
-No OTLP log pipeline is enabled. Exact pinned-binary validation and injected
-private-content refusal remain pending. Grafana provisions `dashboards/station.json`;
+No OTLP log pipeline is enabled. Local synthetic checks of the packaged profile
+at `79e77a7f28b` exercised authenticated DELTA samples queried as cumulative
+2 then 5 in Prometheus, and a Tempo trace retaining its allowed operation while
+removing injected private fields, events, links and trace state. Historical
+samples and the same projected trace survived a stopped-process restart without
+resending either payload. The run also checked private dashboard credentials,
+credential refusals, loopback bindings and backend network membership. These
+checks do not qualify real Station export, cardinality/expiry behavior, all
+privacy/error paths, fresh restore, other hosts or release installation.
+Grafana provisions `dashboards/station.json`;
 a panel or trace ID does not prove delivery or accurate aggregation.
 
 Product storage retains its existing 90-day policy, row/storage caps, schema
@@ -411,6 +742,45 @@ owners. Restore into a fresh isolated project and private files, never over the
 existing owner. Prove acknowledged events, exact deduplication, revocation,
 migration state and queries survive receiver/database restart and restored
 storage. Retain failed-control stores and records.
+
+A local product fixture at `79e77a7f28b` acknowledged two synthetic events,
+enforced source-scoped receipt lookup and conflicting-event refusal, and
+retained receipts, replay deduplication and revocation across receiver/database
+restart. Its complete PostgreSQL logical backup restored into a fresh isolated
+project with matching row digests for all 14 application tables. The restored
+receiver returned the original receipt, deduplicated replay and refused the
+source revoked before the snapshot. Public publication tables were empty in
+this fixture; this is not a public-release rollback or diagnostic-store backup
+qualification.
+
+Snapshot preservation does not preserve authority changes made later. An
+additional control revoked a source after the backup: the original receiver
+refused it, but the older restored database still accepted its credential.
+Managed restore therefore needs current-authority reconciliation or source
+credential invalidation before receiver activation. The product-only one-shot
+command below now performs that invalidation. Keep all receivers stopped and
+start only the restored PostgreSQL service first; use a compatible artifact
+that implements the command:
+
+```sh
+docker compose --env-file /absolute/private/telemetry.env \
+  -f deployment/telemetry/compose.yaml run --rm --no-deps receiver \
+  node dist/main.mjs --fence-product-sources-after-restore
+```
+
+This invocation publishes no service ports. Require successful process exit and
+the `station-product-restore-fence/v1` receipt with `scope: product-sources-only`.
+It validates the existing schema without migrations, revokes all active copied
+product-source credentials atomically, closes its pool and exits without an
+HTTP listener or maintenance timers. Observations, receipts and existing
+revocation timestamps remain intact. Source enrollment is explicit afterward.
+
+The command reports publisher state as `unreconciled`: it does not alter
+publisher keys, noise keys or publication records, nor prove that an old public
+privacy snapshot is safe. The maintained source diagnostic uses the separate
+`--fence-managed-restore` command, which refuses private custody and permanently suppresses publication;
+it does not reconcile public privacy history or qualify installation restore.
+Do not treat raw snapshot restoration or this product-only fence as a complete restore/installation qualification.
 
 Do not remove volumes with `down -v`, edit migration records or strip new grant
 fields to make an older binary start. An incompatible upgrade/rollback must

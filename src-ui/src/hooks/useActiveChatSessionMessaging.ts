@@ -1668,9 +1668,15 @@ export function useSendMessage(
           // make this claim replayable.
           await dispatchClaim!.indeterminate(translated.title);
         }
-        if (foregroundIndeterminate && observedSessionId) {
+        if (
+          foregroundIndeterminate &&
+          observedSessionId &&
+          !activeChatsStore.getSnapshot()[sessionId]?.conversationId
+        ) {
           // Persist the observed session identity before surfacing the
           // non-retryable notice, so reload/navigation keeps the evidence.
+          // Only a chat with no conversation yet adopts it: a continuation's
+          // observed session is a successor Session, not the Conversation.
           assignConversationId(sessionId, observedSessionId);
         }
         updateChat(sessionId, {

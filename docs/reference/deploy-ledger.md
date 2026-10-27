@@ -28,6 +28,8 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-27T18:04:28Z | nightly-desktop | 0.1.11-nightly.2491.2 | `091ef3d` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40545006749) |
+| 2026-10-27T18:04:25Z | nightly-android | 0.1.11-nightly.2491.2 | `091ef3d` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40545006749) |
 | 2026-10-27T17:10:31Z | nightly-npm | 0.11.0-nightly.2491.40545006749 | `091ef3d` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/40545006749) |
 | 2026-10-27T10:25:49Z | nightly-desktop | 0.1.11-nightly.2491.1 | `6631433` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40480667915) |
 | 2026-10-27T10:25:45Z | nightly-android | 0.1.11-nightly.2491.1 | `6631433` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40480667915) |
@@ -362,6 +364,52 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-27T18:04:28Z · nightly-desktop · 0.1.11-nightly.2491.2
+
+- Ship SHA: `091ef3d8d3e895c3d7f8f321dbe856f9198be6cd`
+- Artifact built at: `2026-10-27T17:07:59.420Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 40545006749)
+
+### Changelog
+
+Commits since `6631433` ([full sha](https://github.com/kontourai/station/commit/663143356c0abef8fdb166fd488a188c2fb0544d)):
+
+**Features**
+
+- [#4254](https://github.com/kontourai/station/pull/4254) feat(approvals): pick the approval mode when starting a chat, and switch Claude to full access mid-chat
+- [#4237](https://github.com/kontourai/station/pull/4237) feat(contracts): prepare multiplayer task collaboration shapes
+- [#4247](https://github.com/kontourai/station/pull/4247) feat(orchestration): store large event content out of line instead of refusing it
+
+**Fixes**
+
+- [#4253](https://github.com/kontourai/station/pull/4253) fix(icons): fill Android and iOS launcher masks with the map face
+- [#4246](https://github.com/kontourai/station/pull/4246) fix(rooms): coalesce revision evidence until referenced
+- [#4251](https://github.com/kontourai/station/pull/4251) fix(ui): simplify the sidebar footer to one row
+
+## 2026-10-27T18:04:25Z · nightly-android · 0.1.11-nightly.2491.2
+
+- Ship SHA: `091ef3d8d3e895c3d7f8f321dbe856f9198be6cd`
+- Artifact built at: `2026-10-27T17:07:42.040Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 40545006749)
+
+### Changelog
+
+Commits since `6631433` ([full sha](https://github.com/kontourai/station/commit/663143356c0abef8fdb166fd488a188c2fb0544d)):
+
+**Features**
+
+- [#4254](https://github.com/kontourai/station/pull/4254) feat(approvals): pick the approval mode when starting a chat, and switch Claude to full access mid-chat
+- [#4237](https://github.com/kontourai/station/pull/4237) feat(contracts): prepare multiplayer task collaboration shapes
+- [#4247](https://github.com/kontourai/station/pull/4247) feat(orchestration): store large event content out of line instead of refusing it
+
+**Fixes**
+
+- [#4253](https://github.com/kontourai/station/pull/4253) fix(icons): fill Android and iOS launcher masks with the map face
+- [#4246](https://github.com/kontourai/station/pull/4246) fix(rooms): coalesce revision evidence until referenced
+- [#4251](https://github.com/kontourai/station/pull/4251) fix(ui): simplify the sidebar footer to one row
 
 ## 2026-10-27T17:10:31Z · nightly-npm · 0.11.0-nightly.2491.40545006749
 

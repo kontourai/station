@@ -865,8 +865,10 @@ export {
 } from './query-domains/taskReview';
 export {
   checkTelemetryConnection,
+  fetchTelemetryCompanionPrerequisites,
   fetchTelemetryDeliveryStatus,
   useCheckTelemetryConnectionMutation,
+  useTelemetryCompanionPrerequisitesQuery,
   useTelemetryDeliveryStatusQuery,
 } from './query-domains/telemetryDelivery';
 export {

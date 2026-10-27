@@ -276,6 +276,22 @@
 
     "src-ui/src/lib/project-onboarding-recovery.ts",
 
+    "src-server/routes/system/telemetry-companion-routes.ts",
+
+    "src-server/services/telemetry-companion.ts",
+
+    "src-server/services/telemetry-companion-archive.ts",
+
+    "src-server/services/telemetry-companion-install.ts",
+
+    "src-server/services/telemetry-companion-control.ts",
+
+    "src-server/routes/system/__tests__/telemetry-companion-routes.test.ts",
+
+    "src-server/analytics/source-export-proof.ts",
+
+    "src-server/analytics/recipient-store.ts",
+
     "src-server/services/consent/consent-transactions.ts",
 
     "src-server/runtime/consent/consent-listener.ts",

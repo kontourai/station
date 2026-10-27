@@ -45,6 +45,8 @@ test.each([
   // The receiver contribution query is a POST-carried read: no invalidation,
   // or the query refetches itself. The offer PUT is a real config mutation.
   ['POST', '/api/project-contributions/query', 200, []],
+  ['POST', '/api/analytics/recipient-candidates/demo/outcomes', 200, []],
+  ['POST', '/api/analytics/recipient-candidates/demo/query', 200, []],
   ['PUT', '/api/project-contributions/offer', 200, ['config']],
   ['GET', '/api/projects/demo', 200, []],
   ['PATCH', '/api/projects/demo', 200, ['projects']],

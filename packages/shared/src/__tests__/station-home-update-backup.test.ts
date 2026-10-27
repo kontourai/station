@@ -23,6 +23,7 @@ import {
   createStationHomeUpdateBackup,
   restoreStationHomeUpdateBackup,
   STATION_HOME_BACKUP_MANIFEST,
+  STATION_HOME_RECOVERY_RECORD,
   STATION_HOME_UPDATE_BACKUP_SCHEMA,
   StationHomeArchiveError,
 } from '../station-home-archive.js';
@@ -166,6 +167,28 @@ describe('update backup and in-place restore (#2675 D)', () => {
         marker,
       );
       expect(existsSync(join(home, 'trial-state'))).toBe(false);
+    },
+  );
+
+  it.each(['replacement', 'removal'])(
+    'refuses %s of the restore-owned recovery fence before verification',
+    (change) => {
+      const root = makeTempDir('update-recovery-fence-');
+      const home = join(root, 'home');
+      ensureStationHomeSchemaSync(home);
+      const backupDir = join(root, 'backup');
+      createStationHomeUpdateBackup({ homeDir: home, backupDir });
+      expect(() =>
+        restoreStationHomeUpdateBackup({
+          homeDir: home,
+          backupDir,
+          afterRemove: () => {
+            const fence = join(home, STATION_HOME_RECOVERY_RECORD);
+            if (change === 'removal') rmSync(fence);
+            else writeFileSync(fence, '{}\n');
+          },
+        }),
+      ).toThrow(/recovery metadata changed during restore/);
     },
   );
 

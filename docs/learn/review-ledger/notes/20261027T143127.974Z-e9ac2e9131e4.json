@@ -1,0 +1,7 @@
+{
+  "revision": "834f27383254392827cda61de98f426c278ad7d1",
+
+  "notes": [
+    {"path":"docs/design/cli-triage.md","note":"Checked against this change: macOS Keychain access moves to /usr/bin/security with bounded waits; service io.kontourai.station and account profile:<kind>:<id> are unchanged; no claim here conflicts.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]}
+  ]
+}

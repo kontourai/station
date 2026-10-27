@@ -257,6 +257,21 @@ exact instance destination grants, never account, Project or peer inference gran
 See [usage telemetry](../reference/usage-telemetry.md#delivery-status-and-connection-checks)
 for the status/probe boundary and failure limits.
 
+The companion host-prerequisite GET has `orchestration:read` scope and an
+additional current operator-in-person check before the bounded local Docker
+probe and before its response. A read scope alone never admits an ordinary
+paired Device or agent. It returns capability metadata, not credentials,
+installation authority or personal analytics access. No bootstrap grant was
+expanded for this route. The archive-preparation POST separately requires
+`telemetry:manage`. Existing operator identities act by identity; an eligible
+human device needs both explicit operator promotion to that permission and a
+current verified operator role. Actor eligibility is checked before and after
+asynchronous role resolution, and preparation rechecks authority at effect
+boundaries. Agents and delegation callers are refused. The permission is absent
+from presets/defaults; `home:control` remains a continuity fence. Preparation
+accepts an operation UUID, not caller commands, URLs, paths or signing policy.
+It grants no sending, personal-source or service-activation authority.
+
 The [external-surface table](../../src-server/security/pairing-route-scopes.ts)
 owns the method/path-specific exceptions; a public classification at the Device
 gate does not waive the endpoint's own checks. The station-control HTTP/SSE
@@ -787,8 +802,10 @@ promotion. Raw operator request-time approval and explicitly promoted
 `access:devices` administrators retain their existing authority. Ordinary
 Devices with inherited `access:manage` remain refused. This deliberately trusts
 the host-issued browser session, including code on its origin, with Device
-administration; the native consent broker still requires `local-grant`, so
-browser custody never becomes native consent authority. The chosen
+administration. The operator native-consent path still requires `local-grant`;
+the separate personal-analytics requester path uses only its transaction-bound,
+host-retained session and cannot borrow operator authority. Browser Device
+administration custody grants neither native path. The chosen
 scope is shown before the grant is created and again on the resulting offer.
 
 Operator-created invitations can record approval at creation (`approval:
@@ -968,13 +985,40 @@ credential/account and owner/source facts before queued chunks leave. Cursor
 fields and request-supplied identifiers confer no authority.
 
 This source path is not a companion analytics grant. It does not reuse a peer,
-provider, product or OTel credential for private sync. Grants and person-scoped
-destination custody, deletion/restore invalidation and receiver indexing remain
-open under #3459/#3460. Focused mounted-route and runtime-composition controls
-have exercised scope, queued revocation and cumulative-history refusal with
-controlled identity fixtures. They do not establish live enrollment, deployment,
-measured query performance or new person-identity assurance. See
-[the API reference](../reference/api.md#export-retained-canonical-usage-observations).
+provider, product or OTel credential for private sync. The separately enrolled
+flow binds current source consent to one verified person/tenant/owner set and
+receiving public keys, delivers a purpose-specific encrypted credential, then
+requires separate exact-origin review before sending it. A key-possession proof
+is not remote-person authentication. Explicit sync, invalidation replay and
+bounded receiver indexing preserve source/receiver epochs and current access
+checks; a saved view or historical receipt grants no read authority.
+
+Normal home restore and in-place update rollback publish fresh recovery
+provenance. Private approvals, receiving keys and export epochs bind to that
+activation, so copied pre-revocation state cannot reactivate them. Legacy unbound
+records refuse rather than being silently adopted. Generic stream identity is
+unchanged. This negative fence is not canonical clone/mirror identity, source
+shutdown proof or a companion database restore certificate.
+
+Requester-only native consent retains the transaction secret and render nonce
+in the native host, bound to profile, origin, request and expiry. Generic native
+HTTP refuses the consent route family and requester-secret header; operator or
+promoted Device authority cannot decide a personal transaction instead.
+Current runtime/person/source checks fence queued private responses. Observed
+source or person denial invalidates retained UI snapshots, so a later outage
+cannot revive a known-denied copy.
+
+Controlled mounted-route, recovery, receiver-store and SDK tests exercise these
+boundaries. They do not establish real two-Station TLS enrollment, a new identity
+assurance, arbitrary raw-clone detection, native OS-dialog behavior, deployed
+storage durability or installed/release acceptance. Optional immutable
+`terminal-outcomes/v1` grants now admit content-free completed/aborted/failed
+retained summaries in Personal Insights and Profile. Reads require current
+source/person authority and a synchronized checkpoint; coverage remains unknown.
+See [private terminal observations](../guides/monitoring.md#optional-private-terminal-observations).
+Personal incident detail remains unfinished. See
+[the API reference](../reference/api.md#export-retained-canonical-usage-observations)
+and [source approval](../guides/monitoring.md#source-approval-review).
 
 ### Coding routes: command execution and client paths (#2412)
 

@@ -2,6 +2,8 @@
 # compose.dev.yaml overrides it for local development. See README.md.
 
 x-service: &service
+  labels:
+    station.telemetry.custody: ${TELEMETRY_HOME_CUSTODY:-unmanaged}
   restart: unless-stopped
   read_only: true
   security_opt: [no-new-privileges:true]
@@ -27,7 +29,7 @@ services:
         read_only: true
         bind: {create_host_path: false}
     ports: ["127.0.0.1:${TELEMETRY_OTLP_PORT:-44482}:4318"]
-    networks: [diagnostics]
+    networks: [diagnostics, diagnostics-ingress]
     depends_on: [tempo]
     cpus: 1.0
     mem_limit: 512m
@@ -71,6 +73,8 @@ services:
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
       GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_PLUGINS_PREINSTALL_AUTO_UPDATE: "false"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana-datasources.yaml:/etc/grafana/provisioning/datasources/telemetry.yaml:ro
@@ -82,7 +86,7 @@ services:
         read_only: true
         bind: {create_host_path: false}
     ports: ["127.0.0.1:${TELEMETRY_GRAFANA_PORT:-44484}:3000"]
-    networks: [diagnostics]
+    networks: [diagnostics, diagnostics-ingress]
     depends_on: [prometheus, tempo]
     tmpfs: [/tmp:size=16m]
     cpus: 0.5
@@ -90,9 +94,16 @@ services:
 
 networks:
   diagnostics:
+    labels: {station.telemetry.custody: "${TELEMETRY_HOME_CUSTODY:-unmanaged}"}
     internal: true
+  diagnostics-ingress:
+    labels: {station.telemetry.custody: "${TELEMETRY_HOME_CUSTODY:-unmanaged}"}
+    internal: false
 
 volumes:
   prometheus-data:
+    labels: {station.telemetry.custody: "${TELEMETRY_HOME_CUSTODY:-unmanaged}"}
   tempo-data:
+    labels: {station.telemetry.custody: "${TELEMETRY_HOME_CUSTODY:-unmanaged}"}
   grafana-data:
+    labels: {station.telemetry.custody: "${TELEMETRY_HOME_CUSTODY:-unmanaged}"}

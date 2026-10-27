@@ -1,4 +1,8 @@
-import type { UsageReceipt } from './usage-rollup.js';
+import type { UsageReceipt, UsageRollupRow } from './usage-rollup.js';
+
+/** Source mutation snapshot carried separately from the page and grant revision. */
+export const USAGE_EXPORT_SOURCE_REVISION_HEADER =
+  'x-station-usage-source-revision';
 
 /** Scope selection only narrows the request's verified read authority. */
 export type UsageExportScope = 'individual' | 'personal-account';
@@ -11,6 +15,41 @@ export interface UsageExportRequest {
   cursor?: string;
 }
 
+/** The canonical turn-terminal classes: completed, aborted, or a non-deferred turn failure. */
+export type UsageTerminalOutcome = 'completed' | 'aborted' | 'failed';
+export type UsageTerminalEngine =
+  | 'station'
+  | 'acp'
+  | 'bedrock'
+  | 'claude'
+  | 'codex'
+  | 'muse'
+  | 'ollama'
+  | 'other';
+const TERMINAL_ENGINES: readonly string[] = [
+  'station',
+  'acp',
+  'bedrock',
+  'claude',
+  'codex',
+  'muse',
+  'ollama',
+  'other',
+];
+/**
+ * The complete `terminal-outcomes/v1` allowlist. Opaque IDs exist only so a
+ * receiver can replace a restated terminal and withdraw a deleted thread; no
+ * prompt, tool input/output, error text or path is representable.
+ */
+export interface UsageTerminalFact {
+  outcome: UsageTerminalOutcome;
+  engine: UsageTerminalEngine;
+  observedAt: string;
+  eventId: string;
+  threadId: string;
+  turnId?: string;
+}
+
 /** A page of retained canonical facts, not proof of complete provider history. */
 export interface UsageExportPage {
   schemaVersion: 1;
@@ -18,11 +57,1239 @@ export interface UsageExportPage {
   streamEpoch: string;
   highWater: number;
   scope: UsageExportScope;
+  /** Present only when the current source grant carries this exact consent. */
+  operationalConsent?: AnalyticsOperationalConsent;
   window: { from: string; to: string; clock: 'station-observed-utc' };
-  observations: Array<{ globalSequence: number; receipts: UsageReceipt[] }>;
+  /** A terminal observation carries no receipts; absent consent, none exist. */
+  observations: Array<{
+    globalSequence: number;
+    receipts: UsageReceipt[];
+    terminal?: UsageTerminalFact;
+  }>;
   nextCursor?: string;
   coverage: {
     state: 'unknown';
     reason: 'retained-observations-do-not-prove-provider-or-deletion-coverage';
+  };
+}
+
+/** Journal positions are independent of event commit positions and carry no authority. */
+export interface UsageInvalidationRequest {
+  scope: UsageExportScope;
+  after?: number;
+  streamEpoch?: string;
+  pageSize?: number;
+  cursor?: string;
+}
+export interface UsageInvalidationPage {
+  protocol: 'station-usage-invalidations/v1';
+  stationId: string;
+  scope: UsageExportScope;
+  streamEpoch: string;
+  highWater: number;
+  retainedAfter: number;
+  nextAfter: number;
+  invalidations: Array<{
+    revision: number;
+    threadId: string;
+    reason: 'thread-deleted' | 'scope-changed' | 'scope-entered';
+    observedAt: string;
+  }>;
+  nextCursor?: string;
+  coverage: 'retained-invalidations-only';
+}
+
+/** Captured page identity; it carries no authorization. */
+export interface UsageExportSnapshot {
+  streamEpoch: string;
+  highWater: number;
+  afterGlobalSequence: number;
+}
+export interface UsageExportQuery extends UsageExportRequest {
+  expectedStationId: string;
+  snapshot?: UsageExportSnapshot;
+  /** The consent the receiver expects from its decrypted credential; it must match the page exactly. */
+  operationalConsent?: AnalyticsOperationalConsent;
+}
+function wireObject(
+  value: unknown,
+  required: readonly string[],
+  optional: readonly string[] = [],
+): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value))
+    return false;
+  const keys = Object.keys(value);
+  return (
+    required.every((key) => keys.includes(key)) &&
+    keys.every((key) => required.includes(key) || optional.includes(key))
+  );
+}
+const wireText = (value: unknown): value is string =>
+  typeof value === 'string' && value.length > 0;
+const wireSequence = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+const wireAmount = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0;
+const wireDay = (value: unknown): value is string =>
+  typeof value === 'string' &&
+  /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+  Number.isFinite(Date.parse(value)) &&
+  new Date(value).toISOString().slice(0, 10) === value;
+const wireTime = (value: unknown): value is string =>
+  typeof value === 'string' &&
+  /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(
+    value,
+  ) &&
+  wireDay(value.slice(0, 10)) &&
+  Number.isFinite(Date.parse(value));
+const wireCursor = (value: unknown): value is string =>
+  typeof value === 'string' &&
+  value.length > 0 &&
+  value.length <= 2048 &&
+  /^[A-Za-z0-9_-]+$/.test(value);
+function optionalFields(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+  check: (input: unknown) => boolean,
+) {
+  return keys.every((key) => value[key] === undefined || check(value[key]));
+}
+function wireMoney(value: unknown, estimated: boolean) {
+  return (
+    wireObject(
+      value,
+      estimated
+        ? ['amount', 'currency', 'pricingSnapshotId']
+        : ['amount', 'currency'],
+      estimated ? ['pricingSnapshotObservedAt', 'pricingSnapshotSource'] : [],
+    ) &&
+    wireAmount(value.amount) &&
+    wireText(value.currency) &&
+    (!estimated ||
+      (wireText(value.pricingSnapshotId) &&
+        optionalFields(value, ['pricingSnapshotObservedAt'], wireTime) &&
+        optionalFields(value, ['pricingSnapshotSource'], wireText)))
+  );
+}
+function wireReceipt(value: unknown): value is UsageReceipt {
+  return (
+    wireObject(
+      value,
+      ['id', 'stationId', 'provider', 'observedAt', 'pricing'],
+      [
+        'sourceEventId',
+        'sourceSequence',
+        'model',
+        'accountKey',
+        'threadId',
+        'turnId',
+        'conversationId',
+        'taskId',
+        'occurredAt',
+        'inputTokens',
+        'outputTokens',
+        'cacheReadTokens',
+        'cacheWriteTokens',
+        'reportedCost',
+        'estimatedCost',
+      ],
+    ) &&
+    wireText(value.id) &&
+    wireText(value.stationId) &&
+    wireText(value.provider) &&
+    wireTime(value.observedAt) &&
+    optionalFields(
+      value,
+      [
+        'sourceEventId',
+        'model',
+        'accountKey',
+        'threadId',
+        'turnId',
+        'conversationId',
+        'taskId',
+      ],
+      wireText,
+    ) &&
+    optionalFields(value, ['sourceSequence'], wireSequence) &&
+    optionalFields(value, ['occurredAt'], wireTime) &&
+    optionalFields(
+      value,
+      ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens'],
+      wireAmount,
+    ) &&
+    (value.reportedCost === undefined ||
+      wireMoney(value.reportedCost, false)) &&
+    (value.estimatedCost === undefined ||
+      wireMoney(value.estimatedCost, true)) &&
+    wireObject(
+      value.pricing,
+      ['status'],
+      [
+        'pricingSnapshotId',
+        'pricingSnapshotCapturedAt',
+        'pricingSnapshotSource',
+        'provider',
+        'model',
+        'currency',
+      ],
+    ) &&
+    typeof value.pricing.status === 'string' &&
+    ['priced', 'partial', 'unpriced'].includes(value.pricing.status) &&
+    optionalFields(
+      value.pricing,
+      [
+        'pricingSnapshotId',
+        'pricingSnapshotSource',
+        'provider',
+        'model',
+        'currency',
+      ],
+      wireText,
+    ) &&
+    optionalFields(value.pricing, ['pricingSnapshotCapturedAt'], wireTime)
+  );
+}
+const wireOpaqueId = (value: unknown): value is string =>
+  wireText(value) && value.length <= 512;
+function wireTerminal(value: unknown): value is UsageTerminalFact {
+  return (
+    wireObject(
+      value,
+      ['outcome', 'engine', 'observedAt', 'eventId', 'threadId'],
+      ['turnId'],
+    ) &&
+    (value.outcome === 'completed' ||
+      value.outcome === 'aborted' ||
+      value.outcome === 'failed') &&
+    typeof value.engine === 'string' &&
+    TERMINAL_ENGINES.includes(value.engine) &&
+    wireTime(value.observedAt) &&
+    wireOpaqueId(value.eventId) &&
+    wireOpaqueId(value.threadId) &&
+    optionalFields(value, ['turnId'], wireOpaqueId)
+  );
+}
+function wirePage(value: unknown): value is UsageExportPage {
+  if (
+    !wireObject(
+      value,
+      [
+        'schemaVersion',
+        'stationId',
+        'streamEpoch',
+        'highWater',
+        'scope',
+        'window',
+        'observations',
+        'coverage',
+      ],
+      ['nextCursor', 'operationalConsent'],
+    ) ||
+    (value.operationalConsent !== undefined &&
+      value.operationalConsent !== 'terminal-outcomes/v1')
+  )
+    return false;
+  // Without the exact consent literal a terminal field is an unknown field.
+  const terminalAllowed = value.operationalConsent === 'terminal-outcomes/v1';
+  return (
+    value.schemaVersion === 1 &&
+    wireText(value.stationId) &&
+    wireText(value.streamEpoch) &&
+    wireSequence(value.highWater) &&
+    (value.scope === 'individual' || value.scope === 'personal-account') &&
+    wireObject(value.window, ['from', 'to', 'clock']) &&
+    wireDay(value.window.from) &&
+    wireDay(value.window.to) &&
+    value.window.clock === 'station-observed-utc' &&
+    Array.isArray(value.observations) &&
+    value.observations.length <= 100 &&
+    value.observations.every(
+      (item) =>
+        wireObject(
+          item,
+          ['globalSequence', 'receipts'],
+          terminalAllowed ? ['terminal'] : [],
+        ) &&
+        wireSequence(item.globalSequence) &&
+        Array.isArray(item.receipts) &&
+        item.receipts.every(wireReceipt) &&
+        (item.terminal === undefined ||
+          (item.receipts.length === 0 && wireTerminal(item.terminal))),
+    ) &&
+    (value.nextCursor === undefined || wireCursor(value.nextCursor)) &&
+    wireObject(value.coverage, ['state', 'reason']) &&
+    value.coverage.state === 'unknown' &&
+    value.coverage.reason ===
+      'retained-observations-do-not-prove-provider-or-deletion-coverage'
+  );
+}
+/** Strict canonical wire decoder shared by SDK and receiving sync. Unknown/content fields refuse. */
+export function parseUsageExportPage(
+  value: unknown,
+  input: UsageExportQuery,
+): UsageExportPage {
+  if (!wirePage(value))
+    throw new Error('Usage export is invalid or unsupported');
+  if (
+    value.stationId !== input.expectedStationId ||
+    value.scope !== input.scope ||
+    value.operationalConsent !== input.operationalConsent ||
+    value.window.from !== input.from ||
+    value.window.to !== input.to ||
+    value.observations.length > (input.pageSize ?? 100) ||
+    (input.snapshot &&
+      (value.streamEpoch !== input.snapshot.streamEpoch ||
+        value.highWater !== input.snapshot.highWater))
+  )
+    throw new Error('Usage export does not match the captured request');
+  let previous = input.snapshot?.afterGlobalSequence ?? 0;
+  const from = Date.parse(`${input.from}T00:00:00.000Z`),
+    to = Date.parse(`${input.to}T23:59:59.999Z`);
+  for (const observation of value.observations) {
+    if (
+      observation.globalSequence <= previous ||
+      observation.globalSequence > value.highWater ||
+      observation.receipts.some(
+        (item) =>
+          item.stationId !== value.stationId ||
+          item.observedAt === undefined ||
+          Date.parse(item.observedAt) < from ||
+          Date.parse(item.observedAt) > to,
+      ) ||
+      (observation.terminal !== undefined &&
+        (Date.parse(observation.terminal.observedAt) < from ||
+          Date.parse(observation.terminal.observedAt) > to))
+    )
+      throw new Error(
+        'Usage export observations do not match the captured source order',
+      );
+    previous = observation.globalSequence;
+  }
+  if (
+    value.nextCursor &&
+    (!value.observations.length || value.nextCursor === input.cursor)
+  )
+    throw new Error('Usage export continuation did not advance');
+  return value;
+}
+
+/** Stable JSON for immutable analytics payloads, independent of object insertion order. */
+export function canonicalUsageExportJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    const encoded = JSON.stringify(value);
+    if (encoded === undefined)
+      throw new Error('Unsupported analytics JSON value');
+    return encoded;
+  }
+  if (Array.isArray(value))
+    return `[${value.map(canonicalUsageExportJson).join(',')}]`;
+  return `{${Object.entries(value)
+    .filter(([, item]) => item !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(
+      ([key, item]) =>
+        `${JSON.stringify(key)}:${canonicalUsageExportJson(item)}`,
+    )
+    .join(',')}}`;
+}
+
+/** Historical page delivery status; it does not grant current source/query authority. */
+export interface AnalyticsSourceSyncStatus {
+  restart?: boolean;
+  operationId: string;
+  recipientId: string;
+  installationId: string;
+  from: string;
+  to: string;
+  credentialRevision: number;
+  phase:
+    | 'prepared'
+    | 'pending'
+    | 'page-stored'
+    | 'facts-captured'
+    | 'invalidations-pending'
+    | 'cancelled'
+    | 'unconfirmed';
+  invalidationCheckpoint?: PrivateUsageInvalidationCheckpoint;
+  checkpoint?: PrivateUsageCheckpoint;
+  inserted?: number;
+  alreadyPresent?: number;
+  storedAt?: string;
+  sourceAuthority: 'not-established-by-status';
+}
+
+export interface PrivateUsageInvalidationCheckpoint {
+  after: number;
+  streamEpoch: string;
+  highWater: number;
+  nextCursor?: string;
+}
+export interface PrivateUsageInvalidationCommit {
+  protocol: 'station-private-usage-invalidations/v1';
+  operationId: string;
+  expectedReceiverEpoch: string;
+  expectedAfter: number;
+  page: UsageInvalidationPage;
+}
+export interface PrivateUsageInvalidationReceipt {
+  protocol: 'station-private-usage-invalidation-receipt/v1';
+  operationId: string;
+  receiverEpoch: string;
+  checkpoint: PrivateUsageInvalidationCheckpoint;
+  removed: number;
+  refreshThreads: string[];
+  storedAt: string;
+}
+function invalidationPageShape(value: unknown): value is UsageInvalidationPage {
+  return (
+    wireObject(
+      value,
+      [
+        'protocol',
+        'stationId',
+        'scope',
+        'streamEpoch',
+        'highWater',
+        'retainedAfter',
+        'nextAfter',
+        'invalidations',
+        'coverage',
+      ],
+      ['nextCursor'],
+    ) &&
+    value.protocol === 'station-usage-invalidations/v1' &&
+    wireText(value.stationId) &&
+    (value.scope === 'individual' || value.scope === 'personal-account') &&
+    wireText(value.streamEpoch) &&
+    wireSequence(value.highWater) &&
+    wireSequence(value.retainedAfter) &&
+    value.retainedAfter <= value.highWater &&
+    wireSequence(value.nextAfter) &&
+    value.nextAfter <= value.highWater &&
+    value.coverage === 'retained-invalidations-only' &&
+    (value.nextCursor === undefined || wireCursor(value.nextCursor)) &&
+    Array.isArray(value.invalidations) &&
+    value.invalidations.length <= 100 &&
+    value.invalidations.every(
+      (row) =>
+        wireObject(row, ['revision', 'threadId', 'reason', 'observedAt']) &&
+        wireSequence(row.revision) &&
+        row.revision > 0 &&
+        wireText(row.threadId) &&
+        wireTime(row.observedAt) &&
+        (row.reason === 'thread-deleted' ||
+          row.reason === 'scope-changed' ||
+          row.reason === 'scope-entered'),
+    )
+  );
+}
+export function parseUsageInvalidationPage(
+  value: unknown,
+  expected: {
+    stationId: string;
+    scope: UsageExportScope;
+    streamEpoch: string;
+    after: number;
+    highWater?: number;
+  },
+): UsageInvalidationPage {
+  if (!invalidationPageShape(value))
+    throw new Error('Invalid usage invalidation page');
+  if (
+    value.stationId !== expected.stationId ||
+    value.scope !== expected.scope ||
+    value.streamEpoch !== expected.streamEpoch ||
+    value.retainedAfter > expected.after ||
+    value.highWater < expected.after ||
+    (expected.highWater !== undefined && value.highWater !== expected.highWater)
+  )
+    throw new Error(
+      'Usage invalidation snapshot changed or has a retained gap',
+    );
+  let after = expected.after;
+  for (const row of value.invalidations) {
+    if (row.revision <= after || row.revision > value.highWater)
+      throw new Error('Invalid usage invalidation order');
+    after = row.revision;
+  }
+  if (
+    value.nextCursor
+      ? !value.invalidations.length || value.nextAfter !== after
+      : value.nextAfter !== value.highWater
+  )
+    throw new Error('Invalid usage invalidation progress');
+  return value;
+}
+function invalidationCommitShape(
+  value: unknown,
+): value is PrivateUsageInvalidationCommit {
+  const uuid = (input: unknown) =>
+    typeof input === 'string' &&
+    /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+      input,
+    );
+  return (
+    wireObject(value, [
+      'protocol',
+      'operationId',
+      'expectedReceiverEpoch',
+      'expectedAfter',
+      'page',
+    ]) &&
+    value.protocol === 'station-private-usage-invalidations/v1' &&
+    uuid(value.operationId) &&
+    uuid(value.expectedReceiverEpoch) &&
+    wireSequence(value.expectedAfter) &&
+    invalidationPageShape(value.page)
+  );
+}
+export function parsePrivateUsageInvalidations(
+  value: unknown,
+): PrivateUsageInvalidationCommit {
+  if (!invalidationCommitShape(value))
+    throw new Error('Invalid private usage invalidation commit');
+  parseUsageInvalidationPage(value.page, {
+    stationId: value.page.stationId,
+    scope: value.page.scope,
+    streamEpoch: value.page.streamEpoch,
+    after: value.expectedAfter,
+  });
+  return value;
+}
+
+/** Opaque storage capability ownership is separate from current source/person authorization in Core. */
+export interface PrivateUsageCommit {
+  protocol: 'station-private-usage-commit/v1';
+  expectedReceiverEpoch: string;
+  operationId: string;
+  expectedCheckpoint: number;
+  restartSnapshot?: boolean;
+  binding: {
+    sourceStationId: string;
+    sourceApprovalId: string;
+    recipientId: string;
+    scope: UsageExportScope;
+    /** Absent for usage-only grants, preserving their stored binding bytes. */
+    operationalConsent?: AnalyticsOperationalConsent;
+    expiresAt: string;
+    retention: AnalyticsSourceEnrollmentIntent['retention'];
+  };
+  query: UsageExportQuery;
+  page: UsageExportPage;
+  sourceRevision: number;
+}
+export interface PrivateUsageCheckpoint {
+  receiverEpoch: string;
+  revision: number;
+  streamEpoch: string;
+  highWater: number;
+  afterGlobalSequence: number;
+  nextCursor?: string;
+  sourceRevision: number;
+  completeThroughHighWater: boolean;
+}
+export interface PrivateUsageCommitReceipt {
+  protocol: 'station-private-usage-commit-receipt/v1';
+  operationId: string;
+  checkpoint: PrivateUsageCheckpoint;
+  inserted: number;
+  alreadyPresent: number;
+  storedAt: string;
+}
+function privateCommitShape(value: unknown): value is PrivateUsageCommit {
+  const uuid = (input: unknown) =>
+    typeof input === 'string' &&
+    /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+      input,
+    );
+  if (
+    !wireObject(
+      value,
+      [
+        'protocol',
+        'expectedReceiverEpoch',
+        'operationId',
+        'expectedCheckpoint',
+        'binding',
+        'query',
+        'page',
+        'sourceRevision',
+      ],
+      ['restartSnapshot'],
+    ) ||
+    value.protocol !== 'station-private-usage-commit/v1' ||
+    !uuid(value.expectedReceiverEpoch) ||
+    !uuid(value.operationId) ||
+    !wireSequence(value.expectedCheckpoint) ||
+    !wireSequence(value.sourceRevision) ||
+    (value.restartSnapshot !== undefined &&
+      typeof value.restartSnapshot !== 'boolean') ||
+    !wireObject(
+      value.binding,
+      [
+        'sourceStationId',
+        'sourceApprovalId',
+        'recipientId',
+        'scope',
+        'expiresAt',
+        'retention',
+      ],
+      ['operationalConsent'],
+    ) ||
+    (value.binding.operationalConsent !== undefined &&
+      value.binding.operationalConsent !== 'terminal-outcomes/v1') ||
+    !wireText(value.binding.sourceStationId) ||
+    !uuid(value.binding.sourceApprovalId) ||
+    !uuid(value.binding.recipientId) ||
+    (value.binding.scope !== 'individual' &&
+      value.binding.scope !== 'personal-account') ||
+    !wireTime(value.binding.expiresAt)
+  )
+    return false;
+  const retention = value.binding.retention;
+  if (
+    !(wireObject(retention, ['mode']) && retention.mode === 'live-mirror') &&
+    !(
+      wireObject(retention, ['mode', 'days']) &&
+      retention.mode === 'retained-copy' &&
+      wireSequence(retention.days) &&
+      retention.days >= 1 &&
+      retention.days <= 90
+    )
+  )
+    return false;
+  const query = value.query;
+  if (
+    !wireObject(
+      query,
+      ['from', 'to', 'scope', 'expectedStationId'],
+      ['pageSize', 'cursor', 'snapshot', 'operationalConsent'],
+    ) ||
+    query.operationalConsent !== value.binding.operationalConsent ||
+    !wireDay(query.from) ||
+    !wireDay(query.to) ||
+    query.from > query.to ||
+    Date.parse(query.to) - Date.parse(query.from) > 365 * 86400000 ||
+    query.scope !== value.binding.scope ||
+    query.expectedStationId !== value.binding.sourceStationId ||
+    (query.pageSize !== undefined &&
+      (!wireSequence(query.pageSize) ||
+        query.pageSize < 1 ||
+        query.pageSize > 100)) ||
+    (query.cursor !== undefined && !wireCursor(query.cursor)) ||
+    (query.cursor !== undefined) !== (query.snapshot !== undefined) ||
+    (value.restartSnapshot === true && query.cursor !== undefined)
+  )
+    return false;
+  if (
+    query.snapshot !== undefined &&
+    (!wireObject(query.snapshot, [
+      'streamEpoch',
+      'highWater',
+      'afterGlobalSequence',
+    ]) ||
+      !wireText(query.snapshot.streamEpoch) ||
+      !wireSequence(query.snapshot.highWater) ||
+      !wireSequence(query.snapshot.afterGlobalSequence) ||
+      query.snapshot.afterGlobalSequence > query.snapshot.highWater)
+  )
+    return false;
+  return wirePage(value.page);
+}
+/** Strict summary-only storage boundary; authorization stays with the actual Core caller. */
+export function parsePrivateUsageCommit(value: unknown): PrivateUsageCommit {
+  if (!privateCommitShape(value))
+    throw new Error('Private usage commit is invalid');
+  parseUsageExportPage(value.page, value.query);
+  return value;
+}
+
+/** Reserved, explicit consent for the content-free terminal outcome allowlist.
+ * Absence is usage-only; existing enrollment and credential records retain their bytes.
+ */
+export type AnalyticsOperationalConsent = 'terminal-outcomes/v1';
+
+/** A saved proposal only. It grants no export, ingestion or destination access. */
+export interface AnalyticsSourceEnrollmentIntent {
+  protocol: 'station-analytics-source-enrollment-intent/v1';
+  operationId: string;
+  sourceStationId: string;
+  proposedDestination: { stationId: string; origin: string };
+  destinationVerified: false;
+  scope: UsageExportScope;
+  operationalConsent?: AnalyticsOperationalConsent;
+  expiresAt: string;
+  retention: { mode: 'live-mirror' } | { mode: 'retained-copy'; days: number };
+  phase: 'prepared' | 'cancelled';
+  createdAt: string;
+  exportAuthority: false;
+}
+
+export const ANALYTICS_RECIPIENT_CANDIDATE_PROTOCOL =
+  'station-analytics-recipient-candidate/v1' as const;
+
+/** A receiving key candidate, not remote identity authentication or export authority. */
+export interface AnalyticsRecipientCandidateClaims {
+  protocol: typeof ANALYTICS_RECIPIENT_CANDIDATE_PROTOCOL;
+  recipientId: string;
+  sourceOperationId: string;
+  sourceStationId: string;
+  sourceIntentSha256: string;
+  proposedSourceOrigin: string;
+  destinationStationId: string;
+  proposedDestinationOrigin: string;
+  recipientPrincipalId: string;
+  recipientBindingSha256: string;
+  encryptionKey: { kty: 'OKP'; crv: 'X25519'; x: string };
+  proofKey: { kty: 'OKP'; crv: 'Ed25519'; x: string };
+  createdAt: number;
+  expiresAt: number;
+}
+export interface AnalyticsRecipientCandidate {
+  claims: AnalyticsRecipientCandidateClaims;
+  signature: string;
+}
+export interface AnalyticsRecipientCandidateView {
+  observedAt: string;
+  sourceIntent: AnalyticsSourceEnrollmentIntent;
+  phase:
+    | 'candidate'
+    | 'expired'
+    | 'cancelled'
+    | 'credential-stored'
+    | 'restore-required';
+  storedCredential?: AnalyticsStoredSourceCredential;
+  sync?: AnalyticsSourceSyncStatus;
+  sourceConfirmation?: {
+    assurance: 'person-approved-https-origin';
+    origin: string;
+    stationId: string;
+    revision: number;
+    approvedAt: string;
+  };
+  verification: 'key-possession-only';
+  sourceVerified: false;
+  exportAuthority: false;
+  confirmationCode: string;
+  candidate: AnalyticsRecipientCandidate;
+}
+
+/** Recorded source-user approval, not an active export credential. */
+export interface AnalyticsSourceApproval {
+  protocol: 'station-analytics-source-approval/v1';
+  operationId: string;
+  sourceOperationId: string;
+  sourceStationId: string;
+  destinationStationId: string;
+  recipientId: string;
+  recipientPrincipalId: string;
+  scope: UsageExportScope;
+  operationalConsent?: AnalyticsOperationalConsent;
+  expiresAt: string;
+  retention: AnalyticsSourceEnrollmentIntent['retention'];
+  phase: 'approved' | 'revoked';
+  approvedAt: string;
+  approvalTransactionId: string;
+  sourceApproved: true;
+  exportAuthority: false;
+  recipientAssurance: 'source-user-approved-key';
+}
+
+/** Encrypted transport only; source admission and current eligibility are separate. */
+export interface AnalyticsSourceCredentialDelivery {
+  protocol: 'station-analytics-source-delivery/v1';
+  sourceApprovalId: string;
+  sourceOperationId: string;
+  sourceStationId: string;
+  destinationStationId: string;
+  recipientId: string;
+  revision: number;
+  expiresAt: string;
+  envelope: string;
+  exportAuthority: false;
+}
+export interface AnalyticsStoredSourceCredential {
+  deliveryProof?: {
+    claims: {
+      protocol: 'station-analytics-delivery-proof/v1';
+      sourceApprovalId: string;
+      sourceStationId: string;
+      recipientId: string;
+      recipientBindingSha256: string;
+      revision: number;
+      credentialSha256: string;
+      expiresAt: string;
+    };
+    signature: string;
+  };
+  sourceApprovalId: string;
+  sourceStationId: string;
+  recipientId: string;
+  revision: number;
+  expiresAt: string;
+  credentialStored: true;
+  sourceVerified: false;
+  exportAuthority: false;
+}
+
+/** A source snapshot fence supplied by Core, never person authority at the receiver. */
+export type PrivateUsageGroupBy = 'provider' | 'model' | 'station' | 'day';
+export interface PrivateUsageReceiptQuery {
+  protocol: 'station-private-usage-receipt-query/v1';
+  mode?: 'receipts' | 'summary';
+  groupBy?: PrivateUsageGroupBy;
+  summaryId?: string;
+  provider?: string;
+  model?: string;
+  accountKey?: string;
+  expectedReceiverEpoch: string;
+  expectedCheckpoint: number;
+  expectedSourceRevision: number;
+  expectedHighWater: number;
+  from: string;
+  to: string;
+  indexId?: string;
+  after?: string;
+}
+export interface PrivateUsageSummary {
+  id: string;
+  groupBy: PrivateUsageGroupBy;
+  phase: 'aggregating' | 'ready';
+  scanned: number;
+  rows: UsageRollupRow[];
+}
+export interface PrivateUsageReceiptPage {
+  protocol: 'station-private-usage-receipts/v1';
+  summary?: PrivateUsageSummary;
+  validUntil: string;
+  indexId: string;
+  phase: 'indexing' | 'ready';
+  afterGlobalSequence: number;
+  highWater: number;
+  sourceAuthority: 'not-verified-by-storage';
+  coverage: 'retained-observations-only';
+  receipts: UsageReceipt[];
+  nextAfter?: string;
+}
+function privateReceiptQueryShape(
+  value: unknown,
+): value is PrivateUsageReceiptQuery {
+  const uuid = (v: unknown) =>
+    typeof v === 'string' &&
+    /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+      v,
+    );
+  if (
+    !wireObject(
+      value,
+      [
+        'protocol',
+        'expectedReceiverEpoch',
+        'expectedCheckpoint',
+        'expectedSourceRevision',
+        'expectedHighWater',
+        'from',
+        'to',
+      ],
+      [
+        'indexId',
+        'after',
+        'mode',
+        'groupBy',
+        'summaryId',
+        'provider',
+        'model',
+        'accountKey',
+      ],
+    ) ||
+    value.protocol !== 'station-private-usage-receipt-query/v1' ||
+    (value.mode !== undefined &&
+      value.mode !== 'receipts' &&
+      value.mode !== 'summary') ||
+    (value.groupBy !== undefined &&
+      (value.mode !== 'summary' ||
+        !['provider', 'model', 'station', 'day'].includes(
+          String(value.groupBy),
+        ))) ||
+    (value.summaryId !== undefined &&
+      (value.mode !== 'summary' ||
+        value.indexId === undefined ||
+        !uuid(value.summaryId))) ||
+    !optionalFields(
+      value,
+      ['provider', 'model', 'accountKey'],
+      (v) => wireText(v) && v.length <= 200,
+    ) ||
+    (value.accountKey !== undefined && value.provider === undefined) ||
+    (value.mode === 'summary' &&
+      value.after !== undefined &&
+      value.summaryId === undefined) ||
+    !uuid(value.expectedReceiverEpoch) ||
+    !wireSequence(value.expectedCheckpoint) ||
+    value.expectedCheckpoint === 0 ||
+    !wireSequence(value.expectedSourceRevision) ||
+    !wireSequence(value.expectedHighWater) ||
+    !wireDay(value.from) ||
+    !wireDay(value.to) ||
+    value.from > value.to ||
+    Date.parse(value.to) - Date.parse(value.from) > 365 * 86400000 ||
+    (value.indexId !== undefined && !uuid(value.indexId)) ||
+    (value.after !== undefined &&
+      (value.indexId === undefined ||
+        !wireText(value.after) ||
+        value.after.length > 4096))
+  )
+    return false;
+  return true;
+}
+
+export function parsePrivateUsageReceiptQuery(
+  value: unknown,
+): PrivateUsageReceiptQuery {
+  if (!privateReceiptQueryShape(value))
+    throw new Error('Invalid private receipt query');
+  return value;
+}
+function wireUsageRow(value: unknown): value is UsageRollupRow {
+  if (
+    !wireObject(
+      value,
+      ['key', 'stationId', 'provider', 'pricingStatus', 'receiptCount'],
+      [
+        'model',
+        'conversationId',
+        'taskId',
+        'day',
+        'inputTokens',
+        'outputTokens',
+        'cacheReadTokens',
+        'cacheWriteTokens',
+        'reportedCost',
+        'estimatedCost',
+        'reportedCostBuckets',
+        'estimatedCostBuckets',
+      ],
+    ) ||
+    !wireText(value.key) ||
+    !wireText(value.stationId) ||
+    !wireText(value.provider) ||
+    !wireSequence(value.receiptCount) ||
+    value.receiptCount === 0 ||
+    typeof value.pricingStatus !== 'string' ||
+    !['priced', 'partial', 'unpriced'].includes(value.pricingStatus) ||
+    !optionalFields(value, ['model', 'conversationId', 'taskId'], wireText) ||
+    !optionalFields(value, ['day'], wireDay) ||
+    !optionalFields(
+      value,
+      ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens'],
+      wireAmount,
+    ) ||
+    (value.reportedCost !== undefined &&
+      !wireMoney(value.reportedCost, false)) ||
+    (value.estimatedCost !== undefined &&
+      !wireMoney(value.estimatedCost, true)) ||
+    (value.reportedCostBuckets !== undefined &&
+      (!Array.isArray(value.reportedCostBuckets) ||
+        value.reportedCostBuckets.length > 1000 ||
+        !value.reportedCostBuckets.every((v) => wireMoney(v, false)))) ||
+    (value.estimatedCostBuckets !== undefined &&
+      (!Array.isArray(value.estimatedCostBuckets) ||
+        value.estimatedCostBuckets.length > 1000 ||
+        !value.estimatedCostBuckets.every(
+          (v) =>
+            wireObject(
+              v,
+              ['amount', 'currency', 'pricingSnapshotId'],
+              ['pricingSnapshotCapturedAt', 'pricingSnapshotSource'],
+            ) &&
+            wireAmount(v.amount) &&
+            wireText(v.currency) &&
+            wireText(v.pricingSnapshotId) &&
+            optionalFields(v, ['pricingSnapshotCapturedAt'], wireTime) &&
+            optionalFields(v, ['pricingSnapshotSource'], wireText),
+        )))
+  )
+    return false;
+  return true;
+}
+export function parseUsageSummaryRows(value: unknown): UsageRollupRow[] {
+  if (
+    !Array.isArray(value) ||
+    value.length > 1000 ||
+    !value.every(wireUsageRow)
+  )
+    throw new Error('Invalid usage summary rows');
+  return value;
+}
+function wirePrivateSummary(value: unknown): value is PrivateUsageSummary {
+  return (
+    wireObject(value, ['id', 'groupBy', 'phase', 'scanned', 'rows']) &&
+    wireText(value.id) &&
+    /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+      value.id,
+    ) &&
+    typeof value.groupBy === 'string' &&
+    ['provider', 'model', 'station', 'day'].includes(value.groupBy) &&
+    (value.phase === 'aggregating' || value.phase === 'ready') &&
+    wireSequence(value.scanned) &&
+    Array.isArray(value.rows) &&
+    value.rows.length <= 100 &&
+    value.rows.every(wireUsageRow) &&
+    (value.phase === 'ready' || value.rows.length === 0)
+  );
+}
+interface PrivateReceiptPageExpectation {
+  from: string;
+  to: string;
+  highWater: number;
+  stationId?: string;
+  indexId?: string;
+  mode?: 'receipts' | 'summary';
+  groupBy?: PrivateUsageGroupBy;
+  summaryId?: string;
+}
+function privateReceiptPageShape(
+  value: unknown,
+  expected: PrivateReceiptPageExpectation,
+): value is PrivateUsageReceiptPage {
+  if (
+    !wireObject(
+      value,
+      [
+        'protocol',
+        'validUntil',
+        'indexId',
+        'phase',
+        'afterGlobalSequence',
+        'highWater',
+        'sourceAuthority',
+        'coverage',
+        'receipts',
+      ],
+      ['nextAfter', 'summary'],
+    ) ||
+    value.protocol !== 'station-private-usage-receipts/v1' ||
+    !wireTime(value.validUntil) ||
+    (expected.indexId !== undefined && value.indexId !== expected.indexId) ||
+    (value.summary !== undefined &&
+      (!wirePrivateSummary(value.summary) ||
+        expected.mode !== 'summary' ||
+        value.phase !== 'ready' ||
+        (Array.isArray(value.receipts) && value.receipts.length !== 0) ||
+        value.summary.groupBy !== (expected.groupBy ?? 'provider') ||
+        (expected.stationId !== undefined &&
+          value.summary.rows.some(
+            (row) => row.stationId !== expected.stationId,
+          )) ||
+        (expected.summaryId !== undefined &&
+          value.summary.id !== expected.summaryId))) ||
+    (expected.mode === 'summary' &&
+      value.phase === 'ready' &&
+      value.summary === undefined) ||
+    typeof value.indexId !== 'string' ||
+    !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+      value.indexId,
+    ) ||
+    (value.phase !== 'indexing' && value.phase !== 'ready') ||
+    !wireSequence(value.afterGlobalSequence) ||
+    value.highWater !== expected.highWater ||
+    value.afterGlobalSequence > expected.highWater ||
+    value.sourceAuthority !== 'not-verified-by-storage' ||
+    value.coverage !== 'retained-observations-only' ||
+    !Array.isArray(value.receipts) ||
+    value.receipts.length > 100 ||
+    !value.receipts.every(wireReceipt) ||
+    (value.phase === 'indexing' &&
+      (value.receipts.length !== 0 ||
+        value.nextAfter !== undefined ||
+        value.afterGlobalSequence === expected.highWater)) ||
+    (value.phase === 'ready' &&
+      value.afterGlobalSequence !== expected.highWater) ||
+    (value.nextAfter !== undefined &&
+      (!wireText(value.nextAfter) ||
+        (value.summary !== undefined
+          ? !wirePrivateSummary(value.summary) ||
+            value.summary.phase !== 'ready' ||
+            value.summary.rows.length !== 100 ||
+            value.nextAfter !==
+              value.summary.rows[value.summary.rows.length - 1]?.key
+          : value.receipts.length !== 100 ||
+            value.nextAfter !==
+              value.receipts[value.receipts.length - 1]?.id))) ||
+    new Set(value.receipts.map((r) => r.id)).size !== value.receipts.length ||
+    value.receipts.some(
+      (r) =>
+        (expected.stationId !== undefined &&
+          r.stationId !== expected.stationId) ||
+        !r.observedAt ||
+        Date.parse(r.observedAt) <
+          Date.parse(`${expected.from}T00:00:00.000Z`) ||
+        Date.parse(r.observedAt) > Date.parse(`${expected.to}T23:59:59.999Z`),
+    )
+  )
+    return false;
+  return true;
+}
+export function parsePrivateUsageReceiptPage(
+  value: unknown,
+  expected: PrivateReceiptPageExpectation,
+): PrivateUsageReceiptPage {
+  if (!privateReceiptPageShape(value, expected))
+    throw new Error('Invalid private receipt page');
+  return value;
+}
+
+/**
+ * Receiver-storage fence for a consented terminal-outcome summary. Like the
+ * receipt query it carries no person authority; Core supplies current
+ * source/person checks and the storage refuses a vault bound without consent.
+ */
+export type PrivateOperationalOutcomeGroupBy = 'engine' | 'day';
+export interface PrivateOperationalOutcomeQuery {
+  protocol: 'station-private-operational-outcomes-query/v1';
+  groupBy: PrivateOperationalOutcomeGroupBy;
+  expectedReceiverEpoch: string;
+  expectedCheckpoint: number;
+  expectedSourceRevision: number;
+  expectedHighWater: number;
+  from: string;
+  to: string;
+}
+/** One group's current terminal count per class; the classes partition its turns. */
+export interface PrivateOperationalOutcomeRow {
+  key: string;
+  completed: number;
+  aborted: number;
+  failed: number;
+}
+export interface PrivateOperationalOutcomeSummary {
+  protocol: 'station-private-operational-outcomes/v1';
+  operationalConsent: AnalyticsOperationalConsent;
+  groupBy: PrivateOperationalOutcomeGroupBy;
+  highWater: number;
+  /** Distinct retained turns with a current terminal in the window: the denominator. */
+  observedTurns: number;
+  rows: PrivateOperationalOutcomeRow[];
+  sourceAuthority: 'not-verified-by-storage';
+  coverage: {
+    state: 'unknown';
+    reason: 'retained-terminal-observations-only';
+    retentionDays: number;
+  };
+}
+export function parsePrivateOperationalOutcomeQuery(
+  value: unknown,
+): PrivateOperationalOutcomeQuery {
+  if (
+    !wireObject(value, [
+      'protocol',
+      'groupBy',
+      'expectedReceiverEpoch',
+      'expectedCheckpoint',
+      'expectedSourceRevision',
+      'expectedHighWater',
+      'from',
+      'to',
+    ]) ||
+    value.protocol !== 'station-private-operational-outcomes-query/v1' ||
+    (value.groupBy !== 'engine' && value.groupBy !== 'day') ||
+    typeof value.expectedReceiverEpoch !== 'string' ||
+    !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+      value.expectedReceiverEpoch,
+    ) ||
+    !wireSequence(value.expectedCheckpoint) ||
+    value.expectedCheckpoint === 0 ||
+    !wireSequence(value.expectedSourceRevision) ||
+    !wireSequence(value.expectedHighWater) ||
+    !wireDay(value.from) ||
+    !wireDay(value.to) ||
+    value.from > value.to ||
+    Date.parse(value.to) - Date.parse(value.from) > 365 * 86400000
+  )
+    throw new Error('Invalid private operational outcome query');
+  return {
+    protocol: value.protocol,
+    groupBy: value.groupBy,
+    expectedReceiverEpoch: value.expectedReceiverEpoch,
+    expectedCheckpoint: value.expectedCheckpoint,
+    expectedSourceRevision: value.expectedSourceRevision,
+    expectedHighWater: value.expectedHighWater,
+    from: value.from,
+    to: value.to,
+  };
+}
+export function parsePrivateOperationalOutcomeSummary(
+  value: unknown,
+  expected: {
+    groupBy: PrivateOperationalOutcomeGroupBy;
+    highWater: number;
+    from: string;
+    to: string;
+  },
+): PrivateOperationalOutcomeSummary {
+  const keys = new Set<string>();
+  let total = 0;
+  if (
+    !wireObject(value, [
+      'protocol',
+      'operationalConsent',
+      'groupBy',
+      'highWater',
+      'observedTurns',
+      'rows',
+      'sourceAuthority',
+      'coverage',
+    ]) ||
+    value.protocol !== 'station-private-operational-outcomes/v1' ||
+    value.operationalConsent !== 'terminal-outcomes/v1' ||
+    value.groupBy !== expected.groupBy ||
+    value.highWater !== expected.highWater ||
+    !wireSequence(value.observedTurns) ||
+    value.sourceAuthority !== 'not-verified-by-storage' ||
+    !wireObject(value.coverage, ['state', 'reason', 'retentionDays']) ||
+    value.coverage.state !== 'unknown' ||
+    value.coverage.reason !== 'retained-terminal-observations-only' ||
+    !wireSequence(value.coverage.retentionDays) ||
+    value.coverage.retentionDays < 1 ||
+    value.coverage.retentionDays > 90 ||
+    !Array.isArray(value.rows) ||
+    value.rows.length > 400 ||
+    !value.rows.every((row): row is PrivateOperationalOutcomeRow => {
+      if (
+        !wireObject(row, ['key', 'completed', 'aborted', 'failed']) ||
+        !wireSequence(row.completed) ||
+        !wireSequence(row.aborted) ||
+        !wireSequence(row.failed) ||
+        row.completed + row.aborted + row.failed === 0 ||
+        typeof row.key !== 'string' ||
+        keys.has(row.key) ||
+        (expected.groupBy === 'engine'
+          ? !TERMINAL_ENGINES.includes(row.key)
+          : !wireDay(row.key) ||
+            row.key < expected.from ||
+            row.key > expected.to)
+      )
+        return false;
+      keys.add(row.key);
+      total += row.completed + row.aborted + row.failed;
+      return true;
+    }) ||
+    total !== value.observedTurns
+  )
+    throw new Error('Invalid private operational outcome summary');
+  return {
+    protocol: value.protocol,
+    operationalConsent: value.operationalConsent,
+    groupBy: expected.groupBy,
+    highWater: value.highWater,
+    observedTurns: value.observedTurns,
+    rows: value.rows,
+    sourceAuthority: value.sourceAuthority,
+    coverage: {
+      state: value.coverage.state,
+      reason: value.coverage.reason,
+      retentionDays: value.coverage.retentionDays,
+    },
   };
 }

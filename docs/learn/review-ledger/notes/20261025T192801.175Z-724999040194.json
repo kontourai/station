@@ -1,0 +1,7 @@
+{
+  "revision": "dd437f2f45ae227d6fa9cdbcd29160199cced7bb",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed gallery-pr-check.yml artifact change: the existing always-run gallery artifact now also retains test-results/e2e-screenshot-*/station.log after startup failure. Capture and pixel diff remain separate; failed capture never authorizes re-baselining, and artifact upload failure remains non-verdict. Testing guide claims remain accurate without prose changes. Local mounted-route regression failed before repair; 170 focused tests and the full isolated screenshot suite passed after repair. Hosted Linux capture remains pending.","inputs":["docs/guides/testing.md",".github/workflows/gallery-pr-check.yml"]}
+  ]
+}
