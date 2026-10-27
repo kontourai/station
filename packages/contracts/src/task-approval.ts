@@ -6,6 +6,7 @@ export interface TaskApprovalDecision {
   readonly sessionId: string;
   readonly decision: 'allow' | 'deny';
   readonly decider: { readonly principalId: string };
+  /** Chat channels must match ChatAppId in #4236; Station is the local channel. */
   readonly channel: 'station' | 'slack' | 'discord';
   readonly decidedAt: string;
 }
@@ -19,8 +20,34 @@ export type TaskApprovalRefusalCode =
 
 export type TaskApprovalOutcome =
   | { readonly kind: 'decided'; readonly decision: TaskApprovalDecision }
+  /** Attribution for "Allowed by"; 2E resolves the principal's display name. */
   | { readonly kind: 'already-decided'; readonly winner: TaskApprovalDecision }
   | { readonly kind: 'refused'; readonly code: TaskApprovalRefusalCode };
+
+/** Parse the closed outcome, including the winner's principal, channel and time. */
+export function parseTaskApprovalOutcome(
+  value: unknown,
+): TaskApprovalOutcome | null {
+  if (closed(value, ['kind', 'decision']) && value.kind === 'decided') {
+    const decision = parseTaskApprovalDecision(value.decision);
+    return decision ? { kind: 'decided', decision } : null;
+  }
+  if (closed(value, ['kind', 'winner']) && value.kind === 'already-decided') {
+    const winner = parseTaskApprovalDecision(value.winner);
+    return winner ? { kind: 'already-decided', winner } : null;
+  }
+  if (
+    closed(value, ['kind', 'code']) &&
+    value.kind === 'refused' &&
+    (value.code === 'invalid-request' ||
+      value.code === 'not-found' ||
+      value.code === 'forbidden' ||
+      value.code === 'request-not-pending' ||
+      value.code === 'unavailable')
+  )
+    return { kind: 'refused', code: value.code };
+  return null;
+}
 
 /** Structure only. The host supplies the decider/time and arbitrates the first winner. */
 export function parseTaskApprovalDecision(
@@ -69,7 +96,12 @@ function id(value: unknown): value is string {
     return false;
   for (const char of value) {
     const point = char.codePointAt(0) ?? 0;
-    if (point < 32 || (point >= 0xd800 && point <= 0xdfff)) return false;
+    if (
+      point < 32 ||
+      (point >= 0x7f && point <= 0x9f) ||
+      (point >= 0xd800 && point <= 0xdfff)
+    )
+      return false;
   }
   return true;
 }

@@ -88,7 +88,17 @@ test('projects member standing, structured mentions, and an agent requester with
       ...human,
       body: {
         ...human.body,
-        mentions: Array.from({ length: 33 }, () => human.body.mentions[0]),
+        mentions: [human.body.mentions[0], { ...human.body.mentions[0] }],
+      },
+    },
+    {
+      ...human,
+      body: {
+        ...human.body,
+        mentions: Array.from({ length: 33 }, (_, index) => ({
+          kind: 'person',
+          principalId: `person-${index}`,
+        })),
       },
     },
   ]) {

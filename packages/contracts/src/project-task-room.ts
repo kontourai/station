@@ -124,8 +124,8 @@ export function parseProjectTaskRoomPrincipal(
     plainOwn(row, ['kind', 'principalId', 'deviceId']) &&
     row.kind === 'member' &&
     schemaVersion === PROJECT_TASK_ROOM_SCHEMA_VERSION &&
-    roomId(row.principalId) &&
-    roomId(row.deviceId)
+    memberId(row.principalId) &&
+    memberId(row.deviceId)
   )
     return {
       kind: 'member',
@@ -172,14 +172,17 @@ export function isProjectTaskRoomMentions(
 ): value is ProjectTaskRoomPersonMention[] {
   if (!Array.isArray(value) || value.length > PROJECT_TASK_ROOM_MAX_MENTIONS)
     return false;
+  const principals = new Set<string>();
   for (let index = 0; index < value.length; index += 1) {
     const mention = value[index];
     if (
       !plainOwn(mention, ['kind', 'principalId']) ||
       mention.kind !== 'person' ||
-      !roomId(mention.principalId)
+      !memberId(mention.principalId) ||
+      principals.has(mention.principalId)
     )
       return false;
+    principals.add(mention.principalId);
   }
   return true;
 }
@@ -189,8 +192,7 @@ export function parseProjectTaskRoomPresenceLocation(
 ): ProjectTaskRoomPresenceLocation | null {
   if (value === 'conversation' || value === 'review' || value === 'plan')
     return value;
-  return plainOwn(value, ['file']) &&
-    roomText(value.file, PROJECT_TASK_ROOM_LOCATION_FILE_MAX_CHARS)
+  return plainOwn(value, ['file']) && roomFile(value.file)
     ? { file: value.file }
     : null;
 }
@@ -241,12 +243,12 @@ export function parseProjectTaskRoomHumanMessage(
 export function projectTaskRoomWriteSchemaVersion(
   previous: ProjectTaskRoomSchemaVersion,
   principal: ProjectTaskRoomV5Principal,
-  body: ProjectTaskRoomBody,
+  body: ProjectTaskRoomAppendBody | ProjectTaskRoomBody,
 ): ProjectTaskRoomSchemaVersion {
   if (
     previous === PROJECT_TASK_ROOM_SCHEMA_VERSION ||
     principal.kind === 'member' ||
-    (body.kind === 'human-message' && body.mentions !== undefined)
+    (body.kind === 'human-message' && !!body.mentions?.length)
   )
     return PROJECT_TASK_ROOM_SCHEMA_VERSION;
   if (
@@ -511,6 +513,28 @@ function plainOwn(
 }
 function roomId(value: unknown): value is string {
   return roomText(value, 256);
+}
+/** New collaboration IDs are exact; legacy room IDs retain their wire rules. */
+function memberId(value: unknown): value is string {
+  return roomId(value) && value.trim() === value && !hasExtendedControl(value);
+}
+function roomFile(value: unknown): value is string {
+  return (
+    roomText(value, PROJECT_TASK_ROOM_LOCATION_FILE_MAX_CHARS) &&
+    value.trim() === value &&
+    !hasExtendedControl(value) &&
+    !value.startsWith('/') &&
+    !value.startsWith('~') &&
+    !value.includes('\\') &&
+    !/^[a-z][a-z0-9+.-]*:/i.test(value) &&
+    value.split('/').every((segment) => segment.length > 0 && segment !== '..')
+  );
+}
+function hasExtendedControl(value: string): boolean {
+  return [...value].some((char) => {
+    const point = char.codePointAt(0) ?? 0;
+    return point >= 0x7f && point <= 0x9f;
+  });
 }
 function roomText(value: unknown, max: number): value is string {
   if (typeof value !== 'string' || value.length < 1 || value.length > max)

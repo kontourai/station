@@ -121,7 +121,7 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, explicit engine/model/options digest identity, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
 | `@kontourai/station-contracts/task-memory` | Task memory (#4003): the Task summary revision and keyed record shapes, limits, default importance, the stateless write check (`checkTaskRecordWrite`, `taskSummaryRefusal`), refusal wording, the person's views, `taskAwaitsAnswer` for the Tasks list's `openQuestionCount`, and the Learning shapes (`TaskLearningView`, candidates, promotion and dismissal input, limits) for a done Task's promotion candidates. Every bound is a refusal |
 | `@kontourai/station-contracts/task-review` | Task review thread, event, evidence and capture shapes; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Runtime integration and evidence belong to the Task review API and SDK references |
-| `@kontourai/station-contracts/task-approval` | Task approval decisions, first-winner outcomes and refusal codes; bounded, closed `parseTaskApprovalDecision`. [Contract source](../../packages/contracts/src/task-approval.ts) and [parser tests](../../packages/contracts/src/__tests__/task-approval.test.ts). Store arbitration, admission and engine settlement are separate runtime work |
+| `@kontourai/station-contracts/task-approval` | Task approval decisions, first-winner outcomes and refusal codes; bounded, closed `parseTaskApprovalDecision` and `parseTaskApprovalOutcome`. [Contract source](../../packages/contracts/src/task-approval.ts) and [parser tests](../../packages/contracts/src/__tests__/task-approval.test.ts). Store arbitration, admission and engine settlement are separate runtime work |
 | `@kontourai/station-contracts/work-claims` | A Session's work claim as Station's routes answer it (#3413): information, not a lock. The view shape, its parser and the subject labels the Session-row chip uses |
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
 | `@kontourai/station-contracts/tool-library` | Safe source metadata, Project policy, requests, access summaries and Project agent drafts; [SDK client](sdk.md#project-tool-library) |
@@ -1518,18 +1518,31 @@ shape. The existing `ProjectTaskRoomPrincipal` and `ProjectTaskRoomRecord`
 remain legacy types until runtime member admission is wired. The pure
 `parseProjectTaskRoomPrincipal` accepts members only with v5; legacy operator
 and agent shapes remain supported. This structural check grants no authority.
+Member `principalId` and `deviceId`, mention principal IDs and approval IDs
+must be nonempty, at most 256 UTF-16 code units, well-formed Unicode, unchanged
+by trimming, and free of C0, DEL and C1 controls. Legacy operator and agent
+room IDs retain their existing wire rules. This is the opaque-ID rule for
+#4236 to align with; the clean Agent/engine slug validator has a different
+grammar and cannot validate these principal/device IDs.
 
 Human messages may carry up to 32 structured
 `mentions: {kind: 'person', principalId}[]`, with IDs bounded to 256 UTF-16
 code units. `parseProjectTaskRoomHumanMessage` refuses extra keys and max+1,
-retains v4 attachments, and rejects mentions under v2/v3/v4. Presence locations
-are `conversation`, `review`, `plan` or a closed `{file}` object bounded to
-4096 UTF-16 code units. Browser projections carry optional human actor
+retains v4 attachments, rejects duplicate `principalId` values, and rejects
+mentions under v2/v3/v4. Presence locations are `conversation`, `review`,
+`plan` or a closed `{file}` object. Files must be relative POSIX paths of
+1–4096 UTF-16 code units, with well-formed Unicode and no surrounding
+whitespace. Leading `/` or `~`, drive letters, URL schemes, backslashes,
+empty or `..` segments, and C0, DEL and C1 controls are refused. This lexical
+check does not resolve symlinks or authorize file access. Browser projections
+carry optional human actor
 `standing: 'operator'|'member'`, agent `startedBy: {principalId, label, standing}`,
 and participant `location`; legacy projections may omit them.
 
 `projectTaskRoomWriteSchemaVersion` specifies monotone format selection:
-members or a mentions field advance to v5, and subsequent writes stay v5.
+members or nonempty mentions advance to v5, and subsequent writes stay v5.
+An empty `mentions: []` is treated as absent for version selection. The helper
+accepts both append bodies and resolved record bodies directly.
 The persisted-record parser and permanent old-writer fence are still runtime
 work in #4136; this contract addition does not activate member writes or enforce
 a database fence. The closed record budget includes both copies of the message
@@ -1543,12 +1556,16 @@ notification only and adds no review-store event.
 
 `TaskApprovalDecision` carries `requestId`, `sessionId`, an `allow` or `deny`
 decision, `decider: {principalId}`, `channel: 'station'|'slack'|'discord'`, and
-canonical ISO UTC `decidedAt`. `parseTaskApprovalDecision` refuses extra keys,
-malformed timestamps and IDs beyond 256 UTF-16 code units, without truncation.
+canonical ISO UTC `decidedAt`. The chat channels must match `ChatAppId` in
+#4236; `station` names the local channel. `parseTaskApprovalDecision` refuses
+extra keys, malformed timestamps and invalid IDs, without truncation.
 `TaskApprovalOutcome` is `decided` with a decision, `already-decided` with the
 winning decision, or `refused` with `invalid-request`, `not-found`, `forbidden`,
-`request-not-pending` or `unavailable`. The host supplies attribution and time;
-parsing establishes neither authority nor settlement. There is no Allow for
+`request-not-pending` or `unavailable`. `parseTaskApprovalOutcome` checks the
+closed outcome and parses its nested decision or winner. The winning decision
+retains principal ID, channel and decision time for “Allowed by”; 2E resolves
+the display name. The host supplies attribution and time; parsing establishes
+neither authority nor settlement. There is no Allow for
 Task choice. Persistence, first-winner arbitration and chat timeout behavior
 belong to later runtime lanes (#4139).
 

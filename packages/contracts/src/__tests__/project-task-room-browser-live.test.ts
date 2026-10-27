@@ -79,6 +79,7 @@ describe('ProjectTaskRoom browser live parser', () => {
       });
     }
     expect(parse({ location: { file: 'a', secret: true } })).toBeUndefined();
+    expect(parse({ location: { file: 'src/../private.ts' } })).toBeUndefined();
     expect(parse({ location: 'elsewhere' })).toBeUndefined();
     expect(parse({ startedBy: { label: 'Alex' } })).toBeUndefined();
   });
