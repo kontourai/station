@@ -593,6 +593,15 @@ export function wireApprovalInboxNotifications(
         },
       },
     );
+    // A rewrite can race the request's resolution: the card is settled
+    // (actioned, expired) between the binding read and this write. A settled
+    // card is not answerable here, so it must not be remembered again.
+    if (
+      needsLoad &&
+      notification.status !== 'delivered' &&
+      notification.status !== 'pending'
+    )
+      return;
     provider.remember(notification);
   };
   // docs/design/event-content-spill.md: a card built before the server saw a

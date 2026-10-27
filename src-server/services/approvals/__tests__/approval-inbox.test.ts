@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { createElicitationCallback } from '../../../runtime/conversation/stream-orchestrator.js';
 import { isCardAlerted } from '../../notifications/delivery/card-alerted-categories.js';
@@ -215,6 +216,18 @@ describe('approval inbox notifications', () => {
     (await notificationService.list())[0]!.actions?.map(
       (action) => action.label,
     );
+  // What an open client is told: the action lists of every
+  // `notification:updated` the bus carried, in order.
+  const updatedActionLabels = () => {
+    const seen: string[][] = [];
+    bus.subscribe((message) => {
+      if (message.event !== SERVER_EVENTS.NOTIFICATION_UPDATED) return;
+      const actions = (message.data as { actions?: { label: string }[] })
+        ?.actions;
+      seen.push((actions ?? []).map((action) => action.label));
+    });
+    return seen;
+  };
 
   test('offers only Deny when the request cannot be read back', async () => {
     vi.mocked(orchestrationService.readApprovalContentBinding).mockReturnValue(
@@ -227,6 +240,7 @@ describe('approval inbox notifications', () => {
   test('a spilled bound call that arrives later turns the card into Deny only', async () => {
     await emit('orchestration:event', { event: fileChangeRequest });
     expect(await cardLabels()).toContain('Allow Once');
+    const updates = updatedActionLabels();
     needsLoad();
     // A call this request does not gate changes nothing.
     await emit('orchestration:event', {
@@ -256,11 +270,14 @@ describe('approval inbox notifications', () => {
       },
     });
     expect(await cardLabels()).toEqual(['Deny']);
+    // Open clients are told, so none keeps showing Allow.
+    expect(updates).toEqual([['Deny']]);
   });
 
   test('an allow the server refuses for unloaded content leaves the card offering only Deny', async () => {
     await emit('orchestration:event', { event: fileChangeRequest });
     const [card] = await notificationService.list();
+    const updates = updatedActionLabels();
     needsLoad();
     vi.mocked(orchestrationService.dispatch).mockRejectedValueOnce(
       new RequestEventGuardError(
@@ -272,11 +289,52 @@ describe('approval inbox notifications', () => {
       notificationService.action(card!.id, 'accept'),
     ).rejects.toMatchObject({ code: 'request_content_not_loaded' });
     expect(await cardLabels()).toEqual(['Deny']);
+    expect(updates).toEqual([['Deny']]);
     // Still answerable: Deny goes through.
     await notificationService.action(card!.id, 'decline');
     expect(orchestrationService.dispatch).toHaveBeenLastCalledWith(
       expect.objectContaining({ requestId: 'req-fc', decision: 'decline' }),
     );
+  });
+
+  test('a refusal for another reason does not rewrite the card', async () => {
+    await emit('orchestration:event', { event: fileChangeRequest });
+    const [card] = await notificationService.list();
+    // The binding would call for a load: only the refusal's code decides.
+    needsLoad();
+    vi.mocked(orchestrationService.dispatch).mockRejectedValueOnce(
+      new RequestEventGuardError(
+        'request_event_changed',
+        'The request changed since it was shown.',
+      ),
+    );
+    await expect(
+      notificationService.action(card!.id, 'accept'),
+    ).rejects.toMatchObject({ code: 'request_event_changed' });
+    expect(await cardLabels()).toContain('Allow Once');
+  });
+
+  test('a rewrite that races the request settling does not re-register the card', async () => {
+    await emit('orchestration:event', { event: fileChangeRequest });
+    const [card] = await notificationService.list();
+    // Settled elsewhere between the binding read and the rewrite.
+    await notificationService.markStatus(card!.id, 'actioned');
+    needsLoad();
+    const remember = vi.spyOn(provider, 'remember');
+    await emit('orchestration:event', {
+      event: {
+        eventId: 'start-fc',
+        provider: 'codex',
+        threadId: 'thread-fc',
+        createdAt: new Date().toISOString(),
+        method: 'tool.started',
+        toolCallId: 'item-fc',
+        itemId: 'item-fc',
+        toolName: 'apply_patch',
+        spilledContent: { v: 1, count: 1, bytes: 40_000 },
+      },
+    });
+    expect(remember).not.toHaveBeenCalled();
   });
 
   test('offers only Deny when the server binding needs a content load', async () => {

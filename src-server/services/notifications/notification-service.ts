@@ -512,6 +512,7 @@ export class NotificationService {
   }> {
     let displaced: string | undefined;
     let remaining = 0;
+    let actionsChanged = false;
     const now = new Date().toISOString();
     const { notification, created, updated } = await this.mutate((all) => {
       // Dedupe by tag. The fresh read happens while holding the mutation
@@ -590,6 +591,9 @@ export class NotificationService {
           const outcome = classifyNotificationCategory(opts.category);
           const defaultTtl = outcome ? NOTIFICATION_TTL_MS[outcome] : undefined;
           const ttl = opts.ttl ?? defaultTtl ?? existing.ttl;
+          actionsChanged =
+            JSON.stringify(existing.actions ?? null) !==
+            JSON.stringify(opts.actions ?? null);
           if (opts.actions === undefined) delete existing.actions;
           if (opts.body === undefined) delete existing.body;
           Object.assign(existing, {
@@ -679,8 +683,13 @@ export class NotificationService {
       else if (notification.status === 'delivered')
         this.scheduleExpiryTimer(notification);
       // An enveloped record's content change must reach every client (and
-      // the delivery router); legacy dedupe updates stay silent as before.
-      if (envelope) {
+      // the delivery router). A legacy record's dedupe update stays silent
+      // unless its actions changed: open clients render the buttons from the
+      // stored record, so a card rewritten to offer fewer actions (an
+      // approval that now needs its content loaded) must tell them to
+      // refetch. The delivery router treats such an update as a settle, not
+      // a content edit (it needs an envelope), so nothing is sent again.
+      if (envelope || actionsChanged) {
         this.eventBus.emit(
           SERVER_EVENTS.NOTIFICATION_UPDATED,
           toPublicNotification(notification) as unknown as Record<
