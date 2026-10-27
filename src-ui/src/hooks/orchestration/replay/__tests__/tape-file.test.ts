@@ -2,6 +2,7 @@
 import { afterEach, expect, test } from 'vitest';
 import { activeChatsStore } from '../../../../contexts/active-chats-store';
 import { deviceSettingsStore } from '../../../../lib/device-settings-store';
+import { removeHistoryForCapture } from '../capture-tap';
 import {
   closeActiveReplay,
   getActiveReplay,
@@ -10,6 +11,7 @@ import {
 import { EMPTY_REPLAY_HISTORY } from '../history';
 import { MAX_TAPE_BYTES, MAX_TAPE_FRAMES } from '../limits';
 import {
+  publishHistoryForCapture,
   recordReplayRuntime,
   startReplayCapture,
   stopReplayCapture,
@@ -314,4 +316,48 @@ test('a capture keeps attachment names and references but never their bytes', ()
   expect(isSessionTape(JSON.parse(serializeSessionTape(captured, true)))).toBe(
     true,
   );
+});
+
+test('history reads and runtime frames carry recorded attachments without their bytes', () => {
+  const bytes = 'data:image/png;base64,iVBORw0KGgo=';
+  const ref = `sha256-${'e'.repeat(64)}`;
+  const attached = {
+    ...event,
+    attachments: [
+      {
+        kind: 'image' as const,
+        name: 'legacy.png',
+        mimeType: 'image/png' as const,
+        size: 8,
+        dataUrl: bytes,
+        blobRef: ref,
+      },
+    ],
+  };
+  publishHistoryForCapture('host', 'source', {
+    ...EMPTY_REPLAY_HISTORY,
+    events: [{ sequence: 1, event: attached }],
+  } as never);
+  try {
+    startReplayCapture('host', { threadId: 'source', agentSlug: 'codex' });
+    recordReplayRuntime('host', { ...attached, eventId: 'again' });
+    const captured = stopReplayCapture()!;
+    expect(JSON.stringify(captured)).not.toContain('data:');
+    const descriptor = {
+      kind: 'image',
+      name: 'legacy.png',
+      mimeType: 'image/png',
+      size: 8,
+      blobRef: ref,
+    };
+    expect(
+      (captured.initialHistory?.events[0] as { event: typeof attached }).event
+        .attachments,
+    ).toEqual([descriptor]);
+    expect(
+      (captured.frames?.[0] as { event: typeof attached }).event.attachments,
+    ).toEqual([descriptor]);
+  } finally {
+    removeHistoryForCapture('host', 'source');
+  }
 });
