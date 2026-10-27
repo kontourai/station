@@ -432,7 +432,7 @@ export function translateChatError(
     return {
       title: "This engine doesn't offer that model",
       body: `${text || 'The engine did not offer the selected model.'} Nothing was sent.`,
-      hint: 'Choose one of the models this engine offers and send again. The engine behind this Agent may have changed; Station has re-read its list.',
+      hint: 'Choose a model this engine offers and send again.',
       retryable: false,
     };
   }
@@ -640,7 +640,7 @@ export function translateChatError(
   if (ABORTED_PATTERN.test(text)) {
     return {
       title: 'Response stopped before it finished',
-      body: 'The connection to this Station ended while the model was still responding, so the turn was cut short. Nothing is wrong with the Model connection.',
+      body: 'The connection to this Station ended mid-response. Your Model connection is fine.',
       hint: 'Your message was kept — send it again to retry.',
     };
   }
@@ -648,7 +648,7 @@ export function translateChatError(
   if (STALLED_PATTERN.test(text)) {
     return {
       title: 'Station stopped responding',
-      body: 'The connection went silent mid-turn — no response arrived for a while. This looks like a dropped connection or a Station restart, not a problem with your Model connection.',
+      body: 'No response arrived for a while, likely a dropped connection or Station restart. Your Model connection is fine.',
       hint: 'Your message was kept — Retry to reconnect and resend it.',
     };
   }

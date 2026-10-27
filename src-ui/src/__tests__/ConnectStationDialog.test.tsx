@@ -416,7 +416,7 @@ describe('Connect Station grant composition', () => {
         queryKey: ['peer-enrollments'],
       });
     });
-    await screen.findByText(/The request status could not be read/);
+    await screen.findByText(/Couldn't read the request status/);
     expect(screen.queryByText(/Peer access approved/)).toBeNull();
     expect(
       screen.queryByText(/Waiting for approval on the destination/),
@@ -813,11 +813,6 @@ describe('Connect Station grant composition', () => {
     );
     expect(
       screen.getByText(`--allowed-origin=${window.location.origin}`),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(
-        'No access request was submitted during this identification check.',
-      ),
     ).toBeTruthy();
     expect(
       screen.getByRole('link', {

@@ -98,7 +98,7 @@ export function NewChatDefaultsSection({
       className="project-settings__section"
       eyebrow="New chat default"
       title="New chats"
-      description="Choose whether a new chat in this project starts from the settings here or from what your last chat here started with. An Agent's own approval mode still applies first, and a choice you make in the composer always wins."
+      description="Start new chats from these settings or from your last chat here. An Agent's approval mode applies first; the composer always wins."
     >
       <PageRow
         label="Starting model"
@@ -144,7 +144,7 @@ export function NewChatDefaultsSection({
       />
       <PageRow
         label="Set approval mode"
-        description="Used when “Use the set approval mode” is chosen, and when there is no history yet. Saving full access needs your full-access permission; a chat started without that grant runs a narrower setting."
+        description="Used by “Use the set approval mode” and when there's no history. Saving full access needs your full-access permission."
         control={
           <select
             id="project-default-approval-mode"

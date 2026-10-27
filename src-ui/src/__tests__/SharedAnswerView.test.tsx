@@ -169,12 +169,7 @@ describe('SharedAnswerView', () => {
       'This share link is not valid',
       /no share matching this link/,
     ],
-    [
-      'share-revoked',
-      403,
-      'This share was revoked',
-      /turned it off. Nothing about the answer is being shown/,
-    ],
+    ['share-revoked', 403, 'This share was revoked', /turned it off/],
     [
       'share-expired',
       410,
@@ -295,7 +290,7 @@ describe('SharedAnswerView', () => {
     expect(
       await screen.findByText('This page no longer has the share token'),
     ).toBeTruthy();
-    expect(screen.getByText(/Station clears the token/)).toBeTruthy();
+    expect(screen.getByText(/Station removes it after reading/)).toBeTruthy();
     expect(screen.queryByText(/Copying only part of the link/)).toBeNull();
     expect(stub).not.toHaveBeenCalled();
   });
@@ -312,9 +307,9 @@ describe('SharedAnswerView', () => {
     expect(
       await screen.findByText('This Station could not be reached'),
     ).toBeTruthy();
-    expect(
-      screen.getByText(/Nothing about the answer is being shown/),
-    ).toBeTruthy();
+    expect(screen.getByText(/may still be valid/)).toBeTruthy();
+    // Nothing was read, so no answer body renders.
+    expect(document.querySelector('.shared-answer__body')).toBeNull();
   });
 
   it('renders the answer even when the turn carries no provenance envelope', async () => {
@@ -322,7 +317,7 @@ describe('SharedAnswerView', () => {
     render(<SharedAnswerView />);
 
     expect(await screen.findByText('The shared answer.')).toBeTruthy();
-    expect(screen.getByText(/carries no provenance envelope/)).toBeTruthy();
+    expect(screen.getByText(/No provenance was recorded/)).toBeTruthy();
   });
 
   it('degrades to the card unreadable state for an envelope it cannot read', async () => {
@@ -334,9 +329,7 @@ describe('SharedAnswerView', () => {
 
     expect(await screen.findByText('The shared answer.')).toBeTruthy();
     expect(
-      screen.getByText(
-        /cannot read\. Nothing about this answer is being claimed/,
-      ),
+      screen.getByText(/format this version of Station cannot read\.$/),
     ).toBeTruthy();
   });
 
@@ -378,7 +371,7 @@ describe('SharedAnswerView', () => {
     );
     render(<SharedAnswerView />);
     expect(
-      await screen.findByText(/committed nothing readable as text/),
+      await screen.findByText(/This answer has no readable text/),
     ).toBeTruthy();
   });
 });

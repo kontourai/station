@@ -106,7 +106,7 @@ test('names the plugin as not yet installed, and offers Install rather than Appr
   // The trusted note says where that tier is actually decided, which is not
   // here: this prompt cannot authorize it.
   expect(
-    screen.getByText(/after the install, a separate host-owned review page/),
+    screen.getByText(/reviewed on a separate host-owned page after install/),
   ).toBeTruthy();
 });
 
@@ -152,7 +152,7 @@ test('renders the pre-install copy when the only pending permission is trusted',
   expect(screen.queryByRole('button', { name: 'Review trusted access' })).toBe(
     null,
   );
-  expect(screen.getByText(/They are not granted by installing/)).toBeTruthy();
+  expect(screen.getByText(/Installing does not grant them/)).toBeTruthy();
 
   fireEvent.click(screen.getByRole('button', { name: 'Install' }));
   await waitFor(() => expect(results).toEqual([true]));

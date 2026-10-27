@@ -718,7 +718,7 @@ describe('model refusal (model_not_advertised)', () => {
     const translated = translateChatError(refusal);
     expect(translated.title).toBe("This engine doesn't offer that model");
     expect(translated.body).toBe(`${refusal.message} Nothing was sent.`);
-    expect(translated.hint).toContain('Choose one of the models');
+    expect(translated.hint).toContain('Choose a model this engine offers');
     expect(translated.hint).toContain('send again');
     // The conversation continues in a successor session: not a terminal chat.
     expect(translated.terminalSession).toBeUndefined();
