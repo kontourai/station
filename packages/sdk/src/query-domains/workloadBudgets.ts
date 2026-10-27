@@ -77,3 +77,40 @@ export function useUpdateWorkloadBudgetSettingsMutation(apiBase?: string) {
     { invalidateKeys: [['workload-budgets']] },
   );
 }
+
+/** The Station predates continuing after a memory kill (404). */
+export class MemoryContinuationUnsupportedError extends Error {
+  constructor() {
+    super('This Station cannot continue after a memory kill.');
+    this.name = 'MemoryContinuationUnsupportedError';
+  }
+}
+
+/**
+ * A person's Continue after the conversation's engine ran out of memory.
+ * Station sends the continuation (with its recovery note) under a key derived
+ * from the dead turn, so `already-started` means someone, or Station itself,
+ * continued it first.
+ */
+export async function continueAfterMemoryExhaustion(
+  conversationId: string,
+  apiBase?: string,
+): Promise<'queued' | 'already-started'> {
+  const base = await resolveApiBase(apiBase);
+  const response = await authenticatedFetch(
+    `${base}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/memory-continuation`,
+    { method: 'POST' },
+  );
+  const result = (await response.json().catch(() => ({}))) as {
+    success?: boolean;
+    code?: string;
+    error?: string;
+  };
+  if (response.status === 404 && result.code === undefined)
+    throw new MemoryContinuationUnsupportedError();
+  if (result.code === 'memory_continuation_already_started')
+    return 'already-started';
+  if (!response.ok || !result.success)
+    throw new Error(apiErrorMessage(result, `HTTP ${response.status}`));
+  return 'queued';
+}

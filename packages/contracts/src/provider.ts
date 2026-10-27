@@ -1390,3 +1390,24 @@ export interface ProviderTurnStartResult {
   turnId: string;
   resumeCursor?: unknown;
 }
+
+/**
+ * The send key of the turn Station sends to continue a conversation whose
+ * engine was killed for memory: one per dead Session and turn, so every path
+ * that continues it (Station's automatic continuation, a person's Continue on
+ * any device) names the same turn and the conversation inbox and turn
+ * deduplication admit it once. Derived server-side; clients only test it.
+ */
+export const MEMORY_CONTINUATION_CLIENT_TURN_PREFIX = 'memory-continue-';
+
+/** Whether a turn is Station's continuation after a memory kill. */
+export function isStationMemoryContinuationTurn(turn: {
+  readonly clientTurnId?: string;
+  readonly clientOrigin?: { readonly actor: { readonly kind: string } };
+}): boolean {
+  return (
+    turn.clientOrigin?.actor.kind === 'internal' &&
+    typeof turn.clientTurnId === 'string' &&
+    /^memory-continue-[0-9a-f]{40}$/.test(turn.clientTurnId)
+  );
+}

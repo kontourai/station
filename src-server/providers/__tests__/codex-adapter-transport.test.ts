@@ -3,6 +3,10 @@ import { PassThrough, Writable } from 'node:stream';
 import * as workload from '@kontourai/station-shared/child-workload';
 import { describe, expect, test, vi } from 'vitest';
 import {
+  classifyConnectionFailure,
+  decideConnectionRecovery,
+} from '../../services/connections/connection-recovery-policy.js';
+import {
   CodexAdapterTransport,
   createCodexSessionRecord,
 } from '../adapters/codex-adapter-transport.js';
@@ -1217,12 +1221,25 @@ describe('Codex workload exit evidence', () => {
       try {
         const iterator = transport.streamEvents()[Symbol.asyncIterator]();
         processHandle.emit('exit', null, 'SIGKILL');
-        expect(await nextEvent(iterator, 'workload terminal')).toMatchObject({
+        const terminal = await nextEvent(iterator, 'workload terminal');
+        expect(terminal).toMatchObject({
           method: 'runtime.error',
           message: expect.stringContaining(message),
           code,
           turnId: 'turn-1',
         });
+        // Ordinary recovery leaves a memory kill to its own continuation
+        // path: the policy answers manual, never a replay of the prompt.
+        if (code === 'engine-memory-exhausted')
+          expect(
+            decideConnectionRecovery({
+              capability: { sameSession: true, maxAttempts: 1 } as never,
+              failure: classifyConnectionFailure(
+                terminal as { message: string; code?: string },
+              ),
+              now: new Date('2026-10-24T16:04:50Z'),
+            }).decision,
+          ).toBe('manual');
         expect(await nextEvent(iterator, 'session terminal')).toMatchObject({
           method: 'session.exited',
         });

@@ -1485,7 +1485,9 @@ export {
 } from './query-domains/telemetryDelivery';
 export { extractUIBlocks } from './query-domains/uiBlocks.js';
 export {
+  continueAfterMemoryExhaustion,
   fetchWorkloadBudgets,
+  MemoryContinuationUnsupportedError,
   updateWorkloadBudgetSettings,
   useUpdateWorkloadBudgetSettingsMutation,
   useWorkloadBudgetsQuery,

@@ -650,6 +650,7 @@ import {
 } from '../../services/orchestration/delegation-result-delivery.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
+import { MemoryExhaustionContinuation } from '../../services/orchestration/memory-exhaustion-continuation.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import type { OrchestrationStreamPresence } from '../../services/orchestration/orchestration-stream-presence.js';
 import { ProjectTaskRoomRevisionEvidenceBridge } from '../../services/orchestration/project-task-room-revision-evidence-bridge.js';
@@ -5756,6 +5757,26 @@ export function configureRuntimeRoutes(
     }
   })();
 
+  // A Session killed for exhausting its workload memory continues once,
+  // through the same inbox (capped, idempotent per dead turn). The person's
+  // Continue reaches the same entry through the orchestration route.
+  const memoryContinuation = context.orchestrationEventStore
+    ? new MemoryExhaustionContinuation({
+        eventStore: context.orchestrationEventStore,
+        service: context.orchestrationService,
+        submit: threadInbox ? (input) => threadInbox.submit(input) : undefined,
+        logger: context.logger,
+      })
+    : undefined;
+  if (memoryContinuation)
+    context.eventBus.subscribe((frame) => {
+      if (frame.event !== SERVER_EVENTS.ORCHESTRATION_EVENT) return;
+      const event = frame.data?.event as
+        | { method?: unknown; threadId?: unknown; reason?: unknown }
+        | undefined;
+      if (event) memoryContinuation.observe(event);
+    });
+
   // Agent wake-ups ride the thread inbox: due ones are handed to it, so the
   // same placement rules (wait for a running turn, the live continuation's
   // permission rule, no stored full-access grant) apply. Without an inbox
@@ -5799,6 +5820,7 @@ export function configureRuntimeRoutes(
       eventBus: context.eventBus,
       ...(delegationResults ? { delegationResults } : {}),
       ...(threadInbox ? { threadInbox } : {}),
+      ...(memoryContinuation && threadInbox ? { memoryContinuation } : {}),
       logger: context.logger,
       actionOperations,
       terminalService: context.terminalService,

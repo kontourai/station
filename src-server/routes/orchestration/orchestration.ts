@@ -152,6 +152,7 @@ import type {
   DelegationResultDelivery,
 } from '../../services/orchestration/delegation-result-delivery.js';
 import type { DispatchCwdAdmission } from '../../services/orchestration/dispatch-cwd-admission.js';
+import type { MemoryExhaustionContinuation } from '../../services/orchestration/memory-exhaustion-continuation.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import {
   AdoptionContinuationInProgressError,
@@ -2113,6 +2114,14 @@ export function createOrchestrationRoutes(
       | 'heldByOther'
       | 'inFlight'
     >;
+    /**
+     * Continuing a conversation whose engine was killed for memory
+     * (`memory-exhaustion-continuation.ts`). Absent without an inbox.
+     */
+    memoryContinuation?: Pick<
+      MemoryExhaustionContinuation,
+      'continueOnRequest'
+    >;
     delegationResults?: Pick<
       DelegationResultDelivery,
       | 'arm'
@@ -3429,6 +3438,79 @@ export function createOrchestrationRoutes(
         ),
       },
     });
+  });
+
+  /**
+   * A person's Continue after the conversation's engine was killed for
+   * memory: the same Station-authored turn, under the same key derived from
+   * the dead turn, as Station's automatic continuation. Whichever arrives
+   * second is the same entry (same sender) or a 409 (another sender), never a
+   * second continuation. An older Station answers 404; the client then sends
+   * an ordinary message.
+   */
+  app.post('/conversations/:conversationId/memory-continuation', async (c) => {
+    const conversationId = param(c, 'conversationId');
+    if (!deps.memoryContinuation)
+      return c.json(
+        { success: false, error: 'This Station has no memory continuation.' },
+        404,
+      );
+    if (
+      conversationId.length > 512 ||
+      !(await orchestrationService.hasReadableSession(
+        conversationId,
+        readAuthorityFor(c),
+      ))
+    )
+      return c.json({ success: false, error: 'Conversation not found' }, 404);
+    const actor = resolveDispatchActor(deps, c);
+    const outcome = deps.memoryContinuation.continueOnRequest({
+      conversationId,
+      actor: {
+        userId: actor.userId,
+        ...(actor.principal ? { principal: actor.principal } : {}),
+        ...(actor.ownerAttribution
+          ? { ownerAttribution: actor.ownerAttribution }
+          : {}),
+      },
+    });
+    if (outcome.kind === 'queued')
+      return c.json(
+        { success: true, data: { clientTurnId: outcome.clientTurnId } },
+        202,
+      );
+    if (outcome.kind === 'skipped')
+      return c.json(
+        {
+          success: false,
+          code: 'memory_continuation_not_applicable',
+          error:
+            "The conversation's latest turn did not end because its engine ran out of memory.",
+        },
+        409,
+      );
+    if (outcome.reason === 'conflict')
+      return c.json(
+        {
+          success: false,
+          code: 'memory_continuation_already_started',
+          error: 'This conversation is already being continued.',
+        },
+        409,
+      );
+    if (outcome.reason === 'not-permitted')
+      return c.json(
+        {
+          success: false,
+          code: 'memory_continuation_not_permitted',
+          error: 'You cannot continue this conversation.',
+        },
+        403,
+      );
+    return c.json(
+      { success: false, error: 'Station could not continue the conversation.' },
+      503,
+    );
   });
 
   /**

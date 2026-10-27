@@ -756,6 +756,10 @@ export function translateProjectedRuntimeError(
   return repeatSuffix ? `${display}\n${repeatSuffix.trim()}` : display;
 }
 
+/** The memory-kill card once Station has continued on its own. */
+export const MEMORY_EXHAUSTION_CONTINUING_DISPLAY =
+  '**The engine ran out of memory and was restarted — continuing**\n\nStation started it again with a note of the commands that were interrupted.';
+
 /** What the Continue action sends after a memory kill; Station adds the rest. */
 export const MEMORY_EXHAUSTION_CONTINUE_TEXT =
   'Continue the task from where it stopped.';

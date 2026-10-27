@@ -7,6 +7,7 @@ import {
   ENGINE_SIGN_IN_REQUIRED_CODE,
   ENGINE_TURN_FAILED_CODE,
   isApprovalMode,
+  isStationMemoryContinuationTurn,
 } from '@kontourai/station-contracts/provider';
 import { runtimeEventContentDisplayText } from '@kontourai/station-contracts/runtime-event-content';
 import {
@@ -216,6 +217,9 @@ export function handleTurnStartedEvent(
         turnId: event.turnId,
         sessionId: event.threadId,
         ...(isStationCheckBackTurn(event) ? { stationCheckBack: true } : {}),
+        ...(isStationMemoryContinuationTurn(event)
+          ? { stationMemoryContinuation: true }
+          : {}),
       });
     }
   }

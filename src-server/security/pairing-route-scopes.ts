@@ -3849,6 +3849,13 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'DELETE',
       path: '/api/orchestration/conversations/:conversationId/inbox/:clientTurnId',
     },
+    // Continue after a memory kill: sends one Station-authored message to a
+    // conversation the caller may read, through its inbox and that inbox's
+    // own sender check, like any other send at the operate tier.
+    {
+      method: 'POST',
+      path: '/api/orchestration/conversations/:conversationId/memory-continuation',
+    },
     // A conversation's usage tree: read-only, re-checks the Session read ACL
     // for the conversation and for every session in it, and returns only
     // usage figures this Station recorded for sessions the caller can already
