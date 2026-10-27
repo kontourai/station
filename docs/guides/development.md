@@ -268,15 +268,19 @@ noticing the exit therefore never reports the engine's own death as a command
 kill. The count is read again when the scope closes. systemd collects a scope
 as soon as its last process exits, cgroup and counters with it, so an engine's
 own scope (a launch that names its Session) also runs a holder: the scope's
-shell wrapper first runs `setsid -f sleep 2147483647` with descriptors 0-2 on
-`/dev/null` and 3-9 closed, then execs the engine. The holder is forked inside
+shell wrapper first runs `setsid -f` on a holder with descriptors 0-2 on
+`/dev/null` and 3-9 closed, then execs the engine. Where the host has bash the
+holder is a bash that closes every remaining descriptor from 3 up (as listed in
+`/dev/fd`) and execs `sleep 2147483647`; otherwise it is that sleep directly. The holder is forked inside
 the scope before the engine starts, so it is there however soon the engine
 dies, and nothing is moved between cgroups (a transient scope is the user
 manager's and is not delegated, so Station never migrates processes). It runs in
 its own session and process group, out of reach of the group kill that tears a
 Codex engine down, and holds none of the engine's pipes: Node maps a child's
 stdio, IPC and extra pipes onto the lowest descriptors and opens the rest
-close-on-exec. When the engine dies, the holder keeps the scope and its
+close-on-exec. The bash sweep also drops descriptors from 10 up that Station
+itself inherited without close-on-exec (a harness, a terminal, a CI step),
+which dash cannot name; without bash, those stay open in the holder. When the engine dies, the holder keeps the scope and its
 `memory.events` until Station reads the count and stops the scope, which kills
 the holder with everything else. Until the holder is found, each poll searches
 the scope's own `cgroup.procs` for a pid other than the engine whose command
