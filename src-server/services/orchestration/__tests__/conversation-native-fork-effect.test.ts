@@ -38,6 +38,8 @@ describe('native fork SQLite effect and publication ownership', () => {
       tenant?: boolean;
       project?: boolean;
       explicitOwned?: boolean;
+      contextText?: string;
+      initialChildModel?: string;
     } = {},
   ) {
     const root = temp('station-native-fork-effect-');
@@ -108,7 +110,9 @@ describe('native fork SQLite effect and publication ownership', () => {
         {
           id: 'answer',
           role: 'assistant',
-          parts: [{ type: 'text', text: 'Selected answer' }],
+          parts: [
+            { type: 'text', text: options.contextText ?? 'Selected answer' },
+          ],
         },
       ],
     });
@@ -172,6 +176,9 @@ describe('native fork SQLite effect and publication ownership', () => {
       },
       child: {
         ...sourceSession,
+        ...(options.initialChildModel
+          ? { model: options.initialChildModel }
+          : {}),
         threadId: 'child',
         resumeCursor: { nativeSessionId: 'child-native' },
       },
@@ -265,10 +272,16 @@ describe('native fork SQLite effect and publication ownership', () => {
     const before = f.store['db']
       .prepare('SELECT total_changes() AS n')
       .get()?.n;
+    const projection = vi
+      .spyOn(f.store, 'listSessionProjectionEvents')
+      .mockImplementation(() => {
+        throw new Error('Projection is intentionally not supplied');
+      });
     const observed = f.store.observeCommittedNativeFork(
       'child',
       f.snapshot.digest,
     );
+    expect(projection).not.toHaveBeenCalled();
     expect(observed.kind).toBe('verified-creation');
     if (observed.kind !== 'verified-creation')
       throw new Error('Expected verified creation only');
@@ -278,11 +291,9 @@ describe('native fork SQLite effect and publication ownership', () => {
     );
     expect(observed.currentSession.status).toBe('closed');
     expect(observed.currentSession.resumeCursor).toEqual(laterCursor);
-    expect(
-      observed.currentProjectionEvents.some(
-        (event) => event.eventId === 'later-answer',
-      ),
-    ).toBe(true);
+    expect(observed.canonicalProjection).toBe('not-supplied');
+    expect(observed).not.toHaveProperty('currentProjectionEvents');
+    expect(f.store.hasEventId('later-answer')).toBe(true);
     expect(observed.affected.threadIds).toEqual(
       expect.arrayContaining(['source', 'child']),
     );
@@ -428,6 +439,257 @@ describe('native fork SQLite effect and publication ownership', () => {
     expect(
       f.store.observeCommittedNativeFork('child', f.snapshot.digest),
     ).toEqual({ kind: 'unavailable', reason: 'unbounded' });
+  });
+
+  function watchDriver(f: ReturnType<typeof fixture>) {
+    const results: { rows: number; largestText: number; totalText: number }[] =
+      [];
+    const prepare = f.store['db'].prepare.bind(f.store['db']);
+    const watcher = vi
+      .spyOn(f.store['db'], 'prepare')
+      .mockImplementation((sql) => {
+        const statement = prepare(sql);
+        return new Proxy(statement, {
+          get(target, key) {
+            const value = Reflect.get(target, key, target);
+            if ((key === 'get' || key === 'all') && typeof value === 'function')
+              return (...args: unknown[]) => {
+                const returned = Reflect.apply(value, target, args);
+                const strings: number[] = [];
+                const visit = (item: unknown): void => {
+                  if (typeof item === 'string')
+                    strings.push(Buffer.byteLength(item));
+                  else if (Array.isArray(item)) item.forEach(visit);
+                  else if (item && typeof item === 'object')
+                    Object.values(item).forEach(visit);
+                };
+                visit(returned);
+                results.push({
+                  rows: Array.isArray(returned)
+                    ? returned.length
+                    : returned === undefined
+                      ? 0
+                      : 1,
+                  largestText: Math.max(0, ...strings),
+                  totalText: strings.reduce((a, b) => a + b, 0),
+                });
+                return returned;
+              };
+            return typeof value === 'function' ? value.bind(target) : value;
+          },
+        });
+      });
+    return { results, stop: () => watcher.mockRestore() };
+  }
+
+  test.each([
+    'record',
+    'snapshot',
+    'reference',
+    'current-model',
+    'current-cursor',
+    'fact',
+    'lineage',
+  ] as const)(
+    'SQL admission rejects oversized %s before driver text transfer',
+    (kind) => {
+      const f = fixture();
+      const effect = f.reserve();
+      effect.sessionStart.beginInvocation(NOW);
+      f.observe(effect);
+      effect.commit(f.commit);
+      const large = 'x'.repeat(2 * 1024 * 1024 + 1);
+      if (kind === 'record')
+        f.store['db']
+          .prepare(
+            "UPDATE orchestration_conversation_native_fork_effect SET record_json=? WHERE target_conversation_id='child'",
+          )
+          .run(large);
+      if (kind === 'snapshot')
+        f.store['db']
+          .prepare(
+            "UPDATE orchestration_conversation_fork_context SET snapshot_json=? WHERE target_conversation_id='child'",
+          )
+          .run(large);
+      if (kind === 'reference')
+        f.store['db']
+          .prepare(
+            "UPDATE orchestration_conversation_fork_context SET owner_user_id=? WHERE target_conversation_id='child'",
+          )
+          .run(large);
+      if (kind === 'current-model')
+        f.store['db']
+          .prepare(
+            "UPDATE provider_session_state SET model=? WHERE thread_id='child'",
+          )
+          .run(large);
+      if (kind === 'current-cursor')
+        f.store['db']
+          .prepare(
+            "UPDATE provider_session_state SET resume_cursor=? WHERE thread_id='child'",
+          )
+          .run(JSON.stringify({ cursor: large }));
+      if (kind === 'fact')
+        f.store['db']
+          .prepare(
+            "UPDATE orchestration_events SET payload=? WHERE id='child-configured'",
+          )
+          .run(
+            JSON.stringify({
+              ...f.commit.configuredEvent,
+              instructions: large,
+            }),
+          );
+      if (kind === 'lineage')
+        f.store['db']
+          .prepare(
+            "UPDATE orchestration_conversation_sessions SET created_at=? WHERE session_id='child'",
+          )
+          .run(large);
+      const before = f.store['db']
+        .prepare('SELECT total_changes() AS n')
+        .get()?.n;
+      const driver = watchDriver(f);
+      const result = f.store.observeCommittedNativeFork(
+        'child',
+        f.snapshot.digest,
+      );
+      driver.stop();
+      expect(
+        Math.max(0, ...driver.results.map((r) => r.largestText)),
+      ).toBeLessThanOrEqual(2 * 1024 * 1024);
+      expect(
+        driver.results.reduce((n, r) => n + r.totalText, 0),
+      ).toBeLessThanOrEqual(4 * 1024 * 1024 + 65536);
+      expect(
+        Math.max(0, ...driver.results.map((r) => r.rows)),
+      ).toBeLessThanOrEqual(256);
+      expect(result).toEqual({ kind: 'unavailable', reason: 'unbounded' });
+      expect(
+        f.store['db'].prepare('SELECT total_changes() AS n').get()?.n,
+      ).toBe(before);
+    },
+  );
+
+  test('SQL admission rejects aggregate transfer before the next otherwise valid stored row', () => {
+    const f = fixture({
+      contextText: 's'.repeat(1500000),
+      initialChildModel: 'i'.repeat(1500000),
+    });
+    const effect = f.reserve();
+    effect.sessionStart.beginInvocation(NOW);
+    f.observe(effect);
+    expect(effect.commit(f.commit)).toBe('committed');
+    f.store.upsertSession({ ...f.commit.child, model: 'm'.repeat(1500000) });
+    const sumBytes = (columns: readonly string[]) =>
+      columns
+        .map((column) => `coalesce(length(CAST(${column} AS BLOB)),0)`)
+        .join(' + ');
+    const referenceColumns = [
+      'target_conversation_id',
+      'fork_event_id',
+      'source_conversation_id',
+      'source_agent',
+      'target_agent',
+      'owner_user_id',
+      'tenant_key',
+      'project_slug',
+      'requested_project_slug',
+      'requested_branch_point_turn_id',
+      'idempotency_key',
+      'context_digest',
+      'state',
+      'created_at',
+      'snapshot_json',
+    ];
+    const currentColumns = [
+      'thread_id',
+      'provider',
+      'status',
+      'model',
+      'cwd',
+      'resume_cursor',
+      'control_mode',
+      'attached_source',
+      'continuation_source_thread_id',
+      'adoption_idempotency_key',
+      'persist_session',
+      'ephemeral',
+      'tenant_execution_context',
+      'created_at',
+      'updated_at',
+    ];
+    const recordBytes = f.store['db']
+      .prepare(
+        "SELECT length(CAST(record_json AS BLOB)) AS bytes FROM orchestration_conversation_native_fork_effect WHERE target_conversation_id='child'",
+      )
+      .get()?.bytes;
+    const snapshotBytes = f.store['db']
+      .prepare(
+        `SELECT ${sumBytes(referenceColumns)} AS bytes FROM orchestration_conversation_fork_context WHERE target_conversation_id='child'`,
+      )
+      .get()?.bytes;
+    const currentBytes = f.store['db']
+      .prepare(
+        `SELECT ${sumBytes(currentColumns)} AS bytes FROM provider_session_state WHERE thread_id='child'`,
+      )
+      .get()?.bytes;
+    for (const bytes of [recordBytes, snapshotBytes, currentBytes]) {
+      expect(typeof bytes).toBe('number');
+      expect(Number(bytes)).toBeGreaterThanOrEqual(1500000);
+      expect(Number(bytes)).toBeLessThanOrEqual(2 * 1024 * 1024);
+    }
+    expect(
+      Number(recordBytes) + Number(snapshotBytes) + Number(currentBytes),
+    ).toBeGreaterThan(4 * 1024 * 1024);
+    const canonicalSizes = f.store['db']
+      .prepare(
+        'SELECT length(CAST(payload AS BLOB)) AS bytes FROM orchestration_events WHERE id IN (?, ?, ?)',
+      )
+      .all(
+        f.commit.startedEvent.eventId,
+        f.commit.configuredEvent.eventId,
+        f.commit.forkEvent.eventId,
+      );
+    expect(canonicalSizes).toHaveLength(3);
+    for (const row of canonicalSizes)
+      expect(Number(row.bytes)).toBeLessThanOrEqual(65536);
+    const driver = watchDriver(f);
+    const result = f.store.observeCommittedNativeFork(
+      'child',
+      f.snapshot.digest,
+    );
+    driver.stop();
+    expect(
+      Math.max(0, ...driver.results.map((r) => r.largestText)),
+    ).toBeLessThanOrEqual(2 * 1024 * 1024);
+    expect(
+      driver.results.reduce((n, r) => n + r.totalText, 0),
+    ).toBeLessThanOrEqual(4 * 1024 * 1024 + 65536);
+    expect(result).toEqual({ kind: 'unavailable', reason: 'unbounded' });
+  });
+
+  test('SQL admission refuses invalid retained SQL types without copying a blob', () => {
+    const f = fixture();
+    const effect = f.reserve();
+    effect.sessionStart.beginInvocation(NOW);
+    f.observe(effect);
+    effect.commit(f.commit);
+    f.store['db']
+      .prepare(
+        "UPDATE provider_session_state SET resume_cursor=? WHERE thread_id='child'",
+      )
+      .run(Buffer.alloc(4096));
+    const driver = watchDriver(f);
+    const result = f.store.observeCommittedNativeFork(
+      'child',
+      f.snapshot.digest,
+    );
+    driver.stop();
+    expect(result).toEqual({
+      kind: 'unavailable',
+      reason: 'corrupt-or-incompatible',
+    });
   });
 
   test('read observation refuses caller uncommitted state and pending intents without granting execution', () => {

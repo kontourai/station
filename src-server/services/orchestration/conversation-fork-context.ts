@@ -192,7 +192,7 @@ export type NativeForkCreationObservation =
       kind: 'verified-creation';
       creation: ReturnType<typeof decodeCommittedNativeForkCreation>;
       currentSession: import('@kontourai/station-contracts/provider').ProviderSession;
-      currentProjectionEvents: readonly CanonicalRuntimeEvent[];
+      canonicalProjection: 'not-supplied';
       affected: NativeForkAffectedScope;
       activation: 'unwired';
     };

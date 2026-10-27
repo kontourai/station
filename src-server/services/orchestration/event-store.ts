@@ -5277,6 +5277,73 @@ export class EventStore {
       !/^[a-f0-9]{64}$/.test(contextDigest)
     )
       return { kind: 'unavailable', reason: 'invalid' };
+    // Observation-only transfer budgets; ordinary readers and retained caps are unchanged.
+    const maxFieldBytes = 2 * 1024 * 1024;
+    const maxRowBytes = 2 * 1024 * 1024;
+    const maxTransferBytes = 4 * 1024 * 1024;
+    const maxTransferRows = 1024;
+    const unbounded = new Error(
+      'Native observation SQL transfer budget exceeded.',
+    );
+    let transferredBytes = 0;
+    let transferredRows = 0;
+    const account = (rowBytes: number, count: number, largestField: number) => {
+      if (
+        ![rowBytes, count, largestField].every(
+          (n) => Number.isSafeInteger(n) && n >= 0,
+        )
+      )
+        throw new Error('Invalid native observation SQL size.');
+      if (
+        largestField > maxFieldBytes ||
+        rowBytes > maxRowBytes ||
+        transferredBytes + rowBytes > maxTransferBytes ||
+        transferredRows + count > maxTransferRows
+      )
+        throw unbounded;
+      transferredBytes += rowBytes;
+      transferredRows += count;
+    };
+    const admitOne = (
+      table: string,
+      key: string,
+      value: string,
+      text: readonly string[],
+      nullable: readonly string[] = [],
+      integers: readonly string[] = [],
+    ) => {
+      const columns = [...text, ...integers];
+      const row = this.db
+        .prepare(
+          `SELECT ${columns.map((column, index) => `typeof(${column}) AS t${index}, length(CAST(${column} AS BLOB)) AS b${index}`).join(', ')} FROM ${table} WHERE ${key} = ?`,
+        )
+        .get(value) as Record<string, unknown> | undefined;
+      if (!row) return false;
+      let bytes = 0;
+      let largest = 0;
+      for (const [index, column] of columns.entries()) {
+        const type = row[`t${index}`];
+        if (type === 'null' && nullable.includes(column)) continue;
+        if (type !== (integers.includes(column) ? 'integer' : 'text'))
+          throw new Error('Invalid native observation SQL type.');
+        const size = row[`b${index}`];
+        if (typeof size !== 'number' || !Number.isSafeInteger(size) || size < 0)
+          throw new Error('Invalid native observation SQL bytes.');
+        bytes += size;
+        largest = Math.max(largest, size);
+      }
+      account(bytes, 1, largest);
+      return true;
+    };
+    const referenceColumns = FORK_CONTEXT_REFERENCE_COLUMNS.split(',').map(
+      (column) => column.trim(),
+    );
+    const nullableReference = [
+      'project_slug',
+      'requested_project_slug',
+      'requested_branch_point_turn_id',
+      'idempotency_key',
+    ];
     let reading = false;
     try {
       if (this.db.isTransaction)
@@ -5284,10 +5351,39 @@ export class EventStore {
       this.db.exec('BEGIN');
       reading = true;
       const observation = ((): NativeForkCreationObservation => {
+        if (
+          !admitOne(
+            'orchestration_conversation_native_fork_effect',
+            'target_conversation_id',
+            targetId,
+            ['record_json'],
+          )
+        )
+          return { kind: 'unavailable', reason: 'invalid' };
         const record = this.readNativeForkEffect(targetId);
         if (!record || record.contextDigest !== contextDigest)
           return { kind: 'unavailable', reason: 'invalid' };
         if (record.state !== 'committed') return { kind: 'pending' };
+        if (
+          !admitOne(
+            'orchestration_conversation_fork_context',
+            'target_conversation_id',
+            targetId,
+            [...referenceColumns, 'snapshot_json'],
+            nullableReference,
+          )
+        )
+          return { kind: 'unavailable', reason: 'invalid' };
+        if (
+          !admitOne(
+            'orchestration_conversation_fork_context',
+            'target_conversation_id',
+            targetId,
+            referenceColumns,
+            nullableReference,
+          )
+        )
+          return { kind: 'unavailable', reason: 'invalid' };
         const snapshot = this.conversationForkContextSnapshot(targetId);
         if (
           !snapshot ||
@@ -5354,6 +5450,17 @@ export class EventStore {
           throw new Error('Native creation coordinates conflict.');
         const sequences: number[] = [];
         for (const [index, expected] of [started, configured, fork].entries()) {
+          if (
+            !admitOne(
+              'orchestration_events',
+              'id',
+              expected.eventId,
+              ['thread_id', 'payload'],
+              [],
+              ['global_sequence'],
+            )
+          )
+            throw new Error('Missing native canonical fact.');
           const row = this.db
             .prepare(
               'SELECT thread_id, payload, global_sequence FROM orchestration_events WHERE id = ? AND length(CAST(payload AS BLOB)) <= 2097152',
@@ -5372,6 +5479,42 @@ export class EventStore {
         }
         if (!(sequences[0]! < sequences[1]! && sequences[1]! < sequences[2]!))
           throw new Error('Native creation order conflicts.');
+        if (
+          !admitOne(
+            'provider_session_state',
+            'thread_id',
+            targetId,
+            [
+              'thread_id',
+              'provider',
+              'status',
+              'model',
+              'cwd',
+              'resume_cursor',
+              'control_mode',
+              'attached_source',
+              'continuation_source_thread_id',
+              'adoption_idempotency_key',
+              'tenant_execution_context',
+              'created_at',
+              'updated_at',
+            ],
+            [
+              'model',
+              'cwd',
+              'resume_cursor',
+              'control_mode',
+              'attached_source',
+              'continuation_source_thread_id',
+              'adoption_idempotency_key',
+              'tenant_execution_context',
+              'persist_session',
+              'ephemeral',
+            ],
+            ['persist_session', 'ephemeral'],
+          )
+        )
+          throw new Error('Missing current native Session.');
         const currentSession = this.readSessionByThread(targetId);
         if (
           !currentSession ||
@@ -5387,6 +5530,20 @@ export class EventStore {
         const conversationIds = [
           ...new Set([fork.sourceConversationId, targetId]),
         ];
+        const lineageSize = this.db
+          .prepare(
+            `WITH selected AS (SELECT session_id FROM orchestration_conversation_sessions WHERE conversation_id IN (?, ?) ORDER BY conversation_id, ordinal LIMIT 257) SELECT count(*) AS n, coalesce(sum(length(CAST(session_id AS BLOB))),0) AS bytes, coalesce(max(length(CAST(session_id AS BLOB))),0) AS largest, coalesce(sum(CASE WHEN typeof(session_id)='text' THEN 0 ELSE 1 END),0) AS invalid FROM selected`,
+          )
+          .get(fork.sourceConversationId, targetId) as {
+          n: number;
+          bytes: number;
+          largest: number;
+          invalid: number;
+        };
+        if (lineageSize.invalid !== 0)
+          throw new Error('Invalid native lineage SQL type.');
+        if (lineageSize.n > 256 || lineageSize.largest > 512) throw unbounded;
+        account(lineageSize.bytes, lineageSize.n, lineageSize.largest);
         const rows = this.db
           .prepare(
             'SELECT session_id FROM orchestration_conversation_sessions WHERE conversation_id IN (?, ?) ORDER BY conversation_id, ordinal LIMIT 257',
@@ -5394,9 +5551,25 @@ export class EventStore {
           .all(fork.sourceConversationId, targetId) as { session_id: string }[];
         if (rows.length > 256)
           return { kind: 'unavailable', reason: 'unbounded' };
-        const lineages = rows.map((row) =>
-          this.conversationForSession(row.session_id),
-        );
+        const lineages = rows.map((row) => {
+          if (
+            !admitOne(
+              'orchestration_conversation_sessions',
+              'session_id',
+              row.session_id,
+              [
+                'conversation_id',
+                'session_id',
+                'predecessor_session_id',
+                'created_at',
+              ],
+              ['predecessor_session_id'],
+              ['ordinal'],
+            )
+          )
+            throw new Error('Missing native lineage.');
+          return this.conversationForSession(row.session_id);
+        });
         for (const conversationId of conversationIds) {
           const members = lineages.filter(
             (row) => row?.conversationId === conversationId,
@@ -5416,9 +5589,11 @@ export class EventStore {
         }
         if (
           lineages.some((row) => !row) ||
-          this.conversationForSession(targetId)?.conversationId !== targetId ||
-          this.conversationForSession(record.source.sourceSessionId)
-            ?.conversationId !== fork.sourceConversationId
+          lineages.find((row) => row?.sessionId === targetId)
+            ?.conversationId !== targetId ||
+          lineages.find(
+            (row) => row?.sessionId === record.source.sourceSessionId,
+          )?.conversationId !== fork.sourceConversationId
         )
           throw new Error('Native lineage is unavailable.');
         const threadIds = [
@@ -5434,16 +5609,11 @@ export class EventStore {
           threadIds.some((id) => !id || id.length > 512)
         )
           return { kind: 'unavailable', reason: 'unbounded' };
-        const currentProjectionEvents = this.listSessionProjectionEvents(
-          targetId,
-          { hydrateAttachments: false },
-        ).map((event) => event.payload);
-        nativeForkJson(currentProjectionEvents);
         return {
           kind: 'verified-creation',
           creation,
           currentSession,
-          currentProjectionEvents,
+          canonicalProjection: 'not-supplied',
           affected: { threadIds, conversationIds },
           activation: 'unwired',
         };
@@ -5451,9 +5621,12 @@ export class EventStore {
       this.db.exec('COMMIT');
       reading = false;
       return observation;
-    } catch {
+    } catch (error) {
       if (reading && this.db.isTransaction) this.db.exec('ROLLBACK');
-      return { kind: 'unavailable', reason: 'corrupt-or-incompatible' };
+      return {
+        kind: 'unavailable',
+        reason: error === unbounded ? 'unbounded' : 'corrupt-or-incompatible',
+      };
     }
   }
 
