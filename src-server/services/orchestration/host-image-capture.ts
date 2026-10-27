@@ -246,6 +246,9 @@ async function readAdmittedFile(
       opened.ino !== before.ino
     )
       return { refused: 'unreadable' };
+    // A second hard link can make an inode inside a root carry a file that
+    // also lives elsewhere; such a file is not read at all.
+    if (opened.nlink > 1) return { refused: 'hard-linked' };
     if (opened.size > HOST_IMAGE_MAX_BYTES) return { refused: 'too-large' };
     // One byte past the bound detects a file that grew since the stat.
     const buffer = Buffer.alloc(
@@ -523,6 +526,15 @@ async function captureOne(
   try {
     real = await realpath(path);
   } catch (error) {
+    // Something is at the path but does not resolve: a dangling or
+    // unreadable link. Its target may be outside, and saying "missing" for it
+    // would tell a reply whether that target exists, so it is outside.
+    try {
+      await lstat(path);
+      return { refused: 'outside-allowed-roots' };
+    } catch {
+      // Nothing at the path itself: judged by its resolved parent below.
+    }
     // Only a path whose resolved parent is inside a root may say "missing".
     let parent: string | undefined;
     try {

@@ -1,4 +1,5 @@
 import {
+  linkSync,
   mkdirSync,
   readFileSync,
   realpathSync,
@@ -230,6 +231,27 @@ describe('captureHostImages', () => {
         path: join(root, 'linked-dir', 'secret.png'),
         refused: 'outside-allowed-roots',
       },
+    ]);
+    expect(result.attachments).toEqual([]);
+  });
+
+  test('a link inside the root says nothing about whether its outside target exists', async () => {
+    writeFileSync(join(outside, 'exists.png'), fixture('chromium.png'));
+    symlinkSync(join(outside, 'exists.png'), join(root, 'a.png'));
+    symlinkSync(join(outside, 'missing.png'), join(root, 'b.png'));
+    const result = await capture([join(root, 'a.png'), join(root, 'b.png')]);
+    expect(result.sources).toEqual([
+      { path: join(root, 'a.png'), refused: 'outside-allowed-roots' },
+      { path: join(root, 'b.png'), refused: 'outside-allowed-roots' },
+    ]);
+  });
+
+  test('refuses a file with a second hard link', async () => {
+    writeFileSync(join(outside, 'secret.png'), fixture('chromium.png'));
+    linkSync(join(outside, 'secret.png'), join(root, 'linked.png'));
+    const result = await capture([join(root, 'linked.png')]);
+    expect(result.sources).toEqual([
+      { path: join(root, 'linked.png'), refused: 'hard-linked' },
     ]);
     expect(result.attachments).toEqual([]);
   });

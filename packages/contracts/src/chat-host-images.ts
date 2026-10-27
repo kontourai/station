@@ -33,6 +33,8 @@ export type ChatHostImageRefusal =
   | 'too-many-pixels'
   /** The reply named more images than one turn keeps. */
   | 'limit-reached'
+  /** The file has more than one hard link, so it may also live elsewhere. */
+  | 'hard-linked'
   /** The read failed or the file changed while it was being read. */
   | 'unreadable'
   /** Read and valid, but the chat's attachment storage did not keep it. */
@@ -47,6 +49,7 @@ export const CHAT_HOST_IMAGE_REFUSALS: readonly ChatHostImageRefusal[] = [
   'too-large',
   'too-many-pixels',
   'limit-reached',
+  'hard-linked',
   'unreadable',
   'not-stored',
 ];
@@ -173,6 +176,8 @@ export function chatHostImageRefusalText(
       return 'the image has too many pixels to show.';
     case 'limit-reached':
       return 'the reply named more images than one turn keeps.';
+    case 'hard-linked':
+      return 'the file has more than one hard link.';
     case 'unreadable':
       return 'the host could not read the file.';
     case 'not-stored':
