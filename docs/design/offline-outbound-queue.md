@@ -132,8 +132,16 @@ replay. Conflict retry is an explicit rebase
 with a new operation id. It does not reuse the chat-turn queue.
 
 Offline reading adds no reachability veto to mutation dispatch and no foreground
-send deadline. Browser mutations retain their existing transport, authority and
-request timing behavior. The native broker credential owner retains its existing
+send deadline. Browser mutations retain their existing transport and authority.
+The app's query clients ([defaults](../../src-ui/src/lib/queryDefaults.ts)) attempt
+a write made while the browser reports offline at once, so it fails visibly
+instead of pausing in memory and firing on a later `online` event; an approval
+or configuration edit is therefore never replayed late. Account preferences,
+which show that they are waiting for the connection, opt into pausing. A browser
+reconnect does not re-read a verified authority observation, so the workspace and
+its mounted views survive a network handoff; a failed observation is re-read on
+reconnect and on the connection health signal's return to connected, which also
+covers a route-only outage that fires no `online` event. The native broker credential owner retains its existing
 non-safe-method guard for the bounded read transport. Successful authenticated
 reads and health probes can still retire stale connection failure evidence.
 Additional queued mutation families must independently add an idempotency key and
