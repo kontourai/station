@@ -644,6 +644,31 @@ describe('EventStore event content spill', () => {
   });
 });
 
+describe('the tool calls bound to a request', () => {
+  test('keeps the newest 16 of a re-emitted call, oldest first', () => {
+    const store = new EventStore(join(makeTempDir('bound-cap-'), 'o.sqlite'));
+    try {
+      for (let index = 0; index < 18; index += 1)
+        store.appendEvent({
+          eventId: `start-${index}`,
+          provider: 'codex',
+          threadId: 'thread-b',
+          createdAt: T0,
+          method: 'tool.started',
+          toolCallId: 'call-1',
+          toolName: 'apply_patch',
+          arguments: { revision: index },
+        });
+      const bound = store.boundToolStartedEvents('thread-b', ['call-1']);
+      expect(bound.map((event) => event.eventId)).toEqual(
+        Array.from({ length: 16 }, (_, index) => `start-${index + 2}`),
+      );
+    } finally {
+      store.close();
+    }
+  });
+});
+
 describe('readers of spilled content', () => {
   let dir: string;
   let dbPath: string;

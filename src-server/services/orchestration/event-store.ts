@@ -8982,11 +8982,13 @@ export class EventStore {
            FROM orchestration_events
           WHERE thread_id = ? AND method = 'tool.started'
             AND json_extract(payload, '$.toolCallId') IN (${callIds.map(() => '?').join(', ')})
-          ORDER BY sequence ASC
+          ORDER BY sequence DESC
           LIMIT 16`,
       )
       .all(threadId, ...callIds);
-    return rows.map((row) => this.mapEventRow(row, false).payload);
+    // The newest 16 (a re-emitted call's latest arguments are what runs),
+    // returned oldest first.
+    return rows.reverse().map((row) => this.mapEventRow(row, false).payload);
   }
 
   /**
