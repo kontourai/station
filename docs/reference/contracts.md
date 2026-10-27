@@ -783,6 +783,7 @@ No existing diagnostic code is renamed or removed.
 | `conversation-context-unavailable` | `conflict` | `false` |
 | `engine-decision-not-sent` | `warning` | `false` |
 | `engine-decision-unacknowledged` | `warning` | `false` |
+| `engine-memory-exhausted` | `engine_crashed` | `true` |
 | `engine-session-binding-dead` | `session_gone` | `false` |
 | `engine-sign-in-required` | `auth` | `false` |
 | `engine-turn-failed` | `provider_error` | `false` |
@@ -818,6 +819,7 @@ No existing diagnostic code is renamed or removed.
 | `SESSION_START_INDETERMINATE` | `indeterminate` | `false` |
 | `session-reattach-conflict` | `conflict` | `false` |
 | `transcript-line-skipped` | `warning` | `false` |
+| `workload-command-oom-killed` | `warning` | `false` |
 
 The [source inventory guard](../../scripts/__tests__/provider-failure-inventory.test.ts)
 recursively discovers string `*_CODE` declarations and string-literal `code` class
