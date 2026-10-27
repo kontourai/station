@@ -370,8 +370,8 @@ toggle, the phone-only haptics row, and Theme and Accent color rows that link
 to the page. The footer replaces its
 command-palette chip and duplicate notification bell; the header bell and
 command-palette shortcut remain available.
-The Settings rail and phone picker stay within Settings; the panel's Settings
-gear remains available from management screens. Long permission and checkpoint
+The Settings rail and phone picker stay within Settings; from management screens
+Settings remains reachable through the account menu and Customize. Long permission and checkpoint
 explanations keep their full text under Details, with a short consequence visible
 on the row. Registry remains reachable from Plugins and the command palette.
 
