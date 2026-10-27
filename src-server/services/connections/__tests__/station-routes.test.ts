@@ -58,11 +58,12 @@ describe('listenerStationRoutes', () => {
 });
 
 describe('createStationRoutesResolver', () => {
-  test('adds Tailscale Serve origins and the Station identity', async () => {
+  test('adds the MagicDNS name, Tailscale Serve origins and the Station identity', async () => {
     const resolve = createStationRoutesResolver({
       boundAddress: () => ({ address: '0.0.0.0', family: 'IPv4', port: 3774 }),
       networkInterfaces: () => INTERFACES,
       servedOrigins: async () => ['https://kontour.python-smelt.ts.net'],
+      magicDnsHost: async () => 'kontour.python-smelt.ts.net',
       environmentId: async () => 'env-home',
     });
     expect(await resolve()).toEqual({
@@ -70,6 +71,7 @@ describe('createStationRoutesResolver', () => {
       routes: [
         { kind: 'lan', url: 'http://192.168.50.16:3774' },
         { kind: 'tailscale', url: 'http://100.77.142.114:3774' },
+        { kind: 'tailscale', url: 'http://kontour.python-smelt.ts.net:3774' },
         {
           kind: 'tailscale-https',
           url: 'https://kontour.python-smelt.ts.net',
@@ -85,6 +87,26 @@ describe('createStationRoutesResolver', () => {
       servedOrigins: async () => {
         throw new Error('tailscale unavailable');
       },
+      magicDnsHost: async () => {
+        throw new Error('tailscale unavailable');
+      },
+      environmentId: async () => 'env-home',
+    });
+    expect((await resolve()).routes).toEqual([
+      { kind: 'lan', url: 'http://192.168.50.16:3774' },
+    ]);
+  });
+
+  test('names a Tailscale listener only when it accepts on the Tailscale address', async () => {
+    const resolve = createStationRoutesResolver({
+      boundAddress: () => ({
+        address: '192.168.50.16',
+        family: 'IPv4',
+        port: 3774,
+      }),
+      networkInterfaces: () => INTERFACES,
+      servedOrigins: async () => undefined,
+      magicDnsHost: async () => 'kontour.python-smelt.ts.net',
       environmentId: async () => 'env-home',
     });
     expect((await resolve()).routes).toEqual([

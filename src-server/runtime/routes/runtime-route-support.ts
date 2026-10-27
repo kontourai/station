@@ -233,6 +233,8 @@ export function createRuntimeSystemRouteDeps(
             networkInterfaces,
             servedOrigins: () =>
               publicIngressOriginResolver(context.port).resolve(),
+            magicDnsHost: () =>
+              publicIngressOriginResolver(context.port).magicDnsHost(),
             environmentId: async () =>
               (await context.environmentSecurityService.getPublicHandshake())
                 .environmentId,

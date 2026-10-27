@@ -54,6 +54,8 @@ export interface StationRoutesResolverInput {
   networkInterfaces: () => NodeJS.Dict<NetworkInterfaceInfo[]>;
   /** Tailscale Serve origins proxying to this Station, when Tailscale is present. */
   servedOrigins: () => Promise<readonly string[] | undefined>;
+  /** This node's Tailscale MagicDNS name, when Tailscale is present. */
+  magicDnsHost: () => Promise<string | undefined>;
   environmentId: () => Promise<string>;
 }
 
@@ -61,13 +63,26 @@ export function createStationRoutesResolver(
   input: StationRoutesResolverInput,
 ): () => Promise<StationRoutesResponse> {
   return async () => {
-    const [environmentId, served] = await Promise.all([
+    const [environmentId, served, magicDnsHost] = await Promise.all([
       input.environmentId(),
       input.servedOrigins().catch(() => undefined),
+      input.magicDnsHost().catch(() => undefined),
     ]);
     const seen = new Set<string>();
     const routes = [
-      ...listenerStationRoutes(input.boundAddress(), input.networkInterfaces()),
+      ...listenerStationRoutes(
+        input.boundAddress(),
+        input.networkInterfaces(),
+      ).flatMap((route) => {
+        // A listener reachable on the Tailscale address is reachable on this
+        // node's MagicDNS name too, which survives an address change.
+        if (route.kind !== 'tailscale' || !magicDnsHost) return [route];
+        const port = new URL(route.url).port;
+        return [
+          route,
+          { kind: 'tailscale', url: `http://${magicDnsHost}:${port}` },
+        ];
+      }),
       ...(served ?? []).map(
         (url): StationRoute => ({ kind: 'tailscale-https', url }),
       ),

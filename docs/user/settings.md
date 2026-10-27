@@ -67,10 +67,10 @@ without clearing those saved choices. These device previews are separate from
 the Station-wide Feature previews above.
 
 **Station routes preview** shows every address a saved Station is reached on
-in its details in the connection manager: which one is in use, why the others
-are not, and **Add route** for an address you type. While connected, the app
-also learns the LAN, Tailscale and Tailscale HTTPS addresses the Station
-reports, marked "Found automatically". The app saved on a phone or desktop
+in its details in the connection manager: which one is in use, which failed and
+why, and **Add route** for an address you type. **Edit** removes routes you
+added. While connected, the app also learns the LAN, Tailscale and Tailscale
+HTTPS addresses the Station reports, marked "found automatically". The app saved on a phone or desktop
 lists those addresses but still connects only through its saved one; see
 [Station routes](https://github.com/kontourai/station/blob/main/docs/design/station-routes.md).
 

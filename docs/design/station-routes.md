@@ -52,7 +52,7 @@ The route's kind is derived from its address, never stored separately:
 | --- | --- | --- |
 | `localhost`, `127.*` | local | This computer |
 | private IPv4 (10/8, 172.16/12, 192.168/16), `*.local` | lan | Local network |
-| 100.64.0.0/10 | tailscale | Tailscale |
+| 100.64.0.0/10, or a plain-HTTP Tailscale MagicDNS name | tailscale | Tailscale |
 | an HTTPS Tailscale MagicDNS name | tailscale-https | Tailscale HTTPS |
 | broker route | relay | Relay |
 | anything else | internet | Internet |
@@ -74,7 +74,9 @@ failover.
   rule nearby discovery uses), with the listener's port. A loopback-only
   listener advertises none.
 - **Tailscale**: the listener's addresses in 100.64.0.0/10, when it accepts on
-  them.
+  them, and the node's MagicDNS name on the same port, which survives an
+  address change. The name comes from the public-ingress resolver's cached
+  `tailscale status` read, so it costs no extra process.
 - **Tailscale HTTPS**: the Tailscale Serve origins that proxy to this Station,
   from the existing public-ingress resolver.
 
@@ -111,15 +113,20 @@ copy (`connectionFailureCopy`).
 Inside a saved Station's details in the connection manager (mobile and
 desktop):
 
-- the status line: **Connected over Local network**, or **Couldn't connect**
-  with the reason;
-- **Routes**: one row per route with its label, address, "found automatically"
-  for advertised routes, and its status (**In use**, **Unreachable**,
-  **Different Station**, **Not checked**);
-- **Add route**: an address field; the route is saved, then checked on the next
-  probe;
-- **Remove** on routes the user added. Advertised routes have no remove: the
-  Station would report them again. The last remaining route cannot be removed.
+- the failure reason, once, only when no route answers (the existing copy);
+- **Routes**: one row per route with its label and an **In use** badge on the
+  route that answered. A quiet line under it holds the address, "found
+  automatically" for advertised routes, and only the notes that differ from the
+  obvious ("unreachable", "different Station", "can't use here"). A route not
+  checked carries no note;
+- **+ Add route**: opens an address field inline; the route is saved, then
+  checked on the next probe;
+- **Edit**: shown only when a route can be removed; reveals remove buttons on
+  routes the user added. Advertised routes have no remove: the Station would
+  report them again. The last remaining route cannot be removed.
+
+The Station's own address line is hidden while the Routes list is shown, since
+the list already carries it.
 
 ## Phases
 
