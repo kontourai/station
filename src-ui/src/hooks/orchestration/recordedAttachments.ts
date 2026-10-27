@@ -1,6 +1,9 @@
 import type { PersistedChatAttachment } from '@kontourai/station-contracts/chat-attachment';
 import {
   attachmentObjectUrlKey,
+  attachmentThumbnailKey,
+  dropAttachmentObjectUrl,
+  moveAttachmentObjectUrl,
   seedAttachmentObjectUrl,
 } from '../../components/chat/attachment-object-urls';
 import { dataUrlBlob } from '../../components/chat/attachment-thumbnails';
@@ -42,17 +45,28 @@ function sentBytesFor(
 /**
  * Hand bytes this client already holds to the attachment cache under the
  * recorded reference, so the chip resolves the reference without fetching
- * what it just sent. Best effort: without object URLs, the chip fetches.
+ * what it just sent, and move the chip's thumbnail (cached under the inline
+ * data URL) along with them. Best effort: without object URLs, the chip
+ * fetches. The Blob takes the recorded type, as the fetch path does.
  */
 function seedRecordedBytes(
-  blobRef: string,
-  mediaType: string,
+  attachment: PersistedChatAttachment & { blobRef: string },
   dataUrl: string,
+  sentUrl: string | undefined,
 ): void {
   if (typeof URL.createObjectURL !== 'function') return;
-  const blob = dataUrlBlob(dataUrl);
-  if (blob)
-    seedAttachmentObjectUrl(attachmentObjectUrlKey(blobRef, mediaType), blob);
+  const bytes = dataUrlBlob(dataUrl);
+  if (!bytes) return;
+  const key = attachmentObjectUrlKey(attachment.blobRef, attachment.mimeType);
+  seedAttachmentObjectUrl(
+    key,
+    new Blob([bytes], { type: attachment.mimeType }),
+  );
+  if (sentUrl)
+    moveAttachmentObjectUrl(
+      attachmentThumbnailKey(sentUrl),
+      attachmentThumbnailKey(key),
+    );
 }
 
 /**
@@ -80,12 +94,20 @@ export function withRecordedAttachments(
     message.contentParts ??
     (message.content ? [{ type: 'text', content: message.content }] : []);
   const local = parts.filter((part) => part.type === 'file');
-  const recorded = attachments.map((attachment, index) => {
-    const bytes = attachment.dataUrl ?? sentBytesFor(local[index], attachment);
-    if (attachment.blobRef !== undefined && bytes)
-      seedRecordedBytes(attachment.blobRef, attachment.mimeType, bytes);
+  const carried = new Set<string>();
+  const recorded = attachments.map((attachment, index): ContentPart => {
+    const sent = sentBytesFor(local[index], attachment);
+    const bytes = attachment.dataUrl ?? sent;
+    if (attachment.blobRef !== undefined && bytes) {
+      seedRecordedBytes(
+        { ...attachment, blobRef: attachment.blobRef },
+        bytes,
+        sent,
+      );
+      if (sent) carried.add(sent);
+    }
     return {
-      type: 'file' as const,
+      type: 'file',
       ...(attachment.blobRef === undefined
         ? bytes
           ? { url: bytes }
@@ -95,6 +117,18 @@ export function withRecordedAttachments(
       name: attachment.name,
     };
   });
+  // Inline bytes this row showed that no recorded part kept: their chip
+  // thumbnails are keyed by the data URL and nothing will ask for them again.
+  const kept = new Set(
+    recorded.flatMap((part) => (part.url ? [part.url] : [])),
+  );
+  for (const part of local)
+    if (
+      part.url?.startsWith('data:') &&
+      !carried.has(part.url) &&
+      !kept.has(part.url)
+    )
+      dropAttachmentObjectUrl(attachmentThumbnailKey(part.url));
   return {
     contentParts: [
       ...parts.filter((part) => part.type !== 'file'),

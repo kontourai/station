@@ -107,16 +107,80 @@ export function attachmentObjectUrlKey(
   return `${ref} ${mediaType ?? ''}`;
 }
 
+/** The cache key for the chip thumbnail of the bytes cached under `key`. */
+export function attachmentThumbnailKey(key: string): string {
+  return `thumbnail ${key}`;
+}
+
 /**
- * Publish bytes this client already has under `ref` WITHOUT a hold, so the
- * next chip that asks for the reference finds them instead of fetching what
- * it just sent. The entry is idle from the start, so it is bounded and
+ * How long a seeded or moved entry is held for the chip that is about to ask
+ * for it. The chip re-renders and takes its own hold within a frame; until it
+ * does, eviction must not revoke the URL its first render already shows.
+ */
+const HANDOFF_HOLD_MS = 10_000;
+
+function holdForHandoff(ref: string, entry: CacheEntry): void {
+  entry.holders += 1;
+  setTimeout(() => {
+    // Only the hold this call took, and only on the entry it took it on.
+    if (entries.get(ref) === entry) releaseAttachmentObjectUrl(ref);
+  }, HANDOFF_HOLD_MS);
+}
+
+/**
+ * Publish bytes this client already has under `ref`, so the next chip that
+ * asks for the reference finds them instead of fetching what it just sent.
+ * The entry is held only briefly (see `HANDOFF_HOLD_MS`), then idle and
  * evictable like any other; an existing entry for `ref` is left alone.
  */
 export function seedAttachmentObjectUrl(ref: string, blob: Blob): void {
   if (entries.has(ref)) return;
-  entries.set(ref, { objectUrl: URL.createObjectURL(blob), holders: 0, blob });
+  const entry: CacheEntry = {
+    objectUrl: URL.createObjectURL(blob),
+    holders: 0,
+    blob,
+  };
+  entries.set(ref, entry);
+  holdForHandoff(ref, entry);
   evictIdle();
+}
+
+/**
+ * Re-key an entry: the same URL and bytes, now found under `to`. A sent
+ * bubble's thumbnail is cached under its inline data URL until the turn
+ * records a reference; moving it keeps the chip's picture across that switch
+ * and stops the multi-megabyte data URL being retained as a cache key. Holds
+ * taken under `from` stay with whoever took them (their release becomes a
+ * no-op), so the moved entry starts with only the hand-off hold. When `to`
+ * is already cached, `from` is simply dropped.
+ */
+export function moveAttachmentObjectUrl(from: string, to: string): void {
+  const entry = entries.get(from);
+  if (!entry) return;
+  entries.delete(from);
+  if (entries.has(to)) {
+    revokeAfterHandoff(entry);
+    return;
+  }
+  const moved: CacheEntry = { ...entry, holders: 0 };
+  entries.set(to, moved);
+  holdForHandoff(to, moved);
+}
+
+/**
+ * Forget an entry nothing will ask for again. Its URL is revoked once a
+ * still-mounted holder has had time to re-render away from it.
+ */
+export function dropAttachmentObjectUrl(ref: string): void {
+  const entry = entries.get(ref);
+  if (!entry) return;
+  entries.delete(ref);
+  revokeAfterHandoff(entry);
+}
+
+function revokeAfterHandoff(entry: CacheEntry): void {
+  if (entry.holders === 0) URL.revokeObjectURL(entry.objectUrl);
+  else setTimeout(() => URL.revokeObjectURL(entry.objectUrl), HANDOFF_HOLD_MS);
 }
 
 /** Drop one hold. The URL survives until the cache needs the room. */

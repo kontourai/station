@@ -9,6 +9,8 @@ import {
   attachmentBlobForObjectUrl,
   attachmentObjectUrlKey,
   attachmentObjectUrlSize,
+  attachmentThumbnailKey,
+  dropAttachmentObjectUrl,
   peekAttachmentObjectUrl,
   releaseAttachmentObjectUrl,
   storeAttachmentObjectUrl,
@@ -140,7 +142,7 @@ function useAttachmentThumbnail(
 
   useEffect(() => {
     if (!key || !url) return;
-    const thumbnailKey = `thumbnail ${key}`;
+    const thumbnailKey = attachmentThumbnailKey(key);
     let active = true;
     let held = false;
     const settle = (objectUrl: string) => {
@@ -171,7 +173,11 @@ function useAttachmentThumbnail(
           { width: thumbnail.width, height: thumbnail.height },
         );
         if (!active) {
-          releaseAttachmentObjectUrl(thumbnailKey);
+          // An inline bubble that switched to its recorded reference while
+          // this was being made: nothing asks for the data-URL key again, and
+          // keeping it would retain the bytes as the key itself.
+          if (key.startsWith('data:')) dropAttachmentObjectUrl(thumbnailKey);
+          else releaseAttachmentObjectUrl(thumbnailKey);
           return;
         }
         settle(objectUrl);
@@ -184,7 +190,15 @@ function useAttachmentThumbnail(
   }, [key, url]);
 
   if (!key || !url) return undefined;
-  if (made?.key !== key) return 'pending';
+  if (made?.key !== key) {
+    // A thumbnail already cached for these bytes shows on the first render,
+    // as the full bytes do above: a sent bubble's thumbnail moves to its
+    // reference at `turn.started`, and a 'pending' frame would flash the icon.
+    const cachedKey = attachmentThumbnailKey(key);
+    const cachedUrl = peekAttachmentObjectUrl(cachedKey);
+    const size = attachmentObjectUrlSize(cachedKey);
+    return cachedUrl && size ? { url: cachedUrl, ...size } : 'pending';
+  }
   return made.value === 'failed' ? undefined : made.value;
 }
 

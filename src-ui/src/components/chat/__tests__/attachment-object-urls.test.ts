@@ -3,9 +3,11 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   acquireAttachmentObjectUrl,
+  moveAttachmentObjectUrl,
   peekAttachmentObjectUrl,
   releaseAttachmentObjectUrl,
   resetAttachmentObjectUrls,
+  seedAttachmentObjectUrl,
   storeAttachmentObjectUrl,
 } from '../attachment-object-urls';
 
@@ -86,5 +88,55 @@ describe('attachment object-URL cache (station#3385)', () => {
   test('acquiring an unknown reference reports a miss rather than inventing one', () => {
     expect(acquireAttachmentObjectUrl('never-fetched')).toBeUndefined();
     expect(peekAttachmentObjectUrl('never-fetched')).toBeUndefined();
+  });
+
+  // A chip's first render shows a seeded (or moved) URL before its effect takes
+  // a hold; eviction in that gap would revoke what it is already showing.
+  function crowdOut() {
+    for (let index = 0; index < 40; index += 1) {
+      storeAttachmentObjectUrl(`idle-${index}`, `blob:idle-${index}`);
+      releaseAttachmentObjectUrl(`idle-${index}`);
+    }
+  }
+  test('seeded bytes survive eviction until their chip can hold them, then become ordinary idle entries', () => {
+    vi.useFakeTimers();
+    try {
+      Object.assign(URL, { createObjectURL: () => 'blob:seeded' });
+      seedAttachmentObjectUrl('seeded', new Blob([new Uint8Array([1])]));
+      crowdOut();
+      expect(peekAttachmentObjectUrl('seeded')).toBe('blob:seeded');
+      vi.advanceTimersByTime(10_000);
+      crowdOut();
+      expect(peekAttachmentObjectUrl('seeded')).toBeUndefined();
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:seeded');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a moved entry is found only under its new key, and survives eviction until its chip can hold it', () => {
+    vi.useFakeTimers();
+    try {
+      storeAttachmentObjectUrl(
+        'thumbnail data:image/png;base64,AAAA',
+        'blob:thumb',
+      );
+      moveAttachmentObjectUrl(
+        'thumbnail data:image/png;base64,AAAA',
+        'thumbnail ref',
+      );
+      expect(
+        peekAttachmentObjectUrl('thumbnail data:image/png;base64,AAAA'),
+      ).toBeUndefined();
+      // The hold taken under the old key no longer pins anything.
+      releaseAttachmentObjectUrl('thumbnail data:image/png;base64,AAAA');
+      crowdOut();
+      expect(peekAttachmentObjectUrl('thumbnail ref')).toBe('blob:thumb');
+      vi.advanceTimersByTime(10_000);
+      crowdOut();
+      expect(peekAttachmentObjectUrl('thumbnail ref')).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

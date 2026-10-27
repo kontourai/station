@@ -262,7 +262,7 @@ function startKeyed(
 }
 function sendBubble(
   key: string,
-  files: Array<{ name: string; data: string; size: number }>,
+  files: Array<{ name: string; data: string; size: number; type?: string }>,
 ) {
   activeChatsStore.initChat(id, {
     agentSlug: 'codex',
@@ -454,4 +454,33 @@ test('an unkeyed turn never rewrites a row an earlier turn already bound', () =>
     'turn-new',
   );
   expect(bubble()).toEqual(bound);
+});
+
+test('a sent file of another type than the one recorded keeps none of its bytes', () => {
+  sendBubble('key-10', [
+    { name: 'screen.png', data: PNG_A, size: 8, type: 'image/png' },
+  ]);
+  startKeyed('key-10', [
+    {
+      ...recorded('screen.png', 8, { blobRef: REF }),
+      mimeType: 'image/jpeg' as 'image/png',
+    },
+  ]);
+  expect(createObjectURL).not.toHaveBeenCalled();
+  expect(fileParts()).toEqual([
+    { type: 'file', blobRef: REF, mediaType: 'image/jpeg', name: 'screen.png' },
+  ]);
+});
+
+test("seeded bytes take the recorded type, as fetched bytes do, not the data URL's own", () => {
+  sendBubble('key-11', [
+    {
+      name: 'screen.png',
+      data: 'data:application/octet-stream;base64,iVBORw0KGgo=',
+      size: 8,
+      type: 'image/png',
+    },
+  ]);
+  startKeyed('key-11', [recorded('screen.png', 8, { blobRef: REF })]);
+  expect(attachmentBlobForObjectUrl('blob:seeded')?.type).toBe('image/png');
 });
