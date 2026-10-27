@@ -28,15 +28,31 @@ const INLINE_IMAGE_DATA_URL =
  * `<img src>` data URL cannot run script, so it is admitted for images only;
  * links and every other attribute keep the default policy.
  *
- * A `file:` image URL that names a host image is kept too, so `MarkdownImage`
- * can look it up among the turn's captured host images. It never reaches an
- * `<img>`: without a captured copy the image renders exactly as a blanked
- * URL did before.
+ * A `file:` image URL that names a host image is never passed through: it
+ * becomes {@link HOST_IMAGE_SRC_PREFIX} plus the encoded path, a scheme no
+ * browser loads, so even a renderer without `MarkdownImage` cannot emit an
+ * `<img>` that reads a local file. `MarkdownImage` decodes it to look the
+ * path up among the turn's captured host images; without a captured copy it
+ * renders exactly as a blanked URL did before.
  */
+export const HOST_IMAGE_SRC_PREFIX = 'station-host-image:';
+
+function hostPathOfSource(source: string | undefined): string | null {
+  if (!source?.startsWith(HOST_IMAGE_SRC_PREFIX)) return null;
+  try {
+    return decodeURIComponent(source.slice(HOST_IMAGE_SRC_PREFIX.length));
+  } catch {
+    return null;
+  }
+}
+
 export const chatUrlTransform: UrlTransform = (url, key, node) => {
   if (key === 'src' && node.tagName === 'img') {
     if (INLINE_IMAGE_DATA_URL.test(url)) return url;
-    if (/^file:/i.test(url) && hostImagePathFromDestination(url)) return url;
+    if (/^file:/i.test(url)) {
+      const path = hostImagePathFromDestination(url);
+      if (path) return `${HOST_IMAGE_SRC_PREFIX}${encodeURIComponent(path)}`;
+    }
   }
   return defaultUrlTransform(url);
 };
@@ -66,7 +82,9 @@ type ImageProps = ComponentPropsWithoutRef<'img'> & { node?: unknown };
 export function MarkdownImage(props: ImageProps) {
   const hostImages = useHostImages();
   const source = typeof props.src === 'string' ? props.src : undefined;
-  const hostPath = hostImages ? hostImagePathFromDestination(source) : null;
+  const hostPath = hostImages
+    ? (hostPathOfSource(source) ?? hostImagePathFromDestination(source))
+    : null;
   if (hostImages && hostPath)
     return <HostPathImage {...props} hostImages={hostImages} path={hostPath} />;
   return <LegacyMarkdownImage {...props} />;
@@ -76,14 +94,14 @@ export function MarkdownImage(props: ImageProps) {
 function LegacyMarkdownImage({ src, alt, node: _node, ...props }: ImageProps) {
   const preview = useOptionalPreview();
   const link = useMarkdownLinkContext();
-  // A `file:` URL only passes the transform for this lookup; here it is
-  // blanked exactly as the default transform would have.
+  // A host-image placeholder (a `file:` URL the transform rewrote) is
+  // blanked here exactly as the default transform blanked a `file:` URL.
   const source =
-    typeof src === 'string' && /^file:/i.test(src)
-      ? defaultUrlTransform(src)
-      : typeof src === 'string'
-        ? src
-        : undefined;
+    typeof src !== 'string'
+      ? undefined
+      : hostPathOfSource(src) !== null || src.startsWith(HOST_IMAGE_SRC_PREFIX)
+        ? ''
+        : src;
   const localPath = workspaceVisualPath(source);
   if (link?.projectSlug && localPath) {
     return (

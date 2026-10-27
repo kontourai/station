@@ -22,6 +22,7 @@ vi.mock('../../../hooks/useSurfaceVisibilityFlags', () => ({
   useSurfaceVisibilityFlags: () => flags.current,
 }));
 
+import ReactMarkdown from 'react-markdown';
 import { PreviewProvider } from '../../../contexts/PreviewContext';
 import { resetAttachmentObjectUrls } from '../attachment-object-urls';
 import {
@@ -31,7 +32,7 @@ import {
   settledHostImages,
 } from '../HostImagesContext';
 import { MarkdownRenderer } from '../MarkdownRenderer';
-import { chatUrlTransform } from '../markdown-images';
+import { chatUrlTransform, HOST_IMAGE_SRC_PREFIX } from '../markdown-images';
 
 /**
  * chat-host-images in an assistant row: the stored copy when Station kept
@@ -169,13 +170,29 @@ describe('host images in a reply', () => {
     expect(container.querySelector('img')?.getAttribute('src')).toBe(PATH);
   });
 
-  test('the URL transform keeps a host-image file: URL for the lookup only', () => {
+  test('the URL transform never lets a file: URL through, only an inert placeholder', () => {
     const img = { tagName: 'img' } as Parameters<typeof chatUrlTransform>[2];
     const a = { tagName: 'a' } as Parameters<typeof chatUrlTransform>[2];
     expect(chatUrlTransform(`file://${PATH}`, 'src', img)).toBe(
-      `file://${PATH}`,
+      `${HOST_IMAGE_SRC_PREFIX}${encodeURIComponent(PATH)}`,
     );
     expect(chatUrlTransform(`file://${PATH}`, 'href', a)).toBe('');
     expect(chatUrlTransform('file:///etc/passwd', 'src', img)).toBe('');
+  });
+
+  test('a renderer without MarkdownImage, given the same transform, emits no file: image', () => {
+    const { container } = render(
+      <ReactMarkdown urlTransform={chatUrlTransform}>
+        {`![shot](file://${PATH})`}
+      </ReactMarkdown>,
+    );
+    const src = container.querySelector('img')?.getAttribute('src') ?? '';
+    expect(src.startsWith('file:')).toBe(false);
+    expect(src.startsWith(HOST_IMAGE_SRC_PREFIX)).toBe(true);
+  });
+
+  test('outside an assistant row, a file: image still renders blank, as before', () => {
+    const { container } = renderRow(`![shot](file://${PATH})`, null);
+    expect(container.querySelector('img')?.getAttribute('src') ?? '').toBe('');
   });
 });
