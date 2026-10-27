@@ -16,6 +16,8 @@ import { beforeEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   captureHostImages,
+  containsSharedTemp,
+  defaultSharedTempDirs,
   HOST_IMAGE_MAX_BYTES,
   HOST_IMAGE_MAX_PER_TURN,
   hostImageCaptureRoots,
@@ -80,6 +82,22 @@ describe('host image destinations', () => {
       '/work/a b.png',
       '/work/ref.webp',
     ]);
+  });
+
+  test('scans a space, a literal % and non-ASCII to the same keys the client looks up', () => {
+    expect(
+      hostImagePaths([
+        '![a](</tmp/a b.png>)\n\n![b](</tmp/100%.png>)\n\n![c](</tmp/caf\u00e9 \u56fe.png>)',
+      ]),
+    ).toEqual(['/tmp/a b.png', '/tmp/100%.png', '/tmp/caf\u00e9 \u56fe.png']);
+    // The renderer percent-encodes each; the shared helper decodes it back.
+    expect(hostImagePathFromDestination('/tmp/a%20b.png')).toBe('/tmp/a b.png');
+    expect(hostImagePathFromDestination('/tmp/100%25.png')).toBe(
+      '/tmp/100%.png',
+    );
+    expect(
+      hostImagePathFromDestination(encodeURI('/tmp/caf\u00e9 \u56fe.png')),
+    ).toBe('/tmp/caf\u00e9 \u56fe.png');
   });
 
   test('normalizes file: URLs and percent-encoding to the same path key the client derives', () => {
@@ -213,6 +231,37 @@ describe('captureHostImages', () => {
     ).toEqual([]);
   });
 
+  test('a folder under a world-writable, non-sticky ancestor is not a root; under a sticky one it is', async () => {
+    const open = join(base, 'open');
+    const sticky = join(base, 'sticky');
+    mkdirSync(join(open, 'proj'), { recursive: true });
+    mkdirSync(join(sticky, 'proj'), { recursive: true });
+    chmodSync(open, 0o777);
+    chmodSync(sticky, 0o1777);
+    const rootsFor = (cwd: string) =>
+      hostImageCaptureRoots({
+        cwd,
+        home: join(base, 'home'),
+        stationHome: join(base, 'station-home'),
+        listWorktrees: async () => [],
+        sharedTempDirs: [],
+      });
+    expect(await rootsFor(join(open, 'proj'))).toEqual([]);
+    expect(await rootsFor(join(sticky, 'proj'))).toEqual([
+      join(sticky, 'proj'),
+    ]);
+  });
+
+  test('the default shared-temp list covers /tmp, /var/tmp and the process temp dir, through the real resolver', async () => {
+    const shared = await defaultSharedTempDirs();
+    for (const path of ['/tmp', '/var/tmp', tmpdir()])
+      expect(containsSharedTemp(realpathSync(path), shared), path).toBe(true);
+    // A Project folder inside one is not itself a shared temp directory.
+    expect(
+      containsSharedTemp(join(realpathSync('/tmp'), 'project'), shared),
+    ).toBe(false);
+  });
+
   test('a project working directory and the session temp folder are roots', async () => {
     const home = join(base, 'home');
     const tmp = join(base, 'session-tmp');
@@ -274,6 +323,16 @@ describe('captureHostImages', () => {
     expect(result.sources).toEqual([
       { path: join(root, 'a.png'), refused: 'outside-allowed-roots' },
       { path: join(root, 'b.png'), refused: 'outside-allowed-roots' },
+    ]);
+  });
+
+  test('refuses an image in a folder every user can write to, inside the root', async () => {
+    mkdirSync(join(root, 'drop'));
+    chmodSync(join(root, 'drop'), 0o777);
+    writeFileSync(join(root, 'drop', 'x.png'), fixture('chromium.png'));
+    const result = await capture([join(root, 'drop', 'x.png')]);
+    expect(result.sources).toEqual([
+      { path: join(root, 'drop', 'x.png'), refused: 'shared-folder' },
     ]);
   });
 

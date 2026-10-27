@@ -553,6 +553,7 @@ async function captureOne(
   // A symlink inside a root that resolves elsewhere is refused here.
   const root = inRoot(real);
   if (!root) return { refused: 'outside-allowed-roots' };
+  if (await inSharedFolder(real, root)) return { refused: 'shared-folder' };
   if (full) return { refused: 'limit-reached' };
   const read = await readAdmittedFile(real, root, hooks);
   if ('refused' in read) return read;
@@ -587,22 +588,59 @@ async function resolvedOrSelf(path: string): Promise<string> {
  */
 const SHARED_TEMP_DIRS = ['/tmp', '/var/tmp', '/dev/shm'];
 
+/** The host's shared temp directories, resolved (the default refusal list). */
+export async function defaultSharedTempDirs(): Promise<string[]> {
+  return Promise.all([tmpdir(), ...SHARED_TEMP_DIRS].map(resolvedOrSelf));
+}
+
+/** Whether `directory` is, or contains, one of the shared temp directories. */
+export function containsSharedTemp(
+  directory: string,
+  sharedTemp: readonly string[],
+): boolean {
+  return sharedTemp.some((shared) => {
+    const rel = relative(directory, shared);
+    return !rel.startsWith('..') && !isAbsolute(rel);
+  });
+}
+
 async function sharedTempRefusal(
   directory: string,
   sharedTemp: readonly string[],
 ): Promise<boolean> {
-  if (
-    sharedTemp.some(
-      (shared) =>
-        !relative(directory, shared).startsWith('..') &&
-        !isAbsolute(relative(directory, shared)),
-    )
-  )
-    return true;
+  if (containsSharedTemp(directory, sharedTemp)) return true;
   try {
-    return ((await lstat(directory)).mode & 0o002) !== 0;
+    if (((await lstat(directory)).mode & 0o002) !== 0) return true;
   } catch {
     return true;
+  }
+  // Another user who can write an ancestor without the sticky bit can swap
+  // this folder for a link to anywhere; such a folder is not a root.
+  if (process.platform === 'win32') return false;
+  for (let ancestor = dirname(directory); ; ancestor = dirname(ancestor)) {
+    try {
+      const mode = (await lstat(ancestor)).mode;
+      if ((mode & 0o002) !== 0 && (mode & 0o1000) === 0) return true;
+    } catch {
+      return true;
+    }
+    if (dirname(ancestor) === ancestor) return false;
+  }
+}
+
+/**
+ * Whether a folder every user can write to lies between the file and its
+ * root (inclusive): anyone on the host could have put the file there.
+ */
+async function inSharedFolder(real: string, root: string): Promise<boolean> {
+  if (process.platform === 'win32') return false;
+  for (let folder = dirname(real); ; folder = dirname(folder)) {
+    try {
+      if (((await lstat(folder)).mode & 0o002) !== 0) return true;
+    } catch {
+      return true;
+    }
+    if (folder === root || dirname(folder) === folder) return false;
   }
 }
 
@@ -616,11 +654,9 @@ export async function hostImageCaptureRoots(input: {
   sharedTempDirs?: readonly string[];
 }): Promise<string[]> {
   const roots: string[] = [];
-  const sharedTemp = await Promise.all(
-    (input.sharedTempDirs ?? [tmpdir(), ...SHARED_TEMP_DIRS]).map(
-      resolvedOrSelf,
-    ),
-  );
+  const sharedTemp = input.sharedTempDirs
+    ? await Promise.all(input.sharedTempDirs.map(resolvedOrSelf))
+    : await defaultSharedTempDirs();
   const bounds = {
     home: await resolvedOrSelf(input.home ?? homedir()),
     stationHome: await resolvedOrSelf(input.stationHome ?? resolveHomeDir()),
