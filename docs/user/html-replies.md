@@ -33,17 +33,24 @@ served like an image you attached: only to people who can read that chat.
 
 Station reads an image only when, after following every symbolic link, it is
 inside the chat's working folder, a verified Git worktree of it, or the chat's
-own temporary folder. Agents started while the preview is on get that folder
-as `$TMPDIR` (Claude under macOS confinement keeps its confinement's own
-temporary folder, and that exact folder is the one read); it is removed when
-the session ends. Station's built-in agent runs inside Station and has no
-temporary folder of its own. A chat whose working folder is
-your home folder (or contains it or Station's data) has no working-folder root,
-so only its temporary folder is read. Paths elsewhere, including the system
-temporary folder, are not read. The file must really be a PNG, JPEG, GIF or WebP image (checked by
-content, not name), at most 512 KiB and 4,194,304 pixels, and a reply keeps at
-most 5. A file a path names is read when the reply finishes; a later change to
-the file does not change the copy.
+own temporary folder, and it has no second hard link. Agents started while the
+preview is on get that temporary folder as `$TMPDIR` (Claude under macOS
+confinement keeps its confinement's own temporary folder, and that exact folder
+is the one read). It is removed when Station sees the session end; if an engine
+exits without that (for example an idle ACP engine killed from outside), the
+folder stays until the session is stopped or Station next restarts and sweeps
+it. Station's built-in agent runs inside Station and has no temporary folder of
+its own.
+
+A working folder is not read at all when it is or contains your home folder or
+Station's data (a chat with no Project uses the home folder), or when it is or
+contains a shared temporary directory such as the system temporary folder, or
+is writable by every user. Such a chat reads only its own temporary folder; a
+Project folder inside the system temporary folder is still read. Paths
+elsewhere are not read. The file must really be a PNG, JPEG, GIF or WebP image
+(checked by content, not name), at most 512 KiB and 4,194,304 pixels, and a
+reply keeps at most 5. A file a path names is read when the reply finishes; a
+later change to the file does not change the copy.
 
 An image Station did not keep shows **Image not available on this device** and
 the reason: outside the working and temporary folders, missing, not an image,
