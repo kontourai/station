@@ -1,0 +1,7 @@
+{
+  "revision": "ef2294efc1a933b77103c8a63d12b9068b515451",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"CoreUpdateCheck still passes context.isCurrent as assertCurrent with the same scope key; the useCoreUpdateStatusQuery caller contract described here is unchanged (presentation-only change).","inputs":["docs/reference/sdk.md","src-ui/src/views/settings/CoreUpdateCheck.tsx"]}
+  ]
+}
