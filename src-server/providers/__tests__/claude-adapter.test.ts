@@ -10702,6 +10702,8 @@ echo '{"loggedIn":true}'
           ...createMockQuery([]),
           async *[Symbol.asyncIterator]() {
             await ended;
+            // Ends without a message: a clean end of the engine stream.
+            yield* [];
           },
         } as never);
         const adapter = new ClaudeAdapter();

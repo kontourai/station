@@ -175,7 +175,10 @@ export function commitEngineLaunch(
   tmpDir: { own: string } | { confined: string } | undefined,
 ): void {
   const next =
-    tmpDir && 'own' in tmpDir && admitted(threadId) && ownedPrivateDir(tmpDir.own)
+    tmpDir &&
+    'own' in tmpDir &&
+    admitted(threadId) &&
+    ownedPrivateDir(tmpDir.own)
       ? { dir: tmpDir.own, own: true }
       : tmpDir &&
           'confined' in tmpDir &&
