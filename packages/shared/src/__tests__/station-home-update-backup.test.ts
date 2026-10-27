@@ -100,6 +100,93 @@ function writeSchemaVersion(home: string, version: number): void {
 }
 
 describe('update backup and in-place restore (#2675 D)', () => {
+  it('resolves every directory target before removing current update state', () => {
+    const root = makeTempDir('update-directory-plan-');
+    const home = join(root, 'home');
+    ensureStationHomeSchemaSync(home);
+    mkdirSync(join(home, 'saved'));
+    const backupDir = join(root, 'backup');
+    const { manifest } = createStationHomeUpdateBackup({
+      homeDir: home,
+      backupDir,
+    });
+    rmSync(join(backupDir, 'home', 'saved'), { recursive: true });
+    mkdirSync(join(backupDir, 'home', '..saved'));
+    manifest.directories = [['..saved']];
+    writeFileSync(
+      join(backupDir, STATION_HOME_BACKUP_MANIFEST),
+      JSON.stringify(manifest),
+    );
+    writeFileSync(join(home, 'current.txt'), 'current state');
+    const marker = readFileSync(join(home, STATION_HOME_SCHEMA_FILE));
+    let removed = false;
+    expect(() =>
+      restoreStationHomeUpdateBackup({
+        homeDir: home,
+        backupDir,
+        afterRemove: () => {
+          removed = true;
+        },
+      }),
+    ).toThrow(/path escapes its root/);
+    expect(removed, 'invalid directory target must refuse before cleanup').toBe(
+      false,
+    );
+    expect(readFileSync(join(home, 'current.txt'), 'utf8')).toBe(
+      'current state',
+    );
+    expect(readFileSync(join(home, STATION_HOME_SCHEMA_FILE))).toEqual(marker);
+  });
+
+  it.each(['browser', 'acquisition'] as const)(
+    'restores an exact-cap archive while retaining trial-created %s work',
+    (kind) => {
+      const root = makeTempDir('update-directory-budget-');
+      const home = join(root, 'home');
+      ensureStationHomeSchemaSync(home);
+      const backupDir = join(root, 'backup');
+      createStationHomeUpdateBackup({ homeDir: home, backupDir, maxFiles: 1 });
+      const work =
+        kind === 'browser'
+          ? join(home, 'browser', 'profiles', 'work.txt')
+          : join(
+              home,
+              'repository-acquisitions',
+              'abcdefab-cdef-abcd-efab-cdefabcdefab',
+              'checkout-1',
+              'work.txt',
+            );
+      mkdirSync(join(work, '..'), { recursive: true });
+      writeFileSync(work, 'trial user work');
+      mkdirSync(join(home, 'trial-state'));
+      const marker = readFileSync(join(home, STATION_HOME_SCHEMA_FILE));
+      restoreStationHomeUpdateBackup({ homeDir: home, backupDir, maxFiles: 1 });
+      expect(readFileSync(work, 'utf8')).toBe('trial user work');
+      expect(readFileSync(join(home, STATION_HOME_SCHEMA_FILE))).toEqual(
+        marker,
+      );
+      expect(existsSync(join(home, 'trial-state'))).toBe(false);
+    },
+  );
+
+  it('keeps non-exempt directory entries inside the verification budget', () => {
+    const root = makeTempDir('update-directory-budget-control-');
+    const home = join(root, 'home');
+    ensureStationHomeSchemaSync(home);
+    const backupDir = join(root, 'backup');
+    createStationHomeUpdateBackup({ homeDir: home, backupDir, maxFiles: 1 });
+    expect(() =>
+      restoreStationHomeUpdateBackup({
+        homeDir: home,
+        backupDir,
+        maxFiles: 1,
+        afterRemove: () => {
+          mkdirSync(join(home, 'unexpected-state'));
+        },
+      }),
+    ).toThrow(/file-count limit/);
+  });
+
   it('restores an uncertain creation intent without admitting another publication', async () => {
     const fixture = serviceHome();
     const service = new ProjectCreationService(
@@ -652,11 +739,12 @@ describe('update backup and in-place restore (#2675 D)', () => {
           homeDir: fixture.home,
           outputDir: fixture.backupDir,
         });
+        const { directories: _directories, ...legacyManifest } = manifest;
         writeFileSync(
           join(fixture.backupDir, STATION_HOME_BACKUP_MANIFEST),
           JSON.stringify({
-            ...manifest,
-            schemaVersion: STATION_HOME_UPDATE_BACKUP_SCHEMA,
+            ...legacyManifest,
+            schemaVersion: 'station.home-update-backup/v1',
             symlinks: [],
           }),
         );
@@ -724,6 +812,8 @@ describe('update backup and in-place restore (#2675 D)', () => {
 
   it('rolls a trial that bumped the schema and wrote new data back, keeping live roots as they are', () => {
     const fixture = serviceHome();
+    const empty = join(fixture.home, 'agents', 'research', 'memory', 'empty');
+    mkdirSync(empty, { recursive: true });
     mkdirSync(join(fixture.root, 'update-backups'));
     createStationHomeUpdateBackup({
       homeDir: fixture.home,
@@ -734,6 +824,7 @@ describe('update backup and in-place restore (#2675 D)', () => {
     // The trial: migrates the home, rewrites data, adds a store, and the
     // service lifecycle keeps writing its live entries meanwhile.
     writeSchemaVersion(fixture.home, 99);
+    rmSync(join(fixture.home, 'agents'), { recursive: true });
     writeFileSync(
       join(fixture.home, 'config', 'app.json'),
       '{"model":"trial"}\n',
@@ -755,6 +846,11 @@ describe('update backup and in-place restore (#2675 D)', () => {
 
     expect(sha(join(fixture.home, STATION_HOME_SCHEMA_FILE))).toBe(before);
     expect(schemaVersion(fixture.home)).not.toBe(99);
+    expect(existsSync(empty), 'the empty directory must survive rollback').toBe(
+      true,
+    );
+    expect(readdirSync(empty)).toEqual([]);
+    expect(existsSync(join(empty, 'never-created'))).toBe(false);
     expect(readFileSync(join(fixture.home, 'config', 'app.json'), 'utf8')).toBe(
       '{"model":"before"}\n',
     );
@@ -1001,10 +1097,12 @@ describe('update backup of a realistic home (#2675 D review F1)', () => {
       ['plugins/demo', join(fixture.generation, 'package')],
       ['plugins/draft/node_modules/@kontourai/station-shared', fixture.outside],
     ]);
-    // Never followed: the backup's copy holds no link and nothing of the
-    // package outside the home (the draft holds only its link).
+    // The draft's parent directories are retained, but its link is not followed.
     const copied = join(fixture.backupDir, 'home', 'plugins');
-    expect(readdirSync(copied)).toEqual(['.generations']);
+    expect(readdirSync(copied)).toEqual(['.generations', 'draft']);
+    expect(
+      readdirSync(join(copied, 'draft', 'node_modules', '@kontourai')),
+    ).toEqual([]);
   });
 
   it('a rollback restores links as links and leaves users repositories and the browser profiles as the trial left them', () => {
