@@ -102,6 +102,7 @@ category.
 - [ssh-launched-environments.md](ssh-launched-environments.md) — Design: SSH-launched Environments
 - [station-instance-reconciler.md](station-instance-reconciler.md) — Station instance reconciliation
 - [station-peer-pairing.md](station-peer-pairing.md) — Design: Station-to-Station peer pairing (spike, #70)
+- [station-routes.md](station-routes.md) — Station routes: one saved Station, many ways to reach it
 - [station-topology.md](station-topology.md) — Design: Station topology and role vocabulary
 - [strands-migration.md](strands-migration.md) — Strands Agents SDK Migration
 - [survey-flow-review.md](survey-flow-review.md) — Survey-backed Flow review
@@ -109,5 +110,6 @@ category.
 - [task-room-agent-requests.md](task-room-agent-requests.md) — Task room agent requests
 - [terminal.md](terminal.md) — Integrated terminal
 - [tracker-backed-tasks.md](tracker-backed-tasks.md) — Tracker-backed Tasks
+- [walkthroughs.md](walkthroughs.md) — Walkthroughs
 - [work-plane-composition.md](work-plane-composition.md) — Work-Plane Composition: Station as the Native Host of the Kontour Work Plane
 <!-- docs-index:end -->

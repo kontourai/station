@@ -284,11 +284,27 @@
 
     "src-server/services/ssh/device-pairing-service.ts",
 
+    "packages/contracts/src/walkthrough.ts",
+
+    "packages/contracts/src/action-operation.ts",
+
     "packages/contracts/src/task-review.ts",
 
     "packages/contracts/src/__tests__/task-review.test.ts",
 
-    "packages/contracts/src/task-review-matcher.ts"
+    "packages/contracts/src/task-review-matcher.ts",
+
+    "packages/contracts/src/engine-capability-matrix.ts",
+
+    "src-ui/src/utils/execution.ts",
+
+    "src-ui/src/components/chat-dock/ChatDockBody.tsx",
+
+    "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
+
+    "src-ui/src/__tests__/execution.test.ts",
+
+    "src-ui/src/__tests__/ChatDockBody.offlineSettling.test.tsx"
   ],
 
   "checks": [

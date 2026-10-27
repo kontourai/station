@@ -219,7 +219,11 @@ The shared New chat action remains directly reachable in mobile chrome and at
 the lower right of the inbox; footer space keeps it from covering rows.
 
 Choosing on a chip does not start an engine; a choice is remembered (Agent per
-context, Model per binding, project as the dock's binding). Start hands the
+context, Model per binding, project as the dock's binding). A Project set to
+**Last model used in this project** puts the model its person's last chat there
+started with (server-recorded, per Agent) above that memory, and its approval
+layer replaces the personal default in **Permissions**
+([Project new-chat defaults](../reference/api.md#project-new-chat-defaults)). Start hands the
 message to the dock’s existing sender once; Home's Start hands the dock its
 exact chip selection, which the dock starts through the same path. Setup actions retain the draft
 through the authority-fenced return journey. A removed preference requires an
@@ -522,7 +526,9 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
    sits in the composer's meta row beside the model picker it measures (2026-10-20:
    it had moved to the dock header, where it crowded the chat's identity); the dock
    header holds session identity only (see placement.md, "What the dock header
-   holds").
+   holds"). On a phone the meta row scrolls sideways and hides while typing on a
+   short screen, so the dock's Actions sheet (⋯) repeats the meter as a
+   Conversation stats row naming the share used; it opens the same stats panel.
 
 ### 3.1 Provider and model picker
 
@@ -543,11 +549,18 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   for that Session (conversation open, the Session's own `session.started`, or the
   receipt of the send that started it); otherwise the caption names only a native
   engine's product and claims no move. When the Agent now points elsewhere, the caption
-  adds "Agent now on …" (a narrow composer: "Agent moved"), and the accessible name says
+  adds "Agent now on …" (a narrow composer: "Agent moved", kept visible by letting the
+  engine name shrink to an ellipsis first), and the accessible name says
   the conversation runs on its engine and the Agent now uses another. Once the Session's
   engine binding has ended (`exited`, `closed`, `dead` or `error`), the caption says
-  "Next turn on …" ("Next: …" when narrow), because the next turn starts a successor
-  there. The picker distinguishes duplicate model
+  "Next turn on …", because the next turn starts a successor
+  there. A narrow composer has no chip room for a destination name, so it says this on
+  its own line above the chips instead ("Next turn starts on …"). A tab that has observed no status for the Session, such as a freshly opened
+  conversation, reads that from the open read's `nextTurnStartsSession` (#4179), the
+  server's continuation rule, while it still describes the chat's current Session.
+  Both surfaces resolve the execution Agent with `chatExecutionBinding`: an override
+  whose Agent is deleted or not loaded borrows nothing from the chat's own Agent, so
+  both name only the Session's engine. The picker distinguishes duplicate model
   names by Provider identity. Compact neutral controls use clear hover/focus states and
   preserve the 44px mobile touch floor.
 - Choosing or resetting a Model closes the picker, in a chat, in the start

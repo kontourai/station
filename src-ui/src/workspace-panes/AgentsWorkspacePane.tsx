@@ -35,6 +35,7 @@ import {
   useChatBackgroundTasks,
   useChatStoreKey,
 } from '../hooks/useBackgroundTasks';
+import { useElapsedClock } from '../hooks/useElapsedClock';
 import { sessionIconAgent } from '../utils/sessionDisplay';
 import { ChildWorkRow } from './agents/ChildWorkRow';
 import {
@@ -187,7 +188,6 @@ export function AgentsWorkspacePane() {
   const global = useChildWorkPartition(apiBase);
   const input = useChildWorkInput(sessions, global);
   const showSurface = useShowSurface();
-  const [now, setNow] = useState(() => Date.now());
 
   // #2307, the mechanism ChatDock uses: register this authority's client
   // with the stream so read-model facts (a new delegate's first turn) reach
@@ -281,12 +281,8 @@ export function AgentsWorkspacePane() {
     (row) => row.item.producer === 'engine-subagent',
   );
 
-  // One 1s ticker for every Running row's elapsed time, only while mounted.
-  useEffect(() => {
-    if (runningCount === 0) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [runningCount]);
+  // The shared elapsed clock for every Running row, only while one runs.
+  const now = useElapsedClock(runningCount > 0);
 
   // One session index per input, not one per reporter (R-D).
   const chatMembership = useMemo(

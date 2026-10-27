@@ -44,7 +44,15 @@ import {
   type HostedTenantRegistry,
   parseHostedTenantRegistry,
 } from '@kontourai/station-contracts/tenancy';
+import {
+  MEDIA_UPLOAD_POLICIES,
+  mediaUploadPolicy,
+} from '@kontourai/station-contracts/walkthrough';
 import { readGitHeadSha, resolveGitInfo } from '@kontourai/station-shared/git';
+import {
+  configureHttpKeepAlive,
+  configureHttpReceive,
+} from '@kontourai/station-shared/http-upload';
 import {
   claimInstanceEntry,
   findRunning as findRunningHomeInstances,
@@ -95,6 +103,10 @@ import {
   ensureStationHomeSchemaSync,
   stationHomeSchemaNeedsReset,
 } from '@kontourai/station-shared/station-home-schema';
+import {
+  UI_IMMUTABLE_ASSET_PATTERN,
+  uiDocumentContentSecurityPolicy,
+} from '@kontourai/station-shared/ui-document-policy';
 import {
   publishActiveLocalStation,
   removeOwnedActiveLocalStation,
@@ -186,6 +198,8 @@ export const UI_MIME_TYPES: Record<string, string> = {
   '.woff': 'font/woff',
   '.ttf': 'font/ttf',
   '.map': 'application/json',
+  '.wasm': 'application/wasm',
+  '.webmanifest': 'application/manifest+json',
 };
 
 export { UI_PROXY_BACKEND_PREFIXES };
@@ -233,6 +247,17 @@ interface UiServerDeps {
 }
 
 /**
+ * The UI document rules shared with the web service worker
+ * (`@kontourai/station-shared/ui-document-policy`). Module imports do not
+ * survive `toString` serialization, so the spawned listener receives them as
+ * dependencies like everything else; the in-process wrapper supplies them.
+ */
+interface UiRequestHandlerDeps extends UiServerDeps {
+  immutableAsset: RegExp;
+  documentCsp: (scriptNonce?: string) => string;
+}
+
+/**
  * Request handler for the static UI server. Serves built assets, injects the
  * API base into index.html (only when an explicit override was configured —
  * see `buildUiServerScript`), reverse-proxies backend calls to the sibling
@@ -258,6 +283,23 @@ interface UiServerDeps {
  * the unit test — no drift between the two.
  */
 export function uiRequestHandler(deps: UiServerDeps) {
+  return createUiRequestHandler(
+    {
+      immutableAsset: UI_IMMUTABLE_ASSET_PATTERN,
+      documentCsp: uiDocumentContentSecurityPolicy,
+      ...deps,
+    },
+    (method, path) => mediaUploadPolicy(method, path, MEDIA_UPLOAD_POLICIES),
+  );
+}
+
+function createUiRequestHandler(
+  deps: UiRequestHandlerDeps,
+  uploadPolicy: (
+    method: string,
+    path: string,
+  ) => typeof MEDIA_UPLOAD_POLICIES.walkthrough | undefined,
+) {
   const {
     http,
     crypto,
@@ -275,6 +317,8 @@ export function uiRequestHandler(deps: UiServerDeps) {
     internalApiToken,
     trustedTailscaleServeOrigin,
     hostedTenantAuthorities,
+    immutableAsset,
+    documentCsp,
   } = deps;
   const canonicalRoot = fs.realpathSync(dir);
   const containedAsset = (rawUrl: string) => {
@@ -525,23 +569,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
   const READINESS_IDENTITY_BUDGET_MAX_MS = 40_000;
   const READINESS_BUDGET_REQUEST_HEADER = 'x-station-readiness-budget-ms';
   const securityHeaders = (nonce: string) => ({
-    'Content-Security-Policy': [
-      "default-src 'none'",
-      `script-src 'self' 'nonce-${nonce}' 'wasm-unsafe-eval'`,
-      // Fonts are self-hosted (#2648) — no external font origins.
-      "style-src 'self' 'unsafe-inline'",
-      "font-src 'self' data:",
-      "img-src 'self' data: blob:",
-      "media-src 'self' blob:",
-      "connect-src 'self' http: https: ws: wss:",
-      "frame-src 'self' blob: http: https:",
-      "worker-src 'self' blob:",
-      "manifest-src 'self'",
-      "object-src 'none'",
-      "base-uri 'none'",
-      "frame-ancestors 'none'",
-      "form-action 'self'",
-    ].join('; '),
+    'Content-Security-Policy': documentCsp(nonce),
     'Referrer-Policy': 'no-referrer',
     'X-Content-Type-Options': 'nosniff',
   });
@@ -576,7 +604,15 @@ export function uiRequestHandler(deps: UiServerDeps) {
     res: import('node:http').ServerResponse,
     status: number,
   ) => {
-    res.writeHead(status, { 'Content-Type': 'application/json' });
+    if (res.headersSent || res.writableEnded || res.destroyed) return;
+    const upload = uploadPolicy(
+      res.req.method ?? '',
+      (res.req.url ?? '/').split('?')[0],
+    );
+    res.writeHead(status, {
+      'Content-Type': 'application/json',
+      ...(upload ? { Connection: 'close' } : {}),
+    });
     res.end(JSON.stringify({ ready: false, status: 'unavailable' }));
   };
   const proxyToBackend = (
@@ -591,6 +627,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
     const tailscaleIngress = trustedTailscaleIdentity(req);
     if (tailscaleIngress?.rejected) {
       res.writeHead(403, {
+        Connection: 'close',
         'Content-Type': 'application/json',
         'Cache-Control': 'no-store',
       });
@@ -656,7 +693,13 @@ export function uiRequestHandler(deps: UiServerDeps) {
         JSON.stringify(ingressIdentity),
       ).toString('base64url');
     }
+    const mediaUpload = uploadPolicy(
+      req.method ?? '',
+      (req.url ?? '/').split('?')[0],
+    );
+    let upstreamResponded = false;
     let timedOut = false;
+    let upstreamResponse: import('node:http').IncomingMessage | undefined;
     const proxyReq = http.request(
       {
         host: '127.0.0.1',
@@ -664,45 +707,68 @@ export function uiRequestHandler(deps: UiServerDeps) {
         path: req.url,
         method: req.method,
         headers,
-        timeout: PROXY_UPSTREAM_TIMEOUT_MS,
+        timeout: mediaUpload?.idleMs ?? PROXY_UPSTREAM_TIMEOUT_MS,
       },
       (proxyRes) => {
-        // The idle timeout above exists to bound the connection/header
-        // phase against a wedged upstream — it must not keep running once a
-        // genuine streaming response is underway, or it will always lose
-        // the race against a periodic heartbeat exactly as long as itself
-        // (see the comment on PROXY_UPSTREAM_TIMEOUT_MS above). Disable it
-        // now, the moment headers confirm this is an SSE stream; a non-SSE
-        // response that hangs mid-body still keeps the timeout's
-        // protection, since SSE is the only response shape here designed to
-        // idle for tens of seconds at a time.
-        const contentType = proxyRes.headers['content-type'];
-        if (
-          typeof contentType === 'string' &&
-          contentType.startsWith('text/event-stream')
-        ) {
-          proxyReq.setTimeout(0);
+        upstreamResponse = proxyRes;
+        try {
+          if (res.headersSent || res.writableEnded || res.destroyed) {
+            proxyRes.destroy();
+            proxyReq.destroy();
+            return;
+          }
+          upstreamResponded = true;
+          // The idle timeout above exists to bound the connection/header
+          // phase against a wedged upstream — it must not keep running once a
+          // genuine streaming response is underway, or it will always lose
+          // the race against a periodic heartbeat exactly as long as itself
+          // (see the comment on PROXY_UPSTREAM_TIMEOUT_MS above). Disable it
+          // now, the moment headers confirm this is an SSE stream; a non-SSE
+          // response that hangs mid-body still keeps the timeout's
+          // protection, since SSE is the only response shape here designed to
+          // idle for tens of seconds at a time.
+          const contentType = proxyRes.headers['content-type'];
+          if (
+            typeof contentType === 'string' &&
+            contentType.startsWith('text/event-stream')
+          ) {
+            proxyReq.setTimeout(0);
+          }
+          res.writeHead(proxyRes.statusCode || 502, {
+            ...proxyRes.headers,
+            ...(mediaUpload && (proxyRes.statusCode ?? 502) >= 400
+              ? { connection: 'close' }
+              : {}),
+          });
+          // Pipe without buffering so SSE chunks stream through as they
+          // arrive instead of waiting for the upstream stream to end.
+          proxyRes.pipe(res);
+          // An upstream error arriving *after* headers are already flushed
+          // (mid-stream, e.g. the backend process dies mid-SSE) can't be
+          // turned into a fresh status code — just tear the client-facing
+          // response down instead of leaving it hanging open.
+          proxyRes.on('error', () => {
+            if (!res.writableEnded) res.destroy();
+          });
+        } catch (error) {
+          proxyRes.destroy();
+          answerRequestFailure(res, error);
         }
-        res.writeHead(proxyRes.statusCode || 502, proxyRes.headers);
-        // Pipe without buffering so SSE chunks stream through as they
-        // arrive instead of waiting for the upstream stream to end.
-        proxyRes.pipe(res);
-        // An upstream error arriving *after* headers are already flushed
-        // (mid-stream, e.g. the backend process dies mid-SSE) can't be
-        // turned into a fresh status code — just tear the client-facing
-        // response down instead of leaving it hanging open.
-        proxyRes.on('error', () => {
-          if (!res.writableEnded) res.destroy();
-        });
       },
     );
+    req.once('end', () => {
+      if (mediaUpload && !upstreamResponded)
+        proxyReq.setTimeout(mediaUpload.responseMs);
+    });
     proxyReq.on('timeout', () => {
       timedOut = true;
       proxyReq.destroy(new Error('Upstream request timed out'));
     });
     proxyReq.on('error', () => {
+      if (res.writableEnded || res.destroyed) return;
       if (res.headersSent) {
-        if (!res.writableEnded) res.end();
+        upstreamResponse?.unpipe(res);
+        res.destroy();
         return;
       }
       if (timedOut) {
@@ -723,34 +789,44 @@ export function uiRequestHandler(deps: UiServerDeps) {
       }
       answerHostUnavailable(res, 503);
     });
-    // Propagate a client-initiated disconnect upstream. `stream.pipe()`
-    // only forwards data one direction — it never tears down the *source*
-    // when the destination closes without erroring, so without this, every
-    // routine client disconnect (tab close, navigation, an SSE
-    // `EventSource`'s own periodic reconnect cycle — all normal on every
-    // one of this proxy's SSE endpoints: `/events`, `/scheduler/events`,
-    // `/monitoring/events`, `/api/orchestration/events`) leaves the
-    // upstream connection (and whatever backend work/timers it's driving)
-    // open indefinitely.
-    //
-    // Deliberately `res.on('close', ...)` ONLY — not `req.on('close'/
-    // 'aborted', ...)`. Verified empirically (a standalone repro, not just
-    // reasoned about): once `req.pipe(proxyReq)` below starts consuming a
-    // body-less GET/HEAD request (every SSE endpoint), the *request*'s
-    // `'close'` fires almost immediately — as soon as its (empty) readable
-    // side is drained — regardless of whether the client is still
-    // connected; wiring an unconditional abort to it broke every proxied
-    // request, aborting the upstream call before the real response ever
-    // arrived. `'aborted'` doesn't fire at all for a genuine mid-stream
-    // client-destroy in the same repro. `res`'s `'close'` is the reliable
-    // signal: it reflects the underlying socket's actual lifecycle (fires
-    // with `writableEnded === false` only on a real premature disconnect —
-    // before headers, mid-stream, or otherwise — and with `writableEnded
-    // === true`, a no-op below, on every normal completion).
-    res.on('close', () => {
-      if (!res.writableEnded && !proxyReq.destroyed) proxyReq.destroy();
-    });
+    // A local receive timeout can finish the response before the body ends.
+    // Release forwarding on that finish, or on a client disconnect. Request
+    // 'close' alone also fires for fully consumed bodies and cannot own this.
+    const stopForwarding = () => {
+      if ((!req.complete || !res.writableEnded) && !proxyReq.destroyed) {
+        req.unpipe(proxyReq);
+        proxyReq.destroy();
+      }
+    };
+    res.once('finish', stopForwarding);
+    res.once('close', stopForwarding);
     req.pipe(proxyReq);
+  };
+
+  const answerRequestFailure = (
+    res: import('node:http').ServerResponse,
+    error: unknown,
+  ) => {
+    const code =
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      typeof error.code === 'string' &&
+      /^[A-Z0-9_]{1,64}$/.test(error.code)
+        ? error.code
+        : 'UNKNOWN';
+    console.error(`UI request failed (${code})`);
+    if (res.writableEnded || res.destroyed) return;
+    if (res.headersSent) {
+      res.destroy();
+      return;
+    }
+    res.writeHead(500, {
+      'Content-Type': 'text/plain',
+      'Cache-Control': 'no-store',
+      Connection: 'close',
+    });
+    res.end('Internal server error');
   };
 
   const serve = (
@@ -758,6 +834,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
     res: import('node:http').ServerResponse,
     tenantId?: string,
   ) => {
+    if (res.headersSent || res.writableEnded || res.destroyed) return;
     const u = (req.url ?? '/').split('?')[0];
     const resolved = containedAsset(u === '/' ? '/index.html' : u);
     if (resolved.rejected) {
@@ -837,10 +914,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
         .relative(canonicalRoot, p)
         .split(path.sep)
         .join('/');
-      const immutable =
-        /^assets\/(?:[\w-]+\/)*[\w.-]+-[A-Za-z0-9_-]{8,}\.[\w]+$/.test(
-          relative,
-        );
+      const immutable = immutableAsset.test(relative);
       const quality = new Map<string, number>();
       for (const item of (req.headers['accept-encoding'] ?? '').split(',')) {
         const [coding, ...parameters] = item.trim().toLowerCase().split(';');
@@ -914,9 +988,22 @@ export function uiRequestHandler(deps: UiServerDeps) {
         res.end();
         return;
       }
-      res.writeHead(200, { ...headers, 'Content-Length': info.size });
-      if (req.method === 'HEAD') res.end();
-      else fs.createReadStream(p).pipe(res);
+      if (req.method === 'HEAD') {
+        res.writeHead(200, { ...headers, 'Content-Length': info.size });
+        res.end();
+      } else {
+        const stream = fs.createReadStream(p);
+        stream.once('error', (error) => answerRequestFailure(res, error));
+        res.once('close', () => stream.destroy());
+        stream.once('open', () => {
+          if (res.headersSent || res.writableEnded || res.destroyed) {
+            stream.destroy();
+            return;
+          }
+          res.writeHead(200, { ...headers, 'Content-Length': info.size });
+          stream.pipe(res);
+        });
+      }
     }
   };
 
@@ -977,12 +1064,19 @@ export function uiRequestHandler(deps: UiServerDeps) {
     res: import('node:http').ServerResponse,
     callback: (state: 'ready' | 'degraded' | 'unavailable') => void,
   ) => {
+    const respond = (state: 'ready' | 'degraded' | 'unavailable') => {
+      try {
+        callback(state);
+      } catch (error) {
+        answerRequestFailure(res, error);
+      }
+    };
     if (!declaredReady()) {
-      callback('unavailable');
+      respond('unavailable');
       return;
     }
     if (!internalApiToken) {
-      callback('unavailable');
+      respond('unavailable');
       return;
     }
     let settled = false;
@@ -992,7 +1086,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
       if (settled) return;
       settled = true;
       if (deadline) clearTimeout(deadline);
-      callback(state);
+      respond(state);
     };
     const request = http.request(
       {
@@ -1071,6 +1165,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
     res: import('node:http').ServerResponse,
     html: boolean,
   ) => {
+    if (res.headersSent || res.writableEnded || res.destroyed) return;
     res.writeHead(503, {
       'Content-Type': html ? 'text/html; charset=utf-8' : 'application/json',
       'Cache-Control': 'no-store',
@@ -1085,91 +1180,97 @@ export function uiRequestHandler(deps: UiServerDeps) {
     req: import('node:http').IncomingMessage,
     res: import('node:http').ServerResponse,
   ) => {
-    let decodedPath: string;
+    res.on('error', () => res.destroy());
     try {
-      decodedPath = decodeURIComponent((req.url ?? '/').split('?')[0]!);
-    } catch {
-      decodedPath = '';
-    }
-    if (
-      !decodedPath ||
-      backendExcludedPrefixes.some(
-        (prefix) =>
-          decodedPath === prefix || decodedPath.startsWith(`${prefix}/`),
-      )
-    ) {
-      res.writeHead(404, {
-        'Content-Type': 'text/plain',
-        'Cache-Control': 'no-store',
-      });
-      res.end('Not found');
-      return;
-    }
-    const hostedTenant = resolvedHostedTenant(req);
-    let tenantId: string | undefined;
-    if (hostedTenant.enabled) {
-      if ('error' in hostedTenant) {
-        res.writeHead(421, {
-          'Content-Type': 'application/json',
+      let decodedPath: string;
+      try {
+        decodedPath = decodeURIComponent((req.url ?? '/').split('?')[0]!);
+      } catch {
+        decodedPath = '';
+      }
+      if (
+        !decodedPath ||
+        backendExcludedPrefixes.some(
+          (prefix) =>
+            decodedPath === prefix || decodedPath.startsWith(`${prefix}/`),
+        )
+      ) {
+        res.writeHead(404, {
+          'Content-Type': 'text/plain',
           'Cache-Control': 'no-store',
         });
-        res.end(JSON.stringify({ error: { code: hostedTenant.error } }));
+        res.end('Not found');
         return;
       }
-      tenantId = hostedTenant.tenantId;
-    }
-    const pathname = (req.url ?? '/').split('?')[0];
-    if (pathname === '/__station/identity') {
-      res.writeHead(200, {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-store',
-      });
-      res.end(JSON.stringify(identity ?? null));
-      return;
-    }
-    if (pathname === '/api/system/readiness') {
-      checkLiveReady(tenantId, readinessBudgetMs(req), res, (state) => {
-        if (state === 'unavailable') {
-          unavailable(res, false);
+      const hostedTenant = resolvedHostedTenant(req);
+      let tenantId: string | undefined;
+      if (hostedTenant.enabled) {
+        if ('error' in hostedTenant) {
+          res.writeHead(421, {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-store',
+          });
+          res.end(JSON.stringify({ error: { code: hostedTenant.error } }));
           return;
         }
-        // #263: 'degraded' keeps `ready: false` AND a 503. Identity was not
-        // confirmed, and a checker that reads only the status code (a load
-        // balancer, an orchestrator probe) cannot tell a busy backend from a
-        // wedged one — a 200 here would report a hung event loop healthy
-        // forever. Every in-repo checker requires `status: 'ready'`, so the
-        // body is where the distinction lives for anything that can read it.
-        res.writeHead(state === 'ready' ? 200 : 503, {
+        tenantId = hostedTenant.tenantId;
+      }
+      const pathname = (req.url ?? '/').split('?')[0];
+      if (pathname === '/__station/identity') {
+        res.writeHead(200, {
           'Content-Type': 'application/json',
           'Cache-Control': 'no-store',
         });
-        res.end(
-          JSON.stringify(
-            state === 'ready'
-              ? { ready: true, status: 'ready' }
-              : { ready: false, status: 'degraded' },
-          ),
+        res.end(JSON.stringify(identity ?? null));
+        return;
+      }
+      if (pathname === '/api/system/readiness') {
+        checkLiveReady(tenantId, readinessBudgetMs(req), res, (state) => {
+          if (res.headersSent || res.writableEnded || res.destroyed) return;
+          if (state === 'unavailable') {
+            unavailable(res, false);
+            return;
+          }
+          // #263: 'degraded' keeps `ready: false` AND a 503. Identity was not
+          // confirmed, and a checker that reads only the status code (a load
+          // balancer, an orchestrator probe) cannot tell a busy backend from a
+          // wedged one — a 200 here would report a hung event loop healthy
+          // forever. Every in-repo checker requires `status: 'ready'`, so the
+          // body is where the distinction lives for anything that can read it.
+          res.writeHead(state === 'ready' ? 200 : 503, {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-store',
+          });
+          res.end(
+            JSON.stringify(
+              state === 'ready'
+                ? { ready: true, status: 'ready' }
+                : { ready: false, status: 'degraded' },
+            ),
+          );
+        });
+        return;
+      }
+      const isNavigation =
+        (req.method === 'GET' || req.method === 'HEAD') &&
+        (req.headers.accept ?? '').startsWith('text/html');
+      if (readinessFile && isNavigation) {
+        // #263: a degraded backend still gets the app shell. The recovery
+        // document is for a backend that is down or is not ours; replacing the
+        // whole UI because the host is slow is what made a running Station look
+        // dead. Serving the shell grants nothing new: API calls are proxied (and
+        // bounded) exactly as they are for any other page load.
+        checkLiveReady(tenantId, READINESS_IDENTITY_BUDGET_MS, res, (state) =>
+          state === 'unavailable'
+            ? unavailable(res, true)
+            : serve(req, res, tenantId),
         );
-      });
-      return;
+        return;
+      }
+      serve(req, res, tenantId);
+    } catch (error) {
+      answerRequestFailure(res, error);
     }
-    const isNavigation =
-      (req.method === 'GET' || req.method === 'HEAD') &&
-      (req.headers.accept ?? '').startsWith('text/html');
-    if (readinessFile && isNavigation) {
-      // #263: a degraded backend still gets the app shell. The recovery
-      // document is for a backend that is down or is not ours; replacing the
-      // whole UI because the host is slow is what made a running Station look
-      // dead. Serving the shell grants nothing new: API calls are proxied (and
-      // bounded) exactly as they are for any other page load.
-      checkLiveReady(tenantId, READINESS_IDENTITY_BUDGET_MS, res, (state) =>
-        state === 'unavailable'
-          ? unavailable(res, true)
-          : serve(req, res, tenantId),
-      );
-      return;
-    }
-    serve(req, res, tenantId);
   };
 }
 
@@ -1258,13 +1359,21 @@ export function buildUiServerScript(opts: {
     const backendPrefixes=${JSON.stringify(UI_PROXY_BACKEND_PREFIXES)};
     const backendExcludedPrefixes=${JSON.stringify(UI_PROXY_EXCLUDED_PREFIXES)};
     const backendNavigationPrefixes=${JSON.stringify(UI_PROXY_BACKEND_NAVIGATION_PREFIXES)};
+    const immutableAsset=new RegExp(${JSON.stringify(UI_IMMUTABLE_ASSET_PATTERN.source)});
+    const documentCsp=${uiDocumentContentSecurityPolicy.toString()};
     const readinessFile=${JSON.stringify(opts.readinessFile)};
     const identity=${JSON.stringify(opts.identity)};
     const internalApiToken=process.env.STATION_INTERNAL_API_TOKEN;
     const trustedTailscaleServeOrigin=process.env.STATION_TRUSTED_TAILSCALE_SERVE_ORIGIN;
     const hostedTenantAuthorities=${JSON.stringify(opts.hostedTenantAuthorities)};
-    const uiRequestHandler=${uiRequestHandler.toString()};
-    http.createServer(uiRequestHandler({http,crypto,fs,path,dir,mime,inject,upstreamPort,backendPrefixes,backendExcludedPrefixes,backendNavigationPrefixes,readinessFile,identity,internalApiToken,trustedTailscaleServeOrigin,hostedTenantAuthorities})).listen(${opts.uiPort},${JSON.stringify(opts.host ?? '0.0.0.0')});
+    const mediaUploadPolicies=${JSON.stringify(MEDIA_UPLOAD_POLICIES)};
+    const classifyMediaUpload=${mediaUploadPolicy.toString()};
+    const uploadPolicy=(method,path)=>classifyMediaUpload(method,path,mediaUploadPolicies);
+    const uiRequestHandler=(deps)=>(${createUiRequestHandler.toString()})(deps,uploadPolicy);
+    const server=http.createServer(uiRequestHandler({http,crypto,fs,path,dir,mime,inject,upstreamPort,backendPrefixes,backendExcludedPrefixes,backendNavigationPrefixes,readinessFile,identity,internalApiToken,trustedTailscaleServeOrigin,hostedTenantAuthorities,immutableAsset,documentCsp}));
+    (${configureHttpReceive.toString()})(server,uploadPolicy,mediaUploadPolicies.walkthrough.totalMs);
+    (${configureHttpKeepAlive.toString()})(server);
+    server.listen(${opts.uiPort},${JSON.stringify(opts.host ?? '0.0.0.0')});
     ${opts.exitWithLauncher ? "if(process.connected)process.on('disconnect',()=>process.exit(0));else process.exit(0);" : ''}
   `;
 }

@@ -17,6 +17,22 @@ import { renderWithIsolatedConnections } from './renderWithIsolatedConnections';
 // The switcher paints each project with the sidebar's colour
 // (`useProjectAccents`), which reads the Project list; this harness mounts
 // no query client for it.
+// The Conversation stats row reads the share through the stats query; this
+// harness mounts no query client, and the row's own derivation is under test,
+// not the query.
+const statsRead = vi.hoisted(() => ({
+  contextWindowPercentage: undefined as number | undefined,
+}));
+vi.mock('../contexts/StatsContext', () => ({
+  useStats: () => ({
+    stats:
+      statsRead.contextWindowPercentage === undefined
+        ? null
+        : { contextWindowPercentage: statsRead.contextWindowPercentage },
+    refetch: () => {},
+  }),
+}));
+
 vi.mock('../contexts/ProjectsContext', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../contexts/ProjectsContext')>()),
   useProjects: () => ({
@@ -101,6 +117,10 @@ function renderHeader(
     onOpenBackgroundTasks?: ReturnType<typeof vi.fn<() => void>>;
     backgroundTasksRunningCount?: number;
     copyActions?: DockMoreAction[];
+    conversationStats?: {
+      liveUsage?: { contextTokens?: number; contextWindowTokens?: number };
+      onOpen: () => void;
+    };
     activeCount?: number;
     unreadCount?: number;
   } = {},
@@ -169,6 +189,12 @@ function renderHeader(
         onOpenBackgroundTasks: overrides.onOpenBackgroundTasks,
         backgroundTasksRunningCount: overrides.backgroundTasksRunningCount,
         copyActions: overrides.copyActions,
+        conversationStats: overrides.conversationStats && {
+          agentSlug: 'codex',
+          conversationId: 'c-1',
+          apiBase: 'http://station.test',
+          ...overrides.conversationStats,
+        },
       }}
     />,
     { wrapper: NavigationProvider },
@@ -479,6 +505,61 @@ describe('the ⋯ sheet’s Background tasks row (#2510)', () => {
     await screen.findByRole('menuitem', { name: 'Chat settings' });
     expect(
       screen.queryByRole('menuitem', { name: /^Background tasks/ }),
+    ).toBeNull();
+  });
+});
+
+/**
+ * The composer's context meter is easy never to see on a phone (the last chip
+ * of a sideways-scrolling row with no scrollbar, hidden while typing on a
+ * short screen), so the ⋯ sheet names it too and opens the same stats panel.
+ * Removing the row fails the first test; dropping the live observation's
+ * precedence or the stats fallback fails the second.
+ */
+describe('the ⋯ sheet’s Conversation stats row', () => {
+  beforeEach(() => {
+    statsRead.contextWindowPercentage = undefined;
+  });
+  test('names the context share and opens the stats panel', async () => {
+    const onOpen = vi.fn<() => void>();
+    renderHeader({
+      conversationStats: {
+        liveUsage: { contextTokens: 191_400, contextWindowTokens: 1_000_000 },
+        onOpen,
+      },
+    });
+    await openActions();
+    const row = await screen.findByRole('menuitem', {
+      name: 'Conversation stats — Context 19% used',
+    });
+    expect(row.getAttribute('aria-haspopup')).toBe('dialog');
+    fireEvent.click(row);
+    expect(onOpen).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('dialog', { name: 'Chat actions' })).toBeNull();
+  });
+  test('falls back to the stats read without a live observation', async () => {
+    statsRead.contextWindowPercentage = 42.4;
+    renderHeader({ conversationStats: { onOpen: vi.fn() } });
+    await openActions();
+    expect(
+      await screen.findByRole('menuitem', {
+        name: 'Conversation stats — Context 42% used',
+      }),
+    ).toBeTruthy();
+  });
+  test('reads plainly while the share is unknown', async () => {
+    renderHeader({ conversationStats: { onOpen: vi.fn() } });
+    await openActions();
+    expect(
+      await screen.findByRole('menuitem', { name: 'Conversation stats' }),
+    ).toBeTruthy();
+  });
+  test('offers no row where the composer shows no meter', async () => {
+    renderHeader();
+    await openActions();
+    await screen.findByRole('menuitem', { name: 'Chat settings' });
+    expect(
+      screen.queryByRole('menuitem', { name: /^Conversation stats/ }),
     ).toBeNull();
   });
 });

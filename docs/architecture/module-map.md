@@ -22,7 +22,9 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 ## Index
 
 | Module | Intent | Primary source |
+| [WalkthroughService](#walkthroughservice) | Import a local recording into an immutable validated manifest and selected frames. | `src-server/services/walkthroughs/walkthrough-service.ts` |
 | --- | --- | --- |
+| [Local speech and media tools](#local-speech-and-media-tools) | Resolve consented media tools and transcribe bounded local audio/video. | `src-server/services/media-tools/media-tools-resolver.ts` |
 | [TerminalSessions](#terminalsessions) | Authorize Project/binding terminal operations and preserve bounded numbered output across reconnects. | `src-server/services/terminal/terminal-sessions.ts` |
 | [ProductTelemetryReceiver](#producttelemetryreceiver) | Commit and query disclosed product observations with scoped source credentials and explicit delivery coverage. | `packages/telemetry-broker/src/store.ts` |
 | [PluginTelemetryPublisher](#plugintelemetrypublisher) | Validate signed public publisher declarations and deliver kernel-owned, per-publisher counts under notice/consent policy. | `src-server/services/plugin-telemetry-service.ts` |
@@ -113,7 +115,7 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 | `src-server/services/board/` | The Board store for one Task or Session (tabs and ordinal widgets; contract in `packages/contracts/src/board.ts`), behind `src-server/routes/board.ts`, which authorizes the owning reference before any store read | Source |
 | `src-server/services/config/` | The idempotent log-level edit with retained terminal receipts | [Logging configuration](../reference/config.md#logging) |
 | `src-server/services/discord/` | The Discord gateway: private configuration in `<home>/security/discord-gateway.json`, allowlist and identity authorization, channel-to-session bindings and reply relay | [Gateway service](../../src-server/services/discord/discord-gateway-service.ts) |
-| `src-server/services/feature-previews/` | The registry of opt-in feature previews this build can run, persisted per Station and shown under Settings → Advanced; served by `src-server/routes/system/feature-previews.ts` | Source |
+| `src-server/services/feature-previews/` | The registry of opt-in feature previews this build can run, persisted per Station and shown under Settings → Advanced; served by `src-server/routes/system/feature-previews.ts`. [Contributor workflow](../guides/feature-previews.md) | Source |
 | `src-server/services/kits/` | Installed-Kit observability lifecycle and persistence for the host | Source |
 | `src-server/services/presence/` | Process-local, non-durable focus presence per paired device or client session (#2585) | Source |
 | `src-server/services/relay/` | Durable relay and native-relay enrollment journals; they hold references and proofs, never credentials | [Native relay enrollment](#native-relay-enrollment) |
@@ -125,6 +127,36 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 | `src-server/openapi/` | Builds the checked-in [OpenAPI subset](../reference/openapi.json) from route schemas; the documentation tests compare its output with the file | [Endpoint authorities](../reference/endpoints.md) |
 | `packages/basis-pane/` | First-party Basis Workspace Pane, answer-basis affordance and session inventory views | [Whole Task Basis collection](#whole-task-basis-collection), [README](../../packages/basis-pane/README.md) |
 | `packages/board-pane/` | The Console Board as an in-process Workspace Pane over published contracts | [README](../../packages/board-pane/README.md) |
+
+## Local speech and media tools
+
+**Interfaces.** [MediaToolsResolver](../../src-server/services/media-tools/media-tools-resolver.ts)
+finds host-installed ffmpeg/ffprobe or a previously verified pin without network
+access. [Transcriber](../../src-server/services/transcription/transcriber.ts)
+returns timed local speech, explicit unavailability or a typed failure. The
+Walkthrough importer and the preview-gated Station (local) voice provider consume these seams;
+the device decoder also uses media resolution.
+
+**Adapters and composition.** [MediaToolsAcquisition](../../src-server/services/media-tools/media-tools-acquisition.ts)
+owns pinned downloads, byte progress, integrity, safe extraction and installation
+in the Station home. Only its separate download operation accepts consent.
+[SherpaTranscriber](../../src-server/services/transcription/sherpa-transcriber.ts)
+owns temporary conversion, silence-aware chunks, absolute timing, limits and
+owned child processes. The runtime binds one acquisition instance to the
+operator routes, importer, recognizer and device decoder. One recognizer serves
+both imports and transcription requests: one runs, four wait FIFO with queued
+cancellation, and overflow returns `busy`. The 15-minute deadline includes waiting.
+[Runtime composition](../../src-server/runtime/bootstrap/local-media-runtime.ts)
+binds the default-off Walkthroughs and Local speech previews. Both media-tools
+routes require either switch; transcription requires Local speech. Existing
+device decoding uses already-present tools independently of these switches. The
+[guide](../guides/local-speech.md) owns platform choices and limits; the adjacent
+service and route tests own executable evidence. The UI reconciles the
+Station (local) registration with the live Local speech preview and selected
+Station, records with MediaRecorder, uploads through the SDK, and publishes only
+a final transcript. Its `transcribing` state and cancellation are public SDK
+contracts. Disabling removes the client provider and aborts its pending work
+when the preview query refreshes; server recognition already admitted continues.
 
 ## AccountPreferences
 
@@ -1884,6 +1916,14 @@ reserved only when the current session cannot take the turn:
 - the engine cannot apply a requested model switch per turn;
 - an explicit handoff or a context boundary asks for one.
 
+The conversation-open read reports that decision for the next ordinary turn
+without reserving anything (`nextTurnStartsSession`, from
+`ConversationLineage.nextTurnStartsSession`, #4179): the first two reasons, or
+a reserved child that has not started. A model switch depends on the send that
+asks for it and is not counted. It reports nothing for a turn the send would
+refuse: a handoff awaiting its target, or a continuation, fork, or handoff
+context delivery not yet completed on the current Session.
+
 `OrchestrationService` parks an at-rest engine left unused past
 `idleSessionParkAfterMs`, provided it is at rest, has no active turn or reported running child work,
 has a saved resume cursor, and is not known to lack resume support.
@@ -2481,7 +2521,11 @@ metadata. Adjacent acquisition receipts, import originals, setup outcomes and
 creation requests remain state; Room databases join the SQLite checkpoint list.
 Rollback does not undo later external effects or grant execution authority, and
 cross-home copies can retain machine-local paths. Full home backup still includes
-in-home checkout bytes; update snapshots omit them. Restore checks saved file/link
+in-home checkout bytes; update snapshots omit them. Both backup kinds exclude
+re-acquirable `media-tools/` downloads. Update rollback retains versioned tool
+installs; missing required files report `needs-consent` without downloading.
+See [media rollback](../guides/local-speech.md#backup-and-update-rollback).
+Restore checks saved file/link
 collisions at or beneath preserved external directories and raw-spelling aliases
 of retained state containers before removing state; a conflict requires operator
 reconciliation. Older admissible POSIX snapshots keep raw filename
@@ -2500,13 +2544,20 @@ observations for useful offline diagnostics. These checks do not stop an
 unrelated external writer that ignores Station's ownership protocol.
 
 Traversal is sorted and rejects symlinks/non-regular entries. Defaults cap an
-archive at 100,000 files, 20 GiB total and 2 GiB per file. Paths are segment
+archive at 100,000 entries (files and directories), 20 GiB total and 2 GiB per file. Paths are segment
 arrays, so a POSIX backslash cannot become a directory separator on import.
 Declared volatile files are excluded. SQLite is checkpointed and integrity
 checked before copying; backup does not advance the home schema. Each copied
 file is checked against its size/hash and synced before the staged archive is
 renamed into place. The manifest records schema, creation time, segments,
 modes, sizes, hashes and total bytes. Mode preservation follows platform support.
+The v2 home and update manifests also record all retained directory paths,
+including empty ones. Validation rejects missing/unlisted directories, aliases,
+duplicate paths and incomplete parents before destructive restore. Update
+restore preserves containers needed by external work. New readers retain v1
+support without inventing the missing directory history; old readers reject v2.
+This archive version does not change the runtime home-schema marker or provide
+post-snapshot effect-history reconciliation.
 
 **Restore and failure.** Explicit confirmation and an inactive home are required.
 The owner validates the manifest and every archived/staged byte before
@@ -5172,6 +5223,52 @@ The [route tests](../../src-server/routes/operations/__tests__/telemetry-events.
 install a signed fixture, invoke the SDK and real kernel routes, and observe a
 loopback receiver. They do not qualify a deployed broker or physical UI journey.
 Distribution manifests and broker `plugin_daily` acceptance remain separate work.
+
+## WalkthroughService
+
+**Purpose and interface.** The [service](../../src-server/services/walkthroughs/walkthrough-service.ts)
+accepts one streamed recording and exposes start/status/list/manifest/frame
+operations. The [pure contract](../../packages/contracts/src/walkthrough.ts)
+owns manifest validation; [frame selection](../../src-server/services/walkthroughs/frame-selection.ts)
+reconstructs deictic words, merges/ranks scene, pause and interval signals,
+and accounts for the 120-frame cap. Bounds refuse without truncation.
+
+**Composition and authority.** `ConfigureRuntimeRoutesContext.walkthroughImportDependencies`
+in [runtime-routes.ts](../../src-server/runtime/routes/runtime-routes.ts) is the
+composition point supplied by [bootstrap](../../src-server/runtime/bootstrap/station-runtime.ts)
+with the same acquisition and recognizer used by speech routes and decoding.
+Personal-host routes select the live Walkthroughs preview before every operation;
+MCP uses these routes and preserves typed refusals while keeping tool discovery stable. [Routes](../../src-server/routes/walkthroughs.ts)
+resolve the canonical Project and authorize view/drive with Browser's Project
+authorizer. Project revision and drive standing are rechecked under the Project
+transaction authority before publication. Non-operator agent callers stay in
+their recorded Project. [Pairing scopes](../../src-server/security/pairing-route-scopes.ts)
+and [MCP policy](../../src-server/tools/station-control-policy.ts) name the leaves.
+
+**State and failure.** A hidden Project staging directory holds the uploaded
+original and extracted frames. A validated manifest and fsynced JPEGs publish
+with one directory rename. Original bytes are removed on ordinary settlement.
+A durable private receipt records typed outcomes apart from the prunable
+ActionOperation ledger. In-process duplicate ids join; two imports run at once. The composed HTTP
+budget supplies a lazy byte-counting stream so preview, Project authority and
+service admission precede body reads. Refusals close the upload connection.
+The contracts module owns the shared upload route/limit policy; the Node-only
+`station-shared/http-upload` owner applies receive deadlines to API and CLI
+listeners while preserving ordinary limits and keep-alive timers.
+A restart status read reconciles a complete manifest or marks interruption;
+that request’s staging directory is cleaned, while unknown crash staging
+directories are retained. Cross-process execution
+coordination and cancellation after admission are not claimed. An admitted
+import retries a full recognizer queue with bounded backoff inside its
+transcription deadline; other terminal failures remain terminal.
+
+[SDK](../../packages/sdk/src/client/walkthroughs.ts),
+[CLI](../../packages/cli/src/commands/walkthrough.ts), and
+[MCP reads](../../src-server/tools/station-control-walkthrough-tools.ts) share
+HTTP fetchers. MCP reads images in bounded pages. The Activity operation row
+shows import progress and reopens the Project; no recording/review UI is added.
+See the [guide](../guides/walkthroughs.md#verification-limits) for evidence owners
+and explicit recognition, hosted and publication limits.
 
 ## TaskReviewThreads
 

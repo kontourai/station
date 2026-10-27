@@ -721,7 +721,10 @@ export function isPairingScopeSubset(
  */
 // Protocol 3 admits exact-turn inventory lineage. Older readers keep the
 // contribution-only shape; protocol-1 callers remain admitted.
-export const STATION_COMPAT_PROTOCOL_VERSION = 3;
+// Protocol 4 admits Session inventory tool-result rows whose outcome was never
+// observed (`terminalStatus: 'unresolved'`, #4178). Older readers validate
+// that vocabulary exactly, so they keep the omission.
+export const STATION_COMPAT_PROTOCOL_VERSION = 4;
 
 /**
  * Oldest client protocol this host still serves. A client advertising less
@@ -1196,6 +1199,11 @@ export interface EnvironmentSecurityRecord {
 export interface StationCapabilityFlags {
   /** SSH environment management (`src-server/services/ssh/`, `/api/ssh-environments`). */
   sshEnvironments?: boolean;
+  /**
+   * `GET /api/system/routes` (`station-routes.ts`): the addresses this Station
+   * reports it can be reached on, for a paired device to learn as routes.
+   */
+  connectionRoutes?: boolean;
   /**
    * Web Push subscribe/unsubscribe (`src-server/routes/operations/push-routes.ts`).
    * Absent on hosted deployments, whose push routes all answer 404 (#4177).

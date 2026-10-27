@@ -275,6 +275,10 @@ import {
 } from '../infra/resource-posture.js';
 import { withEngineMcpAccountOwner } from '../plugins/engine-mcp-oauth.js';
 import {
+  isPersonChatStart,
+  type ProjectChatDefaultsService,
+} from '../projects/project-chat-defaults.js';
+import {
   type PortableExecutionConsentIdentity,
   portableConsentOfStartedMetadata,
   RECEIVER_EXECUTION_REFUSAL_COPY,
@@ -1026,6 +1030,15 @@ interface OrchestrationServiceOptions {
    * Loaded per call, like the workspace default above.
    */
   resolveStationDefaultApprovalMode?: () => Promise<ApprovalMode | undefined>;
+  /**
+   * A Project's new-chat defaults (`ProjectChatDefaultsService`): the
+   * approval layer every session start in a Project reads, and the
+   * last-used record a person's successful chat start writes.
+   */
+  projectChatDefaults?: Pick<
+    ProjectChatDefaultsService,
+    'approvalDefault' | 'recordStart'
+  >;
   /**
    * #3157: `AppConfig.usageLimitAutoResume`, loaded per call like the
    * defaults above. Absent means off: an unattended resume spends quota.
@@ -2376,6 +2389,8 @@ export class OrchestrationService {
       // the credential-profile pin uses (`loadAgentExecutionConfig`).
       resolveAgentDefault: async (agentSlug) =>
         (await options.loadAgentExecutionConfig?.(agentSlug))?.approvalMode,
+      resolveProjectDefault: (project) =>
+        options.projectChatDefaults?.approvalDefault(project),
       // #2494: read from the stored start event directly, because
       // `readLatestSessionStartMetadata` strips the reserved record key.
       observedConfinement: (threadId) =>
@@ -2983,6 +2998,12 @@ export class OrchestrationService {
             ? startMetadata.expectedDefinitionFingerprint
             : undefined;
         const model = session.reportedModel ?? session.model;
+        const nextTurnStartsSession =
+          await this.conversationLineage.nextTurnStartsSession(
+            conversationId,
+            detail,
+            authority,
+          );
         return {
           sessionId: session.threadId,
           // Only `readCurrentConversationSession`'s reserved-tail fallback
@@ -3030,6 +3051,9 @@ export class OrchestrationService {
           // provider today.
           canContinue: canResolveConversationContinuation(detail),
           continuationPending: isConversationContinuationPending(detail),
+          ...(nextTurnStartsSession === undefined
+            ? {}
+            : { nextTurnStartsSession }),
           ...(detail.session.conversationActivity
             ? { activity: detail.session.conversationActivity }
             : {}),
@@ -4905,6 +4929,20 @@ export class OrchestrationService {
         : {}),
       ...(session.cwd ? { cwd: session.cwd } : {}),
     };
+  }
+
+  /**
+   * #4162: the metadata the session's latest start recorded (reserved keys
+   * stripped). Undefined for a session `authority` may not read.
+   */
+  readSessionStartMetadata(
+    threadId: string,
+    authority: SessionReadScope,
+  ): Record<string, unknown> | undefined {
+    this.initialize();
+    if (!this.sessionAuthz.canReadSession(threadId, authority))
+      return undefined;
+    return this.readLatestSessionStartMetadata(threadId);
   }
 
   /**
@@ -6844,6 +6882,19 @@ export class OrchestrationService {
                   },
                 }
               : {}),
+            ...(typeof postureInput.metadata?.projectSlug === 'string'
+              ? {
+                  project: {
+                    projectSlug: postureInput.metadata.projectSlug,
+                    ...(context.userId ? { userId: context.userId } : {}),
+                    lastUsedApplies: isPersonChatStart(
+                      postureInput,
+                      context,
+                      internal,
+                    ),
+                  },
+                }
+              : {}),
             modelOptions: postureInput.modelOptions,
             confinement,
           });
@@ -7319,7 +7370,8 @@ export class OrchestrationService {
               'Session start failed.',
             );
         },
-        recordStarted: (adapter, input) => {
+        recordStarted: (adapter, input, context, internal) => {
+          this.recordProjectChatStart(input, context, internal);
           this.modelLaunch.recordAcceptedModelLaunchPlan(
             adapter,
             this.modelLaunch.modelLaunchPlanFromInput(input),
@@ -10751,6 +10803,40 @@ export class OrchestrationService {
     }
   }
 
+  /**
+   * After a start succeeded: a person's interactive chat in a Project
+   * records what it started with, for a `last-used` Project's next chat
+   * (`project-chat-defaults.ts`). `input` is the prepared start, so its
+   * `modelOptions.approvalMode` is the mode the engine was actually given.
+   * Best effort: a failed write is logged and never fails the start.
+   */
+  private recordProjectChatStart(
+    input: ProviderSessionStartInput,
+    context: SessionCommandContext,
+    internal: SessionCommandInternalOptions | undefined,
+  ): void {
+    const recorder = this.options.projectChatDefaults;
+    if (!recorder || !isPersonChatStart(input, context, internal)) return;
+    const projectSlug = input.metadata?.projectSlug;
+    if (typeof projectSlug !== 'string' || !context.userId) return;
+    const agentSlug = input.metadata?.agentSlug;
+    void recorder
+      .recordStart({
+        projectSlug,
+        userId: context.userId,
+        ...(typeof agentSlug === 'string' ? { agentSlug } : {}),
+        ...(input.modelId ? { modelId: input.modelId } : {}),
+        approvalMode: input.modelOptions?.approvalMode,
+        startedAt: new Date().toISOString(),
+      })
+      .catch((error: unknown) => {
+        this.options.logger.warn('Project chat last-used record failed', {
+          threadId: input.threadId,
+          error: errorMessage(error),
+        });
+      });
+  }
+
   seedSessionRecord(input: {
     threadId: string;
     provider: EngineId;
@@ -12245,6 +12331,70 @@ export class OrchestrationService {
         this.readStartConfinementStamp(threadId),
       ) === 'workspace'
     );
+  }
+
+  /**
+   * A person's personal per-engine default for a NEW chat, sent by their
+   * composer as a hint rather than a pick. It is recorded as the
+   * conversation's decision (as a carried pick is, so later sessions keep it)
+   * only when nothing above it decides: no decision recorded yet, no Agent
+   * default, no Project layer. Full access is gated exactly as a carried
+   * pick is: without the caller's grant, a `never` that would apply is
+   * refused (`refused-full-access`), and one that would not apply is moot.
+   */
+  async recordPersonalApprovalDefault(input: {
+    threadId: string;
+    provider: EngineId;
+    connectionId?: string;
+    approvalMode: ApprovalMode;
+    agentSlug?: string;
+    projectSlug?: string;
+    userId?: string;
+    personChat: boolean;
+    mayGrantFullAccess: boolean;
+    clientOrigin?: ClientOrigin;
+    principal?: PrincipalRef;
+  }): Promise<
+    | { outcome: 'not-applied' }
+    | { outcome: 'refused-full-access' }
+    | { outcome: 'recorded'; result: SetApprovalModeResult }
+  > {
+    if (
+      input.approvalMode === 'connection-default' ||
+      !this.approvalKnobForThread(
+        input.threadId,
+        input.provider,
+        input.connectionId,
+      ) ||
+      this.approvalPosture.decision(input.threadId) ||
+      (await this.approvalPosture.decidesAbovePersonalDefault({
+        ...(input.agentSlug ? { agentSlug: input.agentSlug } : {}),
+        ...(input.projectSlug
+          ? {
+              project: {
+                projectSlug: input.projectSlug,
+                ...(input.userId ? { userId: input.userId } : {}),
+                lastUsedApplies: input.personChat,
+              },
+            }
+          : {}),
+        mayGrantFullAccess: input.mayGrantFullAccess,
+      }))
+    )
+      return { outcome: 'not-applied' };
+    if (input.approvalMode === 'never' && !input.mayGrantFullAccess)
+      return { outcome: 'refused-full-access' };
+    return {
+      outcome: 'recorded',
+      result: this.recordApprovalModeDecision({
+        threadId: input.threadId,
+        provider: input.provider,
+        approvalMode: input.approvalMode,
+        basedOnSequence: null,
+        ...(input.clientOrigin ? { clientOrigin: input.clientOrigin } : {}),
+        ...(input.principal ? { principal: input.principal } : {}),
+      }),
+    };
   }
 
   /**

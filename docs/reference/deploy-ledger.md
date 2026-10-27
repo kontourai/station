@@ -28,6 +28,12 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-27T10:25:49Z | nightly-desktop | 0.1.11-nightly.2491.1 | `6631433` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40480667915) |
+| 2026-10-27T10:25:45Z | nightly-android | 0.1.11-nightly.2491.1 | `6631433` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40480667915) |
+| 2026-10-27T09:37:03Z | nightly-npm | 0.11.0-nightly.2491.40480667915 | `6631433` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/40480667915) |
+| 2026-10-27T01:02:28Z | nightly-desktop | 0.1.11-nightly.2491 | `8ba48bf` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40424055540) |
+| 2026-10-27T01:02:24Z | nightly-android | 0.1.11-nightly.2491 | `8ba48bf` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40424055540) |
+| 2026-10-27T00:16:20Z | nightly-npm | 0.11.0-nightly.2491.40424055540 | `8ba48bf` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/40424055540) |
 | 2026-10-26T15:45:33Z | nightly-desktop | 0.1.11-nightly.2490 | `fc94935` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40340783898) |
 | 2026-10-26T15:45:29Z | nightly-android | 0.1.11-nightly.2490 | `fc94935` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40340783898) |
 | 2026-10-26T14:46:01Z | nightly-npm | 0.11.0-nightly.2490.40340783898 | `fc94935` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/40340783898) |
@@ -355,6 +361,177 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-27T10:25:49Z · nightly-desktop · 0.1.11-nightly.2491.1
+
+- Ship SHA: `663143356c0abef8fdb166fd488a188c2fb0544d`
+- Artifact built at: `2026-10-27T09:36:43.329Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 40480667915)
+
+### Changelog
+
+Commits since `8ba48bf` ([full sha](https://github.com/kontourai/station/commit/8ba48bfa3ea62dc5ca2d3ad2f88e8f9a9bd64428)):
+
+**Features**
+
+- [#4244](https://github.com/kontourai/station/pull/4244) feat(station-routes): reach a saved Station over every route it reports
+- [#4242](https://github.com/kontourai/station/pull/4242) feat(ui): drag phone sheets to expand or dismiss (device preview); show context use in the mobile Actions sheet
+- [#4241](https://github.com/kontourai/station/pull/4241) feat(settings): About page with licenses and legal; one spacing rhythm for settings cards
+
+**Fixes**
+
+- [#4250](https://github.com/kontourai/station/pull/4250) fix(runtime): restore the literal personal-host gate around Browser and device routes
+- [#4248](https://github.com/kontourai/station/pull/4248) fix(home): preserve archive directories and recorded legacy media
+- [#4194](https://github.com/kontourai/station/pull/4194) fix(chat): say when a reopened chat's next turn starts a Session (#4179)
+- [#4234](https://github.com/kontourai/station/pull/4234) fix(chat): derive live steering from native durability fidelity
+
+**Other**
+
+- [#4249](https://github.com/kontourai/station/pull/4249) test(contracts): pin existing conversation context refusal semantics
+- [#4243](https://github.com/kontourai/station/pull/4243) perf(mobile): lean entry, offline Chat, steady reconnects, revalidated reads
+- [#4245](https://github.com/kontourai/station/pull/4245) test(docs): serve atlas assets outside the DevTools pipe
+
+## 2026-10-27T10:25:45Z · nightly-android · 0.1.11-nightly.2491.1
+
+- Ship SHA: `663143356c0abef8fdb166fd488a188c2fb0544d`
+- Artifact built at: `2026-10-27T09:36:10.384Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 40480667915)
+
+### Changelog
+
+Commits since `8ba48bf` ([full sha](https://github.com/kontourai/station/commit/8ba48bfa3ea62dc5ca2d3ad2f88e8f9a9bd64428)):
+
+**Features**
+
+- [#4244](https://github.com/kontourai/station/pull/4244) feat(station-routes): reach a saved Station over every route it reports
+- [#4242](https://github.com/kontourai/station/pull/4242) feat(ui): drag phone sheets to expand or dismiss (device preview); show context use in the mobile Actions sheet
+- [#4241](https://github.com/kontourai/station/pull/4241) feat(settings): About page with licenses and legal; one spacing rhythm for settings cards
+
+**Fixes**
+
+- [#4250](https://github.com/kontourai/station/pull/4250) fix(runtime): restore the literal personal-host gate around Browser and device routes
+- [#4248](https://github.com/kontourai/station/pull/4248) fix(home): preserve archive directories and recorded legacy media
+- [#4194](https://github.com/kontourai/station/pull/4194) fix(chat): say when a reopened chat's next turn starts a Session (#4179)
+- [#4234](https://github.com/kontourai/station/pull/4234) fix(chat): derive live steering from native durability fidelity
+
+**Other**
+
+- [#4249](https://github.com/kontourai/station/pull/4249) test(contracts): pin existing conversation context refusal semantics
+- [#4243](https://github.com/kontourai/station/pull/4243) perf(mobile): lean entry, offline Chat, steady reconnects, revalidated reads
+- [#4245](https://github.com/kontourai/station/pull/4245) test(docs): serve atlas assets outside the DevTools pipe
+
+## 2026-10-27T09:37:03Z · nightly-npm · 0.11.0-nightly.2491.40480667915
+
+- Ship SHA: `663143356c0abef8fdb166fd488a188c2fb0544d`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.2491.40480667915 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `8ba48bf` ([full sha](https://github.com/kontourai/station/commit/8ba48bfa3ea62dc5ca2d3ad2f88e8f9a9bd64428)):
+
+**Features**
+
+- [#4244](https://github.com/kontourai/station/pull/4244) feat(station-routes): reach a saved Station over every route it reports
+- [#4242](https://github.com/kontourai/station/pull/4242) feat(ui): drag phone sheets to expand or dismiss (device preview); show context use in the mobile Actions sheet
+- [#4241](https://github.com/kontourai/station/pull/4241) feat(settings): About page with licenses and legal; one spacing rhythm for settings cards
+
+**Fixes**
+
+- [#4250](https://github.com/kontourai/station/pull/4250) fix(runtime): restore the literal personal-host gate around Browser and device routes
+- [#4248](https://github.com/kontourai/station/pull/4248) fix(home): preserve archive directories and recorded legacy media
+- [#4194](https://github.com/kontourai/station/pull/4194) fix(chat): say when a reopened chat's next turn starts a Session (#4179)
+- [#4234](https://github.com/kontourai/station/pull/4234) fix(chat): derive live steering from native durability fidelity
+
+**Other**
+
+- [#4249](https://github.com/kontourai/station/pull/4249) test(contracts): pin existing conversation context refusal semantics
+- [#4243](https://github.com/kontourai/station/pull/4243) perf(mobile): lean entry, offline Chat, steady reconnects, revalidated reads
+- [#4245](https://github.com/kontourai/station/pull/4245) test(docs): serve atlas assets outside the DevTools pipe
+
+## 2026-10-27T01:02:28Z · nightly-desktop · 0.1.11-nightly.2491
+
+- Ship SHA: `8ba48bfa3ea62dc5ca2d3ad2f88e8f9a9bd64428`
+- Artifact built at: `2026-10-27T00:16:31.935Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 40424055540)
+
+### Changelog
+
+Commits since `fc94935` ([full sha](https://github.com/kontourai/station/commit/fc94935b97e585390ff7d72fa96ad3b41e82cf0f)):
+
+**Features**
+
+- [#4167](https://github.com/kontourai/station/pull/4167) feat(projects): start new chats on a project's set or last-used model and approval mode
+- [#4203](https://github.com/kontourai/station/pull/4203) feat(inventory): list commands with no recorded result
+- [#4214](https://github.com/kontourai/station/pull/4214) feat(walkthroughs): narrated recordings agents can read, local speech, and preview gating
+- [#4127](https://github.com/kontourai/station/pull/4127) feat(continuity): preserve context and onboard scoped MCP clients
+- [#4173](https://github.com/kontourai/station/pull/4173) feat(review): wire gated Task Review (integration, lands last)
+- [#4157](https://github.com/kontourai/station/pull/4157) feat(tasks): capture browser screens in Task review
+- [#4158](https://github.com/kontourai/station/pull/4158) feat(tasks): send review threads to the lead agent
+
+**Fixes**
+
+- [#4231](https://github.com/kontourai/station/pull/4231) fix(orchestration): keep leaked attachment keys out of retained turn input so terminals record
+- [#4229](https://github.com/kontourai/station/pull/4229) fix(ci): retain bounded corpus failure captures and exit evidence
+- [#4228](https://github.com/kontourai/station/pull/4228) fix(runtime): retain home custody until EventStore closes
+
+## 2026-10-27T01:02:24Z · nightly-android · 0.1.11-nightly.2491
+
+- Ship SHA: `8ba48bfa3ea62dc5ca2d3ad2f88e8f9a9bd64428`
+- Artifact built at: `2026-10-27T00:16:18.122Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 40424055540)
+
+### Changelog
+
+Commits since `fc94935` ([full sha](https://github.com/kontourai/station/commit/fc94935b97e585390ff7d72fa96ad3b41e82cf0f)):
+
+**Features**
+
+- [#4167](https://github.com/kontourai/station/pull/4167) feat(projects): start new chats on a project's set or last-used model and approval mode
+- [#4203](https://github.com/kontourai/station/pull/4203) feat(inventory): list commands with no recorded result
+- [#4214](https://github.com/kontourai/station/pull/4214) feat(walkthroughs): narrated recordings agents can read, local speech, and preview gating
+- [#4127](https://github.com/kontourai/station/pull/4127) feat(continuity): preserve context and onboard scoped MCP clients
+- [#4173](https://github.com/kontourai/station/pull/4173) feat(review): wire gated Task Review (integration, lands last)
+- [#4157](https://github.com/kontourai/station/pull/4157) feat(tasks): capture browser screens in Task review
+- [#4158](https://github.com/kontourai/station/pull/4158) feat(tasks): send review threads to the lead agent
+
+**Fixes**
+
+- [#4231](https://github.com/kontourai/station/pull/4231) fix(orchestration): keep leaked attachment keys out of retained turn input so terminals record
+- [#4229](https://github.com/kontourai/station/pull/4229) fix(ci): retain bounded corpus failure captures and exit evidence
+- [#4228](https://github.com/kontourai/station/pull/4228) fix(runtime): retain home custody until EventStore closes
+
+## 2026-10-27T00:16:20Z · nightly-npm · 0.11.0-nightly.2491.40424055540
+
+- Ship SHA: `8ba48bfa3ea62dc5ca2d3ad2f88e8f9a9bd64428`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.2491.40424055540 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `fc94935` ([full sha](https://github.com/kontourai/station/commit/fc94935b97e585390ff7d72fa96ad3b41e82cf0f)):
+
+**Features**
+
+- [#4167](https://github.com/kontourai/station/pull/4167) feat(projects): start new chats on a project's set or last-used model and approval mode
+- [#4203](https://github.com/kontourai/station/pull/4203) feat(inventory): list commands with no recorded result
+- [#4214](https://github.com/kontourai/station/pull/4214) feat(walkthroughs): narrated recordings agents can read, local speech, and preview gating
+- [#4127](https://github.com/kontourai/station/pull/4127) feat(continuity): preserve context and onboard scoped MCP clients
+- [#4173](https://github.com/kontourai/station/pull/4173) feat(review): wire gated Task Review (integration, lands last)
+- [#4157](https://github.com/kontourai/station/pull/4157) feat(tasks): capture browser screens in Task review
+- [#4158](https://github.com/kontourai/station/pull/4158) feat(tasks): send review threads to the lead agent
+
+**Fixes**
+
+- [#4231](https://github.com/kontourai/station/pull/4231) fix(orchestration): keep leaked attachment keys out of retained turn input so terminals record
+- [#4229](https://github.com/kontourai/station/pull/4229) fix(ci): retain bounded corpus failure captures and exit evidence
+- [#4228](https://github.com/kontourai/station/pull/4228) fix(runtime): retain home custody until EventStore closes
 
 ## 2026-10-26T15:45:33Z · nightly-desktop · 0.1.11-nightly.2490
 
