@@ -298,6 +298,18 @@ export function projectRuntimeEventsToMessages(
   // are only unique per session, and a lineage window folds several, so an
   // exact-id approval binds only a part from the request's own session.
   const toolPartThread = new WeakMap<MessagePart, string>();
+  // docs/design/event-content-spill.md: the request awaiting each call, so a
+  // bound tool.started that arrives later with spilled arguments marks the
+  // card as needing a load before Allow (rather than waiting for a 409).
+  const approvalRequestByPart = new WeakMap<
+    MessagePart,
+    Extract<CanonicalRuntimeEvent, { method: 'request.opened' }>
+  >();
+  const markLateBoundContent = (part: MessagePart) => {
+    const request = approvalRequestByPart.get(part);
+    if (request && hasRuntimeEventContentRefs(part.args))
+      part.approvalContentEvent = request;
+  };
   const approvalKey = (threadId: string, requestId: string) =>
     `${threadId}\u0000${requestId}`;
   /**
@@ -939,6 +951,7 @@ export function projectRuntimeEventsToMessages(
             if (ev.toolKind !== undefined) lateExisting.toolKind = ev.toolKind;
             if (ev.arguments !== undefined) lateExisting.args = ev.arguments;
             if (ev.spilledContent) lateExisting.contentThreadId = ev.threadId;
+            markLateBoundContent(lateExisting);
             lateExisting.state = 'call';
             break;
           }
@@ -971,6 +984,7 @@ export function projectRuntimeEventsToMessages(
           if (ev.toolKind !== undefined) existing.toolKind = ev.toolKind;
           if (ev.arguments !== undefined) existing.args = ev.arguments;
           if (ev.spilledContent) existing.contentThreadId = ev.threadId;
+          markLateBoundContent(existing);
           if (ev.purpose !== undefined) existing.purpose = ev.purpose;
           existing.state = 'call';
           break;
@@ -1313,6 +1327,7 @@ export function projectRuntimeEventsToMessages(
           );
           // docs/design/event-content-spill.md: what a surface must load
           // whole before it offers Allow.
+          approvalRequestByPart.set(target, ev);
           if (ev.spilledContent || hasRuntimeEventContentRefs(target.args))
             target.approvalContentEvent = ev;
           else delete target.approvalContentEvent;

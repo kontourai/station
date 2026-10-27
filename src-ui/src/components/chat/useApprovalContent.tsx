@@ -1,4 +1,7 @@
-import { collectRuntimeEventContentRefs } from '@kontourai/station-contracts/runtime-event-content';
+import {
+  collectRuntimeEventContentRefs,
+  hasRuntimeEventContentRefs,
+} from '@kontourai/station-contracts/runtime-event-content';
 import { useApprovalContentQuery } from '@kontourai/station-sdk/runtime-event-content';
 import {
   type ToolRequestServerGrant,
@@ -72,7 +75,10 @@ export function useApprovalContent(
   const needed =
     active &&
     Boolean(threadId && requestId) &&
-    (Boolean(toolCall.approvalContentEvent) || marked > 0);
+    (Boolean(toolCall.approvalContentEvent) ||
+      // The bound call's arguments arrived spilled after the request.
+      hasRuntimeEventContentRefs(toolCall.args) ||
+      marked > 0);
   const [gate, setGate] = useState<{
     key: string;
     gate: ApprovalContentGate;

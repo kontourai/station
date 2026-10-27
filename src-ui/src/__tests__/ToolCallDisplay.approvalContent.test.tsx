@@ -80,6 +80,31 @@ const card = () =>
     />,
   );
 
+describe('approval card whose bound call arrived spilled after the request', () => {
+  test('offers only Deny while loading, though the request itself was not spilled', () => {
+    query.state = {};
+    query.inputs = [];
+    render(
+      <ToolCallDisplay
+        toolCall={{
+          type: 'tool-invocation',
+          toolCallId: 'toolu_1',
+          toolName: 'Write',
+          args: { file_path: '/repo/big.ts', content: ref },
+          needsApproval: true,
+          state: 'awaiting-approval',
+          approvalId: 'req-big',
+          approvalThreadId: 'thread-1',
+          approvalEventId: 'open-big',
+        }}
+        onApprove={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Deny' })).toBeTruthy();
+  });
+});
+
 describe('approval card with content stored out of line', () => {
   beforeEach(() => {
     query.state = {};
