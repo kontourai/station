@@ -1,18 +1,16 @@
 import {
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   realpathSync,
   renameSync,
-  rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { crc32, deflateSync } from 'node:zlib';
 import { hostImagePathFromDestination } from '@kontourai/station-contracts/chat-host-images';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   captureHostImages,
   HOST_IMAGE_MAX_BYTES,
@@ -57,6 +55,8 @@ function encodePng(width: number, height: number, noise = false): Buffer {
     pngChunk('IEND'),
   ]);
 }
+
+const makeTempDir = trackTempDirs();
 
 describe('host image destinations', () => {
   test('reads inline, angle-bracketed, titled and reference images, not code', () => {
@@ -112,14 +112,12 @@ describe('captureHostImages', () => {
   let outside: string;
 
   beforeEach(() => {
-    base = realpathSync(mkdtempSync(join(tmpdir(), 'host-images-')));
+    base = realpathSync(makeTempDir('host-images-'));
     root = join(base, 'workspace');
     outside = join(base, 'outside');
     mkdirSync(root);
     mkdirSync(outside);
   });
-
-  afterEach(() => rmSync(base, { recursive: true, force: true }));
 
   const capture = (paths: string[], roots = [root]) =>
     captureHostImages({ paths, roots });

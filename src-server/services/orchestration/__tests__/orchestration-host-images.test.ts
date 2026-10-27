@@ -1,12 +1,4 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import { CHAT_HOST_IMAGES_PREVIEW_ID } from '@kontourai/station-contracts/chat-host-images';
@@ -14,6 +6,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
   ProviderAdapterMetadata,
   ProviderAdapterShape,
@@ -124,6 +117,8 @@ async function waitUntil<T>(
   }
 }
 
+const makeTempDir = trackTempDirs();
+
 describe('chat-host-images through OrchestrationService', () => {
   let base: string;
   let workspace: string;
@@ -133,9 +128,7 @@ describe('chat-host-images through OrchestrationService', () => {
   let previews: FeaturePreviewRegistry;
 
   beforeEach(() => {
-    base = realpathSync(
-      mkdtempSync(join(tmpdir(), 'orchestration-host-images-')),
-    );
+    base = realpathSync(makeTempDir('orchestration-host-images-'));
     workspace = join(base, 'workspace');
     mkdirSync(workspace);
     writeFileSync(join(workspace, 'comparison.png'), FIXTURE);
@@ -164,7 +157,6 @@ describe('chat-host-images through OrchestrationService', () => {
   afterEach(async () => {
     await service.shutdown();
     store.close();
-    rmSync(base, { recursive: true, force: true });
     receiptBus.resetForTest();
   });
 

@@ -1,15 +1,13 @@
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   realpathSync,
-  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { HostImageTurnCapture } from '../../orchestration/host-image-turn-capture.js';
 import {
   engineSessionTmpDir,
@@ -21,13 +19,15 @@ import {
   sessionTmpRoot,
 } from '../session-tmpdir.js';
 
+const makeTempDir = trackTempDirs();
+
 describe('per-session engine TMPDIR (chat-host-images)', () => {
   let home: string;
   let previousHome: string | undefined;
   let uninstall: (() => void) | undefined;
 
   beforeEach(() => {
-    home = realpathSync(mkdtempSync(join(tmpdir(), 'session-tmpdir-')));
+    home = realpathSync(makeTempDir('session-tmpdir-'));
     previousHome = process.env.STATION_HOME;
     process.env.STATION_HOME = home;
   });
@@ -37,7 +37,6 @@ describe('per-session engine TMPDIR (chat-host-images)', () => {
     uninstall = undefined;
     if (previousHome === undefined) delete process.env.STATION_HOME;
     else process.env.STATION_HOME = previousHome;
-    rmSync(home, { recursive: true, force: true });
   });
 
   test('no policy, or a policy that refuses, leaves the shared directory in place', () => {

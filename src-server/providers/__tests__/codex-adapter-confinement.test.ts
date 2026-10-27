@@ -9,14 +9,8 @@
  * its `sandbox` replaced where a case needs Codex to report something else.
  */
 import { EventEmitter } from 'node:events';
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-} from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, realpathSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import type { ConfinementPlan } from '@kontourai/station-contracts/execution-confinement';
@@ -282,6 +276,8 @@ function threadIdOf(result: Record<string, unknown>): unknown {
   return (result.thread as { id?: unknown } | undefined)?.id;
 }
 
+const makeSessionHome = trackTempDirs();
+
 describe('#2494: Codex confinement posture is read back from its response', () => {
   test('the captured 0.155.1 response really reports workspaceWrite for a workspace never start', async () => {
     // The fixture shape this suite rests on: Station asked for
@@ -507,7 +503,7 @@ describe('#2494: Codex confinement posture is read back from its response', () =
     );
 
     test('chat-host-images: a session the preview admits spawns with its own TMPDIR, and a root there is still confined', async () => {
-      const home = mkdtempSync(join(tmpdir(), 'codex-session-tmp-'));
+      const home = makeSessionHome('codex-session-tmp-');
       const previousHome = process.env.STATION_HOME;
       process.env.STATION_HOME = home;
       const uninstall = installSessionTmpDirPolicy(
@@ -537,7 +533,6 @@ describe('#2494: Codex confinement posture is read back from its response', () =
         uninstall();
         if (previousHome === undefined) delete process.env.STATION_HOME;
         else process.env.STATION_HOME = previousHome;
-        rmSync(home, { recursive: true, force: true });
       }
     });
 
