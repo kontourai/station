@@ -264,7 +264,12 @@ describe('workload manager budgets (fake systemd manager)', () => {
     }
     const calls: string[][] = [];
     const controlGroups = new Map<string, string>();
-    const control = { failSetProperty: false, failAttach: false };
+    const control = {
+      failSetProperty: false,
+      failAttach: false,
+      /** The manager answers but the holder never reaches the scope. */
+      attachWithoutMove: false,
+    };
     // A stand-in holder: attaching writes its pid into the scope's fixture
     // cgroup.procs, as the user manager would move it there.
     const holders: Array<{ pid: number; killed: string[]; unit?: string }> = [];
@@ -288,6 +293,7 @@ describe('workload manager budgets (fake systemd manager)', () => {
         },
         attach: async (unit, pid) => {
           if (control.failAttach) throw new Error('Access denied');
+          if (control.attachWithoutMove) return '';
           const group = controlGroups.get(unit);
           if (!group) throw new Error('Unit not found');
           await mkdir(`${cgroupRoot}${group}`, { recursive: true });
@@ -636,6 +642,19 @@ describe('workload manager budgets (fake systemd manager)', () => {
     await closeChildWorkload(process.pid);
     expect(holders[1]).toMatchObject({ killed: ['SIGKILL'] });
     expect(holders[1]?.unit).toBeUndefined();
+
+    // An attach that answers without moving it is caught by the cgroup.procs
+    // check: the holder is killed, not trusted.
+    control.failAttach = false;
+    control.attachWithoutMove = true;
+    const unmoved = launch('thread-unmoved');
+    const unmovedUnit = unitOf(unmoved.args);
+    controlGroups.set(unmovedUnit, `/app.slice/${unmovedUnit}`);
+    await mkdir(`${cgroupRoot}/app.slice/${unmovedUnit}`, { recursive: true });
+    await writeFile(`${cgroupRoot}/app.slice/${unmovedUnit}/cgroup.procs`, '');
+    trackChildWorkload(unmoved, process.pid);
+    await closeChildWorkload(process.pid);
+    expect(holders[2]).toMatchObject({ killed: ['SIGKILL'] });
   });
 
   test("an engine killed alone is attributed from its own scope's count, read before the scope is stopped", async () => {
