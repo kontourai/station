@@ -317,6 +317,29 @@ describe('v5 room contract boundaries', () => {
       ),
     ).toBe('station.project-task-room/v4');
   });
+  test('every selected version parses the body it was selected for', () => {
+    const bodies = [
+      message,
+      { ...message, attachments: [] },
+      { ...message, attachments: [attachment] },
+      { ...message, mentions: [mention] },
+    ];
+    for (const previous of [
+      'station.project-task-room/v2',
+      'station.project-task-room/v3',
+      'station.project-task-room/v4',
+      PROJECT_TASK_ROOM_SCHEMA_VERSION,
+    ] as const) {
+      for (const body of bodies) {
+        const version = projectTaskRoomWriteSchemaVersion(
+          previous,
+          operator,
+          body,
+        );
+        expect(parseProjectTaskRoomHumanMessage(body, version)).toEqual(body);
+      }
+    }
+  });
   test('selects the write version directly from append lifecycle bodies', () => {
     const bodies: ProjectTaskRoomAppendBody[] = [
       {

@@ -258,7 +258,7 @@ export function projectTaskRoomWriteSchemaVersion(
     return PROJECT_TASK_ROOM_SCHEMA_VERSION;
   if (
     previous === 'station.project-task-room/v4' ||
-    (body.kind === 'human-message' && !!body.attachments?.length)
+    (body.kind === 'human-message' && body.attachments !== undefined)
   )
     return 'station.project-task-room/v4';
   if (
