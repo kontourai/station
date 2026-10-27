@@ -204,6 +204,20 @@ header onto a second line (#4192). This is separate from the compact Basis/answe
 above. Selecting a row reveals detail inline, within the existing scrollable
 reader; it does not add another modal. Closing returns focus to the opener.
 
+### Coding tools on phones
+
+The Coding workbench uses the shared mobile predicate to replace the desktop
+rail with a header tool picker. Its Tools Dialog lists the current host's panes
+with labels and counts; the same navigation owner selects them. The tool gets
+the full workbench width. See [mobile tool navigation](../design/placement.md#mobile-tool-navigation-2026-10-27).
+
+A tool can use [ToolControls](../../src-ui/src/components/ToolControls.tsx) for
+contextual controls that float within its own scrolling region. Render them
+only for the active task, as File preview does for Go to line. The surface is
+sticky near that region's top so its controls stay clear of a bottom keyboard;
+its content must supply labels, dismissal, and 44px touch targets. Keep terminal
+accessory keys in their existing row rather than adding a second floating dock.
+
 ## Controls and enforcement
 
 Use `.tap-target` for compact interactive controls; the local floor is 44 by

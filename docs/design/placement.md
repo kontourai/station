@@ -38,9 +38,37 @@ The current `resolveLayoutChatPlacement` returns `center` for the built-in
 Coding layout on every device, including phones and bottom-only tablets.
 The workbench owns Chat and suspends the ambient Chat surface; crossing 768px
 does not transfer Chat between those two owners. The wide presentation is
-selected by the 1280px viewport query, independent of pointer type. Below it,
+selected by the 1280px viewport query outside the shared mobile predicate.
+Short coarse-pointer viewports retain the single-tool mobile presentation. Below it,
 tools are drill-ins; at or above it, the existing side/lower panels apply.
 This source contract does not renew browser or native geometry qualification.
+
+## Mobile tool navigation (2026-10-27)
+
+On a phone, the Coding workbench replaces its trailing icon rail and breadcrumb
+with a compact header: Inbox on Chat, Chat when a tool is open, and the current
+tool's labeled picker. The picker opens the shared Dialog as a bottom sheet.
+It lists Chat and the host's pane instances in the layout's declared order,
+including added panes, changed-file counts, the Browser launcher when available,
+and Add tool when the host can open its catalog. Choosing a pane uses the same
+canonical navigation and unsaved-change handling as the desktop rail. Dismissal
+does not select anything. Existing pane mounting and session ownership remain
+with the host; the picker does not recreate terminal sessions or chat drafts.
+Desktop and tablet rail behavior and the 1280px side/lower panel fold are retained.
+
+Tool-specific controls belong inside their tool, separate from this picker.
+[ToolControls](../../src-ui/src/components/ToolControls.tsx) supplies a sticky,
+floating surface within the tool's scroll boundary. File preview's Go to line
+form uses it only while requested; terminal accessory keys retain their existing
+keyboard-adjacent row. The shared surface does not add tool actions or server
+operations. This is a responsive presentation of existing capabilities rather
+than a new preview capability.
+
+Mounted browser evidence is in
+[coding-mobile-tools.browser.test.tsx](../../src-ui/src/__tests__/coding-mobile-tools.browser.test.tsx);
+it covers phone tool selection, full-width content, draft preservation, dismissal,
+and desktop resizing in both themes. Its Chat and tool occupants are fixtures;
+it does not establish live terminal, provider, or native-shell behavior.
 
 ## The two layers
 
