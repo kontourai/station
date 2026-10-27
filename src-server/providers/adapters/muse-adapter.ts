@@ -1158,6 +1158,11 @@ export class MuseAdapter implements ProviderAdapterShape {
       ...(serve ? { serve } : {}),
     };
     this.sessions.set(input.threadId, record);
+    // chat-host-images: a `muse exec` session spawns its process per turn,
+    // after the first turn's instruction is composed. Its temp folder (the
+    // one every turn's exec gets) is created and recorded now, at the start,
+    // so that instruction can name it. A serve host recorded its own above.
+    if (!serve) engineSessionTmpDir(input.threadId);
     const transportMetadata = serveStarted
       ? {
           museTransport: 'serve',

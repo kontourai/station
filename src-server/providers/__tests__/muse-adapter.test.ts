@@ -19,6 +19,12 @@ import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import {
+  installSessionTmpDirPolicy,
+  sessionTempRoot,
+  sessionTmpDirPath,
+} from '../../services/infra/session-tmpdir.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import type { ProviderAdapterShape } from '../adapter-shape.js';
 import { SendTurnRefusedError } from '../adapter-shape.js';
@@ -219,6 +225,8 @@ function createHarness(overrides: Partial<MuseAdapterOptions> = {}): Harness {
   return harness;
 }
 
+const makeSessionHome = trackTempDirs();
+
 describe('MuseAdapter', () => {
   afterEach(() => {
     mockProviderOpsAdd.mockClear();
@@ -285,6 +293,28 @@ describe('MuseAdapter', () => {
     harness.processes[0].exit(0);
     await flushIo();
     expect(existsSync(path)).toBe(false);
+  });
+
+  test('chat-host-images: an exec session records its temp folder at start, before any turn', async () => {
+    const home = makeSessionHome('muse-session-tmp-');
+    vi.stubEnv('STATION_HOME', home);
+    const uninstall = installSessionTmpDirPolicy(() => true);
+    try {
+      const harness = createHarness();
+      await harness.adapter.startSession({
+        provider: 'muse',
+        threadId: 'thread-muse-tmp',
+        cwd: '/tmp/project',
+        modelId: 'muse-spark-1.2-contributor',
+      });
+      expect(harness.processes).toHaveLength(0);
+      expect(sessionTempRoot('thread-muse-tmp')).toBe(
+        sessionTmpDirPath('thread-muse-tmp', home),
+      );
+    } finally {
+      uninstall();
+      vi.unstubAllEnvs();
+    }
   });
 
   test('startSession spawns nothing and publishes the canonical lifecycle', async () => {
