@@ -18,7 +18,7 @@ import type { ProfileCredentialStore } from './profile-credentials.js';
  * pending dialog) and reports the cause instead of blocking forever.
  */
 
-export const MACOS_SECURITY_TOOL = '/usr/bin/security';
+const MACOS_SECURITY_TOOL = '/usr/bin/security';
 /** `security` exits 44 for errSecItemNotFound. */
 const ITEM_NOT_FOUND_EXIT = 44;
 /** `security` exits 128 when the user denies or cancels the access dialog. */
@@ -28,8 +28,8 @@ const USER_CANCELED_EXIT = 128;
  * non-interactive caller that exceeds this is waiting on a dialog nobody can
  * answer. An interactive caller gets time to find and answer that dialog.
  */
-export const NON_INTERACTIVE_KEYCHAIN_TIMEOUT_MS = 5_000;
-export const INTERACTIVE_KEYCHAIN_TIMEOUT_MS = 120_000;
+const NON_INTERACTIVE_KEYCHAIN_TIMEOUT_MS = 5_000;
+const INTERACTIVE_KEYCHAIN_TIMEOUT_MS = 120_000;
 /** `security -i` reads one command per line into a 4096-byte buffer. */
 const INTERACTIVE_LINE_LIMIT_BYTES = 4096;
 /**
