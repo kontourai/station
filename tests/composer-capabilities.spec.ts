@@ -426,6 +426,53 @@ for (const [label, viewport] of [
     await evidence(page, testInfo, `start-composer-sent-${label}.png`);
   });
 
+  test(`${label}: full access picked at Start rides the new chat's first send`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize(
+      label === 'desktop' ? { width: 1440, height: 900 } : viewport,
+    );
+    const executionRequests: Array<Record<string, unknown>> = [];
+    await installMockOrchestrationSse(page);
+    await seedRoutes(page, executionRequests);
+    const { composer, started } = await openStartComposer(page, label);
+
+    await composer.getByRole('button', { name: /^Permissions: / }).click();
+    const sheet = page.getByRole('dialog', { name: 'Approval mode' });
+    await expect(sheet).toBeVisible();
+    await evidence(
+      page,
+      testInfo,
+      `start-composer-approval-sheet-${label}.png`,
+    );
+    // A person taps the option's row (its label); choosing full access
+    // swaps the list for its confirmation.
+    await sheet.getByText('Never ask (full access)', { exact: true }).click();
+    await sheet.getByRole('button', { name: 'Enable full access' }).click();
+    await expect(sheet).toBeHidden();
+    await expect(
+      composer.getByRole('button', {
+        name: /^Permissions: Full access\. Chosen for this chat/,
+      }),
+    ).toBeVisible();
+    await evidence(page, testInfo, `start-composer-approval-${label}.png`);
+
+    await composer
+      .getByRole('textbox', { name: 'What would you like done?' })
+      .fill('go');
+    await composer.getByRole('button', { name: 'Start', exact: true }).click();
+    await started();
+    await waitForMockOrchestrationSse(page);
+    await expect
+      .poll(() => executionRequests.length, { timeout: 15_000 })
+      .toBe(1);
+    expect(executionRequests[0]).toMatchObject({
+      message: 'go',
+      setApprovalMode: 'never',
+      setApprovalModeBasedOn: null,
+    });
+  });
+
   test(`${label}: the unavailable microphone dialog contains reverse Tab from its panel`, async ({
     page,
   }) => {

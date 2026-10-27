@@ -39,6 +39,7 @@ import type {
 } from '../../lib/newChatIntent';
 import type { SkillExperienceDraft } from '../../lib/skill-experience-draft';
 import { TASK_SHAPING_INSTRUCTION } from '../../lib/task-shaping';
+import type { ApprovalMode } from '../../utils/approvalMode';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import {
   type EffectiveModelSource,
@@ -179,6 +180,8 @@ interface NewChatModalProps {
     /** Files for the first message (passed only when there are some). */
     initialFiles?: File[],
     ambientContext?: string,
+    /** The Permissions chip's pick, queued on the chat that opens. */
+    approvalMode?: ApprovalMode,
   ) => void | Promise<void>;
   onClose: () => void;
   onTaskStarted?: () => void;
@@ -260,6 +263,9 @@ export function NewChatModal({
   // In the automatic start, "Chat options" (or a start that cannot use
   // Home's choice) drops back to the composer, prompt and all.
   const [showChatOptions, setShowChatOptions] = useState(false);
+  const [approvalPick, setApprovalPick] = useState<ApprovalMode | undefined>(
+    startSelection?.approvalMode,
+  );
   const automaticMode = startWithDefault && !mode && !showChatOptions;
   const experienceInventory = useSkillExperienceInventoryQuery({
     enabled: !mode && !automaticMode,
@@ -953,9 +959,11 @@ export function NewChatModal({
         boolean?,
         File[]?,
         string?,
+        ApprovalMode?,
       ] = [...startOptions];
       if (startFiles.length) selectTail[5] = startFiles;
       if (shaping) selectTail[6] = TASK_SHAPING_INSTRUCTION;
+      if (approvalPick) selectTail[7] = approvalPick;
       try {
         if (composer && submitInFlight.current) return;
         if (composer) {
@@ -1312,6 +1320,9 @@ export function NewChatModal({
             selectionModel.projectChatDefaults?.approvalMode.resolved,
           approvalProjectDefaultUnavailable:
             selectionModel.projectChatDefaultsUnavailable,
+          approvalPick,
+          onApprovalPick: setApprovalPick,
+          approvalSheetLayer: 'dialog',
         };
   const projectChip: StartProjectChip = contextPending
     ? { status: 'loading' }
