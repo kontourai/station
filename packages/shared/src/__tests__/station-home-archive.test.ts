@@ -25,6 +25,7 @@ import {
   STATION_HOME_BACKUP_MANIFEST,
   STATION_HOME_RECOVERY_RECORD,
   StationHomeArchiveError,
+  type StationHomeBackupManifest,
 } from '../station-home-archive.js';
 import { acquireStationHomeRuntimeLease } from '../station-home-lifecycle.js';
 import {
@@ -444,6 +445,59 @@ describe('StationHomeArchive', () => {
       ).toBe('current');
     },
   );
+
+  it('restores a complete v1 archive that recorded media tools', () => {
+    const parent = root();
+    const home = join(parent, 'home');
+    ensureStationHomeSchemaSync(home);
+    const marker = readFileSync(join(home, STATION_HOME_SCHEMA_FILE));
+    writeFileSync(join(home, 'current.txt'), 'current state');
+    const backupDir = join(parent, 'legacy-backup');
+    mkdirSync(join(backupDir, 'home', 'media-tools'), { recursive: true });
+    const entries = [
+      { path: [STATION_HOME_SCHEMA_FILE], bytes: marker },
+      { path: ['media-tools', 'tool'], bytes: Buffer.from('saved tool bytes') },
+    ];
+    for (const entry of entries)
+      writeFileSync(join(backupDir, 'home', ...entry.path), entry.bytes, {
+        mode: 0o600,
+      });
+    const manifest: StationHomeBackupManifest = {
+      schemaVersion: 'station.home-backup/v1',
+      homeSchemaVersion: JSON.parse(marker.toString('utf8')).version,
+      createdAt: '2026-09-05T00:00:00.000Z',
+      files: entries.map(({ path, bytes }) => ({
+        path,
+        size: bytes.length,
+        sha256: createHash('sha256').update(bytes).digest('hex'),
+        mode: 0o600,
+      })),
+      totalBytes: entries.reduce(
+        (total, entry) => total + entry.bytes.length,
+        0,
+      ),
+    };
+    writeFileSync(
+      join(backupDir, STATION_HOME_BACKUP_MANIFEST),
+      JSON.stringify(manifest),
+    );
+
+    try {
+      restoreStationHomeBackup({ backupDir, homeDir: home, confirm: true });
+    } catch (error) {
+      expect(readFileSync(join(home, 'current.txt'), 'utf8')).toBe(
+        'current state',
+      );
+      expect(readFileSync(join(home, STATION_HOME_SCHEMA_FILE))).toEqual(
+        marker,
+      );
+      throw error;
+    }
+    expect(readFileSync(join(home, 'media-tools', 'tool'), 'utf8')).toBe(
+      'saved tool bytes',
+    );
+    expect(existsSync(join(home, 'current.txt'))).toBe(false);
+  });
 
   it('reads a v1 backup without inventing directory history', () => {
     const fixture = homeFixture();
