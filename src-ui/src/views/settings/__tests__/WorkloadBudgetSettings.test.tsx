@@ -81,7 +81,14 @@ describe('WorkloadBudgetSettings', () => {
     fireEvent.change(screen.getByLabelText('Per-engine memory (MiB)'), {
       target: { value: '6144' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Save budgets' }));
+    const save = screen.getByRole('button', { name: 'Save budgets' });
+    // Both actions share the responsive action row (wrap, 44px, focus order).
+    const row = save.closest('.responsive-surface-actions');
+    expect(row).not.toBeNull();
+    expect(
+      row?.contains(screen.getByRole('button', { name: 'Discard changes' })),
+    ).toBe(true);
+    fireEvent.click(save);
     await waitFor(() =>
       expect(state.mutate).toHaveBeenCalledWith({
         memoryMiB: 6144,

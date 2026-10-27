@@ -7,6 +7,7 @@ import {
 } from '@kontourai/station-sdk';
 import { type ReactNode, useEffect, useState } from 'react';
 import { Button } from '../../components/Button';
+import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
 import { ErrorState, SkeletonBlock } from '../../components/state';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 
@@ -153,7 +154,7 @@ function WorkloadBudgetEditor() {
             {update.error.message}
           </p>
         )}
-        <div className="workload-budgets__actions">
+        <ResponsiveSurfaceActions className="workload-budgets__actions">
           <Button
             variant="primary"
             disabled={!dirty || !data.settingsWritable}
@@ -176,7 +177,7 @@ function WorkloadBudgetEditor() {
           >
             Discard changes
           </Button>
-        </div>
+        </ResponsiveSurfaceActions>
       </>
     );
   }
