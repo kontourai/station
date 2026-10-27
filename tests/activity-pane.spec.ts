@@ -55,6 +55,7 @@ import {
   showSurfaceInEmptyRegion,
   surfaceDockShell,
 } from './helpers/region-placement';
+import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 
 /** The primary area's own heading, which only a `main` occupant renders. */
 function mainHeading(page: import('@playwright/test').Page, name: string) {
@@ -647,6 +648,26 @@ async function expectFooterControlsApart(
       expect(overlaps(box, otherBox), `${name} overlaps ${other}`).toBe(false);
 }
 
+/**
+ * One row in reading order: each control starts at or after the end of the
+ * one before it, on the same vertical centre.
+ */
+async function expectOneRowInOrder(controls: Record<string, Locator>) {
+  const boxes: [string, Box][] = [];
+  for (const [name, control] of Object.entries(controls))
+    boxes.push([name, (await control.boundingBox()) as Box]);
+  for (const [index, [name, box]] of boxes.slice(1).entries()) {
+    const [previousName, previous] = boxes[index];
+    expect(box.x, `${name} after ${previousName}`).toBeGreaterThanOrEqual(
+      previous.x + previous.width - 0.5,
+    );
+    expect(
+      Math.abs(box.y + box.height / 2 - (previous.y + previous.height / 2)),
+      `${name} on ${previousName}'s row`,
+    ).toBeLessThanOrEqual(1);
+  }
+}
+
 /** A footer capture, kept in the gallery directory when one is given. */
 async function captureFooter(
   target: Locator,
@@ -672,7 +693,7 @@ async function captureFooter(
  * the 216px expanded sidebar in both themes, on the collapsed rail (where
  * Schedule and Customize move behind Sidebar utilities while Updates and the
  * account stay on the rail) and in the phone drawer at 390 and 320px, where
- * every control takes the 44px touch floor. Geometry from the rendered page,
+ * the row keeps its order and every control takes the 44px touch floor. Geometry from the rendered page,
  * not class names.
  */
 fixtureTest.describe('Sidebar footer controls', () => {
@@ -707,20 +728,7 @@ fixtureTest.describe('Sidebar footer controls', () => {
         expect((await footer.boundingBox())?.width).toBeLessThanOrEqual(216);
         await expectFooterControlsApart(footer, expanded);
         // One row, in reading order: Schedule, Customize, Updates, account.
-        const boxes: Box[] = [];
-        for (const control of Object.values(expanded))
-          boxes.push((await control.boundingBox()) as Box);
-        for (const [index, box] of boxes.slice(1).entries()) {
-          const previous = boxes[index];
-          expect(box.x).toBeGreaterThanOrEqual(
-            previous.x + previous.width - 0.5,
-          );
-          expect(
-            Math.abs(
-              box.y + box.height / 2 - (previous.y + previous.height / 2),
-            ),
-          ).toBeLessThanOrEqual(1);
-        }
+        await expectOneRowInOrder(expanded);
         await captureFooter(footer, testInfo, `footer-${theme}-expanded.png`);
       }
 
@@ -737,6 +745,9 @@ fixtureTest.describe('Sidebar footer controls', () => {
         Updates: controlsIn(rail).Updates,
         account: controlsIn(rail).account,
       });
+      // Schedule and Customize leave the rail for the popover, not both.
+      await expect(controlsIn(rail).Schedule).toHaveCount(0);
+      await expect(controlsIn(rail).Customize).toHaveCount(0);
       await captureFooter(rail, testInfo, 'footer-collapsed.png');
       await utilitiesTrigger.click();
       const utilities = page.getByRole('dialog', { name: 'Sidebar utilities' });
@@ -757,11 +768,16 @@ fixtureTest.describe('Sidebar footer controls', () => {
         await expect(drawer).toBeVisible();
         const phoneControls = controlsIn(drawer);
         await expectFooterControlsApart(drawer, phoneControls);
+        await expectOneRowInOrder(phoneControls);
         // The phone's touch floor, measured on every footer control.
         for (const [name, control] of Object.entries(phoneControls)) {
           const box = (await control.boundingBox()) as Box;
-          expect(box.height, `${name} height`).toBeGreaterThanOrEqual(44);
-          expect(box.width, `${name} width`).toBeGreaterThanOrEqual(44);
+          expect(box.height, `${name} height`).toBeGreaterThanOrEqual(
+            MIN_TOUCH_TARGET_PX,
+          );
+          expect(box.width, `${name} width`).toBeGreaterThanOrEqual(
+            MIN_TOUCH_TARGET_PX,
+          );
         }
         expect(await documentFitsViewportWidth(page)).toBe(true);
         await captureFooter(drawer, testInfo, `footer-phone-${width}.png`);

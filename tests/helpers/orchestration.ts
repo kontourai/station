@@ -775,10 +775,11 @@ export async function emitMockOrchestrationEvent(
  * then takes the same account menu. This waits to see which breakpoint is
  * running rather than assuming one.
  *
- * Both branches are deliberately real clicks through the real menu: this is
- * the end-to-end coverage of that route, and a spec that reached Settings by
- * chord would pass with the menu completely broken. On a phone the drawer
- * toggle, the drawer's account control and the menu row must all exist.
+ * Both branches are deliberately real clicks through the real menu, so a spec
+ * that reaches Settings this way fails if the menu breaks. Current callers run
+ * at desktop width; the phone route's end-to-end coverage is
+ * `tests/android/mobile-layout.spec.ts`, which takes the same drawer, account
+ * control and menu row.
  */
 export async function openHeaderSettings(page: Page): Promise<void> {
   const avatar = page.getByRole('button', { name: /^Profile and settings:/ });

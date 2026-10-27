@@ -130,8 +130,10 @@ not yet accepted.
   browser geometry checked expanded at 216px in both themes, and collapsed and
   in the phone drawer at 390 and 320px. Live work and the Settings gear have
   since left the footer: its one row is Schedule and Customize, then Updates
-  and the account control, and `tests/activity-pane.spec.ts` ("Sidebar footer
-  controls") measures that row in the same places. Coding toggle delegation is
+  and the account control. `tests/activity-pane.spec.ts` ("Sidebar footer
+  controls") checks that row's order, containment and spacing expanded and in
+  the phone drawer at 390 and 320px (with the 44px floor there), and on the
+  collapsed rail checks that Schedule and Customize move to Sidebar utilities. Coding toggle delegation is
   not started.
 - [ ] Required local checks, independent review and native journeys recorded.
 - [ ] PRs linked and actual REST landing recorded.
