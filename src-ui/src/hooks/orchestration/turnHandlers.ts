@@ -1,5 +1,4 @@
 import { isStationCheckBackTurn } from '@kontourai/station-contracts/agent-schedule';
-import type { PersistedChatAttachment } from '@kontourai/station-contracts/chat-attachment';
 import {
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
   APPROVAL_ESCALATION_REQUIRES_RESTART_CODE,
@@ -19,7 +18,6 @@ import {
   activeChatsStore,
 } from '../../contexts/active-chats-store';
 import { toastStore } from '../../contexts/ToastContext';
-import type { ChatMessage } from '../../types';
 import {
   formatChatErrorDisplay,
   translateChatError,
@@ -38,6 +36,7 @@ import { settlePendingApprovalsOnTurnEnd } from './approvalHandlers';
 import { finalizeAssistantTurn } from './assistantTurn';
 import { createAssistantStreamingMessage } from './messageParts';
 import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
+import { withRecordedAttachments } from './recordedAttachments';
 import { isReplayThread } from './replay/replay-registry';
 import { notifyTurnTerminal } from './turnAttentionNotifications';
 import type { OrchestrationEvent } from './types';
@@ -74,49 +73,6 @@ export function parseTurnStartedAt(
   if (!createdAt) return undefined;
   const ms = Date.parse(createdAt);
   return Number.isNaN(ms) ? undefined : ms;
-}
-
-/**
- * The composer row's file parts, made what the turn recorded. The row was
- * built before the send and holds only what the composer had: inline bytes
- * when it still had them, or nothing at all when the send went out as staged
- * references after a reload. `turn.started` names the recorded attachments
- * (with their `blobRef`), so the row adopts them in order, the same parts
- * the transcript projection builds on reload. A part that already shows its
- * bytes keeps them rather than refetching what this client sent.
- */
-function withRecordedAttachments(
-  message: ChatMessage,
-  attachments: readonly PersistedChatAttachment[] | undefined,
-): Pick<ChatMessage, 'contentParts'> | undefined {
-  if (!attachments?.length) return undefined;
-  // A row with no parts renders its `content`; once it has parts, the text
-  // must be one of them or adopting the files would hide it.
-  const parts =
-    message.contentParts ??
-    (message.content ? [{ type: 'text', content: message.content }] : []);
-  const local = parts.filter((part) => part.type === 'file');
-  const recorded = attachments.map((attachment, index) => {
-    const sent = local[index];
-    const url =
-      attachment.dataUrl ??
-      (sent?.name === attachment.name ? sent.url : undefined);
-    return {
-      type: 'file' as const,
-      ...(url === undefined ? {} : { url }),
-      ...(attachment.blobRef === undefined
-        ? {}
-        : { blobRef: attachment.blobRef }),
-      mediaType: attachment.mimeType,
-      name: attachment.name,
-    };
-  });
-  return {
-    contentParts: [
-      ...parts.filter((part) => part.type !== 'file'),
-      ...recorded,
-    ],
-  };
 }
 
 export function handleTurnStartedEvent(
@@ -237,7 +193,10 @@ export function handleTurnStartedEvent(
       : currentChat?.pendingClientTurnId
         ? [...userMessages]
             .reverse()
-            .find((message) => message.role === 'user' && message.clientId)
+            .find(
+              (message) =>
+                message.role === 'user' && message.clientId && !message.turnId,
+            )
         : undefined;
     if (pending) {
       const index = userMessages.indexOf(pending);

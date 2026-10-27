@@ -94,6 +94,31 @@ export function storeAttachmentObjectUrl(
   return objectUrl;
 }
 
+/**
+ * The cache key for a reference's bytes: the reference AND the declared type,
+ * because the object URL carries the type into the Blob. Content addressing
+ * alone would let two parts that share bytes but declare different types
+ * resolve to one URL typed after whichever rendered first.
+ */
+export function attachmentObjectUrlKey(
+  ref: string,
+  mediaType: string | undefined,
+): string {
+  return `${ref} ${mediaType ?? ''}`;
+}
+
+/**
+ * Publish bytes this client already has under `ref` WITHOUT a hold, so the
+ * next chip that asks for the reference finds them instead of fetching what
+ * it just sent. The entry is idle from the start, so it is bounded and
+ * evictable like any other; an existing entry for `ref` is left alone.
+ */
+export function seedAttachmentObjectUrl(ref: string, blob: Blob): void {
+  if (entries.has(ref)) return;
+  entries.set(ref, { objectUrl: URL.createObjectURL(blob), holders: 0, blob });
+  evictIdle();
+}
+
 /** Drop one hold. The URL survives until the cache needs the room. */
 export function releaseAttachmentObjectUrl(ref: string): void {
   const entry = entries.get(ref);

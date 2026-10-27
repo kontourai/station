@@ -7,6 +7,7 @@ import {
   type AttachmentObjectUrlSize,
   acquireAttachmentObjectUrl,
   attachmentBlobForObjectUrl,
+  attachmentObjectUrlKey,
   attachmentObjectUrlSize,
   peekAttachmentObjectUrl,
   releaseAttachmentObjectUrl,
@@ -34,16 +35,6 @@ interface FilePartPreviewProps {
 }
 
 /**
- * The cache key is the reference AND the declared type, because the object URL
- * carries the type into the Blob. Content addressing alone would let two parts
- * that share bytes but declare different types resolve to one URL typed after
- * whichever rendered first.
- */
-function cacheKey(ref: string, mediaType: string | undefined): string {
-  return `${ref} ${mediaType ?? ''}`;
-}
-
-/**
  * Fetch an attachment's bytes and hold an object URL for as long as this
  * component is displaying them (archive#3385). `<img src>` cannot carry a
  * bearer token, so the bytes come through `authenticatedFetch` and the URL is
@@ -65,7 +56,7 @@ function useAttachmentObjectUrl(
       setObjectUrl(undefined);
       return;
     }
-    const key = cacheKey(ref, mediaType);
+    const key = attachmentObjectUrlKey(ref, mediaType);
     let active = true;
     let held = false;
 
@@ -111,7 +102,15 @@ function useAttachmentObjectUrl(
     };
   }, [ref, mediaType, apiBase]);
 
-  return objectUrl;
+  // Bytes already cached under this reference show on the very first render,
+  // before the effect above claims its hold. A sent bubble switches from its
+  // inline bytes to the recorded reference at `turn.started` (the bytes are
+  // seeded here then), and waiting a frame for the effect would flash the
+  // chip to an untappable placeholder.
+  const cached = ref
+    ? peekAttachmentObjectUrl(attachmentObjectUrlKey(ref, mediaType))
+    : undefined;
+  return cached ?? objectUrl;
 }
 
 type ChipThumbnail = AttachmentObjectUrlSize & { url: string };
@@ -198,7 +197,7 @@ function thumbnailKey(
   if (part.mediaType?.startsWith('image/') !== true) return undefined;
   const shape = imageSourceShape(resolvedUrl, part.mediaType);
   if (!shape || !thumbnailWorthMaking(shape)) return undefined;
-  return part.url ?? cacheKey(part.blobRef ?? '', part.mediaType);
+  return part.url ?? attachmentObjectUrlKey(part.blobRef ?? '', part.mediaType);
 }
 
 /**
@@ -216,7 +215,9 @@ function previewGallery(allParts: FilePart[] | undefined) {
       const url =
         p.url ??
         (p.blobRef
-          ? peekAttachmentObjectUrl(cacheKey(p.blobRef, p.mediaType))
+          ? peekAttachmentObjectUrl(
+              attachmentObjectUrlKey(p.blobRef, p.mediaType),
+            )
           : undefined);
       return url
         ? [{ url, mediaType: p.mediaType as string, name: p.name }]

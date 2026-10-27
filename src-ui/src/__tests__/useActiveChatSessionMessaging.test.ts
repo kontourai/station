@@ -13,7 +13,16 @@ import {
   screen,
 } from '@testing-library/react';
 import { createElement, useState } from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from 'vitest';
+import { resetAttachmentObjectUrls } from '../components/chat/attachment-object-urls';
 import { SkillExperienceForm } from '../components/skill-experiences/SkillExperienceForm';
 
 vi.mock('../contexts/AuthorityPersistenceContext', () => ({
@@ -808,46 +817,96 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
         attachment,
       ]);
     });
-    const bubble = activeChatsStore
-      .getSnapshot()
-      [sessionId].messages?.find((message) => message.role === 'user');
-    expect(bubble).toBeDefined();
+    const storedBubble = () =>
+      activeChatsStore
+        .getSnapshot()
+        [sessionId].messages?.find((message) => message.role === 'user');
+    expect(storedBubble()).toBeDefined();
 
-    const [{ MessageBubble }, { PreviewProvider }] = await Promise.all([
-      import('../components/chat/MessageBubble'),
-      import('../contexts/PreviewContext'),
-    ]);
-    render(
-      createElement(
-        QueryClientProvider,
-        { client: new QueryClient() },
+    const [{ MessageBubble }, { PreviewProvider }, { handleTurnStartedEvent }] =
+      await Promise.all([
+        import('../components/chat/MessageBubble'),
+        import('../contexts/PreviewContext'),
+        import('../hooks/orchestration/turnHandlers'),
+      ]);
+    const renderBubble = () =>
+      render(
         createElement(
-          PreviewProvider,
-          null,
-          createElement(MessageBubble, {
-            msg: bubble!,
-            idx: 0,
-            activeSession: {
-              id: sessionId,
-              agentSlug: 'codex',
-              agentName: 'Codex',
-              messageCount: 1,
-            },
-            agents: [],
-            chatFontSize: 14,
-            showReasoning: false,
-            showToolDetails: false,
-            onCopy: () => {},
-          }),
+          QueryClientProvider,
+          { client: new QueryClient() },
+          createElement(
+            PreviewProvider,
+            null,
+            createElement(MessageBubble, {
+              msg: storedBubble()!,
+              idx: 0,
+              activeSession: {
+                id: sessionId,
+                agentSlug: 'codex',
+                agentName: 'Codex',
+                messageCount: 1,
+              },
+              agents: [],
+              chatFontSize: 14,
+              showReasoning: false,
+              showToolDetails: false,
+              onCopy: () => {},
+            }),
+          ),
         ),
-      ),
-    );
+      );
 
+    const live = renderBubble();
     const chip = screen.getByRole('button', { name: 'Preview screen.png' });
     expect(screen.getByAltText('screen.png').getAttribute('src')).toBe(png);
     fireEvent.click(chip);
     const dialog = await screen.findByRole('dialog', { name: 'Preview' });
     expect(dialog.textContent).toContain('screen.png');
+    live.unmount();
+
+    // The turn starts and records the attachment by reference. The stored
+    // bubble must let go of its multi-megabyte bytes, and its chip must still
+    // be the picture — from the bytes this client sent, not a refetch.
+    const { createObjectURL, revokeObjectURL } = URL;
+    Object.assign(URL, {
+      createObjectURL: vi.fn(() => 'blob:sent-picture'),
+      revokeObjectURL: vi.fn(),
+    });
+    onTestFinished(() => {
+      Object.assign(URL, { createObjectURL, revokeObjectURL });
+      resetAttachmentObjectUrls();
+    });
+    const { clientTurnId } = sendExecutionMessageMock.mock.calls[0][1];
+    act(() => {
+      handleTurnStartedEvent({
+        eventId: 'started-picture',
+        method: 'turn.started',
+        provider: 'codex',
+        threadId: sessionId,
+        turnId: 'turn-picture',
+        createdAt: '2026-09-12T00:00:00Z',
+        prompt: 'Look at this',
+        clientTurnId,
+        attachments: [
+          {
+            kind: 'image',
+            name: 'screen.png',
+            mimeType: 'image/png',
+            size: 8,
+            blobRef: `sha256-${'d'.repeat(64)}`,
+          },
+        ],
+      });
+    });
+    expect(storedBubble()?.turnId).toBe('turn-picture');
+    expect(JSON.stringify(storedBubble())).not.toContain('data:');
+    renderBubble();
+    expect(
+      screen.getByRole('button', { name: 'Preview screen.png' }),
+    ).toBeTruthy();
+    expect(screen.getByAltText('screen.png').getAttribute('src')).toBe(
+      'blob:sent-picture',
+    );
   });
 
   it('omits every model override after the picker explicitly requests the default', async () => {
