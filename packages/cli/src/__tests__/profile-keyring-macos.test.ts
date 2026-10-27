@@ -69,7 +69,7 @@ exit 1
 
 const ref = { kind: 'station-bearer' as const, id: 'local-grant:4b8f' };
 const account = 'profile:station-bearer:local-grant:4b8f';
-const credential = 'stn_Zm9vYmFyYmF6cXV4LWJhc2U2NHVybF9zZWNyZXQ';
+const credential = 'test-credential-placeholder';
 
 let dir: string;
 let securityPath: string;
