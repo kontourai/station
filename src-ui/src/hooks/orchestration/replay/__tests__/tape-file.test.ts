@@ -267,3 +267,51 @@ test("a redacted export keeps a tool call's engine kind, which is vocabulary, no
   expect(started).toContain('"toolKind":"execute"');
   expect(started).not.toContain('secret');
 });
+
+test('a capture keeps attachment names and references but never their bytes', () => {
+  const bytes = 'data:image/png;base64,iVBORw0KGgo=';
+  const ref = `sha256-${'e'.repeat(64)}`;
+  activeChatsStore.initChat('source', {
+    agentSlug: 'codex',
+    agentName: 'Codex',
+    title: 'Source',
+  });
+  const sent = {
+    role: 'user' as const,
+    content: 'See this',
+    contentParts: [
+      { type: 'text', content: 'See this' },
+      { type: 'file', url: bytes, mediaType: 'image/png', name: 'live.png' },
+      { type: 'file', blobRef: ref, mediaType: 'image/png', name: 'kept.png' },
+    ],
+  };
+  activeChatsStore.updateChat('source', {
+    messages: [sent],
+    streamingMessage: {
+      role: 'assistant',
+      content: '',
+      contentParts: [
+        { type: 'file', url: bytes, mediaType: 'image/png', name: 'tool.png' },
+      ],
+    },
+  });
+  startReplayCapture('host', { threadId: 'source', agentSlug: 'codex' });
+  const captured = stopReplayCapture()!;
+  expect(JSON.stringify(captured)).not.toContain('data:');
+  expect(captured.initialChat?.messages?.[0].contentParts).toEqual([
+    { type: 'text', content: 'See this' },
+    { type: 'file', mediaType: 'image/png', name: 'live.png' },
+    { type: 'file', blobRef: ref, mediaType: 'image/png', name: 'kept.png' },
+  ]);
+  expect(captured.initialChat?.streamingMessage?.contentParts).toEqual([
+    { type: 'file', mediaType: 'image/png', name: 'tool.png' },
+  ]);
+  // The live chat keeps showing its picture: only the capture is stripped.
+  expect(
+    activeChatsStore.getSnapshot().source.messages?.[0].contentParts?.[1].url,
+  ).toBe(bytes);
+  // And the stripped capture is still a valid tape.
+  expect(isSessionTape(JSON.parse(serializeSessionTape(captured, true)))).toBe(
+    true,
+  );
+});

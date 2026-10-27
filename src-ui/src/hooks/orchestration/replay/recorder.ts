@@ -56,6 +56,24 @@ export function getCapturedTape() {
   return latestTape;
 }
 
+/**
+ * A capture carries what the conversation showed, never attachment bytes: a
+ * file part's inline `data:` URL (a sent bubble's own bytes, or a legacy
+ * inline read) is dropped, leaving the name and type the chip still shows,
+ * the same descriptor-only part a reclaimed attachment renders as. Bytes would
+ * otherwise go into an exported file and crowd out the 16 MiB budget.
+ */
+function withoutAttachmentBytes<Part extends { url?: string }>(
+  parts: Part[] | undefined,
+): Part[] | undefined {
+  if (!parts?.some((part) => part.url?.startsWith('data:'))) return parts;
+  return parts.map((part) => {
+    if (!part.url?.startsWith('data:')) return part;
+    const { url: _bytes, ...descriptor } = part;
+    return descriptor as Part;
+  });
+}
+
 export function startReplayCapture(
   apiBase: string,
   source: SessionTapeSource,
@@ -66,8 +84,18 @@ export function startReplayCapture(
   const chat = activeChatsStore.getChatForExecutionSession(source.threadId);
   const initialChat = chat
     ? {
-        messages: chat.messages,
-        streamingMessage: chat.streamingMessage,
+        messages: chat.messages?.map((message) => {
+          const contentParts = withoutAttachmentBytes(message.contentParts);
+          return contentParts === message.contentParts
+            ? message
+            : { ...message, contentParts };
+        }),
+        streamingMessage: chat.streamingMessage && {
+          ...chat.streamingMessage,
+          contentParts: withoutAttachmentBytes(
+            chat.streamingMessage.contentParts,
+          ),
+        },
         status: chat.status,
         orchestrationStatus: chat.orchestrationStatus,
         orchestrationTurnOpen: chat.orchestrationTurnOpen,
