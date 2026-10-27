@@ -1,0 +1,7 @@
+{
+  "revision": "18744e69a7f6fb5c2380566a5070f01efa86a8f4",
+
+  "notes": [
+    {"path":"docs/guides/walkthroughs.md","note":"Rechecked the newly cited API/serialized listener regression after the server-test typecheck correction: optional timer arguments are narrowed and the unsupported provider config field is removed. Runtime assertions and receive owner are unchanged; both unread-body listener cases and still-writing refusal cases retain their committed fault receipts. Updated guides and design repair notes remain consistent.","inputs":["docs/guides/walkthroughs.md"]}
+  ]
+}

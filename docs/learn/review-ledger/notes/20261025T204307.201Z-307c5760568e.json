@@ -1,0 +1,7 @@
+{
+  "revision": "ea3a027fc352043291c0317cdd8f25394bdcb0fa",
+
+  "notes": [
+    {"path":"docs/guides/walkthroughs.md","note":"Reviewed the strengthened real-socket refusal test on both API and serialized CLI listeners: the peer keeps writing after the response FIN, observes a drain opportunity, and must close within the guard. Removing linger fails both named cases; removing the deadline fails the serialized UI close-bound assertion. Both clean-tree cycles restored byte-exact and returned green. The documented one-second/one-MiB policy and runtime owner are unchanged.","inputs":["docs/guides/walkthroughs.md","src-server/runtime/frameworks/__tests__/http-receive.integration.test.ts"]}
+  ]
+}

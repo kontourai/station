@@ -32,6 +32,7 @@ import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { conversationOpenPhase } from '../../contexts/conversation-open-policy';
 import { useMessageContextContext } from '../../contexts/MessageContextContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
+import { useScopedProjectChatDefaultsQuery } from '../../contexts/ProjectsContext';
 import { useWorkObservation } from '../../contexts/work-observation';
 import { resyncOrchestrationEventStream } from '../../hooks/orchestration/ensureOrchestrationEventStream';
 import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
@@ -527,6 +528,19 @@ export function ChatDockBody({
   const { navigate } = useNavigationActions();
   const { user } = useAuth();
   const { activeConnection, captureCredentialEvidence } = useConnections();
+  const approvalModeIsNewSession =
+    !activeSession?.orchestrationSessionStarted &&
+    !activeSession?.conversationId;
+  // A new chat in a Project starts in that Project's approval layer
+  // (`project-chat-defaults.ts`). Read only while the chat has not started:
+  // a started session reports what its engine applied. The cached answer is
+  // also what the first send consults before queuing a personal default.
+  // `null`: this Station applies no Project layer here; `undefined`: no
+  // answer yet (loading or failed).
+  const { data: projectChatDefaultsAnswer } = useScopedProjectChatDefaultsQuery(
+    approvalModeIsNewSession ? activeSession?.projectSlug : undefined,
+  );
+  const projectChatDefaults = projectChatDefaultsAnswer ?? undefined;
   const mentionCredentialEvidence = captureCredentialEvidence();
   const mentionAuthority = mentionCredentialEvidence
     ? durableMentionAuthority({
@@ -2483,11 +2497,16 @@ export function ChatDockBody({
             agentHandoffDisabled={secondaryActions?.handoffDisabled}
             agentHandoffDisabledReason={secondaryActions?.handoffDisabledReason}
             executionMode={activeSession.executionMode}
-            approvalModeIsNewSession={
-              !activeSession?.orchestrationSessionStarted &&
-              !activeSession?.conversationId
-            }
+            approvalModeIsNewSession={approvalModeIsNewSession}
             approvalModeAgentDefault={agentApprovalModeDefault}
+            approvalModeProjectDefault={
+              projectChatDefaults?.approvalMode.resolved
+            }
+            approvalModeProjectDefaultUnavailable={
+              approvalModeIsNewSession &&
+              !!activeSession?.projectSlug &&
+              projectChatDefaultsAnswer === undefined
+            }
             approvalModeStationDefault={stationApprovalModeDefault}
             toolPolicyDelivery={toolPolicyDelivery}
             lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}
