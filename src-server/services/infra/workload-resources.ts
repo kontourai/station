@@ -70,6 +70,8 @@ interface ActiveWorkload {
   holderPlacement?: Promise<void>;
   /** `oom_kill` count at the last poll; undefined before the first. */
   oomKillsPolled?: number;
+  /** A count seen once and not yet announced (see pollOomKills). */
+  oomKillsPending?: number;
   /** When a poll first saw the count rise (within the 1 s poll interval). */
   lastOomKillAt?: string;
   oomListeners: Set<(kill: ChildWorkloadOomKill) => void>;
@@ -99,8 +101,13 @@ const recent: Array<{
   result: string;
   /** What systemd itself reported for the scope. */
   systemdResult: string;
-  /** The scope's own `oom_kill` count at close; absent when unreadable. */
+  /** The scope's own `oom_kill` count; absent when never read. */
   oomKills?: number;
+  /**
+   * `close`: read just before the scope was stopped (exact). `last-poll`:
+   * the scope was already gone, so this is the last 1 s poll's count.
+   */
+  oomKillsSource?: 'close' | 'last-poll';
   memoryPeakBytes?: number;
   cpuUsageNSec?: number;
 }> = [];
@@ -265,6 +272,15 @@ async function resolveControlGroup(
  * the largest command) and the engine keeps running, so this is the only
  * report of it besides the command's own failure.
  */
+async function leaderAlive(entry: ActiveWorkload): Promise<boolean> {
+  if (entry.pid === undefined) return false;
+  const owner = await probeExactProcessIdentityAsync(entry.pid);
+  return (
+    owner.state === 'exact' &&
+    (!entry.birth || owner.identity.start === entry.birth)
+  );
+}
+
 async function pollOomKills(): Promise<void> {
   await Promise.allSettled(
     [...active.values()].map(async (entry) => {
@@ -277,6 +293,16 @@ async function pollOomKills(): Promise<void> {
       if (oomKills !== undefined) entry.oomKillsPolled = oomKills;
       if (entry.oomListeners.size === 0) return;
       if (oomKills === undefined || oomKills <= entry.oomKillsReported) return;
+      // A kill is a command's only once the engine is seen alive after it:
+      // the first sighting waits a poll. Announcing at once could take the
+      // engine's own death (a poll landing between the kernel's kill and the
+      // exit reaching Station) for a command kill, and hide it from the
+      // close-time verdict, which counts only unannounced kills.
+      if (entry.oomKillsPending !== oomKills) {
+        entry.oomKillsPending = oomKills;
+        return;
+      }
+      if (entry.closing || !(await leaderAlive(entry))) return;
       const kill: ChildWorkloadOomKill = Object.freeze({
         oomKills,
         newKills: oomKills - entry.oomKillsReported,
@@ -731,15 +757,27 @@ async function closeScope(entry: ActiveWorkload): Promise<void> {
         : undefined;
     };
     const systemdResult = properties.Result ?? 'unavailable';
+    // A scope systemd collected before this read (a terminal whose shell
+    // exited on hangup; command scopes have no holder) keeps what the last
+    // poll saw, labelled so: a kill in its final second can be missing.
+    const recordedKills = oomKills ?? entry.oomKillsPolled;
     const outcome = {
       unit: entry.unit,
       pid: entry.pid,
       // A process in the scope was OOM-killed. Whether that was the engine
       // (it died) or a command (it survived) is the engine adapter's verdict,
       // so the record names only what the kernel did.
-      result: (oomKills ?? 0) > 0 ? 'oom-kill-in-scope' : systemdResult,
+      result: (recordedKills ?? 0) > 0 ? 'oom-kill-in-scope' : systemdResult,
       systemdResult,
-      ...(oomKills === undefined ? {} : { oomKills }),
+      ...(recordedKills === undefined
+        ? {}
+        : {
+            oomKills: recordedKills,
+            oomKillsSource:
+              oomKills === undefined
+                ? ('last-poll' as const)
+                : ('close' as const),
+          }),
       memoryPeakBytes: finiteCounter(properties.MemoryPeak),
       cpuUsageNSec: finiteCounter(properties.CPUUsageNSec),
     };

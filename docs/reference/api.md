@@ -4136,8 +4136,9 @@ do not grant execution authority or influence admission.
 `data.workloads` reports workload enforcement state, configured budgets, active
 scopes, recent outcomes and available slice measurements. A recent outcome's
 `result` is `oom-kill-in-scope` when the kernel killed any process in the
-scope (the engine or a command), with `oomKills` and systemd's own
-`systemdResult`. Measurement failure
+scope (the engine or a command), with `oomKills`, its `oomKillsSource`
+(`close`, exact; or `last-poll` when the scope was already collected) and
+systemd's own `systemdResult`. Measurement failure
 is separate from enforcement state; see
 [Linux service workload budgets](../guides/development.md#linux-service-workload-budgets)
 for platform scope and admission behavior.

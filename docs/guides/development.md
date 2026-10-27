@@ -258,8 +258,12 @@ measurement is reported separately from enforcement state.
 
 Under `OOMPolicy=continue` systemd records no `oom-kill` result for a scope,
 so Station reads the kernel's own count: the `oom_kill` line of the scope's
-cgroup v2 `memory.events`. A 1-second poll announces new kills in a running
-scope, and the count is read again when the scope closes. systemd collects a
+cgroup v2 `memory.events`. A 1-second poll reads every running scope and
+announces a new kill to the engine's adapter only once a later poll still finds
+the engine alive with no newer kill (so a kill can take up to about two seconds
+to be reported). A poll that lands between the kernel killing the engine itself
+and Station noticing the exit therefore never reports the engine's own death as
+a command kill. The count is read again when the scope closes. systemd collects a
 scope as soon as its last process exits, cgroup and counters with it, so an
 engine's own scope (a launch that names its Session) also gets a holder.
 Station spawns `/bin/sleep` itself, detached into its own session and process
@@ -276,7 +280,10 @@ scope already gone, is unknown and never inferred. The settled record
 log) reports `result: oom-kill-in-scope` with `oomKills` whenever the kernel
 killed a process in the scope (the engine or a command; the engine adapter
 decides which), and keeps systemd's own `systemdResult` (`success` under
-`continue`).
+`continue`). Its `oomKillsSource` is `close` for the exact read before the
+stop, or `last-poll` when systemd had already collected the scope (a terminal
+whose shell exited on hangup, since only engine scopes have holders): then a
+kill in the scope's final second can be missing.
 
 Codex reports both cases. A kill while Codex runs publishes a live warning
 (`workload-command-oom-killed`, naming the budget) and a transcript marker
