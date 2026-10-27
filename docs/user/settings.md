@@ -107,6 +107,13 @@ switch says whether publication succeeded; enabling it does not change your
 network or firewall. Connecting still needs your approval. See
 [Connect your phone](getting-started.md#connect-your-phone).
 
+## About
+
+**Settings → About** shows the app version, links to **Build details** and
+**Diagnostics**, the open source packages bundled into the app with their
+licenses, and links to the privacy policy, license and support. Development
+servers have no license list.
+
 ## Link to a setting
 
 Every Settings row has a stable address of the form

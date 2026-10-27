@@ -1040,6 +1040,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/verify-desktop-clean-checkout.test.ts',
   // Vite's real page/worker fixture owns an esbuild service child.
   'scripts/__tests__/vite-ui-assets.test.ts',
+  // Same real Vite build fixture shape, so the same esbuild service child.
+  'scripts/__tests__/vite-third-party-licenses.test.ts',
   'scripts/__tests__/vite-loopback-default.test.ts',
   'scripts/__tests__/vitest-worktree-exclusion.test.ts',
   'scripts/__tests__/voice-realtime-live-smoke.test.ts',
