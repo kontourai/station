@@ -144,8 +144,8 @@ later edit without deleting any immutable receipt or published link.
 
 The event that requests a new receipt is a consumer linking a specific working
 revision. Task Review calls `freezeDocumentRevision` before creating a plan
-anchor. An absent or unavailable bridge refuses it before any claim, so a refused
-anchor never blocks later saves. The worker compares that exact revision and durably claims its snapshot
+anchor. An absent or unavailable bridge refuses it before any claim, so that refusal
+leaves no claim to block later saves. The worker compares that exact revision and durably claims its snapshot
 under `BEGIN IMMEDIATE`, with the caller's authority checked before commit.
 A concurrent save either replaces the candidate before that claim (the stale
 anchor is refused), or waits for the claimed publication to finish. The bridge
