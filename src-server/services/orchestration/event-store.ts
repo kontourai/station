@@ -5307,7 +5307,7 @@ export class EventStore {
       );
       const source = this.readSessionByThread(record.source.sourceSessionId);
       const events = this.listEvents(record.source.sourceSessionId);
-      const configuredSource = events.findLast(
+      const configuredSource = [...events].reverse().find(
         (event) => event.payload.method === 'session.configured',
       );
       const selected = events.find(
