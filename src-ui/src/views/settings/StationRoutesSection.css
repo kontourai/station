@@ -1,28 +1,8 @@
-/* Station routes in a saved Station's details (docs/design/station-routes.md). */
-
-/* The routes list already shows every address; drop the card's own summary. */
-.station-connect-row:has(.station-routes) .station-connect-row__url,
-.station-connect-row:has(.station-routes) .station-connect-row__access-paths {
-  display: none;
-}
+/* Settings › Devices › Routes (docs/design/station-routes.md). */
 
 .station-routes {
-  flex-basis: 100%;
   display: flex;
   flex-direction: column;
-}
-
-.station-routes__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.station-routes__title {
-  margin: 0;
-  color: var(--k-text-muted);
-  font-size: var(--k-text-sm);
-  font-weight: 600;
 }
 
 .station-routes__failure {
@@ -48,15 +28,9 @@
   border-top: 1px solid var(--k-line);
 }
 
-.station-routes__remove-slot {
-  display: flex;
-  flex: 0 0 auto;
-  width: 32px;
-  justify-content: center;
-}
-
 .station-routes__remove {
   position: relative;
+  flex: 0 0 auto;
   color: var(--k-negative);
 }
 

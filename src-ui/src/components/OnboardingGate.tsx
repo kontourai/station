@@ -1,6 +1,4 @@
 import { OPEN_NEW_CHAT_EVENT, readNewChatIntent } from '../lib/newChatIntent';
-import { StationRoutesPanel } from './connections/StationRoutesPanel';
-import { useStationRoutesPreview } from './connections/useStationRoutes';
 import { PairingEndpointSuggestions } from './PairingEndpointSuggestions';
 import { StationExtensionsAccess } from './registry/StationExtensionsAccess';
 /**
@@ -151,7 +149,6 @@ const loadBundledServiceBanner = () =>
 export function OnboardingGate({ children }: { children: ReactNode }) {
   const { refetch } = useSystemStatus();
   const { apiBase, activeConnection, connections } = useConnections();
-  const stationRoutesPreview = useStationRoutesPreview();
   const activeHealth = useConnectionStatus({
     checkHealth: checkServerHealth,
     probeEndpoint: probeServerConnection,
@@ -921,20 +918,11 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           setStationSetupOpen(true);
         }}
         initialPanel={connectionModalMode}
-        renderConnectionDetails={(connection) => {
-          const extensions =
-            connection.id === activeConnection?.id ? (
-              <StationExtensionsAccess />
-            ) : null;
-          return stationRoutesPreview ? (
-            <>
-              {extensions}
-              <StationRoutesPanel connection={connection} />
-            </>
-          ) : (
-            extensions
-          );
-        }}
+        renderConnectionDetails={(connection) =>
+          connection.id === activeConnection?.id ? (
+            <StationExtensionsAccess />
+          ) : null
+        }
         listFooterContent={
           profile.isTauri ? <NativeRelayRouteSetupFooter /> : undefined
         }

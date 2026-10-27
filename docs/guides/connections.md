@@ -296,8 +296,8 @@ unless a saved access or connection error needs attention. Holding the phone's
 dot shows its saved name without switching or opening the chooser.
 
 Choose **Manage Stations** to inspect saved connections. Tap a row to reveal
-**Edit Station**, plus **Switch to this Station** on any Station but the
-current one; inspecting a row does not switch the active connection. Switching respects unsaved-work decisions.
+**Switch to this Station** and **Edit Station**; inspecting a row does not
+switch the active connection. Switching respects unsaved-work decisions.
 Each address wraps on narrow screens so its port stays visible. The row's
 **More actions** menu provides **Copy address** and **Check reachability**.
 Expand the row's details to select its address text, or use **Copy address**

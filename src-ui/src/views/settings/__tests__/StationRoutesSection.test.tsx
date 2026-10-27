@@ -25,7 +25,7 @@ vi.mock('../../../hooks/useDeveloperFeatures', () => ({
   useDeveloperFeatures: () => ({ stationRoutes: state.preview }),
 }));
 
-import { StationRoutesPanel } from '../StationRoutesPanel';
+import { StationRoutesSection } from '../StationRoutesSection';
 
 function endpoint(
   url: string,
@@ -74,12 +74,13 @@ function station(overrides: Partial<SavedConnection> = {}): SavedConnection {
 }
 
 function renderPanel(connection: SavedConnection) {
+  state.connections = { ...state.connections, activeConnection: connection };
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={client}>
-      <StationRoutesPanel connection={connection} />
+      <StationRoutesSection />
     </QueryClientProvider>,
   );
 }
@@ -119,7 +120,7 @@ afterEach(() => {
   state.fetch.mockReset();
 });
 
-describe('StationRoutesPanel', () => {
+describe('StationRoutesSection', () => {
   it('shows the failure once and notes only what differs on each route', () => {
     renderPanel(station());
     expect(screen.getByRole('status').textContent).toBe("Can't reach Kontour.");
@@ -208,7 +209,6 @@ describe('StationRoutesPanel', () => {
         },
       ],
     });
-    state.connections = { ...state.connections, activeConnection: native };
     state.fetch.mockResolvedValue(
       Response.json({
         environmentId: 'env-home',

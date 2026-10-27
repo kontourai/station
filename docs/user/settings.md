@@ -73,9 +73,9 @@ close button. Confirmation prompts and sheets that cannot be dismissed get no
 handle, and the handle can only be dragged with touch or a pointer; the close
 button and Escape still close every sheet.
 
-**Station routes preview** shows every address a saved Station is reached on
-in its details in the connection manager: which one is in use, which failed and
-why, and **Add route** for an address you type. **Edit** removes routes you
+**Station routes preview** adds **Routes** to the Devices page: every address
+this device reaches the current Station on, which one is in use, which failed
+and why, and **Add route** for an address you type. **Edit** removes routes you
 added. While connected, the app also learns the LAN, Tailscale and Tailscale
 HTTPS addresses the Station reports, marked "found automatically". The app saved on a phone or desktop
 lists those addresses but still connects only through its saved one; see

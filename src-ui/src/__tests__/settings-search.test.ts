@@ -42,6 +42,7 @@ describe('settings catalog search', () => {
           isOperator: true,
           developerToolsEnabled: true,
           experimentalTrustEnabled: true,
+          experimentalStationRoutesEnabled: true,
         }).map(({ id }) => id),
         entry.id,
       ).toContain(entry.id);
@@ -108,6 +109,7 @@ describe('settings catalog search', () => {
       'experimental-station-routes',
       'experimental-sheet-gestures',
       'surface-trust',
+      'station-routes',
     ]) {
       expect(desktop.map((command) => command.id)).not.toContain(
         `settings:${id}`,
@@ -116,7 +118,7 @@ describe('settings catalog search', () => {
         id,
       );
     }
-    expect(desktop).toHaveLength(SETTINGS_CATALOG.length - 6);
+    expect(desktop).toHaveLength(SETTINGS_CATALOG.length - 7);
     expect(desktop.find((command) => command.id === 'settings:theme')).toEqual(
       expect.objectContaining({ view: 'appearance', highlight: 'theme' }),
     );
@@ -165,6 +167,7 @@ describe('settings catalog search', () => {
       isDesktop: false,
       developerToolsEnabled: true,
       experimentalTrustEnabled: true,
+      experimentalStationRoutesEnabled: true,
     }).map((command) => ({
       ...command,
       label: pseudoLocalize(command.label),

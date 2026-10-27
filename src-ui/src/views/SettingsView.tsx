@@ -94,6 +94,7 @@ import {
 import { SettingsPageRow as PageRow } from './settings/SettingsPageRow';
 import { SettingsSection as Section } from './settings/SettingsSection';
 import { StationConfigSection } from './settings/StationConfigSection';
+import { StationRoutesSection } from './settings/StationRoutesSection';
 import { SystemSection } from './settings/SystemSection';
 import {
   formatSettingsMessage,
@@ -393,6 +394,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
           isOperator,
           developerToolsEnabled,
           experimentalTrustEnabled: developerFeatures.trust,
+          experimentalStationRoutesEnabled: developerFeatures.stationRoutes,
         }).map((entry) => entry.section)
       : activeSection === 'overview'
         ? ALL_LEAF_SECTION_IDS.filter(operatorMayView)
@@ -443,7 +445,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     }
     if (
       (entry.conditional === 'developer' && !developerToolsEnabled) ||
-      (entry.conditional === 'experimental-trust' && !developerFeatures.trust)
+      (entry.conditional === 'experimental-trust' &&
+        !developerFeatures.trust) ||
+      (entry.conditional === 'experimental-station-routes' &&
+        !developerFeatures.stationRoutes)
     ) {
       setHighlightAnnouncement(
         'This experimental tool is off. Enable it in Advanced → Developer tools.',
@@ -1777,6 +1782,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
 
                 {/* #2182: pairing is not a voice feature, and now says so. */}
                 {sectionVisible('pairing') && <PairingSection />}
+                {sectionVisible('station-routes') && <StationRoutesSection />}
 
                 {sectionVisible('developer-tools') && (
                   <Section

@@ -669,6 +669,13 @@
       "configKey": "openLastStationOnLaunch"
     },
     {
+      "id": "station-routes",
+      "label": "Routes",
+      "scope": "device",
+      "section": "station-routes",
+      "route": "/settings?view=station-routes&highlight=station-routes"
+    },
+    {
       "id": "personal-knowledge-store",
       "label": "My knowledge store",
       "scope": "station",

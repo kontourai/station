@@ -110,8 +110,9 @@ copy (`connectionFailureCopy`).
 
 ## UI
 
-Inside a saved Station's details in the connection manager (mobile and
-desktop):
+A **Routes** section on Settings → Devices (`?view=devices`, row
+`station-routes`), for the Station this device is connected to. It stays out of
+the connection manager, which keeps one compact card per saved Station:
 
 - the failure reason, once, only when no route answers (the existing copy);
 - **Routes**: one row per route with its label and an **In use** badge on the
@@ -121,12 +122,10 @@ desktop):
   checked carries no note;
 - **+ Add route**: opens an address field inline; the route is saved, then
   checked on the next probe;
-- **Edit**: shown only when a route can be removed; reveals remove buttons on
-  routes the user added. Advertised routes have no remove: the Station would
-  report them again. The last remaining route cannot be removed.
-
-The Station's own address line is hidden while the Routes list is shown, since
-the list already carries it.
+- **Edit**, on the section header, shown only when a route can be removed;
+  reveals **Remove** on routes the user added. Advertised routes have no
+  remove: the Station would report them again. The last remaining route cannot
+  be removed.
 
 ## Phases
 

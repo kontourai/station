@@ -306,6 +306,7 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'voice-pill': 'device',
   'mobile-pairing': 'informational',
   'lan-discovery': 'station',
+  'station-routes': 'device',
   'open-last-station': 'device',
   'tts-readback': 'device',
   'personal-knowledge-store': 'station',
