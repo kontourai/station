@@ -11,8 +11,9 @@ import {
   realpathSync,
   rmSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { resolveHomeDir } from '../../utils/paths.js';
+import { tightenToOwnerOnly } from './engine-spawn-tmpdir.js';
 
 /**
  * A per-session `TMPDIR` for engines, so the files an agent saves "to a temp
@@ -167,6 +168,10 @@ function createOwnDir(threadId: string): string | undefined {
   } catch {
     return undefined;
   }
+  // The parents mkdir created are masked by the umask too.
+  const root = sessionTmpRoot();
+  tightenToOwnerOnly(dirname(root));
+  tightenToOwnerOnly(root);
   return ownedPrivateDir(dir) ? dir : undefined;
 }
 
