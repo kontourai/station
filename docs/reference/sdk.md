@@ -1934,7 +1934,13 @@ fork whose copied transcript is available under `transcript.owner: 'fork-context
 it has no provider Session or runtime execution binding until first send. Both
 successful arms carry the server-derived `canContinue` decision. A pending first
 start may return `canContinue: false` with `continuationPending: true`; clients
-must wait rather than fabricate a Session identity. Transport, rejection, and invalid wire failures throw a
+must wait rather than fabricate a Session identity. A current server also says on
+the `resolved` arm whether the next ordinary turn starts a new Session
+(`nextTurnStartsSession`, #4179). The field is optional: older servers omit it,
+and so does a server that would refuse that turn (a handoff awaiting its target,
+or a context delivery not yet reconciled). A value that is not a boolean is
+refused as `invalid-response`.
+Transport, rejection, and invalid wire failures throw a
 typed `ConversationOpenResolutionFailure` rather than degrading to an empty
 chat. Optional `options.signal` cancels the request and `options.timeoutMs`
 sets its deadline, including JSON body consumption. Picker opens and active retries use the default request behavior without

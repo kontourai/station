@@ -6872,6 +6872,16 @@ export async function executeExecutionTargetMessage(
         throw new Error('The requested conversation is unavailable.');
       return inspection;
     },
+    readSessionStartMetadata: (
+      _access: EnvironmentAccess,
+      sessionId: string,
+    ) =>
+      typeof orchestrationService.readSessionStartMetadata === 'function'
+        ? orchestrationService.readSessionStartMetadata(
+            sessionId,
+            readAuthority,
+          )
+        : undefined,
     joinConversationTurnKey: async (
       _access: EnvironmentAccess,
       sessionId: string,
