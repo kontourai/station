@@ -5197,9 +5197,12 @@ export async function respondToDelegatedTaskRequest(
   }
   // docs/design/event-content-spill.md: the server defines what an allow
   // must load (the request and the tool calls bound to it) and the digest
-  // its gate checks; this tool echoes that binding (owner decision: agent
-  // approve tools send the digest). An unreadable binding sends none, and
-  // the gate refuses an allow that needed one.
+  // its gate checks. This tool fetches that binding and echoes its digest
+  // without loading the bodies (owner decision: agent approve tools send the
+  // digest; the agent is not shown the full content first). The request
+  // event it pins is the one this tool read, so a request that changed
+  // since is refused rather than allowed unseen. An unreadable binding
+  // sends none, and the gate refuses an allow that needed one.
   const snapshot = snapshotFor(loaded);
   const allowing =
     input.decision === 'accept' || input.decision === 'acceptForSession';
@@ -5219,9 +5222,18 @@ export async function respondToDelegatedTaskRequest(
             loaded.target.requestOptions,
           ),
         ).catch(() => undefined);
+  const readRequest = [...events]
+    .reverse()
+    .find(
+      (event) =>
+        event.method === 'request.opened' &&
+        event.requestId === input.requestId,
+    );
+  const readRequestEventId =
+    typeof readRequest?.eventId === 'string' ? readRequest.eventId : undefined;
   const contentBinding = binding?.required
     ? {
-        expectedRequestEventId: binding.requestEventId,
+        expectedRequestEventId: readRequestEventId ?? binding.requestEventId,
         viewedContentDigest: binding.viewedContentDigest,
       }
     : {};
