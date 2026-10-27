@@ -224,7 +224,9 @@ describe('Send again with a recovered attachment', () => {
     sdk.sendExecutionMessage.mockResolvedValue({ conversationId: CHAT_A });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    const { chatDraftsStore } = await import('../contexts/chat-drafts-store');
+    chatDraftsStore.consumeQuotes(CHAT_A, chatDraftsStore.getQuotes(CHAT_A));
     staging.dispose();
     activeChatsStore.removeChat(CHAT_A);
     activeChatsStore.removeChat(CHAT_B);
@@ -311,7 +313,6 @@ describe('Send again with a recovered attachment', () => {
     expect(chat.attachments?.map((attachment) => attachment.name)).toEqual([
       'notes.txt',
     ]);
-    chatDraftsStore.consumeQuotes(CHAT_A, chatDraftsStore.getQuotes(CHAT_A));
   });
 
   test('a failed upload keeps an existing draft and says so', async () => {
@@ -328,7 +329,7 @@ describe('Send again with a recovered attachment', () => {
       'my next message',
     );
     expect(sdk.showToast).toHaveBeenCalledWith(
-      'An attachment did not upload. Your draft was kept; retry the upload or use Send again.',
+      'An attachment did not upload. Your draft was kept with the attachment; retry it in the composer, then send.',
       'error',
     );
   });

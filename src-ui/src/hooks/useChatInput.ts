@@ -586,8 +586,8 @@ export function useChatInput({
         );
         if (unstaged.length > 0 && !(await stageFilesRef.current(unstaged))) {
           // The files stay as chips showing their error. The recovered text
-          // fills an empty composer; a draft already there is kept, and the
-          // failed turn keeps its Send again in the transcript either way.
+          // fills an empty composer; a draft already there is kept. Send again
+          // stays blocked by the failed chip until it is retried or removed.
           if (
             overrideText !== undefined &&
             !activeChatsStore.getSnapshot()[sessionId]?.input
@@ -595,7 +595,7 @@ export function useChatInput({
             updateChat(sessionId, { input: canonicalDraft });
           else if (overrideText)
             showToast(
-              'An attachment did not upload. Your draft was kept; retry the upload or use Send again.',
+              'An attachment did not upload. Your draft was kept with the attachment; retry it in the composer, then send.',
               'error',
             );
           return;
