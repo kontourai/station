@@ -4,6 +4,7 @@ import { beginConversationHandoffUiState } from '../components/chat-dock/convers
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { handleOrchestrationEvent } from '../hooks/orchestration/eventHandlers';
 import { handleTurnStartedEvent } from '../hooks/orchestration/turnHandlers';
+import { buildOutgoingUserMessage } from '../hooks/useActiveChatSessions.helpers';
 
 const id = 'shared-chat';
 afterEach(() => activeChatsStore.removeChat(id));
@@ -214,4 +215,92 @@ test('a handoff turn whose start carries the dialog key binds the handoff bubble
   expect(chat.messages).toHaveLength(1);
   expect(chat.pendingClientTurnId).toBeUndefined();
   expect(chat.sendAwaitingTurnStart).toBeUndefined();
+});
+
+const REF = `sha256-${'b'.repeat(64)}`;
+function startKeyed(clientTurnId: string, blobRef = REF) {
+  handleTurnStartedEvent({
+    eventId: 'event-attached',
+    method: 'turn.started',
+    provider: 'codex',
+    threadId: id,
+    turnId: 'turn-attached',
+    createdAt: '2026-09-12T00:00:00Z',
+    prompt: 'See this',
+    clientTurnId,
+    attachments: [
+      {
+        kind: 'image',
+        name: 'screen.png',
+        mimeType: 'image/png',
+        size: 8,
+        blobRef,
+      },
+    ],
+  });
+}
+test('a send that went out as staged references gains the recorded attachments when its turn starts', () => {
+  activeChatsStore.initChat(id, {
+    agentSlug: 'codex',
+    agentName: 'Codex',
+    title: 'Shared',
+  });
+  // After a reload the composer holds only stage descriptors, so the send
+  // path writes its bubble with no file parts at all.
+  const { messages } = buildOutgoingUserMessage(
+    [],
+    'See this',
+    undefined,
+    'key-1',
+  );
+  activeChatsStore.updateChat(id, { pendingClientTurnId: 'key-1', messages });
+  startKeyed('key-1');
+  expect(activeChatsStore.getSnapshot()[id].messages?.[0]).toMatchObject({
+    clientId: 'key-1',
+    turnId: 'turn-attached',
+    contentParts: [
+      { type: 'text', content: 'See this' },
+      {
+        type: 'file',
+        blobRef: REF,
+        mediaType: 'image/png',
+        name: 'screen.png',
+      },
+    ],
+  });
+});
+test('a bubble that already shows its picture keeps those bytes and gains the reference', () => {
+  activeChatsStore.initChat(id, {
+    agentSlug: 'codex',
+    agentName: 'Codex',
+    title: 'Shared',
+  });
+  const png = 'data:image/png;base64,iVBORw0KGgo=';
+  const { messages } = buildOutgoingUserMessage(
+    [],
+    'See this',
+    [
+      {
+        id: 'a',
+        name: 'screen.png',
+        type: 'image/png',
+        size: 8,
+        data: png,
+        preview: png,
+      },
+    ],
+    'key-2',
+  );
+  activeChatsStore.updateChat(id, { pendingClientTurnId: 'key-2', messages });
+  startKeyed('key-2');
+  const parts = activeChatsStore.getSnapshot()[id].messages?.[0].contentParts;
+  expect(parts?.filter((part) => part.type === 'file')).toEqual([
+    {
+      type: 'file',
+      url: png,
+      blobRef: REF,
+      mediaType: 'image/png',
+      name: 'screen.png',
+    },
+  ]);
 });
