@@ -1,7 +1,9 @@
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import * as contracts from '@kontourai/station-contracts/task-review';
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import legacy from '../../../domain/__fixtures__/shared-working-state-v1.json';
 import { EventStore } from '../../orchestration/event-store.js';
 import type { TaskReviewAccess } from '../../orchestration/project-task-room-runtime.js';
 import { TaskReviewError, TaskReviewModule } from '../task-review-module.js';
@@ -24,10 +26,14 @@ const access: TaskReviewAccess = {
   },
 };
 const request = new Request('http://station.test/api/tasks/task/review');
-function setup() {
-  const events = new EventStore(
-    join(makeTempDir('station-review-module-'), 'events.sqlite'),
+function setup(
+  readPlan?: ConstructorParameters<typeof TaskReviewModule>[0]['readPlan'],
+) {
+  const databasePath = join(
+    makeTempDir('station-review-module-'),
+    'events.sqlite',
   );
+  const events = new EventStore(databasePath);
   stores.push(events);
   const store = events.taskReviewStore();
   let plan = {
@@ -54,12 +60,13 @@ function setup() {
         throw new Error('Unexpected content read');
       },
     },
-    readPlan: async () => plan,
+    readPlan: readPlan ?? (async () => plan),
     readAnswers: async () => [],
     deliveryStatusFor,
   });
   return {
     events,
+    databasePath,
     logger,
     store,
     module,
@@ -73,6 +80,129 @@ function setup() {
     read: () => module.read(access, request),
   };
 }
+
+test('relocates a v1-era plan thread after the actual SQLite document is saved as v2', async () => {
+  const scope = legacy.snapshot.scope;
+  const e = setup(async () => {
+    const document = await working.read({ scope });
+    if (document.kind === 'unavailable')
+      return { kind: 'unavailable' as const };
+    if (
+      typeof document.revision !== 'string' ||
+      typeof document.text !== 'string'
+    )
+      throw new Error('expected complete document projection');
+    return {
+      kind: 'available' as const,
+      documentId: scope.documentId,
+      revision: document.revision,
+      text: document.text,
+    };
+  });
+  const working = e.events.createProjectTaskRoomWorkingState();
+  const owner: TaskReviewAccess = {
+    ...access,
+    write: {
+      ...access.write,
+      projectId: scope.projectId,
+      taskId: scope.taskId,
+    },
+  };
+  try {
+    await working.read({ scope });
+    const database = new DatabaseSync(e.databasePath);
+    try {
+      database
+        .prepare(
+          'INSERT INTO project_task_room_working_states(project_id,task_id,document_id,snapshot_json,revision,compaction_floor,updated_at) VALUES(?,?,?,?,?,?,?)',
+        )
+        .run(
+          scope.projectId,
+          scope.taskId,
+          scope.documentId,
+          JSON.stringify(legacy.snapshot),
+          legacy.snapshot.revision,
+          legacy.snapshot.revision,
+          '2026-10-26T00:00:00Z',
+        );
+    } finally {
+      database.close();
+    }
+    const before = await e.module.read(owner, request);
+    const item = before.items.find((item) => item.kind === 'plan');
+    if (item?.status !== 'available')
+      throw new Error('expected available v1 plan');
+    expect(item.artifact.revision).toMatch(/^swsr-v1:/);
+    const start = legacy.receipt.text.indexOf('brief');
+    expect(start).toBeGreaterThanOrEqual(0);
+    const thread = await e.module.create(owner, request, {
+      artifact: item.artifact,
+      anchor: {
+        kind: 'text-quote',
+        start,
+        end: start + 5,
+        exact: 'brief',
+        prefix: '',
+        suffix: '',
+      },
+      body: 'Keep this plan detail',
+      operationId: 'v1-thread',
+    });
+    expect(
+      await working.settle({
+        scope,
+        intentId: 'upgrade',
+        intentDigest: 'upgrade',
+        actorId: 'legacy-person',
+        epoch: 0,
+        operations: [
+          {
+            schemaVersion: 1,
+            documentId: legacy.snapshot.scope.documentId,
+            replicaId: 'room:legacy-device',
+            actor: { actorId: 'legacy-person', kind: 'human' },
+            parents: [],
+            authorizationEpoch: 0,
+            kind: 'insert',
+            operationId: '!prefix',
+            after: null,
+            text: 'New ',
+          },
+        ],
+        suppressRevisionPublicationForDiagnostic: true,
+      }),
+    ).toMatchObject({ kind: 'committed', text: `New ${legacy.receipt.text}` });
+    expect(await working.privateSnapshot({ scope })).toMatchObject({
+      schemaVersion: 2,
+    });
+    const current = await e.module.read(owner, request);
+    const detail = await e.module.readThread(owner, request, thread.threadId);
+    expect(current.threads[0]).toMatchObject({
+      artifact: { revision: legacy.snapshot.revision },
+      currentRevision: expect.stringMatching(/^swsr-v2:/),
+      state: 'open',
+      outdated: false,
+    });
+    expect(detail).toMatchObject({
+      quote: 'brief',
+      artifact: { revision: legacy.snapshot.revision },
+      currentRevision: expect.stringMatching(/^swsr-v2:/),
+      state: 'open',
+      outdated: false,
+    });
+    if (thread.anchor.kind !== 'text-quote')
+      throw new Error('expected quote anchor');
+    expect(
+      contracts.relocateTextQuote(`New ${legacy.receipt.text}`, thread.anchor),
+    ).toMatchObject({ status: 'moved', start: start + 4, end: start + 9 });
+    expect(
+      e.store.readThread({ ...owner.write, threadId: thread.threadId }),
+    ).toMatchObject({ artifact: item.artifact, anchor: thread.anchor });
+  } finally {
+    await working.close();
+  }
+});
+
 function open(e: ReturnType<typeof setup>, body = 'Please clarify') {
   const result = e.store.createThread({
     ...access.write,

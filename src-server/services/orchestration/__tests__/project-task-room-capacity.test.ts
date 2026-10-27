@@ -11,10 +11,12 @@ import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { afterEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
+  MAX_WORKING_STATE_SNAPSHOT_BYTES,
   SHARED_WORKING_STATE_SCHEMA_VERSION,
   type TextDocumentOperation,
 } from '../../../domain/shared-working-state.js';
 import { sharedWorkingStateEditBatchDigest } from '../../../domain/shared-working-state-editing.js';
+import { TASK_ROOM_INSERT_RESERVE_BYTES } from '../../../domain/task-room-document-capacity.js';
 import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
 import { EventStore } from '../event-store.js';
 import { projectTaskRoomDocumentId } from '../project-task-room-document-id.js';
@@ -177,6 +179,11 @@ async function setup() {
     seedLegacy,
     backing,
     scope,
+    snapshotBytes: async () => {
+      const snapshot = await backing.privateSnapshot({ scope });
+      if (!snapshot) throw new Error('expected durable snapshot');
+      return Buffer.byteLength(JSON.stringify(snapshot), 'utf8');
+    },
   };
 }
 
@@ -244,66 +251,92 @@ describe('#4007 a Task document refuses what it cannot hold, explicitly and up f
     expect(await room.text()).toBe(brief);
   });
 
-  test('refuses an over-bound write at the worker and the following writes still link evidence', async () => {
+  test('an insert-full room accepts a person deleting inside a live run and never wedges', async () => {
     const room = await setup();
-    // Fill document metadata through the real worker without charging #4055's
-    // unchanged global ledger for these diagnostic workload saves.
-    for (let batch = 0; batch < 110; batch += 1) {
-      const operations: TextDocumentOperation[] = [];
-      for (let index = 0; index < 10; index += 1) {
-        const id = randomUUID();
-        const common = {
-          schemaVersion: 1,
+    expect(await room.edit('a'.repeat(64))).toMatchObject({
+      kind: 'committed',
+      revisionEvidence: { kind: 'linked' },
+    });
+    // Real worker workload, with only ledger retention suppressed (#4055).
+    // Short filler ids cost less than a person edit, so even a one-character
+    // person insertion is refused once the final filler no longer fits.
+    let next = 0;
+    const fill = async (count: number) => {
+      const operations: TextDocumentOperation[] = Array.from(
+        { length: count },
+        (_, offset) => ({
+          schemaVersion: SHARED_WORKING_STATE_SCHEMA_VERSION,
+          operationId: `fill-${String(next + offset).padStart(5, '0')}`,
           documentId: room.scope.documentId,
           replicaId: 'replica',
-          actor: { actorId: 'owner-1', kind: 'human' as const },
+          actor: { actorId: 'owner-1', kind: 'human' },
           parents: [],
           authorizationEpoch: 0,
-        };
-        operations.push({
-          ...common,
           kind: 'insert',
-          operationId: id,
           after: null,
-          text: 'deleted',
-        });
-        operations.push({
-          ...common,
-          kind: 'delete',
-          operationId: randomUUID(),
-          target: Array.from({ length: 7 }, (_, i) => `${id}:${i}`),
-        });
-      }
-      expect(
-        await room.backing.settle({
-          scope: room.scope,
-          intentId: `fill-${batch}`,
-          intentDigest: `fill-${batch}`,
-          actorId: 'owner-1',
-          epoch: 0,
-          operations,
-          suppressRevisionPublicationForDiagnostic: true,
+          text: 'x',
         }),
-      ).toMatchObject({ kind: 'committed' });
+      );
+      const result = await room.backing.settle({
+        scope: room.scope,
+        intentId: `fill-${next}-${count}`,
+        intentDigest: `fill-${next}-${count}`,
+        actorId: 'owner-1',
+        epoch: 0,
+        operations,
+        suppressRevisionPublicationForDiagnostic: true,
+      });
+      if (result.kind === 'committed') next += count;
+      else
+        expect(result).toEqual({ kind: 'rejected', reason: 'document-full' });
+      return result.kind === 'committed';
+    };
+    for (let batch = 0; batch < 400; batch += 1) {
+      if (!(await fill(10))) break;
     }
-    expect(await room.edit('x'.repeat(120_000))).toEqual({
+    for (let tail = 0; tail < 10; tail += 1) {
+      if (!(await fill(1))) break;
+    }
+    const before = await room.text();
+    const bytesBefore = await room.snapshotBytes();
+    expect(bytesBefore).toBeGreaterThan(
+      MAX_WORKING_STATE_SNAPSHOT_BYTES - TASK_ROOM_INSERT_RESERVE_BYTES - 512,
+    );
+    expect(bytesBefore).toBeLessThanOrEqual(
+      MAX_WORKING_STATE_SNAPSHOT_BYTES - TASK_ROOM_INSERT_RESERVE_BYTES,
+    );
+    expect(await room.edit(`${before}y`)).toEqual({
       kind: 'rejected',
       reason: 'document-full',
     });
-    expect(await room.text()).toBe('');
+    expect(await room.text()).toBe(before);
+    expect(await room.snapshotBytes()).toBe(bytesBefore);
+    // This middle deletion splits a live run into three and ADDS snapshot
+    // bytes. It must spend the reserve rather than be refused like inserts.
+    expect(before.slice(0, 64)).toBe('a'.repeat(64));
+    const after = before.slice(0, 16) + before.slice(17);
+    expect(await room.edit(after)).toMatchObject({
+      kind: 'committed',
+      revisionEvidence: { kind: 'linked' },
+    });
+    expect(await room.snapshotBytes()).toBeGreaterThan(bytesBefore);
+    expect(await room.text()).toBe(after);
     expect(
       await room.backing.readRevisionPublication({ scope: room.scope }),
     ).toEqual({ kind: 'missing' });
-    for (const text of ['xy', 'x']) {
-      expect(await room.edit(text)).toMatchObject({
-        kind: 'committed',
-        revisionEvidence: { kind: 'linked' },
-      });
-      expect(await room.text()).toBe(text);
-      expect(
-        await room.backing.readRevisionPublication({ scope: room.scope }),
-      ).toEqual({ kind: 'missing' });
-    }
+    expect(await room.edit(`${after}y`)).toEqual({
+      kind: 'rejected',
+      reason: 'document-full',
+    });
+    const again = after.slice(0, 16) + after.slice(17);
+    expect(await room.edit(again)).toMatchObject({
+      kind: 'committed',
+      revisionEvidence: { kind: 'linked' },
+    });
+    expect(await room.text()).toBe(again);
+    expect(
+      await room.backing.readRevisionPublication({ scope: room.scope }),
+    ).toEqual({ kind: 'missing' });
   }, 300_000);
 
   test('when the Station-wide evidence ledger is full every write is refused as evidence-ledger-full, never left pending', async () => {

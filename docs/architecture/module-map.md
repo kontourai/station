@@ -2907,9 +2907,22 @@ Deferred count/byte and replay limits bound those windows, not total process
 memory for an indefinitely growing document. Runs retain text once per insert
 and compact deleted ranges without losing old scalar anchors. Operation
 digests still grow with edits; worker admission enforces the same 512 KiB
-snapshot bound as evidence and the unchanged SQLite CHECK. Presence and cursors never enter
+snapshot bound as evidence and the unchanged SQLite CHECK. Each small save adds
+about 180 B of metadata, for roughly 2.5–3k saves per document before explicit
+`document-full`, depending on text and fragmentation. Inserts leave a 16 KiB
+deletion reserve in both snapshot and evidence-record budgets; deletes can
+spend it even when splitting a run grows stored bytes. That reserve is finite
+and does not bypass the Station-wide ledger. Presence and cursors never enter
 the durable document facts. The [design record](../design/shared-working-state.md)
 explains mechanism choices and historical constraints.
+
+**Downgrade.** The pre-v2 reader's exact schema fence rejects v2 snapshots.
+Its worker returns unavailable rather than an empty document; the runtime
+propagates this and the document route returns HTTP 503 `Room unavailable`.
+The stored snapshot is preserved and further settlements refuse. Like room
+v4/v5 schema fences, this needs a compatible reader or a pre-upgrade home
+backup for rollback; no implicit conversion or document reset is supported.
+This compatibility conclusion is source-derived, not an executed downgrade.
 
 **Current composition.** [ProjectTaskRoomWorkingState](../../src-server/services/orchestration/project-task-room-working-state.ts)
 and its worker own private SQLite settlement and snapshots. They instantiate
@@ -3244,8 +3257,12 @@ admitted but not yet frozen, so a room write is refused as `document-full` or
 `evidence-ledger-full` instead of being admitted and then never frozen.
 A Task document uses run snapshots, admits a 12,000-character proposal brief,
 and compacts deleted ranges while retaining operation identities and scalar
-anchors. Its 512 KiB snapshot, 256 KiB visible-text and record bounds are
-checked before commit. It is also bounded by the unchanged
+anchors. Runs make the 256 KiB visible-text and 768 KiB record limits reachable;
+the worker pre-check covers both alongside the 512 KiB snapshot limit before
+commit, reserving 16 KiB in snapshot and record budgets on inserts for deletions.
+About 180 B of metadata per small save gives a document roughly 2.5–3k lifetime
+saves before explicit `document-full`, with text and fragmentation affecting
+the actual count. It is also bounded by the unchanged
 Station-wide ledger: 256 receipts / 4 MiB, each holding a full snapshot of the
 document it records. A few hundred small saves, or a few saves of a large
 document, fill it for every Task; retiring receipts is [#4055](https://github.com/kontourai/station/issues/4055). Missing compatible attribution is `attribution_unverified`; a portable
@@ -5289,8 +5306,11 @@ indexed Session engine and recorded-owner reads after Session read admission;
 no full transcript or People-management request is needed. Missing identity
 facts fall back to Teammate or Agent. The local operator's profile name wins;
 when only the OS alias is available, its initial is capitalized for display.
-Opaque working-state plan
-revisions are hidden because the room does not expose ordinal plan history.
+Working-state plan revisions use compact `swsr-v1`/`swsr-v2` digest chips,
+including transitions across a v1-to-v2 save, with the full current revision
+in the title. These are content identities, not ordinal plan history. Existing
+v1-era thread anchors relocate by quote against current v2 text; a revision
+prefix change alone does not make a thread Outdated.
 
 Task review keeps anchored comments outside the shared room's document and
 history, and outside revision-bound evidence (#4007, #4055). The

@@ -1,11 +1,17 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { readFileSync, rmSync } from 'node:fs';
+import { rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import legacy from '../../../domain/__fixtures__/shared-working-state-v1.json';
 import { PROJECT_TASK_ROOM_REVISION_PUBLICATION_MIGRATION } from '../../../domain/migrations/008-project-task-room-revision-publication.js';
 import { ensureProjectTaskRoomRevisionAttributionColumn } from '../../../domain/migrations/009-project-task-room-revision-attribution.js';
+import { revisionEvidenceSnapshotBytes } from '../../../domain/revision-bound-evidence.js';
+import {
+  MAX_WORKING_STATE_SNAPSHOT_BYTES,
+  SharedWorkingState,
+} from '../../../domain/shared-working-state.js';
 import type { Logger } from '../../../utils/logger.js';
 import { createProjectTaskRoomWorkingState } from '../project-task-room-working-state.js';
 
@@ -75,16 +81,153 @@ async function finishPublication(
 }
 
 describe('project task room working state', () => {
+  test.each([0, 1])(
+    'pins the default worker and evidence snapshot limits at the shared bound + %i bytes',
+    async (excess) => {
+      directory = makeTempDir('station-room-bound-');
+      const path = join(directory, 'orchestration.sqlite');
+      const deletion = {
+        ...operation('bound-delete', ''),
+        kind: 'delete' as const,
+        target: ['bound-seed:0'],
+      };
+      const authorization = {
+        scope,
+        epoch: 1,
+        allowedActorIds: new Set(['operator']),
+      };
+      const targetBytes = MAX_WORKING_STATE_SNAPSHOT_BYTES + excess;
+      let padding = 100;
+      const fixture = () => {
+        const state = new SharedWorkingState({ scope });
+        expect(
+          state.apply(
+            operation('bound-seed', 'a' + 'x'.repeat(padding)),
+            authorization,
+          ).outcome,
+        ).toBe('applied');
+        const prior = state.snapshot();
+        expect(state.apply(deletion, authorization).outcome).toBe('applied');
+        return { prior, next: state.snapshot() };
+      };
+      let snapshots = fixture();
+      // Padding changes the run-length digit count too. Recompute from the
+      // actual serialized snapshot rather than estimating the boundary.
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const bytes = Buffer.byteLength(JSON.stringify(snapshots.next), 'utf8');
+        if (bytes === targetBytes) break;
+        padding += targetBytes - bytes;
+        snapshots = fixture();
+      }
+      expect(Buffer.byteLength(JSON.stringify(snapshots.next), 'utf8')).toBe(
+        targetBytes,
+      );
+      expect(revisionEvidenceSnapshotBytes(snapshots.next)).toBe(
+        excess ? null : targetBytes,
+      );
+      const working = createProjectTaskRoomWorkingState(path);
+      try {
+        await working.read({ scope });
+        const database = new DatabaseSync(path);
+        try {
+          database
+            .prepare(
+              'INSERT INTO project_task_room_working_states(project_id,task_id,document_id,snapshot_json,revision,compaction_floor,updated_at) VALUES(?,?,?,?,?,?,?)',
+            )
+            .run(
+              scope.projectId,
+              scope.taskId,
+              scope.documentId,
+              JSON.stringify(snapshots.prior),
+              snapshots.prior.revision,
+              snapshots.prior.revision,
+              '2026-10-26T00:00:00Z',
+            );
+        } finally {
+          database.close();
+        }
+        // Isolate the worker's own default from its evidence preflight, which
+        // would otherwise mask an independently raised worker limit (#4239).
+        const result = await working.settle({
+          scope,
+          intentId: 'bound',
+          intentDigest: 'bound',
+          actorId: 'operator',
+          epoch: 1,
+          operations: [deletion],
+          suppressRevisionPublicationForDiagnostic: true,
+        });
+        expect(result).toMatchObject(
+          excess
+            ? { kind: 'rejected', reason: 'document-full' }
+            : { kind: 'committed' },
+        );
+        expect(await working.privateSnapshot({ scope })).toEqual(
+          excess ? snapshots.prior : snapshots.next,
+        );
+      } finally {
+        await working.close();
+      }
+    },
+  );
+
+  test('refuses an unsupported stored snapshot instead of returning or saving an empty document', async () => {
+    directory = makeTempDir('station-room-future-');
+    const path = join(directory, 'orchestration.sqlite');
+    const working = createProjectTaskRoomWorkingState(path);
+    try {
+      expect(
+        await working.settle({
+          scope,
+          intentId: 'seed',
+          intentDigest: 'seed',
+          actorId: 'operator',
+          epoch: 1,
+          operations: [operation('seed', 'Preserve this document')],
+          suppressRevisionPublicationForDiagnostic: true,
+        }),
+      ).toMatchObject({ kind: 'committed' });
+      const snapshot = await working.privateSnapshot({ scope });
+      if (!snapshot) throw new Error('expected stored seed');
+      const future = JSON.stringify({ ...snapshot, schemaVersion: 3 });
+      const database = new DatabaseSync(path);
+      try {
+        database
+          .prepare(
+            'UPDATE project_task_room_working_states SET snapshot_json=?',
+          )
+          .run(future);
+        expect(await working.read({ scope })).toEqual({ kind: 'unavailable' });
+        expect(
+          await working.settle({
+            scope,
+            intentId: 'overwrite',
+            intentDigest: 'overwrite',
+            actorId: 'operator',
+            epoch: 1,
+            operations: [operation('overwrite', 'Replacement')],
+            suppressRevisionPublicationForDiagnostic: true,
+          }),
+        ).toEqual({ kind: 'unavailable' });
+        expect(
+          database
+            .prepare(
+              'SELECT snapshot_json FROM project_task_room_working_states',
+            )
+            .get(),
+        ).toEqual({ snapshot_json: future });
+        expect(await working.readRevisionPublication({ scope })).toEqual({
+          kind: 'missing',
+        });
+      } finally {
+        database.close();
+      }
+    } finally {
+      await working.close();
+    }
+  });
+
   test('loads the exact v1 writer fixture from SQLite and writes runs on the next accepted edit', async () => {
-    const legacy = JSON.parse(
-      readFileSync(
-        new URL(
-          '../../../domain/__fixtures__/shared-working-state-v1.json',
-          import.meta.url,
-        ),
-        'utf8',
-      ),
-    );
     directory = makeTempDir('station-room-v1-');
     const path = join(directory, 'orchestration.sqlite');
     const initial = createProjectTaskRoomWorkingState(path);
@@ -122,7 +265,13 @@ describe('project task room working state', () => {
           epoch: 0,
           operations: [
             {
-              ...legacy.insert,
+              schemaVersion: 1,
+              documentId: legacy.snapshot.scope.documentId,
+              replicaId: 'room:legacy-device',
+              actor: { actorId: 'legacy-person', kind: 'human' },
+              parents: [],
+              authorizationEpoch: 0,
+              kind: 'insert',
               operationId: '!new-run',
               after: `${legacy.insert.operationId}:3`,
               text: '!',

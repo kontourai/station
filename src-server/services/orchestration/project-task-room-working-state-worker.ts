@@ -792,7 +792,14 @@ async function handle(message: any) {
         const snapshotJson = JSON.stringify(snapshot);
         const snapshotBytes = Buffer.byteLength(snapshotJson, 'utf8');
         // Deterministic: no retry of this write can fit, so name it (#4007).
-        if (snapshotBytes > maxWorkingSnapshotBytes) {
+        // Keep deletion headroom even for diagnostic workloads that skip the
+        // evidence ledger. Deleting inside a live run can grow its snapshot.
+        const reserveBytes = (value.operations as TextDocumentOperation[]).some(
+          (operation) => operation.kind === 'insert',
+        )
+          ? TASK_ROOM_INSERT_RESERVE_BYTES
+          : 0;
+        if (snapshotBytes + reserveBytes > maxWorkingSnapshotBytes) {
           db.exec('ROLLBACK');
           return send(id, { kind: 'rejected', reason: 'document-full' });
         }

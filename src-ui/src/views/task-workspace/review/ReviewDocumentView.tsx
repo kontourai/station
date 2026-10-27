@@ -28,7 +28,9 @@ import { sameReviewArtifact } from './review-types';
 
 function formatRevision(revision: TaskReviewArtifactRef['revision']) {
   if (typeof revision === 'number') return `v${revision}`;
-  return /^(?:swsr-v1:|sha\d+:|[a-f\d]{40}$|[a-f\d]{64}$)/i.test(revision)
+  const working = /^(swsr-v[12]):([a-f\d]{64})$/i.exec(revision);
+  if (working) return `${working[1]}:${working[2].slice(0, 8)}`;
+  return /^(?:sha\d+:|[a-f\d]{40}$|[a-f\d]{64}$)/i.test(revision)
     ? undefined
     : revision;
 }

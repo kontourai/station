@@ -142,6 +142,25 @@ document storage, not unlimited lifetime editing. The worker explicitly refuses
 `document-full` before committing a snapshot that exceeds the shared 512 KiB
 bound; the evidence step uses that same constant and admission measure.
 
+Each save retains operation identity/digest metadata, about 180 B for a small
+editor save. The per-document lifetime is therefore roughly 2.5–3k saves before
+an explicit `document-full` error, depending on text, operation IDs and run
+fragmentation. This is a storage estimate, not a measured editor throughput
+guarantee. With runs, the 256 KiB visible-text and 768 KiB evidence-record limits
+are reachable; the worker pre-check covers both as well as the 512 KiB snapshot
+limit before committing.
+
+Writes containing an insertion leave a 16 KiB deletion reserve in both snapshot
+and evidence-record budgets. The worker also preserves the snapshot reserve for
+diagnostic bulk seeds that skip evidence publication. A person can use that
+headroom to delete inside a live run after even a one-character insertion is
+refused: splitting the run and retaining the deletion's digest can increase
+stored bytes despite reducing visible text. Deletions may spend the reserve;
+it is finite, so arbitrarily fragmented bulk deletions or indefinitely repeated
+deletion saves can still reach `document-full`. Refusal rolls back the entire
+batch without leaving a publication pending. This reserve does not bypass the
+separate Station-wide evidence-ledger cap (#4055), whose refusal remains explicit.
+
 Both retained replay and deferred admission are bounded configuration: replay
 retention, deferred operation count, and deferred UTF-8 payload bytes have
 safe defaults and fail closed with `deferred_limit_exceeded`; a response limit
@@ -161,11 +180,29 @@ Receipt identity still hashes the full canonical snapshot. A receipt made
 from v2 therefore has a new identity, while existing v1 receipts verify against
 their original snapshot and retain their identity. New receipts may name old
 receipts as parents. Neither old receipts nor their attestations are rewritten.
-An older binary cannot read a newly written v2 document; rollback after a v2
-write requires a compatible reader or restoring a pre-upgrade home backup.
+The pre-v2 binary at `03728690b3e` already has an exact snapshot-schema fence,
+following the room v4/v5 pattern of rejecting an unsupported schema instead of
+downleveling it. Its `SharedWorkingState.#restore` rejects schema 2 with
+`shared working-state snapshot is malformed`. The working-state worker's
+`load` catches that exception and returns unavailable; both `read` and `settle`
+refuse, without constructing or persisting an empty replacement. The runtime
+preserves unavailable and the document route returns HTTP 503 `Room unavailable`.
+No additional room-history fence is needed for this format change. This
+downgrade path was traced in source; running an older binary on a v2 home is
+still a separate validation obligation. Rollback after a v2 write requires a
+compatible reader or restoring a pre-upgrade home backup. Never remove the
+snapshot row to make an older binary open it.
 The checked-in `shared-working-state-v1.json` fixture was captured from the
 actual v1 writer and evidence module on the pinned main base, rather than
 synthesized by the new codec.
+
+Task Review stores the original opaque revision and quote outside the document.
+After a v1 plan is saved as v2, quote relocation uses the current text, without
+interpreting the `swsr-v1` or `swsr-v2` prefix. A quote that still resolves stays
+Open; the persisted thread retains its original revision and the projection
+reports the current v2 revision. The Review document chip shows a compact
+working revision (schema prefix plus eight digest characters), with the full
+current revision in its title; the transition chip can span v1 and v2.
 
 ## Evidence and telemetry
 

@@ -11,10 +11,12 @@ import {
 import { lowSortingIntentId } from './shared-working-state-editing.js';
 
 /**
- * Snapshot headroom a write that inserts text must leave, so a person can
- * still delete from a Task document that inserts have filled (#4007). A
+ * Snapshot and evidence-record headroom an insertion must leave, so a person
+ * can still delete from an insert-full Task document (#4007). A
  * deletion adds one operation digest and may split live runs, while contiguous
- * deleted positions collapse to a range without their former text.
+ * deleted positions collapse to a range without their former text. Deletes
+ * consume this finite reserve; it does not promise unlimited deletion saves
+ * or bypass the Station-wide evidence ledger (#4055).
  */
 export const TASK_ROOM_INSERT_RESERVE_BYTES = 16 * 1024;
 

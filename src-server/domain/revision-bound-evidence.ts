@@ -114,8 +114,8 @@ export type RevisionEvidenceAdmissionRefusal =
  * evidence (#4007): it applies the same bounds `freeze` and the durable
  * ledger apply, so a write it admits is never refused afterwards for size.
  * `ledger` counts stored receipts plus revisions admitted but not yet frozen.
- * `reserveBytes` holds snapshot headroom back from writes that insert text,
- * so a person can still delete from a document that inserts have filled.
+ * `reserveBytes` holds snapshot and record headroom back from insertions, so
+ * a person can still delete from a document that inserts have filled.
  */
 export function revisionEvidenceAdmission(input: {
   readonly snapshotBytes: number;
@@ -129,7 +129,7 @@ export function revisionEvidenceAdmission(input: {
   if (
     input.snapshotBytes + (input.reserveBytes ?? 0) > bounds.maxSnapshotBytes ||
     input.textBytes > bounds.maxTextBytes ||
-    input.recordBytes > bounds.maxRecordBytes
+    input.recordBytes + (input.reserveBytes ?? 0) > bounds.maxRecordBytes
   )
     return 'document-full';
   const count = input.ledger.count + 1;
