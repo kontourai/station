@@ -73,8 +73,9 @@ time the recording was played.
 
 Record a live conversation from chat developer settings to include committed
 history reads, runtime events, transport transitions, snapshots, and the
-initial visible state. Capture is opt-in and stops explicitly at 16 MiB or
-20,000 frames. A server-event tape cannot reconstruct the original client's
+initial visible state. The initial state keeps attachment names, types and
+references but never inline attachment bytes. Capture is opt-in and stops
+explicitly at 16 MiB or 20,000 frames. A server-event tape cannot reconstruct the original client's
 history responses or network timing; `coverage` distinguishes it from a
 client capture. Imported captures use the production history projector with
 recorded reader responses and cannot issue live history requests.
