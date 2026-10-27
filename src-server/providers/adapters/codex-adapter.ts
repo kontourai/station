@@ -1975,11 +1975,15 @@ export class CodexAdapter implements ProviderAdapterShape {
     // Only a session start gets the per-session TMPDIR; quota, model and
     // maintenance probes keep the shared engine-spawn directory.
     const sessionTmpDir = engineSessionTmpDir(input.threadId);
-    const processHandle = this.processFactory(
-      spawnEnv,
-      spawnArgs.length ? spawnArgs : undefined,
-      sessionTmpDir,
-    );
+    // Without a session folder the call is exactly the two-argument one it
+    // always was.
+    const processHandle = sessionTmpDir
+      ? this.processFactory(
+          spawnEnv,
+          spawnArgs.length ? spawnArgs : undefined,
+          sessionTmpDir,
+        )
+      : this.processFactory(spawnEnv, spawnArgs.length ? spawnArgs : undefined);
     const record = createCodexSessionRecord({
       externalThreadId: input.threadId,
       process: processHandle,
