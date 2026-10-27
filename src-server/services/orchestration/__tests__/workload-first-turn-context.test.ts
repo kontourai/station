@@ -300,7 +300,7 @@ describe('Station first-turn workload context', () => {
     expect(resumed?.input).toContain('## Station recovery note');
     expect(resumed?.input).toContain('peak 3072 MiB against a 3072 MiB budget');
     expect(resumed?.input).toContain(
-      '- npm run icons:generate\n- npx eslint .\n',
+      '- `npm run icons:generate`\n- `npx eslint .`\n',
     );
     expect(resumed?.input).not.toContain('git status');
     expect(resumed?.input.endsWith('\nContinue')).toBe(true);
