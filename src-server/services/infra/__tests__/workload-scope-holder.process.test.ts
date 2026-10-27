@@ -1,34 +1,47 @@
 /**
- * The engine scope holder, as real processes: Codex is spawned detached and
- * its teardown kills the engine's whole process group (`terminateCodexProcess`,
- * processGroup: true) in the same tick the scope starts closing. The holder
- * must survive that, or the scope is collected before Station reads its
- * memory.events. Placement into the scope (systemd, cgroups) is covered by the
- * Linux process fixture.
+ * An engine scope's holder, as real processes: the scope's shell wrapper
+ * (`engineScopeWrapper`, run by /bin/sh exactly as systemd-run execs it)
+ * starts the holder and then execs the engine. Codex is spawned detached and
+ * its teardown kills the engine's whole process group
+ * (`terminateCodexProcess`, processGroup: true); the holder must survive that
+ * and hold none of the engine's pipes, or the engine's stdio never closes.
+ * That the holder lands in the scope's cgroup is covered by the Linux
+ * workload process fixture.
  */
 import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { existsSync, readdirSync, readlinkSync } from 'node:fs';
+import { chmod, symlink, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
-import { spawnScopeHolder } from '../workload-resources.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { engineScopeWrapper } from '../workload-resources.js';
 
-const started: ChildProcess[] = [];
+const tempDir = trackTempDirs();
+const started: number[] = [];
 afterEach(() => {
-  for (const child of started.splice(0)) {
+  for (const pid of started.splice(0)) {
     try {
-      if (child.pid) process.kill(child.pid, 'SIGKILL');
+      process.kill(pid, 'SIGKILL');
     } catch {
       /* already gone */
     }
   }
 });
 
-function processGroup(pid: number): number {
-  return Number(
-    execFileSync('/bin/ps', ['-o', 'pgid=', '-p', String(pid)], {
-      encoding: 'utf8',
-      windowsHide: true,
-    }).trim(),
-  );
+function processes(): Array<{ pid: number; pgid: number; args: string }> {
+  return execFileSync('/bin/ps', ['-A', '-o', 'pid=,pgid=,args='], {
+    encoding: 'utf8',
+    windowsHide: true,
+  })
+    .split('\n')
+    .map((line) => line.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/))
+    .filter((match) => match !== null)
+    .map((match) => ({
+      pid: Number(match[1]),
+      pgid: Number(match[2]),
+      args: match[3] as string,
+    }));
 }
 
 function alive(pid: number): boolean {
@@ -40,35 +53,86 @@ function alive(pid: number): boolean {
   }
 }
 
+/**
+ * setsid(1) where the host has it (Linux); elsewhere a stand-in with the same
+ * contract for `-f`: fork, new session in the child, exec with every inherited
+ * descriptor kept (Perl closes only descriptors it opened itself).
+ */
+async function setsidBinary(directory: string): Promise<string> {
+  if (existsSync('/usr/bin/setsid')) return '/usr/bin/setsid';
+  const standIn = join(directory, 'setsid');
+  await writeFile(
+    standIn,
+    '#!/usr/bin/perl\nuse POSIX;\nshift @ARGV if $ARGV[0] eq "-f";\nexit 0 if fork;\nPOSIX::setsid();\nexec { $ARGV[0] } @ARGV or exit 127;\n',
+  );
+  await chmod(standIn, 0o755);
+  return standIn;
+}
+
 describe('engine scope holder', () => {
-  test('lives in its own process group and survives the group kill that tears a Codex engine down', async () => {
-    const engine = spawn(
-      process.execPath,
-      ['-e', 'setInterval(() => {}, 1000)'],
+  test('starts before the engine in its own session, holds no engine pipe, and survives the group kill that tears a Codex engine down', async () => {
+    const directory = tempDir('scope-holder-');
+    // A sleep under a unique path names this test's holder in ps.
+    const sleep = join(directory, 'holder-sleep');
+    await symlink(
+      existsSync('/usr/bin/sleep') ? '/usr/bin/sleep' : '/bin/sleep',
+      sleep,
+    );
+    const script = engineScopeWrapper({
+      setsid: await setsidBinary(directory),
+      sleep,
+    });
+    // Stdio, Node IPC-style and browser extra pipes: descriptors 0-4.
+    const engine: ChildProcess = spawn(
+      '/bin/sh',
+      [
+        '-c',
+        script,
+        'station-workload',
+        process.execPath,
+        '-e',
+        'console.log("ready");setInterval(()=>{},1000)',
+      ],
       {
         detached: true,
-        stdio: 'ignore',
+        stdio: ['pipe', 'pipe', 'pipe', 'pipe', 'pipe'],
         windowsHide: true,
       },
     );
-    started.push(engine);
-    const holder = spawnScopeHolder();
-    started.push(holder);
     const enginePid = engine.pid as number;
-    const holderPid = holder.pid as number;
-    expect(
-      execFileSync('/bin/ps', ['-o', 'args=', '-p', String(holderPid)], {
-        encoding: 'utf8',
-        windowsHide: true,
-      }).trim(),
-    ).toBe('/bin/sleep 2147483647');
-    // Its own group (leader), not the engine's and not Station's.
-    expect(processGroup(holderPid)).toBe(holderPid);
-    expect(processGroup(holderPid)).not.toBe(processGroup(enginePid));
-    expect(processGroup(holderPid)).not.toBe(processGroup(process.pid));
-    const exited = once(engine, 'exit');
+    started.push(enginePid);
+    const closed = once(engine, 'close');
+    await once(engine.stdout!, 'data');
+    // The holder was forked before the engine's exec.
+    const holders = processes().filter(
+      (entry) => entry.args === `${sleep} 2147483647`,
+    );
+    expect(holders).toHaveLength(1);
+    const holder = holders[0]!;
+    started.push(holder.pid);
+    // Its own group (a session leader), not the engine's and not Station's.
+    expect(holder.pgid).toBe(holder.pid);
+    expect(holder.pgid).not.toBe(enginePid);
+    expect(holder.pgid).not.toBe(
+      processes().find((entry) => entry.pid === process.pid)?.pgid,
+    );
+    if (existsSync(`/proc/${holder.pid}/fd`))
+      expect(
+        readdirSync(`/proc/${holder.pid}/fd`).map((fd) => [
+          fd,
+          readlinkSync(`/proc/${holder.pid}/fd/${fd}`),
+        ]),
+      ).toEqual([
+        ['0', '/dev/null'],
+        ['1', '/dev/null'],
+        ['2', '/dev/null'],
+      ]);
     process.kill(-enginePid, 'SIGKILL');
-    await exited;
-    expect(alive(holderPid)).toBe(true);
+    // Every engine pipe closes: the holder kept none of them open.
+    const late = new Promise((resolve) => setTimeout(resolve, 5_000, 'late'));
+    expect(await Promise.race([closed.then(() => 'closed'), late])).toBe(
+      'closed',
+    );
+    expect(alive(holder.pid)).toBe(true);
   });
 });

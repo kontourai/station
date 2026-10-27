@@ -380,16 +380,9 @@ export interface WorkloadBudgetStatus {
 }
 
 /**
- * Why an engine scope's holder could not be placed: the scope never loaded
- * or closed first, the holder process failed to start, the user manager
- * refused the move or no route to it existed, the scope's control group was
- * not this scope under Station's slice, or the holder never showed up in it.
+ * Why an engine scope has no holder in it: the host has no setsid(1) or
+ * sleep(1) to start one, or the scope's processes do not include it.
  */
 export type WorkloadHolderUnplacedReason =
-  | 'scope-not-loaded'
-  | 'scope-closed-before-load'
-  | 'spawn-failed'
-  | 'attach-refused'
-  | 'attach-unavailable'
-  | 'outside-station-slice'
+  | 'holder-unavailable'
   | 'not-in-scope';

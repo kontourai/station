@@ -4168,9 +4168,9 @@ under `/api/system/workload`:
 `GET /api/system/workload` also lists running `scopes`, each with the limit
 it was launched with (a saved change reaches only later launches), its OOM
 kill count and `lastOomKillAt`, and for an engine scope `holder: placed | unplaced` with a short `holderReason`
-code when unplaced (`scope-not-loaded`, `scope-closed-before-load`,
-`spawn-failed`, `attach-refused`, `attach-unavailable`,
-`outside-station-slice`, `not-in-scope`; details go to the server log only)
+code when unplaced (`not-in-scope` when the scope's processes lack it,
+`holder-unavailable` when the host has no `setsid`(1) or `sleep`(1)), from the
+first poll that finds the scope
 (an unplaced holder means that scope's OOM count will be unknown after the
 engine dies). The session read's measured scope carries
 `lastOomKillAt` too. A save refuses a total below the slice's current usage

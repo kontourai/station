@@ -262,35 +262,29 @@ cgroup v2 `memory.events`. A 1-second poll reads every running scope and
 announces a kill count to the engine's adapter only once a later poll finds the
 very engine it launched (same pid and start time) still alive; kills seen at
 that later poll wait for the next one, so a steady stream of command kills is
-reported one poll behind (a kill can take up to about two seconds to appear). A poll that lands between the kernel killing the engine itself
-and Station noticing the exit therefore never reports the engine's own death as
-a command kill. The count is read again when the scope closes. systemd collects a
-scope as soon as its last process exits, cgroup and counters with it, so an
-engine's own scope (a launch that names its Session) also gets a holder.
-Station spawns `/bin/sleep` itself, detached into its own session and process
-group with no stdio, waits for the just-launched scope to load, moves the
-holder into it, and checks the scope's `cgroup.procs`. Placement as a whole
-is bounded to about 5 seconds: every `systemctl` and `busctl` call it makes
-gets only the time left, and the poll and the placement share one lookup of
-the scope's control group. The scope is the user manager's (a transient scope
-is not delegated to Station), so the manager moves the holder: Station calls
-`AttachProcessesToUnit` through `/usr/bin/busctl` over systemd's private
-socket (`$XDG_RUNTIME_DIR/systemd/private`), then over the user bus, each
-call bounded to 3 seconds. A refusal from either is final. Only when neither
-bus can be reached at all does Station write the holder into the scope's
-`cgroup.procs` itself, and only when that control group is the scope's own
-(it ends in the unit's name) under Station's workload slice.
-A spawn failure is handled, not fatal. The holder therefore holds no engine pipe, and the
-process-group kill that tears a Codex engine down cannot reach it. When the
-engine dies, the holder keeps the scope and its `memory.events` until Station
-reads the count and stops the scope, which kills the holder. A holder that
-cannot be placed is killed, logged (with detail) and reported as
-`holder: unplaced` with a short `holderReason` code in
-`GET /api/system/workload`: `scope-not-loaded`, `scope-closed-before-load`,
-`spawn-failed`, `attach-refused`, `attach-unavailable`,
-`outside-station-slice` or `not-in-scope`; a closing scope waits at most 3
-seconds for a placement still running; that scope's count at close, like any
-scope already gone, is unknown and never inferred. The settled record
+reported one poll behind (a kill can take up to about two seconds to appear).
+A poll that lands between the kernel killing the engine itself and Station
+noticing the exit therefore never reports the engine's own death as a command
+kill. The count is read again when the scope closes. systemd collects a scope
+as soon as its last process exits, cgroup and counters with it, so an engine's
+own scope (a launch that names its Session) also runs a holder: the scope's
+shell wrapper first runs `setsid -f sleep 2147483647` with descriptors 0-2 on
+`/dev/null` and 3-9 closed, then execs the engine. The holder is forked inside
+the scope before the engine starts, so it is there however soon the engine
+dies, and nothing is moved between cgroups (a transient scope is the user
+manager's and is not delegated, so Station never migrates processes). It runs in
+its own session and process group, out of reach of the group kill that tears a
+Codex engine down, and holds none of the engine's pipes: Node maps a child's
+stdio, IPC and extra pipes onto the lowest descriptors and opens the rest
+close-on-exec. When the engine dies, the holder keeps the scope and its
+`memory.events` until Station reads the count and stops the scope, which kills
+the holder with everything else. Each poll checks the scope's own
+`cgroup.procs` for it, and `GET /api/system/workload` reports an engine
+scope's `holder` as `placed` or `unplaced` from the first poll that finds the
+scope, with `holderReason` `not-in-scope`, or `holder-unavailable` when the
+host has no `setsid`(1) or `sleep`(1) (then engine scopes run without one). An
+engine scope without a holder has its count at close unknown, like any
+scope already gone: unknown, never inferred. The settled record
 (`recent` in `/api/system/resource-posture` and the "Workload scope settled"
 log) reports `result: oom-kill-in-scope` with `oomKills` whenever the kernel
 killed a process in the scope (the engine or a command; the engine adapter

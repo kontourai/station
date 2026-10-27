@@ -1,10 +1,6 @@
-import {
-  type ChildProcess,
-  execFile,
-  spawn as nodeSpawn,
-} from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { readFile, writeFile } from 'node:fs/promises';
+import { access, constants as fsConstants, readFile } from 'node:fs/promises';
 import { availableParallelism, totalmem } from 'node:os';
 import type {
   WorkloadBudgetStatus,
@@ -66,15 +62,15 @@ interface ActiveWorkload {
   controlGroup?: string;
   /** `oom_kill` count already announced to {@link oomListeners}. */
   oomKillsReported: number;
-  /** An engine scope's holder, once placed and verified in the scope. */
-  holder?: ChildProcess;
-  /** Set for an engine scope once placement settled. */
+  /** An engine scope launched with a holder (see holderLaunch). */
+  holderLaunched?: boolean;
+  /**
+   * An engine scope's holder as last seen in the scope's own cgroup.procs:
+   * set from the first poll that finds the scope.
+   */
   holderState?: 'placed' | 'unplaced';
   /** Why the holder is unplaced, as a short code. */
-  holderReason?: HolderUnplacedReason;
-  /** A control-group lookup in flight (see resolveControlGroup). */
-  resolving?: Promise<string | undefined>;
-  holderPlacement?: Promise<void>;
+  holderReason?: WorkloadHolderUnplacedReason;
   /** `oom_kill` count at the last poll; undefined before the first. */
   oomKillsPolled?: number;
   /** A count seen once and not yet announced (see pollOomKills). */
@@ -95,6 +91,9 @@ let settingsHome: string | undefined;
 let settingsError: string | undefined;
 let savedSettings: WorkloadMemorySettings = {};
 let cgroupRoot = '/sys/fs/cgroup';
+let procRoot = '/proc';
+/** The binaries an engine scope's wrapper starts its holder with. */
+let holderBinaries: { setsid: string; sleep: string } | undefined;
 const active = new Map<string, ActiveWorkload>();
 let monitor: ReturnType<typeof setTimeout> | undefined;
 const recent: Array<{
@@ -218,15 +217,14 @@ function sliceProperties(value: WorkloadLimits): string[] {
 }
 
 const manager = {
-  run: (args: string[], timeoutMs?: number): Promise<string> =>
-    systemctl(args, timeoutMs),
+  run: (args: string[]): Promise<string> => systemctl(args),
 };
 
-function runManager(args: string[], timeoutMs?: number): Promise<string> {
-  return manager.run(args, timeoutMs);
+function runManager(args: string[]): Promise<string> {
+  return manager.run(args);
 }
 
-function systemctl(args: string[], timeoutMs = 10_000): Promise<string> {
+function systemctl(args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
       '/usr/bin/systemctl',
@@ -235,7 +233,7 @@ function systemctl(args: string[], timeoutMs = 10_000): Promise<string> {
         env: managerEnv,
         windowsHide: true,
         encoding: 'utf8',
-        timeout: Math.max(1, timeoutMs),
+        timeout: 10_000,
         killSignal: 'SIGKILL',
         maxBuffer: 256 * 1024,
       },
@@ -253,34 +251,74 @@ async function readOomKills(controlGroup: string): Promise<number | undefined> {
   }
 }
 
-/**
- * The scope's control group once systemd has loaded it. One lookup per entry
- * is in flight at a time, shared by the poll and the holder placement, so a
- * launch does not fork a systemctl per caller under memory pressure.
- */
-function resolveControlGroup(
+/** The scope's control group once systemd has loaded it. */
+async function resolveControlGroup(
   entry: ActiveWorkload,
-  timeoutMs?: number,
 ): Promise<string | undefined> {
-  if (entry.controlGroup) return Promise.resolve(entry.controlGroup);
-  entry.resolving ??= (async () => {
-    try {
-      const cgroup = (
-        await runManager(
-          ['show', entry.unit, '--property=ControlGroup', '--value'],
-          timeoutMs,
-        )
-      ).trim();
-      if (cgroup.startsWith('/') && !cgroup.split('/').includes('..'))
-        entry.controlGroup = cgroup;
-    } catch {
-      /* the next caller tries again */
-    } finally {
-      entry.resolving = undefined;
+  if (entry.controlGroup) return entry.controlGroup;
+  try {
+    const cgroup = (
+      await runManager([
+        'show',
+        entry.unit,
+        '--property=ControlGroup',
+        '--value',
+      ])
+    ).trim();
+    if (cgroup.startsWith('/') && !cgroup.split('/').includes('..'))
+      entry.controlGroup = cgroup;
+  } catch {
+    /* the next poll tries again */
+  }
+  return entry.controlGroup;
+}
+
+/**
+ * Whether the scope's holder is among the scope's own processes: a pid other
+ * than the leader whose command line is exactly the holder's.
+ */
+async function observeHolder(
+  entry: ActiveWorkload,
+  controlGroup: string,
+): Promise<void> {
+  if (
+    !entry.holderLaunched ||
+    entry.holderState === 'placed' ||
+    !holderBinaries
+  )
+    return;
+  const holderCmdline = `${holderBinaries.sleep}\0${HOLDER_SLEEP_SECONDS}\0`;
+  let found = false;
+  try {
+    const pids = (
+      await readFile(`${cgroupRoot}${controlGroup}/cgroup.procs`, 'utf8')
+    )
+      .split('\n')
+      .filter((pid) => /^\d+$/.test(pid) && Number(pid) !== entry.pid);
+    for (const pid of pids) {
+      const cmdline = await readFile(
+        `${procRoot}/${pid}/cmdline`,
+        'utf8',
+      ).catch(() => '');
+      if (cmdline === holderCmdline) {
+        found = true;
+        break;
+      }
     }
-    return entry.controlGroup;
-  })();
-  return entry.resolving;
+  } catch {
+    return;
+  }
+  if (found) {
+    entry.holderState = 'placed';
+    entry.holderReason = undefined;
+  } else if (entry.holderState !== 'unplaced') {
+    entry.holderState = 'unplaced';
+    entry.holderReason = 'not-in-scope';
+    logger.warn(
+      'Workload scope holder not found in its scope; an engine memory kill in it will read as unknown',
+      { unit: entry.unit },
+    );
+  }
 }
 
 /** The scope's leader is the very process launched, still running. */
@@ -306,6 +344,7 @@ async function pollOomKills(): Promise<void> {
       if (entry.closing || entry.pid === undefined) return;
       const controlGroup = await resolveControlGroup(entry);
       if (!controlGroup) return;
+      await observeHolder(entry, controlGroup);
       const oomKills = await readOomKills(controlGroup);
       if (oomKills !== undefined && oomKills > (entry.oomKillsPolled ?? 0))
         entry.lastOomKillAt = new Date().toISOString();
@@ -422,6 +461,11 @@ export async function initializeWorkloadResources(
         'Linux workload isolation requires systemd 253 or newer for scope OOM policy and reporting. Upgrade systemd, then restart Station.',
       );
     limits = resolveLimits(savedSettings);
+    holderBinaries = await resolveHolderBinaries();
+    if (!holderBinaries)
+      logger.warn(
+        'No setsid(1) or sleep(1) found: engine scopes run without a holder, so an engine memory kill reads as unknown',
+      );
     const prefix = `stationworkload${digest(serviceUnit)}`;
     slice = `${prefix}.slice`;
     await runManager([
@@ -497,243 +541,59 @@ export async function initializeWorkloadResources(
   }
 }
 
-/**
- * Starts a holder for an engine's own scope: `/bin/sleep` spawned by Station
- * itself, detached into its own session and process group with no stdio, so
- * it never holds an engine pipe and no signal to the engine's group (Codex
- * teardown kills its whole group) reaches it.
- */
-export function spawnScopeHolder(binary = '/bin/sleep'): ChildProcess {
-  const holder = nodeSpawn(binary, ['2147483647'], {
-    stdio: 'ignore',
-    detached: true,
-    windowsHide: true,
-  });
-  // A failed spawn (EAGAIN, ENOMEM, EMFILE: exactly the pressure this runs
-  // under) emits 'error' on the next tick; unhandled, it would end Station.
-  holder.on('error', () => {});
-  holder.unref();
-  return holder;
-}
-
-/** How long placement waits for a just-launched scope to load. */
-export const HOLDER_PLACEMENT_DEADLINE_MS = 5_000;
-const HOLDER_PLACEMENT_RETRY_MS = 100;
-/** How long a closing scope waits for a holder placement still running. */
-const HOLDER_CLOSE_WAIT_MS = 3_000;
+/** A holder sleeps for the longest time sleep(1) takes portably. */
+const HOLDER_SLEEP_SECONDS = '2147483647';
 
 /**
- * Keeps an engine scope's cgroup, and so its own `memory.events`, alive after
- * the engine dies: systemd collects a scope as soon as its last process exits.
- * The holder is moved into the scope by the user manager
- * (`AttachProcessesToUnit`) and verified in the scope's `cgroup.procs`. When
- * it cannot be placed it is killed and the scope's kill count at close is
- * knowingly unknown. The scope's stop kills it with everything else.
+ * The setsid(1) and sleep(1) an engine scope's wrapper starts its holder
+ * with, or undefined when the host has none (engine scopes then run without
+ * one, reported `holder-unavailable`).
  */
-/** Why an engine scope's holder is unplaced; details go to the log only. */
-type HolderUnplacedReason = WorkloadHolderUnplacedReason;
-
-class HolderUnplaced extends Error {
-  constructor(
-    readonly code: HolderUnplacedReason,
-    detail: string,
-  ) {
-    super(detail);
-  }
-}
-
-async function placeScopeHolder(entry: ActiveWorkload): Promise<void> {
-  let holder: ChildProcess | undefined;
-  const unplaced = (code: HolderUnplacedReason, detail = '') => {
-    entry.holderState = 'unplaced';
-    entry.holderReason = code;
-    holder?.kill('SIGKILL');
-    logger.warn(
-      'Workload scope holder not placed; an engine memory kill in it will read as unknown',
-      { unit: entry.unit, reason: code, detail: detail.slice(0, 500) },
-    );
+async function resolveHolderBinaries(): Promise<
+  { setsid: string; sleep: string } | undefined
+> {
+  const first = async (candidates: string[]) => {
+    for (const candidate of candidates) {
+      try {
+        await access(candidate, fsConstants.X_OK);
+        return candidate;
+      } catch {
+        /* next */
+      }
+    }
+    return undefined;
   };
-  // `started` fires when systemd-run is spawned, usually before the scope
-  // exists: wait for it to load. Every manager call is bounded by the time
-  // left, so placement as a whole ends near the deadline.
-  const deadline = Date.now() + holderOps.deadlineMs;
-  const left = () => Math.max(1, deadline - Date.now());
-  let controlGroup = await resolveControlGroup(entry, left());
-  while (!controlGroup) {
-    if (entry.closing) return unplaced('scope-closed-before-load');
-    if (Date.now() >= deadline) return unplaced('scope-not-loaded');
-    await new Promise((resolve) =>
-      setTimeout(resolve, holderOps.retryMs).unref(),
-    );
-    controlGroup = await resolveControlGroup(entry, left());
-  }
-  try {
-    try {
-      holder = holderOps.spawn();
-      const spawned = holder;
-      await new Promise<void>((resolve, reject) => {
-        spawned.once('spawn', () => resolve());
-        spawned.once('error', reject);
-      });
-    } catch (error) {
-      throw new HolderUnplaced('spawn-failed', String(error));
-    }
-    const pid = holder.pid;
-    if (pid === undefined) throw new HolderUnplaced('spawn-failed', 'no pid');
-    const method = await attachHolder(entry.unit, pid, controlGroup, left);
-    const procs = await holderOps.readProcs(
-      `${cgroupRoot}${controlGroup}/cgroup.procs`,
-    );
-    if (!procs.split('\n').includes(String(pid)))
-      throw new HolderUnplaced('not-in-scope', 'cgroup.procs lacks the holder');
-    entry.holder = holder;
-    entry.holderState = 'placed';
-    logger.debug('Workload scope holder placed', { unit: entry.unit, method });
-  } catch (error) {
-    if (error instanceof HolderUnplaced) unplaced(error.code, error.message);
-    else unplaced('attach-refused', String(error));
-  }
+  const setsid = await first(['/usr/bin/setsid', '/bin/setsid']);
+  const sleep = await first(['/usr/bin/sleep', '/bin/sleep']);
+  return setsid && sleep ? { setsid, sleep } : undefined;
 }
 
 /**
- * Whether a busctl failure means the bus could not be reached (no socket,
- * no busctl), as opposed to the manager answering with a refusal.
+ * The scope's shell wrapper. For an engine's own scope it first starts a
+ * holder, a sleep(1) that keeps the scope's cgroup, and so its own
+ * `memory.events`, after the engine dies (systemd collects a scope as soon as
+ * its last process exits). The holder is forked inside the scope before the
+ * engine is exec'd, so it is there however soon the engine dies, and nothing
+ * is migrated between cgroups. `setsid -f` gives it its own session and
+ * process group, out of reach of the group kill that tears a Codex engine
+ * down. Its descriptors 0-9 are /dev/null or closed, so it holds none of
+ * Station's pipes: Node maps a child's stdio, IPC and extra pipes onto the
+ * lowest descriptors and opens everything else close-on-exec. dash only
+ * redirects descriptors 0-9. The scope's stop kills the holder with the rest.
  */
-function busUnavailable(error: unknown): boolean {
-  const failure = error as { code?: unknown; stderr?: unknown };
-  if (failure?.code === 'ENOENT') return true;
-  const text = `${String(failure?.stderr ?? '')} ${String(error)}`;
-  return /Failed to (connect|set address)|No such file or directory|Connection refused|Transport endpoint/i.test(
-    text,
-  );
+function scopeWrapper(holder: boolean): string {
+  return holder && holderBinaries
+    ? engineScopeWrapper(holderBinaries)
+    : 'exec "$@"';
 }
 
-/**
- * Moves the holder into the scope. The scope belongs to the user manager
- * (systemd-run --scope, no delegation to Station), so the manager does it:
- * `AttachProcessesToUnit` over its private socket (the one systemctl uses),
- * then over the user bus. A refusal is final, notably for a unit that is no
- * longer active. Only when neither bus can be reached at all is the holder
- * written into the scope's cgroup.procs directly, and only for a control
- * group that is this scope's own, under Station's workload slice.
- */
-async function attachHolder(
-  unit: string,
-  pid: number,
-  controlGroup: string,
-  left: () => number,
-): Promise<string> {
-  const runtime = managerEnv.XDG_RUNTIME_DIR;
-  const addresses = [
-    ...(runtime ? [`--address=unix:path=${runtime}/systemd/private`] : []),
-    '--user',
-  ];
-  for (const address of addresses) {
-    try {
-      await holderOps.busctl(
-        address,
-        [
-          'call',
-          'org.freedesktop.systemd1',
-          '/org/freedesktop/systemd1',
-          'org.freedesktop.systemd1.Manager',
-          'AttachProcessesToUnit',
-          'ssau',
-          unit,
-          '',
-          '1',
-          String(pid),
-        ],
-        Math.min(HOLDER_BUS_TIMEOUT_MS, left()),
-      );
-      return address === '--user' ? 'user-bus' : 'private-socket';
-    } catch (error) {
-      if (!busUnavailable(error))
-        throw new HolderUnplaced('attach-refused', String(error));
-    }
-  }
-  const sliceGroup = await sliceControlGroup(left());
-  if (
-    !sliceGroup ||
-    !controlGroup.startsWith(`${sliceGroup}/`) ||
-    !controlGroup.endsWith(`/${unit}`)
-  )
-    throw new HolderUnplaced(
-      'outside-station-slice',
-      `${controlGroup} is not ${unit} under ${sliceGroup ?? 'an unknown slice'}`,
-    );
-  try {
-    await holderOps.writeProcs(
-      `${cgroupRoot}${controlGroup}/cgroup.procs`,
-      pid,
-    );
-  } catch (error) {
-    throw new HolderUnplaced('attach-unavailable', String(error));
-  }
-  return 'cgroup.procs';
-}
-
-let sliceGroupCache: string | undefined;
-async function sliceControlGroup(
-  timeoutMs: number,
-): Promise<string | undefined> {
-  if (sliceGroupCache || !slice) return sliceGroupCache;
-  try {
-    const cgroup = (
-      await runManager(
-        ['show', slice, '--property=ControlGroup', '--value'],
-        timeoutMs,
-      )
-    ).trim();
-    if (cgroup.startsWith('/') && !cgroup.split('/').includes('..'))
-      sliceGroupCache = cgroup;
-  } catch {
-    /* unknown: the direct write is refused */
-  }
-  return sliceGroupCache;
-}
-
-/** Each AttachProcessesToUnit call is bounded by this or the time left. */
-export const HOLDER_BUS_TIMEOUT_MS = 3_000;
-
-const defaultHolderOps = {
-  spawn: (): ChildProcess => spawnScopeHolder(),
-  busctl: busctl as (
-    address: string,
-    args: string[],
-    timeoutMs: number,
-  ) => Promise<string>,
-  writeProcs: (path: string, pid: number): Promise<void> =>
-    writeFile(path, `${pid}\n`),
-  readProcs: (path: string): Promise<string> => readFile(path, 'utf8'),
-  deadlineMs: HOLDER_PLACEMENT_DEADLINE_MS,
-  retryMs: HOLDER_PLACEMENT_RETRY_MS,
-  closeWaitMs: HOLDER_CLOSE_WAIT_MS,
-};
-
-const holderOps = { ...defaultHolderOps };
-
-function busctl(
-  address: string,
-  args: string[],
-  timeoutMs: number,
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      '/usr/bin/busctl',
-      [address, '--no-pager', ...args],
-      {
-        env: managerEnv,
-        windowsHide: true,
-        encoding: 'utf8',
-        timeout: Math.max(1, timeoutMs),
-        killSignal: 'SIGKILL',
-        maxBuffer: 64 * 1024,
-      },
-      (error, stdout, stderr) =>
-        error ? reject(Object.assign(error, { stderr })) : resolve(stdout),
-    );
-  });
+/** The wrapper of an engine's own scope, with its holder (see scopeWrapper). */
+export function engineScopeWrapper(binaries: {
+  setsid: string;
+  sleep: string;
+}): string {
+  const closed = [3, 4, 5, 6, 7, 8, 9].map((fd) => `${fd}>&-`).join(' ');
+  return `'${binaries.setsid}' -f '${binaries.sleep}' ${HOLDER_SLEEP_SECONDS} </dev/null >/dev/null 2>&1 ${closed}; exec "$@"`;
 }
 
 function installScopeLauncher(
@@ -759,6 +619,10 @@ function installScopeLauncher(
     const entry: ActiveWorkload = {
       unit,
       ...(sessionId ? { sessionId } : {}),
+      ...(sessionId && holderBinaries ? { holderLaunched: true } : {}),
+      ...(sessionId && !holderBinaries
+        ? { holderState: 'unplaced', holderReason: 'holder-unavailable' }
+        : {}),
       observed,
       memoryMaxBytes: limits.memoryMaxBytes,
       oomKillsReported: 0,
@@ -806,7 +670,7 @@ function installScopeLauncher(
         ...assignments,
         '/bin/sh',
         '-c',
-        'exec "$@"',
+        scopeWrapper(Boolean(sessionId)),
         'station-workload',
         command,
         ...args,
@@ -816,10 +680,6 @@ function installScopeLauncher(
         entry.pid = pid;
         entry.birth = lookupProcessBirthFingerprint(pid);
         monitorLeaders();
-        // An engine's own scope gets a holder so its memory.events outlive
-        // the engine. Closing waits for the placement to settle.
-        if (sessionId)
-          entry.holderPlacement = placeScopeHolder(entry).catch(() => {});
       },
       close: () => closeScope(entry),
       watchOomKills(listener) {
@@ -839,15 +699,6 @@ async function closeScope(entry: ActiveWorkload): Promise<void> {
   }
   if (entry.closing) return entry.closing;
   entry.closing = (async () => {
-    // A holder still being placed either joins the scope (and keeps it for
-    // the read below) or is gone; wait for that, but not past a bound.
-    if (entry.holderPlacement)
-      await Promise.race([
-        entry.holderPlacement,
-        new Promise((resolve) =>
-          setTimeout(resolve, holderOps.closeWaitMs).unref(),
-        ),
-      ]);
     // Successful empty scopes may disappear before inspection. A failed stop
     // on a live unit must remain visible as an unsettled cleanup.
     const properties = Object.fromEntries(
@@ -966,21 +817,15 @@ async function closeScope(entry: ActiveWorkload): Promise<void> {
     if (recent.length > 64) recent.shift();
     logger.info('Workload scope settled', outcome);
     active.delete(entry.unit);
-  })()
-    .finally(() => {
-      // The scope's stop killed it; this covers a scope that was already
-      // gone, or a stop that failed.
-      entry.holder?.kill('SIGKILL');
-    })
-    .catch((error: unknown) => {
-      entry.observed?.(undefined);
-      entry.closing = undefined;
-      logger.warn('Workload scope cleanup did not settle', {
-        unit: entry.unit,
-        error,
-      });
-      throw error;
+  })().catch((error: unknown) => {
+    entry.observed?.(undefined);
+    entry.closing = undefined;
+    logger.warn('Workload scope cleanup did not settle', {
+      unit: entry.unit,
+      error,
     });
+    throw error;
+  });
   return entry.closing;
 }
 
@@ -1293,21 +1138,27 @@ export async function inspectSessionWorkload(sessionId: string) {
  */
 export const __workloadTestHooks = {
   async start(options: {
-    run: (args: string[], timeoutMs?: number) => Promise<string>;
+    run: (args: string[]) => Promise<string>;
     homeDir: string;
     cgroupRoot: string;
+    /** Stands in for /proc (each pid's cmdline). */
+    procRoot?: string;
     serviceUnit?: string;
     version?: number;
-    holder?: Partial<typeof holderOps>;
-    /** XDG_RUNTIME_DIR for the user manager's private socket. */
-    runtimeDir?: string;
+    /** null: the host has no setsid(1) or sleep(1). */
+    holderBinaries?: { setsid: string; sleep: string } | null;
   }): Promise<void> {
     manager.run = options.run;
-    Object.assign(holderOps, defaultHolderOps, options.holder ?? {});
     cgroupRoot = options.cgroupRoot;
-    managerEnv = options.runtimeDir
-      ? { XDG_RUNTIME_DIR: options.runtimeDir }
-      : {};
+    procRoot = options.procRoot ?? '/proc';
+    holderBinaries =
+      options.holderBinaries === null
+        ? undefined
+        : (options.holderBinaries ?? {
+            setsid: '/usr/bin/setsid',
+            sleep: '/usr/bin/sleep',
+          });
+    managerEnv = {};
     settingsHome = options.homeDir;
     await loadSavedSettings(options.homeDir);
     serviceUnit = options.serviceUnit ?? 'station-test.service';
@@ -1336,17 +1187,11 @@ export const __workloadTestHooks = {
     for (const entry of active.values())
       if (entry.sessionId === sessionId) entry.birth = birth;
   },
-  /** Waits until every pending holder placement settled. */
-  async settleHolders(): Promise<void> {
-    await Promise.all(
-      [...active.values()].map((entry) => entry.holderPlacement),
-    );
-  },
   reset(): void {
     manager.run = systemctl;
-    Object.assign(holderOps, defaultHolderOps);
     cgroupRoot = '/sys/fs/cgroup';
-    sliceGroupCache = undefined;
+    procRoot = '/proc';
+    holderBinaries = undefined;
     state = 'unmanaged';
     reason = undefined;
     limits = undefined;
