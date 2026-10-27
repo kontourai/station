@@ -2,7 +2,7 @@ import type { AuthorityObservation } from '@kontourai/station-contracts/authorit
 import { createContext, useContext } from 'react';
 import type { AuthorityPersistenceStatus } from '../lib/authorityNamespace';
 
-interface AuthorityPersistenceContextValue {
+export interface AuthorityPersistenceContextValue {
   status: AuthorityPersistenceStatus;
   /** Verified durable namespace; null while current authority is unverified. */
   namespace: string | null;

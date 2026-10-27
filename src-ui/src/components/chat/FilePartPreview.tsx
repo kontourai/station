@@ -189,6 +189,70 @@ function useAttachmentThumbnail(
   return made.value === 'failed' ? undefined : made.value;
 }
 
+/** The thumbnail cache key for a large still image's bytes, if it gets one. */
+function thumbnailKey(
+  part: FilePart,
+  resolvedUrl: string | undefined,
+): string | undefined {
+  if (part.type !== 'file' || !resolvedUrl) return undefined;
+  if (part.mediaType?.startsWith('image/') !== true) return undefined;
+  const shape = imageSourceShape(resolvedUrl, part.mediaType);
+  if (!shape || !thumbnailWorthMaking(shape)) return undefined;
+  return part.url ?? cacheKey(part.blobRef ?? '', part.mediaType);
+}
+
+/**
+ * The message's images for the previewer's prev/next. `peek` takes no hold,
+ * so a sibling URL read here is only guaranteed for as long as that sibling
+ * stays mounted — which, for chips in the same message list, is exactly as
+ * long as this one. The gallery is built at click time from what its siblings
+ * have already published; a sibling that has not resolved yet is omitted
+ * rather than shown broken.
+ */
+function previewGallery(allParts: FilePart[] | undefined) {
+  return (allParts || [])
+    .filter((p) => p.type === 'file' && p.mediaType?.startsWith('image/'))
+    .flatMap((p) => {
+      const url =
+        p.url ??
+        (p.blobRef
+          ? peekAttachmentObjectUrl(cacheKey(p.blobRef, p.mediaType))
+          : undefined);
+      return url
+        ? [{ url, mediaType: p.mediaType as string, name: p.name }]
+        : [];
+    });
+}
+
+/** The chip's picture: its thumbnail, the image itself, or the icon. */
+function ChipVisual({
+  image,
+  thumbnail,
+  name,
+}: {
+  image: string | undefined;
+  thumbnail: ChipThumbnail | 'pending' | undefined;
+  name: string;
+}) {
+  if (!image || thumbnail === 'pending')
+    return (
+      <div className="file-part-preview__icon">
+        <DocumentGlyph />
+      </div>
+    );
+  return (
+    <img
+      src={thumbnail?.url ?? image}
+      alt={name}
+      className="file-part-preview__thumbnail"
+      decoding="async"
+      {...(thumbnail
+        ? { width: thumbnail.width, height: thumbnail.height }
+        : {})}
+    />
+  );
+}
+
 export function FilePartPreview({ part, allParts }: FilePartPreviewProps) {
   const { openPreview } = usePreview();
   // Inline bytes win: a read that already carried the data URL has nothing to
@@ -199,14 +263,8 @@ export function FilePartPreview({ part, allParts }: FilePartPreviewProps) {
   );
   const resolvedUrl = part.url ?? fetchedUrl;
   const isImage = part.mediaType?.startsWith('image/') === true;
-  const sourceShape =
-    part.type === 'file' && isImage && resolvedUrl
-      ? imageSourceShape(resolvedUrl, part.mediaType)
-      : null;
   const thumbnail = useAttachmentThumbnail(
-    sourceShape && thumbnailWorthMaking(sourceShape)
-      ? (part.url ?? cacheKey(part.blobRef ?? '', part.mediaType))
-      : undefined,
+    thumbnailKey(part, resolvedUrl),
     resolvedUrl,
   );
 
@@ -226,24 +284,6 @@ export function FilePartPreview({ part, allParts }: FilePartPreviewProps) {
   const canOpen = Boolean(resolvedUrl);
   const showThumbnail = canOpen && isImage;
   const fileName = part.name || 'Attachment';
-  const allPreviewable = (allParts || [])
-    .filter((p) => p.type === 'file' && p.mediaType?.startsWith('image/'))
-    .flatMap((p) => {
-      // `peek` takes no hold, so a sibling URL read here is only guaranteed
-      // for as long as that sibling stays mounted — which, for chips in the
-      // same message list, is exactly as long as this one. The gallery is
-      // built at click time from what its siblings have already published; a
-      // sibling that has not resolved yet is omitted rather than shown broken.
-      const url =
-        p.url ??
-        (p.blobRef
-          ? peekAttachmentObjectUrl(cacheKey(p.blobRef, p.mediaType))
-          : undefined);
-      return url
-        ? [{ url, mediaType: p.mediaType as string, name: p.name }]
-        : [];
-    });
-
   const handleClick = canOpen
     ? () =>
         openPreview(
@@ -254,27 +294,17 @@ export function FilePartPreview({ part, allParts }: FilePartPreviewProps) {
           },
           // Prev/next walks the images of this message; any other type opens
           // on its own.
-          isImage ? allPreviewable : undefined,
+          isImage ? previewGallery(allParts) : undefined,
         )
     : undefined;
 
   const previewContent = (
     <>
-      {showThumbnail && thumbnail !== 'pending' ? (
-        <img
-          src={thumbnail?.url ?? resolvedUrl}
-          alt={fileName}
-          className="file-part-preview__thumbnail"
-          decoding="async"
-          {...(thumbnail
-            ? { width: thumbnail.width, height: thumbnail.height }
-            : {})}
-        />
-      ) : (
-        <div className="file-part-preview__icon">
-          <DocumentGlyph />
-        </div>
-      )}
+      <ChipVisual
+        image={showThumbnail ? resolvedUrl : undefined}
+        thumbnail={thumbnail}
+        name={fileName}
+      />
       <div className="file-part-preview__info">
         <div className="file-part-preview__name">{fileName}</div>
         <div className="file-part-preview__type">{part.mediaType}</div>

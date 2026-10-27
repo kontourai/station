@@ -162,7 +162,10 @@ import {
 } from '../lib/queryPersistence';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
 import { useHostRequestAuthorityScope } from './ApiBaseContext';
-import { AuthorityPersistenceContext } from './AuthorityPersistenceContext';
+import {
+  AuthorityPersistenceContext,
+  type AuthorityPersistenceContextValue,
+} from './AuthorityPersistenceContext';
 import { activeChatsStore } from './active-chats-store';
 
 export interface AuthorityObservationRequest {
@@ -211,6 +214,21 @@ function isUnauthorizedObservationFailure(error: unknown): boolean {
 interface ActiveAuthorityClient {
   namespace: string;
   queryClient: QueryClient;
+}
+
+/**
+ * A failed observation's persistence context. A refused credential (401)
+ * offers no re-read: reading it again on each reconnect would only repeat
+ * the refusal.
+ */
+function failedObservationPersistence(
+  unauthorized: boolean,
+  reobserve: () => void,
+): AuthorityPersistenceContextValue {
+  const failed = { namespace: null, observation: null, refused: unauthorized };
+  return unauthorized
+    ? { ...failed, status: 'unavailable' }
+    : { ...failed, status: 'unverified', reobserve };
 }
 
 export function createAuthorityClient(): QueryClient {
@@ -672,13 +690,7 @@ export function AuthorityQueryProvider({
   if (observationFailed) {
     return (
       <AuthorityPersistenceContext.Provider
-        value={{
-          status: unauthorized ? 'unavailable' : 'unverified',
-          namespace: null,
-          observation: null,
-          refused: unauthorized,
-          ...(unauthorized ? {} : { reobserve }),
-        }}
+        value={failedObservationPersistence(unauthorized, reobserve)}
       >
         <EphemeralTree key={ephemeralKey}>
           <AuthoritySwitchInvalidator />
