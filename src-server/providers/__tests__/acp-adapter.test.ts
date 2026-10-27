@@ -7136,7 +7136,7 @@ describe('AcpAdapter provider-plan quota projection (#2265)', () => {
 describe('chat-host-images: an ACP engine that exits on its own', () => {
   const makeHome = trackTempDirs();
 
-  test('releases its launch temp folder when its process exits, only while it is the current one', async () => {
+  test('releases its launch temp folder when its process exits', async () => {
     const home = makeHome('acp-crash-tmp-');
     const previous = process.env.STATION_HOME;
     process.env.STATION_HOME = home;
