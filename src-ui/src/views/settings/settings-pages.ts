@@ -42,6 +42,7 @@ export const SETTINGS_PAGES = [
       'developer-tools',
     ],
   },
+  { id: 'about', title: 'About', sections: ['about'] },
 ] as const satisfies readonly {
   id: string;
   title: string;

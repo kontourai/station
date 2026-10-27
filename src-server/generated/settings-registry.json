@@ -656,6 +656,27 @@
       "scope": "station",
       "section": "knowledge",
       "route": "/settings?view=knowledge&highlight=personal-knowledge-store"
+    },
+    {
+      "id": "app-version",
+      "label": "Version",
+      "scope": "informational",
+      "section": "about",
+      "route": "/settings?view=about&highlight=app-version"
+    },
+    {
+      "id": "open-source-licenses",
+      "label": "Open source licenses",
+      "scope": "informational",
+      "section": "about",
+      "route": "/settings?view=about&highlight=open-source-licenses"
+    },
+    {
+      "id": "legal",
+      "label": "Legal",
+      "scope": "informational",
+      "section": "about",
+      "route": "/settings?view=about&highlight=legal"
     }
   ]
 }
