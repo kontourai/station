@@ -10604,6 +10604,9 @@ echo '{"loggedIn":true}'
         mockQuery.mockClear();
         mockAugmentedSpawnEnv.mockReset();
         mockQuery.mockReturnValue(createMockQuery([]));
+        // A live engine: its stream stays open (a stream that ends means the
+        // engine is gone, which releases the folder).
+        mockQuery.mockReturnValueOnce(createControlledMockQuery());
         const adapter = new ClaudeAdapter();
         await adapter.startSession({
           provider: 'claude',
@@ -10667,6 +10670,50 @@ echo '{"loggedIn":true}'
         fail(new Error('Claude Code process exited with code 1'));
         await vi.waitFor(() =>
           expect(sessionTempRoot('thread-crash')).toBeUndefined(),
+        );
+        expect(existsSync(own)).toBe(false);
+        await adapter.stopAll();
+      } finally {
+        uninstall();
+        if (previousStationHome === undefined) delete process.env.STATION_HOME;
+        else process.env.STATION_HOME = previousStationHome;
+        rmSync(stationHome, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('chat-host-images: an engine stream that simply ends', () => {
+    test('releases its launch temp folder on a clean end too', async () => {
+      const stationHome = join(
+        tmpdir(),
+        `station-claude-end-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      );
+      const previousStationHome = process.env.STATION_HOME;
+      process.env.STATION_HOME = stationHome;
+      const uninstall = installSessionTmpDirPolicy(() => true);
+      try {
+        mockQuery.mockClear();
+        mockAugmentedSpawnEnv.mockReset();
+        let end: () => void = () => undefined;
+        const ended = new Promise<void>((resolve) => {
+          end = resolve;
+        });
+        mockQuery.mockReturnValue({
+          ...createMockQuery([]),
+          async *[Symbol.asyncIterator]() {
+            await ended;
+          },
+        } as never);
+        const adapter = new ClaudeAdapter();
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-clean-end',
+        });
+        const own = sessionTmpDirPath('thread-clean-end', stationHome);
+        expect(sessionTempRoot('thread-clean-end')).toBe(own);
+        end();
+        await vi.waitFor(() =>
+          expect(sessionTempRoot('thread-clean-end')).toBeUndefined(),
         );
         expect(existsSync(own)).toBe(false);
         await adapter.stopAll();

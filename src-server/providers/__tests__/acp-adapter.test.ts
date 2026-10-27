@@ -63,6 +63,7 @@ import {
   AcpAdapter,
   type AcpAdapterOptions,
   acpConnectionFingerprint,
+  acpEngineExitEndsLaunch,
   acpExecutionIdentity,
 } from '../adapters/acp-adapter.js';
 import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.js';
@@ -7167,5 +7168,46 @@ describe('chat-host-images: an ACP engine that exits on its own', () => {
       if (previous === undefined) delete process.env.STATION_HOME;
       else process.env.STATION_HOME = previous;
     }
+  });
+});
+
+describe('chat-host-images: which ACP engine exit ends its launch', () => {
+  const engine = {};
+  const other = {};
+  test('the current process of the current session, with no relaunch starting', () => {
+    expect(
+      acpEngineExitEndsLaunch({
+        current: true,
+        record: { process: engine },
+        engine,
+      }),
+    ).toBe(true);
+  });
+  test('not a process that was already replaced', () => {
+    expect(
+      acpEngineExitEndsLaunch({
+        current: true,
+        record: { process: other },
+        engine,
+      }),
+    ).toBe(false);
+  });
+  test('not while a relaunch starts its replacement (the old process is still current)', () => {
+    expect(
+      acpEngineExitEndsLaunch({
+        current: true,
+        record: { process: engine, relaunching: true },
+        engine,
+      }),
+    ).toBe(false);
+  });
+  test('not a session that is no longer the thread session', () => {
+    expect(
+      acpEngineExitEndsLaunch({
+        current: false,
+        record: { process: engine },
+        engine,
+      }),
+    ).toBe(false);
   });
 });

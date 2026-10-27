@@ -25,6 +25,7 @@ import {
 } from '../../feature-previews/feature-preview-registry.js';
 import { receiptBus } from '../../infra/receipt-bus.js';
 import {
+  commitEngineLaunch,
   engineSessionTmpDir,
   installSessionTmpDirPolicy,
   sessionTempRoot,
@@ -61,8 +62,10 @@ class FakeAdapter implements ProviderAdapterShape {
   async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
-    // As every spawning adapter does at its session start.
-    engineSessionTmpDir(input.threadId);
+    // As every spawning adapter does at its session start: prepare, then
+    // commit once the session is registered.
+    const dir = engineSessionTmpDir(input.threadId);
+    commitEngineLaunch(input.threadId, dir ? { own: dir } : undefined);
     const now = new Date().toISOString();
     const session: ProviderSession = {
       provider: this.provider,

@@ -152,13 +152,39 @@ function ownedPrivateDir(dir: string): boolean {
  * caller keeps the shared engine-spawn directory. A directory that cannot be
  * created or trusted also leaves the shared one: a temp folder must never
  * block an engine start.
+ *
+ * This only prepares the folder. The launch is recorded by
+ * {@link commitEngineLaunch} once the adapter has committed the new session,
+ * so a start that fails leaves the previous launch's record in place.
  */
 export function engineSessionTmpDir(threadId: string): string | undefined {
-  const dir = admitted(threadId) ? createOwnDir(threadId) : undefined;
-  // Every launch replaces the last one's record, including a launch that
-  // gets no root: the thread must not keep serving the previous folder.
-  replaceLaunch(threadId, dir ? { dir, own: true } : undefined);
-  return dir;
+  return admitted(threadId) ? createOwnDir(threadId) : undefined;
+}
+
+/**
+ * The adapter committed a new launch for `threadId`, whose engine got `own`
+ * (this module's folder from {@link engineSessionTmpDir}) or `confined` (a
+ * confinement's own folder) as its TMPDIR, or neither. Every committed launch
+ * replaces the last one's record, including one with no root, so the thread
+ * never keeps serving a previous folder. The previous launch's own folder is
+ * NOT removed here: its engine may still be draining. It goes when that
+ * launch ends ({@link removeLaunchedRoot}), or with the restart sweep.
+ */
+export function commitEngineLaunch(
+  threadId: string,
+  tmpDir: { own: string } | { confined: string } | undefined,
+): void {
+  const next =
+    tmpDir && 'own' in tmpDir && admitted(threadId) && ownedPrivateDir(tmpDir.own)
+      ? { dir: tmpDir.own, own: true }
+      : tmpDir &&
+          'confined' in tmpDir &&
+          admitted(threadId) &&
+          ownedPrivateDir(tmpDir.confined)
+        ? { dir: tmpDir.confined, own: false }
+        : undefined;
+  if (next) launchedRoots.set(threadId, next);
+  else launchedRoots.delete(threadId);
 }
 
 function createOwnDir(threadId: string): string | undefined {
@@ -175,19 +201,6 @@ function createOwnDir(threadId: string): string | undefined {
   return ownedPrivateDir(dir) ? dir : undefined;
 }
 
-/**
- * Make `next` the thread's launch. A previous launch's own folder at another
- * path (a confined restart, or a launch that got none) is removed now: its
- * engine was replaced, and nothing else would remove it before the restart
- * sweep.
- */
-function replaceLaunch(threadId: string, next: LaunchedRoot | undefined) {
-  const previous = launchedRoots.get(threadId);
-  if (next) launchedRoots.set(threadId, next);
-  else launchedRoots.delete(threadId);
-  if (previous?.own && previous.dir !== next?.dir) removeOwnDir(previous.dir);
-}
-
 function removeOwnDir(dir: string): void {
   try {
     const stats = lstatSync(dir);
@@ -196,20 +209,6 @@ function removeOwnDir(dir: string): void {
   } catch {
     // Best-effort; the stale-owner sweep retries after this process exits.
   }
-}
-
-/**
- * Record a temp directory an engine's confinement created for this session
- * (and set as its `TMPDIR`), when the policy admits the session. Only that
- * exact directory becomes a root; its owner keeps removing it.
- */
-export function noteEngineTmpDir(threadId: string, dir: string): void {
-  replaceLaunch(
-    threadId,
-    admitted(threadId) && ownedPrivateDir(dir)
-      ? { dir, own: false }
-      : undefined,
-  );
 }
 
 /**
@@ -267,19 +266,23 @@ export function launchedRootOf(threadId: string): LaunchedRoot | undefined {
 }
 
 /**
- * A launch ended: forget its root and remove it when this module created it
- * (a confinement's directory is removed by its owner). Only while that same
- * launch is still the thread's current one: if the thread restarted first,
- * the new launch may own a folder at the very same path, and a late removal
- * must leave both it and its record alone.
+ * A launch ended: forget its record if it is still the thread's current one,
+ * and remove its folder when this module created it (a confinement's folder
+ * is removed by its owner) unless the thread's current launch uses that same
+ * folder: a thread that restarted first may own a folder at the very same
+ * path, and a late removal must leave it and its record alone.
  */
 export function removeLaunchedRoot(
   threadId: string,
   launched: LaunchedRoot | undefined,
 ): void {
-  if (!launched || launchedRoots.get(threadId) !== launched) return;
-  launchedRoots.delete(threadId);
-  if (launched.own) removeOwnDir(launched.dir);
+  if (!launched) return;
+  const current = launchedRoots.get(threadId);
+  if (current === launched) launchedRoots.delete(threadId);
+  // A replaced launch's own folder goes when that launch ends, unless the
+  // thread's current launch uses the same folder (a restart at the same path).
+  if (launched.own && (current === launched || current?.dir !== launched.dir))
+    removeOwnDir(launched.dir);
 }
 
 /** The session ended now: remove its current launch's root. */

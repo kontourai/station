@@ -97,10 +97,10 @@ import {
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
+  commitEngineLaunch,
   engineSessionTmpDir,
   type LaunchedRoot,
   launchedRootOf,
-  noteEngineTmpDir,
   removeLaunchedRoot,
   stampLaunchExit,
 } from '../../services/infra/session-tmpdir.js';
@@ -2060,6 +2060,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // #2932: Station owns the engine spawn so it can read the permission
     // asks on the engine's stdout (see claude-code-spawn.ts). #2494: a
     // confined start's spawn goes through the provider's `confine`.
+    // chat-host-images: prepared here, recorded only once this start commits.
+    const sessionTmpDir = seatbelt
+      ? undefined
+      : engineSessionTmpDir(input.threadId);
     const engineProcess = seatbeltSpawn
       ? createClaudeEngineProcess(undefined, seatbeltSpawn.wrap)
       : createClaudeEngineProcess();
@@ -2089,12 +2093,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           claudeExecutable,
           builtinServers,
           Boolean(seatbelt) || permissionMode === 'bypassPermissions',
-          seatbelt?.launch.tmpDir,
+          sessionTmpDir,
         ),
       });
-      // chat-host-images: the confined engine's real TMPDIR is Seatbelt's
-      // per-launch directory; record exactly that one as the session's root.
-      if (seatbelt) noteEngineTmpDir(input.threadId, seatbelt.launch.tmpDir);
     } catch (error) {
       this.options.revokeStationControlCallerToken?.(input.threadId);
       seatbelt?.launch.cleanup();
@@ -2146,7 +2147,6 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       currentModelOptions: claudeAppliedModelOptions(input.modelOptions),
       skillsOverlayDir,
       ...(seatbelt ? { confinementCleanup: seatbelt.launch.cleanup } : {}),
-      hostImageLaunch: launchedRootOf(input.threadId),
       // #3163: where this session's subagent transcripts are written, so a
       // later read (even after a restart) opens the same config home.
       claudeConfigHome: claudeSpawnConfigHome(
@@ -2169,13 +2169,29 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       this.cancelPendingRequests(record, input.threadId, {
         agentId: taskId,
       });
+    // chat-host-images: the launch is recorded once this record is the
+    // thread's session, never before, so a start that fails leaves the
+    // previous launch's record and folder alone. A confined engine's real
+    // TMPDIR is Seatbelt's per-launch directory: exactly that one.
+    const commitHostImageLaunch = () => {
+      commitEngineLaunch(
+        input.threadId,
+        seatbelt
+          ? { confined: seatbelt.launch.tmpDir }
+          : sessionTmpDir
+            ? { own: sessionTmpDir }
+            : undefined,
+      );
+      record.hostImageLaunch = launchedRootOf(input.threadId);
+    };
     // #2494: announces the started session; for a confined start, only
     // once the provider has observed the engine inside its profile.
     const announce = (
       confinementRecord?: ReturnType<typeof observedConfinementRecord>,
     ): ProviderSession => {
-      record.streamTask = this.consumeMessages(record);
       this.sessions.set(input.threadId, record);
+      if (!record.confinementPending) commitHostImageLaunch();
+      record.streamTask = this.consumeMessages(record);
 
       this.publish({
         eventId: crypto.randomUUID(),
@@ -2311,6 +2327,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // spawned through `sandbox-exec` is the evidence.
       record.confinementPending = true;
       this.sessions.set(input.threadId, record);
+      commitHostImageLaunch();
       return (async () => {
         const confinementRecord = await this.observeSeatbeltStart(
           record,
@@ -3653,8 +3670,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     claudeExecutable?: string | null,
     builtinServers?: Record<string, McpServerConfig>,
     grantBypassPermissions = permissionMode === 'bypassPermissions',
-    /** Set when Seatbelt confines this spawn: its wrapper sets TMPDIR to this. */
-    confinedTmpDir?: string,
+    /**
+     * This session's own temp folder (chat-host-images), when it has one. A
+     * Seatbelt-confined spawn gets none: its wrapper sets its own TMPDIR.
+     */
+    sessionTmpDir?: string,
   ): Options {
     const modelOptions = claudeAppliedModelOptions(input.modelOptions);
     // #2947: the approval guardian's allows, by the engine's tool-use id,
@@ -3840,11 +3860,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                 input.agent.toolServerLoading === 'always' ? 'false' : 'true',
             }
           : {}),
-        // A confined spawn's TMPDIR is replaced by Seatbelt's own directory,
-        // so no per-session directory is created for it.
-        TMPDIR:
-          (confinedTmpDir ? undefined : engineSessionTmpDir(input.threadId)) ??
-          ensureEngineSpawnTmpDir(),
+        TMPDIR: sessionTmpDir ?? ensureEngineSpawnTmpDir(),
       }),
       // #2932: the SDK reads stdout from the process this returns, after
       // Station's tap has recorded each permission ask on it.
@@ -4383,6 +4399,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // for; `stopSession` covers the deliberate stop. Whichever runs first
       // empties the map, so the other publishes nothing.
       this.settleSessionEnd(record);
+      // chat-host-images: however the iterator ended (a failure, a clean end,
+      // a binding that died), this engine is gone and no session.exited may
+      // follow, so its launch's temp folder goes now; the identity check
+      // leaves a newer launch of the thread alone.
+      removeLaunchedRoot(record.session.threadId, record.hostImageLaunch);
     }
   }
 
@@ -4417,10 +4438,6 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         record.session.status = 'ready';
         return;
       }
-      // The engine's stream ended in failure: this launch is over even though
-      // no session.exited follows, so its temp root goes now (only while it
-      // is still the thread's current launch).
-      removeLaunchedRoot(record.session.threadId, record.hostImageLaunch);
       // archive#1827: once `mapMessage` has already published a structured
       // `runtime.error` for a failed `result` message
       // (`classifyClaudeResultOutcome`, `claude-adapter-events.ts`), the SDK

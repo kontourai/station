@@ -120,7 +120,9 @@ import {
 } from '../../services/acp/opencode-project-config.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import {
+  commitEngineLaunch,
   engineSessionTmpDir,
+  type LaunchedRoot,
   launchedRootOf,
   removeLaunchedRoot,
   stampLaunchExit,
@@ -381,6 +383,25 @@ export function acpConnectionDefaultCwd(config: {
 /** How long a passed start preflight stands for the start that follows. */
 export const START_PREFLIGHT_REUSE_MS = 60_000;
 
+/**
+ * chat-host-images: whether an ACP engine process exiting on its own ends its
+ * session's temp-root launch. Only the session's current process, while no
+ * approval-floor relaunch is starting its replacement: that replacement shares
+ * the folder and, until it is swapped in, `record.process` is still the old
+ * process.
+ */
+export function acpEngineExitEndsLaunch(input: {
+  current: boolean;
+  record: { process?: unknown; relaunching?: boolean };
+  engine: unknown;
+}): boolean {
+  return (
+    input.current &&
+    input.record.process === input.engine &&
+    !input.record.relaunching
+  );
+}
+
 export interface AcpAdapterOptions {
   getConnections: () => Promise<ACPConnectionConfig[]>;
   /**
@@ -618,6 +639,14 @@ export interface AcpSessionRecord {
   openCodeEditGrant?: boolean;
   /** #3290: launches a replacement process for this session on a floor. */
   relaunch?: (floor: OpenCodeApprovalFloor | undefined) => ACPProcess;
+  /**
+   * chat-host-images: a relaunch is starting a replacement engine that
+   * shares this launch's temp folder; the old process dying meanwhile must
+   * not release it.
+   */
+  relaunching?: boolean;
+  /** chat-host-images: the temp-root launch this session committed. */
+  hostImageLaunch?: LaunchedRoot;
   /** The MCP servers the session was established with, for a relaunch. */
   mcpServers?: McpServer[];
   /** Drops `session/update` while a relaunch replays history (`session/load`). */
@@ -1229,7 +1258,6 @@ export class AcpAdapter implements ProviderAdapterShape {
     // Resolved once: a relaunch onto another approval floor keeps the same
     // session directory.
     const tmpDir = engineSessionTmpDir(input.threadId);
-    const hostImageLaunch = launchedRootOf(input.threadId);
     const launchProcess = (floor: OpenCodeApprovalFloor | undefined) =>
       processFactory({
         command: config.command,
@@ -1266,7 +1294,8 @@ export class AcpAdapter implements ProviderAdapterShape {
       });
     // chat-host-images: an engine that exits on its own publishes no
     // session.exited, so the launch's temp root is released when that
-    // process exits while it is still this session's current process (a
+    // process exits while it is still this session's current process and no
+    // relaunch is starting its replacement (which shares the folder; a
     // relaunch swaps `record.process` before destroying the old one).
     const launch = (floor: OpenCodeApprovalFloor | undefined) => {
       const engine = launchProcess(floor);
@@ -1274,10 +1303,13 @@ export class AcpAdapter implements ProviderAdapterShape {
         engine as { once?: (event: string, listener: () => void) => unknown }
       ).once?.('exit', () => {
         if (
-          this.sessions.get(input.threadId) === record &&
-          record.process === engine
+          acpEngineExitEndsLaunch({
+            current: this.sessions.get(input.threadId) === record,
+            record,
+            engine,
+          })
         )
-          removeLaunchedRoot(input.threadId, hostImageLaunch);
+          removeLaunchedRoot(input.threadId, record.hostImageLaunch);
       });
       return engine;
     };
@@ -1289,6 +1321,9 @@ export class AcpAdapter implements ProviderAdapterShape {
       settleStart = resolve;
     });
     this.sessions.set(input.threadId, record);
+    // Recorded only once this record is the thread's session.
+    commitEngineLaunch(input.threadId, tmpDir ? { own: tmpDir } : undefined);
+    record.hostImageLaunch = launchedRootOf(input.threadId);
 
     try {
       await acpProcess.start();
@@ -3078,6 +3113,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     const next = record.relaunch(floor);
     let configOptions: unknown[] | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    record.relaunching = true;
     try {
       const establish = (async () => {
         await next.start();
@@ -3138,6 +3174,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       };
     } finally {
       if (timer) clearTimeout(timer);
+      record.relaunching = false;
     }
 
     record.process = next;

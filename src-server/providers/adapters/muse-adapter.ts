@@ -34,6 +34,7 @@ import {
   terminateProcessTree,
 } from '../../services/infra/process-utils.js';
 import {
+  commitEngineLaunch,
   engineSessionTmpDir,
   stampLaunchExit,
 } from '../../services/infra/session-tmpdir.js';
@@ -1161,11 +1162,16 @@ export class MuseAdapter implements ProviderAdapterShape {
       ...(serve ? { serve } : {}),
     };
     this.sessions.set(input.threadId, record);
-    // chat-host-images: a `muse exec` session spawns its process per turn,
-    // after the first turn's instruction is composed. Its temp folder (the
-    // one every turn's exec gets) is created and recorded now, at the start,
-    // so that instruction can name it. A serve host recorded its own above.
-    if (!serve) engineSessionTmpDir(input.threadId);
+    // chat-host-images: the session's temp folder (the one a serve host or
+    // every turn's exec gets) is recorded now that this record is the
+    // thread's session. An exec session spawns per turn, after the first
+    // turn's instruction is composed, so recording it at the start is what
+    // lets that instruction name it.
+    const sessionTmpDir = engineSessionTmpDir(input.threadId);
+    commitEngineLaunch(
+      input.threadId,
+      sessionTmpDir ? { own: sessionTmpDir } : undefined,
+    );
     const transportMetadata = serveStarted
       ? {
           museTransport: 'serve',

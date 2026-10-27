@@ -13,10 +13,10 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { HostImageTurnCapture } from '../../orchestration/host-image-turn-capture.js';
 import {
+  commitEngineLaunch,
   engineSessionTmpDir,
   installSessionTmpDirPolicy,
   launchedRootOf,
-  noteEngineTmpDir,
   ownedDirTestHooks,
   reapStaleSessionTmpDirs,
   removeLaunchedRoot,
@@ -28,6 +28,17 @@ import {
 } from '../session-tmpdir.js';
 
 const makeTempDir = trackTempDirs();
+
+/** What a spawning adapter does: prepare the folder, start, then commit. */
+function launch(threadId: string): string | undefined {
+  const dir = engineSessionTmpDir(threadId);
+  commitEngineLaunch(threadId, dir ? { own: dir } : undefined);
+  return dir;
+}
+
+function launchConfined(threadId: string, dir: string): void {
+  commitEngineLaunch(threadId, { confined: dir });
+}
 
 describe('per-session engine TMPDIR (chat-host-images)', () => {
   let home: string;
@@ -56,7 +67,7 @@ describe('per-session engine TMPDIR (chat-host-images)', () => {
 
   test('an admitted session gets an owner-only directory named for this process and a digest of the thread', () => {
     uninstall = installSessionTmpDirPolicy(() => true);
-    const dir = engineSessionTmpDir('thread/../with:odd chars');
+    const dir = launch('thread/../with:odd chars');
     expect(dir).toBe(sessionTmpDirPath('thread/../with:odd chars', home));
     expect(basename(dir!)).toMatch(
       new RegExp(`^session-${process.pid}-[0-9a-f]{24}$`),
@@ -72,7 +83,7 @@ describe('per-session engine TMPDIR (chat-host-images)', () => {
     const loose = sessionTmpDirPath('loose', home);
     mkdirSync(loose, { recursive: true, mode: 0o755 });
     chmodSync(loose, 0o755);
-    expect(engineSessionTmpDir('loose')).toBe(loose);
+    expect(launch('loose')).toBe(loose);
     expect(statSync(loose).mode & 0o777).toBe(0o700);
     const elsewhere = join(home, 'elsewhere');
     mkdirSync(elsewhere, { mode: 0o700 });
@@ -84,10 +95,10 @@ describe('per-session engine TMPDIR (chat-host-images)', () => {
   test('a confinement own TMPDIR is a root only while admitted, and its owner removes it', () => {
     const confined = join(home, 'confined-session');
     mkdirSync(confined, { mode: 0o700 });
-    noteEngineTmpDir('confined', confined);
+    launchConfined('confined', confined);
     expect(sessionTempRoot('confined')).toBeUndefined();
     uninstall = installSessionTmpDirPolicy(() => true);
-    noteEngineTmpDir('confined', confined);
+    launchConfined('confined', confined);
     expect(sessionTempRoot('confined')).toBe(confined);
     removeSessionTmpDir('confined');
     expect(sessionTempRoot('confined')).toBeUndefined();
@@ -105,10 +116,10 @@ describe('per-session engine TMPDIR (chat-host-images)', () => {
 
   test('a removal queued for one launch leaves a later launch of the same thread alone', () => {
     uninstall = installSessionTmpDirPolicy(() => true);
-    const first = engineSessionTmpDir('restarted')!;
+    const first = launch('restarted')!;
     const exited = launchedRootOf('restarted');
     // The thread restarts before the removal for the first launch runs.
-    const second = engineSessionTmpDir('restarted')!;
+    const second = launch('restarted')!;
     expect(second).toBe(first);
     writeFileSync(join(second, 'live.png'), 'x');
     removeLaunchedRoot('restarted', exited);
@@ -144,7 +155,7 @@ describe('per-session engine TMPDIR (chat-host-images)', () => {
       logger: { warn: () => {} },
       hooks: { beforeOpen: () => gate },
     });
-    engineSessionTmpDir('late');
+    launch('late');
     const base = {
       provider: 'codex' as const,
       threadId: 'late',
@@ -168,7 +179,7 @@ describe('per-session engine TMPDIR (chat-host-images)', () => {
       method: 'session.exited',
       sessionId: 'late',
     });
-    const restarted = engineSessionTmpDir('late')!;
+    const restarted = launch('late')!;
     writeFileSync(join(restarted, 'live.png'), 'x');
     release();
     await capture.settled();
@@ -178,7 +189,7 @@ describe('per-session engine TMPDIR (chat-host-images)', () => {
 
   test('an exit Station observes only after the thread restarted removes nothing of the new launch', async () => {
     uninstall = installSessionTmpDirPolicy(() => true);
-    engineSessionTmpDir('delayed');
+    launch('delayed');
     // The adapter publishes the exit of launch 1 ...
     stampLaunchExit({
       method: 'session.exited',
@@ -186,7 +197,7 @@ describe('per-session engine TMPDIR (chat-host-images)', () => {
       threadId: 'delayed',
     });
     // ... the thread restarts (same path) before Station gets to observe it ...
-    const restarted = engineSessionTmpDir('delayed')!;
+    const restarted = launch('delayed')!;
     writeFileSync(join(restarted, 'live.png'), 'x');
     const capture = new HostImageTurnCapture({
       preview: { select: (branches) => branches.disabled() },
@@ -209,28 +220,48 @@ describe('per-session engine TMPDIR (chat-host-images)', () => {
     expect(sessionTempRoot('delayed')).toBe(restarted);
   });
 
-  test('a launch that gets no root clears the record and removes the previous own folder', () => {
+  test('a launch that gets no root clears the record; the previous folder goes when that launch ends', () => {
     let on = true;
     uninstall = installSessionTmpDirPolicy(() => on);
-    const first = engineSessionTmpDir('relaunch')!;
+    const first = launch('relaunch')!;
+    const firstLaunch = launchedRootOf('relaunch');
     on = false;
-    expect(engineSessionTmpDir('relaunch')).toBeUndefined();
+    expect(launch('relaunch')).toBeUndefined();
     expect(sessionTempRoot('relaunch')).toBeUndefined();
+    // Not at replacement: the first engine may still be draining.
+    expect(existsSync(first)).toBe(true);
+    removeLaunchedRoot('relaunch', firstLaunch);
     expect(existsSync(first)).toBe(false);
   });
 
-  test('a confined restart replaces an own folder (removed) with its confinement folder', () => {
+  test('preparing a folder for a start that never commits changes nothing', () => {
     uninstall = installSessionTmpDirPolicy(() => true);
-    const own = engineSessionTmpDir('confined-restart')!;
+    const live = launch('failed-start')!;
+    const liveLaunch = launchedRootOf('failed-start');
+    writeFileSync(join(live, 'live.png'), 'x');
+    // A restart prepares (same path) and then throws before committing.
+    engineSessionTmpDir('failed-start');
+    expect(launchedRootOf('failed-start')).toBe(liveLaunch);
+    expect(existsSync(join(live, 'live.png'))).toBe(true);
+  });
+
+  test('a confined restart replaces an own folder, which goes only when its own launch ends', () => {
+    uninstall = installSessionTmpDirPolicy(() => true);
+    const own = launch('confined-restart')!;
+    const ownLaunch = launchedRootOf('confined-restart');
     const confined = join(home, 'confined-launch');
     mkdirSync(confined, { mode: 0o700 });
-    noteEngineTmpDir('confined-restart', confined);
+    launchConfined('confined-restart', confined);
+    // The old engine may still be draining after a stop dropped its record.
+    expect(existsSync(own)).toBe(true);
+    expect(sessionTempRoot('confined-restart')).toBe(confined);
+    removeLaunchedRoot('confined-restart', ownLaunch);
     expect(existsSync(own)).toBe(false);
     expect(sessionTempRoot('confined-restart')).toBe(confined);
     // A confinement folder that fails the ownership check clears the record.
     const linked = join(home, 'confined-linked');
     symlinkSync(confined, linked);
-    noteEngineTmpDir('confined-restart', linked);
+    launchConfined('confined-restart', linked);
     expect(sessionTempRoot('confined-restart')).toBeUndefined();
     expect(existsSync(confined)).toBe(true);
   });
@@ -287,7 +318,7 @@ describe('per-session engine TMPDIR (chat-host-images)', () => {
 
   test('a session exit removes its directory, after a capture still reading it', async () => {
     uninstall = installSessionTmpDirPolicy(() => true);
-    const dir = engineSessionTmpDir('thread-exit')!;
+    const dir = launch('thread-exit')!;
     writeFileSync(join(dir, 'shot.png'), 'x');
     stampLaunchExit({
       method: 'session.exited',
