@@ -1,6 +1,6 @@
-import type { ConnectionFailureReason } from '@kontourai/station-connect';
 import {
   CONNECTION_ROUTE_LABELS,
+  type ConnectionFailureReason,
   type ConnectionRouteResult,
   connectionAcceptsRoutes,
   connectionFailureCopy,
@@ -10,8 +10,8 @@ import {
   useConnectionStatus,
   useConnections,
 } from '@kontourai/station-connect';
-import { Badge, type SemanticTone } from '@kontourai/ui/react';
-import { type FormEvent, useId, useState } from 'react';
+import { Badge } from '@kontourai/ui/react';
+import { type FormEvent, useState } from 'react';
 import {
   checkServerHealth,
   probeServerConnection,
@@ -29,27 +29,19 @@ function reasonText(reason: ConnectionFailureReason, host: string): string {
   return copy.short ?? copy.summary;
 }
 
-function routeBadge(result: ConnectionRouteResult | undefined): {
-  label: string;
-  tone: SemanticTone;
-} {
-  if (!result || result.state === 'not-checked') {
-    return { label: 'Not checked', tone: 'neutral' };
-  }
-  if (result.state === 'in-use') return { label: 'In use', tone: 'positive' };
-  if (result.state === 'blocked') {
-    return { label: "Can't use here", tone: 'neutral' };
-  }
+/** Only what differs from the obvious: a route that failed, and how. */
+function routeNote(result: ConnectionRouteResult | undefined): string | null {
+  if (result?.state === 'blocked') return "can't use here";
+  if (result?.state !== 'failed') return null;
   return result.reason === 'identity-mismatch'
-    ? { label: 'Different Station', tone: 'negative' }
-    : { label: 'Unreachable', tone: 'caution' };
+    ? 'different Station'
+    : 'unreachable';
 }
 
 /**
  * Station routes (docs/design/station-routes.md): every address this saved
- * Station is reached on, which one is in use, and why the others are not.
- * Shown in the Station's details in the connection manager, behind the
- * Station routes preview.
+ * Station is reached on and which one is in use. Shown in the Station's
+ * details in the connection manager, behind the Station routes preview.
  */
 export function StationRoutesPanel({
   connection,
@@ -70,11 +62,12 @@ function StationRoutes({ connection }: { connection: SavedConnection }) {
   });
   const isActive = activeConnection?.id === connection.id;
   const editable = connectionAcceptsRoutes(connection) && Boolean(addRoute);
-  // A profile that keeps one fixed route still shows what the Station reports.
+  // A profile that keeps one fixed route still lists what the Station reports.
   const reported = useStationRoutesQuery(connection, isActive && !editable);
+  const [editing, setEditing] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [address, setAddress] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const inputId = useId();
 
   const host = connection.name || connection.url;
   const results = new Map(
@@ -89,22 +82,19 @@ function StationRoutes({ connection }: { connection: SavedConnection }) {
         Number(a.id === connection.selectedEndpointId) ||
       a.priority - b.priority,
   );
-  const inUse = routes.find(
-    (endpoint) => results.get(endpoint.id)?.state === 'in-use',
-  );
-  const status = !isActive
-    ? 'Not the current Station'
-    : health.status === 'connected'
-      ? inUse
-        ? `Connected over ${CONNECTION_ROUTE_LABELS[connectionRouteKind(inUse)]}`
-        : 'Connected'
-      : health.status === 'error' && health.reason
-        ? `Couldn't connect. ${reasonText(health.reason, host)}`
-        : 'Checking routes…';
+  const removable = editable
+    ? routes.filter((endpoint) =>
+        connectionRouteRemovable(connection, endpoint),
+      )
+    : [];
   const extra = (reported.data ?? []).filter(
     (route) =>
       !connection.endpoints.some((endpoint) => endpoint.url === route.url),
   );
+  const failure =
+    isActive && health.status === 'error' && health.reason
+      ? reasonText(health.reason, host)
+      : null;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -112,6 +102,7 @@ function StationRoutes({ connection }: { connection: SavedConnection }) {
     try {
       addRoute?.(connection.id, address);
       setAddress('');
+      setAdding(false);
       if (isActive) health.recheck();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -120,103 +111,130 @@ function StationRoutes({ connection }: { connection: SavedConnection }) {
 
   return (
     <section className="station-routes" aria-label={`Routes for ${host}`}>
-      <p className="station-routes__status" role="status">
-        {status}
-      </p>
-      <h4 className="station-routes__title">Routes</h4>
+      <div className="station-routes__header">
+        <h4 className="station-routes__title">Routes</h4>
+        {removable.length > 0 && (
+          <Button
+            variant="link"
+            size="sm"
+            onClick={() => setEditing((value) => !value)}
+          >
+            {editing ? 'Done' : 'Edit'}
+          </Button>
+        )}
+      </div>
+      {failure && (
+        <p className="station-routes__failure" role="status">
+          {failure}
+        </p>
+      )}
       <ul className="station-routes__list">
         {routes.map((endpoint) => {
           const result = results.get(endpoint.id);
-          const badge = routeBadge(result);
-          const kind = connectionRouteKind(endpoint);
-          const detail = [
-            endpoint.source === 'advertised' ? 'Found automatically' : null,
-            result?.reason && result.state !== 'in-use'
-              ? reasonText(result.reason, host)
-              : null,
+          const label = CONNECTION_ROUTE_LABELS[connectionRouteKind(endpoint)];
+          const meta = [
+            endpoint.url,
+            endpoint.source === 'advertised' ? 'found automatically' : null,
+            routeNote(result),
           ].filter(Boolean);
           return (
             <li key={endpoint.id} className="station-routes__row">
-              <div className="station-routes__main">
-                <span className="station-routes__heading">
-                  <span className="station-routes__label">
-                    {CONNECTION_ROUTE_LABELS[kind]}
-                  </span>
-                  <Badge value={badge.label} tone={badge.tone} />
+              {editing && (
+                <span className="station-routes__remove-slot">
+                  {removable.includes(endpoint) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="station-routes__remove"
+                      aria-label={`Remove ${label} route ${endpoint.url}`}
+                      onClick={() => {
+                        removeRoute?.(connection.id, endpoint.id);
+                        if (isActive) health.recheck();
+                      }}
+                    >
+                      ×
+                    </Button>
+                  )}
                 </span>
-                <span className="station-routes__address">{endpoint.url}</span>
-                {detail.length > 0 && (
-                  <span className="station-routes__detail">
-                    {detail.join(' · ')}
-                  </span>
-                )}
-              </div>
-              {editable && connectionRouteRemovable(connection, endpoint) && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="station-routes__remove"
-                  aria-label={`Remove route ${endpoint.url}`}
-                  onClick={() => {
-                    removeRoute?.(connection.id, endpoint.id);
-                    if (isActive) health.recheck();
-                  }}
-                >
-                  Remove
-                </Button>
               )}
+              <div className="station-routes__body">
+                <span className="station-routes__name">
+                  {label}
+                  {result?.state === 'in-use' && (
+                    <Badge value="In use" tone="positive" />
+                  )}
+                </span>
+                <span className="station-routes__meta">{meta.join(' · ')}</span>
+              </div>
             </li>
           );
         })}
         {extra.map((route) => (
           <li key={route.url} className="station-routes__row">
-            <div className="station-routes__main">
-              <span className="station-routes__label">
+            <div className="station-routes__body">
+              <span className="station-routes__name">
                 {
                   CONNECTION_ROUTE_LABELS[
                     connectionRouteKind({ url: route.url, kind: 'manual' })
                   ]
                 }
               </span>
-              <span className="station-routes__address">{route.url}</span>
-              <span className="station-routes__detail">
-                Found automatically · Not used by this app yet
+              <span className="station-routes__meta">
+                {route.url} · found automatically · not used by this app yet
               </span>
             </div>
           </li>
         ))}
       </ul>
-      {editable && (
-        <form className="station-routes__add" onSubmit={submit}>
-          <label htmlFor={inputId} className="station-routes__add-label">
-            Add route
-          </label>
-          <div className="station-routes__add-row">
+      {editable &&
+        (adding ? (
+          <form className="station-routes__add" onSubmit={submit}>
             <input
-              id={inputId}
               type="url"
               inputMode="url"
+              aria-label="Route address"
               className="station-routes__input"
               placeholder="http://100.64.0.1:3141"
               value={address}
+              // biome-ignore lint/a11y/noAutofocus: opened by an explicit Add route press
+              autoFocus
               onChange={(event) => setAddress(event.target.value)}
             />
             <Button
               type="submit"
+              variant="link"
               size="sm"
-              className="station-routes__add-button"
               disabled={!address.trim()}
             >
               Add
             </Button>
-          </div>
-          {error && (
-            <p className="station-routes__error" role="alert">
-              {error}
-            </p>
-          )}
-        </form>
-      )}
+            <Button
+              variant="link"
+              size="sm"
+              onClick={() => {
+                setAdding(false);
+                setAddress('');
+                setError(null);
+              }}
+            >
+              Cancel
+            </Button>
+            {error && (
+              <p className="station-routes__error" role="alert">
+                {error}
+              </p>
+            )}
+          </form>
+        ) : (
+          <Button
+            variant="link"
+            size="sm"
+            className="station-routes__add-route"
+            onClick={() => setAdding(true)}
+          >
+            + Add route
+          </Button>
+        ))}
     </section>
   );
 }

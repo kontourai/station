@@ -1,102 +1,109 @@
 /* Station routes in a saved Station's details (docs/design/station-routes.md). */
 
+/* The routes list already shows every address; drop the card's own summary. */
+.station-connect-row:has(.station-routes) .station-connect-row__url,
+.station-connect-row:has(.station-routes) .station-connect-row__access-paths {
+  display: none;
+}
+
 .station-routes {
   flex-basis: 100%;
   display: flex;
   flex-direction: column;
-  gap: var(--k-space-2);
-  padding-top: var(--k-space-3);
-  border-top: 1px solid var(--k-line);
 }
 
-.station-routes__status {
-  margin: 0;
-  color: var(--k-text);
-  font-size: var(--k-text-md);
+.station-routes__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .station-routes__title {
-  margin: var(--k-space-2) 0 0;
+  margin: 0;
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
   font-weight: 600;
+}
+
+.station-routes__failure {
+  margin: 0 0 var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
 }
 
 .station-routes__list {
   margin: 0;
   padding: 0;
   list-style: none;
-  border: 1px solid var(--k-line);
-  border-radius: var(--k-radius-md);
 }
 
 .station-routes__row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--k-space-3);
-  padding: var(--k-space-3);
+  gap: var(--k-space-2);
+  padding: var(--k-space-2) 0;
 }
 
 .station-routes__row + .station-routes__row {
   border-top: 1px solid var(--k-line);
 }
 
-.station-routes__main {
+.station-routes__remove-slot {
   display: flex;
-  flex: 1;
-  min-width: 0;
-  flex-direction: column;
-  gap: var(--k-space-1);
+  flex: 0 0 auto;
+  width: 32px;
+  justify-content: center;
 }
 
-.station-routes__label {
+.station-routes__remove {
+  position: relative;
+  color: var(--k-negative);
+}
+
+/* 44px touch target without a 44px-tall row. */
+.station-routes__remove::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+
+.station-routes__body {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.station-routes__name {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
   color: var(--k-text);
   font-size: var(--k-text-md);
 }
 
-.station-routes__address,
-.station-routes__detail {
+.station-routes__meta {
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
   overflow-wrap: anywhere;
 }
 
-.station-routes__heading {
+.station-routes__add {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--k-space-2);
-}
-
-.station-routes__remove,
-.station-routes__add-button {
-  flex: 0 0 auto;
-  min-height: 44px;
-}
-
-.station-routes__add {
-  display: flex;
-  flex-direction: column;
-  gap: var(--k-space-2);
-  margin-top: var(--k-space-2);
-}
-
-.station-routes__add-label {
-  color: var(--k-text-muted);
-  font-size: var(--k-text-sm);
-  font-weight: 600;
-}
-
-.station-routes__add-row {
-  display: flex;
-  gap: var(--k-space-2);
+  padding-top: var(--k-space-2);
 }
 
 .station-routes__input {
-  flex: 1;
+  flex: 1 1 12rem;
   min-width: 0;
-  min-height: 44px;
+  min-height: 36px;
   padding: 0 var(--k-space-3);
   font: inherit;
   font-size: var(--k-text-md);
@@ -106,7 +113,12 @@
   border-radius: var(--k-radius-md);
 }
 
+.station-routes__add-route {
+  align-self: flex-start;
+}
+
 .station-routes__error {
+  flex-basis: 100%;
   margin: 0;
   color: var(--k-negative);
   font-size: var(--k-text-sm);

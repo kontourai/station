@@ -267,21 +267,19 @@ function ConnectionRow({
         </div>
         {detailsOpen && (
           <div className="station-connect-row__details">
-            <button
-              type="button"
-              className="station-connect-btn station-connect-btn--primary"
-              aria-label={`Switch to ${connectionDisplayLabel(connection)}`}
-              disabled={
-                busy ||
-                connection.id === activeConnectionId ||
-                isLocalServerDown
-              }
-              onClick={() => onSelect(connection)}
-            >
-              {connection.id === activeConnectionId
-                ? 'Current Station'
-                : 'Switch to this Station'}
-            </button>
+            {/* The current Station's card already says so in its chip; a
+                disabled "Current Station" button only took up a row. */}
+            {connection.id !== activeConnectionId && (
+              <button
+                type="button"
+                className="station-connect-btn station-connect-btn--primary"
+                aria-label={`Switch to ${connectionDisplayLabel(connection)}`}
+                disabled={busy || isLocalServerDown}
+                onClick={() => onSelect(connection)}
+              >
+                Switch to this Station
+              </button>
+            )}
             <button
               type="button"
               className="station-connect-btn station-connect-btn--secondary"
@@ -320,7 +318,7 @@ function ConnectionRow({
           </div>
         )}
         {!isInjected && connection.endpoints.length > 1 && (
-          <div className="station-connect-row__meta">
+          <div className="station-connect-row__meta station-connect-row__access-paths">
             {connection.endpoints.length} saved access paths
           </div>
         )}

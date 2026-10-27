@@ -120,21 +120,26 @@ afterEach(() => {
 });
 
 describe('StationRoutesPanel', () => {
-  it('shows the overall status and each route with how it was found', () => {
+  it('shows the failure once and notes only what differs on each route', () => {
     renderPanel(station());
-    expect(screen.getByRole('status').textContent).toMatch(/^Couldn't connect/);
+    expect(screen.getByRole('status').textContent).toBe("Can't reach Kontour.");
     const rows = screen.getAllByRole('listitem');
     expect(rows).toHaveLength(3);
     expect(within(rows[0]!).getByText('Local network')).toBeTruthy();
-    expect(within(rows[0]!).getByText('Unreachable')).toBeTruthy();
+    expect(within(rows[0]!).getByText(`${lan.url} · unreachable`)).toBeTruthy();
     expect(within(rows[1]!).getByText('Tailscale')).toBeTruthy();
-    expect(within(rows[1]!).getByText('Different Station')).toBeTruthy();
-    expect(within(rows[1]!).getByText(/^Found automatically/)).toBeTruthy();
+    expect(
+      within(rows[1]!).getByText(
+        `${tailscale.url} · found automatically · different Station`,
+      ),
+    ).toBeTruthy();
     expect(within(rows[2]!).getByText('Tailscale HTTPS')).toBeTruthy();
-    expect(within(rows[2]!).getByText('Not checked')).toBeTruthy();
+    expect(
+      within(rows[2]!).getByText(`${https.url} · found automatically`),
+    ).toBeTruthy();
   });
 
-  it('names the route in use when connected', () => {
+  it('marks the route in use and shows no status line when connected', () => {
     state.health = {
       ...state.health,
       status: 'connected',
@@ -145,16 +150,20 @@ describe('StationRoutesPanel', () => {
       ],
     };
     renderPanel(station());
-    expect(screen.getByRole('status').textContent).toBe(
-      'Connected over Tailscale HTTPS',
-    );
-    expect(screen.getByText('In use')).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
+    const inUse = screen.getByText('In use').closest('li');
+    expect(within(inUse!).getByText('Tailscale HTTPS')).toBeTruthy();
   });
 
-  it('offers remove only for routes the user added', () => {
+  it('offers remove only for routes the user added, after Edit', () => {
     renderPanel(station());
-    const remove = screen.getAllByRole('button', { name: /^Remove route/ });
+    expect(screen.queryByRole('button', { name: /^Remove / })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const remove = screen.getAllByRole('button', { name: /^Remove / });
     expect(remove).toHaveLength(1);
+    expect(remove[0]!.getAttribute('aria-label')).toBe(
+      `Remove Local network route ${lan.url}`,
+    );
     fireEvent.click(remove[0]!);
     expect(removeRoute).toHaveBeenCalledWith('home', lan.id);
     expect(recheck).toHaveBeenCalled();
@@ -162,15 +171,20 @@ describe('StationRoutesPanel', () => {
 
   it('adds a typed route and reports an unusable address', () => {
     renderPanel(station());
-    const input = screen.getByLabelText('Add route');
+    fireEvent.click(screen.getByRole('button', { name: '+ Add route' }));
+    const input = screen.getByLabelText('Route address');
     fireEvent.change(input, { target: { value: 'http://10.0.0.4:3774' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     expect(addRoute).toHaveBeenCalledWith('home', 'http://10.0.0.4:3774');
+    expect(screen.queryByLabelText('Route address')).toBeNull();
 
+    fireEvent.click(screen.getByRole('button', { name: '+ Add route' }));
     addRoute.mockImplementationOnce(() => {
       throw new Error('Enter an address that starts with http:// or https://.');
     });
-    fireEvent.change(input, { target: { value: 'ftp://box' } });
+    fireEvent.change(screen.getByLabelText('Route address'), {
+      target: { value: 'ftp://box' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     expect(screen.getByRole('alert').textContent).toMatch(/http:\/\//);
   });
@@ -206,10 +220,12 @@ describe('StationRoutesPanel', () => {
     );
     renderPanel(native);
     expect(
-      await screen.findByText('Found automatically · Not used by this app yet'),
+      await screen.findByText(
+        'http://100.77.142.114:3774 · found automatically · not used by this app yet',
+      ),
     ).toBeTruthy();
-    expect(screen.queryByLabelText('Add route')).toBeNull();
-    expect(screen.queryByRole('button', { name: /^Remove route/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: '+ Add route' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
     expect(state.fetch).toHaveBeenCalledWith(
       'http://192.168.50.16:3774/api/system/routes',
       expect.anything(),
