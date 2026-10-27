@@ -13,8 +13,10 @@ export interface RetainedReadFailure {
   /** The failure to describe: the current one, or the last one while re-checking. */
   error: unknown;
   /**
-   * A refetch is on the wire. False while TanStack holds it paused for the
-   * network: nothing is being retried then, and Try again stays usable.
+   * A re-check is pending: on the wire, or held by TanStack until the network
+   * or window focus returns. A Retry tap while it is held only rejoins the
+   * held fetch and sends nothing, so callers should show the pending state,
+   * not an enabled button that silently does nothing.
    */
   retrying: boolean;
 }
@@ -49,16 +51,11 @@ export function useRetainedReadFailure(
     setLast({ error: query.error, at: query.errorUpdatedAt });
   }
   if (query.data !== undefined) return null;
-  const retrying = query.fetchStatus === 'fetching';
+  const retrying = query.fetchStatus !== 'idle';
   if (query.error != null) return { error: query.error, retrying };
   // Only this entry's own failure is retained: matching the failure time
   // keeps a previous query key's error from describing a different read.
-  if (
-    query.fetchStatus !== 'idle' &&
-    last &&
-    last.at === query.errorUpdatedAt &&
-    last.at > 0
-  ) {
+  if (retrying && last && last.at === query.errorUpdatedAt && last.at > 0) {
     return { error: last.error, retrying };
   }
   return null;

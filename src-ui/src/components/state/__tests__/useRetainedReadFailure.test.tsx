@@ -115,7 +115,7 @@ describe('useRetainedReadFailure', () => {
     expect(view.result.current.failure).toBeNull();
   });
 
-  test('a refetch paused for being offline keeps the failure, not marked retrying', async () => {
+  test('a refetch paused for being offline keeps the failure, still pending', async () => {
     const { calls, view } = setup();
     const outage = new TypeError('Failed to fetch');
     await act(async () => calls[0]!.reject(outage));
@@ -127,11 +127,12 @@ describe('useRetainedReadFailure', () => {
       expect(view.result.current.query.fetchStatus).toBe('paused'),
     );
 
-    // Nothing is on the wire while paused, so Try again stays usable.
+    // The held re-check is still pending: a Retry tap would only rejoin it,
+    // so the view shows it pending rather than offering a dead button.
     expect(view.result.current.query.error).toBeNull();
     expect(view.result.current.failure).toEqual({
       error: outage,
-      retrying: false,
+      retrying: true,
     });
   });
 
