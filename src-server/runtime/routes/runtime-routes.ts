@@ -1445,6 +1445,20 @@ export function configureRuntimeRoutes(
     focus: focusPresence,
   });
   let projectTaskRoomRuntime: ProjectTaskRoomRuntime | undefined;
+  let taskCaptureService: TaskBrowserCapture | undefined;
+  const taskCaptureBlobs = createTaskCaptureBlobStoreFactory({
+    logger: context.logger,
+    homeDir: () => context.configLoader.getProjectHomeDir(),
+    forbiddenProjectRoots: () => [
+      ...context.projectService.listProjects().flatMap((project) => {
+        const dir = context.projectService.getProject(
+          project.slug,
+        )?.workingDirectory;
+        return dir ? [resolve(expandTilde(dir))] : [];
+      }),
+      ...context.taskGraphService.listWorkspaceRoots(),
+    ],
+  });
   const taskRoomWork = new TaskRoomWorkModule(
     join(context.configLoader.getProjectHomeDir(), 'task-room-work.json'),
   );
@@ -4064,6 +4078,15 @@ export function configureRuntimeRoutes(
             ? { resolveAndroidAvd: deviceShareAccess.resolveAndroidAvd }
             : {}),
           automation: agentDeviceAutomation,
+          taskCapture: () =>
+            projectTaskRoomRuntime && taskCaptureService
+              ? {
+                  runtime: projectTaskRoomRuntime,
+                  captures: taskCaptureService,
+                  localProjectIdFor: (identity) =>
+                    localProjectIdFor(context.projectService, identity),
+                }
+              : undefined,
         }),
       );
     }
@@ -5016,6 +5039,13 @@ export function configureRuntimeRoutes(
       },
     });
     projectTaskRoomRuntime = roomRuntime;
+    taskCaptureService = new TaskBrowserCapture({
+      localProjectIdFor: (identity) =>
+        localProjectIdFor(context.projectService, identity),
+      store: roomEventStore.taskReviewStore(),
+      taskGraph: context.taskGraphService,
+      blobs: taskCaptureBlobs,
+    });
     context.app.route(
       '/api/orchestration',
       createTaskReviewStationControlRoutes({
@@ -6503,28 +6533,7 @@ export function configureRuntimeRoutes(
     const captureRegistry = browserService.registry;
     const captureProjectIdFor = (identity: string) =>
       localProjectIdFor(context.projectService, identity);
-    const captureStore = context.orchestrationEventStore?.taskReviewStore();
-    const taskCaptures =
-      captureRuntime && captureStore
-        ? new TaskBrowserCapture({
-            localProjectIdFor: captureProjectIdFor,
-            store: captureStore,
-            taskGraph: context.taskGraphService,
-            blobs: createTaskCaptureBlobStoreFactory({
-              logger: context.logger,
-              homeDir: () => context.configLoader.getProjectHomeDir(),
-              forbiddenProjectRoots: () => [
-                ...context.projectService.listProjects().flatMap((project) => {
-                  const dir = context.projectService.getProject(
-                    project.slug,
-                  )?.workingDirectory;
-                  return dir ? [resolve(expandTilde(dir))] : [];
-                }),
-                ...context.taskGraphService.listWorkspaceRoots(),
-              ],
-            }),
-          })
-        : undefined;
+    const taskCaptures = taskCaptureService;
     if (taskCaptures && captureRuntime)
       context.app.route(
         '/api/tasks',

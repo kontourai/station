@@ -986,3 +986,13 @@ describe('station-control authority table: work claims (#3413 B)', () => {
       ]).toEqual([name, 'station_control_route_unmapped']);
   });
 });
+
+test('device_capture_to_task keeps the bound Project edit DEVICE_AGENT policy', () => {
+  expect(STATION_CONTROL_TOOL_POLICY.device_capture_to_task).toMatchObject({
+    assurance: 'bound',
+    role: 'project',
+    projectAction: 'edit',
+    toolClass: 'mutating',
+    enforcedBy: 'route',
+  });
+});

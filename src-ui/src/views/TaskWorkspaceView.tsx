@@ -106,6 +106,13 @@ const LazyTaskBasisWorkspacePane = lazy(() =>
     ({ BasisWorkspacePane }) => ({ default: BasisWorkspacePane }),
   ),
 );
+const LazyTaskOverviewTimeline = lazy(() =>
+  import('./task-workspace/TaskOverviewTimeline').then(
+    ({ TaskOverviewTimeline }) => ({
+      default: TaskOverviewTimeline,
+    }),
+  ),
+);
 const LazyTaskReviewTab = lazy(() =>
   import('./task-workspace/review/TaskReviewTab').then(({ TaskReviewTab }) => ({
     default: TaskReviewTab,
@@ -444,6 +451,7 @@ function TaskWorkspaceContent({
   tab: string;
   setTab: (tab: string) => void;
 }) {
+  const { updateParams } = useNavigationActions();
   const references = useMemo(() => taskReferences(graph), [graph]);
   // AW-4: the list is derived from what this Station has actually
   // installed, not from a hardcoded filter. An optional experience appears
@@ -642,6 +650,23 @@ function TaskWorkspaceContent({
         aria-labelledby="task-tab-Overview"
       >
         <TaskRoomRail task={graph.task} onBrief={() => setTab('Plan')} />
+        {reviewEnabled && (
+          <Suspense fallback={<SkeletonBlock label="Loading Timeline" />}>
+            <LazyTaskOverviewTimeline
+              taskId={graph.task.id}
+              taskCreatedAt={graph.task.createdAt}
+              visible={tab === 'Overview'}
+              onOpenCapture={(id) =>
+                updateParams({
+                  taskView: 'review',
+                  reviewKind: 'capture',
+                  reviewItem: id,
+                  reviewThread: null,
+                })
+              }
+            />
+          </Suspense>
+        )}
         <TaskRelationships task={graph.task} kind="children" />
         <div id="task-deliverables">
           <TaskRoomResults task={graph.task} />
