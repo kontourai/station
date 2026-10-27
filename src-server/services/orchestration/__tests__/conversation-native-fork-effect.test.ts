@@ -498,6 +498,8 @@ describe('native fork SQLite effect and publication ownership', () => {
     if (field === 'thread') started.threadId = 'foreign';
     if (field === 'provider') started.provider = 'claude';
     const key = {
+      thread: undefined,
+      provider: undefined,
       owner: 'userId',
       environment: 'environmentId',
       Agent: 'agentSlug',
