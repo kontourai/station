@@ -935,8 +935,6 @@ export async function inspectWorkloadResources() {
   };
 }
 
-type WorkloadEnforcementState = typeof state;
-
 /**
  * The limits an engine launched now would receive, only while enforcement
  * is actually configured. Absent everywhere a scope would not be created.
