@@ -522,7 +522,7 @@ or the grant.
 `POST /api/tasks` accepts an optional `shapingSource: { sessionId, turnId }`
 when a person accepts a chat proposal. The normal `title` carries the proposal title; `description`
 carries the Goal sentence, and `proposalBrief` carries the accepted markdown for the shared Task document. Station requires an authorized, normally completed
-assistant turn in the same Project (or a conversation without a Project), parses its `station-task-proposal` block using the shared contract, and requires an exact title, Goal and brief match. Inline edits are not supported; mismatches return 409 before creation. A brief longer than a Task document can hold (about 5,400 characters of plain text, against the 12,000-character proposal limit) returns 413 `task-document-full` before creation. When the Station-wide revision ledger (256 receipts / 4 MiB, a full document snapshot per save, [#4055](https://github.com/kontourai/station/issues/4055)) has no room for the brief, acceptance returns 507 `revision-history-full` before creation; if the ledger fills between that check and the seed, the 507 says the Task was created without its brief and names it in `details.taskId`. Neither promises a retry. Re-accepting an already-accepted source skips that pre-check and reuses its existing Task. If its brief still needs seeding, a capacity refusal names that Task in `details.taskId`. Missing document authority/runtime availability returns 503 before creation. Station then commits the Task and its `spawned_session` link together. Reaccepting the
+assistant turn in the same Project (or a conversation without a Project), parses its `station-task-proposal` block using the shared contract, and requires an exact title, Goal and brief match. Inline edits are not supported; mismatches return 409 before creation. A brief longer than a Task document can hold (about 5,400 characters of plain text, against the 12,000-character proposal limit) returns 413 `task-document-full` before creation. Proposal seeding retains a replaceable revision candidate and does not consume the Station-wide receipt ledger. A full ledger therefore does not prevent Task creation or brief seeding. Missing document authority/runtime availability returns 503 before creation. Station then commits the Task and its `spawned_session` link together. Reaccepting the
 same source returns the existing Task; acceptance leaves `sessionId` and `agentId` unset. The user-sourced link records `shapingTurnId`, and `proposalBriefSaved: true` only after successful seeding. Changing its destination Project is
 refused. This is Station proposal acceptance, not a Builder Kit gate receipt. Seeding uses the room runtime's human edit-plan/batch authority. A transient seed failure returns 503 with a recovery message after the Task and Session link have persisted; retrying the same source reuses that Task and seeds only an empty document. Concurrent accepts that commit the matching brief both succeed. A successful response is returned after seeding. This is recoverable creation across the graph and document stores, not a cross-store transaction.
 
@@ -5510,8 +5510,12 @@ plan yields `outdated: "unknown"`; a resolved thread is never Outdated. Whole
 plan/summary anchors retain no body quote; changed revisions have unknown
 freshness and remain visible through `currentRevision`, following the shared
 contract. Review
-reads plan working state and never writes the room document, room history,
-Task status or revision-bound evidence.
+reads plan working state. Creating a plan thread first freezes and links that
+exact working revision through the room evidence bridge; if the revision
+changed before its claim, or a receipt cannot be retained, creation returns
+`artifact-unavailable` without creating a thread. Output anchors use their
+already retained digest snapshots. Review never edits the room document or
+Task status. See the [freeze policy](../decisions/revision-evidence-freeze-policy.md).
 
 The internal-only station-control routes are `GET
 /api/orchestration/station-control/task-threads?state=open|outdated|resolved`,

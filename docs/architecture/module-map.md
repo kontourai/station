@@ -3247,15 +3247,16 @@ and nested byte budgets are bounded, including sparse arrays and surrogate
 escaping; element and member counts are bounded by the byte budget itself, not
 a fixed count (a 4,096-element cap refused Task documents of more than 4,096
 atoms, [#4007](https://github.com/kontourai/station/issues/4007)). The room
-working-state worker applies the same bounds before it commits a write
-(`revisionEvidenceAdmission`), counting stored receipts plus every publication
-admitted but not yet frozen, so a room write is refused as `document-full` or
-`evidence-ledger-full` instead of being admitted and then never frozen.
-A Task document's capacity is therefore per document (about 5,400 plain
-characters ever typed, deleted ones included) and also bounded by this
-Station-wide ledger: 256 receipts / 4 MiB, each holding a full snapshot of the
-document it records. A few hundred small saves, or a few saves of a large
-document, fill it for every Task; retiring receipts is [#4055](https://github.com/kontourai/station/issues/4055). Missing compatible attribution is `attribution_unverified`; a portable
+working-state worker applies the same per-document bounds before it commits a
+write (`revisionEvidenceAdmission`). Ordinary person and agent saves replace an
+unclaimed full-snapshot candidate rather than reserving or freezing a receipt.
+Task Review claims the exact working revision before creating a plan anchor;
+only requested references consume the shared 256-receipt / 4 MiB ledger. A Task
+document still holds about 5,400 plain characters ever typed, deleted ones
+included. A full ledger refuses new references; a deterministic freeze refusal
+releases the unmarked claim so later saves can replace the candidate. See the
+[freeze policy](../decisions/revision-evidence-freeze-policy.md).
+Missing compatible attribution is `attribution_unverified`; a portable
 file alone grants no trust. Returned records, exports and projections are cloned.
 
 [EventStore](../../src-server/services/orchestration/event-store.ts) composes the
@@ -3275,9 +3276,10 @@ projection so reentrant close cannot refill or disclose a closed module's cache.
 
 **Production connection.** [ProjectTaskRoomRevisionEvidenceBridge](../../src-server/services/orchestration/project-task-room-revision-evidence-bridge.ts)
 uses bounded freeze grants and domain-separated EnvironmentSecurityService HMAC
-attribution in the personal Task room. After an authorized working-state commit,
-it freezes that exact private snapshot and publishes a scope-bound revision
-link. Evidence failure adds an explicit gap without overturning the edit receipt.
+attribution in the personal Task room. A consumer requests a specific working
+revision; the worker claims it durably before the bridge freezes that exact
+private snapshot and publishes a scope-bound revision link. A save alone does
+not request evidence. Unknown freeze failures retain the recovery obligation.
 Its reader omits full snapshots and attestations; it is not a general ledger
 CRUD/import endpoint. Room shutdown closes the bridge before EventStore.
 
@@ -4325,7 +4327,7 @@ route tests cover the surrounding authority and lifecycle behavior.
 and [proposal card](../../src-ui/src/components/chat/TaskProposalCard.tsx) own
 Station's conversational intake. [Task routes](../../src-server/routes/orchestration/tasks.ts)
 authorize the exact completed source turn and require its parsed proposal to match the acceptance payload; `TaskGraphService.createTask`
-commits the Goal sentence and source Session link in one store mutation, without assigning an Agent or execution Session. The room runtime then seeds the complete proposal markdown through its human edit-plan/batch authority. A transient seed failure returns a visible recovery error; retrying reuses the Task and preserves populated documents. Document-capacity refusals require a shorter proposal; revision-history refusals require available history capacity. A history refusal after creation names the existing Task so the card can offer Open Task. The normal shared start composer owns New Task's existing project/agent chips and removable mode; New Task from this sends immediately in the source conversation. A persisted chat flag supplies shaping context on every turn until acceptance or explicit mode removal. Successful brief seeding marks the source link so a reloaded card opens the accepted Task; a transient seed failure keeps acceptance retryable.
+commits the Goal sentence and source Session link in one store mutation, without assigning an Agent or execution Session. The room runtime then seeds the complete proposal markdown through its human edit-plan/batch authority. A transient seed failure returns a visible recovery error; retrying reuses the Task and preserves populated documents. Document-capacity refusals require a shorter proposal; proposal seeding does not reserve revision-history capacity. A seed refusal after creation names the existing Task so the card can offer Open Task. The normal shared start composer owns New Task's existing project/agent chips and removable mode; New Task from this sends immediately in the source conversation. A persisted chat flag supplies shaping context on every turn until acceptance or explicit mode removal. Successful brief seeding marks the source link so a reloaded card opens the accepted Task; a transient seed failure keeps acceptance retryable.
 The [VoltAgent adapter](../../src-server/runtime/frameworks/voltagent-adapter.ts) binds model-only input composition to the registered Agent as well as its wrapper, so shaping instructions reach the model while authored messages remain unchanged in storage. The real Agent/model/file-store proof lives in `src-server/runtime/frameworks/__tests__/voltagent-model-input.test.ts`.
 The source link also deduplicates repeated acceptance. Tests in
 `task-proposal-acceptance.test.ts`, `TaskProposalFlow.test.tsx` and
@@ -5299,15 +5301,16 @@ when only the OS alias is available, its initial is capitalized for display.
 Opaque working-state plan
 revisions are hidden because the room does not expose ordinal plan history.
 
-Task review keeps anchored comments outside the shared room's document and
-history, and outside revision-bound evidence (#4007, #4055). The
+Task review keeps anchored comments in its own append-only store, outside the
+shared room's document and history. Plan references freeze revision evidence
+through the room bridge (#4055). The
 [review contract](../../packages/contracts/src/task-review.ts) owns shapes,
 bounds, quote relocation and state derivation. Personal
 [routes](../../src-server/routes/orchestration/task-review.ts) obtain current
 request authority from `ProjectTaskRoomRuntime.personTaskReviewAccess`;
 `sessionTaskReviewAccess` requires the caller's bound Session to be the Task's
 lead, without requiring Task memory. Its transaction callback rechecks the
-binding, incarnation, lead and workspace. `readPlanForReview` and the caller-bound
+binding, incarnation, lead and workspace. A new plan thread first freezes its exact working revision through the room evidence bridge; output anchors use the output's retained digest snapshot. `readPlanForReview` and the caller-bound
 `readPlanForSessionReview` read the same working-state owner. Agent list filters
 and person reads share `TaskReviewModule` artifact resolution and freshness.
 The agent list resolves artifacts once, reads thread histories in one store
@@ -5421,7 +5424,8 @@ and [SDK reference](../reference/sdk.md#task-review-threads). Evidence owners:
 and [composed runtime routes](../../src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts).
 They cover durable reopening, append-only enforcement, idempotency, capacity
 refusals, incarnation isolation, plan editing, unavailable working state and
-review writes preserving room content, history and revision evidence. They do
+plan reference creation freezing exact evidence, and later review replies/resolution
+preserving room content, history and revision evidence. They do
 not qualify a real provider, browser capture, a UI journey or a release.
 [Capture route tests](../../src-server/routes/__tests__/browser-agent-capture.test.ts)
 exercise real Git, SQLite, room binding authority and blob storage with a CDP

@@ -1,0 +1,13 @@
+{
+  "revision": "6dea92f33ea6af2168cdf3f8453cc89d312df01e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Final #4055 delta review after merging origin/main 027f81ac976: preserved upstream continuity/external MCP sections and regenerated the owning MCP payload. Exact plan freezes remain wired. Reviewed stronger capacity/startup assertions, the existing discovery outcome and compact presence fixture correction. The high-volume control now has a 300-second liveness ceiling with unchanged 600-save assertions. Source and local-test scope, not hosted/installed acceptance.","inputs":["docs/architecture/module-map.md","src-server/runtime/routes/__tests__/runtime-routes-project-task-room-principal.test.ts","src-server/services/orchestration/__tests__/project-task-room-revision-evidence-bridge.test.ts"]},
+
+    {"path":"docs/reference/api.md","note":"A successful document save initializes room history without requesting evidence, so later discovery truthfully returns existing. The composed principal suite keeps the accepting-principal and document assertions. Proposal seed and exact Task Review freeze descriptions remain accurate after continuity integration.","inputs":["docs/reference/api.md","src-server/runtime/routes/__tests__/runtime-routes-project-task-room-principal.test.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reload fixture now opens Conversation normally before accessing its composer and uses Present in this Task for compact presence. Draft review, restore/discard, exact retry and paired principal guards remain intact. Browser and source evidence is separate from external-provider qualification.","inputs":["docs/design/task-room-agent-requests.md","src-server/runtime/routes/__tests__/runtime-routes-project-task-room-principal.test.ts","tests/task-room-reload-recovery.spec.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Corrected the retained reload fixture prerequisites to the Conversation tab and compact presence label. Both reload-recovery cases passed locally; original prerequisite failures remain reported in the PR. Suite ownership and the explicit provider skip remain unchanged.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/task-room-reload-recovery.spec.ts"]}
+  ]
+}

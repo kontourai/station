@@ -5157,6 +5157,7 @@ export function configureRuntimeRoutes(
         taskReviewSend.deliveryStatusFor(threadId, deliveryKey),
       memory: roomEventStore.taskMemoryStore(),
       outputs: taskOutputs,
+      freezePlan: (input) => roomRuntime.freezeDocumentRevision(input),
       readPlan: (taskId, request) => {
         const authority = stationControlRequestAuthority(request);
         return authority?.kind === 'caller'

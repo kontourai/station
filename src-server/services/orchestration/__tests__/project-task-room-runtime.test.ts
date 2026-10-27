@@ -1126,7 +1126,7 @@ describe('ProjectTaskRoomRuntime', () => {
     'throwing-observer',
     'revoked-subscriber',
   ] as const)(
-    'gives %s document delivery an event-loop turn before synchronous evidence validation',
+    'gives %s document delivery an event-loop turn without validating unrequested evidence',
     async (mode) => {
       const order: string[] = [];
       let armed = false;
@@ -1212,7 +1212,6 @@ describe('ProjectTaskRoomRuntime', () => {
         expect(order).toEqual([
           mode === 'revoked-subscriber' ? 'terminal' : 'document',
           'delivery-turn',
-          'evidence-validation',
         ]);
       } finally {
         subscription.unsubscribe();
