@@ -206,7 +206,10 @@ describe('captureHostImages', () => {
     writeFileSync(join(root, 'shot.png'), fixture('chromium.png'));
     const alias = join(base, 'alias');
     symlinkSync(root, alias);
-    const result = await capture([join(alias, 'shot.png'), join(alias, 'gone.png')]);
+    const result = await capture([
+      join(alias, 'shot.png'),
+      join(alias, 'gone.png'),
+    ]);
     expect(result.sources).toEqual([
       { path: join(alias, 'shot.png'), attachmentIndex: 0 },
       { path: join(alias, 'gone.png'), refused: 'not-found' },
