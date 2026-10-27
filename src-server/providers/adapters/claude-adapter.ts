@@ -99,6 +99,7 @@ import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdi
 import {
   engineSessionTmpDir,
   noteEngineTmpDir,
+  stampLaunchExit,
 } from '../../services/infra/session-tmpdir.js';
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
 import type { EngineMcpOAuthResolver } from '../../services/plugins/engine-mcp-oauth.js';
@@ -4485,6 +4486,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   private publish(event: CanonicalRuntimeEvent): void {
     if (event.method === 'session.exited')
       this.options.revokeStationControlCallerToken?.(event.threadId);
+    // chat-host-images: which launch this exit ends, taken now (see
+    // `stampLaunchExit`).
+    stampLaunchExit(event);
     this.events.push(event);
   }
 

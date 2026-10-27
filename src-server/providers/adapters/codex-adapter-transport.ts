@@ -15,6 +15,7 @@ import {
   releaseOwnedChildAfterGroupExit,
   spawnOwnedChild,
 } from '../../services/infra/process-utils.js';
+import { stampLaunchExit } from '../../services/infra/session-tmpdir.js';
 import { raceWithSignal } from '../../utils/bounded-async.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
 import { onNdjsonLines } from '../../utils/ndjson-lines.js';
@@ -745,6 +746,9 @@ export class CodexAdapterTransport {
     sourceRecord?: CodexSessionRecord,
   ): void {
     if (event.method === 'session.exited') this.onSessionExit?.(event.threadId);
+    // chat-host-images: which launch this exit ends, taken now (see
+    // `stampLaunchExit`).
+    stampLaunchExit(event);
     const origins = (sourceRecord ?? this.sessions.get(event.threadId))
       ?.turnInvocationIds;
     if (event.turnId && origins && !origins.has(event.turnId)) {

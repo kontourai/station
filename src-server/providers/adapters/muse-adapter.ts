@@ -33,7 +33,10 @@ import {
   spawnOwnedChild,
   terminateProcessTree,
 } from '../../services/infra/process-utils.js';
-import { engineSessionTmpDir } from '../../services/infra/session-tmpdir.js';
+import {
+  engineSessionTmpDir,
+  stampLaunchExit,
+} from '../../services/infra/session-tmpdir.js';
 import {
   adapterSessionStartDuration,
   adapterTurnDuration,
@@ -1790,6 +1793,9 @@ export class MuseAdapter implements ProviderAdapterShape {
   }
 
   private publish(event: CanonicalRuntimeEvent): void {
+    // chat-host-images: which launch this exit ends, taken now (see
+    // `stampLaunchExit`).
+    stampLaunchExit(event);
     this.events.push(event);
   }
 

@@ -15,6 +15,7 @@ import {
   resolveModelLaunchPlan,
   unsupportedModelOptionKeys,
 } from '@kontourai/station-contracts/provider';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
@@ -26,6 +27,7 @@ import {
   sessionTmpDirPath,
 } from '../../services/infra/session-tmpdir.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
+import { HostImageTurnCapture } from '../../services/orchestration/host-image-turn-capture.js';
 import type { ProviderAdapterShape } from '../adapter-shape.js';
 import { SendTurnRefusedError } from '../adapter-shape.js';
 import type { MuseAdapterOptions } from '../adapters/muse-adapter.js';
@@ -311,6 +313,45 @@ describe('MuseAdapter', () => {
       expect(sessionTempRoot('thread-muse-tmp')).toBe(
         sessionTmpDirPath('thread-muse-tmp', home),
       );
+    } finally {
+      uninstall();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  test('chat-host-images: stopping the session removes its recorded temp folder, through its own exit', async () => {
+    const home = makeSessionHome('muse-session-stop-');
+    vi.stubEnv('STATION_HOME', home);
+    const uninstall = installSessionTmpDirPolicy(() => true);
+    try {
+      const harness = createHarness();
+      await harness.adapter.startSession({
+        provider: 'muse',
+        threadId: 'thread-muse-stop',
+        cwd: '/tmp/project',
+        modelId: 'muse-spark-1.2-contributor',
+      });
+      const dir = sessionTempRoot('thread-muse-stop')!;
+      expect(existsSync(dir)).toBe(true);
+      await harness.adapter.stopSession('thread-muse-stop');
+      let exited: CanonicalRuntimeEvent | undefined;
+      while (!exited) {
+        const next = await harness.iterator.next();
+        if (next.done) break;
+        if (next.value.method === 'session.exited') exited = next.value;
+      }
+      if (!exited) throw new Error('no session.exited published');
+      const capture = new HostImageTurnCapture({
+        preview: undefined,
+        eventStore: undefined,
+        sessionCwd: () => undefined,
+        publish: () => {},
+        logger: { warn: () => {} },
+      });
+      capture.observe(exited);
+      await capture.settled();
+      expect(sessionTempRoot('thread-muse-stop')).toBeUndefined();
+      expect(existsSync(dir)).toBe(false);
     } finally {
       uninstall();
       vi.unstubAllEnvs();

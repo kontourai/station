@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   realpathSync,
+  renameSync,
   statSync,
   symlinkSync,
   writeFileSync,
@@ -16,12 +17,14 @@ import {
   installSessionTmpDirPolicy,
   launchedRootOf,
   noteEngineTmpDir,
+  ownedDirTestHooks,
   reapStaleSessionTmpDirs,
   removeLaunchedRoot,
   removeSessionTmpDir,
   sessionTempRoot,
   sessionTmpDirPath,
   sessionTmpRoot,
+  stampLaunchExit,
 } from '../session-tmpdir.js';
 
 const makeTempDir = trackTempDirs();
@@ -153,6 +156,12 @@ describe('per-session engine TMPDIR (chat-host-images)', () => {
       method: 'turn.completed',
       turnId: 't1',
     });
+    // The adapter publishes the exit (stamping its launch), then Station observes it.
+    stampLaunchExit({
+      method: 'session.exited',
+      eventId: 'exit',
+      threadId: 'late',
+    });
     capture.observe({
       ...base,
       eventId: 'exit',
@@ -165,6 +174,91 @@ describe('per-session engine TMPDIR (chat-host-images)', () => {
     await capture.settled();
     expect(existsSync(join(restarted, 'live.png'))).toBe(true);
     expect(sessionTempRoot('late')).toBe(restarted);
+  });
+
+  test('an exit Station observes only after the thread restarted removes nothing of the new launch', async () => {
+    uninstall = installSessionTmpDirPolicy(() => true);
+    engineSessionTmpDir('delayed');
+    // The adapter publishes the exit of launch 1 ...
+    stampLaunchExit({
+      method: 'session.exited',
+      eventId: 'exit-1',
+      threadId: 'delayed',
+    });
+    // ... the thread restarts (same path) before Station gets to observe it ...
+    const restarted = engineSessionTmpDir('delayed')!;
+    writeFileSync(join(restarted, 'live.png'), 'x');
+    const capture = new HostImageTurnCapture({
+      preview: { select: (branches) => branches.disabled() },
+      eventStore: undefined,
+      sessionCwd: () => undefined,
+      publish: () => {},
+      logger: { warn: () => {} },
+    });
+    // ... and only then does Station observe the exit.
+    capture.observe({
+      eventId: 'exit-1',
+      provider: 'codex',
+      threadId: 'delayed',
+      createdAt: new Date().toISOString(),
+      method: 'session.exited',
+      sessionId: 'delayed',
+    });
+    await capture.settled();
+    expect(existsSync(join(restarted, 'live.png'))).toBe(true);
+    expect(sessionTempRoot('delayed')).toBe(restarted);
+  });
+
+  test('a launch that gets no root clears the record and removes the previous own folder', () => {
+    let on = true;
+    uninstall = installSessionTmpDirPolicy(() => on);
+    const first = engineSessionTmpDir('relaunch')!;
+    on = false;
+    expect(engineSessionTmpDir('relaunch')).toBeUndefined();
+    expect(sessionTempRoot('relaunch')).toBeUndefined();
+    expect(existsSync(first)).toBe(false);
+  });
+
+  test('a confined restart replaces an own folder (removed) with its confinement folder', () => {
+    uninstall = installSessionTmpDirPolicy(() => true);
+    const own = engineSessionTmpDir('confined-restart')!;
+    const confined = join(home, 'confined-launch');
+    mkdirSync(confined, { mode: 0o700 });
+    noteEngineTmpDir('confined-restart', confined);
+    expect(existsSync(own)).toBe(false);
+    expect(sessionTempRoot('confined-restart')).toBe(confined);
+    // A confinement folder that fails the ownership check clears the record.
+    const linked = join(home, 'confined-linked');
+    symlinkSync(confined, linked);
+    noteEngineTmpDir('confined-restart', linked);
+    expect(sessionTempRoot('confined-restart')).toBeUndefined();
+    expect(existsSync(confined)).toBe(true);
+  });
+
+  test('the mode is tightened on the folder itself, never through a link to another', () => {
+    uninstall = installSessionTmpDirPolicy(() => true);
+    const target = join(home, 'open-target');
+    mkdirSync(target, { mode: 0o755 });
+    chmodSync(target, 0o755);
+    mkdirSync(sessionTmpRoot(home), { recursive: true });
+    symlinkSync(target, sessionTmpDirPath('via-link', home));
+    expect(engineSessionTmpDir('via-link')).toBeUndefined();
+    expect(statSync(target).mode & 0o777).toBe(0o755);
+  });
+
+  test('a folder swapped after it was opened is refused (identity re-confirmed)', () => {
+    uninstall = installSessionTmpDirPolicy(() => true);
+    const dir = sessionTmpDirPath('swapped', home);
+    ownedDirTestHooks.afterOpen = (opened) => {
+      if (opened !== dir) return;
+      renameSync(dir, `${dir}-moved`);
+      mkdirSync(dir, { mode: 0o700 });
+    };
+    try {
+      expect(engineSessionTmpDir('swapped')).toBeUndefined();
+    } finally {
+      ownedDirTestHooks.afterOpen = undefined;
+    }
   });
 
   test('a policy that throws never blocks a start', () => {
@@ -195,6 +289,11 @@ describe('per-session engine TMPDIR (chat-host-images)', () => {
     uninstall = installSessionTmpDirPolicy(() => true);
     const dir = engineSessionTmpDir('thread-exit')!;
     writeFileSync(join(dir, 'shot.png'), 'x');
+    stampLaunchExit({
+      method: 'session.exited',
+      eventId: 'exit',
+      threadId: 'thread-exit',
+    });
     const capture = new HostImageTurnCapture({
       preview: { select: (branches) => branches.disabled() },
       eventStore: undefined,

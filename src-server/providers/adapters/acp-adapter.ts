@@ -119,7 +119,10 @@ import {
   openCodeProjectCodeRefusal,
 } from '../../services/acp/opencode-project-config.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
-import { engineSessionTmpDir } from '../../services/infra/session-tmpdir.js';
+import {
+  engineSessionTmpDir,
+  stampLaunchExit,
+} from '../../services/infra/session-tmpdir.js';
 import {
   acpPassthroughSessions,
   acpResumeSessions,
@@ -3762,6 +3765,9 @@ export class AcpAdapter implements ProviderAdapterShape {
   }
 
   private publish(event: CanonicalRuntimeEvent): void {
+    // chat-host-images: which launch this exit ends, taken now (see
+    // `stampLaunchExit`).
+    stampLaunchExit(event);
     this.events.push(event);
   }
 

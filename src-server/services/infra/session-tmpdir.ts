@@ -103,6 +103,9 @@ function admitted(threadId: string): boolean {
  * owned by this user, and private (mode tightened to 0700 when it is not).
  * Anything else is refused rather than used as a session's temp root.
  */
+/** Test seam: runs after the directory is opened, before it is re-confirmed. */
+export const ownedDirTestHooks: { afterOpen?: (dir: string) => void } = {};
+
 function ownedPrivateDir(dir: string): boolean {
   if (process.platform === 'win32') {
     // No no-follow directory descriptors or POSIX modes: a real directory,
@@ -123,6 +126,7 @@ function ownedPrivateDir(dir: string): boolean {
       fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW,
     );
     const stats = fstatSync(fd);
+    ownedDirTestHooks.afterOpen?.(dir);
     if (!stats.isDirectory()) return false;
     const uid = process.getuid?.();
     if (uid !== undefined && stats.uid !== uid) return false;
@@ -149,16 +153,44 @@ function ownedPrivateDir(dir: string): boolean {
  * block an engine start.
  */
 export function engineSessionTmpDir(threadId: string): string | undefined {
-  if (!admitted(threadId)) return undefined;
+  const dir = admitted(threadId) ? createOwnDir(threadId) : undefined;
+  // Every launch replaces the last one's record, including a launch that
+  // gets no root: the thread must not keep serving the previous folder.
+  replaceLaunch(threadId, dir ? { dir, own: true } : undefined);
+  return dir;
+}
+
+function createOwnDir(threadId: string): string | undefined {
   const dir = sessionTmpDirPath(threadId);
   try {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
   } catch {
     return undefined;
   }
-  if (!ownedPrivateDir(dir)) return undefined;
-  launchedRoots.set(threadId, { dir, own: true });
-  return dir;
+  return ownedPrivateDir(dir) ? dir : undefined;
+}
+
+/**
+ * Make `next` the thread's launch. A previous launch's own folder at another
+ * path (a confined restart, or a launch that got none) is removed now: its
+ * engine was replaced, and nothing else would remove it before the restart
+ * sweep.
+ */
+function replaceLaunch(threadId: string, next: LaunchedRoot | undefined) {
+  const previous = launchedRoots.get(threadId);
+  if (next) launchedRoots.set(threadId, next);
+  else launchedRoots.delete(threadId);
+  if (previous?.own && previous.dir !== next?.dir) removeOwnDir(previous.dir);
+}
+
+function removeOwnDir(dir: string): void {
+  try {
+    const stats = lstatSync(dir);
+    if (!stats.isDirectory() || stats.isSymbolicLink()) return;
+    rmSync(dir, { recursive: true, force: true });
+  } catch {
+    // Best-effort; the stale-owner sweep retries after this process exits.
+  }
 }
 
 /**
@@ -167,8 +199,47 @@ export function engineSessionTmpDir(threadId: string): string | undefined {
  * exact directory becomes a root; its owner keeps removing it.
  */
 export function noteEngineTmpDir(threadId: string, dir: string): void {
-  if (admitted(threadId) && ownedPrivateDir(dir))
-    launchedRoots.set(threadId, { dir, own: false });
+  replaceLaunch(
+    threadId,
+    admitted(threadId) && ownedPrivateDir(dir)
+      ? { dir, own: false }
+      : undefined,
+  );
+}
+
+/**
+ * The launch each adapter-published `session.exited` belongs to, taken by
+ * the adapter when it publishes the event (before any queue or orchestration
+ * await, during which a restart could record a newer launch). Keyed by event
+ * id and bounded; `null` records that the exiting session had no root.
+ */
+const exitLaunches = new Map<string, LaunchedRoot | null>();
+const EXIT_LAUNCH_MEMORY = 1024;
+
+/** Adapters call this with every event they publish. */
+export function stampLaunchExit(event: {
+  method: string;
+  eventId: string;
+  threadId: string;
+}): void {
+  if (event.method !== 'session.exited') return;
+  exitLaunches.set(event.eventId, launchedRoots.get(event.threadId) ?? null);
+  while (exitLaunches.size > EXIT_LAUNCH_MEMORY) {
+    const oldest = exitLaunches.keys().next().value;
+    if (oldest === undefined) break;
+    exitLaunches.delete(oldest);
+  }
+}
+
+/**
+ * The launch stamped on this exit, once. `undefined` when no adapter stamped
+ * it (an event Station itself emitted): the caller then removes nothing, and
+ * the restart sweep reclaims the folder.
+ */
+export function takeLaunchAtExit(eventId: string): LaunchedRoot | undefined {
+  const launched = exitLaunches.get(eventId);
+  exitLaunches.delete(eventId);
+  return launched ?? undefined;
 }
 
 /** Whether a policy is installed and admits `threadId` now. */
@@ -203,14 +274,7 @@ export function removeLaunchedRoot(
 ): void {
   if (!launched || launchedRoots.get(threadId) !== launched) return;
   launchedRoots.delete(threadId);
-  if (!launched.own) return;
-  try {
-    const stats = lstatSync(launched.dir);
-    if (!stats.isDirectory() || stats.isSymbolicLink()) return;
-    rmSync(launched.dir, { recursive: true, force: true });
-  } catch {
-    // Best-effort; the stale-owner sweep retries after this process exits.
-  }
+  if (launched.own) removeOwnDir(launched.dir);
 }
 
 /** The session ended now: remove its current launch's root. */

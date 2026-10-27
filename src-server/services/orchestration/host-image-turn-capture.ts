@@ -2,9 +2,9 @@ import { randomUUID } from 'node:crypto';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { FeaturePreviewSelector } from '../feature-previews/feature-preview-registry.js';
 import {
-  launchedRootOf,
   removeLaunchedRoot,
   sessionTempRoot,
+  takeLaunchAtExit,
 } from '../infra/session-tmpdir.js';
 import type { EventStore } from './event-store.js';
 import {
@@ -108,8 +108,9 @@ export class HostImageTurnCapture {
       // now, a directory created while it was on is removed. The launch is
       // taken now, at the exit: if the thread restarts before the queued
       // removal runs, the new launch's folder (possibly the same path) and
-      // record are left alone.
-      const launched = launchedRootOf(event.threadId);
+      // record are left alone. The launch is the one the adapter stamped when
+      // it published this exit, not whatever the thread holds by now.
+      const launched = takeLaunchAtExit(event.eventId);
       this.enqueue(event.threadId, async () =>
         removeLaunchedRoot(event.threadId, launched),
       );
