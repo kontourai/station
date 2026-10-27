@@ -6,6 +6,7 @@ import {
   ChatHttpError,
   StationRequestTimeoutError,
 } from '@kontourai/station-sdk/client';
+import { bumpContentRefresh } from './contentRefresh';
 
 class ApprovalDeliveryUnconfirmedError extends Error {
   readonly code = 'approval_delivery_unconfirmed';
@@ -56,26 +57,11 @@ function viewedContentDigestFor(request: {
   );
 }
 
-/**
- * Requests the server refused an allow for (409 `request_content_not_loaded`):
- * the server's binding holds content this surface did not load. Bumping the
- * version remounts the card's loader, which refetches the binding; the
- * person then allows again once it has loaded.
- */
-const contentRefreshVersions = new Map<string, number>();
-const contentRefreshListeners = new Set<() => void>();
-export function subscribeContentRefresh(listener: () => void) {
-  contentRefreshListeners.add(listener);
-  return () => {
-    contentRefreshListeners.delete(listener);
-  };
-}
-export function contentRefreshVersion(
-  threadId: string,
-  requestEventId: string,
-): number {
-  return contentRefreshVersions.get(contentKey(threadId, requestEventId)) ?? 0;
-}
+// See `contentRefresh.ts`: the 409 marker the card and the toast read.
+export {
+  contentRefreshVersion,
+  subscribeContentRefresh,
+} from './contentRefresh';
 /** Test seam: what a 409 `request_content_not_loaded` triggers. */
 export function requestContentRefreshForTest(
   threadId: string,
@@ -85,12 +71,8 @@ export function requestContentRefreshForTest(
 }
 
 function requestContentRefresh(threadId: string, requestEventId: string) {
-  const key = contentKey(threadId, requestEventId);
-  viewedContentDigests.delete(key);
-  if (contentRefreshVersions.size >= 256)
-    contentRefreshVersions.delete(contentRefreshVersions.keys().next().value!);
-  contentRefreshVersions.set(key, (contentRefreshVersions.get(key) ?? 0) + 1);
-  for (const listener of contentRefreshListeners) listener();
+  viewedContentDigests.delete(contentKey(threadId, requestEventId));
+  bumpContentRefresh(threadId, requestEventId);
 }
 
 const answerListeners = new Set<() => void>();

@@ -24,6 +24,7 @@ import {
 import { navigationStore } from '../../contexts/NavigationContext';
 import { toastStore } from '../../contexts/ToastContext';
 import { isChatInForeground } from './chatForeground';
+import { contentRefreshVersion } from './contentRefresh';
 import { isReplayThread } from './replay/replay-registry';
 import {
   openInputRequestRecordPart,
@@ -286,13 +287,16 @@ function showApprovalToast(
 
 /**
  * Whether allowing this request needs its content loaded first: the request
- * itself was spilled, or a tool call it gates (by call id or Codex item id)
- * shows spilled arguments in this chat.
+ * itself was spilled, the server refused an allow of it for content this
+ * surface had not loaded (a 409 marks it), or a tool call it gates (by call
+ * id or Codex item id) shows spilled arguments in this chat.
  */
 export function requestNeedsContentLoad(
   event: Extract<OrchestrationEvent, { method: 'request.opened' }>,
 ): boolean {
   if (event.spilledContent) return true;
+  if (event.eventId && contentRefreshVersion(event.threadId, event.eventId) > 0)
+    return true;
   const callIds = requestBoundCallIds(event);
   if (callIds.length === 0) return false;
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
