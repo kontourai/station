@@ -1406,6 +1406,23 @@ export interface ProviderTurnStartResult {
  */
 export const MEMORY_CONTINUATION_CLIENT_TURN_PREFIX = 'memory-continue-';
 
+const MEMORY_CONTINUATION_KEY = /^memory-continue-[0-9a-f]{40}(-p[2-5]?)?$/;
+
+/**
+ * Who asked for a continuation after a memory kill, read from its send key:
+ * Station's automatic continuation uses the bare key; a person's Continue
+ * uses `-p` (then `-p2` to `-p5` after a cancelled or refused one).
+ */
+export function memoryContinuationKeyKind(
+  clientTurnId: string | undefined,
+): 'automatic' | 'person' | undefined {
+  const match = clientTurnId
+    ? MEMORY_CONTINUATION_KEY.exec(clientTurnId)
+    : null;
+  if (!match) return undefined;
+  return match[1] ? 'person' : 'automatic';
+}
+
 /** Whether a turn is Station's continuation after a memory kill. */
 export function isStationMemoryContinuationTurn(turn: {
   readonly clientTurnId?: string;
@@ -1413,7 +1430,6 @@ export function isStationMemoryContinuationTurn(turn: {
 }): boolean {
   return (
     turn.clientOrigin?.actor.kind === 'internal' &&
-    typeof turn.clientTurnId === 'string' &&
-    /^memory-continue-[0-9a-f]{40}$/.test(turn.clientTurnId)
+    memoryContinuationKeyKind(turn.clientTurnId) !== undefined
   );
 }

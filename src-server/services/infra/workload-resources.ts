@@ -1,4 +1,8 @@
-import { execFile } from 'node:child_process';
+import {
+  type ChildProcess,
+  execFile,
+  spawn as nodeSpawn,
+} from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { availableParallelism, totalmem } from 'node:os';
@@ -59,6 +63,9 @@ interface ActiveWorkload {
   controlGroup?: string;
   /** `oom_kill` count already announced to {@link oomListeners}. */
   oomKillsReported: number;
+  /** An engine scope's holder, once placed and verified in the scope. */
+  holder?: ChildProcess;
+  holderPlacement?: Promise<void>;
   /** `oom_kill` count at the last poll; undefined before the first. */
   oomKillsPolled?: number;
   /** When a poll first saw the count rise (within the 1 s poll interval). */
@@ -83,8 +90,9 @@ const recent: Array<{
   unit: string;
   pid?: number;
   /**
-   * `oom-kill` when the kernel killed any process in the scope, whatever
-   * systemd reports: under OOMPolicy=continue systemd says `success`.
+   * `oom-kill-in-scope` when the kernel killed any process in the scope (the
+   * engine or a command), whatever systemd reports: under OOMPolicy=continue
+   * systemd says `success`.
    */
   result: string;
   /** What systemd itself reported for the scope. */
@@ -438,19 +446,90 @@ export async function initializeWorkloadResources(
 }
 
 /**
- * The wrapper for an engine's own scope (a launch that names its Session).
- * Before exec'ing the engine it starts a holder: `sleep` with stdin/stdout/
- * stderr on /dev/null and every other inherited descriptor closed, so it
- * holds no pipe the engine's parent waits on. When the engine dies, the
- * holder keeps the scope, and so its cgroup and `memory.events`, alive until
- * Station reads the scope's own `oom_kill` count in `closeScope` and kills
- * everything. Without it systemd collects an emptied scope at once and an
- * engine the kernel killed alone would leave no evidence. The engine keeps
- * the wrapper's PID (`exec`), and the holder is too small for the OOM
- * killer to pick. Ordinary command scopes keep the plain wrapper.
+ * Starts a holder for an engine's own scope: `/bin/sleep` spawned by Station
+ * itself, detached into its own session and process group with no stdio, so
+ * it never holds an engine pipe and no signal to the engine's group (Codex
+ * teardown kills its whole group) reaches it.
  */
-export const ENGINE_SCOPE_WRAPPER =
-  '( for f in /proc/self/fd/*; do n=${f##*/}; [ "$n" -gt 2 ] 2>/dev/null && eval "exec $n>&-"; done; exec sleep 2147483647 ) </dev/null >/dev/null 2>&1 & exec "$@"';
+export function spawnScopeHolder(): ChildProcess {
+  const holder = nodeSpawn('/bin/sleep', ['2147483647'], {
+    stdio: 'ignore',
+    detached: true,
+    windowsHide: true,
+  });
+  holder.unref();
+  return holder;
+}
+
+/**
+ * Keeps an engine scope's cgroup, and so its own `memory.events`, alive after
+ * the engine dies: systemd collects a scope as soon as its last process exits.
+ * The holder is moved into the scope by the user manager
+ * (`AttachProcessesToUnit`) and verified in the scope's `cgroup.procs`. When
+ * it cannot be placed it is killed and the scope's kill count at close is
+ * knowingly unknown. The scope's stop kills it with everything else.
+ */
+async function placeScopeHolder(entry: ActiveWorkload): Promise<void> {
+  const controlGroup = await resolveControlGroup(entry);
+  if (!controlGroup) return;
+  let holder: ChildProcess | undefined;
+  try {
+    holder = holderOps.spawn();
+    const pid = holder.pid;
+    if (pid === undefined) throw new Error('holder did not start');
+    await holderOps.attach(entry.unit, pid);
+    const procs = await holderOps.readProcs(
+      `${cgroupRoot}${controlGroup}/cgroup.procs`,
+    );
+    if (!procs.split('\n').includes(String(pid)))
+      throw new Error('holder is not in the scope');
+    entry.holder = holder;
+  } catch (error) {
+    holder?.kill('SIGKILL');
+    logger.warn(
+      'Workload scope holder not placed; an engine memory kill in it will read as unknown',
+      { unit: entry.unit, error: String(error) },
+    );
+  }
+}
+
+const defaultHolderOps = {
+  spawn: spawnScopeHolder,
+  attach: (unit: string, pid: number): Promise<string> =>
+    busctl([
+      'call',
+      'org.freedesktop.systemd1',
+      '/org/freedesktop/systemd1',
+      'org.freedesktop.systemd1.Manager',
+      'AttachProcessesToUnit',
+      'ssau',
+      unit,
+      '',
+      '1',
+      String(pid),
+    ]),
+  readProcs: (path: string): Promise<string> => readFile(path, 'utf8'),
+};
+
+const holderOps = { ...defaultHolderOps };
+
+function busctl(args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      '/usr/bin/busctl',
+      ['--user', '--no-pager', ...args],
+      {
+        env: managerEnv,
+        windowsHide: true,
+        encoding: 'utf8',
+        timeout: 10_000,
+        killSignal: 'SIGKILL',
+        maxBuffer: 64 * 1024,
+      },
+      (error, stdout) => (error ? reject(error) : resolve(stdout)),
+    );
+  });
+}
 
 function installScopeLauncher(
   prefix: string,
@@ -522,7 +601,7 @@ function installScopeLauncher(
         ...assignments,
         '/bin/sh',
         '-c',
-        sessionId ? ENGINE_SCOPE_WRAPPER : 'exec "$@"',
+        'exec "$@"',
         'station-workload',
         command,
         ...args,
@@ -532,9 +611,10 @@ function installScopeLauncher(
         entry.pid = pid;
         entry.birth = lookupProcessBirthFingerprint(pid);
         monitorLeaders();
-        // Take the OOM baselines now, not at the next tick: an engine killed
-        // within its first second is otherwise unattributable.
-        void pollOomKills().catch(() => {});
+        // An engine's own scope gets a holder so its memory.events outlive
+        // the engine. Closing waits for the placement to settle.
+        if (sessionId)
+          entry.holderPlacement = placeScopeHolder(entry).catch(() => {});
       },
       close: () => closeScope(entry),
       watchOomKills(listener) {
@@ -554,6 +634,9 @@ async function closeScope(entry: ActiveWorkload): Promise<void> {
   }
   if (entry.closing) return entry.closing;
   entry.closing = (async () => {
+    // A holder still being placed either joins the scope (and keeps it for
+    // the read below) or is gone; never read before that settles.
+    await entry.holderPlacement;
     // Successful empty scopes may disappear before inspection. A failed stop
     // on a live unit must remain visible as an unsettled cleanup.
     const properties = Object.fromEntries(
@@ -594,8 +677,8 @@ async function closeScope(entry: ActiveWorkload): Promise<void> {
           };
     entry.observed?.(
       properties.LoadState === 'not-found'
-        ? // systemd already collected the scope. Its kill counts, when the
-          // slice still accounts for them, are the only evidence left.
+        ? // systemd already collected the scope (no holder kept it): its
+          // count is gone, so the outcome is unknown unless it was read.
           oomKills === undefined
           ? undefined
           : Object.freeze({
@@ -647,7 +730,10 @@ async function closeScope(entry: ActiveWorkload): Promise<void> {
     const outcome = {
       unit: entry.unit,
       pid: entry.pid,
-      result: (oomKills ?? 0) > 0 ? 'oom-kill' : systemdResult,
+      // A process in the scope was OOM-killed. Whether that was the engine
+      // (it died) or a command (it survived) is the engine adapter's verdict,
+      // so the record names only what the kernel did.
+      result: (oomKills ?? 0) > 0 ? 'oom-kill-in-scope' : systemdResult,
       systemdResult,
       ...(oomKills === undefined ? {} : { oomKills }),
       memoryPeakBytes: finiteCounter(properties.MemoryPeak),
@@ -657,15 +743,21 @@ async function closeScope(entry: ActiveWorkload): Promise<void> {
     if (recent.length > 64) recent.shift();
     logger.info('Workload scope settled', outcome);
     active.delete(entry.unit);
-  })().catch((error: unknown) => {
-    entry.observed?.(undefined);
-    entry.closing = undefined;
-    logger.warn('Workload scope cleanup did not settle', {
-      unit: entry.unit,
-      error,
+  })()
+    .finally(() => {
+      // The scope's stop killed it; this covers a scope that was already
+      // gone, or a stop that failed.
+      entry.holder?.kill('SIGKILL');
+    })
+    .catch((error: unknown) => {
+      entry.observed?.(undefined);
+      entry.closing = undefined;
+      logger.warn('Workload scope cleanup did not settle', {
+        unit: entry.unit,
+        error,
+      });
+      throw error;
     });
-    throw error;
-  });
   return entry.closing;
 }
 
@@ -981,8 +1073,10 @@ export const __workloadTestHooks = {
     cgroupRoot: string;
     serviceUnit?: string;
     version?: number;
+    holder?: Partial<typeof holderOps>;
   }): Promise<void> {
     manager.run = options.run;
+    Object.assign(holderOps, defaultHolderOps, options.holder ?? {});
     cgroupRoot = options.cgroupRoot;
     managerEnv = {};
     settingsHome = options.homeDir;
@@ -1007,6 +1101,7 @@ export const __workloadTestHooks = {
   pollOomKills,
   reset(): void {
     manager.run = systemctl;
+    Object.assign(holderOps, defaultHolderOps);
     cgroupRoot = '/sys/fs/cgroup';
     state = 'unmanaged';
     reason = undefined;

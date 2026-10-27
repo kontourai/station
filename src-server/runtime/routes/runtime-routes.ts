@@ -5765,8 +5765,8 @@ export function configureRuntimeRoutes(
         eventStore: context.orchestrationEventStore,
         service: context.orchestrationService,
         submit: threadInbox ? (input) => threadInbox.submit(input) : undefined,
-        entryExists: (conversationId, key) =>
-          threadInbox?.entry(conversationId, key) !== undefined,
+        entryState: (conversationId, key) =>
+          threadInbox?.entry(conversationId, key)?.state,
         logger: context.logger,
       })
     : undefined;

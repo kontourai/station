@@ -574,8 +574,8 @@ describe('POST /chat whenBusy queue (#3568)', () => {
           eventStore: store,
           service,
           submit: (input) => inbox.submit(input),
-          entryExists: (conversationId, key) =>
-            inbox.entry(conversationId, key) !== undefined,
+          entryState: (conversationId, key) =>
+            inbox.entry(conversationId, key)?.state,
           logger: { warn: vi.fn() },
         })
       : undefined;

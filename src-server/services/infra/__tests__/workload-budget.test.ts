@@ -21,7 +21,6 @@ import {
 import {
   __workloadTestHooks,
   applyWorkloadBudgetSettings,
-  ENGINE_SCOPE_WRAPPER,
   enforcedWorkloadLimits,
   inspectSessionWorkload,
   inspectWorkloadResources,
@@ -265,18 +264,52 @@ describe('workload manager budgets (fake systemd manager)', () => {
     }
     const calls: string[][] = [];
     const controlGroups = new Map<string, string>();
-    const control = { failSetProperty: false };
+    const control = { failSetProperty: false, failAttach: false };
+    // A stand-in holder: attaching writes its pid into the scope's fixture
+    // cgroup.procs, as the user manager would move it there.
+    const holders: Array<{ pid: number; killed: string[]; unit?: string }> = [];
     await __workloadTestHooks.start({
       homeDir: home,
       cgroupRoot,
+      holder: {
+        spawn: () => {
+          const holder = {
+            pid: 900_000 + holders.length,
+            killed: [] as string[],
+          };
+          holders.push(holder);
+          return {
+            pid: holder.pid,
+            kill: (signal: string) => {
+              holder.killed.push(signal);
+              return true;
+            },
+          } as never;
+        },
+        attach: async (unit, pid) => {
+          if (control.failAttach) throw new Error('Access denied');
+          const group = controlGroups.get(unit);
+          if (!group) throw new Error('Unit not found');
+          await mkdir(`${cgroupRoot}${group}`, { recursive: true });
+          await writeFile(`${cgroupRoot}${group}/cgroup.procs`, `${pid}\n`);
+          const holder = holders.find((candidate) => candidate.pid === pid);
+          if (holder) holder.unit = unit;
+          return '';
+        },
+      },
       run: async (args) => {
         calls.push(args);
         if (args[0] === 'set-property' && control.failSetProperty)
           throw new Error('Failed to set unit properties');
         if (args[0] === 'show' && args.includes('--property=ControlGroup'))
           return `${controlGroups.get(args[1]) ?? ''}\n`;
+        // systemd collects a scope once its last process exits: after the
+        // engine died, only a placed, living holder keeps it loaded.
         if (args[0] === 'show' && args[2]?.startsWith('--property=LoadState'))
-          return controlGroups.has(args[1])
+          return controlGroups.has(args[1]) &&
+            holders.some(
+              (holder) => holder.unit === args[1] && holder.killed.length === 0,
+            )
             ? `LoadState=loaded\nActiveState=active\nResult=success\nMemoryPeak=3221225472\nCPUUsageNSec=1\nControlGroup=${controlGroups.get(args[1])}\n`
             : 'LoadState=not-found\nActiveState=inactive\n';
         if (args[0] === 'show')
@@ -285,7 +318,7 @@ describe('workload manager budgets (fake systemd manager)', () => {
       },
     });
     const slice = calls[0]?.[2] ?? '';
-    return { home, cgroupRoot, calls, controlGroups, control, slice };
+    return { home, cgroupRoot, calls, controlGroups, control, slice, holders };
   }
 
   function launch(sessionId?: string) {
@@ -574,17 +607,35 @@ describe('workload manager budgets (fake systemd manager)', () => {
     }
   });
 
-  test('an engine scope runs a holder so its own memory.events outlive the engine; command scopes do not', async () => {
-    await start();
-    const wrapper = (args: readonly string[]) =>
-      args[args.indexOf('/bin/sh') + 2];
-    expect(wrapper(launch('thread-engine').args)).toBe(ENGINE_SCOPE_WRAPPER);
-    expect(wrapper(launch().args)).toBe('exec "$@"');
-    // The holder closes every inherited descriptor above stderr and sends
-    // its own stdio to /dev/null before the engine is exec'd in its place.
-    expect(ENGINE_SCOPE_WRAPPER).toMatch(
-      /^\( for f in \/proc\/self\/fd\/\*;.*exec sleep \d+ \) <\/dev\/null >\/dev\/null 2>&1 & exec "\$@"$/,
-    );
+  test('an engine scope gets a holder placed in it and killed at close; command scopes get none; a holder that cannot be placed is killed', async () => {
+    const { cgroupRoot, controlGroups, holders, control } = await start();
+    const unitOf = (args: readonly string[]) =>
+      args
+        .find((arg) => arg.startsWith('--unit='))
+        ?.slice('--unit='.length) as string;
+    // The wrapper is the plain exec again: no holder rides the engine's shell.
+    const engine = launch('thread-holder');
+    expect(engine.args).toContain('exec "$@"');
+    const unit = unitOf(engine.args);
+    controlGroups.set(unit, `/app.slice/${unit}`);
+    await writeScopeFixture(`${cgroupRoot}/app.slice/${unit}`, 0);
+    trackChildWorkload(engine, process.pid);
+    const command = launch();
+    trackChildWorkload(command, process.ppid);
+    await closeChildWorkload(process.pid);
+    expect(holders).toHaveLength(1);
+    expect(holders[0]).toMatchObject({ unit, killed: ['SIGKILL'] });
+    await closeChildWorkload(process.ppid);
+    expect(holders).toHaveLength(1);
+
+    control.failAttach = true;
+    const unplaced = launch('thread-unplaced');
+    const unplacedUnit = unitOf(unplaced.args);
+    controlGroups.set(unplacedUnit, `/app.slice/${unplacedUnit}`);
+    trackChildWorkload(unplaced, process.pid);
+    await closeChildWorkload(process.pid);
+    expect(holders[1]).toMatchObject({ killed: ['SIGKILL'] });
+    expect(holders[1]?.unit).toBeUndefined();
   });
 
   test("an engine killed alone is attributed from its own scope's count, read before the scope is stopped", async () => {
@@ -613,7 +664,7 @@ describe('workload manager budgets (fake systemd manager)', () => {
     // read as plain success: systemd said success, the kernel killed.
     expect((await inspectWorkloadResources()).recent.at(-1)).toMatchObject({
       unit,
-      result: 'oom-kill',
+      result: 'oom-kill-in-scope',
       systemdResult: 'success',
       oomKills: 1,
     });

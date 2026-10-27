@@ -261,16 +261,21 @@ so Station reads the kernel's own count: the `oom_kill` line of the scope's
 cgroup v2 `memory.events`. A 1-second poll announces new kills in a running
 scope, and the count is read again when the scope closes. systemd collects a
 scope as soon as its last process exits, cgroup and counters with it, so an
-engine's own scope (a launch that names its Session) also runs a holder: the
-wrapper shell starts `sleep` with its stdio on `/dev/null` and every other
-inherited descriptor closed, then execs the engine in its own place. When the
+engine's own scope (a launch that names its Session) also gets a holder.
+Station spawns `/bin/sleep` itself, detached into its own session and process
+group with no stdio, asks the user manager to move it into the scope
+(`AttachProcessesToUnit` through `/usr/bin/busctl`), and checks the scope's
+`cgroup.procs`. The holder therefore holds no engine pipe, and the
+process-group kill that tears a Codex engine down cannot reach it. When the
 engine dies, the holder keeps the scope and its `memory.events` until Station
-reads the count and stops the scope. A scope that is nonetheless already gone
-has an unknown count, never one inferred from the slice. The settled record
+reads the count and stops the scope, which kills the holder. A holder that
+cannot be placed is killed and logged; that scope's count at close, like any
+scope already gone, is unknown and never inferred. The settled record
 (`recent` in `/api/system/resource-posture` and the "Workload scope settled"
-log) reports `result: oom-kill` with `oomKills` whenever the kernel killed a
-process in the scope, and keeps systemd's own `systemdResult` (`success`
-under `continue`).
+log) reports `result: oom-kill-in-scope` with `oomKills` whenever the kernel
+killed a process in the scope (the engine or a command; the engine adapter
+decides which), and keeps systemd's own `systemdResult` (`success` under
+`continue`).
 
 Codex reports both cases. A kill while Codex runs publishes a live warning
 (`workload-command-oom-killed`, naming the budget) and a transcript marker
@@ -323,19 +328,25 @@ Automatic continuation is withheld when the turn was interrupted, when a
 request (approval or question) was still open at the kill, when the
 conversation has moved on, for a delegated child (its parent decides whether
 to retry), after `AUTO_CONTINUE_CHAIN_MAX` (2) automatic continuations in a row
-in the conversation's lineage (only a turn a person sends resets the chain, so
-a task that always runs out of memory stops after two restarts), and after
-`AUTO_CONTINUE_MAX` (3) automatic continuations within
-`AUTO_CONTINUE_WINDOW_MS` (5 minutes) per conversation, counted in the server
+in the conversation's lineage (a task that always runs out of memory stops
+after two restarts). A person's Continue, or a turn an operator or a device
+sent, resets the chain; Station's other turns and turns of unknown origin
+(project-room agent runs) neither count nor reset it. Station also does not
+continue on its own once its continuation for that turn was cancelled or
+refused. A rate cap also allows at most `AUTO_CONTINUE_MAX` (3) automatic
+continuations within `AUTO_CONTINUE_WINDOW_MS` (5 minutes) per conversation, counted in the server
 process (a restart resets that rate cap; the chain is read from the stored
 turns). Then the chat offers
 **Continue** instead of **Send again**, because resending the original prompt
 would restart the same concurrent work. Continue posts
 `/api/orchestration/conversations/:id/memory-continuation`, which sends the
-same turn under the same inbox key, derived from the dead Session and turn.
-Whoever continues first owns the one entry; every later request, including the
-owner's click after Station continued on its own, gets 409
-`memory_continuation_already_started` and never a second turn. The
+same turn under a key derived from the dead Session and turn (Station's bare
+key, or the `-p` person key). Whoever continues first owns the one live entry;
+every later request, including the owner's click after Station continued on
+its own, gets 409 `memory_continuation_already_started` and never a second
+turn. A cancelled or refused entry sent nothing: a person's Continue then takes
+the next person key (`-p2` … `-p5`), so two devices clicking still name one
+entry. The
 `memory-continue-` key prefix is reserved: `/chat` refuses it and the inbox
 accepts it only from Station's own origin, so nobody can pre-claim the key. An older
 Station without the route answers 404 and the client sends the short

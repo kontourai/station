@@ -80,8 +80,9 @@ describe('automatic continuation after a memory kill', () => {
       },
       // The inbox kernel's own submit: same key and payload is the same
       // entry; the same key with another payload is a conflict.
-      entryExists: (conversationId, key) =>
-        inbox.read(conversationId, key) !== undefined,
+      entryState: (conversationId, key) =>
+        (inbox.read(conversationId, key) as { state?: string } | undefined)
+          ?.state,
       submit: (input) => {
         const result = inbox.submit({ ...input, now: clock });
         const outcome =
@@ -115,20 +116,24 @@ describe('automatic continuation after a memory kill', () => {
   }
 
   /** A turn that ran and was ended by a memory kill. */
-  const HUMAN = {
+  // Real ClientOrigin actor kinds: operator, device, internal, unknown.
+  const PERSON = {
     version: 1,
-    actor: { kind: 'human' },
+    actor: { kind: 'operator' },
     reported: { surface: 'unknown' },
   };
-  const INTERNAL = { ...HUMAN, actor: { kind: 'internal' } };
+  const INTERNAL = { ...PERSON, actor: { kind: 'internal' } };
+  const UNKNOWN = { ...PERSON, actor: { kind: 'unknown' } };
 
   function killedTurn(
     threadId: string,
     options: {
       pendingRequest?: boolean;
       aborted?: boolean;
-      /** The killed turn was itself Station's automatic continuation. */
+      /** The killed turn was itself a continuation, under this key. */
       continuation?: string;
+      /** The killed turn's origin when it is not a continuation. */
+      origin?: Record<string, unknown>;
       metadata?: Record<string, unknown>;
     } = {},
   ) {
@@ -144,7 +149,7 @@ describe('automatic continuation after a memory kill', () => {
       prompt: options.continuation ? MEMORY_CONTINUATION_TEXT : 'Build it',
       ...(options.continuation
         ? { clientTurnId: options.continuation, clientOrigin: INTERNAL }
-        : { clientOrigin: HUMAN }),
+        : { clientOrigin: options.origin ?? PERSON }),
     });
     if (options.pendingRequest)
       append(threadId, {
@@ -344,6 +349,114 @@ describe('automatic continuation after a memory kill', () => {
     expect(continuation.continueAutomatically(d).kind).toBe('queued');
     // Literal pin beside the constant.
     expect(AUTO_CONTINUE_CHAIN_MAX).toBe(2);
+  });
+
+  test("an unknown origin does not reset the chain; a person's Continue does", () => {
+    const continuation = coordinator();
+    const conversation = 'conversation-origin';
+    const link = (threadId: string, predecessor?: string) => {
+      lineage.set(threadId, {
+        conversationId: conversation,
+        ...(predecessor ? { predecessorSessionId: predecessor } : {}),
+      });
+      current.set(conversation, threadId);
+    };
+    const chainOfTwo = () => {
+      killedTurn(conversation);
+      link(conversation);
+      const first = continuation.continueAutomatically(conversation) as {
+        clientTurnId: string;
+      };
+      const b = `${conversation}:b`;
+      killedTurn(b, { continuation: first.clientTurnId });
+      link(b, conversation);
+      clock += 1000;
+      const second = continuation.continueAutomatically(b) as {
+        clientTurnId: string;
+      };
+      return { b, second };
+    };
+    const { b, second } = chainOfTwo();
+    // A project-room agent run (unknown origin) between kills: no reset.
+    const c = `${conversation}:c`;
+    killedTurn(c, { continuation: second.clientTurnId });
+    link(c, b);
+    const d = `${conversation}:d`;
+    killedTurn(d, { origin: UNKNOWN });
+    link(d, c);
+    clock += 1000;
+    expect(continuation.continueAutomatically(d)).toEqual({
+      kind: 'skipped',
+      reason: 'chain-limit',
+    });
+    // A person's Continue on the full chain resets it.
+    const person = continuation.continueOnRequest({
+      conversationId: conversation,
+      actor: { userId: 'person-1' },
+    }) as { kind: string; clientTurnId: string };
+    expect(person.kind).toBe('queued');
+    expect(person.clientTurnId).toMatch(/^memory-continue-[0-9a-f]{40}-p$/);
+    const e = `${conversation}:e`;
+    killedTurn(e, { continuation: person.clientTurnId });
+    link(e, d);
+    clock += 1000;
+    expect(continuation.continueAutomatically(e).kind).toBe('queued');
+  });
+
+  test("after the owner cancels Station's continuation, Station respects it and a person's Continue proceeds once", () => {
+    const continuation = coordinator();
+    killedTurn('thread-cancel');
+    const automatic = continuation.continueAutomatically('thread-cancel') as {
+      kind: string;
+      clientTurnId: string;
+    };
+    expect(automatic.kind).toBe('queued');
+    expect(
+      store
+        .threadInboxStore()
+        .cancel('thread-cancel', automatic.clientTurnId, clock).kind,
+    ).toBe('cancelled');
+    // A cancelled entry sent nothing, but it was the owner's decision.
+    expect(
+      continuation.continueOnRequest({
+        conversationId: 'thread-cancel',
+        actor: { userId: 'person-1' },
+      }),
+    ).toMatchObject({
+      kind: 'queued',
+      clientTurnId: `${automatic.clientTurnId}-p`,
+    });
+    // The same person's second device, and anyone after: already continued.
+    expect(
+      continuation.continueOnRequest({
+        conversationId: 'thread-cancel',
+        actor: { userId: 'person-1' },
+      }),
+    ).toEqual({ kind: 'skipped', reason: 'already-claimed' });
+  });
+
+  test('Station does not retry on its own after its continuation was withdrawn', () => {
+    const continuation = coordinator();
+    killedTurn('thread-withdrawn');
+    const key = memoryContinuationKey(
+      'thread-withdrawn',
+      'thread-withdrawn-turn',
+    );
+    const inbox = store.threadInboxStore();
+    inbox.submit({
+      conversationId: 'thread-withdrawn',
+      clientTurnId: key,
+      payload: {
+        message: MEMORY_CONTINUATION_TEXT,
+        actor: { userId: 'person-1' },
+      },
+      now: clock,
+    });
+    inbox.cancel('thread-withdrawn', key, clock);
+    expect(continuation.continueAutomatically('thread-withdrawn')).toEqual({
+      kind: 'skipped',
+      reason: 'withdrawn',
+    });
   });
 
   test('never continues a delegated child on its own: its parent decides', () => {

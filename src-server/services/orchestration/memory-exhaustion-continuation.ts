@@ -34,6 +34,7 @@ import {
   ENGINE_MEMORY_EXHAUSTED_CODE,
   isStationMemoryContinuationTurn,
   MEMORY_CONTINUATION_CLIENT_TURN_PREFIX,
+  memoryContinuationKeyKind,
 } from '@kontourai/station-contracts/provider';
 import type { EventStore } from './event-store.js';
 import type { OrchestrationService } from './orchestration-service.js';
@@ -55,6 +56,12 @@ export const AUTO_CONTINUE_WINDOW_MS = 5 * 60_000;
  * whatever the rate cap still allows.
  */
 export const AUTO_CONTINUE_CHAIN_MAX = 2;
+
+/** Inbox entry states that sent nothing. */
+const DEAD_ENTRY_STATES = new Set(['refused', 'cancelled']);
+
+/** Client-origin actors that are a person (`ClientOrigin` kinds). */
+const PERSON_ACTOR_KINDS = new Set(['operator', 'device']);
 
 /** How far back the chain is walked; beyond it the chain counts as full. */
 const CHAIN_WALK_SESSIONS = 32;
@@ -108,7 +115,8 @@ export type MemoryContinuationOutcome =
         | 'chain-limit'
         | 'delegated'
         | 'superseded'
-        | 'already-claimed';
+        | 'already-claimed'
+        | 'withdrawn';
     }
   | {
       readonly kind: 'failed';
@@ -134,8 +142,14 @@ export interface MemoryExhaustionContinuationPorts {
     OrchestrationService,
     'currentConversationSessionId' | 'sessionRecordedOwnerId'
   >;
-  /** Whether the conversation inbox already holds an entry under `key`. */
-  readonly entryExists?: (conversationId: string, key: string) => boolean;
+  /**
+   * The conversation inbox's entry state under `key`, or undefined when it
+   * holds none. `refused` and `cancelled` entries never sent anything.
+   */
+  readonly entryState?: (
+    conversationId: string,
+    key: string,
+  ) => string | undefined;
   readonly submit:
     | ((input: {
         readonly conversationId: string;
@@ -254,19 +268,57 @@ export class MemoryExhaustionContinuation {
     );
   }
 
+  private stateOf(
+    conversationId: string,
+    key: string,
+  ): 'live' | 'dead' | undefined {
+    const state = this.ports.entryState?.(conversationId, key);
+    if (state === undefined) return undefined;
+    return DEAD_ENTRY_STATES.has(state) ? 'dead' : 'live';
+  }
+
+  /**
+   * The key this request continues under, or why it does not. A live entry
+   * under any key of the dead turn means someone already continued it. After
+   * a cancelled or refused entry Station does not try again on its own (the
+   * cancel was a person's decision); a person's Continue takes the next
+   * person key, so two devices clicking then still name one entry.
+   */
+  private keyFor(
+    conversationId: string,
+    dead: DeadTurn,
+    by: 'automatic' | 'person',
+  ): string | MemoryContinuationOutcome {
+    const base = memoryContinuationKey(dead.threadId, dead.turnId);
+    const personKeys = [
+      `${base}-p`,
+      ...[2, 3, 4, 5].map((n) => `${base}-p${n}`),
+    ];
+    const states = [base, ...personKeys].map((key) =>
+      this.stateOf(conversationId, key),
+    );
+    if (states.includes('live'))
+      return { kind: 'skipped', reason: 'already-claimed' };
+    if (by === 'automatic')
+      return states.includes('dead')
+        ? { kind: 'skipped', reason: 'withdrawn' }
+        : base;
+    const free = personKeys.find(
+      (_key, index) => states[index + 1] === undefined,
+    );
+    return free ?? { kind: 'skipped', reason: 'withdrawn' };
+  }
+
   private submit(
     conversationId: string,
     dead: DeadTurn,
     actor: ThreadInboxActor,
+    by: 'automatic' | 'person',
   ): MemoryContinuationOutcome {
     if (!this.ports.submit)
       return { kind: 'failed', reason: 'inbox-unavailable' };
-    const clientTurnId = memoryContinuationKey(dead.threadId, dead.turnId);
-    // Whoever continued first (Station, this person, another device or
-    // person) owns the one entry; every later request is told so. The
-    // inbox's same-key conflict remains the backstop.
-    if (this.ports.entryExists?.(conversationId, clientTurnId))
-      return { kind: 'skipped', reason: 'already-claimed' };
+    const clientTurnId = this.keyFor(conversationId, dead, by);
+    if (typeof clientTurnId !== 'string') return clientTurnId;
     const submitted = this.ports.submit({
       conversationId,
       clientTurnId,
@@ -295,11 +347,19 @@ export class MemoryExhaustionContinuation {
         .reverse();
       for (const start of starts) {
         if (!start) continue;
-        if (isStationMemoryContinuationTurn(start as never)) chain += 1;
-        // A turn not sent by Station itself (a person, or an unknown origin)
-        // ends the chain; other Station turns (check-backs) neither count nor
-        // reset it.
-        else if (record(record(start.clientOrigin)?.actor)?.kind !== 'internal')
+        const kind = isStationMemoryContinuationTurn(start as never)
+          ? memoryContinuationKeyKind(start.clientTurnId as string)
+          : undefined;
+        if (kind === 'automatic') chain += 1;
+        // A person's Continue, or a turn an operator or a device sent, ends
+        // the chain. Station's other turns (check-backs) and turns whose
+        // origin is unknown neither count nor reset it.
+        else if (
+          kind === 'person' ||
+          PERSON_ACTOR_KINDS.has(
+            String(record(record(start.clientOrigin)?.actor)?.kind),
+          )
+        )
           return chain;
       }
       session =
@@ -355,7 +415,12 @@ export class MemoryExhaustionContinuation {
     const owner = this.ports.service.sessionRecordedOwnerId(threadId);
     if (!owner) return { kind: 'failed', reason: 'no-owner' };
     this.claimed.add(key);
-    const outcome = this.submit(conversationId, dead, { userId: owner });
+    const outcome = this.submit(
+      conversationId,
+      dead,
+      { userId: owner },
+      'automatic',
+    );
     if (outcome.kind === 'queued')
       this.automatic.set(conversationId, [...recent, now]);
     else this.claimed.delete(key);
@@ -389,22 +454,24 @@ export class MemoryExhaustionContinuation {
         memoryKilled(current) ??
         (predecessor ? memoryKilled(predecessor) : undefined);
       if (!turn) return { kind: 'skipped', reason: 'not-memory-exhausted' };
-      return this.submit(input.conversationId, turn, input.actor);
+      return this.submit(input.conversationId, turn, input.actor, 'person');
     }
     const turn = memoryKilled(current);
-    if (turn) return this.submit(input.conversationId, turn, input.actor);
+    if (turn)
+      return this.submit(input.conversationId, turn, input.actor, 'person');
     // A successor already ran: either it is this dead turn's continuation
     // (someone continued first), or the conversation moved on and an old
     // card must not start a continuation now.
     const continued = predecessor ? memoryKilled(predecessor) : undefined;
-    if (
-      continued &&
-      this.ports.entryExists?.(
-        input.conversationId,
-        memoryContinuationKey(continued.threadId, continued.turnId),
+    if (continued) {
+      const outcome = this.keyFor(input.conversationId, continued, 'person');
+      if (
+        typeof outcome !== 'string' &&
+        outcome.kind === 'skipped' &&
+        outcome.reason === 'already-claimed'
       )
-    )
-      return { kind: 'skipped', reason: 'already-claimed' };
+        return outcome;
+    }
     return { kind: 'skipped', reason: 'not-memory-exhausted' };
   }
 

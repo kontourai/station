@@ -1048,8 +1048,9 @@ adapter publishes it today. The conversation is continued automatically
 (capped) with a Station recovery note; past the cap chat offers Continue rather
 than Send again. That continuation's turn carries a send key starting
 `MEMORY_CONTINUATION_CLIENT_TURN_PREFIX` and an internal origin;
-`isStationMemoryContinuationTurn` (`provider`) recognises it; the prefix is
-reserved for Station's own origin. A kill of a
+`isStationMemoryContinuationTurn` (`provider`) recognises it and
+`memoryContinuationKeyKind` tells Station's automatic key from a person's
+Continue (`-p` suffix); the prefix is reserved for Station's own origin. A kill of a
 process inside a still-running Codex scope is a `runtime.warning` with
 `WORKLOAD_COMMAND_OOM_KILLED_CODE` (`workload-command-oom-killed`).
 That type is how an adapter tells the start boundary that its start is settled:
