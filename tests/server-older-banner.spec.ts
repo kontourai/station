@@ -185,8 +185,7 @@ async function expectNoHorizontalScroll(page: Page) {
   expect(overflow, 'no horizontal page scroll').toBeLessThanOrEqual(0);
 }
 
-const OLDER =
-  'This Station server runs Nightly Sep 29, build 3, which is older than this app (Nightly Oct 1).';
+const OLDER = 'Server is older than this app.';
 
 for (const theme of ['light', 'dark'] as const) {
   for (const viewport of ['desktop', 'phone'] as const) {
@@ -200,7 +199,8 @@ for (const theme of ['light', 'dark'] as const) {
       const panel = page.getByRole('dialog', { name: 'Updates', exact: true });
       await expect(panel.getByText(OLDER)).toBeVisible();
       const update = page.getByRole('button', {
-        name: 'Update server to 0.1.11-nightly.246500',
+        name: 'Update server',
+        exact: true,
       });
       await expect(update).toBeVisible();
       await expectNoHorizontalScroll(page);

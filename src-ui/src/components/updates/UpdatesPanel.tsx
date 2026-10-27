@@ -36,7 +36,9 @@ export function UpdatesPanel({
   }, [open, target, requestSequence]);
   const noticesFor = (section: UpdateTarget) =>
     notices
-      .filter((notice) => notice.target === section)
+      // A summary-only notice drives the Updates control status; the
+      // section already states the same fact itself.
+      .filter((notice) => notice.target === section && !notice.summaryOnly)
       .map((notice) => (
         <div key={notice.id} className="updates-panel__notice">
           <p role="status">{notice.message}</p>
@@ -98,20 +100,17 @@ export function UpdatesPanel({
               {profile.channel ? ` · ${profile.channel}` : ''}
             </p>
             {noticesFor('desktop')}
-            {profile.isDesktop ? (
+            {profile.isDesktop && (
               <DesktopUpdateCheck active={open} showPolicy={false} />
-            ) : (
-              <p>
-                Install app updates through your app distribution source. An
-                available release link appears here after the app checks.
-              </p>
             )}
           </section>
         )}
         <section ref={serverRef} tabIndex={-1} aria-labelledby={`${id}-server`}>
-          <h3 id={`${id}-server`}>Connected server</h3>
-          {noticesFor('server')}
-          <ConnectedServerUpdates active={open} />
+          <ConnectedServerUpdates
+            active={open}
+            headingId={`${id}-server`}
+            notices={noticesFor('server')}
+          />
         </section>
       </div>
     </Dialog>

@@ -6,7 +6,15 @@ import {
   useServiceUpdateProgressQuery,
 } from '@kontourai/station-sdk';
 import { requestCoreUpdateRestartStatus } from '@kontourai/station-sdk/core-update-restart-status';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Progress } from '@kontourai/ui/react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import { Button } from '../../components/Button';
 import { SkeletonBlock } from '../../components/state';
 import {
   type ConnectedServerUpdateContext,
@@ -18,7 +26,11 @@ import {
   deriveComparisonView,
   isArchiveInstall,
   SERVICE_UPDATE_IN_FLIGHT,
+  ServerUpdateHeader,
   serverIdentityMatchesView,
+  serverUpdateBadge,
+  serviceProgressIsHistory,
+  serviceUpdateDownload,
   serviceUpdateProgressLine,
   TechnicalDetails,
   UpdateChannelRow,
@@ -55,6 +67,10 @@ export function CoreUpdateCheck({
   apiBase,
   enabled = true,
   context,
+  title = 'Server',
+  headingId,
+  alerts,
+  details,
 }: {
   active?: boolean;
   apiBase: string;
@@ -73,6 +89,14 @@ export function CoreUpdateCheck({
    * changes, whose scope differs even when `apiBase` does not.
    */
   context?: ConnectedServerUpdateContext | null;
+  /** The header's name for this server. */
+  title?: ReactNode;
+  /** Renders the title as the heading this id labels (Updates). */
+  headingId?: string;
+  /** Lines that need attention, shown under the header. */
+  alerts?: ReactNode;
+  /** Identity and install facts, folded into Details with the card's own. */
+  details?: ReactNode;
 }) {
   const scopeKey = coreUpdateScopeFromContext(context);
   const [confirmApplyScope, setConfirmApplyScope] = useState<string | null>(
@@ -542,87 +566,103 @@ export function CoreUpdateCheck({
   const historicalTime =
     dataUpdatedAt > 0 ? new Date(dataUpdatedAt).toLocaleTimeString() : null;
 
+  const unreachable =
+    !!context &&
+    context.reachability !== 'connected' &&
+    context.reachability !== 'checking';
+  const badge = serverUpdateBadge({
+    view,
+    status,
+    progress: serviceProgress,
+    unreachable,
+    superseded: comparisonSuperseded,
+    updating: restarting || selfUpdating,
+  });
+  // The version an update moves to: a downloaded release first, else a
+  // verified newer one. A superseded comparison offers neither.
+  const stagedVersion =
+    serviceProgress?.state === 'staged' ? serviceProgress.version : null;
+  const targetVersion = comparisonSuperseded
+    ? null
+    : (stagedVersion ??
+      (view?.kind === 'release' &&
+      status?.releaseCheck === 'verified' &&
+      status.updateAvailable
+        ? (status.latestVersion ?? null)
+        : null));
+  const download = serviceProgress
+    ? serviceUpdateDownload(serviceProgress)
+    : null;
+  // Where the progress line goes: a measured download is the bar, a staged
+  // release is the header's badge and version, finished history is Details.
+  const progressHistory =
+    !!serviceProgress && serviceProgressIsHistory(serviceProgress);
+  const showProgressLine =
+    !!serviceProgressLine &&
+    !download &&
+    serviceProgress?.state !== 'staged' &&
+    !progressHistory;
+  // The header states the running version and the target; Details does not
+  // repeat them.
+  const detailMetadata = status
+    ? comparisonMetadata(status).filter(
+        ({ label, value }) =>
+          !(label === 'Version' && value === status.currentVersion) &&
+          !(label === 'Latest release' && value === targetVersion),
+      )
+    : [];
+  const methodHint = stagedFlow
+    ? 'Checks this install’s signed release manifest. Download verifies the release while the server keeps running; Restart tries it and keeps the current version if it does not start.'
+    : status?.applyMethod === 'service-update'
+      ? 'Checks this install’s signed release manifest. Updating downloads and verifies the release, tries it, and keeps the current version if it does not start.'
+      : status && isArchiveInstall(status)
+        ? 'Checks this install’s signed release manifest.'
+        : status?.applyMethod === 'self-update'
+          ? 'Rebuilds from this machine’s source checkout and restarts the app.'
+          : status?.applyMethod === 'reinstall'
+            ? 'Compares this install’s build stamp against its configured source ref.'
+            : status?.installKind === 'source-checkout'
+              ? 'Pull latest changes from the git remote. Server restarts automatically after update.'
+              : 'Checks the connected Station server. Desktop release updates use the app’s signed update channel.';
+
+  const checkButton = (
+    <Button
+      onClick={() => {
+        // A re-check is also the recovery path out of a failed background
+        // self-update: clear the updating state so the fresh result (still
+        // behind = the update failed) is visible instead of a frozen
+        // "Updating…".
+        resetTransientState();
+        setServiceFollowExpiredOn(null);
+        check();
+      }}
+      disabled={checking}
+    >
+      {checking
+        ? status
+          ? 'Re-checking…'
+          : 'Checking…'
+        : 'Check for server updates'}
+    </Button>
+  );
+  const showStageApply =
+    stagedFlow &&
+    serverUpdateState?.supported &&
+    identityMatches &&
+    !comparisonSuperseded &&
+    !trackedServiceUpdate &&
+    !awaitingOutcomeRecheck;
+
   return (
-    <div>
-      <div className="settings__update-row">
-        <button
-          type="button"
-          className="settings__update-btn settings__update-btn--check"
-          onClick={() => {
-            // A re-check is also the recovery path out of a failed background
-            // self-update: clear the updating state so the fresh result (still
-            // behind = the update failed) is visible instead of a frozen
-            // "Updating…".
-            resetTransientState();
-            setServiceFollowExpiredOn(null);
-            check();
-          }}
-          disabled={checking}
-        >
-          {checking
-            ? status
-              ? 'Re-checking…'
-              : 'Checking…'
-            : 'Check for server updates'}
-        </button>
-        {canApply && !stagedFlow && (
-          <button
-            type="button"
-            className="settings__update-btn settings__update-btn--apply"
-            onClick={() => {
-              setConfirmApplyScope(scopeKey ?? 'unscoped');
-            }}
-            disabled={updateMutation.isPending || restarting}
-          >
-            {restarting || updateMutation.isPending
-              ? 'Updating…'
-              : canApplyServiceUpdate
-                ? `Update server to ${status?.latestVersion}`
-                : 'Update server checkout'}
-          </button>
-        )}
-      </div>
-      {active &&
-        confirmApplyScope === (scopeKey ?? 'unscoped') &&
-        canApply &&
-        !stagedFlow && (
-          <ServerUpdateRestartConfirmation
-            apiBase={apiBase}
-            version={status?.latestVersion ?? 'the checked server version'}
-            mode={canApplyServiceUpdate ? 'service-update' : 'checkout'}
-            pending={updateMutation.isPending}
-            onLater={() => setConfirmApplyScope(null)}
-            onRestartNow={() => {
-              applyScopeRef.current = scopeRef.current;
-              updateMutation.mutate();
-              setConfirmApplyScope(null);
-            }}
-          />
-        )}
-      {stagedFlow &&
-        serverUpdateState?.supported &&
-        identityMatches &&
-        !comparisonSuperseded &&
-        !trackedServiceUpdate &&
-        !awaitingOutcomeRecheck && (
-          <ServerUpdateStageApply
-            key={connectionScope}
-            active={active}
-            apiBase={apiBase}
-            state={serverUpdateState}
-            latestVersion={status?.latestVersion ?? null}
-            canDownload={canApply}
-            onRequested={(requestId) => {
-              applyScopeRef.current = scopeRef.current;
-              setServiceFollowExpiredOn(null);
-              setServiceUpdateRequest({
-                requestId,
-                connectionScope,
-                startedAt: Date.now(),
-              });
-            }}
-          />
-        )}
+    <div className="server-update">
+      <ServerUpdateHeader
+        title={title}
+        headingId={headingId}
+        badge={badge}
+        current={status?.currentVersion}
+        target={targetVersion}
+      />
+      {alerts}
       {/*
         6-OPS-44: a re-check must not delete what is already known. A `git
         ls-remote` against a cold remote took ~30 s in the audit, and for that
@@ -647,23 +687,27 @@ export function CoreUpdateCheck({
           </span>
         </div>
       )}
-      {status && <UpdateChannelRow status={status} />}
-      {status && comparisonMetadata(status).length > 0 && (
-        <div className="settings__update-meta">
-          {comparisonMetadata(status).map(({ label, value }, index) => (
-            <span key={`${label}-${value}`}>
-              {index > 0 && '· '}
-              {label}: {value}
-            </span>
-          ))}
-        </div>
-      )}
       {applyRefusal && (
         <div className="settings__update-msg settings__update-msg--warning">
           Server update cannot be applied from here: {applyRefusal}.
         </div>
       )}
-      {serviceProgressLine && (
+      {download && (
+        <div className="server-update__progress">
+          <div
+            role="progressbar"
+            aria-label="Downloading the update"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={download.percent}
+            aria-valuetext={`${download.text} (${download.percent}%)`}
+          >
+            <Progress value={download.percent} />
+          </div>
+          <span className="server-update__progress-text">{download.text}</span>
+        </div>
+      )}
+      {showProgressLine && serviceProgressLine && (
         <div
           className={`settings__update-msg${
             serviceProgressLine.tone === 'muted'
@@ -727,30 +771,83 @@ export function CoreUpdateCheck({
       {/* A superseded comparison (stale scope or an accepted rebuild serving
         the old build) never speaks with a current voice: the historical line
         above replaces every derived state claim. */}
-      {/* #3851 review F11: once the offered release is downloaded, the
-        staged line says all of it; "is available" beside it is noise. */}
-      {view &&
-        !comparisonSuperseded &&
-        !(
-          serviceProgress?.state === 'staged' &&
-          serviceProgress.version === status?.latestVersion
-        ) && <ComparisonMessage view={view} />}
+      {view && !comparisonSuperseded && <ComparisonMessage view={view} />}
       {technicalDisclosure}
-      <span className="settings__field-hint">
-        {stagedFlow
-          ? 'Checks this install’s signed release manifest. Download verifies the release while the server keeps running; Restart tries it and keeps the current version if it does not start.'
-          : status?.applyMethod === 'service-update'
-            ? 'Checks this install’s signed release manifest. Updating downloads and verifies the release, tries it, and keeps the current version if it does not start.'
-            : status && isArchiveInstall(status)
-              ? 'Checks this install’s signed release manifest.'
-              : status?.applyMethod === 'self-update'
-                ? 'Rebuilds from this machine’s source checkout and restarts the app.'
-                : status?.applyMethod === 'reinstall'
-                  ? 'Compares this install’s build stamp against its configured source ref.'
-                  : status?.installKind === 'source-checkout'
-                    ? 'Pull latest changes from the git remote. Server restarts automatically after update.'
-                    : 'Checks the connected Station server. Desktop release updates use the app’s signed update channel.'}
-      </span>
+      {showStageApply && serverUpdateState ? (
+        <ServerUpdateStageApply
+          key={connectionScope}
+          active={active}
+          apiBase={apiBase}
+          state={serverUpdateState}
+          latestVersion={status?.latestVersion ?? null}
+          canDownload={canApply}
+          secondaryAction={checkButton}
+          onRequested={(requestId) => {
+            applyScopeRef.current = scopeRef.current;
+            setServiceFollowExpiredOn(null);
+            setServiceUpdateRequest({
+              requestId,
+              connectionScope,
+              startedAt: Date.now(),
+            });
+          }}
+        />
+      ) : (
+        <div className="settings__update-row">
+          {canApply && !stagedFlow && (
+            <Button
+              variant="primary"
+              onClick={() => {
+                setConfirmApplyScope(scopeKey ?? 'unscoped');
+              }}
+              disabled={updateMutation.isPending || restarting}
+            >
+              {restarting || updateMutation.isPending
+                ? 'Updating…'
+                : canApplyServiceUpdate
+                  ? 'Update server'
+                  : 'Update server checkout'}
+            </Button>
+          )}
+          {checkButton}
+        </div>
+      )}
+      {active &&
+        confirmApplyScope === (scopeKey ?? 'unscoped') &&
+        canApply &&
+        !stagedFlow && (
+          <ServerUpdateRestartConfirmation
+            apiBase={apiBase}
+            version={status?.latestVersion ?? 'the checked server version'}
+            mode={canApplyServiceUpdate ? 'service-update' : 'checkout'}
+            pending={updateMutation.isPending}
+            onLater={() => setConfirmApplyScope(null)}
+            onRestartNow={() => {
+              applyScopeRef.current = scopeRef.current;
+              updateMutation.mutate();
+              setConfirmApplyScope(null);
+            }}
+          />
+        )}
+      <details className="settings__update-technical server-update__details">
+        <summary>Details</summary>
+        {details}
+        {status && <UpdateChannelRow status={status} />}
+        {detailMetadata.length > 0 && (
+          <div className="settings__update-meta">
+            {detailMetadata.map(({ label, value }, index) => (
+              <span key={`${label}-${value}`}>
+                {index > 0 && '· '}
+                {label}: {value}
+              </span>
+            ))}
+          </div>
+        )}
+        {progressHistory && serviceProgressLine && (
+          <p className="settings__field-hint">{serviceProgressLine.text}</p>
+        )}
+        <p className="settings__field-hint">{methodHint}</p>
+      </details>
     </div>
   );
 }
