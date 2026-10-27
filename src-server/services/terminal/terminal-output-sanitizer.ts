@@ -1,3 +1,5 @@
+export const TERMINAL_LINK_PROTOCOLS = ['http:', 'https:'] as const;
+
 type ControlState = 'text' | 'escape' | 'csi' | 'osc' | 'dcs' | 'ignored';
 
 /** Streaming replay filter. Only known rendering controls are journaled. */
@@ -7,6 +9,16 @@ export class TerminalOutputSanitizer {
   private discarded = false;
   private surrogate = '';
   private stringEscape = false;
+
+  constructor(private readonly hyperlinkProtocols?: readonly string[]) {}
+
+  /** Speculate on one output record without spending credit or parser state. */
+  fork(): TerminalOutputSanitizer {
+    return Object.assign(
+      new TerminalOutputSanitizer(this.hyperlinkProtocols),
+      this,
+    );
+  }
 
   append(chunk: string): string {
     let input = this.surrogate + chunk;
@@ -142,6 +154,23 @@ export class TerminalOutputSanitizer {
         .join('');
       // Titles and hyperlinks have no terminal reply path. Color, clipboard,
       // graphics and extension strings are omitted until explicitly supported.
+      if (Number(command) === 8 && this.hyperlinkProtocols) {
+        const end = body.endsWith('\x1b\\') ? 2 : 1;
+        const content = body.slice(0, -end);
+        const uriStart = content.indexOf(';', content.indexOf(';') + 1);
+        if (uriStart < 0) return false;
+        const uri = content.slice(uriStart + 1);
+        if (!uri) return true;
+        for (const char of uri) {
+          const point = char.charCodeAt(0);
+          if (point <= 0x20 || (point >= 0x7f && point <= 0x9f)) return false;
+        }
+        try {
+          return this.hyperlinkProtocols.includes(new URL(uri).protocol);
+        } catch {
+          return false;
+        }
+      }
       return /^\d+$/.test(command) && [0, 1, 2, 8].includes(Number(command));
     }
     return false;

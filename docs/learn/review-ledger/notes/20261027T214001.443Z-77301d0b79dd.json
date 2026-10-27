@@ -1,0 +1,7 @@
+{
+  "revision": "bea11fcc05d92ed8fa24725502d20d79a4623705",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Source recovery merges current main with the bounded personal-operator gateway, preserving legacy Coding and paired-device refusals. Rechecked the actual sixteen-token vocabulary: 253 of 256 characters, three remaining. This corrects prose only; current-head focused terminal tests and native/mobile delivery remain NOT_RUN, and historical proof is not transferred.","inputs":["docs/design/terminal.md","src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts","src-server/services/terminal/terminal-sessions.ts"]}
+  ]
+}

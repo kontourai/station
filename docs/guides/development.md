@@ -22,6 +22,12 @@ of prebuild staging. Other native dependencies retain their own platform
 requirements. Rust and platform SDKs are needed for native builds/checks; a server/UI-only
 loop need not run them.
 
+Scoped terminal process-group cleanup on POSIX also needs `ps` with PID, PPID
+and process-group columns. A missing or failed census is a cleanup error, not
+proof that descendants stopped. The new cleanup path has real-PTY macOS
+coverage; other POSIX hosts and Windows still need their own qualification.
+
+
 ## Optional `just` contributor Interface
 
 `just` forwards to Station's existing commands; it does not replace them. Use

@@ -5798,7 +5798,24 @@ socket and process projections retain their current owner during migration.
 
 The [design boundary](../design/terminal.md#first-implementation-boundary-3994-part-a)
 separates this foundation from supervisor survival, retention Settings, the
-public observe grant, same-origin transport, SDK runtime and Ghostty. The
+live paired-device admission, SDK runtime and Ghostty. The
+[same-origin gateway](../../src-server/services/terminal/terminal-gateway.ts)
+mounts on the API listener through the Station Hono provider; its
+[channel runtime](../../src-server/services/terminal/terminal-channel-connection.ts)
+owns per-channel byte credit, replay acknowledgement and a bounded command
+queue. It uses the same personal-operator admission limit as the HTTP seam.
+Global reservations bound retained record/journal instances, disk storage and raw
+tail payload. Ended/failed records can expire; request-triggered eviction checks
+operate authority on the victim's stored Project/binding, while live sessions
+remain pinned. The [POSIX backend](../../src-server/adapters/pty-process-groups.ts)
+freezes and terminates discovered owned job-control groups. The
+[production route test](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts)
+opens real PTYs through HTTP admission, checks both configured Project roots and
+refuses cross-Project/binding access. Its credential fixture is not live pairing
+or account admission qualification.
+The [socket suite](../../src-server/services/terminal/__tests__/terminal-gateway.process.test.ts)
+qualifies real PTY/socket resume, credit, scope refusals and resize ordering;
+its injected identity seam does not qualify live pairing or remote egress. The
 [real PTY suite](../../src-server/services/terminal/__tests__/terminal-sessions.process.test.ts)
 checks durable replay, scope/cwd refusals, service-level observer refusal,
 journal bounds and history migration. It does not qualify Windows, native

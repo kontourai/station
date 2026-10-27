@@ -1,0 +1,11 @@
+{
+  "revision": "f75b96d23fe98494334e88689877abd2a1556027",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Reviewed the node-pty pause/resume adapter, global reservations and owned POSIX group cleanup against source and executed real-PTY cases. Added the actual ps census prerequisite and retained macOS-only qualification; source dependency installation/port isolation, legacy listener allocation and the distinction from native-shell proof remain unchanged.","inputs":["docs/guides/development.md","src-server/adapters/node-pty-adapter.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Inspected the production principal-boundary fixture delta: terminal mode is opt-in, existing setup defaults/scopes and Knowledge roots/read assertions remain unchanged. The full 22-test fixture passed, including existing Knowledge cases. The terminal addition uses real Projects and PTYs and supplies no new Knowledge grant, store, embedding or retrieval behavior. No new provider/index/migration qualification is claimed.","inputs":["docs/guides/knowledge.md","src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"]},
+
+    {"path":"docs/reference/deploy-ledger.md","note":"Inspected the existing generated ledger projection and its JSON source as retained historical publication records, including source SHA, workflow URLs, gate strings and caveats. There is no ledger byte delta against this branch merge base. This terminal change publishes nothing, alters no receipt and establishes no new registry, deployment or native cohort qualification; historical source content remains separate from live proof.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

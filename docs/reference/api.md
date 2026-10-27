@@ -5063,7 +5063,10 @@ the replacement SDK socket, and the Coding UI still uses the legacy terminal.
 - `GET` lists that Project/binding's session records. Pass `bindingKey` in the
   query for a non-default binding.
 - `GET /:terminalId?bindingKey=project&fromSeq=0` reads a snapshot and numbered
-  journal records. `reset: true` means retention removed the resume point.
+  journal records. Replay admits at most 64 KiB of journal payload and applies
+  the socket's HTTP/HTTPS hyperlink filter. An over-bound replay returns 413,
+  never a silently truncated page; use the terminal socket for larger replay.
+  `reset: true` means retention removed the resume point.
   The server generates the UUID; a terminal from another Project or binding is
   refused even if the caller can access both Projects.
 - `POST /:terminalId/input` takes `{data, bindingKey?}` (at most 64 KiB of input).
@@ -5079,12 +5082,105 @@ additional; this does not enable paired-device access. The observe token is
 explicit promotion only and joins no preset or default grant.
 
 Responses use `{success: true, data?}`. Invalid shapes return 400, access/scope
-refusals return a generic 403, and storage/host failures return a generic 503.
+refusals return a generic 403, over-bound journal reads return 413, and
+storage/host failures return a generic 503.
 The in-process host preserves journals and identity across service recreation;
 it cannot preserve the shell across a server restart. Journal persistence and
-line/byte retention are configured at service construction; Settings, aggregate
-and age retention, live observer/device admission and the SDK store are pending. See the
+line/byte retention are configured at service construction. Settings and age-based
+retention, live observer/device admission and the SDK store remain pending. See the
 [implementation boundary](../design/terminal.md#first-implementation-boundary-3994-part-a).
+
+Core session retention also has whole-store constructor budgets: 1 GiB disk,
+64 MiB of raw tail payload and 32 retained records by default, reserving each
+record's configured per-journal limits. Ended/failed sessions eligible for the
+caller's operate authority expire when a new slot is needed; active sessions
+are pinned. Startup enforces the fixed retention policy on restored metadata.
+Expired session ids are refused. This does not add Settings or clear-history UI.
+The scoped service's POSIX node-pty close terminates discovered owned process groups; it does
+not merely send HUP to the shell pid. See the
+[retention and custody limits](../design/terminal.md#whole-store-retention-and-process-custody).
+
+### Terminal socket (personal operator transport)
+
+`/api/terminal/socket` upgrades on the main API listener. Only the current
+personal operator acting in person can authenticate in this tranche. Browser
+Origin headers must name a configured Station origin; query strings and unknown
+upgrade paths are refused. An ordinary authenticated `GET` is a 204 admission
+probe, not a stream. Send the existing `{type: "auth", protocolVersion: 1,
+credential}` first frame, including on loopback; wait for `authenticated` before
+commands. Authentication times out after five seconds and timeouts count as
+failures. There are at most 64 authenticated connections and a separate budget
+of 32 pending sockets, with eight pending authentications per peer and the
+existing auth failure limiter. Any peer that can reach the main API listener
+can hold pending slots before authentication, including clients without an
+Origin header, and can exhaust them to lock the operator out. The in-person
+rule limits who can authenticate, not who can hold slots. See the
+[remote-admission prerequisites](../design/terminal.md#replay-controls-before-ghostty)
+before admitting remote devices. Personal tokens and account-bound Devices are
+refused before HTTP forwarding regardless of scope. Credentials never appear
+in output or error frames.
+
+Controls are strict JSON objects. Every command except `ack` requires a
+`requestId` string (1–64 characters). Every channel id is an integer from 1 to
+2³²−1, used once per socket; at most 32 channels can be attached and 256 channel
+ids consumed per socket. All commands retain the authenticated caller's
+Project/binding authority through TerminalSessions.
+
+- `open`: `{type, requestId, channel, projectId, bindingKey, cols, rows,
+  fromSeq?: 0, windowBytes?}`. Opens a server-owned session and attaches it.
+- `attach`: `{type, requestId, channel, projectId, bindingKey, terminalId,
+  fromSeq?, windowBytes?}`. `fromSeq` is the last consumed output sequence,
+  default zero. Unknown ids and mismatched Projects/bindings are refused.
+  Both commands respond with `attached`, including `terminalId`, `status` and
+  `replayThrough`, plus `readOnly` from the current session authority. Dimensions
+  range from 1 to 1,000 as in the HTTP API.
+- `list`: `{type, requestId, projectId, bindingKey}` returns `list` with
+  `records`. `resize` takes `{type, requestId, channel, cols, rows}`; `close`
+  and `detach` take `{type, requestId, channel}`. They return `done`; an adjacent
+  queued resize replaced by a newer resize returns `superseded`. Close ends
+  the shell; detach and socket loss leave it running. Restart is not admitted.
+- `ack`: `{type, channel, seq}` cumulatively acknowledges consumed output.
+  It must name the current acknowledgement or an actually sent record.
+  Future, backward and unsent acknowledgements return `invalid-ack`.
+
+Binary frames have a 13-byte big-endian header: kind (`1` input, `2` output),
+uint32 channel, uint64 sequence, followed by UTF-8 bytes. Sequences must fit a
+JavaScript safe integer. Input starts at one per channel and increments by one;
+duplicates, gaps and input before replay acknowledgement return
+`terminal-refused`. A current observer's complete mouse/focus reports return
+`input-ack` with `discarded: true`, including during replay, and never reach the
+PTY; other observer input is refused. Successful operator input returns
+`input-ack`. Invalid UTF-8 input
+is refused. After disconnect, input with uncertain delivery must not be retried.
+The socket maximum payload is 64 KiB + 13 bytes, including JSON frames.
+
+Each channel has a fixed output credit window (`windowBytes`, 16,384–65,536
+bytes, default 65,536). Sending raw output consumes its byte length;
+acknowledging actual records releases exactly those bytes. Header/control bytes
+do not consume channel credit. The transport filters OSC 8 URI schemes to
+absolute HTTP/HTTPS and drops unsafe URI metadata while keeping displayed text.
+Parser state advances only when the filtered record fits the remaining credit. Output stays in the bounded journal until credit
+is available. A slow consumer cannot accumulate an unbounded per-socket replay
+queue; retention loss is explicit. `reset` gives `fromSeq` and `replayThrough`;
+replace the emulator's replay and resume acknowledgement from that sequence.
+`progress` reports `sentThrough`, journal `lastSeq`, `replayThrough` and session
+`status`. Acknowledging through replay emits `ready`, allowing input. Clients
+must keep emulator reply writers detached during replay.
+
+The command queue refuses capacity beyond 128 pending commands or 256 KiB of
+serialized work with close code 4429. Data sends pause above 2 MiB of socket
+backlog and retry on the heartbeat without advancing journal/filter state.
+Control replies have a further 256 KiB reserve before close code 4429. Quiet channels recheck authority at least once per
+one-second heartbeat, subject to service I/O; every output read rechecks
+before publication. Invalid frames return `invalid-frame`, authority/session
+refusals return generic `terminal-refused`, without exception details.
+
+`@kontourai/station-contracts/terminal-transport` exports the binary codec and
+scope predicate. `terminal:observe` is explicitly promotable and read-only;
+existing scopes/defaults/presets are unchanged. Live observer/device admission,
+relay/broker transport, the SDK store/public-entry test and Coding migration
+remain part b2. The legacy endpoint remains available; see the
+[transport implementation boundary](../design/terminal.md#transport-implementation-boundary-3994-part-b1).
 
 ### Get Terminal Port
 

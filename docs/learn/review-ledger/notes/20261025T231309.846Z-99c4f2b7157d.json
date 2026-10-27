@@ -1,0 +1,7 @@
+{
+  "revision": "0ffa7d5dda93e105608da934f29476add239a224",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed the terminal socket 32/8 pending caps against TerminalGateway and runtime HTTP admission. Added the reachable-peer lockout caveat and link to b2 pre-upgrade admission, fairness/operator reservation and relay policy prerequisites. Production gateway fixture refuses a verified paired-device principal; removing its in-person guard authenticates that client and fails the new test. Tests use an injected credential fixture, not live pairing or remote-network qualification. Other API contracts are unchanged by this follow-up.","inputs":["docs/reference/api.md","src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"]}
+  ]
+}
