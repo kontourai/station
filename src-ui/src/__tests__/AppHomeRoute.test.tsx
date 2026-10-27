@@ -1499,6 +1499,18 @@ describe('App home route resolution', () => {
       };
       await act(async () => rerender(<App />));
 
+      // ...and fails again: the half of the cycle that remounted the dock.
+      hooks.layout = {
+        data: undefined,
+        isLoading: false,
+        isPending: false,
+        isError: true,
+        error: new TypeError('Failed to fetch'),
+        errorUpdatedAt: 2,
+        fetchStatus: 'idle',
+      };
+      await act(async () => rerender(<App />));
+
       // An unmount and remount would register the host a second time.
       expect(registerRegionSurfaceHost).toHaveBeenCalledTimes(1);
     });
