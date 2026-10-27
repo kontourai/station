@@ -91,7 +91,7 @@ describe('engine scope holder', () => {
         'station-workload',
         process.execPath,
         '-e',
-        'console.log("ready");setInterval(()=>{},1000)',
+        'const fs=require("node:fs");fs.writeSync(3,"fd3");fs.writeSync(4,"fd4");console.log("ready");setInterval(()=>{},1000)',
       ],
       {
         detached: true,
@@ -102,7 +102,15 @@ describe('engine scope holder', () => {
     const enginePid = engine.pid as number;
     started.push(enginePid);
     const closed = once(engine, 'close');
+    let extra = '';
+    for (const stream of [engine.stdio[3], engine.stdio[4]])
+      if (stream && 'on' in stream)
+        stream.on('data', (data) => {
+          extra += data;
+        });
     await once(engine.stdout!, 'data');
+    // Only the holder's descriptors 3-9 are closed: the engine keeps its own.
+    await expect.poll(() => extra).toBe('fd3fd4');
     // The holder was forked before the engine's exec.
     const holders = processes().filter(
       (entry) => entry.args === `${sleep} 2147483647`,
