@@ -12,6 +12,7 @@ import {
   type HostImageCaptureHooks,
   hostImageCaptureRoots,
   hostImagePaths,
+  type WorkingFolderRefusal,
 } from './host-image-capture.js';
 
 /** A turn's text deltas read for host-image paths, at most. */
@@ -91,10 +92,33 @@ export class HostImageTurnCapture {
     const roots = await hostImageCaptureRoots({
       cwd,
       listWorktrees: async () => [],
+      onRefused: (directory, reason) =>
+        this.logRefusal(threadId, directory, reason),
     });
     return hostImageAgentInstruction({
       workingDirectory: roots.length > 0,
       tmpdir: tmpdir !== undefined,
+    });
+  }
+
+  /**
+   * Why this session's working folder reads no images, once per thread and
+   * folder: the operator can see why a reply's image shows "outside".
+   */
+  private readonly loggedRefusals = new Set<string>();
+  private logRefusal(
+    threadId: string,
+    directory: string,
+    reason: WorkingFolderRefusal,
+  ): void {
+    const key = `${threadId}\u0000${directory}\u0000${reason}`;
+    if (this.loggedRefusals.has(key)) return;
+    this.loggedRefusals.add(key);
+    if (this.loggedRefusals.size > 1024) this.loggedRefusals.clear();
+    this.deps.logger.warn('Host images: working folder is not read', {
+      threadId,
+      directory,
+      reason,
     });
   }
 
@@ -179,6 +203,8 @@ export class HostImageTurnCapture {
     const roots = await hostImageCaptureRoots({
       cwd: this.deps.sessionCwd(event.threadId),
       sessionTmpDir: sessionTempRoot(event.threadId),
+      onRefused: (directory, reason) =>
+        this.logRefusal(event.threadId, directory, reason),
     });
     const capture = await captureHostImages({
       paths,

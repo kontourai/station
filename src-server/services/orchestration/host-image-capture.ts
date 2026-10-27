@@ -1,7 +1,7 @@
 import { constants as fsConstants } from 'node:fs';
-import { lstat, open, realpath } from 'node:fs/promises';
+import { lstat, open, readlink, realpath } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
-import { dirname, isAbsolute, relative, sep } from 'node:path';
+import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { crc32 } from 'node:zlib';
 import {
   CHAT_ATTACHMENT_MAX_COUNT,
@@ -517,7 +517,7 @@ async function captureOne(
     path.length > CHAT_HOST_IMAGE_MAX_PATH_LENGTH ||
     path.includes('\0') ||
     !isAbsolute(path) ||
-    path.split(/[\\/]/).includes('..')
+    path.split(PATH_SEPARATORS).includes('..')
   )
     return { refused: 'invalid-path' };
   const inRoot = (resolved: string) =>
@@ -636,43 +636,81 @@ function othersCanReplaceEntries(stats: {
 
 /**
  * Whether anyone else could swap the working folder for a link to somewhere
- * else, judged on the path AS GIVEN, component by component: a check on its
- * resolved form sees only the link's target, after the swap. Every directory
- * the path traverses must be one others cannot replace entries of; a link
- * met on the way is followed and its target's chain is checked the same way.
- * A path with `..` or one that cannot be walked is refused.
+ * else, judged on the path AS GIVEN: a check on its resolved form sees only a
+ * swapped link's target. The path is walked one component at a time from
+ * the root, and every directory traversed must be one others cannot replace
+ * entries of. A link is resolved ONE HOP at a time (`readlink`, a relative
+ * target against the link's own directory) and its target's components are
+ * walked the same way, so a directory holding a link further along a chain
+ * is inspected too; resolving the rest of a chain at once would skip it.
+ * Links are capped separately from depth. A given path with `..` or one
+ * that cannot be walked is refused.
  */
 export async function workingFolderSwappable(path: string): Promise<boolean> {
   if (process.platform === 'win32') return false;
-  if (!isAbsolute(path) || path.split(/[\\/]/).includes('..')) return true;
-  let pending = path.split(sep).filter(Boolean);
+  const parts = (value: string) => value.split(sep).filter(Boolean);
+  if (!isAbsolute(path) || parts(path).includes('..')) return true;
+  const isUnsafe = async (directory: string) => {
+    try {
+      const stats = await lstat(directory);
+      return !stats.isDirectory() || othersCanReplaceEntries(stats);
+    } catch {
+      return true;
+    }
+  };
   let current: string = sep;
-  for (let hops = 0; hops < 64; hops += 1) {
+  if (await isUnsafe(current)) return true;
+  let pending = parts(path);
+  let links = 0;
+  for (let steps = 0; pending.length > 0; steps += 1) {
+    if (steps > MAX_WALK_STEPS) return true;
+    const name = pending.shift() as string;
+    if (name === '.') continue;
+    if (name === '..') {
+      // Only reachable from a link target; `current` holds no links, so its
+      // lexical parent is its real parent, which was checked on the way in.
+      current = dirname(current);
+      continue;
+    }
+    const candidate = join(current, name);
     let stats: Awaited<ReturnType<typeof lstat>>;
     try {
-      stats = await lstat(current);
+      stats = await lstat(candidate);
     } catch {
       return true;
     }
     if (stats.isSymbolicLink()) {
-      // Its own directory was checked already; walk its target from the top.
+      links += 1;
+      if (links > MAX_WALK_LINKS) return true;
       let target: string;
       try {
-        target = await realpath(current);
+        target = await readlink(candidate);
       } catch {
         return true;
       }
-      pending = [...target.split(sep).filter(Boolean), ...pending];
-      current = sep;
+      if (isAbsolute(target)) {
+        current = sep;
+        if (await isUnsafe(current)) return true;
+      }
+      pending = [...parts(target), ...pending];
       continue;
     }
     if (!stats.isDirectory() || othersCanReplaceEntries(stats)) return true;
-    const next = pending.shift();
-    if (next === undefined) return false;
-    current = current === sep ? `${sep}${next}` : `${current}${sep}${next}`;
+    current = candidate;
   }
-  return true;
+  return false;
 }
+
+/**
+ * Path separators of this platform only: on POSIX a backslash is an
+ * ordinary filename character (a folder may be named `foo\\..`).
+ */
+const PATH_SEPARATORS = process.platform === 'win32' ? /[\\/]/ : /\//;
+
+/** Links one walk follows (the usual SYMLOOP_MAX), apart from its depth. */
+const MAX_WALK_LINKS = 40;
+/** Components one walk examines, links' targets included. */
+const MAX_WALK_STEPS = 4096;
 
 /**
  * Whether a folder every user can write to lies between the file and its
@@ -690,6 +728,15 @@ async function inSharedFolder(real: string, root: string): Promise<boolean> {
   }
 }
 
+/** Why a working folder (or one of its worktrees) is not an image root. */
+export type WorkingFolderRefusal =
+  /** Its path passes a folder someone else could change (see workingFolderSwappable). */
+  | 'swappable-path'
+  /** It is or contains the home folder or Station's data, or is the filesystem root. */
+  | 'home-or-station-data'
+  /** It is or contains a shared temp directory, or is world-writable. */
+  | 'shared-temp';
+
 export async function hostImageCaptureRoots(input: {
   cwd?: string;
   sessionTmpDir?: string;
@@ -698,6 +745,8 @@ export async function hostImageCaptureRoots(input: {
   listWorktrees?: (root: string) => Promise<readonly string[]>;
   /** Test seam; defaults to the host's shared temp directories. */
   sharedTempDirs?: readonly string[];
+  /** Told why a working folder or worktree is not a root, for a log line. */
+  onRefused?: (directory: string, reason: WorkingFolderRefusal) => void;
 }): Promise<string[]> {
   const roots: string[] = [];
   const sharedTemp = input.sharedTempDirs
@@ -707,28 +756,32 @@ export async function hostImageCaptureRoots(input: {
     home: await resolvedOrSelf(input.home ?? homedir()),
     stationHome: await resolvedOrSelf(input.stationHome ?? resolveHomeDir()),
   };
-  const admissible = async (directory: string) =>
-    isAbsolute(directory) &&
-    !seatbeltWorkspaceRefusal(directory, bounds) &&
-    !(await sharedTempRefusal(directory, sharedTemp));
-  if (
-    input.cwd &&
-    isAbsolute(input.cwd) &&
-    !(await workingFolderSwappable(input.cwd))
-  ) {
-    const cwd = await resolvedOrSelf(input.cwd);
-    if (await admissible(cwd)) {
+  // Why `directory` is not a root, or undefined when it is one.
+  const refusal = async (
+    directory: string,
+  ): Promise<WorkingFolderRefusal | undefined> => {
+    if (await workingFolderSwappable(directory)) return 'swappable-path';
+    const resolved = await resolvedOrSelf(directory);
+    if (seatbeltWorkspaceRefusal(resolved, bounds))
+      return 'home-or-station-data';
+    if (await sharedTempRefusal(resolved, sharedTemp)) return 'shared-temp';
+    return undefined;
+  };
+  if (input.cwd && isAbsolute(input.cwd)) {
+    const refused = await refusal(input.cwd);
+    if (refused) input.onRefused?.(input.cwd, refused);
+    else {
+      const cwd = await resolvedOrSelf(input.cwd);
       roots.push(cwd);
       const worktrees = await (
         input.listWorktrees ?? ((root) => listVerifiedWorktrees(root, 5000))
       )(cwd).catch(() => [] as readonly string[]);
-      for (const worktree of worktrees)
-        if (
-          (await admissible(worktree)) &&
-          !(await workingFolderSwappable(worktree)) &&
-          !roots.includes(worktree)
-        )
-          roots.push(worktree);
+      for (const worktree of worktrees) {
+        if (roots.includes(worktree)) continue;
+        const worktreeRefused = await refusal(worktree);
+        if (worktreeRefused) input.onRefused?.(worktree, worktreeRefused);
+        else roots.push(worktree);
+      }
     }
   }
   if (input.sessionTmpDir) roots.push(input.sessionTmpDir);

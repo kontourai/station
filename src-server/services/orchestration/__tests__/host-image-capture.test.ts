@@ -275,6 +275,73 @@ describe('captureHostImages', () => {
     expect(await workingFolderSwappable(secret)).toBe(false);
   });
 
+  test('a link chain is walked one hop at a time: a link held in an open folder further along is caught', async () => {
+    // The review probe: x is open (0777, no sticky) and holds b, a link to a
+    // safe folder; a is a link to x/b/proj. Resolving a whole chain at once
+    // skips x, and anyone could replace x/b.
+    const x = join(base, 'x');
+    const safe = join(base, 'safe');
+    mkdirSync(x);
+    mkdirSync(join(safe, 'proj'), { recursive: true });
+    chmodSync(x, 0o777);
+    symlinkSync(safe, join(x, 'b'));
+    symlinkSync(join(x, 'b', 'proj'), join(base, 'a'));
+    expect(await workingFolderSwappable(join(base, 'a'))).toBe(true);
+    expect(await workingFolderSwappable(join(x, 'b', 'proj'))).toBe(true);
+    expect(await workingFolderSwappable(join(safe, 'proj'))).toBe(false);
+    // A relative link target resolves against the link's own folder.
+    symlinkSync('x/b/proj', join(base, 'rel'));
+    expect(await workingFolderSwappable(join(base, 'rel'))).toBe(true);
+    symlinkSync('safe/proj', join(base, 'rel-safe'));
+    expect(await workingFolderSwappable(join(base, 'rel-safe'))).toBe(false);
+  });
+
+  test('depth and link count are limited separately', async () => {
+    // 70 nested folders: deeper than the old 64-step cap, a normal path.
+    let deep = join(base, 'deep');
+    for (let i = 0; i < 70; i += 1) deep = join(deep, 'd');
+    mkdirSync(deep, { recursive: true });
+    expect(await workingFolderSwappable(deep)).toBe(false);
+    // A link loop is refused, not walked forever.
+    symlinkSync(join(base, 'loop-b'), join(base, 'loop-a'));
+    symlinkSync(join(base, 'loop-a'), join(base, 'loop-b'));
+    expect(await workingFolderSwappable(join(base, 'loop-a'))).toBe(true);
+  });
+
+  test('on POSIX a backslash is part of a folder name, not a separator', async () => {
+    if (process.platform === 'win32') return;
+    const odd = join(base, 'foo\\..');
+    mkdirSync(odd);
+    expect(await workingFolderSwappable(odd)).toBe(false);
+    writeFileSync(join(odd, 'x.png'), fixture('chromium.png'));
+    const result = await capture([join(odd, 'x.png')], [odd]);
+    expect(result.sources).toEqual([
+      { path: join(odd, 'x.png'), attachmentIndex: 0 },
+    ]);
+  });
+
+  test('a refused working folder says why', async () => {
+    const refusals: Array<[string, string]> = [];
+    const open = join(base, 'why-open');
+    mkdirSync(join(open, 'proj'), { recursive: true });
+    chmodSync(open, 0o777);
+    const home = join(base, 'why-home');
+    mkdirSync(home);
+    for (const cwd of [join(open, 'proj'), home])
+      await hostImageCaptureRoots({
+        cwd,
+        home,
+        stationHome: join(base, 'station-home'),
+        listWorktrees: async () => [],
+        sharedTempDirs: [],
+        onRefused: (directory, reason) => refusals.push([directory, reason]),
+      });
+    expect(refusals).toEqual([
+      [join(open, 'proj'), 'swappable-path'],
+      [home, 'home-or-station-data'],
+    ]);
+  });
+
   test('a group-writable ancestor is refused unless the group is this user own', async () => {
     const own = join(base, 'own-group');
     mkdirSync(join(own, 'proj'), { recursive: true });

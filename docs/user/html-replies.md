@@ -50,7 +50,9 @@ Station's data (a chat with no Project uses the home folder), or when it is or
 contains a shared temporary directory such as the system temporary folder, is
 writable by every user, or when its path, as written and through any link it
 follows, passes a folder another user owns or that others can write to without
-the sticky bit (they could swap the working folder for a link elsewhere). Such a chat reads only its own temporary folder; a
+the sticky bit (they could swap the working folder for a link elsewhere). The
+Station log says which of these applies ("Host images: working folder is not
+read", with the folder and reason). Such a chat reads only its own temporary folder; a
 Project folder inside the system temporary folder is still read. Paths
 elsewhere are not read. The file must really be a PNG, JPEG, GIF or WebP image
 (checked by content, not name), at most 512 KiB and 4,194,304 pixels, and a
