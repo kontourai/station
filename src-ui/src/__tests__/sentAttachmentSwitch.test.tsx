@@ -16,6 +16,7 @@ import {
   attachmentObjectUrlKey,
   attachmentThumbnailKey,
   peekAttachmentObjectUrl,
+  releaseAttachmentObjectUrl,
   resetAttachmentObjectUrls,
   storeAttachmentObjectUrl,
 } from '../components/chat/attachment-object-urls';
@@ -77,13 +78,15 @@ test('a large sent picture keeps its thumbnail through turn.started, and no cach
     messages,
   });
   // The thumbnail the live chip made from its inline bytes (jsdom cannot
-  // decode, so it is placed where the chip's own effect stores it).
+  // decode, so it is placed where the chip's own effect stores it, and that
+  // store's hold is let go: the chip below takes its own).
   storeAttachmentObjectUrl(
     attachmentThumbnailKey(LARGE_PNG),
     'blob:thumbnail',
     new Blob([new Uint8Array(10)], { type: 'image/png' }),
     { width: 80, height: 80 },
   );
+  releaseAttachmentObjectUrl(attachmentThumbnailKey(LARGE_PNG));
   const view = render(<FilePartPreview part={filePart()} />);
   expect(screen.getByAltText('large.png').getAttribute('src')).toBe(
     'blob:thumbnail',
@@ -164,6 +167,7 @@ test('when the recorded attachment is not provably the sent file, its data-URL t
     new Blob([new Uint8Array(10)], { type: 'image/png' }),
     { width: 80, height: 80 },
   );
+  releaseAttachmentObjectUrl(attachmentThumbnailKey(LARGE_PNG));
   handleTurnStartedEvent({
     eventId: 'other-started',
     method: 'turn.started',

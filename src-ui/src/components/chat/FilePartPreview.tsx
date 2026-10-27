@@ -1,5 +1,5 @@
 import { authenticatedFetch } from '@kontourai/station-sdk';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { usePreview } from '../../contexts/PreviewContext';
 import { DocumentGlyph } from '../icons/Glyph';
@@ -10,9 +10,9 @@ import {
   attachmentObjectUrlKey,
   attachmentObjectUrlSize,
   attachmentThumbnailKey,
-  dropAttachmentObjectUrl,
   peekAttachmentObjectUrl,
   releaseAttachmentObjectUrl,
+  retireAttachmentObjectUrl,
   storeAttachmentObjectUrl,
 } from './attachment-object-urls';
 import {
@@ -139,10 +139,20 @@ function useAttachmentThumbnail(
     key: string;
     value: ChipThumbnail | 'failed';
   } | null>(null);
+  // The latest run, so a run can learn that this chip moved on to other bytes
+  // (as opposed to unmounting, or StrictMode re-running the same key).
+  const lastRun = useRef<{ key: string; switched: boolean } | null>(null);
 
   useEffect(() => {
-    if (!key || !url) return;
+    if (lastRun.current && lastRun.current.key !== key)
+      lastRun.current.switched = true;
+    if (!key || !url) {
+      lastRun.current = null;
+      return;
+    }
     const thumbnailKey = attachmentThumbnailKey(key);
+    const run = { key, switched: false };
+    lastRun.current = run;
     let active = true;
     let held = false;
     const settle = (objectUrl: string) => {
@@ -173,11 +183,13 @@ function useAttachmentThumbnail(
           { width: thumbnail.width, height: thumbnail.height },
         );
         if (!active) {
-          // An inline bubble that switched to its recorded reference while
-          // this was being made: nothing asks for the data-URL key again, and
-          // keeping it would retain the bytes as the key itself.
-          if (key.startsWith('data:')) dropAttachmentObjectUrl(thumbnailKey);
-          else releaseAttachmentObjectUrl(thumbnailKey);
+          releaseAttachmentObjectUrl(thumbnailKey);
+          // This chip switched from inline bytes to their recorded reference
+          // while the thumbnail was being made: it will not ask for the
+          // data-URL name again, and keeping that name would retain the bytes
+          // as the key. Another chip holding it keeps it until it lets go.
+          if (run.switched && key.startsWith('data:'))
+            retireAttachmentObjectUrl(thumbnailKey);
           return;
         }
         settle(objectUrl);

@@ -2,8 +2,8 @@ import type { PersistedChatAttachment } from '@kontourai/station-contracts/chat-
 import {
   attachmentObjectUrlKey,
   attachmentThumbnailKey,
-  dropAttachmentObjectUrl,
   moveAttachmentObjectUrl,
+  retireAttachmentObjectUrl,
   seedAttachmentObjectUrl,
 } from '../../components/chat/attachment-object-urls';
 import { dataUrlBlob } from '../../components/chat/attachment-thumbnails';
@@ -128,7 +128,7 @@ export function withRecordedAttachments(
       !carried.has(part.url) &&
       !kept.has(part.url)
     )
-      dropAttachmentObjectUrl(attachmentThumbnailKey(part.url));
+      retireAttachmentObjectUrl(attachmentThumbnailKey(part.url));
   return {
     contentParts: [
       ...parts.filter((part) => part.type !== 'file'),
