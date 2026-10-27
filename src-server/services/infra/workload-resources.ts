@@ -656,7 +656,9 @@ export function engineScopeWrapper(binaries: HolderBinaries): string {
       throw new Error(`Unsafe holder binary path: ${path}`);
   const closed = [3, 4, 5, 6, 7, 8, 9].map((fd) => `${fd}>&-`).join(' ');
   const holder = binaries.bash
-    ? `'${binaries.bash}' -c 'for fd in /dev/fd/*; do fd=\${fd##*/}; case $fd in 0|1|2) ;; *) eval "exec $fd>&-" ;; esac; done; exec ${binaries.sleep} ${HOLDER_SLEEP_SECONDS}' station-holder`
+    ? // -p: ignore inherited BASH_ENV, SHELLOPTS and BASHOPTS. An unexpanded
+      // glob (no /dev/fd, or noglob) or any non-numeric name never reaches eval.
+      `'${binaries.bash}' -p -c 'for fd in /dev/fd/*; do [ -e "$fd" ] || continue; fd=\${fd##*/}; case $fd in 0|1|2|*[!0-9]*) ;; *) eval "exec $fd>&-" ;; esac; done; exec ${binaries.sleep} ${HOLDER_SLEEP_SECONDS}' station-holder`
     : `'${binaries.sleep}' ${HOLDER_SLEEP_SECONDS}`;
   return `'${binaries.setsid}' -f ${holder} </dev/null >/dev/null 2>&1 ${closed}; exec "$@"`;
 }

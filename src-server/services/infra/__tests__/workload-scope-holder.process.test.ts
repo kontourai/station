@@ -171,4 +171,55 @@ describe('engine scope holder', () => {
     );
     expect(alive(holder.pid)).toBe(true);
   });
+
+  test('ignores an inherited BASH_ENV and noglob, and still becomes the holder', async () => {
+    const directory = tempDir('scope-holder-env-');
+    const sleep = join(directory, 'holder-sleep-env');
+    await symlink(
+      existsSync('/usr/bin/sleep') ? '/usr/bin/sleep' : '/bin/sleep',
+      sleep,
+    );
+    const bash = ['/usr/bin/bash', '/bin/bash'].find((path) =>
+      existsSync(path),
+    );
+    if (!bash) throw new Error('this test needs bash(1)');
+    const marker = join(directory, 'bash-env-sourced');
+    const bashEnv = join(directory, 'bash-env.sh');
+    await writeFile(bashEnv, `: > '${marker}'\n`);
+    const script = engineScopeWrapper({
+      setsid: await setsidBinary(directory),
+      sleep,
+      bash,
+    });
+    const engine: ChildProcess = spawn(
+      '/bin/sh',
+      [
+        '-c',
+        script,
+        'station-workload',
+        process.execPath,
+        '-e',
+        'console.log("ready");setInterval(()=>{},1000)',
+      ],
+      {
+        detached: true,
+        cwd: directory,
+        // noglob leaves /dev/fd/* unexpanded; BASH_ENV would run before the sweep.
+        env: { ...process.env, BASH_ENV: bashEnv, SHELLOPTS: 'noglob' },
+        stdio: ['ignore', 'pipe', 'ignore'],
+        windowsHide: true,
+      },
+    );
+    started.push(engine.pid as number);
+    await once(engine.stdout!, 'data');
+    await expect
+      .poll(() =>
+        processes().filter((entry) => entry.args === `${sleep} 2147483647`),
+      )
+      .toHaveLength(1);
+    for (const entry of processes())
+      if (entry.args === `${sleep} 2147483647`) started.push(entry.pid);
+    expect(existsSync(marker)).toBe(false);
+    process.kill(-(engine.pid as number), 'SIGKILL');
+  });
 });
