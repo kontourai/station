@@ -878,7 +878,7 @@ export const attachmentBlobRequests = meter.createCounter(
   'station.chat.attachment_blob_requests',
   {
     description:
-      'GET /api/attachments requests by outcome (served/not_found/rejected)',
+      'GET /api/attachments requests by outcome (served/not_modified/not_found/rejected)',
   },
 );
 

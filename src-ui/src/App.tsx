@@ -29,6 +29,7 @@ import {
   isDockOwnedViewType,
   isMobileDockFullscreen as isMobileDockFullscreenState,
 } from './components/chat-dock/mobile-chrome';
+import { StationRouteLearning } from './components/connections/useStationRoutes';
 import { DialogHistoryHostBoundary } from './components/DialogHistoryHost';
 import { Header } from './components/header/Header';
 import { LazyBoundary } from './components/LazyBoundary';
@@ -701,6 +702,7 @@ function App() {
                   onNavigate={navigateToView}
                 />
                 <ConnectionBannerSource />
+                <StationRouteLearning />
                 <StationDetailsHost />
 
                 {showShortcutsCheatsheet && (

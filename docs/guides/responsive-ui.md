@@ -177,8 +177,12 @@ at the surface or workspace boundary that needs geometry, then size descendants
 from `--responsive-visual-viewport-height`. It combines Visual Viewport readings
 with the Android inset projection and falls back to window dimensions. The
 separate document publisher, installed by `main.tsx`, exposes
-`--visual-viewport-bottom-inset` for fixed siblings. The hook is not a global
-singleton: do not add redundant subscriptions in every nested panel.
+`--visual-viewport-bottom-inset` for fixed siblings. Every call, and the SDK
+and Connect modals, reads one per-window store
+(`@kontourai/station-shared/visual-viewport`) that reads the geometry once per
+frame, so another call adds a re-render rather than more listeners. Still read
+it at the boundary and size descendants from its custom properties instead of
+calling it in every nested panel.
 
 Use flex/grid with `min-width: 0` and `min-height: 0` where content must shrink.
 Keep one bounded scroll owner per region; use overscroll containment where a

@@ -84,6 +84,12 @@ transparent until its content paints, so this native mark fills the launch gap.
 favicon and light/dark background in the asset catalog. These are build inputs;
 a packaged launch must still be checked on the target platform.
 
+The web app manifest's install icons, `src-ui/public/icons/station-512.png`
+(the rounded Stable tile on transparency) and `station-maskable-512.png` (the
+opaque full-bleed square, also the `apple-touch-icon`), are direct generator
+outputs pinned in the icon manifest. Only the web build links them; native
+shells do not.
+
 Generate icons only when deliberately changing the artwork:
 
 1. Edit `scripts/lib/station-icon.mjs` (artwork or a channel palette), then:

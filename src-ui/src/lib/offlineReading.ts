@@ -1,7 +1,7 @@
 import type { RequestCredentialEvidence } from '@kontourai/station-connect';
 import type { OrchestrationSequencedEvent } from '@kontourai/station-contracts/orchestration';
 import { createStore, get, update } from 'idb-keyval';
-import { buildInfo } from '../build-info';
+import { buildCacheBuster } from './buildCacheBuster';
 
 /** Durable authority identity: request ordering and mount epochs change offline. */
 export function offlineReadingBinding(
@@ -18,7 +18,7 @@ export function offlineReadingBinding(
 }
 
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
-const buster = () => `${buildInfo.version}+${buildInfo.commit}`;
+const buster = buildCacheBuster;
 
 const MAX_CONVERSATIONS = 20;
 const MAX_COPY_BYTES = 256 * 1024;

@@ -1,12 +1,14 @@
 // Deep-imported from `/client` on purpose: this boundary is on the eager
 // entry path, and the SDK's root barrel pulls its whole React surface with it.
 import { StationHttpError } from '@kontourai/station-sdk/client';
+import { onlineManager } from '@tanstack/react-query';
 import {
   Component,
   type ErrorInfo,
   type ReactNode,
   Suspense,
   useEffect,
+  useSyncExternalStore,
 } from 'react';
 import { Button } from '../components/Button';
 import { ErrorState } from '../components/state';
@@ -46,6 +48,53 @@ export function classifyRouteFailure(error: unknown): RouteFailureKind {
 
 interface RouteErrorBoundaryState {
   error: unknown;
+}
+
+const subscribeOnline = (listener: () => void) =>
+  onlineManager.subscribe(listener);
+// React Query's manager starts online and follows the browser's events;
+// `navigator.onLine` also covers a page that loaded while offline.
+const browserOnline = () =>
+  onlineManager.isOnline() &&
+  (typeof navigator === 'undefined' || navigator.onLine !== false);
+
+/**
+ * A view whose code did not download. Reloading fetches the current build,
+ * but a reload while offline replaces the whole workspace with the offline
+ * reader, so the action appears only once the browser has a network again.
+ */
+function RouteChunkFailure({
+  message,
+}: {
+  message: LocaleContextValue['message'];
+}) {
+  const online = useSyncExternalStore(
+    subscribeOnline,
+    browserOnline,
+    () => true,
+  );
+  if (!online)
+    return (
+      <ErrorState
+        title={message('route.chunk.offlineTitle')}
+        description={message('route.chunk.offlineDescription', {
+          product: 'Station',
+        })}
+      />
+    );
+  return (
+    <ErrorState
+      title={message('route.chunk.title')}
+      description={message('route.chunk.description', {
+        product: 'Station',
+      })}
+      action={
+        <Button variant="primary" onClick={() => window.location.reload()}>
+          {message('route.chunk.action')}
+        </Button>
+      }
+    />
+  );
 }
 
 class RouteErrorBoundary extends Component<
@@ -91,24 +140,8 @@ class RouteErrorBoundary extends Component<
   render() {
     if (this.state.error) {
       const kind = classifyRouteFailure(this.state.error);
-      if (kind === 'chunk') {
-        return (
-          <ErrorState
-            title={this.props.message('route.chunk.title')}
-            description={this.props.message('route.chunk.description', {
-              product: 'Station',
-            })}
-            action={
-              <Button
-                variant="primary"
-                onClick={() => window.location.reload()}
-              >
-                {this.props.message('route.chunk.action')}
-              </Button>
-            }
-          />
-        );
-      }
+      if (kind === 'chunk')
+        return <RouteChunkFailure message={this.props.message} />;
       if (kind === 'authority') {
         return (
           <ErrorState
