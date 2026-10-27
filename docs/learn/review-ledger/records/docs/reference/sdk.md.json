@@ -742,6 +742,20 @@
 
     "src-server/routes/projects/project-room-routes.ts",
 
+    "src-server/services/telemetry-companion-archive.ts",
+
+    "src-ui/src/views/developer/CompanionArchivePreparation.tsx",
+
+    "packages/sdk/src/query-domains/telemetryCompanion.ts",
+
+    "packages/contracts/src/product-telemetry.ts",
+
+    "src-ui/src/views/developer/CompanionManaged.tsx",
+
+    "src-ui/src/views/developer/CompanionProductTrends.tsx",
+
+    "src-ui/src/views/developer/__tests__/TelemetryCompanion.test.tsx",
+
     "packages/sdk/src/query-domains/stationPeople.ts",
 
     "packages/sdk/src/__tests__/stationPeople.test.ts",
@@ -771,6 +785,16 @@
     "packages/sdk/src/query-domains/taskReview.ts",
 
     "packages/sdk/src/__tests__/task-review-hooks.test.tsx",
+
+    "packages/sdk/src/client/private-insights.ts",
+
+    "packages/sdk/src/client/capability.ts",
+
+    "packages/sdk/src/client/publicStationCapabilities.ts",
+
+    "packages/sdk/src/capability.ts",
+
+    "packages/sdk/src/publicStationCapabilities.ts",
 
     "packages/contracts/src/engine-capability-matrix.ts",
 

@@ -60,6 +60,7 @@ export function abortableTelemetryOperation<T>(
 export async function readTelemetryJson(
   response: Response,
   signal: AbortSignal,
+  maxBytes = 8192,
 ): Promise<unknown> {
   const reader = response.body?.getReader();
   if (!reader) throw new TelemetryRequestError('response_invalid');
@@ -71,9 +72,9 @@ export async function readTelemetryJson(
         signal,
       );
       if (done) break;
-      if (bytes.length + value.length > 8192)
+      if (bytes.length + value.length > maxBytes)
         throw new TelemetryRequestError('response_too_large');
-      bytes.push(...value);
+      for (const byte of value) bytes.push(byte);
     }
     try {
       return JSON.parse(

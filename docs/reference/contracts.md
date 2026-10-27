@@ -41,12 +41,173 @@ references describe cleanup and uncertain delivery outcomes.
 
 ## Modules
 
+`@kontourai/station-contracts/telemetry-delivery` owns
+`TelemetryCompanionPrerequisites`, the request-local local-container capability
+result used by the operator companion prerequisite API. Its `available` branch
+describes the observed Docker/Compose versions and container architecture; it is
+not an artifact qualification, installation or ingestion-readiness receipt.
+The unavailable branch names the missing capability without returning host paths
+or raw subprocess output. See the [companion profile](../../deployment/telemetry/README.md#station-host-prerequisite-api).
+
+The same module defines `TelemetryCompanionArchivePreparation` and
+`TelemetryCompanionPreparationState`. Receipts bind a UUIDv4 operation to the
+release source, signed archive digest, byte counts and recorded phase. Optional
+`payloadPrepared:true` means the fixed companion files were prepared and checked;
+older authenticated receipts may omit it. Optional `qualifiedArchitectures`
+contains unique `amd64`/`arm64` profile declarations from authenticated prepared
+files. It is absent on unsuccessful preparation and grants no execution permit.
+A pending phase or observed lock does
+not prove a live process. The latest-operation pointer supports read-only recovery
+after reopening the pane or losing a mutation response. Every receipt retains
+`installationAuthority:false`; neither preparation nor the parent-envelope
+evidence enables sending, installs a service or grants personal source access.
+
+`TelemetryCompanionInstallation` records the conditional stopped-service install
+operation, its preparation ID, source/version, architecture and phase. Its host
+and storage choices are closed literals. `configuresSending:false` describes the
+operation's effect; it is not a claim that every existing destination is disabled.
+An installed receipt is not current container liveness or storage readiness.
+
+`TelemetryCompanionAction` records a unique start/stop intent and its pending,
+completed or unconfirmed outcome; completion is historical, not current liveness.
+`TelemetryCompanionManagedState` keeps the installation/action records separate
+from observed runtime and authenticated storage state. Unavailable custody or
+runtime evidence does not imply an empty or healthy installation.
+
+`@kontourai/station-contracts/product-telemetry` also owns
+`ProductTelemetryTrends`, `isProductTelemetryTrendWindow` and
+`isProductTelemetryTrends`. The bounded receiver aggregate contains received
+product groups, source build provenance, a UTC window, retention and explicitly
+unknown delivery coverage. It excludes person/source identity and arbitrary
+observation properties. Its pure decoder rejects extra fields, invalid counts,
+unknown events and inconsistent build provenance. This is separate from personal
+canonical usage receipts and does not prove complete activity or delivery.
+
+The same product module declares `ProductTelemetryIncidents`, its strict
+`isProductTelemetryIncidents` decoder, and the pure `createProductTelemetryIncidentDraft`
+formatter. Groups retain immutable builds, distinct reported installation counts,
+observed denominators and separate failed/aborted/unresolved/unknown populations.
+The draft includes retained-observation and producer-clock limitations; formatting
+never publishes an issue. `ProductTelemetryIncidentLink` and its receipt describe
+Core-owned GitHub references, logical expiry and active/deleted outcomes. They
+carry neither source authority nor proof that an external issue exists.
+
 The authored `@kontourai/station-contracts/usage-export` module defines the
 individual/personal-account request and retained-observation page, including
 UTC window, stream epoch, fixed high watermark and unknown history coverage.
-It neither describes an analytics authorization credential nor proves a
-durable sync/restore fence. See [monitoring](../guides/monitoring.md#canonical-usage-export-source)
+A usage page alone supplies neither an analytics authorization credential nor
+proof of a durable sync/restore fence. See [monitoring](../guides/monitoring.md#canonical-usage-export-source)
 for current implementation and unexecuted acceptance limits.
+
+The usage-export module also declares `AnalyticsSourceEnrollmentIntent`: an
+immutable proposed source/destination, requested scope, expiry and retention
+choice with a prepared/cancelled phase. Optional
+`operationalConsent:"terminal-outcomes/v1"` is a separate immutable consent
+reservation. Absence means usage-only. Its exact presence is bound by the
+recipient candidate intent digest, source approval and encrypted credential;
+receiving custody rejects a mismatch. The proposal itself activates nothing.
+Under an approved grant with that consent, `UsageExportPage.operationalConsent`
+admits `UsageTerminalFact` observations: outcome class, engine family,
+Station-observed time and opaque event/thread/turn IDs. Without the literal a
+`terminal` field is refused as unknown. `PrivateUsageCommit.binding`, its query
+and its page must agree exactly. `PrivateOperationalOutcomeQuery` and
+`PrivateOperationalOutcomeSummary` are the strict companion query/response pair
+(engine or day groups, observed-turn denominator, retained-only coverage). Saved
+`AnalyticsViewDefinition` values with `kind:"outcomes"` select completed,
+aborted or failed counts and engine/day grouping; the capability-gated SDK
+reader and Personal Insights consume them. Full consent-to-PostgreSQL/UI
+execution remains unverified by this source review. `destinationVerified:false`
+and `exportAuthority:false` are required literals. The source's private person,
+tenant and owner-set binding is not a caller-supplied DTO. This proposal neither
+issues a credential nor authorizes export; see the [proposal
+API](api.md#prepare-a-personal-source-enrollment-proposal).
+
+The same module owns `AnalyticsRecipientCandidateClaims`,
+`AnalyticsRecipientCandidate` and `AnalyticsRecipientCandidateView`, with the
+`ANALYTICS_RECIPIENT_CANDIDATE_PROTOCOL` domain. These carry signed public
+receiving keys, source-intent binding and proposed transport metadata. A view's
+`sourceVerified:false`, `exportAuthority:false` and `key-possession-only`
+verification are deliberate: the candidate is neither remote person
+authentication nor source authorization. Private keys and private tenant/owner
+records remain server-owned. A view may report `restore-required`; this refuses
+copied or legacy unbound key custody without exposing stored credential,
+confirmation or sync metadata. Its shape does not renew source access. See the [candidate API](api.md#prepare-a-receiving-analytics-key-candidate).
+
+`AnalyticsSourceApproval` records requester-bound source consent for the reviewed
+source scope and receiving key, with immutable provenance and approved/revoked
+phase. `sourceApproved:true` is historical, while `exportAuthority:false` and
+`recipientAssurance:"source-user-approved-key"` prevent treating it as an active
+credential or remote-person authentication. Identity/tenant fields used for
+source authorization remain private and server-derived.
+
+`AnalyticsSourceCredentialDelivery` carries only encrypted transport metadata and
+ciphertext. `AnalyticsStoredSourceCredential` reports receiving custody without
+plaintext, source verification or export authority. Its optional `deliveryProof`
+binds the receiving proof key to the decrypted credential hash and exact grant
+generation; it is static delivery evidence, not a fresh request signature.
+Neither shape is an
+authorization input by itself. The server checks approved policy and live
+source/receiving owners before delivery/materialization; actual source data
+admission remains a separate owner.
+
+`AnalyticsRecipientCandidateView.sourceConfirmation` records a person's explicit
+HTTPS-origin choice for the current credential revision; it does not change the
+custody DTO's `sourceVerified:false` or grant general identity. Rotation clears
+that choice. The pure `parseUsageExportPage` decoder in the same subpath is shared
+by the SDK and receiving reader. It checks strict receipt/page shapes, selected
+source/scope/window, committed order, snapshot and unknown coverage while
+preserving immutable money/provenance fields. `UsageExportQuery` and
+`UsageExportSnapshot` are also exported there and retain SDK type re-exports.
+`USAGE_EXPORT_SOURCE_REVISION_HEADER` names the separate HTTP snapshot revision.
+It binds destructive source changes at the receiving release check; it is not a
+person/grant credential, a pricing revision or a restored-home generation fence.
+Canonical page bodies remain unchanged; opaque cursors now include source
+invalidation state and require restarting after this upgrade.
+`UsageInvalidationRequest` and `UsageInvalidationPage` describe the separate
+retained journal replay, with a journal position/epoch, fixed high water,
+retention floor and scoped thread invalidations. Positions carry no authority;
+a pruned checkpoint is a gap requiring reconciliation, not an empty page.
+`AnalyticsSourceSyncStatus` includes `invalidations-pending` and an optional
+`invalidationCheckpoint` for page-bounded Core replay; these remain historical
+progress metadata, never live source/query authority.
+Withdrawal applies to earlier source snapshots, while `scope-entered` requests
+refresh/backfill. These types do not define a new person registry or change
+legacy interactive rollup accounting.
+`PrivateUsageSummary` adds resumable `aggregating`/`ready` progress and grouped
+`UsageRollupRow` results. Query mode, group and actual provider/model/account
+filters remain separate from source authority. `parseUsageSummaryRows` validates
+bounded persisted/returned rows. The shared `UsageReceiptRowAccumulator` consumes
+already reconciled receipts and restores its own snapshots; both indexed totals
+and the existing interactive fold use that arithmetic owner. Its existence does
+not remove the interactive fold's 500-receipt/coverage policy.
+`PrivateUsageReceiptQuery` carries Core's captured receiver/checkpoint/source
+fences for bounded receipt-index derivation. `PrivateUsageReceiptPage` distinguishes
+row-free indexing progress from ready receipt pages, with an index UUID, retention
+expiry and explicit retained-only coverage. The strict query/page decoders reject
+unknown fields and source/window mismatches. These storage contracts do not
+resolve a person or authorize source access; Core performs those checks.
+`PrivateUsageCommit`, `PrivateUsageCheckpoint` and `PrivateUsageCommitReceipt`
+describe strict canonical page storage under an opaque private storage key.
+`parsePrivateUsageCommit` shares the canonical page decoder, pins the declared
+source/scope/query and refuses unknown/content fields. Receiver epoch and expected
+checkpoint are storage concurrency fences, not verified person/source authority
+or copied-backup restore protection. A receipt is historical commit evidence.
+Core's page-sync caller supplies verified person/source authorization; canonical
+current receipt/query semantics remain separate. `restartSnapshot` explicitly
+begins a new fact cycle under checkpoint CAS without erasing retained history.
+`AnalyticsSourceSyncStatus` is content-free historical delivery metadata, not
+current source authority. `PrivateUsageInvalidationCommit`,
+`PrivateUsageInvalidationCheckpoint` and `PrivateUsageInvalidationReceipt`
+describe atomic withdrawal/replay under private storage ownership.
+`parseUsageInvalidationPage` and `parsePrivateUsageInvalidations` validate strict
+retained-only pages, scope/epoch, order and progress without resolving a person
+or creating a source grant. `canonicalUsageExportJson` is the shared stable JSON
+representation for immutable payload comparison, not an identity/signature grant.
+
+
+
+
+
 
 The `@kontourai/station-contracts/html-reply` subpath defines prepared page
 bytes, publication references, byte/height limits and theme variable names for
@@ -77,12 +238,12 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
 | `@kontourai/station-contracts/skill-experience` | Inert v1 Skill definitions and explicit stage/rich-pane declarations, host-observed inventory identity, canonical start inputs and retained Session invocation views; see [experience contract](skill-experiences.md) |
 | `@kontourai/station-contracts/attention` | Attention projections and exact approval/permission request references and inspection states |
-| `@kontourai/station-contracts/environment-security` | Public handshake and compatibility declarations, scoped Device/Station pairing, receiver-owned additive grant kind, and secret-free `PeerEnrollmentInput`/`PeerEnrollment` metadata; explicit `access:devices` administration scope and `device-access` / `operator-passkey` revocation provenance. A missing legacy kind denotes Device access; these declarations grant no Project membership or execution consent. See [peer enrollment](sdk.md#station-peer-enrollment). |
+| `@kontourai/station-contracts/environment-security` | Public handshake and compatibility declarations, scoped Device/Station pairing, receiver-owned additive grant kind, and secret-free `PeerEnrollmentInput`/`PeerEnrollment` metadata; explicit `access:devices` administration scope and `device-access` / `operator-passkey` revocation provenance. Companion management uses the separate operator-promoted `telemetry:manage` permission, absent from presets/defaults; it does not enable sending or personal source access. A missing legacy kind denotes Device access; these declarations grant no Project membership or execution consent. See [peer enrollment](sdk.md#station-peer-enrollment). |
 | `@kontourai/station-contracts/station-routes` | The addresses a Station reports it can be reached on (`GET /api/system/routes`): LAN, Tailscale and Tailscale HTTPS origins with the Station's `environmentId`, and a parser that drops invalid entries. A client learns them as routes to the same saved Station and still checks each against the handshake before use; see [Station routes](../design/station-routes.md). |
 | `@kontourai/station-contracts/station-groups` | Station groups for people (#3557): the Admin/Member vocabulary and default, the governed permissions and each group's ceiling, the pure `capScopeToGroup`, and the `StationPerson`/`StationGroupAssignment` shapes `GET /api/pairing/people` returns. Groups only cap a person-tied Device's governed permissions; they grant nothing, never include `access:manage`, and are not Project roles |
 | `@kontourai/station-contracts/auth` | Auth status, renew results, user identity/detail models |
 | `@kontourai/station-contracts/secret-binding` | Metadata-only AuthRef bindings, instance/person ownership, distinct exact MCP environment, ACP header and instance telemetry destination grants; raw material is server-only |
-| `@kontourai/station-contracts/telemetry-delivery` | Current-process product acknowledgement/queue/failure and OTLP callback/probe status; collector acceptance does not prove downstream storage |
+| `@kontourai/station-contracts/telemetry-delivery` | Current-process product acknowledgement/queue/failure and OTLP callback/probe status; host prerequisites, build-only artifact evidence and archive-byte preparation receipts. Preparation receipts never grant installation authority; collector acceptance does not prove downstream storage |
 | `@kontourai/station-contracts/authority-observation` | Closed credential-bound authority observation: current home identity, resolved principal echo (kind+id only), and verified grant tier; authorization-neutral, grants nothing |
 | `@kontourai/station-contracts/automation` | Automation sources (GitHub poll and webhook), the source-safe projection without the webhook secret, source grants, exact-equality string matchers (event fields are strings; numbers arrive as canonical decimal strings; an empty `where` is refused), rules, episodes, the closed delivery outcomes and the subset that takes part in semantic dedupe, `AUTOMATION_EXECUTION_LIMITS`, the GitHub event allow-list and the `AUTOMATION_OPERATOR_SURFACE` parity table, whose mutations have no MCP verb. Shapes only: the server validates and stores them, and no route, intake or dispatch consumes them yet |
 | `@kontourai/station-contracts/application-session` | Device-bound account continuations, explicit capabilities, public proof keys and challenge/credential projections; no Device or Project grant |
@@ -1758,6 +1919,16 @@ unavailable. This lease preserves source identity, while the server's scoped
 write authority separately checks the current request at physical file effects.
 It is not a grant to import or a file-content version.
 
+
+`@kontourai/station-contracts/analytics-views` owns principal-independent view
+shapes and pure validators: `AnalyticsViewDefinition`, `AnalyticsSavedView`,
+`parseAnalyticsViewDefinition`, `parseAnalyticsSavedView`, and
+`resolveAnalyticsViewWindows(definition,today)`. They describe selected recipient
+references, actual attribution filters, canonical usage measure/group, UTC
+relative/fixed periods and comparison. They never identify an authenticated
+principal or grant source permission. Owner/tenant checks, revisions, private
+persistence and current source reads belong to Core.
+
 ## Workspace visual files
 
 `WorkspaceVisualFile` and `parseWorkspaceVisualFile` in the
@@ -1864,3 +2035,14 @@ route evidence; Board UX remains #2997, and release/browser/device qualification
 is separate. Personal reads do not issue a primary Chat declaration, including
 when a caller names the Coding type; clone preserves server-issued catalog
 attribution but does not manufacture a declaration from client input.
+
+### Saved terminal outcome views
+
+`AnalyticsViewDefinition.kind` defaults to usage when omitted, preserving existing
+definitions. Explicit `kind: "outcomes"` accepts `completed`, `aborted` or `failed`
+measures and `engine` or `day` grouping. Outcome sources carry only `recipientId`;
+provider/model/account filters are rejected rather than ignored. UTC windows and
+comparison retain the existing saved-view owner and revision protocol.
+`PrivateOperationalOutcomeSummary.observedTurns` counts distinct retained turns
+with terminal observations; completed/aborted/failed partition those observations,
+with unknown retained-only coverage. Independent source populations stay separate.

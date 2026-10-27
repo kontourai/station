@@ -1,0 +1,9 @@
+{
+  "revision": "c5783df49c3472f0b02332d08afd267368000316",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Reviewed the extracted verifier and its three production consumers: packaging, prerequisite artifact evidence and archive materialization. Receiver provenance and exact pinned deployment-image inventory checks are shared rather than omitted by runtime preparation. A signed inconsistent image-inventory archive reproduced authenticated success on baseline and now returns failed without payloadPrepared. Twenty focused tests, server-tests types and lint passed. This consistency check grants no install/runtime/release authority; #3458 still requires a qualified pinned profile.","inputs":["deployment/telemetry/README.md","scripts/__tests__/package-telemetry-companion.test.ts","scripts/package-telemetry-companion.mjs","src-server/services/telemetry-companion-extract.ts","src-server/services/telemetry-companion-artifact.mjs","src-server/services/telemetry-companion-release.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Rechecked the prepared-file and invalid-payload explanation after preparation adopted the full shared companion verifier. Parent artifact evidence and final prepared files now reject receiver-provenance or deployment-image inconsistencies; unchanged pane text still separates prepared files from installation/runtime qualification. Existing pane and production archive tests passed; no service-start or native qualification claimed.","inputs":["docs/guides/monitoring.md","src-server/services/telemetry-companion-extract.ts"]}
+  ]
+}

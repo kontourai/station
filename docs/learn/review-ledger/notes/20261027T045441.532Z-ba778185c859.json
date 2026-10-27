@@ -1,0 +1,9 @@
+{
+  "revision": "13089c136e66349c145d3ba91804315820682bf5",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Scoped source-only no-prose-change review at13089c136e6: read the complete guide, the probeServerConnection regression and production host health adapter, shared client-protocol policy, contract protocol4 and App useConnectionStatus caller. The only own residual change replaces the stale literal protocol3 with independent literal4; the actual request still omits the cross-origin header before capability advertisement and carries it after. Existing guide claims about handshake observation, latest-started generation, SDK/shared transport ownership and compatibility refusal remain accurate. Exact-tree focused owner suite passed49 tests on tree2732620e44ef; no browser/native/installed transport qualification inferred.","inputs":["docs/patterns/frontend.md","src-ui/src/__tests__/serverHealth.test.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Scoped source-only no-prose-change review at13089c136e6: read the complete reference and traced its documented health callback through App useConnectionStatus to probeServerConnection, beginClientProtocolObservation, stationAuthenticatedFetch/clientProtocolHeaders and STATION_COMPAT_PROTOCOL_VERSION4. The test-only correction to independent expected [null,'4'] preserves the documented advertisement-dependent cross-origin carriage, omission before advertisement, same-origin/Node/host-transport exemptions and authority distinction. No producer code, pairing/storage/native/publication contract or prose changed.49 focused tests passed on identical committed tree2732620e44ef; fixture evidence does not establish physical-device connectivity.","inputs":["docs/reference/connect.md","src-ui/src/__tests__/serverHealth.test.ts"]}
+  ]
+}
