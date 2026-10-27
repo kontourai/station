@@ -134,3 +134,56 @@ test('a large sent picture keeps its thumbnail through turn.started, and no cach
   );
   expect(peekAttachmentObjectUrl(refKey)).toBe('blob:minted-1');
 });
+
+test('when the recorded attachment is not provably the sent file, its data-URL thumbnail is dropped too', () => {
+  const { messages } = buildOutgoingUserMessage(
+    [],
+    'See this',
+    [
+      {
+        id: 'large',
+        name: 'large.png',
+        type: 'image/png',
+        size: 300_000,
+        data: LARGE_PNG,
+        preview: LARGE_PNG,
+      },
+    ],
+    'send-other',
+  );
+  activeChatsStore.updateChat(chat, {
+    pendingClientTurnId: 'send-other',
+    messages,
+  });
+  storeAttachmentObjectUrl(
+    attachmentThumbnailKey(LARGE_PNG),
+    'blob:thumbnail',
+    new Blob([new Uint8Array(10)], { type: 'image/png' }),
+    { width: 80, height: 80 },
+  );
+  handleTurnStartedEvent({
+    eventId: 'other-started',
+    method: 'turn.started',
+    provider: 'codex',
+    threadId: chat,
+    turnId: 'other-turn',
+    createdAt: '2026-09-12T00:00:00Z',
+    prompt: 'See this',
+    clientTurnId: 'send-other',
+    attachments: [
+      {
+        kind: 'image',
+        name: 'large.png',
+        mimeType: 'image/png',
+        size: 299_999,
+        blobRef: REF,
+      },
+    ],
+  });
+  expect(
+    peekAttachmentObjectUrl(attachmentThumbnailKey(LARGE_PNG)),
+  ).toBeUndefined();
+  expect(
+    peekAttachmentObjectUrl(attachmentObjectUrlKey(REF, 'image/png')),
+  ).toBeUndefined();
+});
