@@ -217,13 +217,13 @@ describe.skipIf(!manager)('running server workload containment', () => {
     }>('/launch?mode=oom');
     expect(result.signal).toBe('SIGKILL');
     // OOMPolicy=continue: systemd records no oom-kill result. The kernel's
-    // oom_kill count (the scope's, or the slice's once systemd collected the
-    // emptied scope) is the evidence the process died for memory.
+    // oom_kill count in the scope's own memory.events, kept readable by the
+    // engine scope's holder until Station closes it, is the evidence.
     expect(result.outcome).toMatchObject({
       memoryMaxBytes: 64 * 1024 * 1024,
-      unreportedOomKills: expect.any(Number),
+      oomKills: 1,
+      unreportedOomKills: 1,
     });
-    expect(result.outcome.unreportedOomKills).toBeGreaterThanOrEqual(1);
     expect(result.memoryExhausted).toBe(true);
     expect(await gone(sibling.pid)).toBe(false);
     expect(

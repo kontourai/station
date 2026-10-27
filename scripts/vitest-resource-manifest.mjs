@@ -170,6 +170,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/server-scenario.test.ts',
   // Tiny disposable user-service/scope budgets exercise actual OOM containment.
   'src-server/services/infra/__tests__/workload-resources.process.test.ts',
+  // A real /bin/sh runs the engine scope wrapper and its sleeping holder.
+  'src-server/services/infra/__tests__/workload-engine-wrapper.process.test.ts',
   'scripts/__tests__/run-biome.process.test.ts',
   'scripts/__tests__/component-style-hygiene.process.test.ts',
   // Real second-process Task/share writers contend with the publication fence.

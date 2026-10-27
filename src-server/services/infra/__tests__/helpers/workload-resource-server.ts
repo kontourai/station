@@ -27,6 +27,7 @@ import {
   createCodexSessionRecord,
 } from '../../../../providers/adapters/codex-adapter-transport.js';
 import { spawnOwnedChild, terminateProcessTree } from '../../process-utils.js';
+import { WORKLOAD_SESSION_ENV } from '../../workload-budget.js';
 import {
   initializeWorkloadResources,
   inspectWorkloadResources,
@@ -67,10 +68,16 @@ const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? '/', 'http://localhost');
     if (url.pathname === '/codex-exit') {
       const oom = url.searchParams.get('cause') === 'oom';
-      const { proc } = spawnOwnedChild(process.execPath, [
-        '-e',
-        'console.log("ready");process.stdin.once("data",()=>Buffer.alloc(128*1048576,7));setInterval(()=>{},1000)',
-      ]);
+      // Named like a real engine launch, so its scope runs the holder that
+      // keeps the scope's own memory.events past the engine's death.
+      const { proc } = spawnOwnedChild(
+        process.execPath,
+        [
+          '-e',
+          'console.log("ready");process.stdin.once("data",()=>Buffer.alloc(128*1048576,7));setInterval(()=>{},1000)',
+        ],
+        { env: { ...process.env, [WORKLOAD_SESSION_ENV]: 'resource-proof' } },
+      );
       if (!hasPipedStdio(proc))
         throw new Error('Codex fixture requires piped stdio');
       const transport = new CodexAdapterTransport(() => new Date());
@@ -108,10 +115,16 @@ const server = createServer(async (request, response) => {
     if (url.pathname === '/command-oom') {
       // An engine-shaped leader that starts a memory-hungry command in its own
       // scope and keeps running: OOMPolicy=continue kills only the command.
-      const { proc } = spawnOwnedChild(process.execPath, [
-        '-e',
-        'const {spawn}=require("node:child_process");console.log("ready");process.stdin.once("data",()=>{const c=spawn(process.execPath,["-e","Buffer.alloc(128*1048576,7);setInterval(()=>{},1000)"],{stdio:"ignore"});c.on("exit",(code,signal)=>console.log(JSON.stringify({code,signal})))});setInterval(()=>{},1000)',
-      ]);
+      const { proc } = spawnOwnedChild(
+        process.execPath,
+        [
+          '-e',
+          'const {spawn}=require("node:child_process");console.log("ready");process.stdin.once("data",()=>{const c=spawn(process.execPath,["-e","Buffer.alloc(128*1048576,7);setInterval(()=>{},1000)"],{stdio:"ignore"});c.on("exit",(code,signal)=>console.log(JSON.stringify({code,signal})))});setInterval(()=>{},1000)',
+        ],
+        {
+          env: { ...process.env, [WORKLOAD_SESSION_ENV]: 'resource-command' },
+        },
+      );
       if (!hasPipedStdio(proc)) throw new Error('Leader requires piped stdio');
       const kills: ChildWorkloadOomKill[] = [];
       const stop = watchChildWorkloadOomKills(proc, (kill) => kills.push(kill));
@@ -453,7 +466,13 @@ const server = createServer(async (request, response) => {
       // biome-ignore lint/suspicious/noTemplateCurlyInString: argv must retain literal shell expansions.
       ['-e', script, 'literal $HOME ${PATH} $(false)'],
       {
-        env: { PATH: process.env.PATH, FIXTURE_VALUE: 'exact $HOME' },
+        env: {
+          PATH: process.env.PATH,
+          FIXTURE_VALUE: 'exact $HOME',
+          // The OOM case is engine-shaped: it alone is killed, and only the
+          // engine scope's holder keeps its count readable.
+          ...(mode === 'oom' ? { [WORKLOAD_SESSION_ENV]: 'resource-oom' } : {}),
+        },
       },
     );
     held.set(child.pid!, child);

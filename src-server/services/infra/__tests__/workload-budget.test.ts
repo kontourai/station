@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   type ChildWorkloadOomKill,
@@ -21,6 +21,7 @@ import {
 import {
   __workloadTestHooks,
   applyWorkloadBudgetSettings,
+  ENGINE_SCOPE_WRAPPER,
   enforcedWorkloadLimits,
   inspectSessionWorkload,
   WorkloadSettingsRejectedError,
@@ -572,50 +573,66 @@ describe('workload manager budgets (fake systemd manager)', () => {
     }
   });
 
-  test('an engine killed alone, whose scope systemd collected, is attributed from the slice', async () => {
-    const { cgroupRoot, controlGroups, slice } = await start();
-    const base = '/user.slice/user-1000.slice/user@1000.service';
-    const sliceGroup = `${base}/${slice}`;
-    controlGroups.set(slice, sliceGroup);
-    await writeScopeFixture(`${cgroupRoot}${sliceGroup}`, 0);
-    const unitOf = (args: readonly string[]) =>
-      args
-        .find((arg) => arg.startsWith('--unit='))
-        ?.slice('--unit='.length) as string;
+  test('an engine scope runs a holder so its own memory.events outlive the engine; command scopes do not', async () => {
+    await start();
+    const wrapper = (args: readonly string[]) =>
+      args[args.indexOf('/bin/sh') + 2];
+    expect(wrapper(launch('thread-engine').args)).toBe(ENGINE_SCOPE_WRAPPER);
+    expect(wrapper(launch().args)).toBe('exec "$@"');
+    // The holder closes every inherited descriptor above stderr and sends
+    // its own stdio to /dev/null before the engine is exec'd in its place.
+    expect(ENGINE_SCOPE_WRAPPER).toMatch(
+      /^\( for f in \/proc\/self\/fd\/\*;.*exec sleep \d+ \) <\/dev\/null >\/dev\/null 2>&1 & exec "\$@"$/,
+    );
+  });
+
+  test("an engine killed alone is attributed from its own scope's count, read before the scope is stopped", async () => {
+    const { cgroupRoot, controlGroups, calls } = await start();
     const engine = launch('thread-alone');
-    const sibling = launch('thread-sibling');
-    const engineGroup = `${sliceGroup}/${unitOf(engine.args)}`;
-    const siblingGroup = `${sliceGroup}/${unitOf(sibling.args)}`;
-    controlGroups.set(unitOf(engine.args), engineGroup);
-    controlGroups.set(unitOf(sibling.args), siblingGroup);
-    await writeScopeFixture(`${cgroupRoot}${engineGroup}`, 0);
-    await writeScopeFixture(`${cgroupRoot}${siblingGroup}`, 0);
+    const unit = engine.args
+      .find((arg) => arg.startsWith('--unit='))
+      ?.slice('--unit='.length) as string;
+    const group = `/user.slice/user-1000.slice/user@1000.service/app.slice/${unit}`;
+    controlGroups.set(unit, group);
+    await writeScopeFixture(`${cgroupRoot}${group}`, 0);
     trackChildWorkload(engine, process.pid);
-    trackChildWorkload(sibling, process.ppid);
     await __workloadTestHooks.pollOomKills();
-    // The engine is OOM-killed alone and systemd collects its emptied scope
-    // (unit and cgroup gone). The sibling lost a command meanwhile. The slice
-    // counts both.
-    await rm(`${cgroupRoot}${engineGroup}`, { recursive: true });
-    controlGroups.delete(unitOf(engine.args));
+    // The kernel kills the engine itself; the holder keeps the scope.
     await writeFile(
-      join(`${cgroupRoot}${siblingGroup}`, 'memory.events'),
-      'low 0\nhigh 0\nmax 9\noom 1\noom_kill 1\noom_group_kill 0\n',
+      join(`${cgroupRoot}${group}`, 'memory.events'),
+      'low 0\nhigh 0\nmax 31\noom 1\noom_kill 1\noom_group_kill 0\n',
     );
-    await writeFile(
-      join(`${cgroupRoot}${sliceGroup}`, 'memory.events'),
-      'low 0\nhigh 0\nmax 21\noom 2\noom_kill 2\noom_group_kill 0\n',
-    );
+    // A poll between the kill and the close (the engine's teardown and exit
+    // take time) must not lose the engine's own kill.
+    await __workloadTestHooks.pollOomKills();
     const outcome = engine.outcome;
     await closeChildWorkload(process.pid);
-    // One of the slice's two kills was the sibling's own.
-    expect(await outcome).toMatchObject({
-      result: 'collected',
-      oomKills: 1,
-      unreportedOomKills: 1,
-    });
+    expect(await outcome).toMatchObject({ oomKills: 1, unreportedOomKills: 1 });
     expect(childWorkloadMemoryExhausted(await outcome, 'SIGKILL')).toBe(true);
-    await closeChildWorkload(process.ppid);
+    // Read before the scope was killed and stopped.
+    const show = calls.findIndex(
+      (call) => call[0] === 'show' && call[1] === unit,
+    );
+    const stop = calls.findIndex(
+      (call) => call[0] === 'stop' && call[1] === unit,
+    );
+    expect(show).toBeGreaterThanOrEqual(0);
+    expect(stop).toBeGreaterThan(show);
+  });
+
+  test('a scope systemd already collected is unknown, never charged with a slice-wide kill', async () => {
+    const { cgroupRoot, controlGroups, slice } = await start();
+    const base = '/user.slice/user-1000.slice/user@1000.service';
+    controlGroups.set(slice, `${base}/${slice}`);
+    // The slice records a kill (another scope's, already closed).
+    await writeScopeFixture(`${cgroupRoot}${base}/${slice}`, 1);
+    const engine = launch('thread-collected');
+    trackChildWorkload(engine, process.pid);
+    await __workloadTestHooks.pollOomKills();
+    const outcome = engine.outcome;
+    await closeChildWorkload(process.pid);
+    expect(await outcome).toBeUndefined();
+    expect(childWorkloadMemoryExhausted(await outcome, 'SIGKILL')).toBe(false);
   });
 
   test('without enforcement no limit is claimed', async () => {
