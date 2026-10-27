@@ -277,8 +277,13 @@ running agent turns the caller may see and counts hidden turns. It offers
 Older servers and source checkouts that expose a direct update action require
 **Update and restart** confirmation. Closing the Updates panel keeps its
 existing server observer mounted so it can follow an accepted restart and
-recheck its outcome. Source-installation/manual host instructions remain in
-the server section, and **Update policies and details** opens System settings.
+recheck its outcome. The section shows the running version once in its
+header, with one status badge and one primary action; address, channel,
+install facts, finished-update history and the method explanation fold into a
+collapsed **Details**, while errors, warnings and the restart confirmation stay
+visible. Manual host instructions remain in the server section, the source
+disclosure inside its **Details**, and **Update policies and details** opens
+System settings.
 
 ### When the server is older than the app
 
@@ -319,7 +324,8 @@ keeps the native updater adapter; the connected-server section reuses
 ### Advanced source installer boundary
 
 The checkout-backed bundle installer survives behind the **Source installation
-details** disclosure on the server updates card, under the action
+details** disclosure on the server updates card (inside the card's **Details**
+unless the server is built in), under the action
 **Rebuild and reinstall desktop app from source…**. It is a distinct advanced
 workflow, not the normal desktop update path: the source query behind it mounts
 only while the disclosure is open, it names the affected host from the

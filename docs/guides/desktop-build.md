@@ -63,8 +63,10 @@ this update replaces the app and its embedded server together. The webview
 holds no updater or process plugin permission; it reads the native state and
 asks the native shell to act.
 
-The panel's **Connected server** section reuses the Settings server controls
-and their permission and identity checks. An established built-in server
+The panel's server section, headed by the connection's name with the running
+version and one status badge, reuses the Settings server controls and their
+permission and identity checks. Its address, install facts and update history
+fold into a collapsed **Details**. An established built-in server
 explicitly uses the app update above, including its restart confirmation.
 An installed service or a remote server has its own labelled actions; there
 is no combined update request or requirement that app and server versions
