@@ -375,6 +375,7 @@ export interface DeviceSettings {
   experimentalTrustEnabled?: boolean;
   /** Station routes (docs/design/station-routes.md): learn and show every route to a saved Station. */
   experimentalStationRoutesEnabled?: boolean;
+  experimentalSheetGesturesEnabled?: boolean;
   /**
    * archive#4525: the chat dock's own remembered project binding. Owned by
    * the persistent `DockShell`/`useDockShellChrome` (archive#4484), not by
@@ -1081,6 +1082,16 @@ export const DEVICE_SETTINGS_REGISTRY = [
     defaultValue: false,
   }),
   defineDeviceSetting({
+    key: 'experimentalSheetGesturesEnabled',
+    scope: 'device',
+    descriptor: { kind: 'boolean' },
+    label: 'Sheet gestures preview',
+    help: 'Opt in to dragging phone sheets up to expand them and down to close them.',
+    description:
+      'Add a drag handle to phone sheets: drag up to expand, down to close.',
+    defaultValue: false,
+  }),
+  defineDeviceSetting({
     key: 'chatDockProjectSlug',
     scope: 'device',
     descriptor: { kind: 'string' },
@@ -1229,6 +1240,7 @@ export const PREFERENCE_DEVICE_KEYS = [
   'experimentalReadinessEnabled',
   'experimentalTrustEnabled',
   'experimentalStationRoutesEnabled',
+  'experimentalSheetGesturesEnabled',
   'confirmConversationDelete',
 ] as const satisfies readonly (keyof DeviceSettings)[];
 

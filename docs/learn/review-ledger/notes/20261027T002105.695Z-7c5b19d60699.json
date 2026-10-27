@@ -1,0 +1,7 @@
+{
+  "revision": "1710ff6df5cfee6b2886818f9a38e69309bf8eb2",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"EngineAccountOverview.test.tsx now asserts the sign-in code is absent from every stored value and that only the device-settings envelope key is present, instead of an empty localStorage; the guarantee the guide relies on (the Claude sign-in code is never persisted in the browser) is unchanged and still proven.","inputs":["docs/guides/connections.md","src-ui/src/__tests__/EngineAccountOverview.test.tsx"]}
+  ]
+}

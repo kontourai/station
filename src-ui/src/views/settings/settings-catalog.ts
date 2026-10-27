@@ -286,6 +286,13 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['experimentalStationRoutesEnabled'],
   },
   {
+    id: 'experimental-sheet-gestures',
+    title: 'Sheet gestures preview',
+    section: 'developer-tools',
+    conditional: 'developer',
+    configKeys: ['experimentalSheetGesturesEnabled'],
+  },
+  {
     id: 'shared-answers',
     title: 'Shared answers',
     section: 'answer-shares',

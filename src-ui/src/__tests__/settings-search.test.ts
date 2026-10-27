@@ -106,6 +106,7 @@ describe('settings catalog search', () => {
       'experimental-readiness',
       'experimental-trust',
       'experimental-station-routes',
+      'experimental-sheet-gestures',
       'surface-trust',
     ]) {
       expect(desktop.map((command) => command.id)).not.toContain(
@@ -115,7 +116,7 @@ describe('settings catalog search', () => {
         id,
       );
     }
-    expect(desktop).toHaveLength(SETTINGS_CATALOG.length - 5);
+    expect(desktop).toHaveLength(SETTINGS_CATALOG.length - 6);
     expect(desktop.find((command) => command.id === 'settings:theme')).toEqual(
       expect.objectContaining({ view: 'appearance', highlight: 'theme' }),
     );

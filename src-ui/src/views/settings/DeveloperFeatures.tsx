@@ -12,6 +12,7 @@ const FEATURES = [
   ['experimentalReadinessEnabled', 'experimental-readiness'],
   ['experimentalTrustEnabled', 'experimental-trust'],
   ['experimentalStationRoutesEnabled', 'experimental-station-routes'],
+  ['experimentalSheetGesturesEnabled', 'experimental-sheet-gestures'],
 ] as const;
 
 export function DeveloperFeatures() {

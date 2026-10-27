@@ -73,7 +73,7 @@ export function createStationRoutesResolver(
       ...listenerStationRoutes(
         input.boundAddress(),
         input.networkInterfaces(),
-      ).flatMap((route) => {
+      ).flatMap((route): StationRoute[] => {
         // A listener reachable on the Tailscale address is reachable on this
         // node's MagicDNS name too, which survives an address change.
         if (route.kind !== 'tailscale' || !magicDnsHost) return [route];
