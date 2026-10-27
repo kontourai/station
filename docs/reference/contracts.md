@@ -1556,9 +1556,9 @@ and participant `location`; legacy projections may omit them.
 
 `projectTaskRoomWriteSchemaVersion` specifies monotone format selection:
 members or nonempty mentions advance to v5, and subsequent writes stay v5.
-An empty `mentions: []` does not select v5, and every parser refuses it. Any
-present `attachments` key, even `[]`, selects at least v4, whose parser accepts
-it. The helper
+An empty `mentions: []` does not select v5, and every parser refuses it. A
+defined `attachments` array, even `[]`, selects at least v4, whose parser
+accepts it. The helper
 accepts both append bodies and resolved record bodies directly.
 The persisted-record parser and permanent old-writer fence are still runtime
 work in #4136; this contract addition does not activate member writes or enforce
