@@ -1,0 +1,7 @@
+{
+  "revision": "5b99bcd46ef69a1ddd2d172a1d717162b0c4d9a2",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the static/policy gate partition against its package-script graph. The preview-docs gate belongs to EXECUTED_BY_OWN_TEST: feature-preview-docs-check.test.ts runs its CLI against clean and hostile fixtures. No guard or allowlist was widened. EXECUTED: the complete 5-test partition and 44-test path-pin suites fail under their reverted fixes and pass after byte-exact restoration. The inherited covering-sheet correction from PR 4207 is documented here and passed its 44 browser assertions; disabling it failed four assertions.","inputs":["docs/guides/testing.md","scripts/__tests__/guardrail-execution-coverage.test.ts"]}
+  ]
+}

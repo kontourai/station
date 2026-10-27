@@ -246,6 +246,8 @@
 
     "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts",
 
+    "packages/contracts/src/station-control-external-client.ts",
+
     "packages/contracts/src/project.ts",
 
     "packages/contracts/src/knowledge-store.ts",
@@ -281,6 +283,10 @@
     "src-server/services/identity/operator-sessions.ts",
 
     "src-server/services/ssh/device-pairing-service.ts",
+
+    "packages/contracts/src/walkthrough.ts",
+
+    "packages/contracts/src/action-operation.ts",
 
     "packages/contracts/src/task-review.ts",
 

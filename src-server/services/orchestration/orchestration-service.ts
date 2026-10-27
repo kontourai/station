@@ -41,6 +41,7 @@ import type {
   AgentRunSummary,
   ConversationHandoffStatusProjection,
   ConversationListItem,
+  ConversationOpenResolution,
   InterruptTurnResult,
   OrchestrationCommand,
   OrchestrationCommandDispatchResult,
@@ -58,6 +59,7 @@ import type {
   SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
 import {
+  CONVERSATION_CONTEXT_UNAVAILABLE_CODE,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   PENDING_TURN_INTERRUPT_TTL_MS,
 } from '@kontourai/station-contracts/orchestration';
@@ -273,6 +275,10 @@ import {
 } from '../infra/resource-posture.js';
 import { withEngineMcpAccountOwner } from '../plugins/engine-mcp-oauth.js';
 import {
+  isPersonChatStart,
+  type ProjectChatDefaultsService,
+} from '../projects/project-chat-defaults.js';
+import {
   type PortableExecutionConsentIdentity,
   portableConsentOfStartedMetadata,
   RECEIVER_EXECUTION_REFUSAL_COPY,
@@ -314,6 +320,12 @@ import {
 } from './client-origin-propagation.js';
 import { ConnectionSmoke } from './connection-smoke.js';
 import {
+  ConversationForkContextError,
+  ConversationForkContextModule,
+  type ConversationForkContextReference,
+  type ConversationForkContextSnapshot,
+} from './conversation-fork-context.js';
+import {
   type ConversationHistoryPage,
   ConversationHistoryReadService,
 } from './conversation-history-read-service.js';
@@ -326,6 +338,11 @@ import {
   type ConversationOpenResolver,
   createConversationOpenResolver,
 } from './conversation-open-resolver.js';
+import {
+  assertConversationStartSeedStart,
+  assertConversationStartSeedTurn,
+  ConversationStartContextError,
+} from './conversation-start-context.js';
 import { ConversationTurnActivityProjection } from './conversation-turn-activity.js';
 import { CooperativeStop } from './cooperative-stop.js';
 import { CredentialProfileRecovery } from './credential-profile-recovery.js';
@@ -873,6 +890,13 @@ export {
 } from './attached-session-adoption.js';
 export { ModelLaunchPlanUnavailableError } from './model-launch-planning.js';
 
+class ConversationSeedTurnRefusedError extends SendTurnRefusedError {
+  readonly code = CONVERSATION_CONTEXT_UNAVAILABLE_CODE;
+  constructor(message: string) {
+    super(message, 'conflict');
+  }
+}
+
 /**
  * A `sendTurn` refused because the session's folded lifecycle state is
  * terminal (`completed`). This used to be a bare
@@ -1006,6 +1030,15 @@ interface OrchestrationServiceOptions {
    * Loaded per call, like the workspace default above.
    */
   resolveStationDefaultApprovalMode?: () => Promise<ApprovalMode | undefined>;
+  /**
+   * A Project's new-chat defaults (`ProjectChatDefaultsService`): the
+   * approval layer every session start in a Project reads, and the
+   * last-used record a person's successful chat start writes.
+   */
+  projectChatDefaults?: Pick<
+    ProjectChatDefaultsService,
+    'approvalDefault' | 'recordStart'
+  >;
   /**
    * #3157: `AppConfig.usageLimitAutoResume`, loaded per call like the
    * defaults above. Absent means off: an unattended resume spends quota.
@@ -2195,6 +2228,7 @@ export class OrchestrationService {
   private readonly conversationHistoryReader?: ConversationHistoryReadService;
   private readonly turnDeduplicator?: TurnDeduplicator;
   private readonly conversationLineage: ConversationLineage;
+  private readonly forkContexts: ConversationForkContextModule;
   private readonly adoptionLedger?: AdoptionLedger;
   private readonly adoption: AttachedSessionAdoption;
   private readonly monitoringBridge: OrchestrationMonitoringBridge;
@@ -2355,6 +2389,8 @@ export class OrchestrationService {
       // the credential-profile pin uses (`loadAgentExecutionConfig`).
       resolveAgentDefault: async (agentSlug) =>
         (await options.loadAgentExecutionConfig?.(agentSlug))?.approvalMode,
+      resolveProjectDefault: (project) =>
+        options.projectChatDefaults?.approvalDefault(project),
       // #2494: read from the stored start event directly, because
       // `readLatestSessionStartMetadata` strips the reserved record key.
       observedConfinement: (threadId) =>
@@ -2498,6 +2534,35 @@ export class OrchestrationService {
         )?.(
           `Usage fold refused a persisted ${dropped.field} (${String(dropped.value)}) while replaying thread ${dropped.threadId ?? 'unknown'}${dropped.provider ? ` from ${dropped.provider}` : ''}: the figure is unusable, so it is read as absent rather than as a measurement.`,
         ),
+    });
+    this.forkContexts = new ConversationForkContextModule({
+      store: () => this.options.eventStore,
+      deduplicator: () => this.turnDeduplicator,
+      canRead: (reference, scope) => this.canReadForkContext(reference, scope),
+      canStart: (reference, actor) =>
+        this.forkContextOwnerReadable(
+          reference,
+          actor.userId,
+          actor.tenantExecutionContext,
+        ),
+      canReadSession: (id, scope) =>
+        this.sessionAuthz.canReadSession(id, scope),
+      runtimeMessages: (id, scope) =>
+        this.transcriptReads.readSessionMessages(id, scope),
+      metadata: (id) => this.readLatestSessionStartMetadata(id),
+      nativeMemoryOwnsTranscript: (id, provider) =>
+        (provider ??
+          this.options.eventStore?.readSessionByThread(id)?.provider) ===
+          'station-agent' && this.supportsNativeMemoryContinuity(),
+      requiresNativeIdentity: (id) => {
+        const provider =
+          this.options.eventStore?.readSessionByThread(id)?.provider;
+        return (
+          provider !== undefined &&
+          this.options.adapterRegistry.get(provider)?.metadata.continuity
+            ?.resumeIdentity === 'require-match'
+        );
+      },
     });
     this.sessionEventReads = new SessionEventReads({
       ...(options.eventStore ? { eventStore: options.eventStore } : {}),
@@ -2860,6 +2925,13 @@ export class OrchestrationService {
           typeof adapter?.retireSession === 'function'
         );
       },
+      nativeMemoryOwnsTranscriptFor: (provider) =>
+        provider === 'station-agent' && this.supportsNativeMemoryContinuity(),
+      nativeIdentityRequiredFor: (provider) =>
+        options.adapterRegistry.get(provider)?.metadata.continuity
+          ?.resumeIdentity === 'require-match',
+      readForkContextDelivery: (id, scope) =>
+        this.forkContexts.delivery(id, scope),
       ...(this.turnDeduplicator
         ? { turnDeduplicator: this.turnDeduplicator }
         : {}),
@@ -3364,17 +3436,6 @@ export class OrchestrationService {
     return this.credentialProfileRecovery.createDispatchAdapter();
   }
 
-  // biome-ignore lint/correctness/noUnusedPrivateClassMembers: retained for test reach-ins (T6, slice 7 — 4 cast sites reach this name; the runtime path lives in CredentialProfileRecovery).
-  private restartCredentialProfileRecoverySession(
-    input: Parameters<CredentialProfileRecovery['restartRecoverySession']>[0],
-  ): Promise<{ turnId: string }> {
-    return this.credentialProfileRecovery.restartRecoverySession(input);
-  }
-
-  // Kept deliberately asymmetric with `restoreSession` (rewired direct):
-  // the ctor's quarantineSession closure routes through THIS forwarder, and
-  // that in-file caller is what keeps biome's unsafe pass from deleting a
-  // method 5 tests cast to. Do not "finish the job" by making it symmetric.
   private quarantineCredentialProfileRecoverySession(
     threadId: string,
   ): Promise<void> {
@@ -3605,9 +3666,13 @@ export class OrchestrationService {
         // #2873: a respawn re-resolves the recorded folder like any start.
         assertDispatchCwdUnmoved(startInput, startInput.cwd);
         session = await withTenantExecutionContext(tenantExecutionContext, () =>
-          this.runEngineSessionStart(startInput.threadId, () =>
-            adapter.startSession(startInput),
-          ),
+          this.runEngineSessionStart(startInput.threadId, () => {
+            this.assertForkContextAtProviderStart(startInput, {
+              userId: this.sessionAuthz.sessionOwnerUserId(startInput.threadId),
+              tenantExecutionContext,
+            });
+            return adapter.startSession(startInput);
+          }),
         );
       } finally {
         admissionLease?.release();
@@ -5102,6 +5167,7 @@ export class OrchestrationService {
     resumeCursor?: unknown;
     resumeModel?: string;
     transcriptSeed?: string;
+    contextSeed?: import('./conversation-handoff-module.js').ConversationContextSeedPin;
     nativeSourceSessionId?: string;
     nativeResumeBindingKey?: string;
     contextBoundary?: ConversationContextBoundaryProjection;
@@ -5852,7 +5918,226 @@ export class OrchestrationService {
     authority: SessionReadScope,
   ): ConversationMessage[] {
     this.initialize();
-    return this.transcriptReads.readSessionMessages(threadId, authority);
+    return [
+      ...this.forkContexts.copiedForSession(threadId, authority),
+      ...this.transcriptReads.readSessionMessages(threadId, authority),
+    ];
+  }
+
+  private forkContextOwnerReadable(
+    reference: ConversationForkContextReference,
+    userId: string | undefined,
+    tenantContext: TenantExecutionContext | undefined,
+  ): boolean {
+    if (!userId) return false;
+    if (this.options.requireTenantExecutionContext?.() === true) {
+      const tenant =
+        this.options.validateRecoveredTenantExecutionContext?.(tenantContext);
+      return (
+        tenant !== undefined &&
+        tenant.tenantId === reference.tenantId &&
+        userId === reference.ownerUserId
+      );
+    }
+    if (tenantContext !== undefined || reference.tenantId !== undefined)
+      return false;
+    return (
+      userId === reference.ownerUserId ||
+      this.options.personalConversationAccess?.canRead(
+        userId,
+        reference.ownerUserId,
+      ) === true
+    );
+  }
+
+  private canReadForkContext(
+    reference: ConversationForkContextReference,
+    scope: SessionReadScope,
+  ): boolean {
+    if (scope === INTERNAL_SESSION_READ_SCOPE) return true;
+    if (
+      !isSessionReadAuthority(scope) ||
+      (scope.mode === 'hosted') !==
+        (this.options.requireTenantExecutionContext?.() === true)
+    )
+      return false;
+    return this.forkContextOwnerReadable(
+      reference,
+      scope.userId,
+      scope.tenantExecutionContext,
+    );
+  }
+
+  readConversationForkContextForRequest(
+    sourceId: string,
+    key: string,
+    authority: SessionReadAuthority,
+  ) {
+    this.initialize();
+    return this.forkContexts.forRequest(sourceId, key, authority);
+  }
+
+  reserveConversationForkContext(
+    snapshot: ConversationForkContextSnapshot,
+    authority: SessionReadAuthority,
+  ) {
+    this.initialize();
+    return this.forkContexts.reserve(snapshot, authority);
+  }
+
+  readConversationForkContextSnapshot(id: string, authority: SessionReadScope) {
+    this.initialize();
+    return this.forkContexts.snapshot(id, authority);
+  }
+
+  publishConversationForkContext(
+    event: CanonicalRuntimeEvent,
+    digest: string,
+    authority: SessionReadAuthority,
+  ) {
+    this.initialize();
+    return this.forkContexts.publish(event, digest, authority);
+  }
+
+  readForkConversationTranscript(id: string, authority: SessionReadScope) {
+    this.initialize();
+    return this.forkContexts.transcript(id, authority);
+  }
+
+  readForkConversation(id: string, authority: SessionReadScope) {
+    this.initialize();
+    const reference = this.forkContexts.reference(id, authority);
+    if (reference === undefined || reference === null) return reference;
+    const snapshot = this.forkContexts.snapshot(id, authority);
+    if (!snapshot) return null;
+    return {
+      id,
+      resourceId: reference.targetAgent,
+      userId: reference.ownerUserId,
+      title: snapshot.title,
+      createdAt: snapshot.createdAt,
+      updatedAt: snapshot.createdAt,
+      metadata: {
+        parentConversationId: reference.sourceConversationId,
+        branchPointTurnId: snapshot.branchPointTurnId,
+        sourceSessionId: snapshot.sourceSessionId,
+        continuation: 'replay-seed' as const,
+        ...(reference.projectSlug
+          ? { projectSlug: reference.projectSlug }
+          : {}),
+        forkContextDigest: reference.digest,
+      },
+    };
+  }
+
+  prepareInitialConversationForkContext(
+    input: {
+      conversationId: string;
+      agentId: string;
+      projectSlug?: string;
+      userId?: string;
+    },
+    authority: SessionReadAuthority,
+  ) {
+    this.initialize();
+    return this.forkContexts.initial(
+      input.conversationId,
+      input.agentId,
+      input.projectSlug,
+      input.userId,
+      authority,
+    );
+  }
+
+  assertConversationForkContextEnvironment(
+    id: string,
+    current: boolean,
+    authority: SessionReadAuthority,
+  ): void {
+    this.initialize();
+    const reference = this.forkContexts.reference(id, authority);
+    if (reference === null || (reference !== undefined && !current))
+      throw new ConversationForkContextError(
+        'A saved fork context must activate on its owning Station.',
+      );
+  }
+
+  async deleteUnstartedConversationForkContext(
+    id: string,
+    authority: SessionReadScope,
+  ): Promise<boolean> {
+    this.initialize();
+    if (this.startsUnderway.has(id))
+      throw new ConversationForkContextError(
+        'The fork has a provider start in progress.',
+      );
+    return this.sessionExecutionCoordinator.runLifecycleTransition(
+      id,
+      async () => {
+        if (this.startsUnderway.has(id))
+          throw new ConversationForkContextError(
+            'The fork has a provider start in progress.',
+          );
+        return this.forkContexts.deleteUnstarted(id, authority);
+      },
+    );
+  }
+
+  private assertForkContextAtProviderStart(
+    input: ProviderSessionStartInput,
+    actor: { userId?: string; tenantExecutionContext?: TenantExecutionContext },
+  ): void {
+    try {
+      this.forkContexts.assertStart(input, actor);
+      assertConversationStartSeedStart(this.options.eventStore, input);
+    } catch (error) {
+      if (
+        error instanceof ConversationForkContextError ||
+        error instanceof ConversationStartContextError
+      )
+        throw new SessionStartRefusedError(
+          error.message,
+          CONVERSATION_CONTEXT_UNAVAILABLE_CODE,
+        );
+      throw error;
+    }
+  }
+
+  private assertForkContextAtProviderTurn(
+    input: ProviderSendTurnInput,
+    actor?: {
+      userId?: string;
+      tenantExecutionContext?: TenantExecutionContext;
+    },
+  ): void {
+    try {
+      this.forkContexts.assertTurnCurrent(input, {
+        userId:
+          actor?.userId ?? this.sessionAuthz.sessionOwnerUserId(input.threadId),
+        tenantExecutionContext:
+          actor?.tenantExecutionContext ??
+          this.sessionAuthz.tenantContextFor(input.threadId),
+      });
+      this.conversationLineage.assertHandoffContextAtProviderTurn(input);
+      const provider = this.options.eventStore?.readSessionByThread(
+        input.threadId,
+      )?.provider;
+      assertConversationStartSeedTurn(
+        this.options.eventStore,
+        input,
+        this.readLatestSessionStartMetadata(input.threadId),
+        provider !== undefined &&
+          this.options.adapterRegistry.get(provider)?.metadata.continuity
+            ?.resumeIdentity === 'require-match',
+      );
+    } catch (error) {
+      if (
+        error instanceof ConversationForkContextError ||
+        error instanceof ConversationStartContextError
+      )
+        throw new ConversationSeedTurnRefusedError(error.message);
+      throw error;
+    }
   }
 
   /**
@@ -6195,8 +6480,48 @@ export class OrchestrationService {
   async resolveConversationOpen(
     conversationId: string,
     authority: SessionReadAuthority,
-  ) {
+  ): Promise<ConversationOpenResolution | null> {
     this.initialize();
+    const fork = this.forkContexts.reference(conversationId, authority);
+    if (fork === null) return null;
+    if (fork && !this.options.eventStore?.readSessionByThread(conversationId)) {
+      if (fork.state !== 'ready') return null;
+      const snapshot = this.forkContexts.snapshot(
+        conversationId,
+        authority,
+        true,
+      );
+      const transcript = this.forkContexts.transcript(
+        conversationId,
+        authority,
+      );
+      if (!snapshot || !transcript) return null;
+      const starting = this.startsUnderway.has(conversationId);
+      return {
+        status: 'fork-ready',
+        conversation: {
+          id: conversationId,
+          source: 'store',
+          agentSlug: publicAgentIdFromRuntimeKey(fork.targetAgent),
+          ...(fork.projectSlug ? { projectSlug: fork.projectSlug } : {}),
+          title: snapshot.title,
+          createdAt: snapshot.createdAt,
+          updatedAt: snapshot.createdAt,
+          messageCount: transcript.messages.length,
+          mutable: true,
+          answerability: { answerable: true },
+        },
+        transcript: {
+          available: true,
+          owner: 'fork-context',
+          messageCount: transcript.messages.length,
+        },
+        canContinue: !starting,
+        ...(starting ? { continuationPending: true } : {}),
+        answerability: { answerable: true },
+        recoveryActions: [],
+      };
+    }
     const currentSessionId = this.currentConversationSessionId(conversationId);
     const detail = await this.readCurrentConversationSession(
       conversationId,
@@ -6531,6 +6856,19 @@ export class OrchestrationService {
                     approvalMode:
                       internal.foregroundInvocationAdmission.agentSpec.execution
                         ?.approvalMode,
+                  },
+                }
+              : {}),
+            ...(typeof postureInput.metadata?.projectSlug === 'string'
+              ? {
+                  project: {
+                    projectSlug: postureInput.metadata.projectSlug,
+                    ...(context.userId ? { userId: context.userId } : {}),
+                    lastUsedApplies: isPersonChatStart(
+                      postureInput,
+                      context,
+                      internal,
+                    ),
                   },
                 }
               : {}),
@@ -6907,7 +7245,13 @@ export class OrchestrationService {
                             'unattributed-agent'
                           ? undefined
                           : context.userId,
-                        () => adapter.startSession(input),
+                        () => {
+                          this.assertForkContextAtProviderStart(
+                            input,
+                            internal?.forkContextRequester ?? context,
+                          );
+                          return adapter.startSession(input);
+                        },
                       ),
                     internal?.sessionStartAdmission,
                   ),
@@ -7003,7 +7347,8 @@ export class OrchestrationService {
               'Session start failed.',
             );
         },
-        recordStarted: (adapter, input) => {
+        recordStarted: (adapter, input, context, internal) => {
+          this.recordProjectChatStart(input, context, internal);
           this.modelLaunch.recordAcceptedModelLaunchPlan(
             adapter,
             this.modelLaunch.modelLaunchPlanFromInput(input),
@@ -7137,6 +7482,32 @@ export class OrchestrationService {
       context.clientOrigin,
     );
     if (refused) return refused;
+    const fork = this.options.eventStore?.conversationForkContextReference(
+      command.input.threadId,
+    );
+    if (fork) {
+      if (
+        fork.state !== 'ready' ||
+        !this.forkContextOwnerReadable(
+          fork,
+          context.userId,
+          context.tenantExecutionContext,
+        )
+      )
+        throw new ConversationForkContextError(
+          'The requested fork context is unavailable.',
+        );
+      internal = {
+        ...internal,
+        forkContextRequester: {
+          userId: context.userId,
+          ...(context.tenantExecutionContext
+            ? { tenantExecutionContext: context.tenantExecutionContext }
+            : {}),
+        },
+      };
+      context = { ...context, userId: fork.ownerUserId };
+    }
     return this.trackStartUnderway(command.input.threadId, () =>
       this.sessionCommandImplementation.executeInternal(
         command,
@@ -8138,6 +8509,10 @@ export class OrchestrationService {
                               );
                             assertInputRequestCurrent();
                             this.assertAdapterCurrent(adapter);
+                            this.assertForkContextAtProviderTurn(
+                              turnInput,
+                              context,
+                            );
                             if (boundary.prepareIntent) {
                               const captured = captureTurnIntent(turnInput, {
                                 binding: this.preparedTurnBinding(
@@ -10405,6 +10780,40 @@ export class OrchestrationService {
     }
   }
 
+  /**
+   * After a start succeeded: a person's interactive chat in a Project
+   * records what it started with, for a `last-used` Project's next chat
+   * (`project-chat-defaults.ts`). `input` is the prepared start, so its
+   * `modelOptions.approvalMode` is the mode the engine was actually given.
+   * Best effort: a failed write is logged and never fails the start.
+   */
+  private recordProjectChatStart(
+    input: ProviderSessionStartInput,
+    context: SessionCommandContext,
+    internal: SessionCommandInternalOptions | undefined,
+  ): void {
+    const recorder = this.options.projectChatDefaults;
+    if (!recorder || !isPersonChatStart(input, context, internal)) return;
+    const projectSlug = input.metadata?.projectSlug;
+    if (typeof projectSlug !== 'string' || !context.userId) return;
+    const agentSlug = input.metadata?.agentSlug;
+    void recorder
+      .recordStart({
+        projectSlug,
+        userId: context.userId,
+        ...(typeof agentSlug === 'string' ? { agentSlug } : {}),
+        ...(input.modelId ? { modelId: input.modelId } : {}),
+        approvalMode: input.modelOptions?.approvalMode,
+        startedAt: new Date().toISOString(),
+      })
+      .catch((error: unknown) => {
+        this.options.logger.warn('Project chat last-used record failed', {
+          threadId: input.threadId,
+          error: errorMessage(error),
+        });
+      });
+  }
+
   seedSessionRecord(input: {
     threadId: string;
     provider: EngineId;
@@ -11902,6 +12311,70 @@ export class OrchestrationService {
   }
 
   /**
+   * A person's personal per-engine default for a NEW chat, sent by their
+   * composer as a hint rather than a pick. It is recorded as the
+   * conversation's decision (as a carried pick is, so later sessions keep it)
+   * only when nothing above it decides: no decision recorded yet, no Agent
+   * default, no Project layer. Full access is gated exactly as a carried
+   * pick is: without the caller's grant, a `never` that would apply is
+   * refused (`refused-full-access`), and one that would not apply is moot.
+   */
+  async recordPersonalApprovalDefault(input: {
+    threadId: string;
+    provider: EngineId;
+    connectionId?: string;
+    approvalMode: ApprovalMode;
+    agentSlug?: string;
+    projectSlug?: string;
+    userId?: string;
+    personChat: boolean;
+    mayGrantFullAccess: boolean;
+    clientOrigin?: ClientOrigin;
+    principal?: PrincipalRef;
+  }): Promise<
+    | { outcome: 'not-applied' }
+    | { outcome: 'refused-full-access' }
+    | { outcome: 'recorded'; result: SetApprovalModeResult }
+  > {
+    if (
+      input.approvalMode === 'connection-default' ||
+      !this.approvalKnobForThread(
+        input.threadId,
+        input.provider,
+        input.connectionId,
+      ) ||
+      this.approvalPosture.decision(input.threadId) ||
+      (await this.approvalPosture.decidesAbovePersonalDefault({
+        ...(input.agentSlug ? { agentSlug: input.agentSlug } : {}),
+        ...(input.projectSlug
+          ? {
+              project: {
+                projectSlug: input.projectSlug,
+                ...(input.userId ? { userId: input.userId } : {}),
+                lastUsedApplies: input.personChat,
+              },
+            }
+          : {}),
+        mayGrantFullAccess: input.mayGrantFullAccess,
+      }))
+    )
+      return { outcome: 'not-applied' };
+    if (input.approvalMode === 'never' && !input.mayGrantFullAccess)
+      return { outcome: 'refused-full-access' };
+    return {
+      outcome: 'recorded',
+      result: this.recordApprovalModeDecision({
+        threadId: input.threadId,
+        provider: input.provider,
+        approvalMode: input.approvalMode,
+        basedOnSequence: null,
+        ...(input.clientOrigin ? { clientOrigin: input.clientOrigin } : {}),
+        ...(input.principal ? { principal: input.principal } : {}),
+      }),
+    };
+  }
+
+  /**
    * #2377 slice C1: whether recording `pick` on `threadId` would run any
    * engine of its conversation at full access
    * (`ApprovalPosture.pickReachesFullAccess`), reading each session's start
@@ -13277,7 +13750,10 @@ export class OrchestrationService {
     const liveBinding = this.options.adapterRegistry
       .get(session.provider)
       ?.preparedTurnBinding?.(threadId);
+    const nativeIdentityKey =
+      this.options.eventStore?.nativeSessionBindingIdentity(threadId);
     return {
+      ...(nativeIdentityKey !== undefined ? { nativeIdentityKey } : {}),
       provider: session.provider,
       resumeCursor: session.resumeCursor ?? null,
       cwd: session.cwd ?? null,
@@ -13392,6 +13868,7 @@ export class OrchestrationService {
       threadId,
       async () => {
         if (!current()) throw unavailable();
+        this.assertForkContextAtProviderTurn(stored.capture.adapterInput);
         const owned = this.sessionStartBoundaries.resumePrepared?.(
           stored.capture,
           new Date().toISOString(),

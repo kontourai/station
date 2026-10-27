@@ -1,3 +1,4 @@
+import { StatusBadge } from '@kontourai/ui/react';
 import { type ReactNode, useEffect, useId, useRef } from 'react';
 import type {
   SessionInventoryAction,
@@ -416,6 +417,15 @@ export function SessionInventory({
                     <span className="session-inventory__classification">
                       {item.classification === 'kept' ? 'Kept' : 'Current'}
                     </span>
+                    {item.status ? (
+                      // Neutral: an outcome nobody observed is neither a
+                      // success nor a failure.
+                      <StatusBadge
+                        status={item.status}
+                        tone="neutral"
+                        className="session-inventory__item-status"
+                      />
+                    ) : null}
                     <button
                       type="button"
                       aria-pressed={

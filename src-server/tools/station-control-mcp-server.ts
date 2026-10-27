@@ -43,6 +43,7 @@ import {
 import { registerTaskBriefTools } from './station-control-task-brief-tools.js';
 import { registerTaskMemoryTools } from './station-control-task-memory-tools.js';
 import { registerTaskThreadTools } from './station-control-task-thread-tools.js';
+import { registerWalkthroughTools } from './station-control-walkthrough-tools.js';
 import { registerWorkClaimTools } from './station-control-work-claim-tools.js';
 import { registerWorkDiscoveryTools } from './station-control-work-discovery-tools.js';
 import { registerKnowledgeDataTools } from './station-knowledge-tools.js';
@@ -329,6 +330,7 @@ export function createSelectedStationControlMcpServer(
   registerSessionSearchTools(registry);
   registerSessionTools(registry);
   registerProjectActivityTools(registry);
+  registerWalkthroughTools(registry);
   registerWorkClaimTools(registry);
   registerNotifyTools(registry);
   registerHtmlReplyTools(registry);

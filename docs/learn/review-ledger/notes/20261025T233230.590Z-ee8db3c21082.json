@@ -1,0 +1,7 @@
+{
+  "revision": "302664e90866e5b51dcfd9a9b3470d48b01b8ac8",
+
+  "notes": [
+    {"path":"docs/guides/walkthroughs.md","note":"Reviewed the scene path through WalkthroughService publication: packet timestamps include both stream edges, gaps above two seconds select noref, and both attempts share one bounded deadline. Executed real VP8/H264 cut regressions, dense shifted-start coverage, forced-timeout cases and clean-tree threshold/budget fault cycles; recognition/platform/release claims remain unchanged.","inputs":["docs/guides/walkthroughs.md","packages/cli/src/commands/lifecycle.ts","src-server/runtime/frameworks/__tests__/http-receive.integration.test.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/walkthroughs/__tests__/walkthrough-media-regressions.integration.test.ts","src-server/services/walkthroughs/walkthrough-service.ts"]}
+  ]
+}

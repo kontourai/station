@@ -22,6 +22,11 @@ import {
 import { NATIVE_DEVICE_PROOF_HEADER } from '@kontourai/station-contracts/native-device-proof';
 import { NATIVE_RELAY_ENROLLMENT_PATHS } from '@kontourai/station-contracts/native-relay-enrollment';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import {
+  MEDIA_UPLOAD_POLICIES,
+  mediaUploadPolicy,
+} from '@kontourai/station-contracts/walkthrough';
+import { UploadBodyLimitError } from '@kontourai/station-shared/http-upload';
 import { KNOWLEDGE_ROOT_IDENTITY_HEADER } from '@kontourai/station-shared/knowledge-root-identity';
 import {
   redactDeep,
@@ -277,6 +282,15 @@ export function installStationEnvelopeMarker(
 ): void {
   if (envelopeMarkedApps.has(app)) return;
   envelopeMarkedApps.add(app);
+  app.use('*', async (c, next) => {
+    const upload = mediaUploadPolicy(
+      c.req.method,
+      c.req.path,
+      MEDIA_UPLOAD_POLICIES,
+    );
+    await next();
+    if (upload && c.res.status >= 400) c.header('Connection', 'close');
+  });
   app.use('*', outsideAgentReleaseGuard);
   app.use('*', outsideAgentTokenAudience);
   app.use('*', async (c, next) => {
@@ -316,6 +330,13 @@ export function configureRuntimeHttp({
     }
   });
   app.onError((err, c) => {
+    if (err instanceof UploadBodyLimitError) {
+      c.header('Connection', 'close');
+      return c.json(
+        { error: { code: 'request_too_large', limit_bytes: err.limitBytes } },
+        413,
+      );
+    }
     // Before the auth allow-list, deliberately. The allow-list matches on
     // message text (`isAuthError` substring-matches "unauthorized", "401",
     // "authentication failed"), so a route that threw a typed 403 whose
@@ -1570,10 +1591,9 @@ function configureRuntimeSecurity(
     }
 
     // 2. Body-size check. Content-Length first (reject before any read); then a
-    //    bounded byte-counting read that catches a lying or absent
-    //    Content-Length. The body is re-buffered into a new Request so the
-    //    handler's `c.req.json()` reads the bounded copy — this is the same
-    //    buffering `c.req.json()` would do, just with a ceiling.
+    //    bounded byte counter catches a lying or absent Content-Length. Media
+    //    uploads remain lazy streams so route admission precedes every read.
+    //    Ordinary JSON mutations retain the existing buffered copy.
     const ceiling = budget.bodyByteCeiling(mutationClass, {
       method: c.req.method,
       path: c.req.path,
@@ -1598,7 +1618,17 @@ function configureRuntimeSecurity(
       }
     }
 
-    const bodyResult = await readBoundedBody(c.req.raw, ceiling);
+    const uploadPolicy = mediaUploadPolicy(
+      c.req.method,
+      c.req.path,
+      MEDIA_UPLOAD_POLICIES,
+    );
+    const boundedUpload =
+      uploadPolicy && c.req.raw.body
+        ? boundUploadStream(c.req.raw.body, ceiling)
+        : undefined;
+    const bodyResult =
+      boundedUpload?.stream ?? (await readBoundedBody(c.req.raw, ceiling));
     if (bodyResult === 'too-large') {
       requestBudgetOutcomes.add(1, {
         outcome: 'oversized',
@@ -1617,7 +1647,8 @@ function configureRuntimeSecurity(
     }
 
     // Replace the raw request so the handler reads the bounded body. The
-    // stream was consumed by the bounded read above, so even a zero-length
+    // ordinary stream was consumed above; uploads carry the lazy bound instead.
+    // Even a zero-length
     // body must be re-wrapped. Only a truly absent body stream ('no-stream')
     // needs no replacement. The replacement is built from the request's own
     // fields, never by passing `c.req.raw` itself into the `Request`
@@ -1660,8 +1691,58 @@ function configureRuntimeSecurity(
       class: mutationClass,
       source: principal.source,
     });
-    return next();
+    await next();
+    if (boundedUpload?.exceeded()) {
+      c.header('Connection', 'close');
+      c.res = c.json(
+        { error: { code: 'request_too_large', limit_bytes: ceiling } },
+        413,
+      );
+    }
   });
+}
+
+function boundUploadStream(
+  source: ReadableStream<Uint8Array>,
+  maxBytes: number,
+) {
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  let total = 0;
+  let exceeded = false;
+  const stream = new ReadableStream<Uint8Array>(
+    {
+      async pull(controller) {
+        reader ??= source.getReader();
+        try {
+          const result = await reader.read();
+          if (result.done) {
+            controller.close();
+            reader.releaseLock();
+            return;
+          }
+          total += result.value.byteLength;
+          if (total > maxBytes) {
+            exceeded = true;
+            controller.error(new UploadBodyLimitError(maxBytes));
+            await reader.cancel().catch(() => {});
+            reader.releaseLock();
+            return;
+          }
+          controller.enqueue(result.value);
+        } catch (error) {
+          controller.error(error);
+        }
+      },
+      async cancel(reason) {
+        if (reader) {
+          await reader.cancel(reason);
+          reader.releaseLock();
+        } else await source.cancel(reason);
+      },
+    },
+    { highWaterMark: 0 },
+  );
+  return { stream, exceeded: () => exceeded };
 }
 
 type BoundedBodyResult = Uint8Array | 'too-large' | 'no-stream';

@@ -19,7 +19,9 @@ const external = [
 // Station host. Cap the measured combined boundary without extra headroom.
 // #4176 lets a host whose chrome titles the reader own that title
 // (`titleOwner`), so the pane does not repeat it: measured 4,148.
-const SESSION_INVENTORY_V1_BROWSER_GZIP_BYTES = 4_148;
+// #4178 names a command with no recorded result with the shared StatusBadge
+// (imported from @kontourai/ui, external here): measured 4,234.
+const SESSION_INVENTORY_V1_BROWSER_GZIP_BYTES = 4_234;
 
 async function bundledGzipBytes(entry: string) {
   const result = await build({

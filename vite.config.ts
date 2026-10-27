@@ -10,6 +10,7 @@ import {
   UI_PROXY_EXCLUDED_PREFIXES,
 } from './packages/cli/src/commands/ui-proxy-prefixes';
 import { offlineShell } from './scripts/vite-offline-shell';
+import { thirdPartyLicenses } from './scripts/vite-third-party-licenses';
 import { sharedShikiGrammars, uiAssetDelivery } from './scripts/vite-ui-assets';
 import tauriConfig from './src-desktop/tauri.conf.json';
 
@@ -316,6 +317,7 @@ export default defineConfig(({ command, mode }) => {
     plugins: [
       sharedShikiGrammars(),
       ...(mode === 'native' ? [] : [offlineShell()]),
+      thirdPartyLicenses(),
       uiAssetDelivery({ precompress: mode !== 'native' }),
       tailwindcss(),
       react(),
