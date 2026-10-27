@@ -15,6 +15,7 @@ const previewKeys = [
   'experimentalFlowEnabled',
   'experimentalReadinessEnabled',
   'experimentalTrustEnabled',
+  'experimentalSheetGesturesEnabled',
 ] as const;
 beforeEach(() =>
   deviceSettingsStore.resetMany(['developerToolsEnabled', ...previewKeys]),
@@ -36,7 +37,7 @@ function PreviewStatus() {
   );
 }
 
-test('Developer tools reveals three off-by-default independent opt-ins; disabling it withdraws previews without erasing choices', () => {
+test('Developer tools reveals four off-by-default independent opt-ins; disabling it withdraws previews without erasing choices', () => {
   render(
     <>
       <DeveloperFeatures />
@@ -52,7 +53,10 @@ test('Developer tools reveals three off-by-default independent opt-ins; disablin
     name: 'Veritas readiness preview',
   });
   const trust = screen.getByRole('switch', { name: 'Trust preview' });
-  for (const toggle of [flow, readiness, trust])
+  const sheetGestures = screen.getByRole('switch', {
+    name: 'Sheet gestures preview',
+  });
+  for (const toggle of [flow, readiness, trust, sheetGestures])
     expect(toggle.getAttribute('aria-checked')).toBe('false');
   fireEvent.click(flow);
   expect(screen.getByRole('status').textContent).toBe('flow');
@@ -63,6 +67,10 @@ test('Developer tools reveals three off-by-default independent opt-ins; disablin
   expect(screen.getByRole('status').textContent).toBe('flow,readiness');
   fireEvent.click(trust);
   expect(screen.getByRole('status').textContent).toBe('flow,readiness,trust');
+  fireEvent.click(sheetGestures);
+  expect(screen.getByRole('status').textContent).toBe(
+    'flow,readiness,trust,sheetGestures',
+  );
   act(() => deviceSettingsStore.set('developerToolsEnabled', false));
   expect(screen.queryByRole('switch')).toBeNull();
   expect(screen.getByRole('status').textContent).toBe('none');

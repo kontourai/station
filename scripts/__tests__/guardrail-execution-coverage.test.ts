@@ -152,6 +152,10 @@ const EXECUTED_BY_OWN_TEST: ReadonlyArray<readonly [string, string]> = [
   ['run-biome.mjs', 'scripts/__tests__/run-biome.process.test.ts'],
   ['cli-doc-parity.mjs', 'scripts/__tests__/cli-doc-parity.test.ts'],
   [
+    'feature-preview-docs-check.mjs',
+    'scripts/__tests__/feature-preview-docs-check.test.ts',
+  ],
+  [
     'generate-metric-reference.mjs',
     'scripts/__tests__/metric-reference.test.ts',
   ],

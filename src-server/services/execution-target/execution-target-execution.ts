@@ -194,6 +194,20 @@ export interface ForegroundMessageInput {
   handoffCapability?: ConversationHandoffLaunchCapability;
   /** Server-only intent; it is converted to a capability only after preflight. */
   handoffIntent?: ConversationHandoffIntent;
+  /**
+   * Set only by the `/chat` route, from the request itself
+   * (`isPersonChatRequest`): a person's own interactive chat, not an agent,
+   * a peer Station's delegation credential, a delegation or an automatic
+   * replay. Never a public-schema field.
+   */
+  personChatStart?: true;
+  /**
+   * The person's personal per-engine approval default, sent by their
+   * composer on a chat's first send as a HINT, not a pick: the server records
+   * it only for a new conversation of a person's own chat, and only when no
+   * higher layer (Agent default, Project layer) decides.
+   */
+  personalApprovalDefault?: ApprovalMode;
 }
 
 const conversationHandoffLaunchCapabilityBrand = Symbol(
@@ -428,6 +442,31 @@ export interface ExecutionTargetExecutionDependencies
     access: EnvironmentAccess,
     input: { threadId: string; pick: ApprovalMode; agentSlug: string },
   ) => Promise<boolean>;
+  /**
+   * A person's personal default for a new chat, recorded only when no
+   * higher layer decides (`OrchestrationService.recordPersonalApprovalDefault`).
+   * Absent: a Station seam that does not speak it; the hint is then dropped.
+   */
+  recordPersonalApprovalDefault?: (
+    access: EnvironmentAccess,
+    input: {
+      threadId: string;
+      provider: EngineId;
+      connectionId?: string;
+      approvalMode: ApprovalMode;
+      agentSlug?: string;
+      projectSlug?: string;
+      userId?: string;
+      personChat: boolean;
+      mayGrantFullAccess: boolean;
+      clientOrigin?: ClientOrigin;
+      principal?: PrincipalRef;
+    },
+  ) => Promise<
+    | { outcome: 'not-applied' }
+    | { outcome: 'refused-full-access' }
+    | { outcome: 'recorded'; result: SetApprovalModeResult }
+  >;
   /** An authorized sender's existing FIFO entry, before any live continuation effect. */
   readPendingConversationSubmission?: (
     access: EnvironmentAccess,
@@ -1119,7 +1158,7 @@ export async function executeForegroundMessage(
     );
   }
   await refuseUngrantedCarriedPick(input, deps, resolved, sessionId);
-  const approvalMode = input.setApprovalMode
+  let approvalMode = input.setApprovalMode
     ? deps.recordApprovalMode?.(resolved.access, {
         threadId: sessionId,
         provider: resolved.provider,
@@ -1154,6 +1193,36 @@ export async function executeForegroundMessage(
     (resolved.workspace?.kind === 'project'
       ? resolved.workspace.projectSlug
       : undefined);
+  // The person's personal default, below the Agent's and the Project's: a
+  // new conversation of their own chat, with no pick carried.
+  if (
+    !binding &&
+    !input.setApprovalMode &&
+    input.personalApprovalDefault &&
+    input.personChatStart &&
+    deps.recordPersonalApprovalDefault
+  ) {
+    const personal = await deps.recordPersonalApprovalDefault(resolved.access, {
+      threadId: sessionId,
+      provider: resolved.provider,
+      ...(resolved.engine.kind === 'connection'
+        ? { connectionId: resolved.engine.connectionId }
+        : {}),
+      approvalMode: input.personalApprovalDefault,
+      agentSlug: resolved.agentId,
+      ...(conversationProjectSlug
+        ? { projectSlug: conversationProjectSlug }
+        : {}),
+      ...(input.userId ? { userId: input.userId } : {}),
+      personChat: true,
+      mayGrantFullAccess: isFullAccessGrant(input.fullAccessGrant),
+      ...(input.clientOrigin ? { clientOrigin: input.clientOrigin } : {}),
+      ...(input.principal ? { principal: input.principal } : {}),
+    });
+    if (personal.outcome === 'refused-full-access')
+      throw new FullAccessNotGrantedError();
+    if (personal.outcome === 'recorded') approvalMode = personal.result;
+  }
   const conversationWorkspaceIsolation =
     binding?.workspaceIsolation ??
     (resolved.workspace?.kind === 'project'

@@ -134,11 +134,19 @@ function runBoundedTool(
  * closed — a push payload travels this way, never in argv. Without it the
  * tool's stdin is `ignore`d, so a tool that reads stdin sees EOF rather
  * than waiting on an open pipe until the deadline.
+ * Scene analysis can opt into partial output: reserve up to one second within
+ * the deadline for SIGTERM to flush stdout, then SIGKILL and settle even if
+ * a descendant holds the pipe. Overflow and other failures still reject.
  */
 export function runBoundedToolCapture(
   command: string,
   args: readonly string[],
-  options: { timeoutMs: number; stdin?: string; maxBuffer?: number },
+  options: {
+    timeoutMs: number;
+    stdin?: string;
+    maxBuffer?: number;
+    partialOnTimeout?: boolean;
+  },
   spawnTool: typeof spawn = spawn,
 ): Promise<string> {
   const maxBuffer = options.maxBuffer ?? 256 * 1024;
@@ -161,15 +169,18 @@ export function runBoundedToolCapture(
     const chunks: Buffer[] = [];
     let size = 0;
     let settled = false;
+    let timedOut = false;
+    let flushTimer: ReturnType<typeof setTimeout> | undefined;
     const finish = (error: DeviceToolError | null) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      clearTimeout(flushTimer);
       if (error) reject(error);
       else resolve(Buffer.concat(chunks).toString('utf8'));
     };
-    /** Kill the tool, let go of its pipes, and fail now — once. */
-    const abort = (error: DeviceToolError) => {
+    /** Kill the tool, let go of its pipes, and settle now — once. */
+    const abort = (error: DeviceToolError | null) => {
       if (settled) return;
       try {
         child.kill('SIGKILL');
@@ -180,10 +191,22 @@ export function runBoundedToolCapture(
       child.stdin?.destroy();
       finish(error);
     };
-    const timer = setTimeout(
-      () => abort(new DeviceToolError('tool-timeout', `${command} timed out`)),
-      options.timeoutMs,
-    );
+    const flushMs = options.partialOnTimeout
+      ? Math.min(1000, options.timeoutMs * 0.1)
+      : 0;
+    const timer = setTimeout(() => {
+      if (!options.partialOnTimeout) {
+        abort(new DeviceToolError('tool-timeout', `${command} timed out`));
+        return;
+      }
+      timedOut = true;
+      flushTimer = setTimeout(() => abort(null), flushMs);
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        abort(null);
+      }
+    }, options.timeoutMs - flushMs);
     child.stdout?.on('data', (chunk: Buffer) => {
       size += chunk.byteLength;
       if (size > maxBuffer) {
@@ -199,7 +222,7 @@ export function runBoundedToolCapture(
     );
     child.on('close', (code) => {
       finish(
-        code === 0
+        code === 0 || (timedOut && options.partialOnTimeout)
           ? null
           : new DeviceToolError('tool-failed', `${command} failed`),
       );

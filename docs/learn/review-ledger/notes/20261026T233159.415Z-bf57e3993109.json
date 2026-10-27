@@ -1,0 +1,11 @@
+{
+  "revision": "701538c734a5c4b28f5fd24ce737cacf5a81249f",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Added one Start-here bullet for cloud sessions: work in the provided checkout on the assigned branch, match .nvmrc and packageManager before dependencies:ci, unshallow before trusting local docs freshness (scoped mode needs history), arm auto-merge through the GitHub connector. Checked against dependency-lifecycle, node-runtime-contract and documentation-freshness behaviour. Other bullets unchanged; agent-instructions-gate budgets pass.","inputs":["AGENTS.md"]},
+
+    {"path":"CLAUDE.md","note":"CLAUDE.md still imports AGENTS.md and keeps its governance block unchanged; the new AGENTS.md cloud-session bullet is inherited as written.","inputs":["CLAUDE.md","AGENTS.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"This guide points to AGENTS.md for handoff rules; the new cloud-session bullet adds no handoff or merge rule that contradicts it, and auto-merge stays armed without a merge method.","inputs":["docs/guides/code-quality.md","AGENTS.md"]}
+  ]
+}

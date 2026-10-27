@@ -1,0 +1,7 @@
+{
+  "revision": "302664e90866e5b51dcfd9a9b3470d48b01b8ac8",
+
+  "notes": [
+    {"path":"docs/guides/local-speech.md","note":"Inspected MediaToolsAcquisition installDir and acquisition/rollback behavior: component version labels name installation directories, matching pin markers admit bytes, and old versions are retained without pruning. This is a disclosure only; scene/listener fixes do not alter acquisition, backup or speech contracts. No new platform or updater qualification.","inputs":["docs/guides/local-speech.md","packages/cli/src/commands/lifecycle.ts","src-server/services/walkthroughs/__tests__/walkthrough-media-regressions.integration.test.ts"]}
+  ]
+}

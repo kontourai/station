@@ -7145,6 +7145,11 @@ export async function executeExecutionTargetMessage(
                 },
               }
             : {}),
+          ...(input.personChatStart &&
+          !ephemeral &&
+          !startInput.metadata?.delegation
+            ? { personChatStart: true as const }
+            : {}),
           resourceAdmissionIntent:
             startContext?.resourceAdmissionIntent ??
             (ephemeral
@@ -7210,6 +7215,8 @@ export async function executeExecutionTargetMessage(
         : undefined,
     approvalPickReachesFullAccess: (_access: EnvironmentAccess, input) =>
       orchestrationService.approvalPickReachesFullAccess(input),
+    recordPersonalApprovalDefault: (_access: EnvironmentAccess, hint) =>
+      orchestrationService.recordPersonalApprovalDefault(hint),
     sendTurn: async (_access: EnvironmentAccess, turnInput, context) => {
       if (
         input.taskRoomInvocationAdmission?.expectedSessionId &&

@@ -133,6 +133,15 @@
       "configKey": "experimentalTrustEnabled"
     },
     {
+      "id": "experimental-sheet-gestures",
+      "label": "Sheet gestures preview",
+      "help": "Opt in to dragging phone sheets up to expand them and down to close them.",
+      "scope": "device",
+      "section": "developer-tools",
+      "route": "/settings?view=developer-tools&highlight=experimental-sheet-gestures",
+      "configKey": "experimentalSheetGesturesEnabled"
+    },
+    {
       "id": "shared-answers",
       "label": "Shared answers",
       "scope": "station",
@@ -656,6 +665,27 @@
       "scope": "station",
       "section": "knowledge",
       "route": "/settings?view=knowledge&highlight=personal-knowledge-store"
+    },
+    {
+      "id": "app-version",
+      "label": "Version",
+      "scope": "informational",
+      "section": "about",
+      "route": "/settings?view=about&highlight=app-version"
+    },
+    {
+      "id": "open-source-licenses",
+      "label": "Open source licenses",
+      "scope": "informational",
+      "section": "about",
+      "route": "/settings?view=about&highlight=open-source-licenses"
+    },
+    {
+      "id": "legal",
+      "label": "Legal",
+      "scope": "informational",
+      "section": "about",
+      "route": "/settings?view=about&highlight=legal"
     }
   ]
 }

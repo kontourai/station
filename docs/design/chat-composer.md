@@ -219,7 +219,11 @@ The shared New chat action remains directly reachable in mobile chrome and at
 the lower right of the inbox; footer space keeps it from covering rows.
 
 Choosing on a chip does not start an engine; a choice is remembered (Agent per
-context, Model per binding, project as the dock's binding). Start hands the
+context, Model per binding, project as the dock's binding). A Project set to
+**Last model used in this project** puts the model its person's last chat there
+started with (server-recorded, per Agent) above that memory, and its approval
+layer replaces the personal default in **Permissions**
+([Project new-chat defaults](../reference/api.md#project-new-chat-defaults)). Start hands the
 message to the dock’s existing sender once; Home's Start hands the dock its
 exact chip selection, which the dock starts through the same path. Setup actions retain the draft
 through the authority-fenced return journey. A removed preference requires an
@@ -522,7 +526,9 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
    sits in the composer's meta row beside the model picker it measures (2026-10-20:
    it had moved to the dock header, where it crowded the chat's identity); the dock
    header holds session identity only (see placement.md, "What the dock header
-   holds").
+   holds"). On a phone the meta row scrolls sideways and hides while typing on a
+   short screen, so the dock's Actions sheet (⋯) repeats the meter as a
+   Conversation stats row naming the share used; it opens the same stats panel.
 
 ### 3.1 Provider and model picker
 

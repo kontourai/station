@@ -39,7 +39,7 @@ describe('attention SDK domain', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/attention',
-      { headers: { 'X-Station-Client-Protocol': '3' } },
+      { headers: { 'X-Station-Client-Protocol': '4' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });

@@ -476,6 +476,19 @@ const VERBS: Record<string, VerbSpec> = {
       'peers',
     ],
   },
+  'media-tools': {
+    summary: 'Inspect or download pinned local media and speech tools',
+    usage: [
+      'station media-tools status [--json]',
+      'station media-tools download --yes [--json]',
+    ],
+    actions: ['status', 'download'],
+    targets: true,
+    group: 'Configuration',
+    detail: [
+      'Operator only. Downloads require explicit --yes. Status reads show byte progress and failures.',
+    ],
+  },
   telemetry: {
     summary:
       'Read or change per-publisher telemetry tiers; manage telemetry producer tokens',
@@ -1122,6 +1135,21 @@ const VERBS: Record<string, VerbSpec> = {
       'station review read <project> <receipt-id>',
       '',
       'Reviewer findings are evidence input, never a merge or gate verdict.',
+    ],
+  },
+  walkthrough: {
+    group: 'Core Workspace',
+    summary: 'Import and read Project Walkthrough recordings',
+    targets: true,
+    actions: ['import', 'list', 'show'],
+    detail: [
+      'station walkthrough import <file> --project <slug>',
+      'station walkthrough list --project <slug> [--cursor=<id>]',
+      'station walkthrough show <id> --project <slug>',
+      '',
+      'Import follows a long-running operation and prints its Walkthrough id.',
+      'Missing tools report downloads and station media-tools download --yes.',
+      'Recordings remain on the host; imports require Project drive authority.',
     ],
   },
   knowledge: {
