@@ -282,6 +282,7 @@ export function CommandPalette() {
         isDesktop,
         developerToolsEnabled,
         experimentalTrustEnabled: developerFeatures.trust,
+        experimentalStationRoutesEnabled: developerFeatures.stationRoutes,
       }) ?? [],
     [
       isMobile,
@@ -289,6 +290,7 @@ export function CommandPalette() {
       settingsCatalog,
       developerToolsEnabled,
       developerFeatures.trust,
+      developerFeatures.stationRoutes,
     ],
   );
   const settingsLocaleFormatter: SettingsLocaleFormatter | null =

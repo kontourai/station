@@ -9,6 +9,7 @@ export type {
   ConnectionHealthCheckResult,
   ConnectionHealthCoordinatorOptions,
   ConnectionHealthSnapshot,
+  ConnectionRouteResult,
 } from './core/ConnectionHealthCoordinator';
 export { ConnectionHealthCoordinator } from './core/ConnectionHealthCoordinator';
 export { ConnectionStore } from './core/ConnectionStore';
@@ -49,6 +50,13 @@ export {
   connectionIndicatorLabel,
   connectionIndicatorState,
 } from './core/connectionIndicator';
+export type { ConnectionRouteKind } from './core/connectionRoutes';
+export {
+  CONNECTION_ROUTE_LABELS,
+  connectionAcceptsRoutes,
+  connectionRouteKind,
+  connectionRouteRemovable,
+} from './core/connectionRoutes';
 export type {
   NativePairingExchangeTransport,
   PendingPairingApproval,

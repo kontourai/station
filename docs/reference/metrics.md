@@ -7,7 +7,7 @@ These source declarations do **not** establish producers, live collection, corre
 The [Monitoring guide](../guides/monitoring.md) owns producer semantics, configuration and current limitations. Follow a declaration’s source link to find its callers before making an operational claim. Observable declarations inside a function do not establish that the function is called or its callback runs.
 
 Source: [`src-server/telemetry/metrics.ts`](../../src-server/telemetry/metrics.ts).
-Source SHA-256: `6b6d52565757146bc189f721bd38711921ea7af5f359a57a323aab9d870f7d10`. This identifies the input file, not a running build or collection receipt.
+Source SHA-256: `8f1142d86f179388792d8adc94be50dc49e95bc5bd23cca08fcf0d1e44e7404e`. This identifies the input file, not a running build or collection receipt.
 
 The TypeScript AST contains **315 creation calls**, listed in source order. Binding/export labels describe the creation declaration, not later aliases or re-exports. String cells use JSON notation, preserving quotes, backslashes and control characters; “not declared” does not infer an SDK default.
 
@@ -137,7 +137,7 @@ Regenerate with `npm run docs:metrics:generate`; verify exact output with `npm r
 | "station.orchestration.event\_content\_values\_spilled" | createCounter | "eventContentValuesSpilled (exported declaration)" | "Distinct runtime event values stored out of line" | not declared | [line 880](../../src-server/telemetry/metrics.ts#L880) |
 | "station.orchestration.event\_content\_orphans\_swept" | createCounter | "eventContentOrphansSwept (exported declaration)" | "Out-of-line event content rows removed at open because their thread has no events" | not declared | [line 886](../../src-server/telemetry/metrics.ts#L886) |
 | "station.chat.attachment\_bytes\_stripped" | createCounter | "attachmentBytesStripped (exported declaration)" | "Attachment data-URL bytes kept out of a persisted event payload by replacing them with a blob reference" | "By" | [line 893](../../src-server/telemetry/metrics.ts#L893) |
-| "station.chat.attachment\_blob\_requests" | createCounter | "attachmentBlobRequests (exported declaration)" | "GET /api/attachments requests by outcome (served/not\_found/rejected)" | not declared | [line 902](../../src-server/telemetry/metrics.ts#L902) |
+| "station.chat.attachment\_blob\_requests" | createCounter | "attachmentBlobRequests (exported declaration)" | "GET /api/attachments requests by outcome (served/not\_modified/not\_found/rejected)" | not declared | [line 902](../../src-server/telemetry/metrics.ts#L902) |
 | "station.chat.attachment\_replay\_refusals" | createCounter | "attachmentReplayRefusals (exported declaration)" | "Recovery replays refused because a recorded turn's attachment bytes could no longer be resolved" | not declared | [line 910](../../src-server/telemetry/metrics.ts#L910) |
 | "station.orchestration.commands\_dispatched" | createCounter | "orchestrationCommandsDispatched (exported declaration)" | "Orchestration commands routed to provider adapters" | not declared | [line 918](../../src-server/telemetry/metrics.ts#L918) |
 | "station.orchestration.steer\_dispatches" | createCounter | "orchestrationSteerDispatches (exported declaration)" | "Mid-turn steer dispatch outcomes at the orchestration capability gate" | not declared | [line 925](../../src-server/telemetry/metrics.ts#L925) |

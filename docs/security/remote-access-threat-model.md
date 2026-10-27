@@ -2078,6 +2078,11 @@ clears on explicit deletion, sign-out or authority changes. A disconnected brows
 cannot learn about a remote revocation until reconnect. Live protected query
 shelves still require fresh authority observation. The worker caches an anonymous
 static shell and anonymous assets, never authenticated navigation or API bodies.
+The browser's own HTTP cache may keep authenticated JSON reads and attachment
+bytes under `private, no-cache` with `Vary: Authorization, Cookie`. Each reuse
+is revalidated at the host, which authorizes the request before answering
+`304`, so a kept copy is never shown to a caller the host would refuse. The
+bytes remain on that browser profile's disk like any other cached response.
 
 
 ## Outside-agent OAuth remains inert

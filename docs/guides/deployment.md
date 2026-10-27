@@ -56,8 +56,15 @@ from native packages. The
 listener negotiates `Accept-Encoding`, sets `Vary: Accept-Encoding`, and falls
 back to the original file when sidecars are absent. HTML stays `no-cache` and
 uncompressed: the listener injects a fresh CSP nonce for each response and does
-not return `304` for the shell. API cache policy and unbuffered event streams
-are unchanged.
+not return `304` for the shell. The listener passes API responses and
+unbuffered event streams through as the API sends them; the API revalidates its
+own JSON reads (see [conditional JSON reads](../reference/api.md#conditional-json-reads)).
+
+This listener and the API listener keep an idle HTTP connection open for 65
+seconds instead of Node's 5. A client polling every few seconds reuses its
+connection, and a reverse proxy with the common 60-second idle limit closes
+its upstream connection before Station does, rather than reusing one Station
+has just closed.
 
 The built shell preloads its `station-eager-entry` main module while the boot
 module prepares startup recovery. Page and highlight-worker builds share the

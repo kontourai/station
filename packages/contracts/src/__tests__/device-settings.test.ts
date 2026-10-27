@@ -185,6 +185,8 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         'experimentalFlowEnabled',
         'experimentalReadinessEnabled',
         'experimentalTrustEnabled',
+        // Station routes preview (docs/design/station-routes.md).
+        'experimentalStationRoutesEnabled',
         'experimentalSheetGesturesEnabled',
         // station#4525 — the chat dock's remembered project binding.
         'chatDockProjectSlug',

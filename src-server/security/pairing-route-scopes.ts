@@ -4444,6 +4444,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/system/discover' },
     { method: 'GET', path: '/api/system/identity' },
     { method: 'GET', path: '/api/system/instance' },
+    // Station routes: the addresses this Station is reached on, for a paired
+    // device to learn as routes to the same Station. The read tier, like the
+    // identity read above; every learned route is still checked against the
+    // public handshake before a credential is sent to it.
+    { method: 'GET', path: '/api/system/routes' },
     { method: 'POST', path: '/api/system/push-subscribe' },
     { method: 'POST', path: '/api/system/push-unsubscribe' },
     // Native agent-activity push: like the Web Push leaves above, the

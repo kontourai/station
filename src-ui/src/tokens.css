@@ -4,7 +4,9 @@
 
 :root {
   /* Font families */
-  --font-sans: "DM Sans", "DM Sans Fallback", system-ui, sans-serif;
+  --font-sans:
+    "DM Sans", "DM Sans Fallback", "DM Sans Roboto Fallback", system-ui,
+    sans-serif;
   --font-mono:
     "JetBrains Mono", "SF Mono", "Fira Code", "Cascadia Code", monospace;
 

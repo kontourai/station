@@ -294,6 +294,18 @@ features still own their availability checks. See the
 about a shared stale-connection mutation policy. The optional guard's absence
 alone does not establish that a particular stale operation can succeed.
 This health coordinator does not queue mutations.
+
+Each run also records `routes` on the snapshot: one `ConnectionRouteResult`
+per route with `in-use`, `failed` (with its reason), `blocked` (the page cannot
+use it, with its reason) or `not-checked` (ranked after the route that
+answered, so never probed). `connectionRoutes.ts` classifies a route by its
+address (`connectionRouteKind`, `CONNECTION_ROUTE_LABELS`) and backs three
+`ConnectionStore` operations: `applyAdvertisedRoutes` merges a Station's own
+report only when its `environmentId` matches the saved one, marking learned
+endpoints `source: 'advertised'` and pruning those it stops reporting except
+the one in use; `addRoute` and `removeRoute` change the routes a user added.
+Relay, SSH-tunnel and native shared profiles keep their single route
+([Station routes](../design/station-routes.md)).
 Station's separate chat outbound queue has its own admission and replay rules;
 this is not a promise that the whole application has no queue.
 
@@ -928,6 +940,7 @@ interface ConnectionStatusResult {
   blocked: boolean;           // true on a terminal failure (e.g. authentication-failed);
                                // the automatic retry ladder is paused until recheck(),
                                // a credential change, or the browser regaining network
+  routes: ReadonlyArray<ConnectionRouteResult>; // per-route outcome of the last check
   recheck: () => void;        // manually trigger a check
 }
 ```
