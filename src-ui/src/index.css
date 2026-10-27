@@ -1268,6 +1268,52 @@ button:hover {
    global reset in tokens.css (animation-duration 0.01ms, iteration-count 1)
    fully collapses it — see mobile-css-ratchet on page-local at-rules. */
 
+/* Sheet gestures device preview (useResponsiveSheetGesture). The handle is a
+   sibling of the panel, fixed by the hook over the panel's top edge: a
+   44px-tall hit area reaching 28px above the panel, with the grip drawn just
+   inside it. `touch-action: none` keeps Android from claiming the touch as a
+   pan before the drag threshold. `scroll-margin-top` is never used for
+   scrolling: it is where the Full state's top gap is declared, because the
+   hook can read `env()` back only through a real property. */
+.responsive-sheet-handle {
+  position: fixed;
+  z-index: 2;
+  display: flex;
+  box-sizing: border-box;
+  align-items: flex-end;
+  justify-content: center;
+  height: 44px;
+  padding-bottom: 6px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  scroll-margin-top: calc(var(--safe-top) + var(--k-space-4));
+}
+
+.responsive-sheet-handle:active {
+  cursor: grabbing;
+}
+
+.responsive-sheet-handle__grip {
+  display: block;
+  inline-size: 36px;
+  block-size: 4px;
+  border-radius: var(--k-radius-sm);
+  background: var(--k-text-muted);
+  opacity: 0.5;
+}
+
+/* Full: the sheet reaches from where it rests up to the declared top gap.
+   The hook measures that height (it depends on the overlay's padding and the
+   keyboard, which this rule cannot see) and keeps the property current. The
+   consumer's own height rules are overridden only while this attribute is
+   set, so Default is always exactly the sheet the consumer designed. */
+.responsive-surface-overlay[data-sheet-expanded] > .responsive-surface-panel {
+  height: var(--responsive-sheet-full-height) !important;
+  max-height: var(--responsive-sheet-full-height) !important;
+}
+
 /* Mobile: hamburger + logo in toolbar */
 .app-toolbar__sidebar-toggle {
   display: inline-flex;

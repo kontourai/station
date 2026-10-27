@@ -83,6 +83,25 @@ describe('useQueryCacheReconnectSync and a failed authority observation', () => 
     view.client.clear();
   });
 
+  it('does not re-read the failed observation that mounted it', () => {
+    // The fallback tree mounts after that read failed, usually while the
+    // connection is already up. Re-reading at once put the tree back behind
+    // the access check, which remounted it and re-read again, so the app
+    // never left "Checking Station access".
+    connection.status = 'connected';
+    const reobserve = vi.fn();
+    const view = mount(reobserve);
+    act(() => view.rerender());
+    expect(reobserve).not.toHaveBeenCalled();
+
+    connection.status = 'connecting';
+    act(() => view.rerender());
+    connection.status = 'connected';
+    act(() => view.rerender());
+    expect(reobserve).toHaveBeenCalledTimes(1);
+    view.client.clear();
+  });
+
   it('asks nothing of a verified authority, which offers no re-read', () => {
     const view = mount();
     connection.status = 'connected';

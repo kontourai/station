@@ -71,6 +71,18 @@ import {
 
 const logger = createLogger({ name: 'execution-target-execution' });
 
+/**
+ * #4162: session-start metadata naming the client key of the send a
+ * foreground start was for.
+ */
+const START_CLIENT_TURN_METADATA_KEY = 'startClientTurnId';
+
+function engineConnectionOf(
+  engine: ResolvedExecutionEngine,
+): string | undefined {
+  return engine.kind === 'connection' ? engine.connectionId : undefined;
+}
+
 async function provisionProjectWorktree(
   workspace: Extract<ResolvedWorkspaceTarget, { kind: 'project' }>,
   threadId: string,
@@ -489,6 +501,14 @@ export interface ExecutionTargetExecutionDependencies
     | { outcome: 'indeterminate' | 'in-flight' }
   >;
   /**
+   * #4162: the metadata the latest start of `sessionId` recorded, read under
+   * the caller's authority; undefined when unknown or unreadable.
+   */
+  readSessionStartMetadata?: (
+    access: EnvironmentAccess,
+    sessionId: string,
+  ) => Record<string, unknown> | undefined;
+  /**
    * Server-owned durable conversation/session resolution. It is optional for
    * remote compatibility until every Station speaks lineage, but the current
    * runtime composes it for all local foreground entries.
@@ -904,6 +924,11 @@ export async function executeForegroundMessage(
         providerTurnId: existingEffect.providerTurnId,
         target: { kind: 'agent', id: resolved.agentId },
         resolution,
+        // A handoff starts its target Session, so the earlier attempt this
+        // replays started it. `prepareConversationHandoff` answers `existing`
+        // only for a marker whose target (Agent, connection, model) is the
+        // one `resolution` names, so that is the engine it runs on.
+        sessionStarted: true,
         handoff: {
           predecessorSessionId: preparedHandoff.marker.predecessorSessionId,
           sessionId: preparedHandoff.marker.sessionId,
@@ -1010,12 +1035,26 @@ export async function executeForegroundMessage(
           threadId: decision.sessionId,
           clientTurnId,
         });
+      // The earlier attempt's reply said whether it started its Session; a
+      // replay says so when that Session's start was recorded for this very
+      // key, on the engine `resolution` names (the Agent may have been
+      // repointed since).
+      const start = deps.readSessionStartMetadata?.(
+        resolved.access,
+        decision.sessionId,
+      );
+      const startedHere =
+        start?.[START_CLIENT_TURN_METADATA_KEY] === clientTurnId &&
+        (typeof start.connectionId === 'string'
+          ? start.connectionId
+          : undefined) === engineConnectionOf(resolved.engine);
       return {
         conversationId,
         sessionId: decision.sessionId,
         providerTurnId: decision.turnId,
         target: { kind: 'agent', id: resolved.agentId },
         resolution,
+        ...(startedHere ? { sessionStarted: true as const } : {}),
       };
     }
     if (decision.kind === 'may-have-been-sent')
@@ -1307,6 +1346,11 @@ export async function executeForegroundMessage(
           // resumable as every delegated session.
           ...agentExecutionBindingMetadata(resolved),
           conversationId,
+          // #4162: the key of the send this start is for, so a same-key
+          // retry answered from that send's turn can say it started here.
+          ...(effectiveClientTurnId
+            ? { [START_CLIENT_TURN_METADATA_KEY]: effectiveClientTurnId }
+            : {}),
           ...(continuation?.contextSeed && transcriptSeed
             ? {
                 conversationStartSeedCarrier: {
