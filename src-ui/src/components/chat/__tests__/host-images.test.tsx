@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 
-import type { ChatHostImageMap } from '@kontourai/station-contracts/chat-host-images';
+import {
+  type ChatHostImageMap,
+  hostImagePathFromDestination,
+} from '@kontourai/station-contracts/chat-host-images';
 import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -100,6 +103,45 @@ describe('host images in a reply', () => {
         name: 'Preview Before and after icon sizing',
       }),
     ).toBeTruthy();
+  });
+
+  test('paths with a space, a literal % and non-ASCII find the copy the server keyed', async () => {
+    // The raw destinations as the reply wrote them; the server keys each with
+    // the shared helper, the client sees the renderer's percent-encoded src.
+    const raw = ['/tmp/a b.png', '/tmp/100%.png', '/tmp/caf\u00e9 \u56fe.png'];
+    const map: ChatHostImageMap = { images: {}, refused: {} };
+    raw.forEach((destination, index) => {
+      const key = hostImagePathFromDestination(destination);
+      if (!key) throw new Error(`no key for ${destination}`);
+      map.images[key] = {
+        blobRef: `sha256-${String(index).repeat(64)}`,
+        mimeType: 'image/png',
+        name: `${index}.png`,
+      };
+    });
+    authenticatedFetch.mockImplementation(
+      async () => new Response(new Uint8Array([1]), { status: 200 }),
+    );
+    renderRow(
+      raw
+        .map((destination, index) => `![img${index}](<${destination}>)`)
+        .join('\n\n'),
+      settledHostImages(map),
+    );
+    for (const index of [0, 1, 2])
+      expect(
+        (await screen.findByAltText(`img${index}`)).getAttribute('src'),
+      ).toBe('blob:host-image');
+    expect(screen.queryByRole('note')).toBeNull();
+  });
+
+  test('a reply that writes the placeholder scheme itself renders blank and fetches nothing', () => {
+    const { container } = renderRow(
+      `![x](${HOST_IMAGE_SRC_PREFIX}${encodeURIComponent(PATH)})`,
+      settledHostImages(MAP),
+    );
+    expect(container.querySelector('img')?.getAttribute('src') ?? '').toBe('');
+    expect(authenticatedFetch).not.toHaveBeenCalled();
   });
 
   test('a file: URL resolves to the same stored copy', async () => {

@@ -319,6 +319,28 @@ describe('chat-host-images through OrchestrationService', () => {
     }
   });
 
+  test('a chat with no admissible folder but its own temp folder is told only about $TMPDIR', async () => {
+    await previews.setEnabled(CHAT_HOST_IMAGES_PREVIEW_ID, true);
+    const previous = process.env.STATION_HOME;
+    process.env.STATION_HOME = join(base, 'station-home');
+    const uninstall = installSessionTmpDirPolicy(() =>
+      selector.select({ enabled: () => true, disabled: () => false }),
+    );
+    try {
+      await replyTurn('thread-tmp-only', 'nothing', homedir());
+      expect(adapter.turns[0].ambientContext).toContain(
+        hostImageAgentInstruction({ workingDirectory: false, tmpdir: true }),
+      );
+      expect(adapter.turns[0].ambientContext).not.toContain(
+        'working directory',
+      );
+    } finally {
+      uninstall();
+      if (previous === undefined) delete process.env.STATION_HOME;
+      else process.env.STATION_HOME = previous;
+    }
+  });
+
   test('a chat with no admissible folder and no temp folder is not told at all', async () => {
     await previews.setEnabled(CHAT_HOST_IMAGES_PREVIEW_ID, true);
     await replyTurn('thread-home', 'nothing', homedir());
