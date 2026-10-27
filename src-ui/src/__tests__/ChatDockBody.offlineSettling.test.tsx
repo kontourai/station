@@ -16,6 +16,11 @@ const updateChatSpy = vi.hoisted(() => vi.fn());
 const outboxProps = vi.hoisted(() => vi.fn());
 
 vi.mock('@kontourai/station-sdk', async () => ({
+  useProjectChatDefaultsQuery: () => ({
+    data: undefined,
+    isFetching: false,
+    isPending: false,
+  }),
   fetchSessionEventWindowCapability: (...args: unknown[]) =>
     fetchCapability(...args),
   fetchOrchestrationSessionEventWindow: (...args: unknown[]) =>

@@ -150,6 +150,11 @@ export interface ReceiverExecutionEffectAdmission {
 
 /** Service-only recovery choices. They cannot cross the public command seam. */
 export type SessionCommandInternalOptions = {
+  /** Derived from the saved fork owner; retains the actual requester for the spawn recheck. */
+  forkContextRequester?: {
+    userId?: string;
+    tenantExecutionContext?: TenantExecutionContext;
+  };
   /** Borrowed dispatch capability; provider completion cannot release its parent. */
   sessionStartAdmission?: SessionStartBoundaryClaim;
   /** Exact server-owned Task reservation scope; never read from public metadata. */
@@ -210,6 +215,11 @@ export type SessionCommandInternalOptions = {
   };
   /** Server-derived caller topology; never accepted from a command body. */
   resourceAdmissionIntent?: RuntimeEngineStartIntent;
+  /**
+   * A person's own interactive chat, derived by the `/chat` route
+   * (`ForegroundMessageInput.personChatStart`). Never accepted from a body.
+   */
+  personChatStart?: true;
   /** Opaque controller capability; only the foreground route can carry it. */
 };
 
@@ -394,6 +404,8 @@ interface SessionCommandDependencies {
     recordStarted(
       adapter: ProviderAdapterShape,
       input: ProviderSessionStartInput,
+      context: SessionCommandContext,
+      internal: SessionCommandInternalOptions | undefined,
     ): void;
     ensureStartedSessionCurrent(
       adapter: ProviderAdapterShape,
@@ -736,7 +748,12 @@ export function createSessionCommandModule(
           internal,
         );
         try {
-          deps.launchPolicy.recordStarted(adapter, startInput);
+          deps.launchPolicy.recordStarted(
+            adapter,
+            startInput,
+            context,
+            internal,
+          );
           await deps.launchPolicy.ensureStartedSessionCurrent(
             adapter,
             session,

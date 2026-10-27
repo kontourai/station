@@ -2917,6 +2917,17 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     }
                   : undefined,
                 sessionContextStatus: sessionContextStatus?.text,
+                conversationStats:
+                  contextMeterShown && activeSession?.conversationId
+                    ? {
+                        agentSlug: activeSession.agentSlug,
+                        conversationId: activeSession.conversationId,
+                        apiBase,
+                        messageCount: activeSession.messages.length,
+                        liveUsage: activeSession.liveUsage,
+                        onOpen: () => setShowStatsPanel(true),
+                      }
+                    : undefined,
               }}
             />
           ) : (

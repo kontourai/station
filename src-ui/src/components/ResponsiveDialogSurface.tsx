@@ -22,6 +22,10 @@ import { useMobileVisualViewport } from '../hooks/useMobileVisualViewport';
 import { useDialogHistoryHost } from './DialogHistoryHost';
 import { registerDialogHistory } from './dialog-history';
 import { type OverlayLayer, OverlayLayerContext } from './overlay-layer';
+import {
+  useResponsiveSheetGesture,
+  useSheetGesturesPreview,
+} from './useResponsiveSheetGesture';
 
 const FOCUSABLE =
   'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])';
@@ -116,6 +120,12 @@ export interface ResponsiveDialogSurfaceProps {
    * the un-anchored fallback (edge-docked, scrim-less on desktop).
    */
   anchorRef?: RefObject<HTMLElement | null>;
+  /**
+   * The shared phone-sheet drag handle (Sheet gestures device preview). On by
+   * default; `false` for a consumer that owns its own grab gesture, so the
+   * sheet never carries two.
+   */
+  sheetGesture?: boolean;
 }
 
 interface ResponsiveSurfaceActionsProps {
@@ -237,7 +247,9 @@ export function ResponsiveDialogSurface({
   layer,
   historyMode = 'entry',
   anchorRef,
+  sheetGesture = true,
 }: ResponsiveDialogSurfaceProps) {
+  const overlayRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   // What this surface is to anything floating inside it — see overlay-layer.
   // Linked to the overlay this one was opened from, which a body portal hides
@@ -257,6 +269,24 @@ export function ResponsiveDialogSurface({
   const isMobile = useIsMobile();
 
   onCloseRef.current = onClose;
+
+  // Drag the sheet up to expand it, down to close it (Sheet gestures device
+  // preview). Only a dismissible, ordinary dialog on a phone: an alertdialog
+  // asks for a decision a stray swipe must not make for the user. A consumer
+  // with its own grab gesture opts out.
+  const sheetGestures = useSheetGesturesPreview();
+  const sheetHandle = useResponsiveSheetGesture({
+    enabled:
+      sheetGesture &&
+      sheetGestures &&
+      isMobile &&
+      open &&
+      dismissible &&
+      role === 'dialog',
+    overlayRef,
+    panelRef,
+    onDismiss: () => onCloseRef.current(),
+  });
 
   useEffect(() => {
     if (
@@ -443,6 +473,7 @@ export function ResponsiveDialogSurface({
   // component tree, and no listener in the dock is bound to a dock ELEMENT.
   return createPortal(
     <div
+      ref={overlayRef}
       className={`${overlayClassName} responsive-surface-overlay`.trim()}
       style={{
         ...visualViewport.style,
@@ -506,6 +537,11 @@ export function ResponsiveDialogSurface({
         ) : (
           <div {...panelProps} role="dialog">
             {children}
+          </div>
+        )}
+        {sheetHandle.showHandle && (
+          <div {...sheetHandle.handleProps}>
+            <span className="responsive-sheet-handle__grip" />
           </div>
         )}
       </OverlayLayerContext.Provider>

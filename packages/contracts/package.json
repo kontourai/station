@@ -25,6 +25,8 @@
     "LICENSE"
   ],
   "exports": {
+    "./walkthrough": "./src/walkthrough.ts",
+    "./station-control-external-client": "./src/station-control-external-client.ts",
     "./required-slots": "./src/required-slots.ts",
     "./project-room-browser": "./src/project-room-browser.ts",
     "./pull-request-review-guide": "./src/pull-request-review-guide.ts",
@@ -144,6 +146,7 @@
     "./task-approval": "./src/task-approval.ts",
     "./project-reference-integrity": "./src/project-reference-integrity.ts",
     "./project-settings-overrides": "./src/project-settings-overrides.ts",
+    "./project-chat-defaults": "./src/project-chat-defaults.ts",
     "./registry-lifecycle": "./src/registry-lifecycle.ts",
     "./runtime": "./src/runtime.ts",
     "./runtime-events": "./src/runtime-events.ts",

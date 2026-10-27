@@ -66,10 +66,16 @@ describe('settings registry generator', () => {
   test('the floor refuses to write a catalog one entry short', async () => {
     const scratch = mkdtempSync(join(tmpdir(), 'settings-registry-floor-'));
     const outputPath = join(scratch, 'settings-registry.json');
+    // Keyed rows first, so where a new row lands in the catalog cannot drop
+    // the slices below under the separate config-key floor.
+    const keyedFirst = [
+      ...sources.catalog.filter((entry) => entry.configKeys?.length),
+      ...sources.catalog.filter((entry) => !entry.configKeys?.length),
+    ];
     try {
       const short = {
         ...sources,
-        catalog: sources.catalog.slice(0, MINIMUM_REGISTRY_ENTRIES - 1),
+        catalog: keyedFirst.slice(0, MINIMUM_REGISTRY_ENTRIES - 1),
       };
       expect(short.catalog).toHaveLength(39);
       await expect(
@@ -85,7 +91,7 @@ describe('settings registry generator', () => {
         generateSettingsRegistry({
           sources: {
             ...sources,
-            catalog: sources.catalog.slice(0, MINIMUM_REGISTRY_ENTRIES),
+            catalog: keyedFirst.slice(0, MINIMUM_REGISTRY_ENTRIES),
           },
           outputPath,
         }),
@@ -270,6 +276,7 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'experimental-flow': 'device',
   'experimental-readiness': 'device',
   'experimental-trust': 'device',
+  'experimental-sheet-gestures': 'device',
   'shared-answers': 'station',
   'plugin-visibility': 'station',
   'host-runtime': 'informational',
@@ -303,6 +310,10 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'personal-knowledge-store': 'station',
   // #3557: groups and personal access tokens are stored on the Station.
   people: 'station',
+  // Settings → About: build facts and links, nothing written.
+  'app-version': 'informational',
+  'open-source-licenses': 'informational',
+  legal: 'informational',
 };
 
 describe('published write authority', () => {
