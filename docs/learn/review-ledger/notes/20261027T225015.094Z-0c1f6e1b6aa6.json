@@ -1,0 +1,9 @@
+{
+  "revision": "158d1deb9e41c572144b1c1bd5dfc3ce5fd94fa7",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"chat-host-images review: its 'preview' hits are approval toolRequestPreview, not Feature Previews; 'ambient configuration' concerns a tool-less session, not the first-turn ambientContext line. No claim about TMPDIR, host images or the new event. Re-reviewed after round 5: the Claude, Codex, ACP and Muse adapters now record a session temp-folder launch only after the session is registered (commitEngineLaunch), Claude releases it when its message stream ends for any reason, and ACP exports acpEngineExitEndsLaunch and ignores an old process exit during an approval relaunch. Engine env, approval and session behaviour this document describes is unchanged. The cited claude-adapter.test.ts change since is a lint-only yield in the new clean-end test.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/__tests__/claude-adapter.test.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"chat-host-images review: attachment and OrchestrationService mentions concern smoke-harness scope and are unaffected. Pre-existing drift noted, not caused here: the station-runtime.ts:1678 anchor described as configuration reload/rollback already pointed elsewhere at d5ee0617069. Re-reviewed after round 5: the Claude, Codex, ACP and Muse adapters now record a session temp-folder launch only after the session is registered (commitEngineLaunch), Claude releases it when its message stream ends for any reason, and ACP exports acpEngineExitEndsLaunch and ignores an old process exit during an approval relaunch. Engine env, approval and session behaviour this document describes is unchanged. The cited claude-adapter.test.ts change since is a lint-only yield in the new clean-end test.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/providers/__tests__/claude-adapter.test.ts"]}
+  ]
+}
