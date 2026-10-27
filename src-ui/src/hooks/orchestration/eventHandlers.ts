@@ -45,12 +45,12 @@ import {
   handleSessionStopSettledEvent,
 } from './sessionHandlers';
 import {
+  handleHostImagesEvent,
   handleReasoningDeltaEvent,
   handleTextDeltaEvent,
   handleToolCompletedEvent,
   handleToolProgressEvent,
   handleToolStartedEvent,
-  handleHostImagesEvent,
 } from './streamHandlers';
 import { recordEventPosition } from './streamPosition';
 import {

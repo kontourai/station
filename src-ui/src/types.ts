@@ -1,4 +1,3 @@
-import type { ChatHostImageMap } from '@kontourai/station-contracts/chat-host-images';
 import type {
   AgentExecutionConfig,
   AgentSource,
@@ -12,6 +11,7 @@ import type {
 } from '@kontourai/station-contracts/agent-identity';
 import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
 import type { BoardReference } from '@kontourai/station-contracts/board';
+import type { ChatHostImageMap } from '@kontourai/station-contracts/chat-host-images';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import type {
   InputRequestForm,

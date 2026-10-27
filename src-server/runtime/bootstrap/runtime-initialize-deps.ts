@@ -21,6 +21,7 @@ import type { AttachedSessionSource } from '../../providers/sessions/attached-se
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 import type { FeedbackService } from '../../services/feedback/feedback-service.js';
 import type { CredentialProfileRecoveryAdapter } from '../../services/orchestration/credential-recovery-module.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
@@ -37,7 +38,6 @@ import type { StagedPreToolPolicyEvaluator } from '../agents/pre-tool-policy.js'
 import type { RuntimeEventLog } from '../conversation/runtime-event-log.js';
 import type { IAgentFramework } from '../types.js';
 import type { InitializeRuntimeDeps } from './runtime-initialize.js';
-import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 
 type RuntimeIntegrationMetadata = Map<
   string,

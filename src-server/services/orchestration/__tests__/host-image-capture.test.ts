@@ -10,8 +10,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { deflateSync } from 'node:zlib';
-import { crc32 } from 'node:zlib';
+import { crc32, deflateSync } from 'node:zlib';
 import { hostImagePathFromDestination } from '@kontourai/station-contracts/chat-host-images';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {

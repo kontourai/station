@@ -261,6 +261,7 @@ import {
 } from '../evidence/orchestration-workflow-sidecar.js';
 import type { VeritasReadinessService } from '../evidence/veritas-readiness-service.js';
 import type { WorkflowSidecarService } from '../evidence/workflow-sidecar-service.js';
+import type { FeaturePreviewSelector } from '../feature-previews/feature-preview-registry.js';
 import type {
   AttachFlowEvidenceOptions,
   FlowRunService,
@@ -384,6 +385,10 @@ import {
   type ForegroundInvocationAdmission,
   ForegroundInvocationUnavailableError,
 } from './foreground-invocation-admission.js';
+import {
+  HOST_IMAGE_AGENT_INSTRUCTION,
+  HostImageTurnCapture,
+} from './host-image-turn-capture.js';
 import { InternalStopSuppression } from './internal-stop-suppression.js';
 import {
   type InterruptedTurnMemoryAdapter,
@@ -528,11 +533,6 @@ import {
   TurnSubmissionUnsupportedError,
 } from './turn-submission-digest.js';
 import { WorkspaceExecutionBarrier } from './workspace-execution-barrier.js';
-import {
-  HOST_IMAGE_AGENT_INSTRUCTION,
-  HostImageTurnCapture,
-} from './host-image-turn-capture.js';
-import type { FeaturePreviewSelector } from '../feature-previews/feature-preview-registry.js';
 import { resolveWorkspaceIdentity } from './workspace-identity.js';
 
 type UsageTelemetryObserver = {

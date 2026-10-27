@@ -168,12 +168,12 @@ import {
   FeaturePreviewRegistry,
   type FeaturePreviewSelector,
 } from '../../services/feature-previews/feature-preview-registry.js';
-import { installSessionTmpDirPolicy } from '../../services/infra/session-tmpdir.js';
 import type { FeedbackService } from '../../services/feedback/feedback-service.js';
 import { OperatorPasskeyEnrollmentService } from '../../services/identity/operator-passkey-enrollment.js';
 import { LazyOperatorPasskeyRegistry } from '../../services/identity/operator-passkey-registry.js';
 import { FleetCandidateService } from '../../services/inference/fleet-candidate-service.js';
 import { FleetProbeService } from '../../services/inference/fleet-probe-service.js';
+import { installSessionTmpDirPolicy } from '../../services/infra/session-tmpdir.js';
 import type { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
 import type { OperationalEventPublisher } from '../../services/operational-events/operational-event-outbox.js';

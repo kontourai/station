@@ -74,7 +74,6 @@ import {
 import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js';
 import type { InvocationContext } from '../../runtime/types.js';
 import { createACPBridgeClient } from '../../services/acp/acp-bridge-client.js';
-import { engineSessionTmpDir } from '../../services/infra/session-tmpdir.js';
 import type { ManagedTerminal } from '../../services/acp/acp-bridge-types.js';
 import { registryLaunchEnvFor } from '../../services/acp/acp-engine-descriptors.js';
 import {
@@ -120,6 +119,7 @@ import {
   openCodeProjectCodeRefusal,
 } from '../../services/acp/opencode-project-config.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import { engineSessionTmpDir } from '../../services/infra/session-tmpdir.js';
 import {
   acpPassthroughSessions,
   acpResumeSessions,

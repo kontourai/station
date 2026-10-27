@@ -29,11 +29,11 @@ import type {
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
-import { engineSessionTmpDir } from '../../services/infra/session-tmpdir.js';
 import {
   spawnOwnedChild,
   terminateProcessTree,
 } from '../../services/infra/process-utils.js';
+import { engineSessionTmpDir } from '../../services/infra/session-tmpdir.js';
 import {
   adapterSessionStartDuration,
   adapterTurnDuration,

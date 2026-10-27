@@ -72,6 +72,7 @@ import { ConsoleBridgeService } from '../../services/evidence/console-bridge-ser
 import { configurePlatformMutationGate } from '../../services/evidence/platform-mutation-gate.js';
 import { VeritasReadinessService } from '../../services/evidence/veritas-readiness-service.js';
 import { WorkflowSidecarService } from '../../services/evidence/workflow-sidecar-service.js';
+import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 import type { FeedbackService } from '../../services/feedback/feedback-service.js';
 import { FlowRunService } from '../../services/flow/flow-run-service.js';
 import {
@@ -162,7 +163,6 @@ import {
   isHostedTenantExecutionRequired,
   loadHostedTenantRegistryFromEnvironment,
 } from './runtime-tenant-context.js';
-import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 
 type RuntimeFramework = VoltAgentFramework | StrandsFramework;
 

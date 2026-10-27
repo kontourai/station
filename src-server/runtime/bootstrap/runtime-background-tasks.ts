@@ -3,11 +3,11 @@ import type { ServerEventName } from '@kontourai/station-contracts/runtime-event
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { listProviders } from '../../providers/registries/registry.js';
 import { reapStaleSeatbeltSessionDirs } from '../../security/confinement/seatbelt.js';
-import { reapStaleSessionTmpDirs } from '../../services/infra/session-tmpdir.js';
 import {
   engineSpawnTmpDirPath,
   reapEngineSpawnTmpDir,
 } from '../../services/infra/engine-spawn-tmpdir.js';
+import { reapStaleSessionTmpDirs } from '../../services/infra/session-tmpdir.js';
 import { checkPluginUpdates } from '../../services/plugins/plugin-update-check.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { resolveHomeDir } from '../../utils/paths.js';

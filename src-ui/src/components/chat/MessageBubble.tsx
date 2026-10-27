@@ -26,6 +26,7 @@ import {
 import { ConversationContextBoundary } from './ConversationContextBoundary';
 import { ConversationHandoffBoundary } from './ConversationHandoffBoundary';
 import { type ForkTurnSource, forkTurnSource } from './fork-turn-source';
+import { HostImagesContext, settledHostImages } from './HostImagesContext';
 import { MessageDetails } from './MessageDetails';
 import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { MessageContent } from './message-bubble/MessageContent';
@@ -49,7 +50,6 @@ import {
 import { TaskProposalCard } from './TaskProposalCard';
 import type { ToolApprovalOutcome } from './ToolCallDisplay';
 import { TranscriptMarker, transcriptMarkerLabel } from './TranscriptMarker';
-import { HostImagesContext, settledHostImages } from './HostImagesContext';
 import './chat.css';
 
 // The Task picker owns SDK queries, mutations, dialog primitives, and its own

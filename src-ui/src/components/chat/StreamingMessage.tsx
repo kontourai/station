@@ -13,13 +13,13 @@ import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { ElapsedWait } from '../ElapsedWait';
 import { LoadingDots } from '../LoadingDots';
 import { FilePartPreview } from './FilePartPreview';
+import { HostImagesContext, STREAMING_HOST_IMAGES } from './HostImagesContext';
 import { InputRequestRecordRow } from './InputRequestRecordRow';
 import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { INLINE_RUN_LIMIT } from './message-bubble/MessageContent';
 import { blockHasVisibleContent } from './message-bubble/visibleContent';
 import { PublishedHtmlReply } from './PublishedHtmlReply';
 import { StreamingMarkdown } from './StreamingMarkdown';
-import { HostImagesContext, STREAMING_HOST_IMAGES } from './HostImagesContext';
 import {
   SubagentCardsForCalls,
   SubagentTranscriptCard,
