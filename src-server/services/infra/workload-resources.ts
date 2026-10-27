@@ -935,7 +935,7 @@ export async function inspectWorkloadResources() {
   };
 }
 
-export type WorkloadEnforcementState = typeof state;
+type WorkloadEnforcementState = typeof state;
 
 /**
  * The limits an engine launched now would receive, only while enforcement

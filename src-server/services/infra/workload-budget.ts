@@ -14,14 +14,14 @@ import { redactSecrets } from '@kontourai/station-shared/redaction';
 const MIB = 1024 * 1024;
 
 /** The per-engine floor; also the old fixed default. */
-export const WORKLOAD_SCOPE_MEMORY_FLOOR_MIB = 3072;
+const WORKLOAD_SCOPE_MEMORY_FLOOR_MIB = 3072;
 /** Share of the aggregate budget one engine scope may take by default. */
-export const WORKLOAD_SCOPE_MEMORY_SHARE = 0.6;
+const WORKLOAD_SCOPE_MEMORY_SHARE = 0.6;
 /** Smallest memory budget a setting may name; below this no engine starts. */
-export const WORKLOAD_SETTING_MIN_MIB = 256;
+const WORKLOAD_SETTING_MIN_MIB = 256;
 
-export const WORKLOAD_MEMORY_ENV = 'STATION_WORKLOAD_MEMORY_MIB';
-export const WORKLOAD_TOTAL_MEMORY_ENV = 'STATION_WORKLOAD_TOTAL_MEMORY_MIB';
+const WORKLOAD_MEMORY_ENV = 'STATION_WORKLOAD_MEMORY_MIB';
+const WORKLOAD_TOTAL_MEMORY_ENV = 'STATION_WORKLOAD_TOTAL_MEMORY_MIB';
 
 /**
  * Where an engine launch records the Station session it serves. The launcher
@@ -44,7 +44,7 @@ export interface ResolvedWorkloadMemoryBudget {
 }
 
 /** Half of physical memory, as before. */
-export function defaultWorkloadTotalMiB(hostTotalBytes: number): number {
+function defaultWorkloadTotalMiB(hostTotalBytes: number): number {
   return Math.max(1, Math.floor(hostTotalBytes / MIB / 2));
 }
 

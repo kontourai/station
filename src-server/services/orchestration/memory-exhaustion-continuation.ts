@@ -177,7 +177,7 @@ export type EntryDelivery = (
  * does not hold, `not-delivered` for one its own rule proves never sent
  * (ThreadInboxDelivery.nonDeliveryReason), `live` otherwise.
  */
-export function inboxEntryDelivery(inbox: {
+function inboxEntryDelivery(inbox: {
   entry(conversationId: string, key: string): unknown;
   nonDeliveryReason(conversationId: string, key: string): string | undefined;
 }): EntryDelivery {

@@ -8,7 +8,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { WorkloadMemorySettings } from './workload-budget.js';
 
-export function workloadBudgetSettingsPath(homeDir: string): string {
+function workloadBudgetSettingsPath(homeDir: string): string {
   return join(homeDir, 'config', 'workload-budgets.json');
 }
 

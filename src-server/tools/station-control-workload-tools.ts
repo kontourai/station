@@ -10,10 +10,10 @@
 import type { StationControlToolRegistry } from './station-control-mcp-server.js';
 import { api, jsonToolResult } from './station-control-shared.js';
 
-export const WORKLOAD_STATUS_TOOL_NAME = 'workload_status';
-export const WORKLOAD_STATUS_API_PATH = '/api/system/workload/session';
+const WORKLOAD_STATUS_TOOL_NAME = 'workload_status';
+const WORKLOAD_STATUS_API_PATH = '/api/system/workload/session';
 
-export const WORKLOAD_STATUS_DESCRIPTION =
+const WORKLOAD_STATUS_DESCRIPTION =
   "Report this session's Station workload budget: whether Linux memory enforcement is active (or why it is unavailable), the memory limit shared by this engine and every command it runs, and the scope's current memory, peak, swap, out-of-memory kills and task count. Check it before starting memory-heavy work such as builds, full test suites, repository-wide linters or browsers, and run such steps one at a time when usage is near the limit.";
 
 export function registerWorkloadTools(registry: StationControlToolRegistry) {
