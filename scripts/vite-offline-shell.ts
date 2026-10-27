@@ -9,10 +9,12 @@ import {
 
 interface OfflineShellOptions {
   /**
-   * Source modules (repository-relative) whose chunks, with their static
-   * imports and stylesheets, the worker caches after install on a best-effort
-   * basis. Their absence never fails the install; the worker skips them under
-   * Save-Data.
+   * Source modules whose chunks, with their static imports and stylesheets,
+   * the worker caches after install on a best-effort basis. Their absence
+   * never fails the install; the worker skips them under Save-Data. Each
+   * resolves against the build root; one outside it is skipped, because it
+   * belongs to the app and not to another build (a test fixture) that reuses
+   * the app's configuration with its own root.
    */
   warmModules?: readonly string[];
 }
@@ -102,10 +104,13 @@ function shellFiles(bundle: Rollup.OutputBundle, html: string): Set<string> {
 function warmGraph(
   bundle: Rollup.OutputBundle,
   modules: readonly string[],
+  root: string,
 ): Set<string> {
   const files = new Set<string>();
   for (const module of modules) {
-    const suffix = `/${module}`;
+    const relative = path.relative(root, path.resolve(root, module));
+    if (relative.startsWith('..') || path.isAbsolute(relative)) continue;
+    const suffix = `/${relative.split(path.sep).join('/')}`;
     const owner = Object.values(bundle).find(
       (output) =>
         output.type === 'chunk' &&
@@ -120,9 +125,13 @@ function warmGraph(
 
 /** A credential-free shell, before the listener injects its per-request bootstrap. */
 export function offlineShell(options: OfflineShellOptions = {}): Plugin {
+  let root = process.cwd();
   return {
     name: 'station-offline-shell',
     apply: 'build',
+    configResolved(config) {
+      root = config.root;
+    },
     transformIndexHtml: () => [
       {
         tag: 'link',
@@ -153,7 +162,7 @@ export function offlineShell(options: OfflineShellOptions = {}): Plugin {
           .replace(/<script\b(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/gi, '')
           .replace(/\snonce="[^"]*"/g, '');
         const files = shellFiles(bundle, html);
-        const warmFiles = warmGraph(bundle, options.warmModules ?? []);
+        const warmFiles = warmGraph(bundle, options.warmModules ?? [], root);
         const precache = [...files].sort();
         const warm = [...warmFiles].filter((file) => !files.has(file)).sort();
         const immutable = UI_IMMUTABLE_ASSET_PATTERN.source;

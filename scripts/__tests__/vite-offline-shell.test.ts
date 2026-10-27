@@ -105,6 +105,15 @@ it('refuses a warm module the bundle does not contain', async () => {
   );
 });
 
+it('skips a warm module outside the build root, which belongs to another build', async () => {
+  // The app's configuration names its own sources; a fixture that reuses it
+  // under another root has none of them and still builds.
+  const { build: offline } = await buildFixture([
+    path.resolve('src-ui/src/components/chat-dock/ChatDock.tsx'),
+  ]);
+  expect(offline.warm).toEqual([]);
+});
+
 it('links an installable manifest whose icons ship in the UI public directory', async () => {
   const { build: offline, asset } = await buildFixture([]);
   const html = asset('index.html');

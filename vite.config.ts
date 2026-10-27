@@ -325,7 +325,7 @@ export default defineConfig(({ command, mode }) => {
                 'src-ui/src/components/chat-dock/ChatDock.tsx',
                 'src-ui/src/components/chat/ChatMessageList.tsx',
                 'src-ui/src/components/chat/ChatInputArea.tsx',
-              ],
+              ].map((module) => path.resolve(__dirname, module)),
             }),
           ]),
       thirdPartyLicenses(),
