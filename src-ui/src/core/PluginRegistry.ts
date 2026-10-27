@@ -66,12 +66,12 @@ function prefetchStylesheet(
   text.catch(() => {});
   return {
     read() {
-      const timer = setTimeout(
-        () =>
-          controller.abort(new Error(`Timed out loading plugin CSS: ${url}`)),
+      const deadline = AbortSignal.timeout(
         PLUGIN_REGISTRY_INVENTORY_TIMEOUT_MS,
       );
-      return text.finally(() => clearTimeout(timer));
+      const expire = () => controller.abort(deadline.reason);
+      deadline.addEventListener('abort', expire, { once: true });
+      return text.finally(() => deadline.removeEventListener('abort', expire));
     },
   };
 }

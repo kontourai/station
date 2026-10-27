@@ -91,6 +91,19 @@ function stubBundles(names: string[], held: string[] = []) {
 
 const fakeTimeWait = () => vi.advanceTimersByTimeAsync(5);
 
+/** Fake timers, with request deadlines (`AbortSignal.timeout`) on that clock. */
+function useFakeClock() {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => {
+    const deadline = new AbortController();
+    setTimeout(
+      () => deadline.abort(new DOMException('Timed out', 'TimeoutError')),
+      ms,
+    );
+    return deadline.signal;
+  });
+}
+
 test('fetches every bundle up front and executes them in registry order', async () => {
   const cssRequests: string[] = [];
   vi.stubGlobal(
@@ -172,7 +185,7 @@ test('fetches every bundle up front and executes them in registry order', async 
 });
 
 test('a stylesheet started early still has its whole deadline from its own turn', async () => {
-  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  useFakeClock();
   const { release } = stubBundles(['alpha', 'beta'], ['beta']);
   const registry = new PluginRegistry();
   registry.setApiBase(SAME_ORIGIN);
@@ -201,7 +214,7 @@ test('a stylesheet started early still has its whole deadline from its own turn'
 });
 
 test('a stylesheet that never answers in its turn fails only its plugin, and stops downloading', async () => {
-  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  useFakeClock();
   vi.spyOn(log, 'api').mockImplementation(() => {});
   const { signals } = stubBundles(['alpha', 'beta'], ['alpha']);
   const registry = new PluginRegistry();
