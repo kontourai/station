@@ -39,7 +39,12 @@ import {
 } from '../components/coding-layout/codingStackPage';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { StationExtensionsAccess } from '../components/registry/StationExtensionsAccess';
-import { Empty, ErrorState, SkeletonList } from '../components/state';
+import {
+  Empty,
+  ErrorState,
+  SkeletonList,
+  useRetainedReadFailure,
+} from '../components/state';
 import { useDeveloperFeatures } from '../hooks/useDeveloperFeatures';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { LayoutRenderer } from '../layouts';
@@ -1296,11 +1301,12 @@ export function ProjectLayoutRenderer({
   projectSlug: string;
   layoutSlug: string;
 }) {
-  const {
-    data: persistedLayout,
-    isLoading: layoutLoading,
-    error: layoutQueryError,
-  } = useProjectLayoutQuery(projectSlug, layoutSlug);
+  const layoutQuery = useProjectLayoutQuery(projectSlug, layoutSlug);
+  const persistedLayout = layoutQuery.data;
+  // Re-checking the 404 resets the query to loading; reading the retained
+  // failure keeps the substituted workbench mounted instead of swapping it
+  // out and back on every refetch.
+  const layoutFailure = useRetainedReadFailure(layoutQuery);
 
   /**
    * #2065: a builtin layout kind whose configuration is empty needs no
@@ -1345,7 +1351,7 @@ export function ProjectLayoutRenderer({
    */
   const unplacedBuiltinReview =
     layoutSlug === BUILTIN_REVIEW_LAYOUT.slug &&
-    isUnplacedLayoutRecord(layoutQueryError, layoutLoading);
+    isUnplacedLayoutRecord(layoutFailure?.error, false);
   const layoutConfig =
     persistedLayout ??
     (unplacedBuiltinReview
