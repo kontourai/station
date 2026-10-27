@@ -144,11 +144,11 @@ import { CONVERSATION_START_CONTEXT_MIGRATION } from '../../domain/migrations/02
 import { TASK_LEARNING_DISMISSALS_MIGRATION } from '../../domain/migrations/021-task-learning-dismissals.js';
 import { TASK_LEARNING_PROMOTIONS_MIGRATION } from '../../domain/migrations/022-task-learning-promotions.js';
 import { TASK_REVIEW_MIGRATION } from '../../domain/migrations/023-task-review.js';
-import { ensureProjectTaskRoomRevisionFreezeColumn } from '../../domain/migrations/024-project-task-room-revision-freeze.js';
 import {
   EVENT_CONTENT_MIGRATION,
   EVENT_CONTENT_ORPHAN_SWEEP,
 } from '../../domain/migrations/024-event-content.js';
+import { ensureProjectTaskRoomRevisionFreezeColumn } from '../../domain/migrations/024-project-task-room-revision-freeze.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
