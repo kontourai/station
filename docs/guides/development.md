@@ -184,12 +184,29 @@ environment variables before starting the service:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `STATION_WORKLOAD_MEMORY_MIB` | `3072` | Per-scope memory, capped by the aggregate budget |
+| `STATION_WORKLOAD_MEMORY_MIB` | 60% of the total budget, at least `3072`, at most the total | Per-scope memory, capped by the aggregate budget |
 | `STATION_WORKLOAD_TOTAL_MEMORY_MIB` | Half physical RAM | Combined memory for this service's workload slice |
 | `STATION_WORKLOAD_SWAP_MIB` | `256` | Per-scope swap; `0` disables it |
 | `STATION_WORKLOAD_CPU_PERCENT` | Logical CPUs × `75` | Combined CPU quota; `100` is one core |
 | `STATION_WORKLOAD_TASKS_MAX` | `512` | Per-scope processes and threads |
 | `STATION_WORKLOAD_TOTAL_TASKS_MAX` | `2048` | Combined processes and threads |
+
+The per-scope default grows with the host: a 16 GiB host has an 8 GiB total
+and about 4.8 GiB per engine, while an 8 GiB host keeps the earlier 3 GiB. One
+runaway engine still leaves at least 40% of the slice to its siblings. A fixed
+3 GiB was too small for an engine running a build, a repository-wide lint and a
+browser at once, which is exactly what a 16 GiB host could otherwise afford.
+
+The two memory budgets can also be saved as Station settings in
+`<home>/config/workload-budgets.json` (Settings → Advanced → Host options,
+behind the **Workload budget settings** Feature Preview). Each value resolves
+in this order: the environment variable, then the saved setting, then the
+default above. A saved setting above the host's memory, below 256 MiB, or a
+per-engine value above the total is refused; an invalid file is reported and
+ignored. While enforcement runs, a save re-applies the slice's total
+`MemoryMax` at once and new scopes receive the new per-engine limit without a
+restart; running scopes keep the limit they were launched with. Where
+enforcement is not running, the saved values are read when it next starts.
 
 The slice also caps combined swap at 1 GiB. At most 256 scopes can be active.
 One engine's budget includes all of its tools, so size it for the intended
@@ -214,11 +231,38 @@ scopes, recent results/peaks and slice memory/pressure measurements. An unavaila
 measurement is reported separately from enforcement state.
 
 Codex retains its own launch's systemd outcome through scope cleanup. A positively
-observed `oom-kill` produces a memory-exhaustion diagnostic and the configured
-scope budget; aggregate or host pressure can also select that scope. A signal
+observed `oom-kill` produces an `engine-memory-exhausted` failure with the scope
+budget and peak; aggregate or host pressure can also select that scope. A signal
 alone does not prove OOM. Other unexpected exits retain their signal in the
 message. Unavailable outcome inspection leaves the cause unknown while the
 turn and interrupted tool/child rows still settle.
+
+#### What engines are told
+
+Engine adapters that launch one engine process per Session through the shared
+launcher declare `workloadScope: 'engine-process'` (Codex and Claude Code).
+While enforcement is `ready`, the first turn of each such Session starts with a
+short Station section naming the per-engine limit, that it covers every command
+the engine starts, and that memory-heavy work should run one step at a time.
+Nothing is said where no scope is enforced, or for engines that have not
+declared one (ACP, Muse and in-process engines today).
+
+Codex and Claude Code launches also name their Station session to the
+launcher, which attributes the scope to it. The `workload_status`
+station-control tool (`GET /api/system/workload/session`) reports the calling
+Session's own scope: enforcement state, limits, and `memory.current`,
+`memory.peak`, `memory.max`, swap, `oom_kill` and task counters read from the
+scope's cgroup v2 files. A Session whose engine is not attributed reports
+`unattributed` rather than another scope's numbers. Operators read the whole
+Station's budgets with `station workload status` (`GET /api/system/workload`).
+
+After a memory kill, the chat offers **Continue** instead of **Send again**:
+resending the original prompt would restart the same concurrent work. The next
+turn runs in a successor Session, and its first turn is prefixed with a Station
+recovery note built from the predecessor's own events: the commands whose tool
+calls never reported a result, the peak and the limit, and the instruction to
+check their partial results and run heavy steps one at a time. Automatic
+recovery does not replay a memory-killed turn.
 
 `npm run lint:check` and `lint:fix` share one Biome slot per OS user across
 worktrees and use at most two Biome worker threads. This prevents overlapping

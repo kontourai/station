@@ -26,6 +26,7 @@ only when this Station's build can run it; if none is, the section says
 | `walkthroughs` | Walkthroughs | Imports narrated screen recordings into transcripts and frames agents can read, using local processing. | One-time consented media/speech tool download; CPU use; recordings may contain private information. |
 | `local-speech` | Local speech | Offers Station (local) in Voice → Speech-to-text: record a message, then transcribe it on this Station. | One-time consented tool/model download; English batch dictation only; microphone permission; shares one recognizer and a bounded wait queue with Walkthroughs. |
 | `task-review` | Task review | Adds a Review tab to Tasks for anchored comments on plans, outputs, answers and Screens, which can be sent to the lead agent. | Sending starts or queues a lead-agent turn; Screen capture needs a committed workspace. |
+| `workload-budget-settings` | Workload budget settings | Shows a memory budget editor under **Settings → Advanced → Host options**: per-engine and total memory for engine workloads, beside the host's memory and where each value comes from. | On a Linux Station service a lower budget stops engines that run out of memory sooner; an environment variable still overrides the saved value. Elsewhere the values are only saved. |
 
 **Task review** (`task-review`): turn this on in **Settings → Advanced →
 Feature previews**, then open a Task and choose **Review**, after Conversation.

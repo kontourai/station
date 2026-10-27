@@ -2083,6 +2083,20 @@ station auth users get <alias> [--api-base=<url>]
 station branding get [--api-base=<url>]
 ```
 
+### `workload`
+
+```
+station workload status [--api-base=<url>]
+```
+
+Prints this Station's engine workload memory budgets as JSON: whether Linux
+enforcement is `ready`, `unmanaged` or `unavailable` (with its reason), the
+per-engine and total limits and whether each came from the environment, a
+saved setting or the default, the host's memory, and whether a saved change
+applies to new engines now or after a restart. A Station without the route
+exits nonzero and says it does not report workload budgets. See
+[Linux service workload budgets](../guides/development.md#linux-service-workload-budgets).
+
 ### `feedback`
 
 ```

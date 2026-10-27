@@ -4139,6 +4139,30 @@ is separate from enforcement state; see
 [Linux service workload budgets](../guides/development.md#linux-service-workload-budgets)
 for platform scope and admission behavior.
 
+### Workload Budgets
+
+The [workload routes](../../src-server/routes/system/workload-routes.ts) answer
+under `/api/system/workload`:
+
+- `GET /api/system/workload` returns `WorkloadBudgetStatus`
+  (`@kontourai/station-contracts/system-status`): enforcement `state`
+  (`ready`, `unmanaged`, `unavailable` or `stopping`) with any reason, host
+  memory, effective `limits`, the `sources` of the two memory budgets
+  (`environment`, `settings` or `default`), saved `settings`, any
+  `settingsError`, and `applies` (`new-scopes` or `restart`).
+- `PUT /api/system/workload/settings` takes `{ memoryMiB, totalMemoryMiB }`
+  (whole MiB, or `null` for the default) and returns the new status. While the
+  `workload-budget-settings` Feature Preview is off it answers 404 with
+  `code: 'feature_preview_disabled'` and writes nothing; an out-of-range value
+  answers 400 with `code: 'workload_settings_invalid'`.
+- `GET /api/system/workload/session` answers only for the session named by the
+  forwarded station-control credential (the `workload_status` tool), with its
+  scope's cgroup counters or `scope.state` `none`, `unattributed` or
+  `unmeasured`. Without a verified caller it answers 403
+  `station_control_caller_required`.
+
+Hosted deployments mount only the session read; the first two answer 404 there.
+
 `GET /api/system/status` returns a plain status object. It includes prerequisites
 and `prerequisitesState`, configured/detected providers, CLI observations,
 external-engine readiness, capability summaries, recommendation, build/server

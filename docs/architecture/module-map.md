@@ -4003,6 +4003,19 @@ owns budgets, failure behavior and platform limits; the
 [process fixture](../../src-server/services/infra/__tests__/workload-resources.process.test.ts)
 exercises OOM containment, descriptor/PTY behavior and lifecycle cleanup.
 
+Memory budgets resolve in [workload-budget.ts](../../src-server/services/infra/workload-budget.ts)
+(environment, then [saved settings](../../src-server/services/infra/workload-budget-settings.ts),
+then a host-sized default). The launcher attributes a scope to the Session an
+engine launch names, which the [workload routes](../../src-server/routes/system/workload-routes.ts)
+and the [workload_status tool](../../src-server/tools/station-control-workload-tools.ts)
+read from cgroup v2 files. Orchestration's first-turn composition adds the
+budget statement for adapters declaring `workloadScope: 'engine-process'` and
+the [memory-exhaustion recovery note](../../src-server/services/orchestration/memory-exhaustion-recovery.ts)
+for a successor of a memory-killed Session. The
+[budget tests](../../src-server/services/infra/__tests__/workload-budget.test.ts)
+drive the real launcher against a fake systemd manager; they are not Linux
+enforcement evidence.
+
 
 ## OutboundDispatchModule
 
