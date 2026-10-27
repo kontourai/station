@@ -123,7 +123,7 @@ export function PortableDraftsMenu({
           <h3 className="portable-drafts-menu__heading">Saved prompts</h3>
           {drafts.length === 0 && (
             <Empty
-              label="No saved drafts yet"
+              label="Save prompts for later"
               description="Write a message in the composer, then save it here to reuse later. Drafts stay on this device."
             />
           )}
