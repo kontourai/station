@@ -306,6 +306,7 @@ describe('bounded ci:fast runner', () => {
       // reference heading must red the PR lane, not the nightly (the `open`
       // verb shipped green and failed Nightly a day later).
       ['npm', ['run', 'docs:cli-parity:check']],
+      ['npm', ['run', 'docs:feature-previews:check']],
       ['npm', ['run', 'docs:reference:gate']],
       ['npm', ['run', 'docs:links:check']],
       // Docs-only edits these reject must red fast-checks, not the queue.

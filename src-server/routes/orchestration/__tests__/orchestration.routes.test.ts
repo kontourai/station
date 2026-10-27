@@ -1764,6 +1764,8 @@ describe('Orchestration Routes', () => {
         actor: { kind: 'unknown' },
         reported: { version: 1, surface: 'unknown', build: null },
       },
+      // No agent marker, delegation or replay: the person's own chat.
+      personChatStart: true,
     });
   });
 

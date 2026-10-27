@@ -283,7 +283,7 @@ commit or executable identity. Its schema is:
   "transports": { "http": 1, "sse": 1, "websocket": 1 },
   "compatibility": {
     "serverVersion": "<station package version>",
-    "protocolVersion": 2,
+    "protocolVersion": 4,
     "minClientProtocol": 1,
     "capabilities": { "remoteAuth": 1, "devicePairing": 1, "environmentProof": 1, "clientProtocolHeader": 1, "productTelemetryAcknowledgement": 2 }
   },
@@ -507,7 +507,8 @@ contracts retain their own admission and body/rate limits.
 **Body-size.** `Content-Length` is checked first; an oversized request is
 rejected `413` before any body read. A lying or absent `Content-Length` is
 caught by a streaming byte counter that aborts past the ceiling and re-buffers
-the bounded body for the handler — `Content-Length` alone is not trusted.
+the bounded body for ordinary handlers. The two media upload paths below
+retain a lazy bounded stream — `Content-Length` alone is not trusted.
 
 **Rate budget.** The budget key is the **server-derived principal**, never a
 caller-supplied header, body field, or query parameter. A budget keyed on
@@ -549,6 +550,25 @@ rate bucket but uses the 22 MiB attachment-command body ceiling so bounded
 base64 image data fits. Adjacent Task mutations retain the standard body limit.
 Room upload, reference resolution and byte reads also enforce their current
 Task capability and incarnation; a paired route-family grant alone is insufficient.
+
+The exact `POST /api/projects/:projectSlug/walkthroughs/import` and
+`POST /api/transcription` uploads also retain the standard principal rate
+bucket. Their body ceilings derive from their owning upload limits: 512 MiB
+for Walkthrough video and 32 MiB for browser audio. Adjacent paths and other
+methods retain their ordinary ceilings; a large upload is not a rate exemption.
+Only these media uploads get the extended receive policy: 60-second progress/idle
+bounds, a two-hour Walkthrough total and a 60-second transcription total.
+Authentication, principal rate admission and declared-size checks precede route
+admission. Preview and Project/authority refusals, and the importer's two-slot
+capacity refusal, precede body reads and close the connection. The middleware
+passes a lazy byte-counting stream; admitted routes stream to disk with their
+own bounds. Ordinary mutation ceilings and buffering remain unchanged.
+The API and built-UI listeners retain header limits and socket timeout values.
+Node's server-wide parser total is finite at two hours; a shared per-request timer
+retains ordinary receives' 300-second total, counting header receipt. This timer
+can fire before Node's periodic timeout sweep would have done so. See
+[Walkthrough limits](../guides/walkthroughs.md#limits-and-storage) and
+[local speech](../guides/local-speech.md) for processing and proxy deadlines.
 
 **Defaults** (configurable via `RuntimeHttpSecurityOptions`):
 
@@ -1239,7 +1259,8 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   - `PUT /config/app` when `terminalShell` changes. An agent's station-control
     call (the Station-internal principal, otherwise exempt) may not change it,
     in the tool (`update_config`) and in the route, as it may not raise the
-    default approval mode to full access;
+    default approval mode (the Station's, or a Project's new-chat mode through
+    `PUT /api/projects/:slug`) to full access;
   - `/api/secret-bindings`, which the default grant reaches (it includes
     `access:manage`, which is not `coding:exec`): `POST /:id/bind` with an
     `integrationId`, `POST /integrations/:id/migrate-stored-env` and its alias
