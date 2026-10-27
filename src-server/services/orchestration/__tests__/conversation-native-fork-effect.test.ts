@@ -7,9 +7,11 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   createConversationForkContext,
+  decodeCommittedNativeForkCreation,
   type NativeForkCommitInput,
   type NativeForkEffectClaim,
   type NativeForkSourceSeal,
+  nativeForkHash,
 } from '../conversation-fork-context.js';
 import { ConversationTurnActivityProjection } from '../conversation-turn-activity.js';
 import { EventStore } from '../event-store.js';
@@ -233,6 +235,216 @@ describe('native fork SQLite effect and publication ownership', () => {
       },
     };
   }
+
+  test('committed observation preserves later current state/cursor/history and performs zero writes or claim acquisition', () => {
+    const f = fixture();
+    const effect = f.reserve();
+    effect.sessionStart.beginInvocation(NOW);
+    f.observe(effect);
+    effect.commit(f.commit);
+    const laterCursor = { nativeSessionId: 'current-cursor', revision: 2 };
+    f.store.upsertSession({
+      ...f.commit.child,
+      status: 'closed',
+      resumeCursor: laterCursor,
+      updatedAt: '2030-01-01T00:01:00.000Z',
+    });
+    f.store.appendEvent({
+      eventId: 'later-answer',
+      provider: 'codex',
+      threadId: 'child',
+      turnId: 'later-turn',
+      method: 'turn.completed',
+      finishReason: 'stop',
+      outputText: 'Later canonical progress',
+      createdAt: '2030-01-01T00:01:00.000Z',
+    });
+    const append = vi.spyOn(f.store, 'appendEvent');
+    const upsert = vi.spyOn(f.store, 'upsertSession');
+    const reserve = vi.spyOn(f.store, 'reserveNativeForkEffect');
+    const before = f.store['db']
+      .prepare('SELECT total_changes() AS n')
+      .get()?.n;
+    const observed = f.store.observeCommittedNativeFork(
+      'child',
+      f.snapshot.digest,
+    );
+    expect(observed.kind).toBe('verified-creation');
+    if (observed.kind !== 'verified-creation')
+      throw new Error('Expected verified creation only');
+    expect(observed.activation).toBe('unwired');
+    expect(observed.creation.initialChild.resumeCursor).toEqual(
+      f.commit.child.resumeCursor,
+    );
+    expect(observed.currentSession.status).toBe('closed');
+    expect(observed.currentSession.resumeCursor).toEqual(laterCursor);
+    expect(
+      observed.currentProjectionEvents.some(
+        (event) => event.eventId === 'later-answer',
+      ),
+    ).toBe(true);
+    expect(observed.affected.threadIds).toEqual(
+      expect.arrayContaining(['source', 'child']),
+    );
+    expect(f.store['db'].prepare('SELECT total_changes() AS n').get()?.n).toBe(
+      before,
+    );
+    expect(append).not.toHaveBeenCalled();
+    expect(upsert).not.toHaveBeenCalled();
+    expect(reserve).not.toHaveBeenCalled();
+    expect(
+      f.peer
+        .prepare(
+          "SELECT status FROM provider_session_state WHERE thread_id='child'",
+        )
+        .get()?.status,
+    ).toBe('closed');
+  });
+
+  test('COMMIT-then-throw can be observed without another fork or historical initialization insertion', () => {
+    const f = fixture();
+    const effect = f.reserve();
+    effect.sessionStart.beginInvocation(NOW);
+    f.observe(effect);
+    const exec = f.store['db'].exec.bind(f.store['db']);
+    const fault = vi.spyOn(f.store['db'], 'exec').mockImplementation((sql) => {
+      const result = exec(sql);
+      if (sql === 'COMMIT') throw new Error('uncertain committed creation');
+      return result;
+    });
+    expect(() => effect.commit(f.commit)).toThrow();
+    fault.mockRestore();
+    const before = f.store['db']
+      .prepare('SELECT total_changes() AS n')
+      .get()?.n;
+    expect(
+      f.store.observeCommittedNativeFork('child', f.snapshot.digest).kind,
+    ).toBe('verified-creation');
+    expect(effect.sessionStart.beginInvocation(NOW).kind).not.toBe('applied');
+    expect(f.store['db'].prepare('SELECT total_changes() AS n').get()?.n).toBe(
+      before,
+    );
+  });
+
+  test.each([
+    'json',
+    'outer-field',
+    'method',
+    'environment',
+    'cursor',
+    'order',
+    'oversize',
+  ] as const)(
+    'strict creation observation refuses %s corruption without writing',
+    (kind) => {
+      const f = fixture();
+      const effect = f.reserve();
+      effect.sessionStart.beginInvocation(NOW);
+      f.observe(effect);
+      effect.commit(f.commit);
+      const record = f.store.readNativeForkEffect('child');
+      if (!record?.commitJson) throw new Error('Expected retained receipt');
+      if (kind === 'order')
+        f.store['db']
+          .prepare(
+            "UPDATE orchestration_events SET global_sequence = global_sequence + 100000 WHERE id='child-started'",
+          )
+          .run();
+      else {
+        let json = record.commitJson;
+        if (kind === 'json') json = '{';
+        if (kind === 'oversize') json = ' '.repeat(2 * 1024 * 1024 + 1);
+        if (kind === 'outer-field')
+          json = JSON.stringify({ ...f.commit, unexpected: true });
+        if (kind === 'method')
+          json = JSON.stringify({
+            ...f.commit,
+            startedEvent: {
+              ...f.commit.startedEvent,
+              method: 'session.exited',
+            },
+          });
+        if (kind === 'environment')
+          json = JSON.stringify({
+            ...f.commit,
+            configuredEvent: {
+              ...f.commit.configuredEvent,
+              metadata: {
+                ...f.commit.configuredEvent.metadata,
+                environmentId: 'foreign',
+              },
+            },
+          });
+        if (kind === 'cursor')
+          json = JSON.stringify({
+            ...f.commit,
+            child: {
+              ...f.commit.child,
+              resumeCursor: { nativeSessionId: 'forged' },
+            },
+          });
+        f.store['db']
+          .prepare(
+            'UPDATE orchestration_conversation_native_fork_effect SET record_json = ? WHERE target_conversation_id = ?',
+          )
+          .run(
+            JSON.stringify({
+              ...record,
+              commitJson: json,
+              commitDigest: nativeForkHash(json),
+            }),
+            'child',
+          );
+        if (['json', 'outer-field', 'method', 'oversize'].includes(kind))
+          expect(() => decodeCommittedNativeForkCreation(json)).toThrow();
+      }
+      const before = f.store['db']
+        .prepare('SELECT total_changes() AS n')
+        .get()?.n;
+      expect(
+        f.store.observeCommittedNativeFork('child', f.snapshot.digest).kind,
+      ).toBe('unavailable');
+      expect(
+        f.store['db'].prepare('SELECT total_changes() AS n').get()?.n,
+      ).toBe(before);
+    },
+  );
+
+  test('canonical lineage beyond the finite observation boundary returns unbounded', () => {
+    const f = fixture();
+    const effect = f.reserve();
+    effect.sessionStart.beginInvocation(NOW);
+    f.observe(effect);
+    effect.commit(f.commit);
+    let prior = 'source';
+    for (let index = 0; index < 256; index++) {
+      prior = f.store.reserveNextConversationSession({
+        conversationId: 'source',
+        predecessorSessionId: prior,
+        proposedSessionId: `source-next-${index}`,
+        createdAt: NOW,
+      }).lineage.sessionId;
+    }
+    expect(
+      f.store.observeCommittedNativeFork('child', f.snapshot.digest),
+    ).toEqual({ kind: 'unavailable', reason: 'unbounded' });
+  });
+
+  test('read observation refuses caller uncommitted state and pending intents without granting execution', () => {
+    const f = fixture();
+    f.reserve();
+    expect(
+      f.store.observeCommittedNativeFork('child', f.snapshot.digest),
+    ).toEqual({ kind: 'pending' });
+    f.store['db'].exec('BEGIN');
+    expect(
+      f.store.observeCommittedNativeFork('child', f.snapshot.digest).kind,
+    ).toBe('unavailable');
+    f.store['db'].exec('ROLLBACK');
+    expect(f.store.observeCommittedNativeFork('', 'invalid').kind).toBe(
+      'unavailable',
+    );
+  });
 
   function watch(f: ReturnType<typeof fixture>) {
     const notices: {

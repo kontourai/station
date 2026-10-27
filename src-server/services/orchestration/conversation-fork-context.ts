@@ -82,6 +82,10 @@ export function nativeForkHash(json: string): string {
   return createHash('sha256').update(json).digest('hex');
 }
 export function readNativeForkEffect(json: string): NativeForkEffectRecord {
+  if (Buffer.byteLength(json) > FORK_CONTEXT_MAX_BYTES)
+    throw new ConversationForkContextError(
+      'Native fork record exceeds its read budget.',
+    );
   nativeForkJson(JSON.parse(json));
   const record = nativeForkRecordSchema.parse(JSON.parse(json));
   const hasCursor = record.cursorJson !== undefined;
@@ -100,6 +104,99 @@ export function readNativeForkEffect(json: string): NativeForkEffectRecord {
     );
   return record;
 }
+
+const nativeCreationEventBase = {
+  eventId: nativeForkId,
+  provider: z.enum(['codex', 'claude']),
+  threadId: nativeForkId,
+  sessionId: nativeForkId,
+  createdAt: z.string().min(1).max(128),
+  metadata: z.record(z.string(), z.unknown()),
+};
+const nativeCreationStarted = z
+  .object({ ...nativeCreationEventBase, method: z.literal('session.started') })
+  .passthrough();
+const nativeCreationConfigured = z
+  .object({
+    ...nativeCreationEventBase,
+    method: z.literal('session.configured'),
+    cwd: z.string().min(1).max(4096),
+  })
+  .passthrough();
+const nativeCreationChild = z
+  .object({
+    threadId: nativeForkId,
+    provider: z.enum(['codex', 'claude']),
+    cwd: z.string().min(1).max(4096),
+    resumeCursor: z.unknown().refine((value) => value !== undefined),
+    createdAt: z.string().min(1).max(128),
+    updatedAt: z.string().min(1).max(128),
+  })
+  .passthrough();
+const nativeCreationFork = z
+  .object({
+    eventId: nativeForkId,
+    provider: z.literal('station'),
+    threadId: nativeForkId,
+    method: z.literal('conversation.forked'),
+    sourceConversationId: nativeForkId,
+    targetConversationId: nativeForkId,
+    targetAgent: nativeForkId,
+    sourceSessionId: nativeForkId,
+    branchPointTurnId: nativeForkId,
+    contextDigest: nativeForkDigest,
+    continuation: z.literal('native'),
+    forkedAt: z.string().min(1).max(128),
+    createdAt: z.string().min(1).max(128),
+  })
+  .passthrough();
+const nativeCreationEnvelope = z
+  .object({
+    child: z.unknown(),
+    startedEvent: z.unknown(),
+    configuredEvent: z.unknown(),
+    forkEvent: z.unknown(),
+  })
+  .strict();
+
+/** Receipt-owned decoder; neither historical child fields nor opaque cursors grant execution. */
+export function decodeCommittedNativeForkCreation(json: string) {
+  if (Buffer.byteLength(json) > FORK_CONTEXT_MAX_BYTES)
+    throw new ConversationForkContextError(
+      'Native creation receipt exceeds its read budget.',
+    );
+  const envelope = nativeCreationEnvelope.parse(JSON.parse(json));
+  return {
+    initialChild: nativeCreationChild.parse(envelope.child),
+    started: nativeCreationStarted.parse(envelope.startedEvent),
+    configured: nativeCreationConfigured.parse(envelope.configuredEvent),
+    fork: nativeCreationFork.parse(envelope.forkEvent),
+    eventJson: [
+      nativeForkJson(envelope.startedEvent),
+      nativeForkJson(envelope.configuredEvent),
+      nativeForkJson(envelope.forkEvent),
+    ],
+  };
+}
+export interface NativeForkAffectedScope {
+  readonly threadIds: readonly string[];
+  readonly conversationIds: readonly string[];
+}
+export type NativeForkCreationObservation =
+  | { kind: 'pending' }
+  | {
+      kind: 'unavailable';
+      reason: 'invalid' | 'corrupt-or-incompatible' | 'unbounded';
+    }
+  | {
+      kind: 'verified-creation';
+      creation: ReturnType<typeof decodeCommittedNativeForkCreation>;
+      currentSession: import('@kontourai/station-contracts/provider').ProviderSession;
+      currentProjectionEvents: readonly CanonicalRuntimeEvent[];
+      affected: NativeForkAffectedScope;
+      activation: 'unwired';
+    };
+
 export interface NativeForkCommitInput {
   startedEvent: Extract<CanonicalRuntimeEvent, { method: 'session.started' }>;
   child: import('@kontourai/station-contracts/provider').ProviderSession;

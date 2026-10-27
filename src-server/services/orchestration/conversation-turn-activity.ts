@@ -10,6 +10,7 @@ import {
   PROVIDER_TURN_TRIGGER,
 } from '@kontourai/station-contracts/runtime-events';
 import { orchestrationConversationActivityStuckChildTurns } from '../../telemetry/metrics.js';
+import type { NativeForkAffectedScope } from './conversation-fork-context.js';
 import type {
   EventStore,
   EventStoreCommitObserver,
@@ -321,6 +322,24 @@ export class ConversationTurnActivityProjection {
       this.conversationOfThread.set(threadId, conversationId);
     }
     return conversationId ?? undefined;
+  }
+
+  /** Internal cache invalidation only; scope comes from verified canonical fork observation. */
+  invalidateCommittedNativeFork(scope: NativeForkAffectedScope): void {
+    if (
+      scope.threadIds.length > 256 ||
+      scope.conversationIds.length > 256 ||
+      [...scope.threadIds, ...scope.conversationIds].some(
+        (id) => typeof id !== 'string' || id.length < 1 || id.length > 512,
+      )
+    )
+      throw new Error('Native fork activity scope exceeds its read boundary.');
+    for (const threadId of scope.threadIds) {
+      this.threads.delete(threadId);
+      this.conversationOfThread.delete(threadId);
+    }
+    for (const conversationId of scope.conversationIds)
+      this.childrenOfConversation.delete(conversationId);
   }
 
   readForThread(threadId: string): ConversationTurnActivity | undefined {
