@@ -1471,7 +1471,8 @@ read: enforcement state and reason, host memory, effective limits, each memory
 budget's source (`environment`, `settings` or `default`), saved settings and
 whether a change applies to new scopes or after a restart. Its optional
 `scopes` lists running scopes with the per-engine limit each was launched
-with, the OOM kills Station observed in it and when it first saw the latest.
+with, the OOM kills Station observed in it, when it first saw the latest, and
+for an engine scope whether its holder is `placed` or `unplaced`.
 
 `@kontourai/station-contracts/system-status` owns `DevicePresentation`
 (the request-bound host/paired projection), `SystemRuntimeIdentity`
