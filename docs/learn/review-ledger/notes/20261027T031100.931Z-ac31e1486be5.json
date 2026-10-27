@@ -1,0 +1,45 @@
+{
+  "revision": "9ffa7e47e0aef041ba6b92aee3e2f9f6f47595dc",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the claims here against this change. runtime-route-support.ts only adds the magicDnsHost input to the Station routes resolver, read from the existing public-ingress resolver; nothing else it wires changed.","inputs":["docs/architecture/module-map.md","src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Checked the claims here against this change. runtime-route-support.ts only adds the magicDnsHost input to the Station routes resolver, read from the existing public-ingress resolver; nothing else it wires changed.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked the claims here against this change. runtime-route-support.ts only adds the magicDnsHost input to the Station routes resolver, read from the existing public-ingress resolver; nothing else it wires changed.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Checked the claims here against this change. runtime-route-support.ts only adds the magicDnsHost input to the Station routes resolver, read from the existing public-ingress resolver; nothing else it wires changed.","inputs":["docs/design/automations.md","src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"Checked the claims here against this change. public-ingress-origin.ts keeps resolve() unchanged (same TTL cache, same lookups, same results) and adds magicDnsHost() read from the same cached tailscale status lookup; no new process is spawned.","inputs":["docs/design/outside-agent-mcp-r3-evidence.md","src-server/services/tailscale/__tests__/public-ingress-origin.test.ts","src-server/services/tailscale/public-ingress-origin.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Checked the claims here against this change. runtime-route-support.ts only adds the magicDnsHost input to the Station routes resolver, read from the existing public-ingress resolver; nothing else it wires changed.","inputs":["docs/design/task-dispatcher.md","src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Checked the claims here against this change. docs/reference/api.md only extends the /api/system/routes paragraph with the MagicDNS name route; no other claim changed.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the claims here against this change. ConnectionListPanel.tsx only hides the Switch to this Station button on the current Station (it was disabled there) and classes the access-paths line so the Station routes preview can hide it; no other manager behavior changed.","inputs":["docs/guides/agent-configuration.md","packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the claims here against this change. ConnectionListPanel.tsx only hides the Switch to this Station button on the current Station (it was disabled there) and classes the access-paths line so the Station routes preview can hide it; no other manager behavior changed. Updated the manager paragraph: Switch to this Station shows only on other Stations.","inputs":["docs/guides/connections.md","packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Checked the claims here against this change. docs/user/settings.md only rewords the Station routes preview paragraph (Edit, failure notes); other previews unchanged.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked the claims here against this change. docs/reference/api.md only extends the /api/system/routes paragraph with the MagicDNS name route; no other claim changed.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked the claims here against this change. connections.md only changes the manager paragraph so Switch to this Station shows only on other Stations; the machine-relationship claims that link to it are unchanged.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the claims here against this change. ConnectionListPanel.tsx only hides the Switch to this Station button on the current Station (it was disabled there) and classes the access-paths line so the Station routes preview can hide it; no other manager behavior changed.","inputs":["docs/guides/self-configuring-agent.md","packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked the claims here against this change. runtime-route-support.ts only adds the magicDnsHost input to the Station routes resolver, read from the existing public-ingress resolver; nothing else it wires changed. ConnectionListPanel.tsx only hides the Switch to this Station button on the current Station (it was disabled there) and classes the access-paths line so the Station routes preview can hide it; no other manager behavior changed.","inputs":["docs/guides/web-push-notifications.md","packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx","src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the claims here against this change. docs/reference/api.md only extends the /api/system/routes paragraph with the MagicDNS name route; no other claim changed.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/connect.md","note":"Checked the claims here against this change. ConnectionListPanel.tsx only hides the Switch to this Station button on the current Station (it was disabled there) and classes the access-paths line so the Station routes preview can hide it; no other manager behavior changed.","inputs":["docs/reference/connect.md","packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Checked the claims here against this change. public-ingress-origin.ts keeps resolve() unchanged (same TTL cache, same lookups, same results) and adds magicDnsHost() read from the same cached tailscale status lookup; no new process is spawned.","inputs":["docs/reference/outside-agent-oauth.md","src-server/services/tailscale/__tests__/public-ingress-origin.test.ts","src-server/services/tailscale/public-ingress-origin.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the claims here against this change. runtime-route-support.ts only adds the magicDnsHost input to the Station routes resolver, read from the existing public-ingress resolver; nothing else it wires changed.","inputs":["docs/reference/sdk.md","src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Checked the claims here against this change. docs/user/settings.md only rewords the Station routes preview paragraph (Edit, failure notes); other previews unchanged.","inputs":["docs/user/settings.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the claims here against this change. ConnectionListPanel.tsx only hides the Switch to this Station button on the current Station (it was disabled there) and classes the access-paths line so the Station routes preview can hide it; no other manager behavior changed.","inputs":["examples/self-configuring-agent/README.md","packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx"]}
+  ]
+}
