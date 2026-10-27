@@ -319,9 +319,13 @@ describe('scripted fork delivery and canonical history qualification', () => {
         provider,
         `Remember HANDOFF-CARRY-731 and ${PARENT_ONLY}.`,
       );
-      await vi.waitFor(() => {
-        const source = store.readSessionByThread(PARENT);
-        expect(source?.hasActiveTurn).toBe(false);
+      await vi.waitFor(async () => {
+        const source = await service.readCurrentConversationSession(
+          PARENT,
+          authority,
+        );
+        if (!source) throw new Error('Owned source Session is unavailable.');
+        expect(source.session.hasActiveTurn).toBe(false);
         expect(
           store.latestEventByMethod(PARENT, 'turn.completed', true),
         ).toBeDefined();
@@ -341,9 +345,14 @@ describe('scripted fork delivery and canonical history qualification', () => {
         provider,
         'Remember HANDOFF-CARRY-222 AFTER-FORK-DIVERGENCE.',
       );
-      await vi.waitFor(() =>
-        expect(store.readSessionByThread(PARENT)?.hasActiveTurn).toBe(false),
-      );
+      await vi.waitFor(async () => {
+        const source = await service.readCurrentConversationSession(
+          PARENT,
+          authority,
+        );
+        if (!source) throw new Error('Owned source Session is unavailable.');
+        expect(source.session.hasActiveTurn).toBe(false);
+      });
     }
     const fork = await routes.request(
       `/${sourceAgent}/conversations/${PARENT}/fork`,
@@ -509,11 +518,14 @@ describe('scripted fork delivery and canonical history qualification', () => {
     expect(child).toBeDefined();
     expect(child?.resumeCursor).not.toEqual(parent?.resumeCursor);
     await f.execute('codex', FIRST_MESSAGE);
-    await vi.waitFor(() =>
-      expect(f.store.readSessionByThread(f.conversationId)?.hasActiveTurn).toBe(
-        false,
-      ),
-    );
+    await vi.waitFor(async () => {
+      const child = await f.service.readCurrentConversationSession(
+        f.conversationId,
+        authority,
+      );
+      if (!child) throw new Error('Fork child Session is unavailable.');
+      expect(child.session.hasActiveTurn).toBe(false);
+    });
     const childTurn = f.receiver.turns.at(-1);
     expect(childTurn?.ambientContext).toBeUndefined();
     expect(childTurn?.input).not.toContain(PARENT_ONLY);
@@ -526,9 +538,14 @@ describe('scripted fork delivery and canonical history qualification', () => {
     );
     expect(JSON.stringify(childMessages)).not.toContain('HANDOFF-CARRY-222');
     await f.executeParent('Recall the token on the parent.');
-    await vi.waitFor(() =>
-      expect(f.store.readSessionByThread(PARENT)?.hasActiveTurn).toBe(false),
-    );
+    await vi.waitFor(async () => {
+      const parent = await f.service.readCurrentConversationSession(
+        PARENT,
+        authority,
+      );
+      if (!parent) throw new Error('Owned parent Session is unavailable.');
+      expect(parent.session.hasActiveTurn).toBe(false);
+    });
     expect(
       JSON.stringify(f.service.readSessionMessages(PARENT, authority)),
     ).toContain('codex retained HANDOFF-CARRY-222');
