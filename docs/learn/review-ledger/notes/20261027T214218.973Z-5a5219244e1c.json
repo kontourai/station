@@ -1,7 +1,0 @@
-{
-  "revision": "bea11fcc05d92ed8fa24725502d20d79a4623705",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Reviewed terminal-only source integration against landed foundation 3d414579 and main396d2b15. TerminalGateway remains personal-operator only through the real HTTP admission pipeline; channel credit/replay and PTY custody remain scoped service owners. Preserved current-main outside-MCP rules, telemetry fixture credential handling, HTTP receive/keepalive configuration, and all existing mutation cases. Scope is the terminal delta and route-test composition only; historical proof is not recovered-head proof. Focused tests, live remote/mobile and release qualification are NOT_RUN.","inputs":["docs/architecture/module-map.md","scripts/run-test-mutations.mjs","src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts","src-server/security/pairing-route-scopes.ts","src-server/services/terminal/terminal-sessions.ts"]}
-  ]
-}
