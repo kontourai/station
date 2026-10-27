@@ -1,5 +1,6 @@
 import {
   chmodSync,
+  chownSync,
   linkSync,
   mkdirSync,
   readFileSync,
@@ -23,6 +24,7 @@ import {
   hostImageCaptureRoots,
   hostImageDestinations,
   hostImagePaths,
+  workingFolderSwappable,
 } from '../host-image-capture.js';
 
 /**
@@ -250,6 +252,43 @@ describe('captureHostImages', () => {
     expect(await rootsFor(join(sticky, 'proj'))).toEqual([
       join(sticky, 'proj'),
     ]);
+  });
+
+  test('a working folder swapped for a link under an open ancestor is refused, judged on the path as given', async () => {
+    const open = join(base, 'open');
+    const secret = join(base, 'private', 'secret');
+    mkdirSync(open);
+    mkdirSync(secret, { recursive: true });
+    chmodSync(open, 0o777);
+    // Another user replaced proj with a link to a folder whose own chain is
+    // private: its resolved form alone looks harmless.
+    symlinkSync(secret, join(open, 'proj'));
+    const roots = await hostImageCaptureRoots({
+      cwd: join(open, 'proj'),
+      home: join(base, 'home'),
+      stationHome: join(base, 'station-home'),
+      listWorktrees: async () => [],
+      sharedTempDirs: [],
+    });
+    expect(roots).toEqual([]);
+    expect(await workingFolderSwappable(join(open, 'proj'))).toBe(true);
+    expect(await workingFolderSwappable(secret)).toBe(false);
+  });
+
+  test('a group-writable ancestor is refused unless the group is this user own', async () => {
+    const own = join(base, 'own-group');
+    mkdirSync(join(own, 'proj'), { recursive: true });
+    chmodSync(own, 0o770);
+    expect(await workingFolderSwappable(join(own, 'proj'))).toBe(false);
+    const other = process
+      .getgroups?.()
+      .find((gid) => gid !== process.getgid?.());
+    if (other === undefined) return;
+    const shared = join(base, 'other-group');
+    mkdirSync(join(shared, 'proj'), { recursive: true });
+    chownSync(shared, process.getuid!(), other);
+    chmodSync(shared, 0o770);
+    expect(await workingFolderSwappable(join(shared, 'proj'))).toBe(true);
   });
 
   test('the default shared-temp list covers /tmp, /var/tmp and the process temp dir, through the real resolver', async () => {

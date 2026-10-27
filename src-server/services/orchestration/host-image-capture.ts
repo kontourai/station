@@ -614,18 +614,64 @@ async function sharedTempRefusal(
   } catch {
     return true;
   }
-  // Another user who can write an ancestor without the sticky bit can swap
-  // this folder for a link to anywhere; such a folder is not a root.
+  return false;
+}
+
+/**
+ * A directory someone else could rename or replace an entry of: owned by
+ * neither this user nor root, or writable by others (or by a group that is
+ * not this user's primary group) without the sticky bit.
+ */
+function othersCanReplaceEntries(stats: {
+  uid: number;
+  gid: number;
+  mode: number;
+}): boolean {
+  const uid = process.getuid?.();
+  if (uid !== undefined && stats.uid !== uid && stats.uid !== 0) return true;
+  if ((stats.mode & 0o1000) !== 0) return false;
+  if ((stats.mode & 0o002) !== 0) return true;
+  return (stats.mode & 0o020) !== 0 && stats.gid !== process.getgid?.();
+}
+
+/**
+ * Whether anyone else could swap the working folder for a link to somewhere
+ * else, judged on the path AS GIVEN, component by component: a check on its
+ * resolved form sees only the link's target, after the swap. Every directory
+ * the path traverses must be one others cannot replace entries of; a link
+ * met on the way is followed and its target's chain is checked the same way.
+ * A path with `..` or one that cannot be walked is refused.
+ */
+export async function workingFolderSwappable(path: string): Promise<boolean> {
   if (process.platform === 'win32') return false;
-  for (let ancestor = dirname(directory); ; ancestor = dirname(ancestor)) {
+  if (!isAbsolute(path) || path.split(/[\\/]/).includes('..')) return true;
+  let pending = path.split(sep).filter(Boolean);
+  let current: string = sep;
+  for (let hops = 0; hops < 64; hops += 1) {
+    let stats: Awaited<ReturnType<typeof lstat>>;
     try {
-      const mode = (await lstat(ancestor)).mode;
-      if ((mode & 0o002) !== 0 && (mode & 0o1000) === 0) return true;
+      stats = await lstat(current);
     } catch {
       return true;
     }
-    if (dirname(ancestor) === ancestor) return false;
+    if (stats.isSymbolicLink()) {
+      // Its own directory was checked already; walk its target from the top.
+      let target: string;
+      try {
+        target = await realpath(current);
+      } catch {
+        return true;
+      }
+      pending = [...target.split(sep).filter(Boolean), ...pending];
+      current = sep;
+      continue;
+    }
+    if (!stats.isDirectory() || othersCanReplaceEntries(stats)) return true;
+    const next = pending.shift();
+    if (next === undefined) return false;
+    current = current === sep ? `${sep}${next}` : `${current}${sep}${next}`;
   }
+  return true;
 }
 
 /**
@@ -665,7 +711,11 @@ export async function hostImageCaptureRoots(input: {
     isAbsolute(directory) &&
     !seatbeltWorkspaceRefusal(directory, bounds) &&
     !(await sharedTempRefusal(directory, sharedTemp));
-  if (input.cwd && isAbsolute(input.cwd)) {
+  if (
+    input.cwd &&
+    isAbsolute(input.cwd) &&
+    !(await workingFolderSwappable(input.cwd))
+  ) {
     const cwd = await resolvedOrSelf(input.cwd);
     if (await admissible(cwd)) {
       roots.push(cwd);
@@ -673,7 +723,11 @@ export async function hostImageCaptureRoots(input: {
         input.listWorktrees ?? ((root) => listVerifiedWorktrees(root, 5000))
       )(cwd).catch(() => [] as readonly string[]);
       for (const worktree of worktrees)
-        if ((await admissible(worktree)) && !roots.includes(worktree))
+        if (
+          (await admissible(worktree)) &&
+          !(await workingFolderSwappable(worktree)) &&
+          !roots.includes(worktree)
+        )
           roots.push(worktree);
     }
   }
