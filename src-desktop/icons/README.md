@@ -18,10 +18,12 @@ rasterizes every surface from it, including the platform fan-out (it runs
 the `.icns` only; a tighter rounded master with no shadow for `icon.ico`, the
 32/64/128 PNGs and `icon.png` (Windows, Linux and the tray, which
 `src-desktop/src/tray.rs` embeds), where the grid inset would leave the tile a
-few pixels wide; the full-bleed opaque square master for iOS and Windows
-tiles (iOS rejects alpha) and the iOS Live Activity's `StationAppIcon`; an
-Android master with the tile scaled into the adaptive-icon safe zone (the
-launcher and Android 12 splash masks crop well inside the edges); the
+few pixels wide; the opaque iOS master (`icon-square-1024.png`, rendered from
+the `ios` target) and the iOS Live Activity's `StationAppIcon`, cropped to the
+map face so the artwork fills the icon; the uncropped `square` target for
+Windows tiles and the web maskable icon; an Android master with that
+face filling the central 72 of 108dp of the adaptive layer. Launcher masks crop
+the tile corners and base while the river and compass stay central; the
 transparent in-app mark; the monochrome Android status-bar mark
 (`agent_activity_mark.xml`); and per-channel sets. Each channel has an
 explicit water palette in `station-icon.mjs` while parchment and gold stay
