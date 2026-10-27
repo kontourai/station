@@ -170,22 +170,27 @@ describe('update backup and in-place restore (#2675 D)', () => {
     },
   );
 
-  it('refuses replacement of the restore-owned recovery fence before verification', () => {
-    const root = makeTempDir('update-recovery-fence-');
-    const home = join(root, 'home');
-    ensureStationHomeSchemaSync(home);
-    const backupDir = join(root, 'backup');
-    createStationHomeUpdateBackup({ homeDir: home, backupDir });
-    expect(() =>
-      restoreStationHomeUpdateBackup({
-        homeDir: home,
-        backupDir,
-        afterRemove: () => {
-          writeFileSync(join(home, STATION_HOME_RECOVERY_RECORD), '{}\n');
-        },
-      }),
-    ).toThrow(/recovery metadata changed during restore/);
-  });
+  it.each(['replacement', 'removal'])(
+    'refuses %s of the restore-owned recovery fence before verification',
+    (change) => {
+      const root = makeTempDir('update-recovery-fence-');
+      const home = join(root, 'home');
+      ensureStationHomeSchemaSync(home);
+      const backupDir = join(root, 'backup');
+      createStationHomeUpdateBackup({ homeDir: home, backupDir });
+      expect(() =>
+        restoreStationHomeUpdateBackup({
+          homeDir: home,
+          backupDir,
+          afterRemove: () => {
+            const fence = join(home, STATION_HOME_RECOVERY_RECORD);
+            if (change === 'removal') rmSync(fence);
+            else writeFileSync(fence, '{}\n');
+          },
+        }),
+      ).toThrow(/recovery metadata changed during restore/);
+    },
+  );
 
   it('keeps non-exempt directory entries inside the verification budget', () => {
     const root = makeTempDir('update-directory-budget-control-');

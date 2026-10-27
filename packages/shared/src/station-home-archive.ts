@@ -664,6 +664,7 @@ function collectEntries(
   const files: StationHomeBackupFile[] = [];
   const symlinks: StationHomeBackupSymlink[] = [];
   const directories: string[][] = [];
+  let recoveryRecordObserved = options.expectedRecoveryRecord === undefined;
   let archivedEntries = 0;
   let visitedEntries = 0;
   const traversalLimit = Math.min(
@@ -698,6 +699,7 @@ function collectEntries(
           readFileSync(path, 'utf8') !== expected
         )
           fail('recovery metadata changed during restore');
+        recoveryRecordObserved = true;
         continue;
       }
       // New snapshots omit downloads; validation still inspects archived bytes.
@@ -769,6 +771,7 @@ function collectEntries(
     }
   };
   visit(homeDir, []);
+  if (!recoveryRecordObserved) fail('recovery metadata changed during restore');
   return { files, symlinks, directories };
 }
 
