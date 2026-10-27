@@ -9,7 +9,11 @@ import { useSyncExternalStore } from 'react';
 const listeners = new Set<() => void>();
 
 export function isDocumentVisible(): boolean {
-  return typeof document === 'undefined' || !document.hidden;
+  // Browsers keep these in step; either one saying hidden is enough.
+  return (
+    typeof document === 'undefined' ||
+    (!document.hidden && document.visibilityState !== 'hidden')
+  );
 }
 
 function notify(): void {
