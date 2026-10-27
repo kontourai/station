@@ -655,6 +655,7 @@ describe('the tool calls bound to a request', () => {
           threadId: 'thread-b',
           createdAt: T0,
           method: 'tool.started',
+          itemId: 'call-1',
           toolCallId: 'call-1',
           toolName: 'apply_patch',
           arguments: { revision: index },
