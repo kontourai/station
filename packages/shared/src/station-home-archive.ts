@@ -592,6 +592,7 @@ function collectEntries(
     kind: BackupKind;
     includeDirectories?: boolean;
     expectedDirectories?: ReadonlySet<string>;
+    excludeMediaTools?: boolean;
   },
 ): {
   files: StationHomeBackupFile[];
@@ -629,10 +630,9 @@ function collectEntries(
       assertSegment(entry.name);
       const path = join(directory, entry.name);
       let stats = lstatSync(path);
-      // Media tools can be downloaded again; unlike user workspaces, neither
-      // backup kind needs a copy. Older home archives remain restorable.
+      // New snapshots omit downloads; validation still inspects archived bytes.
       if (
-        segments[0] === 'media-tools' ||
+        (options.excludeMediaTools && segments[0] === 'media-tools') ||
         (update && isExternalStationHomePath(segments, stats.isDirectory()))
       )
         continue;
@@ -1050,6 +1050,7 @@ function createBackup(
     const { files, symlinks, directories } = collectEntries(homeDir, limits, {
       checkpointSqlite: true,
       kind,
+      excludeMediaTools: true,
     });
     assertInactive('backup', options.assertInactive);
     if (kind === 'update')
