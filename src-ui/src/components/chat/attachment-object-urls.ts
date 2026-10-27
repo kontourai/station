@@ -30,6 +30,13 @@ interface CacheEntry {
    * that most need a preview.
    */
   blob?: Blob;
+  /** For a thumbnail: the size its chip renders at. */
+  size?: AttachmentObjectUrlSize;
+}
+
+export interface AttachmentObjectUrlSize {
+  readonly width: number;
+  readonly height: number;
 }
 
 /** Insertion-ordered, so the iteration order is least-recently-acquired first. */
@@ -69,6 +76,7 @@ export function storeAttachmentObjectUrl(
   ref: string,
   objectUrl: string,
   blob?: Blob,
+  size?: AttachmentObjectUrlSize,
 ): string {
   const existing = entries.get(ref);
   if (existing) {
@@ -76,7 +84,12 @@ export function storeAttachmentObjectUrl(
     existing.holders += 1;
     return existing.objectUrl;
   }
-  entries.set(ref, { objectUrl, holders: 1, ...(blob ? { blob } : {}) });
+  entries.set(ref, {
+    objectUrl,
+    holders: 1,
+    ...(blob ? { blob } : {}),
+    ...(size ? { size } : {}),
+  });
   evictIdle();
   return objectUrl;
 }
@@ -87,6 +100,13 @@ export function releaseAttachmentObjectUrl(ref: string): void {
   if (!entry) return;
   entry.holders = Math.max(entry.holders - 1, 0);
   evictIdle();
+}
+
+/** The render size stored with `ref`, if any. */
+export function attachmentObjectUrlSize(
+  ref: string,
+): AttachmentObjectUrlSize | undefined {
+  return entries.get(ref)?.size;
 }
 
 /**

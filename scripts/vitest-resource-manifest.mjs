@@ -1347,6 +1347,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-ui/src/__tests__/offline-reading.browser.test.ts',
   // Owns Chromium and a local HTTP fixture for strict-durability IndexedDB custody.
   'src-ui/src/__tests__/strict-indexeddb.browser.test.ts',
+  // Owns Chromium to decode, resize and encode a real photo into a thumbnail.
+  'src-ui/src/__tests__/attachment-thumbnails.browser.test.ts',
   // station#4474: same shape again — launches a real Chromium via
   // `@playwright/test` to measure real cascade-resolved layout (sibling
   // toolbar control x-offsets across connection states).

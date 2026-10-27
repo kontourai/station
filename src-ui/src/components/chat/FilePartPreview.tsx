@@ -4,11 +4,20 @@ import { useApiBase } from '../../contexts/ApiBaseContext';
 import { usePreview } from '../../contexts/PreviewContext';
 import { DocumentGlyph } from '../icons/Glyph';
 import {
+  type AttachmentObjectUrlSize,
   acquireAttachmentObjectUrl,
+  attachmentBlobForObjectUrl,
+  attachmentObjectUrlSize,
   peekAttachmentObjectUrl,
   releaseAttachmentObjectUrl,
   storeAttachmentObjectUrl,
 } from './attachment-object-urls';
+import {
+  createAttachmentThumbnail,
+  dataUrlBlob,
+  dataUrlShape,
+  thumbnailWorthMaking,
+} from './attachment-thumbnails';
 
 interface FilePart {
   type: string;
@@ -105,6 +114,81 @@ function useAttachmentObjectUrl(
   return objectUrl;
 }
 
+type ChipThumbnail = AttachmentObjectUrlSize & { url: string };
+
+/** What a resolved image URL holds: its type and size, read without decoding. */
+function imageSourceShape(url: string, mediaType: string | undefined) {
+  if (url.startsWith('data:')) return dataUrlShape(url);
+  const blob = attachmentBlobForObjectUrl(url);
+  return blob ? { type: mediaType ?? blob.type, size: blob.size } : null;
+}
+
+/**
+ * The chip's thumbnail for a large still image (see `attachment-thumbnails`),
+ * cached beside the full bytes so a row scrolled back into view does not
+ * decode the photo again. `undefined` means show the image itself (small,
+ * animated, or no thumbnail possible here); `'pending'` means one is being
+ * made, and the chip keeps its icon rather than decode the full image for it.
+ */
+function useAttachmentThumbnail(
+  key: string | undefined,
+  url: string | undefined,
+): ChipThumbnail | 'pending' | undefined {
+  const [made, setMade] = useState<{
+    key: string;
+    value: ChipThumbnail | 'failed';
+  } | null>(null);
+
+  useEffect(() => {
+    if (!key || !url) return;
+    const thumbnailKey = `thumbnail ${key}`;
+    let active = true;
+    let held = false;
+    const settle = (objectUrl: string) => {
+      held = true;
+      const size = attachmentObjectUrlSize(thumbnailKey);
+      setMade({
+        key,
+        value: size ? { url: objectUrl, ...size } : 'failed',
+      });
+    };
+    const cached = acquireAttachmentObjectUrl(thumbnailKey);
+    if (cached) settle(cached);
+    else {
+      const source = url.startsWith('data:')
+        ? dataUrlBlob(url)
+        : attachmentBlobForObjectUrl(url);
+      void (
+        source ? createAttachmentThumbnail(source) : Promise.resolve(null)
+      ).then((thumbnail) => {
+        if (!thumbnail) {
+          if (active) setMade({ key, value: 'failed' });
+          return;
+        }
+        const objectUrl = storeAttachmentObjectUrl(
+          thumbnailKey,
+          URL.createObjectURL(thumbnail.blob),
+          thumbnail.blob,
+          { width: thumbnail.width, height: thumbnail.height },
+        );
+        if (!active) {
+          releaseAttachmentObjectUrl(thumbnailKey);
+          return;
+        }
+        settle(objectUrl);
+      });
+    }
+    return () => {
+      active = false;
+      if (held) releaseAttachmentObjectUrl(thumbnailKey);
+    };
+  }, [key, url]);
+
+  if (!key || !url) return undefined;
+  if (made?.key !== key) return 'pending';
+  return made.value === 'failed' ? undefined : made.value;
+}
+
 export function FilePartPreview({ part, allParts }: FilePartPreviewProps) {
   const { openPreview } = usePreview();
   // Inline bytes win: a read that already carried the data URL has nothing to
@@ -114,6 +198,17 @@ export function FilePartPreview({ part, allParts }: FilePartPreviewProps) {
     part.mediaType,
   );
   const resolvedUrl = part.url ?? fetchedUrl;
+  const isImage = part.mediaType?.startsWith('image/') === true;
+  const sourceShape =
+    part.type === 'file' && isImage && resolvedUrl
+      ? imageSourceShape(resolvedUrl, part.mediaType)
+      : null;
+  const thumbnail = useAttachmentThumbnail(
+    sourceShape && thumbnailWorthMaking(sourceShape)
+      ? (part.url ?? cacheKey(part.blobRef ?? '', part.mediaType))
+      : undefined,
+    resolvedUrl,
+  );
 
   // A part with neither bytes nor a resolvable reference is an attachment whose
   // blob retention has reclaimed (archive#3374). It still renders: the name and
@@ -125,7 +220,6 @@ export function FilePartPreview({ part, allParts }: FilePartPreviewProps) {
     return null;
   }
 
-  const isImage = part.mediaType?.startsWith('image/') === true;
   // Every attachment whose bytes resolved opens the previewer, whatever its
   // type: the previewer picks an inline view it can honestly render (image,
   // PDF, text) and otherwise offers the bytes as a download.
@@ -166,11 +260,15 @@ export function FilePartPreview({ part, allParts }: FilePartPreviewProps) {
 
   const previewContent = (
     <>
-      {showThumbnail ? (
+      {showThumbnail && thumbnail !== 'pending' ? (
         <img
-          src={resolvedUrl}
+          src={thumbnail?.url ?? resolvedUrl}
           alt={fileName}
           className="file-part-preview__thumbnail"
+          decoding="async"
+          {...(thumbnail
+            ? { width: thumbnail.width, height: thumbnail.height }
+            : {})}
         />
       ) : (
         <div className="file-part-preview__icon">

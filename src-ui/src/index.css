@@ -1317,37 +1317,6 @@ button:hover {
   color: var(--text-primary);
 }
 
-.toast {
-  position: fixed;
-  right: 24px;
-  bottom: 24px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 18px;
-  border-radius: 10px;
-  border: 1px solid var(--accent-primary);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  box-shadow: var(--elevation-overlay);
-  backdrop-filter: blur(6px);
-  z-index: var(--layer-notification);
-}
-
-.toast button {
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--accent-primary);
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font-size: var(--text-base);
-}
-
-.toast button:hover {
-  background: var(--accent-light);
-}
-
 .agent-selector {
   position: relative;
 }
