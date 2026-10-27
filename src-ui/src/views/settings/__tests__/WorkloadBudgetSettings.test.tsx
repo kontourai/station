@@ -76,7 +76,7 @@ describe('WorkloadBudgetSettings', () => {
     expect(screen.getByText(/^Enforced:/)).toBeTruthy();
     expect(screen.getByText('In effect: 4915 MiB (default).')).toBeTruthy();
     expect(
-      screen.getByText(/apply to engines started after saving/),
+      screen.getByText(/A new total applies at once to every running engine/),
     ).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Per-engine memory (MiB)'), {
       target: { value: '6144' },

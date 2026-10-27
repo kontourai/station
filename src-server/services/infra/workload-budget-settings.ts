@@ -3,7 +3,8 @@
  * `<home>/config/workload-budgets.json`. The environment still overrides
  * each value (`resolveWorkloadMemoryBudget`).
  */
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { WorkloadMemorySettings } from './workload-budget.js';
 
@@ -56,15 +57,27 @@ export async function readWorkloadBudgetSettings(
   }
 }
 
+/**
+ * Writes the settings atomically. `beforeCommit` runs after the new bytes are
+ * on disk under a unique temporary name and before they replace the file; if
+ * it throws, the old file stays and the temporary is removed.
+ */
 export async function writeWorkloadBudgetSettings(
   homeDir: string,
   settings: WorkloadMemorySettings,
+  beforeCommit: () => Promise<void> = async () => {},
 ): Promise<void> {
   const path = workloadBudgetSettingsPath(homeDir);
   await mkdir(dirname(path), { recursive: true });
-  const temporary = `${path}.${process.pid}.tmp`;
-  await writeFile(temporary, `${JSON.stringify(settings, null, 2)}\n`, {
-    mode: 0o600,
-  });
-  await rename(temporary, path);
+  const temporary = `${path}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporary, `${JSON.stringify(settings, null, 2)}\n`, {
+      mode: 0o600,
+    });
+    await beforeCommit();
+    await rename(temporary, path);
+  } catch (error) {
+    await rm(temporary, { force: true });
+    throw error;
+  }
 }

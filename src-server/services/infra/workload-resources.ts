@@ -107,13 +107,47 @@ function memoryBytes(
   return bytes;
 }
 
-function resolveLimits(settings: WorkloadMemorySettings): WorkloadLimits {
+/** Resolves limits without changing any module state. */
+function computeLimits(settings: WorkloadMemorySettings): {
+  limits: WorkloadLimits;
+  sources: ResolvedWorkloadMemoryBudget['sources'];
+} {
   const budget = resolveWorkloadMemoryBudget({
     env: process.env,
     settings,
     hostTotalBytes: totalmem(),
   });
-  budgetSources = budget.sources;
+  return { limits: limitsFrom(budget), sources: budget.sources };
+}
+
+function resolveLimits(settings: WorkloadMemorySettings): WorkloadLimits {
+  const { limits: resolved, sources } = computeLimits(settings);
+  budgetSources = sources;
+  return resolved;
+}
+
+/**
+ * Reads the saved settings and validates them exactly as a write would. A
+ * missing file is no choice; an unreadable, malformed or out-of-range file is
+ * reported and ignored, so the environment and defaults apply.
+ */
+async function loadSavedSettings(homeDir: string): Promise<void> {
+  const read = await readWorkloadBudgetSettings(homeDir);
+  const problem =
+    'error' in read
+      ? undefined
+      : workloadSettingsProblem(read.settings, totalmem(), process.env);
+  savedSettings = 'error' in read || problem ? {} : read.settings;
+  settingsError =
+    'error' in read
+      ? read.error
+      : problem
+        ? `Saved workload budgets were ignored: ${problem}`
+        : undefined;
+  if (settingsError) logger.warn(settingsError);
+}
+
+function limitsFrom(budget: ResolvedWorkloadMemoryBudget): WorkloadLimits {
   return {
     totalMemoryMaxBytes: budget.totalMemoryMaxBytes,
     memoryMaxBytes: budget.memoryMaxBytes,
@@ -220,12 +254,7 @@ export async function initializeWorkloadResources(
   options: { homeDir?: string } = {},
 ): Promise<void> {
   settingsHome = options.homeDir;
-  if (settingsHome) {
-    const read = await readWorkloadBudgetSettings(settingsHome);
-    savedSettings = read.settings;
-    settingsError = 'error' in read ? read.error : undefined;
-    if (settingsError) logger.warn(settingsError);
-  }
+  if (settingsHome) await loadSavedSettings(settingsHome);
   if (process.platform !== 'linux') return;
   try {
     const membership = await readFile('/proc/self/cgroup', 'utf8');
@@ -608,39 +637,90 @@ export class WorkloadSettingsRejectedError extends Error {
   readonly code = 'workload_settings_invalid' as const;
 }
 
+let applyQueue: Promise<unknown> = Promise.resolve();
+
+/** Current memory use of the whole workload slice, when it can be read. */
+async function sliceMemoryCurrent(): Promise<number | undefined> {
+  if (!slice) return undefined;
+  const cgroup = (
+    await runManager(['show', slice, '--property=ControlGroup', '--value'])
+  ).trim();
+  if (!cgroup.startsWith('/') || cgroup.split('/').includes('..'))
+    return undefined;
+  return (await readScopeMemory(`${cgroupRoot}${cgroup}`)).currentBytes;
+}
+
 /**
- * Persists the operator's choice and applies it without a restart while
- * enforcement runs: the slice's aggregate MemoryMax is set again now, and
- * scopes launched from now on receive the new per-engine limit. Running
- * scopes keep the limit they were launched with.
+ * Persists the operator's choice and, while enforcement runs, applies it
+ * without a restart. The total is the slice's MemoryMax, which binds every
+ * running engine at once, so a total below what the slice uses now is
+ * refused rather than forcing an immediate out-of-memory kill. Scopes
+ * launched from now on receive the new per-engine limit; running scopes keep
+ * the per-engine limit they were launched with.
+ *
+ * Saves are serialized. The slice is changed before the file is renamed into
+ * place, and a failed rename restores the previous slice properties, so the
+ * saved file, the reported state and the enforced limits never disagree.
  */
-export async function applyWorkloadBudgetSettings(
+export function applyWorkloadBudgetSettings(
   settings: WorkloadMemorySettings,
-) {
+): Promise<WorkloadBudgetStatus> {
+  const run = applyQueue.then(() => applySettingsNow(settings));
+  applyQueue = run.catch(() => {});
+  return run;
+}
+
+async function applySettingsNow(
+  settings: WorkloadMemorySettings,
+): Promise<WorkloadBudgetStatus> {
   if (!settingsHome)
     throw new Error('Workload budget settings have no Station home.');
-  const problem = workloadSettingsProblem(settings, totalmem());
+  const home = settingsHome;
+  const problem = workloadSettingsProblem(settings, totalmem(), process.env);
   if (problem) throw new WorkloadSettingsRejectedError(problem);
   const next = { ...settings };
-  await writeWorkloadBudgetSettings(settingsHome, next);
+  let computed: ReturnType<typeof computeLimits> | undefined;
+  try {
+    computed = computeLimits(next);
+  } catch {
+    // An invalid environment variable already stops enforcement; the saved
+    // values are still stored for when it is fixed.
+  }
+  const enforcing = state === 'ready' && slice !== undefined && !!limits;
+  if (enforcing && computed) {
+    const used = await sliceMemoryCurrent().catch(() => undefined);
+    if (used !== undefined && computed.limits.totalMemoryMaxBytes < used)
+      throw new WorkloadSettingsRejectedError(
+        `The total (${Math.round(computed.limits.totalMemoryMaxBytes / MIB)} MiB) is below what running engines use now (${Math.round(used / MIB)} MiB). Lower it when fewer engines run.`,
+      );
+  }
+  const previous = limits;
+  await writeWorkloadBudgetSettings(home, next, async () => {
+    if (enforcing && computed && slice)
+      await runManager([
+        'set-property',
+        '--runtime',
+        slice,
+        ...sliceProperties(computed.limits),
+      ]);
+  }).catch(async (error: unknown) => {
+    // The slice may already carry the new total; put the old one back.
+    if (enforcing && computed && slice && previous)
+      await runManager([
+        'set-property',
+        '--runtime',
+        slice,
+        ...sliceProperties(previous),
+      ]).catch(() => {});
+    throw error;
+  });
   savedSettings = next;
   settingsError = undefined;
-  if (state === 'ready' && slice) {
-    const resolved = resolveLimits(savedSettings);
-    await runManager([
-      'set-property',
-      '--runtime',
-      slice,
-      ...sliceProperties(resolved),
-    ]);
-    limits = resolved;
-    logger.info('Workload budgets changed', { slice, limits });
-  } else {
-    // Keep the reported sources in step with the saved choice.
-    try {
-      resolveLimits(savedSettings);
-    } catch {
-      /* the environment error is reported when enforcement starts */
+  if (computed) {
+    budgetSources = computed.sources;
+    if (enforcing) {
+      limits = computed.limits;
+      logger.info('Workload budgets changed', { slice, limits });
     }
   }
   return workloadBudgetStatus();
@@ -725,9 +805,7 @@ export const __workloadTestHooks = {
     cgroupRoot = options.cgroupRoot;
     managerEnv = {};
     settingsHome = options.homeDir;
-    const read = await readWorkloadBudgetSettings(options.homeDir);
-    savedSettings = read.settings;
-    settingsError = 'error' in read ? read.error : undefined;
+    await loadSavedSettings(options.homeDir);
     serviceUnit = options.serviceUnit ?? 'station-test.service';
     limits = resolveLimits(savedSettings);
     const prefix = `stationworkload${digest(serviceUnit)}`;

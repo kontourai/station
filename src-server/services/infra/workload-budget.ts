@@ -102,13 +102,17 @@ export function resolveWorkloadMemoryBudget(input: {
 }
 
 /**
- * Validates an operator's settings write. Returns the problem, or undefined.
- * Unlike the environment, a setting above the host's memory or a per-engine
- * budget above the aggregate is refused rather than silently capped.
+ * Validates saved settings, at write and at read. Returns the problem, or
+ * undefined. Unlike the environment, a setting is never silently capped: a
+ * value below 256 MiB or above the host's memory, a per-engine budget above
+ * the total it would resolve against (a saved or environment total, or the
+ * default), and a saved total below an environment per-engine budget are all
+ * refused.
  */
 export function workloadSettingsProblem(
   settings: WorkloadMemorySettings,
   hostTotalBytes: number,
+  env: NodeJS.ProcessEnv = {},
 ): string | undefined {
   const hostMiB = Math.floor(hostTotalBytes / MIB);
   for (const [key, value] of Object.entries(settings)) {
@@ -118,12 +122,29 @@ export function workloadSettingsProblem(
     if (value > hostMiB)
       return `${key} (${value} MiB) exceeds this host's ${hostMiB} MiB of memory.`;
   }
+  // An invalid variable fails enforcement on its own; here it counts as unset.
+  const safeEnv = (key: string) => {
+    try {
+      return envMiB(env, key);
+    } catch {
+      return undefined;
+    }
+  };
+  const envTotal = safeEnv(WORKLOAD_TOTAL_MEMORY_ENV);
+  const envMemory = safeEnv(WORKLOAD_MEMORY_ENV);
+  const total =
+    envTotal ??
+    settings.totalMemoryMiB ??
+    defaultWorkloadTotalMiB(hostTotalBytes);
+  if (settings.memoryMiB !== undefined && settings.memoryMiB > total)
+    return `The per-engine budget (${settings.memoryMiB} MiB) cannot exceed the ${envTotal !== undefined ? `${WORKLOAD_TOTAL_MEMORY_ENV} total` : settings.totalMemoryMiB !== undefined ? 'total' : 'default total'} of ${total} MiB.`;
   if (
-    settings.memoryMiB !== undefined &&
     settings.totalMemoryMiB !== undefined &&
-    settings.memoryMiB > settings.totalMemoryMiB
+    envTotal === undefined &&
+    envMemory !== undefined &&
+    settings.totalMemoryMiB < envMemory
   )
-    return 'The per-engine budget cannot exceed the total workload budget.';
+    return `The total (${settings.totalMemoryMiB} MiB) cannot be below ${WORKLOAD_MEMORY_ENV} (${envMemory} MiB).`;
   return undefined;
 }
 

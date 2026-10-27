@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   closeChildWorkload,
@@ -215,11 +215,14 @@ describe('workload manager budgets (fake systemd manager)', () => {
     }
     const calls: string[][] = [];
     const controlGroups = new Map<string, string>();
+    const control = { failSetProperty: false };
     await __workloadTestHooks.start({
       homeDir: home,
       cgroupRoot,
       run: async (args) => {
         calls.push(args);
+        if (args[0] === 'set-property' && control.failSetProperty)
+          throw new Error('Failed to set unit properties');
         if (args[0] === 'show' && args.includes('--property=ControlGroup'))
           return `${controlGroups.get(args[1]) ?? ''}\n`;
         if (args[0] === 'show')
@@ -227,7 +230,8 @@ describe('workload manager budgets (fake systemd manager)', () => {
         return '';
       },
     });
-    return { home, cgroupRoot, calls, controlGroups };
+    const slice = calls[0]?.[2] ?? '';
+    return { home, cgroupRoot, calls, controlGroups, control, slice };
   }
 
   function launch(sessionId?: string) {
@@ -330,6 +334,103 @@ describe('workload manager budgets (fake systemd manager)', () => {
     } finally {
       await closeChildWorkload(process.pid);
     }
+  });
+
+  test('an out-of-range saved file is reported and ignored at boot', async () => {
+    process.env = { ...env };
+    delete process.env.STATION_WORKLOAD_MEMORY_MIB;
+    delete process.env.STATION_WORKLOAD_TOTAL_MEMORY_MIB;
+    await start({ settings: { memoryMiB: 1, totalMemoryMiB: 999999999 } });
+    const status = workloadBudgetStatus();
+    expect(status.settings).toEqual({});
+    expect(status.sources).toEqual({
+      memory: 'default',
+      totalMemory: 'default',
+    });
+    expect(status.settingsError).toMatch(/Saved workload budgets were ignored/);
+  });
+
+  test('a per-engine setting is checked against the total it resolves to, including the environment', async () => {
+    process.env = { ...env, STATION_WORKLOAD_TOTAL_MEMORY_MIB: '600' };
+    delete process.env.STATION_WORKLOAD_MEMORY_MIB;
+    await start({ settings: { memoryMiB: 700, totalMemoryMiB: 1000 } });
+    expect(workloadBudgetStatus().settingsError).toMatch(
+      /cannot exceed the STATION_WORKLOAD_TOTAL_MEMORY_MIB total of 600 MiB/,
+    );
+    await expect(
+      applyWorkloadBudgetSettings({ memoryMiB: 700 }),
+    ).rejects.toBeInstanceOf(WorkloadSettingsRejectedError);
+  });
+
+  test('a total below what the slice uses now is refused and nothing changes', async () => {
+    process.env = { ...env };
+    delete process.env.STATION_WORKLOAD_MEMORY_MIB;
+    delete process.env.STATION_WORKLOAD_TOTAL_MEMORY_MIB;
+    const { home, cgroupRoot, controlGroups, slice, calls } = await start({
+      settings: { totalMemoryMiB: 1024 },
+    });
+    const group = `/user.slice/user-1000.slice/user@1000.service/${slice}`;
+    controlGroups.set(slice, group);
+    await writeScopeFixture(`${cgroupRoot}${group}`);
+    const before = calls.length;
+    await expect(
+      applyWorkloadBudgetSettings({ memoryMiB: 512, totalMemoryMiB: 1000 }),
+    ).rejects.toThrow(/below what running engines use now \(1536 MiB\)/);
+    expect(calls.slice(before).some((call) => call[0] === 'set-property')).toBe(
+      false,
+    );
+    expect(
+      JSON.parse(
+        await readFile(join(home, 'config', 'workload-budgets.json'), 'utf8'),
+      ),
+    ).toEqual({ totalMemoryMiB: 1024 });
+  });
+
+  test('a failed slice change leaves file, status and limits as they were', async () => {
+    process.env = { ...env };
+    delete process.env.STATION_WORKLOAD_MEMORY_MIB;
+    delete process.env.STATION_WORKLOAD_TOTAL_MEMORY_MIB;
+    const { home, control } = await start({
+      settings: { memoryMiB: 600, totalMemoryMiB: 900 },
+    });
+    control.failSetProperty = true;
+    await expect(
+      applyWorkloadBudgetSettings({ memoryMiB: 700, totalMemoryMiB: 1000 }),
+    ).rejects.toThrow('Failed to set unit properties');
+    expect(enforcedWorkloadLimits()?.memoryMaxBytes).toBe(600 * MIB);
+    expect(workloadBudgetStatus().settings).toEqual({
+      memoryMiB: 600,
+      totalMemoryMiB: 900,
+    });
+    expect(
+      JSON.parse(
+        await readFile(join(home, 'config', 'workload-budgets.json'), 'utf8'),
+      ),
+    ).toEqual({ memoryMiB: 600, totalMemoryMiB: 900 });
+    expect(await readdir(join(home, 'config'))).toEqual([
+      'workload-budgets.json',
+    ]);
+  });
+
+  test('concurrent saves are serialized and the last one wins', async () => {
+    process.env = { ...env };
+    delete process.env.STATION_WORKLOAD_MEMORY_MIB;
+    delete process.env.STATION_WORKLOAD_TOTAL_MEMORY_MIB;
+    const { home } = await start();
+    const results = await Promise.allSettled([
+      applyWorkloadBudgetSettings({ memoryMiB: 600, totalMemoryMiB: 900 }),
+      applyWorkloadBudgetSettings({ memoryMiB: 700, totalMemoryMiB: 1000 }),
+    ]);
+    expect(results.map((result) => result.status)).toEqual([
+      'fulfilled',
+      'fulfilled',
+    ]);
+    expect(
+      JSON.parse(
+        await readFile(join(home, 'config', 'workload-budgets.json'), 'utf8'),
+      ),
+    ).toEqual({ memoryMiB: 700, totalMemoryMiB: 1000 });
+    expect(enforcedWorkloadLimits()?.memoryMaxBytes).toBe(700 * MIB);
   });
 
   test('without enforcement no limit is claimed', async () => {
