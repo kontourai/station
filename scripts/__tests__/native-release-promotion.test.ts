@@ -13,10 +13,12 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import { canonicalJson } from '../release-cohort.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
+const makeTempDir = trackTempDirs();
 
 type Step = {
   env?: Record<string, unknown>;
@@ -66,7 +68,7 @@ describe('one-revision native promotion contract', () => {
   ] as const)(
     'promotion fence HTTP boundary: %s',
     (label, statuses, failedPhase, deletions) => {
-      const directory = mkdtempSync(join(tmpdir(), 'station-fence-http-'));
+      const directory = makeTempDir('station-fence-http-');
       try {
         const bin = join(directory, 'bin');
         const cohort = join(directory, 'cohort');
