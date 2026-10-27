@@ -214,6 +214,18 @@ bytes, publication references, byte/height limits and theme variable names for
 [visual replies](../user/html-replies.md). It grants no publication or
 conversation access. Filesystem preparation stays in the server.
 
+The `@kontourai/station-contracts/runtime-event-content` subpath defines the
+reference a stored runtime event keeps in place of a large value
+(`RuntimeEventContentRef`: digest, kind, byte size and a preview whose JSON
+encoding is at most 512 bytes), the `exceeds-ceiling`/`missing` marker, the
+literal wrapper for engine data that used a reserved key, and the
+`spilledContent` summary. Its pure helpers collect, resolve (single-level,
+with a caller-supplied lookup), unescape and display references, and give the
+text a viewed-content digest covers: the stored request plus the references
+of the tool calls it gates (`requestBoundCallIds`, `viewedContentPreimage`).
+A plan entry's `content` is spillable text. A preview is never the whole
+value; see [event content spill](../design/event-content-spill.md).
+
 | Module | Owns |
 | `@kontourai/station-contracts/walkthrough` | Versioned recording manifest, strict hand-written parser, limits, typed import outcomes and bounded list pages |
 |---|---|
@@ -227,6 +239,7 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/skill-experience` | Inert v1 Skill definitions and explicit stage/rich-pane declarations, host-observed inventory identity, canonical start inputs and retained Session invocation views; see [experience contract](skill-experiences.md) |
 | `@kontourai/station-contracts/attention` | Attention projections and exact approval/permission request references and inspection states |
 | `@kontourai/station-contracts/environment-security` | Public handshake and compatibility declarations, scoped Device/Station pairing, receiver-owned additive grant kind, and secret-free `PeerEnrollmentInput`/`PeerEnrollment` metadata; explicit `access:devices` administration scope and `device-access` / `operator-passkey` revocation provenance. Companion management uses the separate operator-promoted `telemetry:manage` permission, absent from presets/defaults; it does not enable sending or personal source access. A missing legacy kind denotes Device access; these declarations grant no Project membership or execution consent. See [peer enrollment](sdk.md#station-peer-enrollment). |
+| `@kontourai/station-contracts/station-routes` | The addresses a Station reports it can be reached on (`GET /api/system/routes`): LAN, Tailscale and Tailscale HTTPS origins with the Station's `environmentId`, and a parser that drops invalid entries. A client learns them as routes to the same saved Station and still checks each against the handshake before use; see [Station routes](../design/station-routes.md). |
 | `@kontourai/station-contracts/station-groups` | Station groups for people (#3557): the Admin/Member vocabulary and default, the governed permissions and each group's ceiling, the pure `capScopeToGroup`, and the `StationPerson`/`StationGroupAssignment` shapes `GET /api/pairing/people` returns. Groups only cap a person-tied Device's governed permissions; they grant nothing, never include `access:manage`, and are not Project roles |
 | `@kontourai/station-contracts/auth` | Auth status, renew results, user identity/detail models |
 | `@kontourai/station-contracts/secret-binding` | Metadata-only AuthRef bindings, instance/person ownership, distinct exact MCP environment, ACP header and instance telemetry destination grants; raw material is server-only |
@@ -766,6 +779,7 @@ No existing diagnostic code is renamed or removed.
 | `continuation_workspace_unbound` | `input_unsupported` | `false` |
 | `continuation_workspace_worktree_gone` | `input_unsupported` | `false` |
 | `continuation_workspace_worktree_moved` | `input_unsupported` | `false` |
+| `conversation-context-unavailable` | `conflict` | `false` |
 | `engine-decision-not-sent` | `warning` | `false` |
 | `engine-decision-unacknowledged` | `warning` | `false` |
 | `engine-session-binding-dead` | `session_gone` | `false` |

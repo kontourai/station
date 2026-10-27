@@ -1,0 +1,7 @@
+{
+  "revision": "df6b850a1091a1386adb02af0889e5d272498b53",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Checked against the session-api.md change (forms need no viewed-content digest): this ADR's claims about routing managed chat through orchestration do not depend on approval allow conditions. No update needed.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

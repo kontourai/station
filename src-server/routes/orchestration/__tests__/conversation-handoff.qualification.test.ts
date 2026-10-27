@@ -1261,7 +1261,8 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         restored?.events.filter(
           (entry) =>
             entry.event.method === 'turn.completed' &&
-            entry.event.outputText?.includes(CONTEXT_TOKEN),
+            typeof entry.event.outputText === 'string' &&
+            entry.event.outputText.includes(CONTEXT_TOKEN),
         ),
       ).toHaveLength(
         (repeatNativeReturn ? 6 : nativeReturn ? 4 : 3) +

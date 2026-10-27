@@ -23,6 +23,10 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // SSH environment management: src-server/services/ssh/, /api/ssh-environments
   // routes, packages/sdk/src/query-domains/sshEnvironments.ts.
   sshEnvironments: true,
+  // Station routes: GET /api/system/routes reports the addresses this Station
+  // is reached on (src-server/services/connections/station-routes.ts). Hosted
+  // deployments withdraw it: see servesConnectionRoutes.
+  connectionRoutes: true,
   // Web Push subscribe/unsubscribe: src-server/routes/operations/push-routes.ts.
   // Hosted deployments withdraw it: see servesWebPushNotifications.
   webPushNotifications: true,
@@ -133,6 +137,18 @@ export function servesWebPushNotifications(
   return !deployment.hosted;
 }
 
+/**
+ * Whether `GET /api/system/routes` serves in this deployment. A hosted tenant
+ * runtime has no LAN or Tailscale address of its own to report, so the route
+ * answers 404 there; runtime route support derives the resolver from this
+ * predicate (`resolveRuntimeConnectionRoutesEnabled`).
+ */
+export function servesConnectionRoutes(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
 /** Flags whose route serves only in some deployment modes. */
 const DEPLOYMENT_SERVED_FLAGS: Readonly<
   Partial<
@@ -144,6 +160,7 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
 > = {
   sessionInventoryInputRead: servesSessionInventoryInputRead,
   webPushNotifications: servesWebPushNotifications,
+  connectionRoutes: servesConnectionRoutes,
 };
 
 /**

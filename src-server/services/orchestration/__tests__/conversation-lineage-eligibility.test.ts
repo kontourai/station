@@ -70,6 +70,7 @@ function lineageFor(current: OrchestrationSessionDetail) {
     logger: { warn: vi.fn() },
     readSession: async () => current,
     readSessionMessages: () => [],
+    readSessionSeedMessages: () => [],
     listSessionReadModel: async () => [],
     canReadSession: () => true,
   });
@@ -347,6 +348,7 @@ describe('#749 shared continuation control eligibility', () => {
         logger: { warn: vi.fn() },
         readSession: async () => current,
         readSessionMessages: () => [],
+        readSessionSeedMessages: () => [],
         listSessionReadModel: async () => [],
         canReadSession: () => true,
         perTurnModelOverride: (provider) => provider !== 'acp',
@@ -383,6 +385,7 @@ describe('#749 shared continuation control eligibility', () => {
         logger: { warn: vi.fn() },
         readSession: async () => current,
         readSessionMessages: () => [],
+        readSessionSeedMessages: () => [],
         listSessionReadModel: async () => [],
         canReadSession: () => true,
         perTurnModelOverride: () => false,

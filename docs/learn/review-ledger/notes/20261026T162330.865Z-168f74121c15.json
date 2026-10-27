@@ -1,0 +1,7 @@
+{
+  "revision": "6710c2c1237c566900d4b462b206b7c0abc99434",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked against the event-content-spill change: the only security-relevant input change is a new paired GET route, /api/orchestration/sessions/:threadId/content/:ref, inheriting the session-read family scope and authorized like the event window. The document's scoped-pairing and authority claims remain accurate; no update needed.","inputs":["docs/security/remote-access-threat-model.md","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

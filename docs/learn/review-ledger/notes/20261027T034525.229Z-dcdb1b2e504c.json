@@ -1,0 +1,7 @@
+{
+  "revision": "03de66577b851284970e0e9ed397dd8487597327",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Spec edits: mobile-layout reaches Settings via drawer account menu, task-first-home drawer footer floor now names Updates and the account control, project-architecture comment only. Matrix rows (Home/continuity, Projects, Settings/Customize) remain accurate at their level of detail. No prose change.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/android/mobile-layout.spec.ts","tests/project-architecture.spec.ts","tests/task-first-home.spec.ts"]}
+  ]
+}

@@ -99,6 +99,7 @@
     "./engine-display": "./src/engine-display.ts",
     "./enriched-agent": "./src/enriched-agent.ts",
     "./environment-security": "./src/environment-security.ts",
+    "./station-routes": "./src/station-routes.ts",
     "./external-monitor": "./src/external-monitor.ts",
     "./execution-confinement": "./src/execution-confinement.ts",
     "./execution-preparation": "./src/execution-preparation.ts",
@@ -238,7 +239,8 @@
     "./mcp-elicitation": "./src/mcp-elicitation.ts",
     "./mcp-prompts": "./src/mcp-prompts.ts",
     "./account-preferences": "./src/account-preferences.ts",
-    "./html-reply": "./src/html-reply.ts"
+    "./html-reply": "./src/html-reply.ts",
+    "./runtime-event-content": "./src/runtime-event-content.ts"
   },
   "dependencies": {
     "@kontourai/datum": "0.8.1",

@@ -6022,14 +6022,18 @@ export function configureRuntimeRoutes(
     return new DelegationResultDelivery({
       ...conversationDeliveryPorts(eventStore),
       store: eventStore.delegationResultStore(),
+      // Opt-in resolution: a delegation result reports the exact reply,
+      // even one EventStore stored out of line (event-content-spill).
       turnEvents: (threadId, turnId, methods, limit, invocationId) =>
         eventStore
-          .listTurnEventsByMethods(
-            threadId,
-            turnId,
-            methods,
-            limit,
-            invocationId,
+          .resolveEventContent(
+            eventStore.listTurnEventsByMethods(
+              threadId,
+              turnId,
+              methods,
+              limit,
+              invocationId,
+            ),
           )
           .map((stored) => ({
             ...(stored.turnId ? { turnId: stored.turnId } : {}),
@@ -6974,26 +6978,30 @@ export function configureRuntimeRoutes(
   );
   // #90 Browser pane: personal hosts only (same gate as the device routes),
   // and every request is authorized per Project (operator or Project admin).
-  if (localMediaPreviews) {
-    context.app.route(
-      '/api/media-tools',
-      createMediaToolsRoutes({
-        tools: mediaTools,
-        preview: localMediaPreviews.mediaToolsPreview,
-        authorizeOperator: createBrowserOperatorAuthorizer({
-          operator: (request) => projectMembershipAuthority(request).operator(),
+  if (isPersonalHost) {
+    // Media routes also need the previews, bound only on a personal host.
+    if (localMediaPreviews) {
+      context.app.route(
+        '/api/media-tools',
+        createMediaToolsRoutes({
+          tools: mediaTools,
+          preview: localMediaPreviews.mediaToolsPreview,
+          authorizeOperator: createBrowserOperatorAuthorizer({
+            operator: (request) =>
+              projectMembershipAuthority(request).operator(),
+          }),
+          isRequestPrincipalCurrent,
         }),
-        isRequestPrincipalCurrent,
-      }),
-    );
-    context.app.route(
-      '/api/transcription',
-      createTranscriptionRoutes({
-        transcriber: context.walkthroughImportDependencies.transcriber,
-        preview: localMediaPreviews.localSpeechPreview,
-        isRequestPrincipalCurrent,
-      }),
-    );
+      );
+      context.app.route(
+        '/api/transcription',
+        createTranscriptionRoutes({
+          transcriber: context.walkthroughImportDependencies.transcriber,
+          preview: localMediaPreviews.localSpeechPreview,
+          isRequestPrincipalCurrent,
+        }),
+      );
+    }
     const browserMembership = context.projectMembership;
     const browserAccess = {
       operator: (request: Request) =>

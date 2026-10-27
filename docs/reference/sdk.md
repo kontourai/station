@@ -343,6 +343,25 @@ preference, or pass `null` to clear it. The mutation does not enroll accounts,
 probe quota by itself, apply credentials, or prove a recovery succeeded. See
 [the policy and evidence boundaries](../guides/connections.md#prefer-allowance-that-expires-sooner-during-account-recovery).
 
+## Out-of-line event content
+
+The `@kontourai/station-sdk/runtime-event-content` subpath reads the value
+behind a runtime event's out-of-line content reference
+([design](../design/event-content-spill.md)). `fetchRuntimeEventContent`
+calls `GET /api/orchestration/sessions/:threadId/content/:ref` and returns the
+raw body with its kind and size (`maxChars` returns a prefix marked
+incomplete). `loadRuntimeEventContent` loads every reference in a stored
+event, rejects if any body is incomplete, and returns the resolved event with
+its `viewedContentDigest`; `computeViewedContentDigest` computes that digest
+with WebCrypto. `loadApprovalContent` fetches a request's content binding
+(the request and the tool calls it gates, as the server defines them), loads
+every reference in it, checks the server's digest against its own, and
+returns the digest to send. Allowing a request with `spilledContent`
+requires the digest on `respondToRequest`. `useApprovalContentQuery` and
+`useRuntimeEventContentQuery` are the React Query hooks; a host Query Client
+is required. The client functions are also exported from
+`@kontourai/station-sdk/client`.
+
 ## Credential-profile device-code login
 
 The `@kontourai/station-sdk/device-code-login` subpath exports

@@ -12,8 +12,12 @@ import { SourceEnrollmentStore } from '../../analytics/source-enrollment-store.j
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
 import { createRecipientCandidateRoutes } from '../../routes/operations/recipient-candidates.js';
 import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
+import { createSystemStatusRoutes } from '../../routes/system/system-status-routes.js';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../runtime/bootstrap/hosted-tenant-mode.js';
-import { resolveRuntimeWebPushEnabled } from '../../runtime/routes/runtime-route-support.js';
+import {
+  resolveRuntimeConnectionRoutesEnabled,
+  resolveRuntimeWebPushEnabled,
+} from '../../runtime/routes/runtime-route-support.js';
 import { configureRuntimePublicRoutes } from '../../runtime/routes/runtime-routes.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import {
@@ -187,6 +191,26 @@ const CONSUMED_FLAGS: Record<
     );
     return response.status === 200;
   },
+  // GET /api/system/routes answers the Station routes only where runtime
+  // route support composes a resolver, from the same predicate as the flag.
+  connectionRoutes: async ({ hosted }) => {
+    const enabled = resolveRuntimeConnectionRoutesEnabled(
+      hosted
+        ? { [HOSTED_TENANT_REGISTRY_FILE_ENV]: '/hosted/tenants.json' }
+        : {},
+    );
+    const routes = createSystemStatusRoutes({
+      ...(enabled
+        ? {
+            resolveStationRoutes: async () => ({
+              environmentId: 'env-a',
+              routes: [],
+            }),
+          }
+        : {}),
+    } as never);
+    return (await routes.request('/routes')).status === 200;
+  },
   // Not gated by a client today, but withdrawn in hosted mode, so pinned too.
   // GET /vapid-public-key answers under resolveRuntimeWebPushEnabled. That
   // configureRuntimeSupportServices composes webPushEnabled from it is pinned
@@ -281,6 +305,7 @@ describe('consumed capability flags match what their routes serve', () => {
     sessionInventoryInputRead: { personal: true, hosted: false },
     eventStreamResume: { personal: true, hosted: true },
     webPushNotifications: { personal: true, hosted: false },
+    connectionRoutes: { personal: true, hosted: false },
   };
 
   test('every flag a deployment withdraws has a row', () => {

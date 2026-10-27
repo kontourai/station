@@ -60,6 +60,7 @@
     "./project-shared-tasks": "./src/client/project-shared-tasks.ts",
     "./live-activity": "./src/live-activity.ts",
     "./action-operations": "./src/action-operations.ts",
+    "./runtime-event-content": "./src/runtime-event-content.ts",
     "./resource-posture": "./src/query-domains/resourcePosture.ts",
     "./spatial-board": "./src/spatial-board.ts",
     "./testing": "./src/voice/testing.ts",

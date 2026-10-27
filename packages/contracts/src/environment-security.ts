@@ -1212,6 +1212,11 @@ export interface StationCapabilityFlags {
   /** SSH environment management (`src-server/services/ssh/`, `/api/ssh-environments`). */
   sshEnvironments?: boolean;
   /**
+   * `GET /api/system/routes` (`station-routes.ts`): the addresses this Station
+   * reports it can be reached on, for a paired device to learn as routes.
+   */
+  connectionRoutes?: boolean;
+  /**
    * Web Push subscribe/unsubscribe (`src-server/routes/operations/push-routes.ts`).
    * Absent on hosted deployments, whose push routes all answer 404 (#4177).
    */

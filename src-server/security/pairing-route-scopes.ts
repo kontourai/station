@@ -4261,6 +4261,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/event-window',
     },
+    // docs/design/event-content-spill.md: the full value behind a content
+    // reference in an event this family already reads. A paired phone must
+    // load an approval's full content before it can allow it.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/content/:ref',
+    },
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/requests/:requestId/content-binding',
+    },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/events' },
     // station#1877: stops ONE provider-reported subagent inside a session the
     // caller already reaches through this family. It mutates, but no more
@@ -4757,6 +4768,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/system/discover' },
     { method: 'GET', path: '/api/system/identity' },
     { method: 'GET', path: '/api/system/instance' },
+    // Station routes: the addresses this Station is reached on, for a paired
+    // device to learn as routes to the same Station. The read tier, like the
+    // identity read above; every learned route is still checked against the
+    // public handshake before a credential is sent to it.
+    { method: 'GET', path: '/api/system/routes' },
     { method: 'POST', path: '/api/system/push-subscribe' },
     { method: 'POST', path: '/api/system/push-unsubscribe' },
     // Native agent-activity push: like the Web Push leaves above, the
