@@ -22,6 +22,8 @@ an immutable reference. Claim the exact working revision durably before freezing
 and linking it. Task Review must finish that freeze before creating a plan
 anchor. Saves retain the last writer's attribution and the last frozen parent;
 receipt format, portable validation and immutable retention stay unchanged.
+A receipt's actor is therefore the last writer before the freeze, not the
+author of every change since its parent; per-save authorship is not evidence.
 The [module contract](../design/revision-bound-evidence.md#freeze-and-retention-decision)
 owns recovery, admission and local test evidence.
 
