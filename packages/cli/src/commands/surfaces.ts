@@ -1067,6 +1067,29 @@ async function runBrandingCommand(args: string[]) {
   await requestAndPrint(apiBase, '/api/branding');
 }
 
+/**
+ * `station workload status`: this Station's engine workload memory budgets,
+ * whether they are enforced, and where each value came from. A Station that
+ * predates the route answers 404, reported as "not supported" with a nonzero
+ * exit rather than as an empty success.
+ */
+async function runWorkloadCommand(args: string[]) {
+  const parsed = parseCoreArgs(args);
+  const apiBase = resolveSurfaceApiBase(parsed);
+  const action = requirePositional(parsed, 0, 'workload action');
+  if (action !== 'status')
+    throw new Error("Unknown workload action. Use 'status'.");
+  try {
+    await requestAndPrint(apiBase, '/api/system/workload');
+  } catch (error) {
+    if ((error as { status?: unknown }).status === 404)
+      throw new Error(
+        'This Station does not report workload budgets (an older or hosted Station). Update Station to use station workload status.',
+      );
+    throw error;
+  }
+}
+
 async function runFeedbackCommand(args: string[]) {
   const parsed = parseCoreArgs(args);
   const apiBase = resolveSurfaceApiBase(parsed);
@@ -1578,6 +1601,9 @@ export async function runSurfaceCommand(
       return;
     case 'branding':
       await runBrandingCommand(args);
+      return;
+    case 'workload':
+      await runWorkloadCommand(args);
       return;
     case 'feedback':
       await runFeedbackCommand(args);

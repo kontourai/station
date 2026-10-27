@@ -582,3 +582,56 @@ describe('ChatDockBody station-agent failure marker', () => {
     expect(screen.queryByText(/invalid or have expired/i)).toBeNull();
   });
 });
+
+describe('ChatDockBody memory-exhaustion marker', () => {
+  test('offers Continue, not Send again, and sends a short continuation rather than the original prompt', async () => {
+    const onNewChat = vi.fn();
+    const chatInput = buildChatInput();
+    const message =
+      'Codex ran out of memory and was stopped, along with the commands it was running. Its workload budget is 3072 MiB (peak 3072 MiB), shared by Codex and every command it runs.';
+    renderDock(
+      buildSession({
+        messages: [
+          {
+            role: 'user',
+            content: 'Regenerate the icons, lint, and run the browser check',
+            timestamp: 1,
+          } as any,
+          {
+            role: 'user',
+            content: `[SYSTEM_EVENT] [CHAT_ERROR:engine-memory-exhausted] ${message}`,
+            timestamp: 2,
+          } as any,
+        ],
+      }),
+      onNewChat,
+      chatInput,
+    );
+    expect(
+      await screen.findByText(
+        /engine ran out of memory/i,
+        {},
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/sequentially before continuing/i)).toBeNull();
+    const action = await screen.findByRole(
+      'button',
+      { name: 'Continue' },
+      { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+    );
+    expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Switch agent' })).toBeNull();
+    fireEvent.click(action);
+    await waitFor(() =>
+      expect(chatInput.handleSend).toHaveBeenCalledWith(
+        'Continue the task from where it stopped.',
+        [],
+      ),
+    );
+    expect(chatInput.handleSend).not.toHaveBeenCalledWith(
+      'Regenerate the icons, lint, and run the browser check',
+      expect.anything(),
+    );
+  });
+});

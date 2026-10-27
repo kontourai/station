@@ -325,3 +325,35 @@ export type HomeRecoveryDisclosure =
       snapshotCreatedAt: string;
       authorityTransferred: false;
     };
+
+/** Where an effective workload memory budget came from. */
+export type WorkloadBudgetSource = 'environment' | 'settings' | 'default';
+
+/**
+ * `GET /api/system/workload`: this Station's engine workload memory budgets.
+ * `enforcement.state` is `ready` only while a Linux systemd user service
+ * enforces them; `unmanaged` means this host does not enforce budgets at all
+ * (macOS, Windows, Linux outside a Station service) and `unavailable` that
+ * enforcement failed to start (`reason`). `applies` says whether a saved
+ * change reaches new scopes now or only after Station restarts.
+ */
+export interface WorkloadBudgetStatus {
+  enforcement: {
+    state: 'unmanaged' | 'ready' | 'unavailable' | 'stopping';
+    reason?: string;
+    platform: string;
+  };
+  hostMemoryBytes: number;
+  limits?: {
+    memoryMaxBytes: number;
+    totalMemoryMaxBytes: number;
+    swapMaxBytes: number;
+    tasksMax: number;
+  };
+  sources?: { memory: WorkloadBudgetSource; totalMemory: WorkloadBudgetSource };
+  settings: { memoryMiB?: number; totalMemoryMiB?: number };
+  settingsError?: string;
+  settingsWritable: boolean;
+  applies: 'new-scopes' | 'restart';
+  activeScopes: number;
+}

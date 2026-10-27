@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { availableParallelism, totalmem } from 'node:os';
+import type { WorkloadBudgetStatus } from '@kontourai/station-contracts/system-status';
 import {
   type ChildWorkloadLaunch,
   type ChildWorkloadOutcome,
@@ -569,7 +570,7 @@ function enforcementSummary() {
 }
 
 /** Operator view: budgets, where each came from, and the saved choices. */
-export function workloadBudgetStatus() {
+export function workloadBudgetStatus(): WorkloadBudgetStatus {
   const effective =
     limits ??
     (() => {

@@ -1,7 +1,10 @@
 import { useConnections } from '@kontourai/station-connect';
 import type { ToolPolicyDelivery } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
-import { ENGINE_SIGN_IN_REQUIRED_CODE } from '@kontourai/station-contracts/provider';
+import {
+  ENGINE_MEMORY_EXHAUSTED_CODE,
+  ENGINE_SIGN_IN_REQUIRED_CODE,
+} from '@kontourai/station-contracts/provider';
 import { MCP_SIGN_IN_REQUIRED_CODE } from '@kontourai/station-contracts/provider-failure';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
 import { stationControlToolName } from '@kontourai/station-contracts/station-control-refusal';
@@ -61,6 +64,7 @@ import {
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import {
   formatChatErrorDisplay,
+  MEMORY_EXHAUSTION_CONTINUE_TEXT,
   SESSION_START_INDETERMINATE_CODE,
   translateChatError,
 } from '../../utils/chatErrorTranslation';
@@ -1398,33 +1402,49 @@ export function ChatDockBody({
                             `/connections/engines/${encodeURIComponent(activeSession.agentConnectionId ?? '')}`,
                           ),
                       }
-                    : translation?.retryable === false &&
-                        chatErrorCode !== SESSION_START_INDETERMINATE_CODE &&
-                        onNewChat
+                    : chatErrorCode === ENGINE_MEMORY_EXHAUSTED_CODE
                       ? {
-                          label: 'Switch agent',
+                          // Not a resend: a short request whose model
+                          // input the server prefixes with its recovery
+                          // note (interrupted commands, peak, limit).
+                          label: 'Continue',
                           onClick: () =>
-                            void Promise.resolve(onNewChat()).catch(
-                              surfaceRecoveryFailure,
+                            void runRecoveredTurn(
+                              {
+                                text: MEMORY_EXHAUSTION_CONTINUE_TEXT,
+                                attachments: [],
+                              },
+                              (text, attachments) =>
+                                sendRef.current(text, attachments),
                             ),
                         }
-                      : translation?.terminalSession && onNewChat && retryTurn
+                      : translation?.retryable === false &&
+                          chatErrorCode !== SESSION_START_INDETERMINATE_CODE &&
+                          onNewChat
                         ? {
-                            label: 'New chat',
+                            label: 'Switch agent',
                             onClick: () =>
-                              void runRecoveredTurn(retryTurn, onNewChat),
+                              void Promise.resolve(onNewChat()).catch(
+                                surfaceRecoveryFailure,
+                              ),
                           }
-                        : canRetry && retryTurn
+                        : translation?.terminalSession && onNewChat && retryTurn
                           ? {
-                              label: 'Send again',
+                              label: 'New chat',
                               onClick: () =>
-                                void runRecoveredTurn(
-                                  retryTurn,
-                                  (text, attachments) =>
-                                    sendRef.current(text, attachments),
-                                ),
+                                void runRecoveredTurn(retryTurn, onNewChat),
                             }
-                          : undefined
+                          : canRetry && retryTurn
+                            ? {
+                                label: 'Send again',
+                                onClick: () =>
+                                  void runRecoveredTurn(
+                                    retryTurn,
+                                    (text, attachments) =>
+                                      sendRef.current(text, attachments),
+                                  ),
+                              }
+                            : undefined
             }
           />
         );

@@ -1484,6 +1484,14 @@ export {
   useTelemetryDeliveryStatusQuery,
 } from './query-domains/telemetryDelivery';
 export { extractUIBlocks } from './query-domains/uiBlocks.js';
+export {
+  fetchWorkloadBudgets,
+  updateWorkloadBudgetSettings,
+  useUpdateWorkloadBudgetSettingsMutation,
+  useWorkloadBudgetsQuery,
+  type WorkloadBudgetStatus,
+  WorkloadBudgetsUnsupportedError,
+} from './query-domains/workloadBudgets.js';
 // station#3390 introduced these alongside useModelPickerCatalogQuery (exported
 // above). publicBarrel derives its expected list from the domain module by
 // design, so a hook whose types never reach the barrel is one a consumer

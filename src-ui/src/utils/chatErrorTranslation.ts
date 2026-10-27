@@ -7,6 +7,7 @@ import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principa
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  ENGINE_MEMORY_EXHAUSTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
   ENGINE_TURN_FAILED_CODE,
@@ -448,6 +449,21 @@ export function translateChatError(
     };
   }
 
+  // The engine's workload scope was killed for exhausting its memory budget.
+  // The server's sentence is Station's own (budget and peak, no engine
+  // prose), so it is the body. Resending the original prompt would restart
+  // the same concurrent work from scratch: the card offers Continue, whose
+  // next turn carries Station's recovery note (see
+  // `memory-exhaustion-recovery.ts`), instead of Send again.
+  if (code === ENGINE_MEMORY_EXHAUSTED_CODE) {
+    return {
+      title: 'The engine ran out of memory',
+      body: text,
+      hint: 'Continue picks the task up where it stopped.',
+      retryable: false,
+    };
+  }
+
   // #2269: a Station-owned deadline ended the turn. Neither code is an
   // engine or connection failure, so the fallback's "Retrying may help if
   // this was a temporary failure" would misstate the cause. The raw message
@@ -744,6 +760,10 @@ export function translateProjectedRuntimeError(
  * Renders a `ChatErrorTranslation` as the markdown chat copy shown to the
  * user. Raw engine text is not inlined — `disclosureRaw` is a Details control.
  */
+/** What the Continue action sends after a memory kill; Station adds the rest. */
+export const MEMORY_EXHAUSTION_CONTINUE_TEXT =
+  'Continue the task from where it stopped.';
+
 export function formatChatErrorDisplay(
   translation: ChatErrorTranslation,
 ): string {
