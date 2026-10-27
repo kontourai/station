@@ -766,6 +766,36 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     });
   });
 
+  // A send the client refuses before any request (an attachment that never
+  // completed staging) reached no Station: it must leave no user bubble, and
+  // the message returns to the composer.
+  it('a send refused before it reaches Station leaves no user bubble', async () => {
+    const attachment = {
+      id: 'unstaged-1',
+      name: 'screen.png',
+      type: 'image/png',
+      size: 3,
+      data: 'data:image/png;base64,YWJj',
+    };
+    const before = activeChatsStore.getSnapshot()[sessionId]?.messages ?? [];
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'codex', undefined, 'Inspect this', [
+        attachment,
+      ]);
+    });
+
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    const chat = activeChatsStore.getSnapshot()[sessionId];
+    expect(chat?.messages ?? []).toEqual(before);
+    expect(chat?.input).toBe('Inspect this');
+    expect(chat?.attachments).toEqual([attachment]);
+    expect(chat?.error).toBe(
+      'Attachments must complete supervised staging before Send.',
+    );
+  });
+
   it('omits every model override after the picker explicitly requests the default', async () => {
     activeChatsStore.updateChat(sessionId, {
       requestedModel: null,

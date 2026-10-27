@@ -285,6 +285,20 @@ export function useComposerAttachments(options: {
       requestScope?: StageTask['requestScope'],
     ): Promise<void>[] => {
       const settled = files.map((file) => {
+        // One task per id. A second task would orphan the first one's
+        // settlement, and a running first task's cleanup would delete the
+        // second's entry while both uploads ran. A queued task takes the newer
+        // bytes; a running one is joined.
+        const existing = owned.tasks.current.get(file.id);
+        if (existing && !existing.controller.signal.aborted) {
+          if (!owned.running.current.has(file.id)) {
+            existing.file = file;
+            existing.requestScope = requestScope;
+            owned.filesById.current.set(file.id, file);
+            owned.fileScopes.current.set(file.id, requestScope);
+          }
+          return existing.settled;
+        }
         let settle!: () => void;
         const done = new Promise<void>((resolve) => {
           settle = resolve;

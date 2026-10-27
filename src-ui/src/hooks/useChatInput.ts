@@ -5,6 +5,7 @@ import {
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import { setOrchestrationApprovalMode } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
 import {
   useCallback,
@@ -548,7 +549,7 @@ export function useChatInput({
         );
         return;
       }
-      const selectedAttachments = overrideAttachments ?? attachments;
+      let selectedAttachments = overrideAttachments ?? attachments;
       if (
         !text.trim() &&
         selectedAttachments.length === 0 &&
@@ -565,18 +566,38 @@ export function useChatInput({
       if (overrideAttachments?.length) {
         const staged =
           activeChatsStore.getSnapshot()[sessionId]?.attachmentStages ?? [];
-        const unstaged = overrideAttachments.filter(
-          (attachment) =>
-            !staged.some(
-              (stage) =>
-                stage.clientAttachmentId === attachment.id &&
-                stage.state === 'complete',
-            ),
+        const isStaged = (attachment: FileAttachment) =>
+          staged.some(
+            (stage) =>
+              stage.clientAttachmentId === attachment.id &&
+              stage.state === 'complete',
+          );
+        // Each staging takes a fresh identity: the server keeps a used
+        // clientAttachmentId (per login, across chats) as a completed stage or
+        // accepted tombstone and refuses to stage it again, and recovered ids
+        // (`retry-<index>-<n>`) repeat across chats and repeated clicks.
+        selectedAttachments = overrideAttachments.map((attachment) =>
+          isStaged(attachment)
+            ? attachment
+            : { ...attachment, id: randomCorrelationId() },
+        );
+        const unstaged = selectedAttachments.filter(
+          (attachment) => !isStaged(attachment),
         );
         if (unstaged.length > 0 && !(await stageFilesRef.current(unstaged))) {
-          // Leave the whole turn in the composer beside the chip's error.
-          if (!activeChatsStore.getSnapshot()[sessionId]?.input)
-            updateChat(sessionId, { input: text });
+          // The files stay as chips showing their error. The recovered text
+          // fills an empty composer; a draft already there is kept, and the
+          // failed turn keeps its Send again in the transcript either way.
+          if (
+            overrideText !== undefined &&
+            !activeChatsStore.getSnapshot()[sessionId]?.input
+          )
+            updateChat(sessionId, { input: canonicalDraft });
+          else if (overrideText)
+            showToast(
+              'An attachment did not upload. Your draft was kept; retry the upload or use Send again.',
+              'error',
+            );
           return;
         }
       }
