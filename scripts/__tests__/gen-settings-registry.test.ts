@@ -276,6 +276,7 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'experimental-flow': 'device',
   'experimental-readiness': 'device',
   'experimental-trust': 'device',
+  'experimental-sheet-gestures': 'device',
   'shared-answers': 'station',
   'plugin-visibility': 'station',
   'host-runtime': 'informational',
