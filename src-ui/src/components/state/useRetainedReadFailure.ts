@@ -4,14 +4,15 @@ import { useState } from 'react';
 export interface RetainableRead {
   data: unknown;
   error: unknown;
-  errorUpdateCount: number;
-  isFetching: boolean;
+  /** When this query entry last failed; survives the reset a refetch makes. */
+  errorUpdatedAt: number;
+  fetchStatus: 'fetching' | 'paused' | 'idle';
 }
 
 export interface RetainedReadFailure {
   /** The failure to describe: the current one, or the last one while retrying. */
   error: unknown;
-  /** A refetch is in flight; the failure stands until it answers. */
+  /** A refetch is running or waiting for the network; the failure stands until it answers. */
   retrying: boolean;
 }
 
@@ -26,26 +27,28 @@ export interface RetainedReadFailure {
  * repeat, and the surface flickered between the two states.
  *
  * This keeps the failure on screen, marked `retrying`, until a refetch
- * answers. Held data wins: a failed refresh of a read that already has data
- * returns `null`, so the view keeps drawing what it has.
+ * answers — including one TanStack paused because the device is offline.
+ * Held data wins: a failed refresh of a read that already has data returns
+ * `null`, so the view keeps drawing what it has.
  */
 export function useRetainedReadFailure(
   query: RetainableRead,
 ): RetainedReadFailure | null {
-  const [lastError, setLastError] = useState<unknown>(null);
+  const [last, setLast] = useState<{ error: unknown; at: number } | null>(
+    null,
+  );
   // Setting state during render is React's sanctioned way to remember a
   // previous render's value; it re-renders before committing.
-  if (query.error != null && query.error !== lastError) {
-    setLastError(query.error);
+  if (query.error != null && query.error !== last?.error) {
+    setLast({ error: query.error, at: query.errorUpdatedAt });
   }
   if (query.data !== undefined) return null;
-  if (query.error != null) {
-    return { error: query.error, retrying: query.isFetching };
-  }
-  // `errorUpdateCount` belongs to the query entry, so a new key that never
-  // failed does not inherit a previous key's failure.
-  if (query.errorUpdateCount > 0 && query.isFetching && lastError != null) {
-    return { error: lastError, retrying: true };
+  const retrying = query.fetchStatus !== 'idle';
+  if (query.error != null) return { error: query.error, retrying };
+  // Only this entry's own failure is retained: matching the failure time
+  // keeps a previous query key's error from describing a different read.
+  if (retrying && last && last.at === query.errorUpdatedAt && last.at > 0) {
+    return { error: last.error, retrying };
   }
   return null;
 }

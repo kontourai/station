@@ -8,8 +8,8 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 const layoutQueryState = vi.hoisted(() => ({
   data: undefined as unknown,
   isLoading: false,
-  isFetching: false,
-  errorUpdateCount: 0,
+  fetchStatus: 'idle' as string,
+  errorUpdatedAt: 0,
   error: undefined as unknown,
 }));
 const agentState = vi.hoisted(() => ({
@@ -141,8 +141,8 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
     renderedLayout.canLaunchPrompts = 'unset';
     layoutQueryState.data = undefined;
     layoutQueryState.isLoading = false;
-    layoutQueryState.isFetching = false;
-    layoutQueryState.errorUpdateCount = 0;
+    layoutQueryState.fetchStatus = 'idle';
+    layoutQueryState.errorUpdatedAt = 0;
     layoutQueryState.error = undefined;
     renderedLayout.value = undefined;
     hostQuery.isSuccess = true;
@@ -371,7 +371,7 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
 
   test('a non-404 failure keeps the retryable error screen', () => {
     layoutQueryState.error = new StationHttpError(500, 'boom');
-    layoutQueryState.errorUpdateCount = 1;
+    layoutQueryState.errorUpdatedAt = 1;
 
     render(<LayoutView projectSlug="audit-alpha" layoutSlug="coding" />);
 
@@ -387,7 +387,7 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
   // the skeleton until the connection came back.
   test('a retry after a failure keeps the error instead of flickering to the skeleton', () => {
     layoutQueryState.error = new TypeError('Failed to fetch');
-    layoutQueryState.errorUpdateCount = 1;
+    layoutQueryState.errorUpdatedAt = 1;
     const view = render(
       <LayoutView projectSlug="audit-alpha" layoutSlug="coding" />,
     );
@@ -398,7 +398,7 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
     // What TanStack reports once a refetch starts for a query with no data.
     layoutQueryState.error = null;
     layoutQueryState.isLoading = true;
-    layoutQueryState.isFetching = true;
+    layoutQueryState.fetchStatus = 'fetching';
     view.rerender(<LayoutView projectSlug="audit-alpha" layoutSlug="coding" />);
 
     expect(screen.queryByRole('status', { name: 'Opening layout' })).toBeNull();
@@ -412,13 +412,13 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
 
   test('re-checking a missing layout keeps saying it is missing', () => {
     layoutQueryState.error = new StationHttpError(404, 'Layout not found');
-    layoutQueryState.errorUpdateCount = 1;
+    layoutQueryState.errorUpdatedAt = 1;
     const view = render(
       <LayoutView projectSlug="audit-alpha" layoutSlug="coding" />,
     );
     layoutQueryState.error = null;
     layoutQueryState.isLoading = true;
-    layoutQueryState.isFetching = true;
+    layoutQueryState.fetchStatus = 'fetching';
     view.rerender(<LayoutView projectSlug="audit-alpha" layoutSlug="coding" />);
 
     expect(screen.getByRole('alert').textContent).toContain('Layout not found');
@@ -431,7 +431,7 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
       config: { tabs: [{ id: 'main', label: 'Main', component: 'chat' }] },
     };
     layoutQueryState.error = new TypeError('Failed to fetch');
-    layoutQueryState.errorUpdateCount = 1;
+    layoutQueryState.errorUpdatedAt = 1;
 
     render(<LayoutView projectSlug="audit-alpha" layoutSlug="coding" />);
 

@@ -54,10 +54,10 @@ const hostQuery = vi.hoisted(() => ({
 }));
 const loadedHostQuery = () => ({
   isLoading: false,
-  isFetching: false,
+  fetchStatus: 'idle' as string,
   isError: false,
   error: null as unknown,
-  errorUpdateCount: 0,
+  errorUpdatedAt: 0,
   data: { contributions: [{ projection }] } as unknown,
 });
 vi.mock('@kontourai/station-sdk/workspace-pane', () => ({
@@ -252,7 +252,7 @@ test('a failed catalog stays a failure while it retries instead of flickering to
     data: undefined,
     isError: true,
     error: new TypeError('Failed to fetch'),
-    errorUpdateCount: 1,
+    errorUpdatedAt: 1,
   };
   const view = render(
     <WorkspacePaneHostActionsFrame projectSlug="one">
@@ -271,7 +271,7 @@ test('a failed catalog stays a failure while it retries instead of flickering to
     isError: false,
     error: null,
     isLoading: true,
-    isFetching: true,
+    fetchStatus: 'fetching',
   };
   view.rerender(
     <WorkspacePaneHostActionsFrame projectSlug="one">
