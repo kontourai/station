@@ -259,26 +259,36 @@ measurement is reported separately from enforcement state.
 Under `OOMPolicy=continue` systemd records no `oom-kill` result for a scope,
 so Station reads the kernel's own count: the `oom_kill` line of the scope's
 cgroup v2 `memory.events`. A 1-second poll reads every running scope and
-announces a new kill to the engine's adapter only once a later poll still finds
-the engine alive with no newer kill (so a kill can take up to about two seconds
-to be reported). A poll that lands between the kernel killing the engine itself
+announces a kill count to the engine's adapter only once a later poll finds the
+very engine it launched (same pid and start time) still alive; kills seen at
+that later poll wait for the next one, so a steady stream of command kills is
+reported one poll behind (a kill can take up to about two seconds to appear). A poll that lands between the kernel killing the engine itself
 and Station noticing the exit therefore never reports the engine's own death as
 a command kill. The count is read again when the scope closes. systemd collects a
 scope as soon as its last process exits, cgroup and counters with it, so an
 engine's own scope (a launch that names its Session) also gets a holder.
 Station spawns `/bin/sleep` itself, detached into its own session and process
-group with no stdio, waits up to 5 seconds for the just-launched scope to load,
-moves the holder into it, and checks the scope's `cgroup.procs`. The move
-writes the scope's `cgroup.procs` directly (the user manager's subtree is
-delegated to the user, so no D-Bus is needed); where that is refused it asks the
-user manager with `AttachProcessesToUnit` through `/usr/bin/busctl`, first over
-systemd's private socket and then over the user bus, each bounded to 3 seconds.
+group with no stdio, waits for the just-launched scope to load, moves the
+holder into it, and checks the scope's `cgroup.procs`. Placement as a whole
+is bounded to about 5 seconds: every `systemctl` and `busctl` call it makes
+gets only the time left, and the poll and the placement share one lookup of
+the scope's control group. The scope is the user manager's (a transient scope
+is not delegated to Station), so the manager moves the holder: Station calls
+`AttachProcessesToUnit` through `/usr/bin/busctl` over systemd's private
+socket (`$XDG_RUNTIME_DIR/systemd/private`), then over the user bus, each
+call bounded to 3 seconds. A refusal from either is final. Only when neither
+bus can be reached at all does Station write the holder into the scope's
+`cgroup.procs` itself, and only when that control group is the scope's own
+(it ends in the unit's name) under Station's workload slice.
 A spawn failure is handled, not fatal. The holder therefore holds no engine pipe, and the
 process-group kill that tears a Codex engine down cannot reach it. When the
 engine dies, the holder keeps the scope and its `memory.events` until Station
 reads the count and stops the scope, which kills the holder. A holder that
-cannot be placed is killed, logged and reported as `holder: unplaced` with a
-`holderReason` in `GET /api/system/workload`; a closing scope waits at most 3
+cannot be placed is killed, logged (with detail) and reported as
+`holder: unplaced` with a short `holderReason` code in
+`GET /api/system/workload`: `scope-not-loaded`, `scope-closed-before-load`,
+`spawn-failed`, `attach-refused`, `attach-unavailable`,
+`outside-station-slice` or `not-in-scope`; a closing scope waits at most 3
 seconds for a placement still running; that scope's count at close, like any
 scope already gone, is unknown and never inferred. The settled record
 (`recent` in `/api/system/resource-posture` and the "Workload scope settled"
