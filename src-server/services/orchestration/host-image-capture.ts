@@ -1,7 +1,7 @@
 import { constants as fsConstants } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { isAbsolute, relative, sep } from 'node:path';
+import { dirname, isAbsolute, relative, sep } from 'node:path';
 import { crc32 } from 'node:zlib';
 import {
   CHAT_ATTACHMENT_MAX_COUNT,
@@ -457,23 +457,23 @@ export interface HostImageCapture {
  * Admit, read and validate the images `paths` name.
  *
  * A path is admitted only when, after resolving every symlink, it is inside
- * one of `roots` (each itself resolved). The lexical path must also be inside
- * a root (or a root's resolved form) before anything on the host is touched,
- * so a path elsewhere is refused without learning whether it exists.
+ * one of `roots` (each itself resolved). Containment is decided on resolved
+ * paths only: a lexical comparison refused `/tmp/x.png` for a root recorded as
+ * `/private/tmp` (macOS) while admitting nothing a resolved check would not.
+ * A path that does not resolve is decided by its resolved parent, so a reply
+ * cannot learn whether a file outside the roots exists: missing and present
+ * outside files are both `outside-allowed-roots`.
  */
 export async function captureHostImages(input: {
   paths: readonly string[];
   roots: readonly string[];
   hooks?: HostImageCaptureHooks;
 }): Promise<HostImageCapture> {
-  const lexicalRoots = new Set<string>();
   const realRoots: string[] = [];
   for (const root of input.roots) {
     if (!root || !isAbsolute(root)) continue;
-    lexicalRoots.add(root);
     try {
       const resolved = await realpath(root);
-      lexicalRoots.add(resolved);
       if (!realRoots.includes(resolved)) realRoots.push(resolved);
     } catch {
       // A missing root admits nothing.
@@ -484,7 +484,6 @@ export async function captureHostImages(input: {
   for (const path of input.paths) {
     const outcome = await captureOne(
       path,
-      [...lexicalRoots],
       realRoots,
       attachments.length >= HOST_IMAGE_MAX_PER_TURN,
       input.hooks,
@@ -507,7 +506,6 @@ export async function captureHostImages(input: {
 
 async function captureOne(
   path: string,
-  lexicalRoots: readonly string[],
   realRoots: readonly string[],
   full: boolean,
   hooks: HostImageCaptureHooks | undefined,
@@ -519,13 +517,21 @@ async function captureOne(
     path.split(/[\\/]/).includes('..')
   )
     return { refused: 'invalid-path' };
-  if (!lexicalRoots.some((root) => isWithin(root, path)))
-    return { refused: 'outside-allowed-roots' };
-  if (full) return { refused: 'limit-reached' };
+  const inRoot = (resolved: string) =>
+    realRoots.find((candidate) => isWithin(candidate, resolved));
   let real: string;
   try {
     real = await realpath(path);
   } catch (error) {
+    // Only a path whose resolved parent is inside a root may say "missing".
+    let parent: string | undefined;
+    try {
+      parent = await realpath(dirname(path));
+    } catch {
+      parent = undefined;
+    }
+    if (!parent || !(inRoot(parent) || realRoots.includes(parent)))
+      return { refused: 'outside-allowed-roots' };
     const code = (error as NodeJS.ErrnoException).code;
     return {
       refused:
@@ -533,8 +539,9 @@ async function captureOne(
     };
   }
   // A symlink inside a root that resolves elsewhere is refused here.
-  const root = realRoots.find((candidate) => isWithin(candidate, real));
+  const root = inRoot(real);
   if (!root) return { refused: 'outside-allowed-roots' };
+  if (full) return { refused: 'limit-reached' };
   const read = await readAdmittedFile(real, root, hooks);
   if ('refused' in read) return read;
   const valid = validateHostImageBytes(read.bytes);

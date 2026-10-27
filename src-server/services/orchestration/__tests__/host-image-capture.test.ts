@@ -154,7 +154,7 @@ describe('captureHostImages', () => {
     ).toBe(true);
   });
 
-  test('refuses a path outside every root without touching it (e.g. /etc/passwd)', async () => {
+  test('refuses a path outside every root without saying whether it exists (e.g. /etc/passwd)', async () => {
     const result = await capture(['/etc/passwd.png', '/etc/passwd']);
     expect(result.sources).toEqual([
       { path: '/etc/passwd.png', refused: 'outside-allowed-roots' },
@@ -199,6 +199,17 @@ describe('captureHostImages', () => {
     const result = await capture([join(tmp, 'shot.png')], [root, tmp]);
     expect(result.sources).toEqual([
       { path: join(tmp, 'shot.png'), attachmentIndex: 0 },
+    ]);
+  });
+
+  test('admits a path through a symlinked prefix of a root (macOS /tmp is /private/tmp)', async () => {
+    writeFileSync(join(root, 'shot.png'), fixture('chromium.png'));
+    const alias = join(base, 'alias');
+    symlinkSync(root, alias);
+    const result = await capture([join(alias, 'shot.png'), join(alias, 'gone.png')]);
+    expect(result.sources).toEqual([
+      { path: join(alias, 'shot.png'), attachmentIndex: 0 },
+      { path: join(alias, 'gone.png'), refused: 'not-found' },
     ]);
   });
 
