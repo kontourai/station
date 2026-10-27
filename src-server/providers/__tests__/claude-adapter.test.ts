@@ -8250,7 +8250,9 @@ describe('ClaudeAdapter', () => {
     const threadId = 'thread-host-ask-escalate';
     // Whoever runs the suite: the engine's root guard is out of play.
     vi.stubEnv('IS_SANDBOX', '1');
-    onTestFinished(() => vi.unstubAllEnvs());
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+    });
 
     await adapter.startSession({
       provider: 'claude',

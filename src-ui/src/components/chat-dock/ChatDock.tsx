@@ -115,7 +115,6 @@ import {
   WORKSPACE_CHAT_OPENER,
 } from '../../regions/pane-opener';
 import type { ChatSession, DockMode, FileAttachment } from '../../types';
-import { approvalPickUpdate } from '../../utils/approvalMode';
 import { chatExecutionBinding } from '../../utils/engine';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import {
@@ -3715,10 +3714,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             // Before the first send is scheduled: that send carries a queued
             // pick to the server, which records it before the engine starts.
             if (sessionId && approvalMode)
-              updateChat(
-                sessionId,
-                approvalPickUpdate(undefined, approvalMode),
-              );
+              updateChat(sessionId, { queuedApprovalMode: approvalMode });
             if (sessionId && experienceDraft)
               updateChat(sessionId, {
                 skillExperienceDraft: experienceDraft,
