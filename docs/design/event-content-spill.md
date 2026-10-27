@@ -516,7 +516,7 @@ cancel never need either field. Per answering path:
 | --- | --- |
 | UI card | Sends both after loading. |
 | CLI `station approvals` and SDK | Fetch the content, then send both. |
-| Delegation approve (`station-control-delegation.ts:5196`) | The delegating agent's tool fetches the content and sends both. Its snapshot already shows bounded text, so the tool returns the resolved arguments to the agent before it can approve. |
+| Delegation approve (`station-control-delegation.ts`) | The delegating agent's tool fetches the binding and echoes its digest, pinning the request event it read. It does not load the bodies or show them to the agent first (see [Fix round 2](#fix-round-2-2026-10-26)). |
 | Operations tool (`station-control-operations-tools.ts:1090`) | Same as delegation. |
 | Approval-inbox dispatch (`approval-inbox.ts:182,232`) | Notification actions for a spilled request offer only Deny; opening the notification is how it is reviewed and allowed. A dispatched accept without the digest is refused with 409. |
 
@@ -647,20 +647,29 @@ injection follows the repository rule.
 - **One binding definition.** Clients no longer find bound calls
   themselves. `GET /api/orchestration/sessions/:threadId/requests/:requestId/content-binding`
   returns the server's `approvalContentBinding`: the stored request, its
-  bound `tool.started` events (at most 16, the same limit the gate reads),
-  whether a digest is `required`, and the digest. The gate uses the same
-  function. The UI card, the SDK `loadApprovalContent`, the CLI and the
-  delegation tool load every reference in the binding, recompute the digest
-  with the shared contract `viewedContentPreimage`, refuse a binding that
-  does not match its events, and send the server's digest. The route is in
-  the pairing scopes and uses the window-read authority.
+  bound `tool.started` events (the newest 16, the same limit the gate
+  reads), whether a digest is `required`, and the digest. The gate uses the
+  same function. The UI card, the SDK `loadApprovalContent` and the CLI
+  load every reference in the binding, recompute the digest with the shared
+  contract `viewedContentPreimage`, refuse a binding that does not match its
+  events, and send the server's digest. The delegation tool is the
+  exception (intended, an owner decision): it fetches the binding and
+  echoes its digest without loading the bodies, so the delegating agent
+  approves without being shown the full content; it pins the request event
+  it read, so a request that changed since is refused. The route is in the
+  pairing scopes and uses the window-read authority.
 - **A 409 refreshes.** A `request_content_not_loaded` answer (a bound call
   arrived after the card loaded) refetches the binding and loads again; the
   card's query key includes the references it shows.
 - **Toasts and the inbox check bound content.** A request whose gated call
   holds spilled content (a Codex file change) gets Review and Deny in the
   toast and Deny in the inbox. The inbox reads the server binding and fails
-  closed.
+  closed: a binding that is missing or unreadable also gets Deny only. A
+  card built before a spilled bound call arrived is written again with Deny
+  only when that call is stored, or when the server refuses an allow from
+  it; a toast re-shown after a refusal offers Review. The chat card marks
+  itself as needing a load as soon as the bound call's arguments show a
+  reference, before any refusal.
 - **Decision fields are pinned** by a test, with `itemId` added. Codex params
   named like a field Station sets (`inputRequest`, `mcpElicitation`,
   `questionnaire`) are dropped from the request payload, so a raw param can
