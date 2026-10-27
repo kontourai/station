@@ -1,0 +1,7 @@
+{
+  "revision": "e96d8417b87ebea5f51d8c3194949e3d3897a92c",
+
+  "notes": [
+    {"path":"docs/guides/walkthroughs.md","note":"Merge of origin/main 7eb64c79a51 into the event-content-spill branch: this branch's only runtime-routes.ts change wraps the delegation result's listTurnEventsByMethods read in resolveEventContent (exact reply for out-of-line content). Walkthrough routes, gating, import/status/list/manifest/image behavior and recognizer sharing are untouched; claims remain accurate. No prose change.","inputs":["docs/guides/walkthroughs.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}
