@@ -2502,6 +2502,14 @@ export class OrchestrationService {
           ?.conversationId ?? threadId,
       listEventPayloads: (threadId) =>
         this.options.eventStore?.listEventPayloads(threadId) ?? [],
+      listResolvedEventPayloads: (threadId) => {
+        const store = this.options.eventStore;
+        return store
+          ? store
+              .resolveEventContent(store.listEvents(threadId))
+              .map((event) => event.payload)
+          : [];
+      },
       readUsageRevision: (threadId) =>
         this.options.eventStore?.readUsageRevision(threadId) ?? 'empty',
       listUsageEventPayloads: (threadId) =>
@@ -2957,6 +2965,8 @@ export class OrchestrationService {
         this.readSession(threadId, authority),
       readSessionMessages: (threadId, authority) =>
         this.readSessionMessages(threadId, authority),
+      readSessionSeedMessages: (threadId, authority) =>
+        this.readSessionSeedMessages(threadId, authority),
       listSessionReadModel: (authority) => this.listSessionReadModel(authority),
       canReadSession: (threadId, authority) =>
         this.sessionAuthz.canReadSession(threadId, authority),
@@ -5983,6 +5993,22 @@ export class OrchestrationService {
     return [
       ...this.forkContexts.copiedForSession(threadId, authority),
       ...this.transcriptReads.readSessionMessages(threadId, authority),
+    ];
+  }
+
+  /**
+   * {@link readSessionMessages} for engine-facing transcript seeds, with
+   * content stored out of line resolved. UI and history reads keep the
+   * reference-bearing projection.
+   */
+  private readSessionSeedMessages(
+    threadId: string,
+    authority: SessionReadScope,
+  ): ConversationMessage[] {
+    this.initialize();
+    return [
+      ...this.forkContexts.copiedForSession(threadId, authority),
+      ...this.transcriptReads.readSessionSeedMessages(threadId, authority),
     ];
   }
 

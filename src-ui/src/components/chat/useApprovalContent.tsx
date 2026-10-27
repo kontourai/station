@@ -67,10 +67,16 @@ export function useApprovalContent(
   // A request needs loading when its stored form (or the call it binds)
   // shows a reference, or when the server refused an allow for content
   // this surface did not know about (a 409 marks it).
-  const marked = useSyncExternalStore(subscribeContentRefresh, () =>
+  const contentMark = () =>
     threadId && requestEventId
       ? contentRefreshVersion(threadId, requestEventId)
-      : 0,
+      : 0;
+  // The same pure getter serves the client and the server render (the tool
+  // batch's first frame renders static markup); it returns a primitive.
+  const marked = useSyncExternalStore(
+    subscribeContentRefresh,
+    contentMark,
+    contentMark,
   );
   const needed =
     active &&

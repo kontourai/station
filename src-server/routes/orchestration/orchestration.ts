@@ -519,6 +519,8 @@ const respondToRequestCommandSchema = z.object({
   // request's full content before allowing it. Checked by the service.
   viewedContentDigest: z
     .string()
+    // 'sha256-' plus 64 hex digits; the regex fixes the exact shape.
+    .max(71)
     .regex(/^sha256-[0-9a-f]{64}$/)
     .optional(),
   // Deprecated (#3390): a pre-0.9 client's harness answer; translated to
