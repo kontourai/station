@@ -11,6 +11,7 @@ import WebSocket from 'ws';
 import { discordGatewayEvents } from '../../telemetry/metrics.js';
 import { isRecord } from '../../utils/is-record.js';
 import type { Logger } from '../../utils/logger.js';
+import { ChatAppCore, renderChatTranscript } from '../chat-apps/chat-app-core.js';
 import type { DiscordAuthorizationResult } from './discord-authorization.js';
 import { DiscordAuthorizationService } from './discord-authorization.js';
 import {
@@ -56,7 +57,7 @@ interface DiscordGatewayServiceOptions {
     token: string;
     channelId: string;
     content: string;
-  }) => Promise<void>;
+  }) => Promise<void | { externalMessageId: string }>;
   eventBus?: {
     subscribe(
       listener: (event: {
@@ -97,13 +98,13 @@ function gatewayResumeUrl(value: string): string | undefined {
 }
 
 /**
- * Outbound-only, resumable Discord Gateway transport. It never writes a
- * Station session. In this slice, MESSAGE_CREATE proves the real ingress seam
- * reaches authorization and then stops; later slices own the authorized action.
+ * Resumable Discord transport over Station's durable messaging authority.
+ * Session writes still enter through the foreground orchestration seam.
  */
 export class DiscordGatewayService {
   private readonly configurationStore: DiscordGatewayConfigurationStore;
   private readonly authorization: DiscordAuthorizationService;
+  private readonly core: ChatAppCore;
   private readonly socketFactory: (url: string) => GatewaySocket;
   private readonly reconnectDelayMs: number;
   private readonly relayStore: DiscordTurnRelayStore;
@@ -122,8 +123,10 @@ export class DiscordGatewayService {
     this.configurationStore = new DiscordGatewayConfigurationStore(
       options.homeDir,
     );
+    this.core = new ChatAppCore(options.homeDir);
     this.authorization = new DiscordAuthorizationService(
       this.configurationStore,
+      this.core,
     );
     this.relayStore = new DiscordTurnRelayStore(options.homeDir);
     this.socketFactory = options.socketFactory ?? ((url) => new WebSocket(url));
@@ -148,6 +151,20 @@ export class DiscordGatewayService {
     }
     if (configuration.enabled !== true || !configuration.token) {
       recordGatewayEvent('disabled');
+      return;
+    }
+    try {
+      const snapshot = JSON.stringify(configuration);
+      this.core.importLegacyDiscord(configuration, () =>
+        JSON.stringify(this.configurationStore.read()) === snapshot,
+      );
+      if (this.core.isDisabled('discord')) {
+        recordGatewayEvent('disabled');
+        return;
+      }
+    } catch {
+      this.options.logger.warn('Discord gateway configuration is unavailable');
+      recordGatewayEvent('policy_unavailable');
       return;
     }
     this.token = configuration.token;
@@ -225,7 +242,10 @@ export class DiscordGatewayService {
     }
     if (envelope.t === 'READY') this.rememberReady(envelope.d);
     if (envelope.t === 'MESSAGE_CREATE')
-      void this.handleInboundMessage(envelope.d);
+      void this.handleInboundMessage(envelope.d).catch(() => {
+        this.options.logger.warn('Discord message handling failed');
+        recordGatewayEvent('policy_unavailable');
+      });
   }
 
   private handleHello(payload: unknown): void {
@@ -308,18 +328,36 @@ export class DiscordGatewayService {
 
     let binding: DiscordChannelSessionBinding | undefined;
     try {
-      binding = findDiscordChannelSessionBinding(
+      const current = findDiscordChannelSessionBinding(
         this.configurationStore.read(),
         payload.guild_id,
         payload.channel_id,
       );
+      const retained = this.core.resolveBinding({
+        app: 'discord',
+        externalWorkspaceId: payload.guild_id,
+        externalChannelId: payload.channel_id,
+      });
+      if (
+        current && retained?.target.kind === 'conversation' &&
+        current.sessionId === retained.target.conversationId
+      ) binding = current;
     } catch {
       recordGatewayEvent('policy_unavailable');
       return;
     }
     if (!binding) {
       recordGatewayEvent('session_unbound');
+      this.core.recordDelivery(
+        {
+          app: 'discord', externalWorkspaceId: payload.guild_id,
+          externalChannelId: payload.channel_id, externalUserId: payload.author.id,
+          direction: 'inbound', action: 'continue',
+        },
+        { state: 'refused', reason: 'channel-unbound' },
+      );
       await this.deliverAcknowledgement(
+        payload.guild_id,
         payload.channel_id,
         'This channel is not bound to a Station session.',
       );
@@ -336,6 +374,7 @@ export class DiscordGatewayService {
     ) {
       recordGatewayEvent('turn_busy');
       await this.deliverAcknowledgement(
+        payload.guild_id,
         payload.channel_id,
         'A Station turn is already running for this channel. Please wait for it to finish.',
       );
@@ -344,6 +383,26 @@ export class DiscordGatewayService {
 
     this.dispatchingSessions.add(binding.sessionId);
     try {
+      const deliveryId = this.core.recordDelivery(
+        {
+          app: 'discord', externalWorkspaceId: payload.guild_id,
+          externalChannelId: payload.channel_id, externalUserId: payload.author.id,
+          conversationId: binding.sessionId, direction: 'inbound', action: 'continue',
+        },
+        { state: 'pending' },
+      );
+      // No await separates the final link/kill-switch recheck from dispatch.
+      if (
+        !this.authorization.authorize({
+          discordUserId: payload.author.id, guildId: payload.guild_id,
+          channelId: payload.channel_id, capability: 'turn:start',
+        }).allowed
+      ) {
+        this.core.settleDelivery(deliveryId, {
+          state: 'refused', reason: 'capability-unavailable',
+        });
+        return;
+      }
       const dispatched = await this.options.executeForegroundMessage({
         conversationId: binding.sessionId,
         message: payload.content,
@@ -353,6 +412,7 @@ export class DiscordGatewayService {
       if (!dispatched.providerTurnId) {
         recordGatewayEvent('turn_indeterminate');
         await this.deliverAcknowledgement(
+          payload.guild_id,
           payload.channel_id,
           'Station could not confirm that this turn started. Do not retry automatically.',
         );
@@ -365,12 +425,18 @@ export class DiscordGatewayService {
         guildId: payload.guild_id,
         channelId: payload.channel_id,
       });
+      this.core.settleDelivery(deliveryId, {
+        state: 'delivered', externalMessageId: payload.id,
+      });
       recordGatewayEvent('turn_started');
     } catch {
+      // Keep an unknown dispatch pending. A rejection need not prove the
+      // provider saw no effect, so this path must never invite automatic replay.
       // The real orchestration seam owns detailed receipts. Do not echo a
       // provider error or inbound content into Discord or logs.
       recordGatewayEvent('turn_refused');
       await this.deliverAcknowledgement(
+        payload.guild_id,
         payload.channel_id,
         'Station could not start this turn.',
       );
@@ -409,6 +475,7 @@ export class DiscordGatewayService {
     });
     if (!transcriptAuthorization.allowed) {
       await this.deliverAcknowledgement(
+        relay.guildId,
         relay.channelId,
         `Station completed the turn. View it in Station: ${stationSessionPointer(relay.sessionId)}`,
       );
@@ -422,14 +489,19 @@ export class DiscordGatewayService {
       turnId: event.turnId,
     });
     await this.deliverAcknowledgement(
+      relay.guildId,
       relay.channelId,
-      renderDiscordTranscript(transcript ?? '', relay.sessionId),
+      renderChatTranscript(
+        transcript ?? '', DISCORD_MESSAGE_MAX_CHARS,
+        stationSessionPointer(relay.sessionId),
+      ),
     );
     this.relayStore.remove(event.turnId);
     recordGatewayEvent('relay_delivered');
   }
 
   private async deliverAcknowledgement(
+    guildId: string,
     channelId: string,
     content: string,
   ): Promise<void> {
@@ -439,13 +511,18 @@ export class DiscordGatewayService {
     } catch {
       return;
     }
-    if (!configuration.enabled || !configuration.token) return;
+    const token = configuration.token;
+    if (!configuration.enabled || !token) return;
     try {
-      await (this.options.deliverMessage ?? defaultDeliverMessage)({
-        token: configuration.token,
-        channelId,
-        content,
-      });
+      await this.core.deliver(
+        {
+          app: 'discord', externalWorkspaceId: guildId, externalChannelId: channelId,
+          direction: 'outbound', action: 'notify',
+        },
+        () => (this.options.deliverMessage ?? defaultDeliverMessage)({
+          token, channelId, content,
+        }),
+      );
     } catch {
       this.options.logger.warn('Discord message delivery failed');
       recordGatewayEvent('delivery_error');
@@ -469,30 +546,11 @@ function stationSessionPointer(sessionId: string): string {
 
 const DISCORD_MESSAGE_MAX_CHARS = 2_000;
 
-function renderDiscordTranscript(output: string, sessionId: string): string {
-  if (output.length <= DISCORD_MESSAGE_MAX_CHARS)
-    return output || 'Station completed the turn.';
-  const disclosure = `\n\n[Truncated — view the full response in Station: ${stationSessionPointer(sessionId)}]`;
-  const room = DISCORD_MESSAGE_MAX_CHARS - disclosure.length;
-  const candidate = output.slice(0, room);
-  const sentenceEnd = Math.max(
-    candidate.lastIndexOf('. '),
-    candidate.lastIndexOf('! '),
-    candidate.lastIndexOf('? '),
-    candidate.lastIndexOf('\n'),
-  );
-  const text =
-    sentenceEnd >= Math.floor(room / 2)
-      ? candidate.slice(0, sentenceEnd + 1)
-      : `${candidate.trimEnd()}…`;
-  return `${text}${disclosure}`;
-}
-
 async function defaultDeliverMessage(input: {
   token: string;
   channelId: string;
   content: string;
-}): Promise<void> {
+}): Promise<{ externalMessageId: string }> {
   const response = await fetch(
     `https://discord.com/api/v10/channels/${encodeURIComponent(input.channelId)}/messages`,
     {
@@ -505,4 +563,11 @@ async function defaultDeliverMessage(input: {
     },
   );
   if (!response.ok) throw new Error('Discord message delivery was rejected');
+  const receipt: unknown = await response.json();
+  if (
+    !isRecord(receipt) || typeof receipt.id !== 'string' ||
+    !/^[0-9]{17,20}$/u.test(receipt.id)
+  )
+    throw new Error('Discord delivery receipt is unavailable');
+  return { externalMessageId: receipt.id };
 }

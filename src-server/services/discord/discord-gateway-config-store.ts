@@ -1,7 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type {
-  DiscordCapability,
   DiscordChannelSessionBinding,
   DiscordGatewayConfiguration,
   DiscordGuildScope,
@@ -70,7 +69,9 @@ function isChannelSessionBinding(
   );
 }
 
-function isConfiguration(value: unknown): value is DiscordGatewayConfiguration {
+export function isDiscordGatewayConfiguration(
+  value: unknown,
+): value is DiscordGatewayConfiguration {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const config = value as Record<string, unknown>;
   return (
@@ -116,14 +117,15 @@ export function findDiscordChannelSessionBinding(
  * cache invalidation problem. The file is private because it holds a token.
  */
 export class DiscordGatewayConfigurationStore {
-  constructor(private readonly homeDir: string) {}
+  constructor(readonly homeDir: string) {}
 
   read(): DiscordGatewayConfiguration {
     const path = discordGatewayConfigurationPath(this.homeDir);
     if (!existsSync(path)) return { schemaVersion: 1 };
     try {
       const parsed = JSON.parse(readFileSync(path, 'utf8')) as unknown;
-      if (!isConfiguration(parsed)) throw new Error('invalid shape');
+      if (!isDiscordGatewayConfiguration(parsed))
+        throw new Error('invalid shape');
       return structuredClone(parsed);
     } catch {
       throw new DiscordGatewayConfigurationError();
@@ -132,7 +134,7 @@ export class DiscordGatewayConfigurationStore {
 
   /** Local configuration seam for future owner-authenticated management UI/CLI. */
   write(configuration: DiscordGatewayConfiguration): void {
-    if (!isConfiguration(configuration)) {
+    if (!isDiscordGatewayConfiguration(configuration)) {
       throw new DiscordGatewayConfigurationError();
     }
     const path = discordGatewayConfigurationPath(this.homeDir);
@@ -148,9 +150,3 @@ export class DiscordGatewayConfigurationStore {
   }
 }
 
-export function hasDiscordCapability(
-  mapping: DiscordIdentityMapping,
-  capability: DiscordCapability,
-): boolean {
-  return mapping.capabilities?.includes(capability) === true;
-}

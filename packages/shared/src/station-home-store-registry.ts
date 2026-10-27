@@ -267,6 +267,7 @@ export function containsExternalStationHomePath(
  */
 export const STATION_HOME_SQLITE_STORES: readonly (readonly string[])[] =
   Object.freeze([
+    // Includes chat-app links, bindings, kill switches and delivery receipts.
     ['data', 'orchestration.sqlite'],
     ['scheduler', 'scheduler.sqlite'],
     ['automation', 'automation.sqlite'],

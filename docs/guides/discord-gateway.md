@@ -16,6 +16,14 @@ service, authorization and stores live in
 configuration contract is
 [packages/contracts/src/discord.ts](../../packages/contracts/src/discord.ts).
 
+The messaging core in
+[services/chat-apps](../../src-server/services/chat-apps/) owns durable links,
+bindings, refusal and delivery receipts, and the per-app kill switch. Migration
+[025-chat-apps.ts](../../src-server/domain/migrations/025-chat-apps.ts) creates
+append-only tables in the existing `<home>/data/orchestration.sqlite` store.
+This extraction is source preparation: its tests, typechecks and runtime
+behavior have not been validated in this lane (`NOT_RUN (capacity)`).
+
 ## What it does and does not do
 
 - It handles ordinary messages in allowlisted server (guild) channels. It does
@@ -133,10 +141,27 @@ authorize anything.
     of the contract, but the gateway does not use them yet.
 - Adding `revokedAt` (any value) deactivates a mapping immediately.
 
-The allowlist, identities and bindings are re-read from the file for every
-message and every reply, so revoking a person or removing a channel takes
-effect without a restart. A message from a person who is not mapped, is
-revoked or lacks `turn:start` gets no reply in Discord.
+The first use imports the validated private configuration once. Each imported
+link retains the exact `stationIdentity`, per-person capabilities, Project
+slugs and any `revokedAt` value as legacy provenance. Duplicate user mappings
+retain the first mapping's authority, even when that first mapping is revoked.
+The import separately retains the guild/channel allowlist: importing a binding
+does not allow its channel. Absent grants or channel lists remain empty. The
+bot token is not imported.
+
+An imported `stationIdentity` is still a legacy user ID, not a verified
+principal ID. Continuing an existing conversation uses the same orchestration
+authorization as before. This extraction does not grant new Task-start,
+Project-membership or approval authority.
+
+The file is re-read as an additional ceiling for every authorization decision.
+Revoking a person, removing a grant or channel, or removing/changing a binding
+takes effect without a restart. Adding authority to the JSON after import does
+not add links or widen imported grants. New management writes belong to the
+later linking lane; there is no Settings or CLI management path in this slice.
+A message from a person who is not linked, is revoked or lacks `turn:start`
+gets no reply in Discord. A durable link revocation cannot be undone by
+reimporting the old file.
 
 Authorization for a reply is checked again when the turn completes, against
 `transcript:read`. If the sender lost access while the turn ran (the mapping
@@ -168,6 +193,11 @@ Station answers in the channel when it cannot run a turn:
   Station runs splits the two until a restart. Setting `enabled` to `false`
   while Station runs stops replies, but not message handling; restart Station
   to stop the gateway completely.
+- **Kill switch:** a separate persisted per-app switch refuses new inbound
+  work and outbound sends, and prevents connection on restart. It does not
+  cancel a turn already submitted to orchestration. Its service write seam
+  requires a current operator-authority callback; the later management lane
+  supplies the authenticated UI/route caller.
 - **Disconnects:** Station reconnects after one second and resumes the Discord
   session when it can. There is no backoff, and an invalid token is retried
   every second rather than reported.
@@ -189,6 +219,13 @@ Station counts gateway events in `station.discord.gateway_events`, with one
 `turn_started`, `relay_delivered` or `delivery_error`. See the
 [metric reference](../reference/metrics.md). Log lines use fixed text and never
 include message content.
+
+The core also appends refusal and delivery receipts to SQLite, without the
+token or message text. Pending receipts precede external sends; a confirmed
+outbound receipt retains Discord's message ID. A transport that returns no
+message ID leaves delivery pending/unknown. Errors do not cause retries, and
+an uncertain submission stays pending. These receipts have no public read
+route in this slice.
 
 ## Evidence and limits
 
