@@ -983,6 +983,45 @@ describe('docs/design/event-content-spill.md: toasts for requests that need load
     ]);
   });
 
+  test('after the server refuses an allow for unloaded content, the re-shown toast offers Review and Deny', async () => {
+    const chat = {
+      agentName: 'Codex',
+      approvalToasts: new Map(),
+      pendingApprovals: ['req-1'],
+      messages: [],
+      streamingMessage: {
+        role: 'assistant',
+        content: '',
+        contentParts: [
+          {
+            type: 'tool-invocation',
+            toolCallId: 'item-fc',
+            toolName: 'apply_patch',
+          },
+        ],
+      },
+    };
+    getChatForExecutionSession.mockReturnValue(chat);
+    // The toast was built before the spilled bound call reached this chat.
+    const event = {
+      ...requestOpened({ itemId: 'item-fc', threadId: 'codex-thread' }),
+      eventId: 'evt-409',
+    };
+    handleRequestOpenedEvent('http://station.test', event);
+    const first = approvalToast();
+    expect(first.actions.map((action) => action.label)).toContain('Allow Once');
+    vi.mocked(resolveOrchestrationRequest).mockRejectedValueOnce(
+      Object.assign(new Error('Load the full request before allowing it.'), {
+        code: 'request_content_not_loaded',
+      }),
+    );
+    first.actions.find((action) => action.label === 'Allow Once')!.onClick();
+    await vi.waitFor(() => expect(showToolApproval).toHaveBeenCalledTimes(2));
+    expect(
+      showToolApproval.mock.calls[1]![0].actions.map((action) => action.label),
+    ).toEqual(['Review', 'Deny']);
+  });
+
   test('the same request without spilled content offers Allow', () => {
     getChatForExecutionSession.mockReturnValue({
       agentName: 'Codex',
