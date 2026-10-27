@@ -156,9 +156,9 @@ export function PermissionRequestModal({
           behavior.{' '}
           {request.decisionOnly
             ? request.recovery
-              ? 'They are not granted by this decision. A separate host-owned review page decides trusted access.'
-              : 'They are not granted by installing: after the install, a separate host-owned review page — which plugin code cannot submit for you — decides them.'
-            : 'Approval opens a separate, host-owned review page that plugin code cannot submit for you.'}
+              ? 'This decision does not grant them; a separate host-owned review does.'
+              : 'Installing does not grant them; they are reviewed on a separate host-owned page after install.'
+            : 'Approval opens a separate, host-owned review page.'}
         </div>
       )}
     </Dialog>

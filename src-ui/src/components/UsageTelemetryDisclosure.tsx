@@ -695,11 +695,10 @@ export function usageTelemetryDisclosureSummary(
   endpointConfigured: boolean | undefined,
 ): string {
   const lede =
-    'Station can send pseudonymous Full usage events with an installation hash that rotates monthly and is never linked to an account by Station, only when a telemetry endpoint is configured';
+    'Sends pseudonymous usage events (monthly-rotating ID) only to a configured endpoint';
   if (endpointConfigured === false)
-    return `${lede}; none is configured here, so nothing is sent.`;
-  if (endpointConfigured === true)
-    return `${lede}; one is configured on this Station.`;
+    return `${lede}; none is configured, so nothing is sent.`;
+  if (endpointConfigured === true) return `${lede}; one is configured here.`;
   return `${lede}.`;
 }
 

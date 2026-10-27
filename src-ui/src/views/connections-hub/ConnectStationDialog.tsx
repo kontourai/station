@@ -389,10 +389,7 @@ export function ConnectStationDialog({
           Sending Station: <strong>{controller.name}</strong>
         </p>
         {stale ? (
-          <p role="alert">
-            Station access changed. This setup cannot send requests under a
-            different Station or credential. Return and reopen it.
-          </p>
+          <p role="alert">Station access changed. Reopen this setup.</p>
         ) : null}
         {!destination ? (
           <>
@@ -481,10 +478,7 @@ export function ConnectStationDialog({
             <div className="connect-station-destination">
               <strong>{destination.label}</strong>
               <code>{destination.environmentId}</code>
-              <span>
-                Reported identity. Approval verifies the destination before
-                access is saved.
-              </span>
+              <span>Reported identity; verified on approval.</span>
             </div>
             {!reservation &&
             !deviceStarted &&
@@ -513,17 +507,12 @@ export function ConnectStationDialog({
                 </label>
                 {selectedControllerTarget ? (
                   <p>
-                    This is your currently selected Station. Its Device access
-                    is kept. Use Reconnect or Request access in Stations to
-                    explicitly replace or repair that access.
+                    This is your current Station; its Device access is kept. To
+                    replace it, use Reconnect in Stations.
                   </p>
                 ) : null}
                 {!scope ? (
-                  <p>
-                    Device pairing is available. Sending work requires access to
-                    a controlling Station; no peer request can be submitted from
-                    this device yet.
-                  </p>
+                  <p>Sending work needs access to a controlling Station.</p>
                 ) : null}
                 {peerInvitation ? (
                   <p>
@@ -531,10 +520,7 @@ export function ConnectStationDialog({
                     invitation.
                   </p>
                 ) : null}
-                <p>
-                  Each grant is approved and revoked separately. Peer access
-                  does not grant Project execution consent.
-                </p>
+                <p>Peer access doesn't include consent to run Projects.</p>
                 <Button
                   variant="primary"
                   disabled={
@@ -567,19 +553,18 @@ export function ConnectStationDialog({
                 </h3>
                 <p role="status">
                   {status === 'connected'
-                    ? 'Peer access approved. Project and Agent eligibility are checked separately when you choose a task destination.'
+                    ? 'Peer access approved.'
                     : status === 'pending'
-                      ? 'Waiting for approval on the destination Station. Use its trusted operator session or host CLI; this device cannot approve itself.'
+                      ? 'Waiting for approval on the destination Station, from its operator session or host CLI.'
                       : status === 'outcome-unknown' || !status
-                        ? 'The request outcome is unknown. Check this same request before starting any replacement.'
+                        ? 'Request outcome unknown. Check it before starting a new one.'
                         : `Peer setup: ${status}.`}
                 </p>
                 {observed?.error ? <p role="alert">{observed.error}</p> : null}
                 {peerStatus.error ? (
                   <p role="alert">
-                    The request status could not be read. Peer setup requires a
-                    trusted operator session on {controller.name}; ordinary
-                    device access cannot provision peers.
+                    Couldn't read the request status. Peer setup needs a trusted
+                    operator session on {controller.name}.
                   </p>
                 ) : null}
                 <p>
@@ -590,10 +575,9 @@ export function ConnectStationDialog({
                 </p>
                 {peerNeedsRetry ? (
                   <p>
-                    The sending Station has not confirmed this request. Retry
-                    retains the same request reference and destination. If its
-                    record was removed, an earlier receiver request may still
-                    exist; review requests on the destination first.
+                    The sending Station hasn't confirmed this request. Retry
+                    reuses it; if that fails, check the destination for an
+                    earlier request first.
                   </p>
                 ) : null}
                 {status !== 'connected' && status !== 'cancelled' ? (
@@ -649,7 +633,7 @@ export function ConnectStationDialog({
                       >
                         open the destination directly in another tab
                       </a>
-                      . Your current Station and Project stay here.
+                      .
                     </p>
                   </aside>
                 ) : null}
@@ -759,14 +743,13 @@ export function ConnectStationDialog({
             ) : null}
             {devicePending ? (
               <p role="status">
-                Device access requested. Approval, denial, and expiry stay
-                visible in connection status while you continue working here.
+                Device access requested. Track it in connection status.
               </p>
             ) : null}
             {deviceSaved ? (
               <p role="status">
                 {scope
-                  ? 'Device access saved. Your current Station stays selected; choose the destination from Stations when you want to use it.'
+                  ? 'Device access saved. Switch to it from Stations.'
                   : 'Device access saved. This Station is available in Stations.'}
               </p>
             ) : null}
@@ -776,19 +759,12 @@ export function ConnectStationDialog({
         {failedBrowserOrigin ? (
           <section aria-label="Browser connection help">
             <p>
-              A Station can be reachable while this browser cannot read it. The
-              destination must permit this page’s exact origin:{' '}
-              <code>{window.location.origin}</code>. HTTPS pages may also block
-              HTTP destinations.
+              Ask the destination operator to start it with{' '}
+              <code>{`--allowed-origin=${window.location.origin}`}</code>, then
+              retry. HTTPS pages can't reach HTTP Stations.
             </p>
             <p>
-              Ask the destination operator to configure{' '}
-              <code>{`--allowed-origin=${window.location.origin}`}</code>{' '}
-              through its existing Station startup or service settings, then
-              retry. Origin permission does not approve Device or peer access.
-            </p>
-            <p>
-              You can use the native app instead. For Device pairing,{' '}
+              Or use the native app, or{' '}
               <a
                 href={failedBrowserOrigin}
                 target="_blank"
@@ -796,11 +772,7 @@ export function ConnectStationDialog({
               >
                 open the destination Station directly
               </a>
-              . Peer setup still belongs to the sending Station’s trusted
-              session.
-            </p>
-            <p>
-              No access request was submitted during this identification check.
+              .
             </p>
           </section>
         ) : null}
