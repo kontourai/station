@@ -14,6 +14,7 @@ import {
 import { LazyBoundary } from '../LazyBoundary';
 import '../NewChatAction.css';
 import './ChatDockHeader.css';
+import type { ContextPercentageSource } from '../conversation-stats/ContextPercentage';
 import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
 import { ProjectSwitcherOverlay } from './ChatDockProjectContext';
 import { MobileSheetPending } from './MobileSheetPending';
@@ -86,6 +87,15 @@ export interface ChatDockMobileOverflowActions {
   onOpenSessionContext?: (returnFocus: HTMLElement | null) => void;
   /** The chat's ladder line, named on the row ("This chat — Running"). */
   sessionContextStatus?: string;
+  /**
+   * The composer's context meter, again as a row of this sheet. On a phone
+   * the meter is the last chip of a row that scrolls sideways with its
+   * scrollbar hidden, and that row is hidden altogether while typing on a
+   * short screen, so it is easy never to see. The row names the share used
+   * and opens the same Conversation stats panel the meter does. Absent: no
+   * row (ChatDock offers it exactly where it shows the meter).
+   */
+  conversationStats?: ContextPercentageSource & { onOpen: () => void };
 }
 
 export interface ChatDockMobileProjectSwitcher {

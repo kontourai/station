@@ -407,6 +407,7 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       canContinueConversation: (_access, conversationId, userId) =>
         service.canUserReadSession(conversationId, authority(userId)),
       getProviderAdapter: (provider) => service.getProviderAdapter(provider),
+      readInitialConversationContext: async () => undefined,
       readSessionBinding: async (_access, id) => currentBinding(store, id),
       resolveConversationSession: async (_access, id, requested) =>
         service.resolveConversationContinuation(

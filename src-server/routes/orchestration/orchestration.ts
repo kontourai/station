@@ -105,7 +105,10 @@ import {
   tenantExecutionContextForRequest,
 } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
-import type { FullAccessGrant } from '../../security/coding-authority.js';
+import {
+  type FullAccessGrant,
+  requestMayBeAnAgent,
+} from '../../security/coding-authority.js';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import {
@@ -171,6 +174,7 @@ import {
 } from '../../services/orchestration/thread-inbox.js';
 import { MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES } from '../../services/orchestration/thread-tool-result-adapter.js';
 import { foregroundTurnSubmissionDigest } from '../../services/orchestration/turn-submission-digest.js';
+import { isPersonChatRequest } from '../../services/projects/project-chat-defaults.js';
 import type { ReceiverExecutionAdmission } from '../../services/projects/project-contribution-service.js';
 import {
   RECEIVER_EXECUTION_REFUSAL_COPY,
@@ -905,6 +909,9 @@ export const foregroundMessageObjectSchema = z.object({
   // had a session, or while offline). Recorded on receipt, before the turn.
   setApprovalMode: approvalModeSchema.optional(),
   setApprovalModeBasedOn: z.number().int().nonnegative().nullable().optional(),
+  // The person's personal per-engine default, a hint below the Agent's and
+  // the Project's defaults (`recordPersonalApprovalDefault`), never a pick.
+  personalApprovalDefault: z.enum(['ask', 'auto', 'never']).optional(),
 });
 
 /**
@@ -1285,6 +1292,10 @@ interface ForegroundMessageRequest {
   clientOrigin?: ClientOrigin;
   /** #3323: how the route came by the stamped delegation; never body JSON. */
   delegationProvenance?: DelegationProvenance;
+  /** See `ForegroundMessageInput.personChatStart`; derived here, never body JSON. */
+  personChatStart?: true;
+  /** See `ForegroundMessageInput.personalApprovalDefault`. */
+  personalApprovalDefault?: ApprovalMode;
 }
 
 interface ContinueForegroundMessageRequest {
@@ -2612,6 +2623,12 @@ export function createOrchestrationRoutes(
       // #2377 slice C3b: an agent sends without an approval posture.
       const postureRefused = refuseCarriedPosture(c, [
         { path: 'setApprovalMode', value: body.setApprovalMode, kind: 'pick' },
+        // A person's approval hint is theirs to send; an agent sends none.
+        {
+          path: 'personalApprovalDefault',
+          value: body.personalApprovalDefault,
+          kind: 'pick',
+        },
         {
           path: 'target.model.options',
           value: body.target.model?.options,
@@ -2833,6 +2850,17 @@ export function createOrchestrationRoutes(
         // #2873: the scope decision above, run again where the engine spawns.
         ...(scoped.spawn ? { dispatchCwdAdmission: scoped.spawn } : {}),
         clientOrigin: resolveClientOriginForRequest(c.req.raw),
+        // A person's own interactive chat, which alone records and inherits
+        // a Project's last-used values (`project-chat-defaults.ts`).
+        ...(isPersonChatRequest({
+          mayBeAnAgent: requestMayBeAnAgent(c.req.raw),
+          inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
+          automaticBackground: body.automaticBackground === true,
+          delegated: Boolean(claimedDelegation || delegation),
+          ownerAttributed: ownerAttribution !== undefined,
+        })
+          ? { personChatStart: true as const }
+          : {}),
         // Only the join wait a same-key retry may spend; never the send.
         joinWaitSignal: c.req.raw.signal,
       } as ForegroundMessageRequest;
@@ -3147,6 +3175,12 @@ export function createOrchestrationRoutes(
           {
             path: 'setApprovalMode',
             value: (body as { setApprovalMode?: unknown }).setApprovalMode,
+            kind: 'pick',
+          },
+          {
+            path: 'personalApprovalDefault',
+            value: (body as { personalApprovalDefault?: unknown })
+              .personalApprovalDefault,
             kind: 'pick',
           },
           {
@@ -3557,6 +3591,12 @@ export function createOrchestrationRoutes(
           {
             path: 'setApprovalMode',
             value: body.setApprovalMode,
+            kind: 'pick',
+          },
+          {
+            path: 'personalApprovalDefault',
+            value: (body as { personalApprovalDefault?: unknown })
+              .personalApprovalDefault,
             kind: 'pick',
           },
           {

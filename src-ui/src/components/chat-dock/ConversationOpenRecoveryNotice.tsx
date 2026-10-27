@@ -7,7 +7,8 @@ export interface ConversationOpenRecoveryNoticeProps {
    * in `ChatDockBody` and never reaches this component (#1582 E3/B6).
    *
    * Only `missing-session` (the Session is gone) and `resolved` (the server
-   * resolved it and refused continuation — a writable resolution never
+   * resolved it and refused continuation) or `fork-ready` (the saved fork
+   * refused first start — a writable resolution never
    * reaches this notice) are verdicts, and only they say "read-only". Every
    * other state is a failed check — the open read failed (`error`), the
    * server could not resolve it (`unavailable`), or the chat's own point-read
@@ -18,6 +19,7 @@ export interface ConversationOpenRecoveryNoticeProps {
   state?:
     | 'missing-session'
     | 'resolved'
+    | 'fork-ready'
     | 'unavailable'
     | 'error'
     | 'unverified';
@@ -35,7 +37,10 @@ export function ConversationOpenRecoveryNotice({
   onRetry,
   onStartNew,
 }: ConversationOpenRecoveryNoticeProps) {
-  const verdict = state === 'missing-session' || state === 'resolved';
+  const verdict =
+    state === 'missing-session' ||
+    state === 'resolved' ||
+    state === 'fork-ready';
   const detail =
     state === 'missing-session'
       ? 'Its execution session is no longer available.'

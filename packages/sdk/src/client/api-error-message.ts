@@ -65,6 +65,8 @@ export class StationHttpError extends Error {
    * sentences; this keeps the structure for a caller that renders per field.
    */
   readonly details?: unknown;
+  readonly previewId?: string;
+  readonly settingsPath?: string;
 
   constructor(
     status: number,
@@ -73,6 +75,8 @@ export class StationHttpError extends Error {
       retryAfterMs?: number;
       code?: string;
       details?: unknown;
+      previewId?: string;
+      settingsPath?: string;
       kind?: ProviderFailureKind;
       failurePhase?: 'refused' | 'failed' | 'indeterminate';
     },
@@ -97,6 +101,8 @@ export class StationHttpError extends Error {
     if (this.kind !== undefined)
       this.retryable = PROVIDER_FAILURE_RETRYABLE[this.kind];
     this.failurePhase = options?.failurePhase;
+    this.previewId = options?.previewId;
+    this.settingsPath = options?.settingsPath;
 
     if (options?.retryAfterMs !== undefined) {
       this.retryAfterMs = options.retryAfterMs;
@@ -148,6 +154,8 @@ export interface EnvelopeFailure {
   code?: string;
   /** The body's `details`, exactly as sent. */
   details?: unknown;
+  previewId?: string;
+  settingsPath?: string;
   /** `Retry-After` (delta-seconds only), in milliseconds. */
   retryAfterMs?: number;
 }
@@ -297,6 +305,11 @@ export function readEnvelopeFailure(
     raw?.failurePhase === 'indeterminate'
   ) {
     failure.failurePhase = raw.failurePhase;
+  }
+  if (raw?.code === 'feature_preview_disabled') {
+    if (typeof raw.previewId === 'string') failure.previewId = raw.previewId;
+    if (typeof raw.settingsPath === 'string')
+      failure.settingsPath = raw.settingsPath;
   }
   const code = envelopeCode(body);
   if (code !== undefined) failure.code = code;

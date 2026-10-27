@@ -1953,7 +1953,7 @@ crowded and that nothing said what belonged in it. The rule:
 | One overflow (⋯). Where the region host offers its commands (`RegionMenu` in `RegionChromeSlots`), Chat folds the region's Move to …, Add pane… and Maximize/Restore size into it as a last group. | Region Move, "+" and maximize buttons: rows of that menu. The bar drops its own buttons only while a pane absorbs the rows; other panes keep them. |
 | The region's ⋮⋮ grab (shown on hover or focus) and the show/hide chevron. | — |
 | The "This chat" chip, only while the card is folded away. | — |
-| — | Context meter: the composer's meta row, beside the model it measures. |
+| — | Context meter: the composer's meta row, beside the model it measures; on a phone, also the Actions sheet's Conversation stats row. |
 
 A control earns a place in the bar when it is about the chat on screen or is
 the dock's primary verb, and it is used often enough that a menu would cost

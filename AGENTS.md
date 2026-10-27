@@ -4,6 +4,7 @@
 
 - GitHub owns live work state. Check `git status -sb` against `origin/main`.
 - Work only in a sibling worktree (`../station-worktrees/<lane>`), never the primary checkout or a nested worktree. Preserve intentional changes; never use `git stash`; after review begins, integrate upstream with `git merge origin/main`, not rebase.
+- In a fresh environment, match `.nvmrc` and `packageManager` before `dependencies:ci`, and unshallow history before trusting local docs-freshness results. If it hands you a single checkout and branch, work there; without `gh`, arm auto-merge through the GitHub connector.
 - Use an isolated Station home, instance name, and non-default ports. Ports 3141 and 3000 belong to the user.
 - Hand a running instance to the operator through a freshly minted `station open --print` sign-in link (single-use), never a bare `localhost` URL. Mint it at handoff, not at start; see [development](docs/guides/development.md).
 - Run `npm run dependencies:ci` to arm hooks; managed installs use pinned pnpm and `npm run` is the script interface, so never run raw npm installs. Before editing, run `npm run gate:for -- <paths...>`, then `npm run test:focused -- <file...>`, not ad-hoc `npx vitest`.
@@ -28,7 +29,7 @@ A bare `#NNNN` means this repo, except pre-reset text in areas the sweep skipped
 
 ## Read only the route you need
 
-For behavior or public-contract changes, use [documentation-audit](.agents/skills/documentation-audit/SKILL.md).
+For behavior or public-contract changes, use [documentation-audit](.agents/skills/documentation-audit/SKILL.md). Ship a new user-facing capability behind a [Feature Preview](docs/guides/feature-previews.md).
 
 Codex loads only this root automatically; read the routed scope explicitly. Claude's nested `CLAUDE.md` imports its paired `AGENTS.md`.
 

@@ -20,9 +20,12 @@ switch, a name and a description of what turning it on does. A preview is listed
 only when this Station's build can run it; if none is, the section says
 "No previews are currently offered". Previews start off.
 
-**Fleet consumer probes**: before routing work to a
-model that another Station contributes, Station sends a test request to it.
-That test can spend a completion on the other Station.
+| ID | Name | What turning it on does | Notable cost/risk |
+| --- | --- | --- | --- |
+| `fleet-consumer-probes` | Fleet consumer probes | Sends a test request to a peer-contributed model before routing work to it. | Can spend a completion on another Station. |
+| `walkthroughs` | Walkthroughs | Imports narrated screen recordings into transcripts and frames agents can read, using local processing. | One-time consented media/speech tool download; CPU use; recordings may contain private information. |
+| `local-speech` | Local speech | Offers Station (local) in Voice → Speech-to-text: record a message, then transcribe it on this Station. | One-time consented tool/model download; English batch dictation only; microphone permission; shares one recognizer and a bounded wait queue with Walkthroughs. |
+| `task-review` | Task review | Adds a Review tab to Tasks for anchored comments on plans, outputs, answers and Screens, which can be sent to the lead agent. | Sending starts or queues a lead-agent turn; Screen capture needs a committed workspace. |
 
 **Task review** (`task-review`): turn this on in **Settings → Advanced →
 Feature previews**, then open a Task and choose **Review**, after Conversation.
@@ -40,18 +43,35 @@ Task's authorized image route. Turning the preview off hides Review; a
 
 Turning a preview on affects everyone who uses this Station.
 
+For **Local speech**, choose **Station (local)** in **Settings → Voice →
+Speech-to-text** after enabling the preview. Click the composer microphone to
+record and click again to stop; final text appears after transcription. Missing
+tools require the Station operator’s explicit `station media-tools download
+--yes` consent against this instance; there is no download settings panel yet.
+Disabling the preview removes the provider when the UI observes the change and
+cancels pending client dictation. See [local speech](https://github.com/kontourai/station/blob/main/docs/guides/local-speech.md)
+for requirements, limits and error recovery.
+
 ## Developer tools
 
 **Enable developer tools** shows the **Developer** page in **Customize** and
 the command palette, and its **Monitoring** page in the command palette. It is
 off by default; a direct `/developer` link still opens when it is off.
 
-Enabling it also reveals three independent previews: **Flow delivery preview**,
-**Veritas readiness preview**, and **Trust preview**. Each starts off and is
-saved on this device. The tools require both Developer tools and their own
+Enabling it also reveals four independent previews: **Flow delivery preview**,
+**Veritas readiness preview**, **Trust preview**, and **Sheet gestures
+preview**. Each starts off and is saved on this device. The tools require both Developer tools and their own
 preview switch to be on. Turning Developer tools off makes them unavailable
 without clearing those saved choices. These device previews are separate from
 the Station-wide Feature previews above.
+
+**Sheet gestures preview** adds a drag handle to the top edge of sheets that
+open from the bottom of a phone-width screen. Drag it up to expand the sheet to
+nearly full height, drag it down to close the sheet, or tap it to switch
+between the two heights. Closing this way is the same as choosing the sheet's
+close button. Confirmation prompts and sheets that cannot be dismissed get no
+handle, and the handle can only be dragged with touch or a pointer; the close
+button and Escape still close every sheet.
 
 ## Shared answers
 
@@ -86,6 +106,13 @@ off and only the computer's local operator can change it. The status below the
 switch says whether publication succeeded; enabling it does not change your
 network or firewall. Connecting still needs your approval. See
 [Connect your phone](getting-started.md#connect-your-phone).
+
+## About
+
+**Settings → About** shows the app version, links to **Build details** and
+**Diagnostics**, the open source packages bundled into the app with their
+licenses, and links to the privacy policy, license and support. Development
+servers have no license list.
 
 ## Link to a setting
 

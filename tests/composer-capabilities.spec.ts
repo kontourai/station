@@ -374,7 +374,10 @@ async function attachThroughPicker(
 }
 
 async function evidence(page: Page, testInfo: TestInfo, name: string) {
-  await page.screenshot({ path: testInfo.outputPath(name) });
+  await page.screenshot({
+    path: testInfo.outputPath(name),
+    animations: 'disabled',
+  });
   const directory = process.env.STATION_COMPOSER_EVIDENCE_DIR;
   if (directory) {
     await mkdir(directory, { recursive: true });
@@ -559,6 +562,41 @@ for (const [label, viewport] of [
       page.getByRole('button', { name: 'Send mode: Steer' }),
     ).toBeVisible();
     await evidence(page, testInfo, `running-turn-steer-${label}.png`);
+    if (label === 'desktop') {
+      const originalTheme = await page
+        .locator('html')
+        .getAttribute('data-theme');
+      try {
+        for (const width of [390, 1440]) {
+          for (const theme of ['dark', 'light']) {
+            await page.setViewportSize({ width, height: 900 });
+            await page.evaluate((value) => {
+              document.documentElement.setAttribute('data-theme', value);
+            }, theme);
+            await expect(page.locator('html')).toHaveAttribute(
+              'data-theme',
+              theme,
+            );
+            await expect(
+              page.getByRole('button', { name: 'Send mode: Steer' }),
+            ).toBeVisible();
+            await expect(stop).toBeVisible();
+            await evidence(
+              page,
+              testInfo,
+              `native-steering-${width}-${theme}.png`,
+            );
+          }
+        }
+      } finally {
+        await page.setViewportSize(viewport);
+        await page.evaluate((value) => {
+          if (value === null)
+            document.documentElement.removeAttribute('data-theme');
+          else document.documentElement.setAttribute('data-theme', value);
+        }, originalTheme);
+      }
+    }
     // Horizontally: at 390px a running turn's full row (Clear, Send, Queue,
     // Stop) wraps onto a second line, which is a separate, existing limit.
     await textarea.fill('');

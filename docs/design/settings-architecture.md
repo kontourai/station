@@ -94,7 +94,7 @@ and compact switch sit beneath them.
 ## Experimental project tools
 
 Advanced → Developer tools reveals independent Flow delivery, Veritas readiness,
-and Trust preview switches. All three default off on each device; enabling
+Trust and Sheet gestures preview switches. All four default off on each device; enabling
 Developer tools alone enables none of them. Disabling it withdraws previews
 without clearing their saved opt-ins. The Coding layout, files, diff, terminal,
 and chat remain available. Pane discovery omits disabled previews, and restored
@@ -436,6 +436,14 @@ overridable set from its shape would present them as Station settings the
 moment someone added one. `PROJECT_OVERRIDE_FIELD_ALIASES` records the one
 name the two sides spell differently; neither side is being renamed, because
 a rename on either is a stored-data migration.
+
+A Project's new-chat selections (`defaultModelSelection`,
+`defaultApprovalMode`, `defaultApprovalModeSelection`;
+`packages/contracts/src/project-chat-defaults.ts`) are Project fields edited in
+Project settings → New chats, not entries in this list. A `last-used` choice
+has no Station-scope equivalent, so `GET /config/app?project=<slug>` reports
+`defaultApprovalMode` with its Station provenance even when a Project sets its
+own; the Project's answer is `GET /api/projects/:slug/chat-defaults`.
 
 `defaultWorkspaceIsolation` is new in this slice — a Station-scope setting for
 the workspace a new project chat starts in. Resolution is

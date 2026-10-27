@@ -68,6 +68,7 @@ import {
   answerDeliveryModeOf,
   settingsForAnswerDelivery,
 } from '../utils/answerDelivery';
+import { AboutSection } from './settings/AboutSection';
 import { AgentDefaultsSection } from './settings/AgentDefaultsSection';
 import { AnswerSharesSection } from './settings/AnswerSharesSection';
 import { DeviceHostsSection } from './settings/DeviceHostsSection';
@@ -1798,6 +1799,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     />
                     <DeveloperFeatures />
                   </Section>
+                )}
+
+                {sectionVisible('about') && (
+                  <AboutSection onOpenSection={navigateToSection} />
                 )}
               </section>
             )}
