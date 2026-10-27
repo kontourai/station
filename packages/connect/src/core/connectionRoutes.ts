@@ -87,10 +87,14 @@ export type RouteState = Pick<
 
 /**
  * Only a profile reached by plain direct HTTP takes routes: a relay, a native
- * relay or an SSH tunnel owns its own single address.
+ * relay or an SSH tunnel owns its own single address. A native shared profile
+ * (`station-profile:`) is excluded too: its host binds the credential to one
+ * exact origin, so its routes wait for the host change in phase 2 of
+ * docs/design/station-routes.md.
  */
 export function connectionAcceptsRoutes(connection: SavedConnection): boolean {
   return (
+    !connection.id.startsWith('station-profile:') &&
     !connection.injected &&
     !connection.brokerRoute &&
     !connection.nativeBrokerRoute &&

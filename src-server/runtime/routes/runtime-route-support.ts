@@ -1,8 +1,12 @@
+import { networkInterfaces } from 'node:os';
 import { ACPStatus } from '@kontourai/station-contracts/acp';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { HomeRecoveryDisclosure } from '@kontourai/station-contracts/system-status';
 import { readStationHomeRecovery } from '@kontourai/station-shared/station-home-archive';
-import { servesWebPushNotifications } from '../../capabilities/station-capability-flags.js';
+import {
+  servesConnectionRoutes,
+  servesWebPushNotifications,
+} from '../../capabilities/station-capability-flags.js';
 import { getNotificationProviders } from '../../providers/registries/registry.js';
 import { listUnconnectedACPRegistryEntries } from '../../routes/connections/acp.js';
 import { getCachedUser } from '../../routes/system/auth.js';
@@ -12,6 +16,8 @@ import {
   ApprovalInboxNotificationProvider,
   wireApprovalInboxNotifications,
 } from '../../services/approvals/approval-inbox.js';
+import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
+import { createStationRoutesResolver } from '../../services/connections/station-routes.js';
 import type { FlowRunService } from '../../services/flow/flow-run-service.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { createEnvironmentRuntimeResourcePostureProbe } from '../../services/infra/resource-posture.js';
@@ -46,6 +52,7 @@ import type { ScheduledTurnAdapter } from '../../services/scheduling/builtin-sch
 import { MonitorTaskTurnSupervisor } from '../../services/scheduling/monitor-task-supervisor.js';
 import { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import { DevicePairingNotificationProvider } from '../../services/ssh/device-pairing-notifications.js';
+import { publicIngressOriginResolver } from '../../services/tailscale/public-ingress-origin.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { isExternalEngineBoundAgent } from '../agents/agent-engine-classification.js';
 import { runWithUnattendedPrincipal } from '../agents/unattended-principal-context.js';
@@ -218,6 +225,20 @@ export function createRuntimeSystemRouteDeps(
       listUnconnectedACPRegistryEntries(context.configLoader),
     eventBus: context.eventBus,
     appConfig: context.appConfig,
+    ...(resolveRuntimeConnectionRoutesEnabled()
+      ? {
+          resolveStationRoutes: createStationRoutesResolver({
+            boundAddress: () =>
+              lanDiscoveryFor(context.configLoader).boundAddress(),
+            networkInterfaces,
+            servedOrigins: () =>
+              publicIngressOriginResolver(context.port).resolve(),
+            environmentId: async () =>
+              (await context.environmentSecurityService.getPublicHandshake())
+                .environmentId,
+          }),
+        }
+      : {}),
     port: context.port,
     host: context.host,
     publicOrigins: (process.env.ALLOWED_ORIGINS ?? '')
@@ -331,6 +352,18 @@ export function resolveRuntimeWebPushEnabled(
   environment: NodeJS.ProcessEnv = process.env,
 ): boolean {
   return servesWebPushNotifications({
+    hosted: isHostedTenantExecutionRequired(environment),
+  });
+}
+
+/**
+ * Whether this deployment serves Station routes, from the same predicate the
+ * public handshake uses to advertise `connectionRoutes`.
+ */
+export function resolveRuntimeConnectionRoutesEnabled(
+  environment: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return servesConnectionRoutes({
     hosted: isHostedTenantExecutionRequired(environment),
   });
 }

@@ -11,6 +11,7 @@ const FEATURES = [
   ['experimentalFlowEnabled', 'experimental-flow'],
   ['experimentalReadinessEnabled', 'experimental-readiness'],
   ['experimentalTrustEnabled', 'experimental-trust'],
+  ['experimentalStationRoutesEnabled', 'experimental-station-routes'],
 ] as const;
 
 export function DeveloperFeatures() {

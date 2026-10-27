@@ -373,6 +373,8 @@ export interface DeviceSettings {
   experimentalFlowEnabled?: boolean;
   experimentalReadinessEnabled?: boolean;
   experimentalTrustEnabled?: boolean;
+  /** Station routes (docs/design/station-routes.md): learn and show every route to a saved Station. */
+  experimentalStationRoutesEnabled?: boolean;
   /**
    * archive#4525: the chat dock's own remembered project binding. Owned by
    * the persistent `DockShell`/`useDockShellChrome` (archive#4484), not by
@@ -1069,6 +1071,16 @@ export const DEVICE_SETTINGS_REGISTRY = [
     defaultValue: false,
   }),
   defineDeviceSetting({
+    key: 'experimentalStationRoutesEnabled',
+    scope: 'device',
+    descriptor: { kind: 'boolean' },
+    label: 'Station routes preview',
+    help: 'Opt in to learning every address a saved Station reports and showing each route in its connection details.',
+    description:
+      'Reach a saved Station over its LAN, Tailscale and Tailscale HTTPS addresses.',
+    defaultValue: false,
+  }),
+  defineDeviceSetting({
     key: 'chatDockProjectSlug',
     scope: 'device',
     descriptor: { kind: 'string' },
@@ -1216,6 +1228,7 @@ export const PREFERENCE_DEVICE_KEYS = [
   'experimentalFlowEnabled',
   'experimentalReadinessEnabled',
   'experimentalTrustEnabled',
+  'experimentalStationRoutesEnabled',
   'confirmConversationDelete',
 ] as const satisfies readonly (keyof DeviceSettings)[];
 

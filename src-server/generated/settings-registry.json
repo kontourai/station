@@ -133,6 +133,15 @@
       "configKey": "experimentalTrustEnabled"
     },
     {
+      "id": "experimental-station-routes",
+      "label": "Station routes preview",
+      "help": "Opt in to learning every address a saved Station reports and showing each route in its connection details.",
+      "scope": "device",
+      "section": "developer-tools",
+      "route": "/settings?view=developer-tools&highlight=experimental-station-routes",
+      "configKey": "experimentalStationRoutesEnabled"
+    },
+    {
       "id": "shared-answers",
       "label": "Shared answers",
       "scope": "station",

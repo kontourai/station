@@ -1,0 +1,113 @@
+/* Station routes in a saved Station's details (docs/design/station-routes.md). */
+
+.station-routes {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  padding-top: var(--k-space-3);
+  border-top: 1px solid var(--k-line);
+}
+
+.station-routes__status {
+  margin: 0;
+  color: var(--k-text);
+  font-size: var(--k-text-md);
+}
+
+.station-routes__title {
+  margin: var(--k-space-2) 0 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  font-weight: 600;
+}
+
+.station-routes__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+}
+
+.station-routes__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-3);
+  padding: var(--k-space-3);
+}
+
+.station-routes__row + .station-routes__row {
+  border-top: 1px solid var(--k-line);
+}
+
+.station-routes__main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--k-space-1);
+}
+
+.station-routes__label {
+  color: var(--k-text);
+  font-size: var(--k-text-md);
+}
+
+.station-routes__address,
+.station-routes__detail {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.station-routes__aside {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+
+.station-routes__add {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  margin-top: var(--k-space-2);
+}
+
+.station-routes__add-label {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  font-weight: 600;
+}
+
+.station-routes__add-row {
+  display: flex;
+  gap: var(--k-space-2);
+}
+
+.station-routes__input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 var(--k-space-3);
+  font: inherit;
+  font-size: var(--k-text-md);
+  color: var(--k-text);
+  background: var(--k-bg);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+}
+
+.station-routes__error {
+  margin: 0;
+  color: var(--k-negative);
+  font-size: var(--k-text-sm);
+}
+
+@media (max-width: 480px) {
+  .station-routes__row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

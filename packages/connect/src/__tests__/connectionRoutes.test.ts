@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { ConnectionHealthCoordinator } from '../core/ConnectionHealthCoordinator';
 import { ConnectionStore } from '../core/ConnectionStore';
 import {
+  connectionAcceptsRoutes,
   connectionRouteKind,
   connectionRouteRemovable,
+  mergeAdvertisedRoutes,
 } from '../core/connectionRoutes';
 import { createAccessEndpoint } from '../core/environmentProfiles';
 import type { StorageAdapter } from '../core/types';
@@ -164,6 +166,21 @@ describe('advertised routes', () => {
       'https://station.example.com',
       'https://box.tail1.ts.net',
     ]);
+  });
+});
+
+describe('profiles that keep one fixed route', () => {
+  it('leaves a native shared profile alone until its host binds routes', () => {
+    const { read } = pairedStation();
+    const native = { ...read(), id: 'station-profile:home' };
+    expect(connectionAcceptsRoutes(native)).toBe(false);
+    expect(
+      mergeAdvertisedRoutes(
+        native,
+        [{ kind: 'tailscale', url: 'http://100.77.142.114:3141' }],
+        { clientProtocol: 'native:' },
+      ),
+    ).toBeNull();
   });
 });
 

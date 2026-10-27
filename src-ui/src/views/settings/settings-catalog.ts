@@ -278,6 +278,14 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['experimentalTrustEnabled'],
   },
   {
+    id: 'experimental-station-routes',
+    title: 'Station routes preview',
+    section: 'developer-tools',
+    conditional: 'developer',
+    keywords: ['routes', 'tailscale', 'lan', 'failover', 'connection'],
+    configKeys: ['experimentalStationRoutesEnabled'],
+  },
+  {
     id: 'shared-answers',
     title: 'Shared answers',
     section: 'answer-shares',
