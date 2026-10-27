@@ -24,7 +24,11 @@ const access: TaskReviewAccess = {
   },
 };
 const request = new Request('http://station.test/api/tasks/task/review');
-function setup() {
+function setup(
+  readPlanOrdinals?: ConstructorParameters<
+    typeof TaskReviewModule
+  >[0]['readPlanOrdinals'],
+) {
   const events = new EventStore(
     join(makeTempDir('station-review-module-'), 'events.sqlite'),
   );
@@ -55,6 +59,7 @@ function setup() {
       },
     },
     readPlan: async () => plan,
+    readPlanOrdinals,
     readAnswers: async () => [],
     deliveryStatusFor,
   });
@@ -262,4 +267,53 @@ test('document cache budgets text and line offsets within 8 MiB and never retain
     await e.read();
   }
   expect(prepare).toHaveBeenCalledTimes(7);
+});
+
+test('ordinal cache budgets anchored revision payloads and retries failed lookups without poisoning the cache', async () => {
+  const readOrdinals = vi.fn(
+    async (
+      _taskId: string,
+      _request: Request,
+      _latest: string,
+      revisions: readonly string[],
+    ) => Object.fromEntries(revisions.map((revision, i) => [revision, i + 1])),
+  );
+  const e = setup(readOrdinals);
+  // 500 distinct bounded revision identities consume over 400 KiB including
+  // both requested identities and the values map, before keys/entry allowance.
+  for (let n = 0; n < 500; n++) {
+    const revision = `saved-${String(n).padStart(3, '0')}-${'x'.repeat(230)}`;
+    const created = e.store.createThread({
+      ...access.write,
+      artifact: {
+        kind: 'plan',
+        id: 'plan',
+        revision,
+        digest: `sha256:${'a'.repeat(64)}`,
+      },
+      anchor: { kind: 'whole' },
+      body: 'Review saved revision',
+      operationId: `cache-${n}`,
+    });
+    expect(created.success).toBe(true);
+  }
+  e.setPlan('current-a');
+  await e.read();
+  await e.read();
+  expect(readOrdinals).toHaveBeenCalledTimes(1);
+  e.setPlan('current-b');
+  await e.read();
+  e.setPlan('current-c');
+  await e.read();
+  e.setPlan('current-a');
+  await e.read();
+  expect(readOrdinals).toHaveBeenCalledTimes(4); // Byte budget evicts before the 16-entry cap.
+  e.setPlan('lookup-outage');
+  readOrdinals.mockRejectedValueOnce(new Error('worker unavailable'));
+  const outage = (await e.read()).items.find((item) => item.kind === 'plan');
+  expect(
+    outage?.status === 'available' ? outage.revisionOrdinals : undefined,
+  ).toBeUndefined();
+  await e.read();
+  expect(readOrdinals).toHaveBeenCalledTimes(6);
 });

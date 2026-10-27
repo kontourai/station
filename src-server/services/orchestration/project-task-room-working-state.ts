@@ -32,8 +32,15 @@ export interface ProjectTaskRoomWorkingState {
   read(input: {
     scope: { projectId: string; taskId: string; documentId: string };
     after?: string;
-    includeRevisionOrdinals?: boolean;
   }): Promise<WorkingProjection>;
+  readRevisionOrdinals(input: {
+    scope: { projectId: string; taskId: string; documentId: string };
+    revision: string;
+    revisions: readonly string[];
+  }): Promise<
+    | { kind: 'available'; revisionOrdinals: Readonly<Record<string, number>> }
+    | { kind: 'unavailable' }
+  >;
   settle(input: {
     scope: { projectId: string; taskId: string; documentId: string };
     intentId: string;
@@ -124,7 +131,6 @@ export interface WorkingProjection {
   readonly revision?: string;
   readonly text?: string;
   readonly floor?: string;
-  readonly revisionOrdinals?: Readonly<Record<string, number>>;
 }
 export interface WorkingSettlement {
   readonly kind:
@@ -314,6 +320,12 @@ export function createProjectTaskRoomWorkingState(
       }
     });
   return Object.freeze({
+    readRevisionOrdinals: (
+      input: Parameters<ProjectTaskRoomWorkingState['readRevisionOrdinals']>[0],
+    ) =>
+      request<
+        Awaited<ReturnType<ProjectTaskRoomWorkingState['readRevisionOrdinals']>>
+      >({ ...input, type: 'revision-ordinals' }),
     read: (input: Parameters<ProjectTaskRoomWorkingState['read']>[0]) =>
       request<WorkingProjection>({ type: 'read', ...input }),
     settle: (input: Parameters<ProjectTaskRoomWorkingState['settle']>[0]) => {

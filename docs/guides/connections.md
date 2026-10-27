@@ -1296,7 +1296,12 @@ the [credential check](../../src-server/providers/llm/bedrock.ts).
 
 See [docs/reference/config.md](../reference/config.md) for the full `app.json` reference and an Ollama-first example.
 
-A Project can override them with `defaultProviderId` and `defaultModel`; an
+A Project can override them with `defaultProviderId` and `defaultModel`. Its
+**New chats** settings can instead start each new chat on the model the
+person's last chat in that Project started with (`defaultModelSelection:
+'last-used'`), falling back to the chain above when that model is no longer
+offered, and set the approval mode a new chat starts in
+([Project new-chat defaults](../reference/api.md#project-new-chat-defaults)). An
 Agent can bind its own Model connection through `execution.modelConnectionId`.
 For Station-engine Agents, connection selection uses that explicit binding,
 then `defaultLLMProvider`, then the sole enabled LLM connection. Several enabled

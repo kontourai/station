@@ -225,7 +225,7 @@ export type TaskReviewItem = {
       readonly artifact: TaskReviewArtifactRef;
       readonly text?: string;
       readonly capture?: TaskCapture;
-      /** Retained working-state revision sequence, including the current Plan. */
+      /** Save ordinals for the current Plan and returned threads' anchored revisions. */
       readonly revisionOrdinals?: Readonly<Record<string, number>>;
     }
   | { readonly status: 'unavailable' }

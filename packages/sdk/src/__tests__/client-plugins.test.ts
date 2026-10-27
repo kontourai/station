@@ -18,7 +18,7 @@ describe('client plugin collection', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
       'https://station.example/api/plugins',
-      { method: 'GET', headers: { 'X-Station-Client-Protocol': '3' } },
+      { method: 'GET', headers: { 'X-Station-Client-Protocol': '4' } },
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

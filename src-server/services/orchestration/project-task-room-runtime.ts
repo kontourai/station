@@ -735,15 +735,11 @@ export class ProjectTaskRoomRuntime {
    * admitted dispatch, or a Session's immutable room execution binding).
    * Hosted mode and a closed runtime have no document to read.
    */
-  async readTaskDocumentForBrief(
-    taskId: string,
-    includeRevisionOrdinals = false,
-  ): Promise<
+  async readTaskDocumentForBrief(taskId: string): Promise<
     | {
         readonly kind: 'available';
         readonly revision: string;
         readonly text: string;
-        readonly revisionOrdinals?: Readonly<Record<string, number>>;
       }
     | { readonly kind: 'unavailable'; readonly reason: string }
   > {
@@ -754,7 +750,6 @@ export class ProjectTaskRoomRuntime {
     const document = { ...scope, documentId: documentIdFor(scope) };
     const result = await this.#deps.working.read({
       scope: document,
-      includeRevisionOrdinals,
     });
     const current = this.#scope(taskId);
     if (
@@ -781,7 +776,6 @@ export class ProjectTaskRoomRuntime {
       kind: 'available',
       revision: result.revision,
       text: result.text,
-      revisionOrdinals: result.revisionOrdinals,
     };
   }
 
@@ -1056,11 +1050,49 @@ export class ProjectTaskRoomRuntime {
     return this.#readReviewPlan(access);
   }
 
+  async readPlanOrdinalsForReview(
+    taskId: string,
+    request: Request,
+    revision: string,
+    revisions: readonly string[],
+  ) {
+    const access = await this.#personTaskAccess(taskId, request);
+    return access.kind === 'granted'
+      ? this.#readReviewPlanOrdinals(access, revision, revisions)
+      : undefined;
+  }
+
+  async readPlanOrdinalsForSessionReview(
+    taskId: string,
+    sessionId: string,
+    revision: string,
+    revisions: readonly string[],
+  ) {
+    const access = await this.sessionTaskReviewAccess(sessionId);
+    return access.kind === 'granted' && access.write.taskId === taskId
+      ? this.#readReviewPlanOrdinals(access, revision, revisions)
+      : undefined;
+  }
+
+  async #readReviewPlanOrdinals(
+    access: TaskReviewAccess,
+    revision: string,
+    revisions: readonly string[],
+  ) {
+    const scope = this.#scope(access.write.taskId);
+    if (!scope) return undefined;
+    const result = await this.#deps.working.readRevisionOrdinals({
+      scope: { ...scope, documentId: documentIdFor(scope) },
+      revision,
+      revisions,
+    });
+    return access.write.beforeCommit() && result.kind === 'available'
+      ? result.revisionOrdinals
+      : undefined;
+  }
+
   async #readReviewPlan(access: TaskReviewAccess) {
-    const result = await this.readTaskDocumentForBrief(
-      access.write.taskId,
-      true,
-    );
+    const result = await this.readTaskDocumentForBrief(access.write.taskId);
     const scope = this.#scope(access.write.taskId);
     if (!access.write.beforeCommit() || !scope || result.kind !== 'available')
       return { kind: 'unavailable' as const };

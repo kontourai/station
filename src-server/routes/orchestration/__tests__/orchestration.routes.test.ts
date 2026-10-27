@@ -1764,6 +1764,8 @@ describe('Orchestration Routes', () => {
         actor: { kind: 'unknown' },
         reported: { version: 1, surface: 'unknown', build: null },
       },
+      // No agent marker, delegation or replay: the person's own chat.
+      personChatStart: true,
     });
   });
 
@@ -1847,6 +1849,7 @@ describe('Orchestration Routes', () => {
           getProject: vi.fn(),
           getProviderAdapter: (provider) =>
             service.getProviderAdapter(provider),
+          readInitialConversationContext: async () => undefined,
           readSessionBinding: async () => null,
           startSession: async (_access, startInput) => {
             const started = await service.sessionCommands.execute(

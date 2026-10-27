@@ -476,6 +476,19 @@ const VERBS: Record<string, VerbSpec> = {
       'peers',
     ],
   },
+  'media-tools': {
+    summary: 'Inspect or download pinned local media and speech tools',
+    usage: [
+      'station media-tools status [--json]',
+      'station media-tools download --yes [--json]',
+    ],
+    actions: ['status', 'download'],
+    targets: true,
+    group: 'Configuration',
+    detail: [
+      'Operator only. Downloads require explicit --yes. Status reads show byte progress and failures.',
+    ],
+  },
   telemetry: {
     summary:
       'Read or change per-publisher telemetry tiers; manage telemetry producer tokens',
@@ -1016,6 +1029,20 @@ const VERBS: Record<string, VerbSpec> = {
     targets: true,
     actions: ['list', 'get', 'create', 'update', 'delete', 'reconnect'],
   },
+  'mcp-clients': {
+    group: 'Core Workspace',
+    summary: 'Connect an external client to selected local Station tools',
+    targets: true,
+    actions: ['authorize', 'create', 'revoke'],
+    detail: [
+      'authorize explicitly uses the existing owner-home local grant for the selected installed profile; it prints no credential and starts no service.',
+      'create requires --session=<id> --tools=<comma-separated names> --ttl-seconds=<60..3600> --output=<absolute new path>.',
+      'Uses a file-proven local operator profile; remote, browser and internal-process credentials cannot issue leases.',
+      'The private output contains the scoped bearer; stdout contains metadata only. Restart, Session revocation, expiry or explicit revoke invalidates it.',
+      'revoke <lease-id> revokes only that external-client lease. Creation has no automatic retry and does not start an engine.',
+      'Initial private-file creation supports POSIX hosts; it does not claim Windows ACL qualification.',
+    ],
+  },
   'secret-bindings': {
     group: 'Core Workspace',
     summary: 'Manage operator-owned MCP secret bindings',
@@ -1108,6 +1135,21 @@ const VERBS: Record<string, VerbSpec> = {
       'station review read <project> <receipt-id>',
       '',
       'Reviewer findings are evidence input, never a merge or gate verdict.',
+    ],
+  },
+  walkthrough: {
+    group: 'Core Workspace',
+    summary: 'Import and read Project Walkthrough recordings',
+    targets: true,
+    actions: ['import', 'list', 'show'],
+    detail: [
+      'station walkthrough import <file> --project <slug>',
+      'station walkthrough list --project <slug> [--cursor=<id>]',
+      'station walkthrough show <id> --project <slug>',
+      '',
+      'Import follows a long-running operation and prints its Walkthrough id.',
+      'Missing tools report downloads and station media-tools download --yes.',
+      'Recordings remain on the host; imports require Project drive authority.',
     ],
   },
   knowledge: {

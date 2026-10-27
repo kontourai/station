@@ -1,0 +1,7 @@
+{
+  "revision": "9b1d01f6783b658974114b06d6252fd03859c0e7",
+
+  "notes": [
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Merge of origin/main; re-checked this document's claims about project new-chat defaults against the merged tree.","inputs":["docs/reference/outside-agent-oauth.md","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

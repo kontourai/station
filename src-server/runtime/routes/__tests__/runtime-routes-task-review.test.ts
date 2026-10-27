@@ -537,6 +537,72 @@ describe('Task review through configureRuntimeRoutes', () => {
     expect(await labels()).toContainEqual({ author: missing, name: 'Agent' });
   });
 
+  test('review ordinal work is sparse, cached across polls and selected reads, and refreshed after saves', async () => {
+    const e = await setup();
+    await e.edit('First plan');
+    const thread = await e.createThread();
+    await e.edit('First plan plus second save');
+    await e.edit('First plan plus third save');
+    const ordinalOwner = vi.spyOn(e.runtime, 'readPlanOrdinalsForReview');
+    const entries = vi.spyOn(e.store.taskReviewStore(), 'listThreadEntries');
+    const readPlan = async (path = e.reviewPath) => {
+      const response = await e.asOperator('GET', path);
+      expect(response.status).toBe(200);
+      return path === e.reviewPath
+        ? response.json.data.items.find((item: any) => item.kind === 'plan')
+        : response.json.data;
+    };
+    entries.mockClear();
+    const first = await readPlan();
+    expect(entries).toHaveBeenCalledTimes(1);
+    const latest = first.artifact.revision;
+    expect(first.revisionOrdinals).toEqual({
+      [thread.artifact.revision]: 1,
+      [latest]: 3,
+    });
+    expect(
+      Buffer.byteLength(JSON.stringify(first.revisionOrdinals), 'utf8'),
+    ).toBeLessThan(300);
+    expect(ordinalOwner).toHaveBeenCalledTimes(1);
+    expect(ordinalOwner.mock.calls[0]![3]).toEqual([
+      latest,
+      thread.artifact.revision,
+    ]);
+    for (let poll = 0; poll < 3; poll++)
+      expect((await readPlan()).revisionOrdinals).toEqual(
+        first.revisionOrdinals,
+      );
+    const selected = await readPlan(
+      `${e.reviewPath}/items/plan/${encodeURIComponent(first.id)}`,
+    );
+    expect(selected.revisionOrdinals).toEqual(first.revisionOrdinals);
+    expect(ordinalOwner).toHaveBeenCalledTimes(1);
+    await e.edit('First plan plus fourth save');
+    const fourth = await readPlan();
+    expect(fourth.revisionOrdinals).toEqual({
+      [thread.artifact.revision]: 1,
+      [fourth.artifact.revision]: 4,
+    });
+    expect(ordinalOwner).toHaveBeenCalledTimes(2);
+    expect(ordinalOwner.mock.calls[1]![3]).toEqual([
+      fourth.artifact.revision,
+      thread.artifact.revision,
+    ]);
+    await e.asOperator(
+      'POST',
+      `${e.reviewPath}/threads/${thread.threadId}/resolve`,
+      { reason: 'Done', operationId: 'sparse-resolve' },
+    );
+    const filtered = await e.asOperator('GET', `${e.reviewPath}?state=open`);
+    expect(filtered.status).toBe(200);
+    expect(filtered.json.data.threads).toEqual([]);
+    expect(
+      filtered.json.data.items.find((item: any) => item.kind === 'plan')
+        .revisionOrdinals,
+    ).toEqual({ [fourth.artifact.revision]: 4 });
+    expect(ordinalOwner).toHaveBeenCalledTimes(2);
+  });
+
   test('plan edits relocate quotes before marking Outdated, retain the original quote, and resolve/reopen without changing room state or Task status', async () => {
     const e = await setup();
     await e.edit('First plan\nDetails.');

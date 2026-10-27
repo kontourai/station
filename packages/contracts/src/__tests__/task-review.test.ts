@@ -1366,63 +1366,72 @@ describe('text relocation and freshness', () => {
           const descriptors = new Map<PropertyKey, PropertyDescriptor>();
           const regexDescriptors = new Map<PropertyKey, PropertyDescriptor>();
           const nativePatterns: number[] = [];
-          for (const method of [
-            'indexOf',
-            'startsWith',
-            'endsWith',
-            'includes',
-            'lastIndexOf',
-            'search',
-            'match',
-            'slice',
-            'substring',
-            'substr',
-            'at',
-            'codePointAt',
-          ] as const) {
-            const descriptor = Object.getOwnPropertyDescriptor(
-              String.prototype,
-              method,
-            );
-            if (!descriptor) throw new Error(`missing String.${method}`);
-            descriptors.set(method, descriptor);
-            Object.defineProperty(String.prototype, method, {
-              ...descriptor,
-              value: function (this: string, ...args: unknown[]) {
-                if (this.length === size) {
-                  if (
-                    method !== 'indexOf' ||
-                    typeof args[0] !== 'string' ||
-                    args[0].length > 64
-                  )
-                    throw new Error(`unmetered document ${method}`);
-                  nativePatterns.push(args[0].length);
-                }
-                return Reflect.apply(descriptor.value, this, args);
-              },
-            });
-          }
-          for (const method of ['exec', 'test', Symbol.match, Symbol.search]) {
-            const descriptor = Object.getOwnPropertyDescriptor(
-              RegExp.prototype,
-              method,
-            );
-            if (!descriptor)
-              throw new Error(`missing RegExp.${String(method)}`);
-            regexDescriptors.set(method, descriptor);
-            Object.defineProperty(RegExp.prototype, method, {
-              ...descriptor,
-              value: function (this: RegExp, ...args: unknown[]) {
-                if (String(args[0]).length === size)
-                  throw new Error(
-                    `unmetered document RegExp.${String(method)}`,
-                  );
-                return Reflect.apply(descriptor.value, this, args);
-              },
-            });
-          }
           let result: unknown;
           try {
+            for (const method of [
+              'indexOf',
+              'startsWith',
+              'endsWith',
+              'includes',
+              'lastIndexOf',
+              'search',
+              'match',
+              'split',
+              'replaceAll',
+              Symbol.iterator,
+              'slice',
+              'substring',
+              'substr',
+              'at',
+              'codePointAt',
+            ] as const) {
+              const descriptor = Object.getOwnPropertyDescriptor(
+                String.prototype,
+                method,
+              );
+              if (!descriptor)
+                throw new Error(`missing String.${String(method)}`);
+              descriptors.set(method, descriptor);
+              Object.defineProperty(String.prototype, method, {
+                ...descriptor,
+                value: function (this: string, ...args: unknown[]) {
+                  if (this.length === size) {
+                    if (
+                      method !== 'indexOf' ||
+                      typeof args[0] !== 'string' ||
+                      args[0].length > 64
+                    )
+                      throw new Error(`unmetered document ${String(method)}`);
+                    nativePatterns.push(args[0].length);
+                  }
+                  return Reflect.apply(descriptor.value, this, args);
+                },
+              });
+            }
+            for (const method of [
+              'exec',
+              'test',
+              Symbol.match,
+              Symbol.search,
+            ]) {
+              const descriptor = Object.getOwnPropertyDescriptor(
+                RegExp.prototype,
+                method,
+              );
+              if (!descriptor)
+                throw new Error(`missing RegExp.${String(method)}`);
+              regexDescriptors.set(method, descriptor);
+              Object.defineProperty(RegExp.prototype, method, {
+                ...descriptor,
+                value: function (this: RegExp, ...args: unknown[]) {
+                  if (String(args[0]).length === size)
+                    throw new Error(
+                      `unmetered document RegExp.${String(method)}`,
+                    );
+                  return Reflect.apply(descriptor.value, this, args);
+                },
+              });
+            }
             result =
               shape === 'block'
                 ? deriveOutdated(

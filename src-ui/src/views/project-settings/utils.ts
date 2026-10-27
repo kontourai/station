@@ -1,3 +1,4 @@
+import { isProjectChatApprovalPosture } from '@kontourai/station-contracts/project-chat-defaults';
 import type { ProjectConfig } from '../../contexts/ProjectsContext';
 import type { ProjectForm } from './types';
 
@@ -18,7 +19,15 @@ export function buildProjectSavePayload(
   workingDirectory?: string,
   savedForm?: ProjectForm | null,
 ) {
-  const { defaultEnvironment, defaultWorkspaceIsolation, icon, ...rest } = form;
+  const {
+    defaultEnvironment,
+    defaultWorkspaceIsolation,
+    defaultModelSelection,
+    defaultApprovalModeSelection,
+    defaultApprovalMode,
+    icon,
+    ...rest
+  } = form;
   return {
     ...rest,
     // Sent only when it changed. An unchanged icon is left to the stored
@@ -36,6 +45,14 @@ export function buildProjectSavePayload(
       defaultWorkspaceIsolation === 'inherit'
         ? null
         : defaultWorkspaceIsolation,
+    // `fixed` and `'inherit'` are the absent stored values; `null` drops a
+    // stored one, as for the workspace mode above.
+    defaultModelSelection:
+      defaultModelSelection === 'last-used' ? 'last-used' : null,
+    defaultApprovalModeSelection:
+      defaultApprovalModeSelection === 'last-used' ? 'last-used' : null,
+    defaultApprovalMode:
+      defaultApprovalMode === 'inherit' ? null : defaultApprovalMode,
     defaultEnvironment: defaultEnvironment ?? { kind: 'current' as const },
     workingDirectory: workingDirectory || undefined,
     agents: form.agents ?? null,
@@ -60,6 +77,17 @@ export function buildProjectForm(project: ProjectConfig): ProjectForm {
     // checkout, it has chosen nothing, and seeding a concrete value made
     // every unrelated save write one (#2144 slice 2).
     defaultWorkspaceIsolation: project.defaultWorkspaceIsolation ?? 'inherit',
+    defaultModelSelection:
+      project.defaultModelSelection === 'last-used' ? 'last-used' : 'fixed',
+    defaultApprovalModeSelection:
+      project.defaultApprovalModeSelection === 'last-used'
+        ? 'last-used'
+        : 'fixed',
+    defaultApprovalMode: isProjectChatApprovalPosture(
+      project.defaultApprovalMode,
+    )
+      ? project.defaultApprovalMode
+      : 'inherit',
     defaultEnvironment: project.defaultEnvironment ?? { kind: 'current' },
     workingDirectory: project.workingDirectory ?? '',
     agents: project.agents,

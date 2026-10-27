@@ -264,6 +264,7 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
     }),
     getProject: async () => undefined,
     getProviderAdapter: (provider) => service.getProviderAdapter(provider),
+    readInitialConversationContext: async () => undefined,
     readSessionBinding: async (_access, id) => binding(store, id),
     resolveConversationSession: async (_access, id, requested) =>
       service.resolveConversationContinuation(

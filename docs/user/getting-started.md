@@ -76,6 +76,11 @@ their **Inspect output** action. Items that cannot be read show an unavailable
 state rather than an empty result. The answer's **Basis** chip still opens
 inspection scoped to that answer.
 
+To see how much of the model's context window a chat has used, read the meter
+beside the model under the message box, or choose **⋯** then **Conversation
+stats** in the phone chat header, which names the share used. Either opens the
+chat's stats.
+
 ## MCP app previews in chat
 
 In Station's web client, a completed MCP call can show its declared app directly
@@ -501,6 +506,19 @@ which names the default it returns to. Station does not start a chat on a Model
 its engine does not offer: a default that an engine advertising its own model
 list left out is skipped, and a kept choice that list no longer contains is
 refused at **Start** with the message kept, so you can choose another.
+
+A Project can choose how its new chats start, in Project settings → **New
+chats**. **Use the AI model above** starts each new chat on the Project's AI
+model wherever its Agent offers that model, ahead of your last pick on this
+device. **Last model used in this project** starts on the model your last chat
+there started with for the same Agent; if that model is no longer offered, the
+Project's model or the usual default applies and the Model chip's tooltip says
+why. The approval mode can be set for the Project (Ask first, Auto or full
+access) or follow your last chat there. It applies below the Agent's own mode
+and replaces your personal default for that engine, and full access is only
+reused when you can grant it. **Permissions** on the composer names where its
+mode came from; picking **Default** there uses the Agent's, then the Station's
+default instead.
 
 Until Station has loaded your projects, the chips show placeholders and
 **Start** waits, so a start never runs in a project Station has guessed. If

@@ -283,7 +283,7 @@ commit or executable identity. Its schema is:
   "transports": { "http": 1, "sse": 1, "websocket": 1 },
   "compatibility": {
     "serverVersion": "<station package version>",
-    "protocolVersion": 2,
+    "protocolVersion": 4,
     "minClientProtocol": 1,
     "capabilities": { "remoteAuth": 1, "devicePairing": 1, "environmentProof": 1, "clientProtocolHeader": 1, "productTelemetryAcknowledgement": 2 }
   },
@@ -431,15 +431,35 @@ qualification receipt. See [the connection controls](../guides/connections.md#in
 ## Credentialed consumers (station#2051)
 
 The removed loopback/SSH compatibility floor has no silent replacement. These
-are the supported request contracts established from the live runtime callers:
+are the supported request contracts; source composition and live consumer
+qualification remain separate evidence:
 
 | Consumer | Explicit credential path | Missing or malformed credential |
 | --- | --- | --- |
 | Browser UI, desktop shell, and mobile shell | Device-session cookie after the public pairing/access-request exchange; the desktop may use its native request broker | Protected route returns `401 authentication_required`; public pairing paths remain available |
 | CLI | `--credential`, `STATION_API_CREDENTIAL`, or an OS-keyring-backed paired profile credential | The command reaches the same `401`; the CLI must pair or supply a credential |
-| `station-control` MCP | Per-boot `x-station-internal-token` plus `x-station-proxy-caller: local` from a direct loopback process | Runtime rejects it as ordinary uncredentialed traffic; `station-docs` is read-only and makes no live API request |
+| Station-owned `station-control` runtime | Per-boot `x-station-internal-token` plus `x-station-proxy-caller: local` from a direct loopback process | Runtime rejects ordinary uncredentialed traffic; `station-docs` is read-only and makes no live API request |
+| Explicit local external MCP client | Independently revocable, header-only scoped lease from the personal-host operator setup surface | The MCP endpoint refuses missing, expired, revoked or out-of-scope leases; no internal token is exported |
 | SSH delegation | Paired outbound peer bearer attached to the tunnel request | The remote runtime returns `401`; a tunnel alone grants no API authority |
 | Station-owned UI/Tailscale proxy | It always classifies browser traffic as remote and relays its device-session cookie or bearer; the shared token carries only bounded proxy metadata | `401`; a loopback socket, Host, or SSH forward never becomes internal authority |
+
+External-client setup requires the file-proven personal-host operator and
+`access:manage`, with current device/account/group authority checked after body
+consumption and again during lease verification. It binds an existing recorded,
+operator-owned Session and its current Project; it creates no Session or
+Environment. Tools are explicitly selected from `read_conversation`, `board_read`
+and `board_pin`, with a 60–3600 second lifetime. Board tools remain self-owned
+rather than Project-partitioned. Each request and call rechecks
+recorded ownership and Project identity. These leases use loopback transport,
+remain `delegated-custody`, and cannot satisfy browser tools' bound-caller rule.
+Explicit revoke, expiry and process restart invalidate them. Session revocation
+removes existing client leases; an operator may deliberately issue a new lease
+against a retained stopped Session record afterwards. That is record binding,
+not Session liveness. See the [Session API](../reference/session-api.md#external-clients-using-station-tools)
+for the setup contract and [CLI](../reference/cli.md#mcp-clients) for private-file
+configuration. Browser/plugin consent flows retain their existing transactions;
+this personal-host surface grants no remote OAuth/TLS or external-execution
+ownership.
 
 The public pairing, access-request, exchange, proof, liveness, share-token, and
 MCP-token routes remain separately declared authentication contracts; this
@@ -487,7 +507,8 @@ contracts retain their own admission and body/rate limits.
 **Body-size.** `Content-Length` is checked first; an oversized request is
 rejected `413` before any body read. A lying or absent `Content-Length` is
 caught by a streaming byte counter that aborts past the ceiling and re-buffers
-the bounded body for the handler — `Content-Length` alone is not trusted.
+the bounded body for ordinary handlers. The two media upload paths below
+retain a lazy bounded stream — `Content-Length` alone is not trusted.
 
 **Rate budget.** The budget key is the **server-derived principal**, never a
 caller-supplied header, body field, or query parameter. A budget keyed on
@@ -529,6 +550,25 @@ rate bucket but uses the 22 MiB attachment-command body ceiling so bounded
 base64 image data fits. Adjacent Task mutations retain the standard body limit.
 Room upload, reference resolution and byte reads also enforce their current
 Task capability and incarnation; a paired route-family grant alone is insufficient.
+
+The exact `POST /api/projects/:projectSlug/walkthroughs/import` and
+`POST /api/transcription` uploads also retain the standard principal rate
+bucket. Their body ceilings derive from their owning upload limits: 512 MiB
+for Walkthrough video and 32 MiB for browser audio. Adjacent paths and other
+methods retain their ordinary ceilings; a large upload is not a rate exemption.
+Only these media uploads get the extended receive policy: 60-second progress/idle
+bounds, a two-hour Walkthrough total and a 60-second transcription total.
+Authentication, principal rate admission and declared-size checks precede route
+admission. Preview and Project/authority refusals, and the importer's two-slot
+capacity refusal, precede body reads and close the connection. The middleware
+passes a lazy byte-counting stream; admitted routes stream to disk with their
+own bounds. Ordinary mutation ceilings and buffering remain unchanged.
+The API and built-UI listeners retain header limits and socket timeout values.
+Node's server-wide parser total is finite at two hours; a shared per-request timer
+retains ordinary receives' 300-second total, counting header receipt. This timer
+can fire before Node's periodic timeout sweep would have done so. See
+[Walkthrough limits](../guides/walkthroughs.md#limits-and-storage) and
+[local speech](../guides/local-speech.md) for processing and proxy deadlines.
 
 **Defaults** (configurable via `RuntimeHttpSecurityOptions`):
 
@@ -1219,7 +1259,8 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   - `PUT /config/app` when `terminalShell` changes. An agent's station-control
     call (the Station-internal principal, otherwise exempt) may not change it,
     in the tool (`update_config`) and in the route, as it may not raise the
-    default approval mode to full access;
+    default approval mode (the Station's, or a Project's new-chat mode through
+    `PUT /api/projects/:slug`) to full access;
   - `/api/secret-bindings`, which the default grant reaches (it includes
     `access:manage`, which is not `coding:exec`): `POST /:id/bind` with an
     `integrationId`, `POST /integrations/:id/migrate-stored-env` and its alias

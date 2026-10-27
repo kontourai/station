@@ -3,6 +3,7 @@ import { parentPort, workerData } from 'node:worker_threads';
 import { PROJECT_TASK_ROOM_RUNTIME_MIGRATION } from '../../domain/migrations/006-project-task-room-runtime.js';
 import { PROJECT_TASK_ROOM_REVISION_PUBLICATION_MIGRATION } from '../../domain/migrations/008-project-task-room-revision-publication.js';
 import { ensureProjectTaskRoomRevisionAttributionColumn } from '../../domain/migrations/009-project-task-room-revision-attribution.js';
+import { PROJECT_TASK_ROOM_SAVE_REVISIONS_MIGRATION } from '../../domain/migrations/024-project-task-room-save-revisions.js';
 import {
   type RevisionEvidenceAdmissionRefusal,
   revisionEvidenceAdmission,
@@ -42,6 +43,62 @@ db.exec(PROJECT_TASK_ROOM_RUNTIME_MIGRATION);
 initializeProjectTaskRoomSourceSeals(db);
 db.exec(PROJECT_TASK_ROOM_REVISION_PUBLICATION_MIGRATION);
 ensureProjectTaskRoomRevisionAttributionColumn(db);
+db.exec('BEGIN IMMEDIATE');
+try {
+  if (
+    !db
+      .prepare(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='project_task_room_save_revisions'",
+      )
+      .get()
+  ) {
+    db.exec(PROJECT_TASK_ROOM_SAVE_REVISIONS_MIGRATION);
+    // Batch receipts survive resume-chain pruning. Backfill once from final
+    // revisions in commit insertion order, never from individual operations.
+    const insert = db.prepare(
+      'INSERT INTO project_task_room_save_revisions VALUES(?,?,?,?,?)',
+    );
+    const receipts = db.prepare(
+      'SELECT receipt_json FROM project_task_room_working_batches WHERE project_id=? AND task_id=? AND document_id=? ORDER BY rowid',
+    );
+    const documents = db.prepare(
+      'SELECT DISTINCT project_id,task_id,document_id FROM project_task_room_working_batches',
+    );
+    for (const row of documents.iterate()) {
+      const scope = {
+        projectId: row.project_id,
+        taskId: row.task_id,
+        documentId: row.document_id,
+      };
+      const initial = new SharedWorkingState({ scope }).snapshot().revision;
+      insert.run(row.project_id, row.task_id, row.document_id, initial, 0);
+      let ordinal = 0;
+      let previous = initial;
+      for (const receipt of receipts.iterate(
+        row.project_id,
+        row.task_id,
+        row.document_id,
+      )) {
+        const revision = JSON.parse(receipt.receipt_json).revision;
+        if (typeof revision !== 'string' || !revision.length)
+          throw new Error('malformed working batch receipt');
+        if (revision === previous) continue;
+        insert.run(
+          row.project_id,
+          row.task_id,
+          row.document_id,
+          revision,
+          ++ordinal,
+        );
+        previous = revision;
+      }
+    }
+  }
+  db.exec('COMMIT');
+} catch (error) {
+  db.exec('ROLLBACK');
+  throw error;
+}
 const maxRetainedOperations = Number.isSafeInteger(
   workerData.maxRetainedOperations,
 )
@@ -410,23 +467,17 @@ function retainedFloor(scope: any, fallback: string) {
     .get(...key(scope)) as { prior_revision?: string } | undefined;
   return row?.prior_revision ?? fallback;
 }
-function revisionOrdinals(scope: any, currentRevision: string) {
-  const rows = db
-    .prepare(
-      'SELECT prior_revision,revision,ordinal FROM project_task_room_working_revisions WHERE project_id=? AND task_id=? AND document_id=? ORDER BY ordinal ASC',
-    )
-    .all(...key(scope)) as Array<{
-    prior_revision: string;
-    revision: string;
-    ordinal: number;
-  }>;
+function revisionOrdinals(scope: any, revisions: readonly string[]) {
+  const query = db.prepare(
+    'SELECT ordinal FROM project_task_room_save_revisions WHERE project_id=? AND task_id=? AND document_id=? AND revision=?',
+  );
   return Object.fromEntries(
-    rows.length
-      ? [
-          [rows[0].prior_revision, rows[0].ordinal - 1],
-          ...rows.map((row) => [row.revision, row.ordinal]),
-        ]
-      : [[currentRevision, 0]],
+    revisions.flatMap((revision) => {
+      const row = query.get(...key(scope), revision) as
+        | { ordinal: number }
+        | undefined;
+      return row ? [[revision, row.ordinal]] : [];
+    }),
   );
 }
 function canResume(scope: any, after: string, revision: string) {
@@ -473,9 +524,6 @@ async function handle(message: any) {
       const state = load(value.scope);
       if (!state) return send(id, { kind: 'unavailable' });
       const snapshot = state.snapshot();
-      const versions = value.includeRevisionOrdinals
-        ? { revisionOrdinals: revisionOrdinals(value.scope, snapshot.revision) }
-        : {};
       const resync =
         value.after && canResume(value.scope, value.after, snapshot.revision)
           ? { outcome: 'delta' as const }
@@ -484,20 +532,35 @@ async function handle(message: any) {
         id,
         resync.outcome === 'snapshot'
           ? {
-              ...versions,
               kind: value.after ? 'gap' : 'snapshot',
               revision: snapshot.revision,
               text: state.text(),
               floor: retainedFloor(value.scope, snapshot.revision),
             }
           : {
-              ...versions,
               kind: 'delta',
               revision: snapshot.revision,
               text: state.text(),
               floor: snapshot.checkpointRevision,
             },
       );
+    }
+    if (value.type === 'revision-ordinals') {
+      const row = db
+        .prepare(
+          'SELECT revision FROM project_task_room_working_states WHERE project_id=? AND task_id=? AND document_id=?',
+        )
+        .get(...key(value.scope)) as { revision: string } | undefined;
+      const currentRevision =
+        row?.revision ?? load(value.scope)?.snapshot().revision;
+      if (currentRevision !== value.revision)
+        return send(id, { kind: 'unavailable' });
+      return send(id, {
+        kind: 'available',
+        revisionOrdinals: row
+          ? revisionOrdinals(value.scope, value.revisions)
+          : { [value.revision]: 0 },
+      });
     }
     if (value.type === 'private-snapshot') {
       const state = load(value.scope);
@@ -837,6 +900,27 @@ async function handle(message: any) {
         ) {
           db.exec('ROLLBACK');
           return send(id, { kind: 'unavailable' });
+        }
+        // Only the final state of a committed save gets an ordinal. This is
+        // independent of per-operation resume cursors and their pruning.
+        const saveHead = db
+          .prepare(
+            'SELECT MAX(ordinal) AS ordinal FROM project_task_room_save_revisions WHERE project_id=? AND task_id=? AND document_id=?',
+          )
+          .get(...key(value.scope)) as { ordinal: number | null };
+        if (saveHead.ordinal === null) {
+          db.prepare(
+            'INSERT INTO project_task_room_save_revisions VALUES(?,?,?,?,0)',
+          ).run(...key(value.scope), baseWorkingRevision);
+        }
+        if (snapshot.revision !== baseWorkingRevision) {
+          db.prepare(
+            'INSERT INTO project_task_room_save_revisions VALUES(?,?,?,?,?)',
+          ).run(
+            ...key(value.scope),
+            snapshot.revision,
+            (saveHead.ordinal ?? 0) + 1,
+          );
         }
         const projection = { revision: snapshot.revision, text: state.text() };
         let nextOrdinal = Number(

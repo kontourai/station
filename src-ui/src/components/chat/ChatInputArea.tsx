@@ -2,6 +2,7 @@ import type {
   AcpApprovalControl,
   ToolPolicyDelivery,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import type { ProjectChatApprovalDefault } from '@kontourai/station-contracts/project-chat-defaults';
 import {
   EXECUTION_MODE,
   type ExecutionMode,
@@ -246,6 +247,10 @@ interface ChatInputAreaProps {
   executionMode?: ExecutionMode;
   approvalModeIsNewSession?: boolean;
   approvalModeAgentDefault?: unknown;
+  /** A new chat's Project approval layer (`ProjectChatApprovalDefault`). */
+  approvalModeProjectDefault?: ProjectChatApprovalDefault;
+  /** The new chat's Project layer could not be read (or is still loading). */
+  approvalModeProjectDefaultUnavailable?: boolean;
   /** This Station's `AppConfig.defaultApprovalMode` (#2144 slice 6). */
   approvalModeStationDefault?: unknown;
   toolPolicyDelivery?: ToolPolicyDelivery;
@@ -475,6 +480,8 @@ export function ChatInputArea({
   executionMode,
   approvalModeIsNewSession,
   approvalModeAgentDefault,
+  approvalModeProjectDefault,
+  approvalModeProjectDefaultUnavailable,
   approvalModeStationDefault,
   toolPolicyDelivery,
   lastAppliedApprovalMode,
@@ -1184,6 +1191,15 @@ export function ChatInputArea({
                 sessionOverrideState={approvalModeOverride?.state}
                 isNewSession={approvalModeIsNewSession}
                 agentDefault={approvalModeAgentDefault}
+                projectDefault={
+                  approvalModeIsNewSession
+                    ? approvalModeProjectDefault
+                    : undefined
+                }
+                projectDefaultUnavailable={
+                  approvalModeIsNewSession &&
+                  approvalModeProjectDefaultUnavailable
+                }
                 stationDefault={approvalModeStationDefault}
                 lastAppliedApprovalMode={lastAppliedApprovalMode}
                 onChange={onApprovalModeChange}

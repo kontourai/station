@@ -69,10 +69,15 @@ interface Dependencies {
         documentId: string;
         revision: string;
         text: string;
-        revisionOrdinals?: Readonly<Record<string, number>>;
       }
     | { kind: 'unavailable' }
   >;
+  readPlanOrdinals?(
+    taskId: string,
+    request: Request,
+    revision: string,
+    revisions: readonly string[],
+  ): Promise<Readonly<Record<string, number>> | undefined>;
   /** Optional selector confines mutation/item reads to one structured answer identity. */
   readAnswers(
     taskId: string,
@@ -154,6 +159,10 @@ export class TaskReviewModule {
     key: string;
     view: Omit<TaskReviewThreadView, 'events' | 'deliveryStatus'>;
   }>(2000, 8 * 1024 * 1024);
+  private readonly planOrdinals = new ReviewCache<{
+    values: Readonly<Record<string, number>>;
+    requested: readonly string[];
+  }>(16, 1024 * 1024);
   private readonly unavailableWarnings = new ReviewCache<true>(
     2000,
     1024 * 1024,
@@ -290,9 +299,9 @@ export class TaskReviewModule {
     access: TaskReviewAccess,
     artifacts: Map<string, Artifact>,
     target?: { kind: string; id: string },
+    entries = this.deps.store.listThreadEntries(access.write),
   ): TaskReviewThreadSummary[] {
-    return this.deps.store
-      .listThreadEntries(access.write)
+    return entries
       .filter(
         (entry) =>
           !target ||
@@ -357,7 +366,6 @@ export class TaskReviewModule {
             kind: 'plan',
             id: plan.documentId,
             label: 'Plan',
-            revisionOrdinals: plan.revisionOrdinals,
             status: 'available',
             counts: emptyCounts(),
             ...(content ? { text: boundedText(plan.text) } : {}),
@@ -525,12 +533,82 @@ export class TaskReviewModule {
     return artifacts;
   }
 
+  private async withPlanOrdinals(
+    access: TaskReviewAccess,
+    request: Request,
+    item: TaskReviewItem,
+    threads: readonly TaskReviewThreadSummary[],
+  ): Promise<TaskReviewItem> {
+    if (
+      item.kind !== 'plan' ||
+      item.status !== 'available' ||
+      !this.deps.readPlanOrdinals
+    )
+      return item;
+    const latest = String(item.artifact.revision);
+    const revisions = [
+      ...new Set([
+        latest,
+        ...threads.flatMap((thread) => {
+          const ref = thread.artifact;
+          return ref?.kind === 'plan' && ref.id === item.id
+            ? [String(ref.revision)]
+            : [];
+        }),
+      ]),
+    ];
+    const cacheKey = JSON.stringify([
+      access.write.projectId,
+      access.write.taskId,
+      access.write.taskCreatedAt,
+      item.id,
+      latest,
+    ]);
+    const prior = this.planOrdinals.get(cacheKey);
+    const missing = revisions.filter(
+      (revision) => !prior?.requested.includes(revision),
+    );
+    let values = prior?.values;
+    if (missing.length) {
+      const found = await this.deps
+        .readPlanOrdinals(access.write.taskId, request, latest, missing)
+        .catch(() => undefined);
+      if (found) {
+        const entry = {
+          values: { ...prior?.values, ...found },
+          requested: [...(prior?.requested ?? []), ...missing],
+        };
+        this.planOrdinals.set(
+          cacheKey,
+          entry,
+          JSON.stringify(entry).length * 2,
+        );
+        values = entry.values;
+      }
+    }
+    assertCurrent(access);
+    const known = values;
+    return {
+      ...item,
+      revisionOrdinals: known
+        ? Object.fromEntries(
+            revisions.flatMap((revision) =>
+              known[revision] === undefined
+                ? []
+                : [[revision, known[revision]]],
+            ),
+          )
+        : undefined,
+    };
+  }
+
   async readItem(
     access: TaskReviewAccess,
     request: Request,
     kind: string,
     id: string,
   ): Promise<TaskReviewItem> {
+    const entries = this.deps.store.listThreadEntries(access.write);
     const artifact = (
       await this.artifacts(access, request, { kind, id }, true)
     ).get(key(kind, id));
@@ -540,8 +618,14 @@ export class TaskReviewModule {
       access,
       new Map([[key(kind, id), artifact]]),
       { kind, id },
+      entries,
     ).filter((thread) => thread.status === 'available');
-    return { ...artifact.item, counts: countThreads(threads) };
+    return this.withPlanOrdinals(
+      access,
+      request,
+      { ...artifact.item, counts: countThreads(threads) },
+      threads,
+    );
   }
 
   async read(
@@ -549,8 +633,9 @@ export class TaskReviewModule {
     request: Request,
     state?: TaskReviewFilter,
   ): Promise<TaskReviewView> {
+    const entries = this.deps.store.listThreadEntries(access.write);
     const artifacts = await this.artifacts(access, request);
-    const summaries = this.summaries(access, artifacts);
+    const summaries = this.summaries(access, artifacts, undefined, entries);
     const threads = summaries.filter((thread) => thread.status === 'available');
     for (const thread of threads) {
       const id = artifactId(thread.artifact);
@@ -591,20 +676,30 @@ export class TaskReviewModule {
         if (event) authorRefs.set(JSON.stringify(event.author), event.author);
     const authors = this.deps.readAuthors?.([...authorRefs.values()], request);
     assertCurrent(access);
+    const responseThreads = state
+      ? summaries.filter(
+          (thread) =>
+            thread.status === 'unavailable' ||
+            matchesTaskReviewFilter(thread, state),
+        )
+      : summaries;
+    const items = await Promise.all(
+      [...artifacts.entries()].map(([itemKey, value]) =>
+        this.withPlanOrdinals(
+          access,
+          request,
+          { ...value.item, counts: countThreads(byItem.get(itemKey) ?? []) },
+          responseThreads,
+        ),
+      ),
+    );
+    assertCurrent(access);
     return {
       version: TASK_REVIEW_VERSION,
       taskId: access.write.taskId,
       taskCreatedAt: access.write.taskCreatedAt,
-      items: [...artifacts.entries()].map(([itemKey, value]) => ({
-        ...value.item,
-        counts: countThreads(byItem.get(itemKey) ?? []),
-      })),
-      threads: state
-        ? summaries.filter(
-            (t) =>
-              t.status === 'unavailable' || matchesTaskReviewFilter(t, state),
-          )
-        : summaries,
+      items,
+      threads: responseThreads,
       counts: countThreads(threads),
       limits: TASK_REVIEW_LIMITS,
       ...(authors ? { authors } : {}),
