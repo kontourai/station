@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { tenantId } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
@@ -15,6 +16,7 @@ import { runSessionStartWithBoundary } from '../session-turn-boundary.js';
 const NOW = '2030-01-01T00:00:00.000Z';
 const SOURCE_KEY = 'a'.repeat(64);
 const CHILD_KEY = 'b'.repeat(64);
+const BINDING_KEY = 'c'.repeat(64);
 
 describe('native fork SQLite effect and publication ownership', () => {
   const temp = trackTempDirs();
@@ -24,7 +26,13 @@ describe('native fork SQLite effect and publication ownership', () => {
     for (const store of stores) store.close();
     stores.clear();
   });
-  function fixture() {
+  function fixture(
+    options: {
+      tenant?: boolean;
+      project?: boolean;
+      explicitOwned?: boolean;
+    } = {},
+  ) {
     const root = temp('station-native-fork-effect-');
     const path = join(root, 'events.sqlite');
     let store = new EventStore(path);
@@ -33,6 +41,17 @@ describe('native fork SQLite effect and publication ownership', () => {
       provider: 'codex',
       threadId: 'source',
       status: 'ready',
+      ...(options.explicitOwned
+        ? { controlMode: 'station-owned' as const }
+        : {}),
+      ...(options.tenant
+        ? {
+            tenantExecutionContext: {
+              tenantId: tenantId('tenant-one'),
+              source: 'session' as const,
+            },
+          }
+        : {}),
       cwd: root,
       resumeCursor: { nativeSessionId: 'source-native' },
       createdAt: NOW,
@@ -40,6 +59,22 @@ describe('native fork SQLite effect and publication ownership', () => {
     };
     store.upsertSession(sourceSession);
     store.claimNativeSessionIdentity(SOURCE_KEY, 'source');
+    store.appendEvent({
+      eventId: 'source-configured',
+      provider: 'codex',
+      threadId: 'source',
+      sessionId: 'source',
+      method: 'session.configured',
+      cwd: root,
+      createdAt: NOW,
+      metadata: {
+        userId: 'owner',
+        agentSlug: 'codex',
+        environmentId: 'local',
+        ...(options.project ? { projectSlug: 'project-one' } : {}),
+        nativeResumeBindingKey: BINDING_KEY,
+      },
+    });
     store.appendEvent({
       eventId: 'source-done',
       provider: 'codex',
@@ -57,6 +92,8 @@ describe('native fork SQLite effect and publication ownership', () => {
       targetConversationId: 'child',
       targetAgent: 'codex',
       ownerUserId: 'owner',
+      ...(options.tenant ? { tenantId: 'tenant-one' } : {}),
+      ...(options.project ? { projectSlug: 'project-one' } : {}),
       branchPointTurnId: 'turn-one',
       sourceTitle: 'Source',
       createdAt: NOW,
@@ -76,6 +113,7 @@ describe('native fork SQLite effect and publication ownership', () => {
       selectedTurnId: 'turn-one',
       headEventId: 'source-done',
       nativeIdentityKey: SOURCE_KEY,
+      nativeResumeBindingKey: BINDING_KEY,
       provider: 'codex',
       environmentId: 'local',
       agentId: 'codex',
@@ -118,6 +156,17 @@ describe('native fork SQLite effect and publication ownership', () => {
           userId: 'owner',
           agentSlug: 'codex',
           environmentId: 'local',
+          ...(options.project ? { projectSlug: 'project-one' } : {}),
+          ...(options.tenant
+            ? {
+                tenantId: 'tenant-one',
+                tenantExecutionContext: {
+                  tenantId: 'tenant-one',
+                  source: 'session',
+                },
+              }
+            : {}),
+          nativeResumeBindingKey: BINDING_KEY,
         },
       },
       forkEvent,
@@ -231,6 +280,161 @@ describe('native fork SQLite effect and publication ownership', () => {
     expect(f.store.nativeSessionBindingIdentity('child')).toBe(CHILD_KEY);
     expect(f.store.hasEventId('fork-event')).toBe(true);
   });
+
+  test.each([
+    { tenant: true, project: true, explicitOwned: true },
+    { tenant: false, project: true, explicitOwned: false },
+  ])(
+    'native commit preserves matching recorded tenant and Project without minting authority: %j',
+    (options) => {
+      const f = fixture(options);
+      const effect = f.reserve();
+      effect.sessionStart.beginInvocation(NOW);
+      f.observe(effect);
+      expect(effect.commit(f.commit)).toBe('committed');
+      expect(effect.commit(f.commit)).toBe('already-committed');
+      f.reopen();
+      expect(
+        f.store.readSessionByThread('child')?.tenantExecutionContext?.tenantId,
+      ).toBe(options.tenant ? 'tenant-one' : undefined);
+      expect(
+        f.store.conversationForkContextSnapshot('child')?.projectSlug,
+      ).toBe('project-one');
+    },
+  );
+
+  function configuredPatch(
+    input: NativeForkCommitInput,
+    patch: Record<string, unknown>,
+  ): NativeForkCommitInput {
+    if (input.configuredEvent.method !== 'session.configured')
+      throw new Error('Expected configured fixture');
+    return {
+      ...input,
+      configuredEvent: {
+        ...input.configuredEvent,
+        metadata: { ...input.configuredEvent.metadata, ...patch },
+      },
+    };
+  }
+  const foreignBindings: {
+    name: string;
+    change(input: NativeForkCommitInput): NativeForkCommitInput;
+  }[] = [
+    {
+      name: 'fork thread',
+      change: (input) => ({
+        ...input,
+        forkEvent: { ...input.forkEvent, threadId: 'foreign' },
+      }),
+    },
+    {
+      name: 'fork provider',
+      change: (input) => ({
+        ...input,
+        forkEvent: { ...input.forkEvent, provider: 'codex' },
+      }),
+    },
+    {
+      name: 'configured Session',
+      change: (input) => {
+        if (input.configuredEvent.method !== 'session.configured')
+          throw new Error('Expected configured fixture');
+        return {
+          ...input,
+          configuredEvent: { ...input.configuredEvent, sessionId: 'foreign' },
+        };
+      },
+    },
+    {
+      name: 'configured cwd',
+      change: (input) => {
+        if (input.configuredEvent.method !== 'session.configured')
+          throw new Error('Expected configured fixture');
+        return {
+          ...input,
+          configuredEvent: { ...input.configuredEvent, cwd: '/foreign' },
+        };
+      },
+    },
+    {
+      name: 'configured environment',
+      change: (input) => configuredPatch(input, { environmentId: 'foreign' }),
+    },
+    {
+      name: 'configured Agent',
+      change: (input) => configuredPatch(input, { agentSlug: 'foreign' }),
+    },
+    {
+      name: 'configured Project',
+      change: (input) => configuredPatch(input, { projectSlug: 'foreign' }),
+    },
+    {
+      name: 'configured tenant',
+      change: (input) => configuredPatch(input, { tenantId: 'foreign' }),
+    },
+    {
+      name: 'configured tenant context',
+      change: (input) =>
+        configuredPatch(input, {
+          tenantExecutionContext: { tenantId: 'foreign', source: 'session' },
+        }),
+    },
+    {
+      name: 'configured native binding',
+      change: (input) =>
+        configuredPatch(input, { nativeResumeBindingKey: 'f'.repeat(64) }),
+    },
+    {
+      name: 'configured native identity mismatch',
+      change: (input) =>
+        configuredPatch(input, { nativeResumeIdentity: 'mismatch' }),
+    },
+    {
+      name: 'child tenant',
+      change: (input) => ({
+        ...input,
+        child: {
+          ...input.child,
+          tenantExecutionContext: {
+            tenantId: tenantId('foreign'),
+            source: 'session',
+          },
+        },
+      }),
+    },
+    {
+      name: 'child attached control mode',
+      change: (input) => ({
+        ...input,
+        child: { ...input.child, controlMode: 'read-only-attached' },
+      }),
+    },
+  ];
+  test.each(foreignBindings)(
+    'first native commit refuses $name with zero publication and retained cursor',
+    ({ change }) => {
+      const f = fixture();
+      const effect = f.reserve();
+      effect.sessionStart.beginInvocation(NOW);
+      f.observe(effect);
+      expect(() => effect.commit(change(f.commit))).toThrow();
+      f.reopen();
+      expect(f.store.readNativeForkEffect('child')?.state).toBe(
+        'child-observed',
+      );
+      expect(f.store.readNativeForkEffect('child')?.cursorJson).toBe(
+        JSON.stringify(f.commit.child.resumeCursor),
+      );
+      expect(f.store.readSessionByThread('child')).toBeUndefined();
+      expect(f.store.conversationForSession('child')).toBeUndefined();
+      expect(f.store.hasEventId('fork-event')).toBe(false);
+      expect(f.store.hasEventId('child-configured')).toBe(false);
+      expect(f.store.conversationForkContextReference('child')?.state).toBe(
+        'prepared',
+      );
+    },
+  );
 
   test('native commit append failure rolls back child, lineage, ready and receipt while retaining observed cursor', () => {
     const f = fixture();

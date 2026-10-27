@@ -5307,6 +5307,9 @@ export class EventStore {
       );
       const source = this.readSessionByThread(record.source.sourceSessionId);
       const events = this.listEvents(record.source.sourceSessionId);
+      const configuredSource = events.findLast(
+        (event) => event.payload.method === 'session.configured',
+      );
       const selected = events.find(
         (event) => event.id === record.source.selectedEventId,
       );
@@ -5316,6 +5319,21 @@ export class EventStore {
         snapshot.branchPointTurnId !== record.source.selectedTurnId ||
         snapshot.sourceAgent !== record.source.agentId ||
         snapshot.targetAgent !== record.source.agentId ||
+        configuredSource?.payload.method !== 'session.configured' ||
+        configuredSource.payload.metadata?.nativeResumeBindingKey !==
+          record.source.nativeResumeBindingKey ||
+        configuredSource.payload.metadata?.environmentId !==
+          record.source.environmentId ||
+        configuredSource.payload.metadata?.agentSlug !==
+          record.source.agentId ||
+        configuredSource.payload.metadata?.projectSlug !==
+          snapshot.projectSlug ||
+        configuredSource.payload.cwd !== record.source.cwd ||
+        (source?.controlMode ?? 'station-owned') !== 'station-owned' ||
+        (source?.tenantExecutionContext !== undefined &&
+          !parseTenantExecutionContext(source.tenantExecutionContext)) ||
+        parseTenantExecutionContext(source?.tenantExecutionContext)
+          ?.tenantId !== snapshot.tenantId ||
         source?.provider !== record.source.provider ||
         source.cwd !== record.source.cwd ||
         selected?.payload.method !== 'turn.completed' ||
@@ -5465,7 +5483,48 @@ export class EventStore {
             );
             const { child, configuredEvent, forkEvent } = commit;
             const commitJson = nativeForkJson(commit);
+            const childTenant = parseTenantExecutionContext(
+              child.tenantExecutionContext,
+            );
+            const configuredTenant = parseTenantExecutionContext(
+              configuredEvent.metadata?.tenantExecutionContext,
+            );
+            const metadata = configuredEvent.metadata;
+            const coordinatesMatch =
+              !!snapshot &&
+              (child.controlMode ?? 'station-owned') === 'station-owned' &&
+              (snapshot.tenantId === undefined
+                ? child.tenantExecutionContext === undefined
+                : childTenant?.tenantId === snapshot.tenantId) &&
+              configuredEvent.method === 'session.configured' &&
+              configuredEvent.sessionId === input.targetId &&
+              configuredEvent.cwd === record.source.cwd &&
+              metadata?.environmentId === record.source.environmentId &&
+              metadata.agentSlug === snapshot.targetAgent &&
+              metadata.agentSlug === record.source.agentId &&
+              (metadata.agentId === undefined ||
+                metadata.agentId === snapshot.targetAgent) &&
+              (metadata.targetId === undefined ||
+                metadata.targetId === snapshot.targetAgent) &&
+              metadata.projectSlug === snapshot.projectSlug &&
+              metadata.connectionId === record.source.connectionId &&
+              (metadata.tenantId === undefined ||
+                metadata.tenantId === snapshot.tenantId) &&
+              (metadata.tenantExecutionContext === undefined ||
+                (snapshot.tenantId !== undefined &&
+                  configuredTenant?.tenantId === snapshot.tenantId)) &&
+              metadata.nativeResumeBindingKey ===
+                record.source.nativeResumeBindingKey &&
+              (metadata.nativeResumeIdentity === undefined ||
+                metadata.nativeResumeIdentity === 'matched') &&
+              (metadata[NATIVE_TURN_IDENTITY_METADATA_KEY] === undefined ||
+                metadata[NATIVE_TURN_IDENTITY_METADATA_KEY] ===
+                  record.childIdentity) &&
+              forkEvent.provider === 'station' &&
+              forkEvent.threadId === snapshot.sourceConversationId;
+
             if (
+              !coordinatesMatch ||
               !snapshot ||
               !reference ||
               reference.state === 'deleted' ||

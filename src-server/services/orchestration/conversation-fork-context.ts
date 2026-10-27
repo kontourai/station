@@ -34,6 +34,8 @@ const nativeForkSourceSchema = z
     selectedTurnId: nativeForkId,
     headEventId: nativeForkId,
     nativeIdentityKey: nativeForkDigest,
+    nativeResumeBindingKey: nativeForkDigest,
+    connectionId: nativeForkId.optional(),
     provider: z.enum(['codex', 'claude']),
     environmentId: nativeForkId,
     agentId: nativeForkId,
@@ -100,8 +102,11 @@ export function readNativeForkEffect(json: string): NativeForkEffectRecord {
 }
 export interface NativeForkCommitInput {
   child: import('@kontourai/station-contracts/provider').ProviderSession;
-  configuredEvent: CanonicalRuntimeEvent;
-  forkEvent: CanonicalRuntimeEvent;
+  configuredEvent: Extract<
+    CanonicalRuntimeEvent,
+    { method: 'session.configured' }
+  >;
+  forkEvent: Extract<CanonicalRuntimeEvent, { method: 'conversation.forked' }>;
 }
 export interface NativeForkEffectClaim {
   /** A stable wrapper; the captured authority claim is never exposed. */
