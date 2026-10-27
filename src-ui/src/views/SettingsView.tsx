@@ -591,6 +591,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     locale,
     developerToolsEnabled,
     developerFeatures.trust,
+    developerFeatures.stationRoutes,
   ]);
 
   // Reconciling the server snapshot with the form is a question about *time*,
