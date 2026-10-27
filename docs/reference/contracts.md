@@ -1531,7 +1531,8 @@ The room contract declares `station.project-task-room/v5` with
 shape. The existing `ProjectTaskRoomPrincipal` and `ProjectTaskRoomRecord`
 remain legacy types until runtime member admission is wired. The pure
 `parseProjectTaskRoomPrincipal` accepts members only with v5; legacy operator
-and agent shapes remain supported. This structural check grants no authority.
+and agent shapes remain supported. Both version-gated parsers require an
+explicit schema version and refuse a missing one rather than assuming v5. This structural check grants no authority.
 Member `principalId` and `deviceId`, mention principal IDs and approval IDs
 must be nonempty, at most 256 UTF-16 code units, well-formed Unicode, unchanged
 by trimming, and free of C0, DEL and C1 controls. Legacy operator and agent
@@ -1539,7 +1540,7 @@ room IDs retain their existing wire rules. This is the opaque-ID rule for
 #4236 to align with; the clean Agent/engine slug validator has a different
 grammar and cannot validate these principal/device IDs.
 
-Human messages may carry up to 32 structured
+Human messages may carry 1 to 32 structured
 `mentions: {kind: 'person', principalId}[]`, with IDs bounded to 256 UTF-16
 code units. `parseProjectTaskRoomHumanMessage` refuses extra keys and max+1,
 retains v4 attachments, rejects duplicate `principalId` values, and rejects
@@ -1555,7 +1556,7 @@ and participant `location`; legacy projections may omit them.
 
 `projectTaskRoomWriteSchemaVersion` specifies monotone format selection:
 members or nonempty mentions advance to v5, and subsequent writes stay v5.
-An empty `mentions: []` is treated as absent for version selection. The helper
+An empty `mentions: []` does not select v5, and every parser refuses it. The helper
 accepts both append bodies and resolved record bodies directly.
 The persisted-record parser and permanent old-writer fence are still runtime
 work in #4136; this contract addition does not activate member writes or enforce

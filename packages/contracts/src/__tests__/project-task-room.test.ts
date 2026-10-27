@@ -38,7 +38,9 @@ describe('v5 room contract boundaries', () => {
     expect(PROJECT_TASK_ROOM_SCHEMA_VERSION).toBe(
       'station.project-task-room/v5',
     );
-    expect(parseProjectTaskRoomPrincipal(member)).toEqual(member);
+    expect(
+      parseProjectTaskRoomPrincipal(member, PROJECT_TASK_ROOM_SCHEMA_VERSION),
+    ).toEqual(member);
     for (const version of [
       'station.project-task-room/v2',
       'station.project-task-room/v3',
@@ -50,21 +52,44 @@ describe('v5 room contract boundaries', () => {
       );
     }
   });
+  test('a missing schema version refuses instead of defaulting to v5', () => {
+    const missing =
+      undefined as unknown as typeof PROJECT_TASK_ROOM_SCHEMA_VERSION;
+    expect(parseProjectTaskRoomPrincipal(member, missing)).toBeNull();
+    expect(
+      parseProjectTaskRoomHumanMessage(
+        { ...message, mentions: [mention] },
+        missing,
+      ),
+    ).toBeNull();
+  });
   test('refuses an incomplete member principal', () => {
     expect(
-      parseProjectTaskRoomPrincipal({ kind: 'member', deviceId: 'device-1' }),
+      parseProjectTaskRoomPrincipal(
+        { kind: 'member', deviceId: 'device-1' },
+        PROJECT_TASK_ROOM_SCHEMA_VERSION,
+      ),
     ).toBeNull();
     expect(
-      parseProjectTaskRoomPrincipal({
-        kind: 'member',
-        principalId: 'person-1',
-      }),
+      parseProjectTaskRoomPrincipal(
+        {
+          kind: 'member',
+          principalId: 'person-1',
+        },
+        PROJECT_TASK_ROOM_SCHEMA_VERSION,
+      ),
     ).toBeNull();
     expect(
-      parseProjectTaskRoomPrincipal({ ...member, principalId: '' }),
+      parseProjectTaskRoomPrincipal(
+        { ...member, principalId: '' },
+        PROJECT_TASK_ROOM_SCHEMA_VERSION,
+      ),
     ).toBeNull();
     expect(
-      parseProjectTaskRoomPrincipal({ ...member, extra: true }),
+      parseProjectTaskRoomPrincipal(
+        { ...member, extra: true },
+        PROJECT_TASK_ROOM_SCHEMA_VERSION,
+      ),
     ).toBeNull();
   });
   test.each(['principalId', 'deviceId'] as const)(
@@ -72,7 +97,12 @@ describe('v5 room contract boundaries', () => {
     (field) => {
       for (const value of ['person:Alex', '成员-1', 'x'.repeat(256)]) {
         const input = { ...member, [field]: value };
-        expect(parseProjectTaskRoomPrincipal(input)).toEqual(input);
+        expect(
+          parseProjectTaskRoomPrincipal(
+            input,
+            PROJECT_TASK_ROOM_SCHEMA_VERSION,
+          ),
+        ).toEqual(input);
       }
       for (const value of [
         '',
@@ -88,7 +118,10 @@ describe('v5 room contract boundaries', () => {
         '\ud800',
       ]) {
         expect(
-          parseProjectTaskRoomPrincipal({ ...member, [field]: value }),
+          parseProjectTaskRoomPrincipal(
+            { ...member, [field]: value },
+            PROJECT_TASK_ROOM_SCHEMA_VERSION,
+          ),
         ).toBeNull();
       }
     },
@@ -125,8 +158,11 @@ describe('v5 room contract boundaries', () => {
         (_, index) => ({ ...mention, principalId: `person-${index}` }),
       ),
     };
-    expect(parseProjectTaskRoomHumanMessage(full)).toEqual(full);
+    expect(
+      parseProjectTaskRoomHumanMessage(full, PROJECT_TASK_ROOM_SCHEMA_VERSION),
+    ).toEqual(full);
     for (const mentions of [
+      [],
       [...full.mentions, { ...mention, principalId: 'overflow-person' }],
       [{ ...mention, principalId: '' }],
       [{ kind: 'agent', principalId: 'agent-1' }],
@@ -141,7 +177,10 @@ describe('v5 room contract boundaries', () => {
       [{ ...mention, principalId: 'person-\u007f2' }],
     ]) {
       expect(
-        parseProjectTaskRoomHumanMessage({ ...message, mentions }),
+        parseProjectTaskRoomHumanMessage(
+          { ...message, mentions },
+          PROJECT_TASK_ROOM_SCHEMA_VERSION,
+        ),
       ).toBeNull();
     }
   });
@@ -405,7 +444,9 @@ test('the closed record and page item budgets cover the fully populated v5 wire 
     bodyBytes: 1,
     checkpointDigest: 'c'.repeat(64),
   };
-  expect(parseProjectTaskRoomHumanMessage(body)).toEqual(body);
+  expect(
+    parseProjectTaskRoomHumanMessage(body, PROJECT_TASK_ROOM_SCHEMA_VERSION),
+  ).toEqual(body);
   expect(PROJECT_TASK_ROOM_MAX_RECORD_JSON_ITEMS).toBe(items(record));
   const page = {
     kind: 'available',

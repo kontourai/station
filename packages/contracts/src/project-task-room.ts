@@ -115,7 +115,7 @@ export interface ProjectTaskRoomHumanMessage {
 /** Structural validation only; membership and device authority belong to the host. */
 export function parseProjectTaskRoomPrincipal(
   value: unknown,
-  schemaVersion: ProjectTaskRoomSchemaVersion = PROJECT_TASK_ROOM_SCHEMA_VERSION,
+  schemaVersion: ProjectTaskRoomSchemaVersion,
 ): ProjectTaskRoomV5Principal | null {
   if (!roomSchemaVersion(schemaVersion) || !value || typeof value !== 'object')
     return null;
@@ -170,7 +170,12 @@ export function parseProjectTaskRoomPrincipal(
 export function isProjectTaskRoomMentions(
   value: unknown,
 ): value is ProjectTaskRoomPersonMention[] {
-  if (!Array.isArray(value) || value.length > PROJECT_TASK_ROOM_MAX_MENTIONS)
+  // Empty is refused, not absent: selection keeps legacy rooms on their version.
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > PROJECT_TASK_ROOM_MAX_MENTIONS
+  )
     return false;
   const principals = new Set<string>();
   for (let index = 0; index < value.length; index += 1) {
@@ -200,7 +205,7 @@ export function parseProjectTaskRoomPresenceLocation(
 /** v2/v3 reject attachments; all legacy versions reject structured mentions. */
 export function parseProjectTaskRoomHumanMessage(
   value: unknown,
-  schemaVersion: ProjectTaskRoomSchemaVersion = PROJECT_TASK_ROOM_SCHEMA_VERSION,
+  schemaVersion: ProjectTaskRoomSchemaVersion,
 ): ProjectTaskRoomHumanMessage | null {
   if (!roomSchemaVersion(schemaVersion) || !value || typeof value !== 'object')
     return null;
