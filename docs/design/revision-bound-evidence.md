@@ -127,7 +127,14 @@ inside its settle transaction and refuses such a write as
 ([#4007](https://github.com/kontourai/station/issues/4007)); room editing then
 stops Station-wide, deletions included, until receipts can be retired, which
 this slice does not provide ([#4055](https://github.com/kontourai/station/issues/4055)). A Task document's capacity is per
-document and also bounded by this ledger. A lost post-commit response and a peer witness race each
+document and also bounded by this ledger. Run snapshots retain about 180 B of
+metadata per small save, giving roughly 2.5–3k lifetime saves before explicit
+`document-full`, depending on text and fragmentation. The 256 KiB text and
+768 KiB record limits are now reachable; the worker checks both alongside
+the shared 512 KiB snapshot limit. Inserts leave a 16 KiB deletion reserve in
+snapshot and record budgets. Deletions can spend it even when splitting a run
+grows metadata, but the reserve is finite and does not bypass this ledger cap.
+A lost post-commit response and a peer witness race each
 receive one bounded restore/retry; the retry's exact inserted count determines
 `duplicate` versus `imported`. A live peer miss refreshes from SQLite before
 returning.
