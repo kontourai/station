@@ -143,6 +143,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/runtime/frameworks/__tests__/http-receive.integration.test.ts',
   // Runs the preview-docs CLI against private source/doc fixtures and the real repo.
   'scripts/__tests__/feature-preview-docs-check.test.ts',
+  // Drives a fake `security` binary through the macOS keyring store's child processes.
+  'packages/cli/src/__tests__/profile-keyring-macos.test.ts',
   // Native archive tools and owned recognizer/process fixtures; every home is disposable.
   'src-server/services/media-tools/__tests__/media-tools-acquisition.test.ts',
   'src-server/services/transcription/__tests__/sherpa-transcriber.test.ts',
