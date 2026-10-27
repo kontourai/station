@@ -49,7 +49,10 @@ import {
   mediaUploadPolicy,
 } from '@kontourai/station-contracts/walkthrough';
 import { readGitHeadSha, resolveGitInfo } from '@kontourai/station-shared/git';
-import { configureHttpReceive } from '@kontourai/station-shared/http-upload';
+import {
+  configureHttpKeepAlive,
+  configureHttpReceive,
+} from '@kontourai/station-shared/http-upload';
 import {
   claimInstanceEntry,
   findRunning as findRunningHomeInstances,
@@ -1369,6 +1372,7 @@ export function buildUiServerScript(opts: {
     const uiRequestHandler=(deps)=>(${createUiRequestHandler.toString()})(deps,uploadPolicy);
     const server=http.createServer(uiRequestHandler({http,crypto,fs,path,dir,mime,inject,upstreamPort,backendPrefixes,backendExcludedPrefixes,backendNavigationPrefixes,readinessFile,identity,internalApiToken,trustedTailscaleServeOrigin,hostedTenantAuthorities,immutableAsset,documentCsp}));
     (${configureHttpReceive.toString()})(server,uploadPolicy,mediaUploadPolicies.walkthrough.totalMs);
+    (${configureHttpKeepAlive.toString()})(server);
     server.listen(${opts.uiPort},${JSON.stringify(opts.host ?? '0.0.0.0')});
     ${opts.exitWithLauncher ? "if(process.connected)process.on('disconnect',()=>process.exit(0));else process.exit(0);" : ''}
   `;

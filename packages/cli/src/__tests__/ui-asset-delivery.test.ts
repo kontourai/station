@@ -105,6 +105,13 @@ describe('built UI asset delivery', () => {
       client.end();
     });
 
+  it('serialized UI listener keeps an idle connection across a poll interval', async () => {
+    // Node's default closes after 5 s, so a phone polling every 10 s paid a
+    // new connection per poll.
+    expect(server.keepAliveTimeout).toBe(65_000);
+    const response = await request(asset, { Connection: 'keep-alive' });
+    expect(response.headers['keep-alive']).toBe('timeout=65');
+  });
   it('serialized UI listener retains keep-alive when an early proxy error races body end', async () => {
     server.keepAliveTimeout = 100;
     server.keepAliveTimeoutBuffer = 0;

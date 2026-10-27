@@ -101,6 +101,8 @@ export interface UseLiveSurfaceOptions {
   apiBase: string;
   surfaceId: string;
   params?: Partial<LiveSurfaceStreamParams>;
+  /** While true the stream waits, reading as connecting, for final `params`. */
+  paramsPending?: boolean;
   /** Element whose on-screen visibility gates the stream. */
   visibilityRef: RefObject<Element | null>;
   onFrame: (frame: LiveSurfaceFrame) => void;
@@ -239,6 +241,7 @@ export function useLiveSurface(
     apiBase,
     surfaceId,
     params,
+    paramsPending = false,
     visibilityRef,
     transport = authenticatedFetch,
     now = Date.now,
@@ -288,6 +291,12 @@ export function useLiveSurface(
   useEffect(() => {
     if (!visible) {
       setStatus('suspended');
+      return;
+    }
+    // The caller is still settling what to ask for (the pane's size): open
+    // once, with the final parameters, rather than twice.
+    if (paramsPending) {
+      setStatus('connecting');
       return;
     }
     const abort = new AbortController();
@@ -411,6 +420,7 @@ export function useLiveSurface(
     apiBase,
     surfaceId,
     paramsKey,
+    paramsPending,
     projectSlug,
     visible,
     retryToken,
