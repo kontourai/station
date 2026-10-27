@@ -794,7 +794,11 @@
 
     "packages/sdk/src/capability.ts",
 
-    "packages/sdk/src/publicStationCapabilities.ts"
+    "packages/sdk/src/publicStationCapabilities.ts",
+
+    "packages/contracts/src/engine-capability-matrix.ts",
+
+    "src-ui/src/utils/execution.ts"
   ],
 
   "checks": [

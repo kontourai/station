@@ -1918,6 +1918,14 @@ reserved only when the current session cannot take the turn:
 - the engine cannot apply a requested model switch per turn;
 - an explicit handoff or a context boundary asks for one.
 
+The conversation-open read reports that decision for the next ordinary turn
+without reserving anything (`nextTurnStartsSession`, from
+`ConversationLineage.nextTurnStartsSession`, #4179): the first two reasons, or
+a reserved child that has not started. A model switch depends on the send that
+asks for it and is not counted. It reports nothing for a turn the send would
+refuse: a handoff awaiting its target, or a continuation, fork, or handoff
+context delivery not yet completed on the current Session.
+
 `OrchestrationService` parks an at-rest engine left unused past
 `idleSessionParkAfterMs`, provided it is at rest, has no active turn or reported running child work,
 has a saved resume cursor, and is not known to lack resume support.
