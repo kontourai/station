@@ -7,3 +7,14 @@
   flex-shrink: 0;
   overflow-wrap: anywhere;
 }
+
+.layout-view-pending {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+}
+
+.layout-view-pending > button {
+  align-self: flex-start;
+}
