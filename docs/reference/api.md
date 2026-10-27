@@ -5067,6 +5067,17 @@ or approval; it does not enumerate other tailnet nodes, use allowed origins as
 mapping evidence or change Tailscale settings. The host UI applies an address
 only after an explicit Use action and requires reachable HTTPS for QR creation.
 
+`GET /api/system/routes` is a read-tier leaf any paired device may call. It
+answers `{ "environmentId": string, "routes": [{ "kind": "lan" | "tailscale" |
+"tailscale-https", "url": string }] }`: the private LAN and Tailscale addresses
+the API listener accepts on, with its port, and the Tailscale Serve origins from
+the same resolver as above. A loopback-only listener reports no listener
+addresses. Hosted deployments answer `404` and the handshake omits the
+`connectionRoutes` capability. A client learns these as routes to the same
+saved Station and still checks each against the public handshake before use
+([Station routes](../design/station-routes.md),
+[service](../../src-server/services/connections/station-routes.ts)).
+
 
 `POST /api/pairing/offers` accepts `endpoint`, optional `scope`, and optional
 `approval: "on-create" | "on-request"`. The host CLI and pairing panel send
