@@ -385,10 +385,7 @@ import {
   type ForegroundInvocationAdmission,
   ForegroundInvocationUnavailableError,
 } from './foreground-invocation-admission.js';
-import {
-  HOST_IMAGE_AGENT_INSTRUCTION,
-  HostImageTurnCapture,
-} from './host-image-turn-capture.js';
+import { HostImageTurnCapture } from './host-image-turn-capture.js';
 import { InternalStopSuppression } from './internal-stop-suppression.js';
 import {
   type InterruptedTurnMemoryAdapter,
@@ -1447,11 +1444,6 @@ function taskBriefStartRecord(brief: { digest: string; text: string }) {
 /** No turn has started in this session yet (the first-turn rule above). */
 function isGenuineFirstTurn(events: readonly { method?: unknown }[]): boolean {
   return !events.some((event) => event.method === 'turn.started');
-}
-
-/** The host-image instruction while the preview is on, else nothing. */
-function hostImageGuide(capture: HostImageTurnCapture): string | undefined {
-  return capture.enabled() ? HOST_IMAGE_AGENT_INSTRUCTION : undefined;
 }
 
 /**
@@ -8062,7 +8054,7 @@ export class OrchestrationService {
           // The chat-host-images preview's one line, on the same first turn.
           const pendingHostImageGuide =
             current && isGenuineFirstTurn(current.events)
-              ? hostImageGuide(this.hostImages)
+              ? await this.hostImages.instructionFor(submittedInput.threadId)
               : undefined;
           const firstTurnContext = [
             pendingPrompt,

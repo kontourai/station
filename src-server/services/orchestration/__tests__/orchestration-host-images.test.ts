@@ -1,4 +1,5 @@
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import { CHAT_HOST_IMAGES_PREVIEW_ID } from '@kontourai/station-contracts/chat-host-images';
@@ -18,11 +19,19 @@ import type {
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { createAttachmentRoutes } from '../../../routes/orchestration/attachments.js';
-import { FeaturePreviewRegistry } from '../../feature-previews/feature-preview-registry.js';
+import {
+  FeaturePreviewRegistry,
+  type FeaturePreviewSelector,
+} from '../../feature-previews/feature-preview-registry.js';
 import { receiptBus } from '../../infra/receipt-bus.js';
+import {
+  engineSessionTmpDir,
+  installSessionTmpDirPolicy,
+  sessionTempRoot,
+} from '../../infra/session-tmpdir.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
-import { HOST_IMAGE_AGENT_INSTRUCTION } from '../host-image-turn-capture.js';
+import { hostImageAgentInstruction } from '../host-image-turn-capture.js';
 import { OrchestrationService } from '../orchestration-service.js';
 
 /**
@@ -52,6 +61,8 @@ class FakeAdapter implements ProviderAdapterShape {
   async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
+    // As every spawning adapter does at its session start.
+    engineSessionTmpDir(input.threadId);
     const now = new Date().toISOString();
     const session: ProviderSession = {
       provider: this.provider,
@@ -126,6 +137,7 @@ describe('chat-host-images through OrchestrationService', () => {
   let service: OrchestrationService;
   let adapter: FakeAdapter;
   let previews: FeaturePreviewRegistry;
+  let selector: FeaturePreviewSelector;
 
   beforeEach(() => {
     base = realpathSync(makeTempDir('orchestration-host-images-'));
@@ -139,11 +151,11 @@ describe('chat-host-images through OrchestrationService', () => {
       warn() {},
       error() {},
     } as never);
-    const hostImagesPreview = previews.bind({
+    const hostImagesPreview = (selector = previews.bind({
       id: CHAT_HOST_IMAGES_PREVIEW_ID,
       label: 'Chat images from the host',
       description: 'test binding',
-    });
+    }));
     adapter = new FakeAdapter();
     service = new OrchestrationService({
       adapterRegistry: registryOf(adapter),
@@ -163,11 +175,12 @@ describe('chat-host-images through OrchestrationService', () => {
   /** One turn whose reply names `markdown`, emitted the way an engine does. */
   async function replyTurn(
     threadId: string,
-    markdown: string,
+    markdown: string | (() => string),
+    cwd: string = workspace,
   ): Promise<string> {
     await service.dispatch({
       type: 'startSession',
-      input: { threadId, provider: 'codex', cwd: workspace },
+      input: { threadId, provider: 'codex', cwd },
     });
     await service.dispatch({
       type: 'sendTurn',
@@ -188,7 +201,7 @@ describe('chat-host-images through OrchestrationService', () => {
       createdAt: at(),
       method: 'content.text-delta',
       itemId: `${threadId}-item`,
-      delta: markdown,
+      delta: typeof markdown === 'function' ? markdown() : markdown,
     });
     adapter.events.push({
       ...base,
@@ -211,9 +224,11 @@ describe('chat-host-images through OrchestrationService', () => {
       'thread-a',
       `Before and after: ![sizing](${path}) and ![x](/etc/passwd.png)`,
     );
+    // No temp root was launched (no TMPDIR policy here): only the folder.
     expect(adapter.turns[0].ambientContext).toContain(
-      HOST_IMAGE_AGENT_INSTRUCTION,
+      hostImageAgentInstruction({ workingDirectory: true, tmpdir: false }),
     );
+    expect(adapter.turns[0].ambientContext).not.toContain('$TMPDIR');
 
     const stored = store.latestEventByMethod(
       'thread-a',
@@ -270,6 +285,46 @@ describe('chat-host-images through OrchestrationService', () => {
       },
       refused: { '/etc/passwd.png': 'outside-allowed-roots' },
     });
+  });
+
+  test('a session launched with its own temp folder is told about $TMPDIR, and an image saved there is kept', async () => {
+    await previews.setEnabled(CHAT_HOST_IMAGES_PREVIEW_ID, true);
+    const previous = process.env.STATION_HOME;
+    process.env.STATION_HOME = join(base, 'station-home');
+    const uninstall = installSessionTmpDirPolicy(() =>
+      selector.select({ enabled: () => true, disabled: () => false }),
+    );
+    try {
+      let saved = '';
+      await replyTurn('thread-tmp', () => {
+        const tmp = sessionTempRoot('thread-tmp');
+        if (!tmp) throw new Error('no temp root was launched');
+        saved = join(tmp, 'shot.png');
+        writeFileSync(saved, FIXTURE);
+        return `![shot](${saved})`;
+      });
+      expect(adapter.turns[0].ambientContext).toContain(
+        hostImageAgentInstruction({ workingDirectory: true, tmpdir: true }),
+      );
+      const stored = store.latestEventByMethod(
+        'thread-tmp',
+        'content.host-images',
+      )?.payload;
+      if (stored?.method !== 'content.host-images') throw new Error('none');
+      expect(stored.sources).toEqual([{ path: saved, attachmentIndex: 0 }]);
+    } finally {
+      uninstall();
+      if (previous === undefined) delete process.env.STATION_HOME;
+      else process.env.STATION_HOME = previous;
+    }
+  });
+
+  test('a chat with no admissible folder and no temp folder is not told at all', async () => {
+    await previews.setEnabled(CHAT_HOST_IMAGES_PREVIEW_ID, true);
+    await replyTurn('thread-home', 'nothing', homedir());
+    expect(adapter.turns[0].ambientContext ?? '').not.toContain(
+      'Station chat images',
+    );
   });
 
   test('preview off: nothing is read or stored, and the agent is not told', async () => {

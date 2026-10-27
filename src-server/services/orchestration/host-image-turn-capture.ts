@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { FeaturePreviewSelector } from '../feature-previews/feature-preview-registry.js';
 import {
-  existingSessionTmpDir,
+  sessionTempRoot,
   removeSessionTmpDir,
 } from '../infra/session-tmpdir.js';
 import type { EventStore } from './event-store.js';
@@ -18,10 +18,24 @@ const TURN_TEXT_EVENT_LIMIT = 5_000;
 
 /**
  * The one line an agent is told while the `chat-host-images` preview is on,
- * so the images it means to show are ones Station can keep.
+ * naming only the places this session's images can actually come from.
  */
-export const HOST_IMAGE_AGENT_INSTRUCTION =
-  '[Station chat images: to show the person an image, save it as PNG, JPEG, GIF or WebP (at most 512 KiB) inside the working directory or $TMPDIR and reference it as ![alt](/absolute/path). Images at other paths will not render.]';
+export function hostImageAgentInstruction(where: {
+  workingDirectory: boolean;
+  tmpdir: boolean;
+}): string | undefined {
+  const place =
+    where.workingDirectory && where.tmpdir
+      ? 'inside the working directory or $TMPDIR'
+      : where.workingDirectory
+        ? 'inside the working directory'
+        : where.tmpdir
+          ? 'inside $TMPDIR'
+          : undefined;
+  return place
+    ? `[Station chat images: to show the person an image, save it as PNG, JPEG, GIF or WebP (at most 512 KiB) ${place} and reference it as ![alt](/absolute/path). Images at other paths will not render.]`
+    : undefined;
+}
 
 export interface HostImageTurnCaptureDeps {
   preview: FeaturePreviewSelector | undefined;
@@ -60,6 +74,27 @@ export class HostImageTurnCapture {
         disabled: () => false,
       }) ?? false
     );
+  }
+
+  /**
+   * The first-turn instruction for this session, or undefined: nothing while
+   * the preview is off, and nothing when the session has no admissible root
+   * (a no-Project chat whose engine got no per-session temp folder), since no
+   * image it saved could render. `$TMPDIR` is named only when the engine was
+   * launched with a root Station recorded.
+   */
+  async instructionFor(threadId: string): Promise<string | undefined> {
+    if (!this.enabled()) return undefined;
+    const cwd = this.deps.sessionCwd(threadId);
+    const tmpdir = sessionTempRoot(threadId);
+    const roots = await hostImageCaptureRoots({
+      cwd,
+      listWorktrees: async () => [],
+    });
+    return hostImageAgentInstruction({
+      workingDirectory: roots.length > 0,
+      tmpdir: tmpdir !== undefined,
+    });
   }
 
   /** Called with every committed event. */
@@ -137,7 +172,7 @@ export class HostImageTurnCapture {
     if (paths.length === 0) return;
     const roots = await hostImageCaptureRoots({
       cwd: this.deps.sessionCwd(event.threadId),
-      sessionTmpDir: existingSessionTmpDir(event.threadId),
+      sessionTmpDir: sessionTempRoot(event.threadId),
     });
     const capture = await captureHostImages({
       paths,
