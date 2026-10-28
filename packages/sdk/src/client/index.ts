@@ -130,6 +130,7 @@ export * from './task-user-input-references';
 export * from './unified-search';
 export * from './usage-export';
 export * from './walkthroughs';
+export * from './work-claims';
 export {
   executeWorkspacePaneHostAction,
   getWorkspacePaneHostActions,
