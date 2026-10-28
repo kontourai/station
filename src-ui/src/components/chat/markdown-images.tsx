@@ -8,11 +8,14 @@ import type { ComponentPropsWithoutRef, ReactNode } from 'react';
 import { defaultUrlTransform, type UrlTransform } from 'react-markdown';
 import { useOptionalPreview } from '../../contexts/PreviewContext';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
-import { WarningGlyph } from '../icons/Glyph';
 import { useAttachmentObjectUrlState } from './FilePartPreview';
 import { type HostImagesView, useHostImages } from './HostImagesContext';
 import { useMarkdownLinkContext } from './MarkdownLinkContext';
-import { WorkspaceFileReply, workspaceVisualPath } from './WorkspaceFileReply';
+import {
+  VisualUnavailableCard,
+  WorkspaceFileReply,
+  workspaceVisualPath,
+} from './WorkspaceFileReply';
 
 /**
  * An inline image a model wrote as a data URL. Only the raster types chat
@@ -105,7 +108,9 @@ function LegacyMarkdownImage({ src, alt, node: _node, ...props }: ImageProps) {
   const localPath = workspaceVisualPath(source);
   if (link?.projectSlug && localPath) {
     return (
-      <WorkspaceFileReply path={localPath}>{alt || 'Image'}</WorkspaceFileReply>
+      <WorkspaceFileReply path={localPath} variant="image">
+        {alt || 'Image'}
+      </WorkspaceFileReply>
     );
   }
   const image = (
@@ -181,7 +186,7 @@ function HostPathImage({
     );
   if (!refused && link?.projectSlug && workspaceVisualPath(path))
     return (
-      <WorkspaceFileReply path={path}>
+      <WorkspaceFileReply path={path} variant="image">
         {props.alt || 'Image'}
       </WorkspaceFileReply>
     );
@@ -221,9 +226,16 @@ function CapturedHostImage({
       />
     );
   return (
-    <PreviewButton name={name} url={url} mediaType={image.mimeType}>
-      <img src={url} alt={alt ?? ''} className="markdown-image" />
-    </PreviewButton>
+    <span className="workspace-file-reply workspace-file-reply--image">
+      <PreviewButton name={name} url={url} mediaType={image.mimeType}>
+        <img src={url} alt={alt ?? ''} className="markdown-image" />
+      </PreviewButton>
+      {alt ? (
+        <span className="workspace-file-reply__caption">
+          <span className="workspace-file-reply__label">{alt}</span>
+        </span>
+      ) : null}
+    </span>
   );
 }
 
@@ -235,13 +247,9 @@ function UnavailableHostImage({
   reason: string;
 }) {
   return (
-    <span className="markdown-image-unavailable" role="note">
-      <WarningGlyph aria-hidden="true" />
-      <span>
-        {alt ? <strong>{alt}</strong> : null}
-        {alt ? ' — ' : null}
-        Image not available on this device: {reason}
-      </span>
-    </span>
+    <VisualUnavailableCard
+      label={alt}
+      reason={`Image not available on this device: ${reason}`}
+    />
   );
 }
