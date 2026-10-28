@@ -806,7 +806,9 @@ describe('ProjectSettingsView (#250 shell port)', () => {
         (screen.getByLabelText('Default AI Model') as HTMLInputElement).value,
       ).toBe('');
       expect(
-        screen.getByText('This connection offers no model to pre-fill.'),
+        screen.getByText(
+          'This connection offers no model to pre-fill. Choose one, or this project uses the Station default.',
+        ),
       ).toBeTruthy();
     });
 
