@@ -324,6 +324,7 @@ import {
   ConversationForkContextModule,
   type ConversationForkContextReference,
   type ConversationForkContextSnapshot,
+  type NativeForkCreationObservation,
 } from './conversation-fork-context.js';
 import {
   type ConversationHistoryPage,
@@ -936,6 +937,7 @@ export type SessionReadScope = SessionReadAuthority | InternalSessionReadScope;
 export type { InterruptedTurnMemoryAdapter };
 
 interface OrchestrationServiceOptions {
+  nativeForkStoredReadVerifier?: import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['verifyForService'];
   adapterRegistry: IProviderAdapterRegistry;
   monitoringEmitter?: MonitoringEmitter;
   eventBus: EventBus;
@@ -2358,6 +2360,7 @@ export class OrchestrationService {
   }
 
   constructor(private readonly options: OrchestrationServiceOptions) {
+    this.nativeForkStoredReadVerifier = options.nativeForkStoredReadVerifier;
     // All delete paths converge here, including Draft discard and attached alias cleanup.
     this.stopSessionDeletionNotifications = options.eventStore?.observeCommits({
       threadDeleting: (threadId) => {
@@ -6420,6 +6423,135 @@ export class OrchestrationService {
   canUserReadSession(threadId: string, authority: SessionReadScope): boolean {
     this.initialize();
     return this.sessionAuthz.canReadSession(threadId, authority);
+  }
+
+  private readonly nativeForkStoredReadVerifier:
+    | import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['verifyForService']
+    | undefined;
+
+  /** Classification is not admission, a no-effect witness, or native completion. */
+  nativeForkStoredReadRequired(
+    targetId: string,
+    contextDigest: string,
+    authority: SessionReadAuthority,
+  ): 'required' | 'not-required' | 'unavailable' {
+    const store = this.options.eventStore;
+    if (
+      !store ||
+      !this.started ||
+      this.transcriptSearchStopped ||
+      !isSessionReadAuthority(authority) ||
+      !targetId ||
+      targetId.length > 512 ||
+      !/^[a-f0-9]{64}$/.test(contextDigest)
+    )
+      return 'unavailable';
+    try {
+      const reference = store.conversationForkContextReference(targetId);
+      if (
+        reference &&
+        (reference.state === 'deleted' ||
+          reference.digest !== contextDigest ||
+          !this.canReadForkContext(reference, authority))
+      )
+        return 'unavailable';
+      const disposition = store.nativeForkStoredReadDisposition(
+        targetId,
+        reference?.forkEventId,
+        contextDigest,
+      );
+      if (disposition === 'unavailable') return 'unavailable';
+      if (disposition === 'native-intent')
+        return reference ? 'required' : 'unavailable';
+      if (reference?.state === 'ready' && disposition !== 'replay')
+        return 'unavailable';
+      return 'not-required';
+    } catch {
+      return 'unavailable';
+    }
+  }
+
+  /** Stored facts only; no initialization, activity refresh, lifecycle or effect grant. */
+  readNativeForkStoredCreation(
+    targetId: string,
+    contextDigest: string,
+    admission: unknown,
+  ):
+    | {
+        kind: 'stored-creation';
+        observation: Extract<
+          NativeForkCreationObservation,
+          { kind: 'verified-creation' }
+        >;
+      }
+    | { kind: 'unavailable'; reason: string } {
+    const verify = this.nativeForkStoredReadVerifier;
+    const store = this.options.eventStore;
+    if (!verify || !store || !this.started || this.transcriptSearchStopped)
+      return { kind: 'unavailable', reason: 'stored-read-not-composed' };
+    const sameAuthorization = this.sessionAuthz.captureReadCurrentness();
+    try {
+      const current = verify(admission);
+      if (current.kind !== 'current')
+        return { kind: 'unavailable', reason: 'request-not-current' };
+      // The bounded observation supplies only the current CHILD row, not
+      // current tenant bindings for every source/lineage member. Do not
+      // substitute cached tenant contexts or scan all Sessions to fill that gap.
+      if (
+        current.authority.mode !== 'personal' ||
+        this.options.requireTenantExecutionContext?.() === true
+      )
+        return {
+          kind: 'unavailable',
+          reason: 'affected-tenant-evidence-unavailable',
+        };
+      if (!this.sessionAuthz.canReadSession(targetId, current.authority))
+        return { kind: 'unavailable', reason: 'affected-owner-unavailable' };
+      const observation = store.observeCommittedNativeFork(
+        targetId,
+        contextDigest,
+      );
+      if (observation.kind !== 'verified-creation')
+        return { kind: 'unavailable', reason: 'creation-not-verified' };
+      if (observation.currentSession.tenantExecutionContext !== undefined)
+        return {
+          kind: 'unavailable',
+          reason: 'affected-tenant-evidence-unavailable',
+        };
+      for (const threadId of observation.affected.threadIds) {
+        if (
+          this.sessionAuthz.tenantContextFor(threadId) !== undefined ||
+          !this.sessionAuthz.canReadSession(threadId, current.authority)
+        )
+          return { kind: 'unavailable', reason: 'affected-owner-unavailable' };
+      }
+      // readConversation -> readChildWork can load unbounded cold history.
+      // This cut returns STORED facts only and never enters that path, even warm.
+      if (
+        this.childWork.threadsNeedingHistoricalSeed(
+          observation.affected.threadIds,
+        ).length > 0
+      )
+        return {
+          kind: 'unavailable',
+          reason: 'cold-settled-evidence-budget-missing',
+        };
+      const latest = verify(admission);
+      if (
+        latest.kind !== 'current' ||
+        latest.authority !== current.authority ||
+        !sameAuthorization() ||
+        !this.started ||
+        this.transcriptSearchStopped
+      )
+        return { kind: 'unavailable', reason: 'request-not-current' };
+      return { kind: 'stored-creation', observation };
+    } catch {
+      return {
+        kind: 'unavailable',
+        reason: 'authoritative-stored-read-unavailable',
+      };
+    }
   }
 
   /**

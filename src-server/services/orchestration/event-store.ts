@@ -5251,6 +5251,45 @@ export class EventStore {
     return snapshot;
   }
 
+  /** Indexed disposition only: no native record or canonical payload crosses SQL. */
+  nativeForkStoredReadDisposition(
+    targetId: string,
+    forkEventId: string | undefined,
+    contextDigest: string,
+  ): 'native-intent' | 'replay' | 'absent' | 'unavailable' {
+    if (
+      !targetId ||
+      targetId.length > 512 ||
+      (forkEventId !== undefined &&
+        (!forkEventId || forkEventId.length > 512)) ||
+      !/^[a-f0-9]{64}$/.test(contextDigest)
+    )
+      return 'unavailable';
+    const native = this.db
+      .prepare(
+        'SELECT 1 AS present FROM orchestration_conversation_native_fork_effect WHERE target_conversation_id = ?',
+      )
+      .get(targetId);
+    if (native) return 'native-intent';
+    if (forkEventId === undefined) return 'absent';
+    const row = this.db
+      .prepare(`SELECT CASE
+      WHEN typeof(payload) != 'text' OR length(CAST(payload AS BLOB)) > 2097152 THEN 'unavailable'
+      WHEN json_valid(payload) != 1 THEN 'unavailable'
+      WHEN json_extract(payload, '$.method') IS NOT 'conversation.forked'
+        OR json_extract(payload, '$.provider') IS NOT 'station'
+        OR json_extract(payload, '$.targetConversationId') IS NOT ?
+        OR json_extract(payload, '$.contextDigest') IS NOT ? THEN 'unavailable'
+      WHEN json_extract(payload, '$.continuation') = 'native' THEN 'native-intent'
+      WHEN json_extract(payload, '$.continuation') = 'replay-seed' THEN 'replay'
+      ELSE 'unavailable' END AS mode
+      FROM orchestration_events WHERE id = ?`)
+      .get(targetId, contextDigest, forkEventId) as
+      | { mode: 'native-intent' | 'replay' | 'unavailable' }
+      | undefined;
+    return row?.mode ?? 'absent';
+  }
+
   readNativeForkEffect(targetId: string): NativeForkEffectRecord | undefined {
     const row = this.db
       .prepare(

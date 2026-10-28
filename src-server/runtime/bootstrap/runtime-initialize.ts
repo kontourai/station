@@ -1,4 +1,8 @@
 import type { ACPConfig } from '@kontourai/station-contracts/acp';
+import {
+  createRuntimeNativeForkReadAdmissionDomain,
+  type NativeForkReadAdmissionDomain,
+} from '../../security/native-fork-read-admission.js';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { BuiltinAgentEngineBinding } from '@kontourai/station-contracts/engine-capability-matrix';
@@ -309,12 +313,14 @@ export interface InitializeRuntimeDeps {
   /** Publishes services captured by route registration before VoltAgent calls configureFullApp. */
   onRouteServicesReady: (services: {
     orchestrationService: OrchestrationService;
+    nativeForkStoredReadBinder?: NativeForkReadAdmissionDomain['bindAtConversationMount'];
     usageAggregator?: UsageAggregator;
   }) => void | Promise<void>;
   onVoltAgentCreated: (voltAgent: VoltAgent) => void;
 }
 
 interface InitializeRuntimeResult {
+  nativeForkStoredReadBinder: NativeForkReadAdmissionDomain['bindAtConversationMount'];
   registryPolicyApplication?: RegistryTrustPolicyApplication;
   appConfig: AppConfig;
   framework: RuntimeFramework;
@@ -564,7 +570,11 @@ export async function initializeRuntime(
   const idleSessionParkAfterMs = parseNonNegativeIntegerEnv(
     process.env.STATION_IDLE_SESSION_PARK_AFTER_MS,
   );
+  const nativeForkStoredReadDomain = createRuntimeNativeForkReadAdmissionDomain(
+    deps.environmentSecurityService,
+  );
   const orchestrationService = new OrchestrationService({
+    nativeForkStoredReadVerifier: nativeForkStoredReadDomain.verifyForService,
     ...(idleSessionParkAfterMs !== undefined ? { idleSessionParkAfterMs } : {}),
     // #1796: revoking a device's full access re-confines the sessions its
     // grant unconfined, from their next turn.
@@ -902,6 +912,8 @@ export async function initializeRuntime(
   // service that configureRoutes captures before constructing it.
   await onRouteServicesReady({
     orchestrationService,
+    nativeForkStoredReadBinder:
+      nativeForkStoredReadDomain.bindAtConversationMount,
     usageAggregator: nextUsageAggregator,
   });
 
@@ -1169,6 +1181,8 @@ export async function initializeRuntime(
 
   return {
     registryPolicyApplication,
+    nativeForkStoredReadBinder:
+      nativeForkStoredReadDomain.bindAtConversationMount,
     appConfig,
     framework,
     orchestrationService,

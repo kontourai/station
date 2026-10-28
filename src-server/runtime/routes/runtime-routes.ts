@@ -1034,6 +1034,7 @@ export interface ConfigureRuntimeRoutesContext {
   /** The Project board aggregate; composed here when absent. */
   workItemProviderService?: Pick<WorkItemProviderService, 'listWorkItems'>;
   orchestrationService: OrchestrationService;
+  nativeForkStoredReadBinder?: import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['bindAtConversationMount'];
   /** Diagnostics sampler and orchestration's independent engine-start lease. */
   resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
   /** Runtime-owned durable operation authority shared with fleet dispatch. */
@@ -8792,6 +8793,13 @@ export function configureRuntimeRoutes(
       },
     }),
   );
+  // Bind the SAME domain as the constructor's verifier to the real final-Request
+  // resolver. Only retained native intents consume handles; replay stays ordinary.
+  const nativeForkStoredReadMount = context.nativeForkStoredReadBinder?.(
+    conversationReadAuthorityForRequest,
+  );
+  if (nativeForkStoredReadMount?.kind === 'unavailable')
+    context.logger.warn('Native fork stored-read mount unavailable');
   context.app.route(
     '/agents',
     createConversationRoutes(
@@ -8836,6 +8844,13 @@ export function configureRuntimeRoutes(
         sessionQueries: context.orchestrationService.sessionQueries,
       }),
       conversationReadAuthorityForContext,
+      {
+        admission:
+          nativeForkStoredReadMount?.kind === 'bound'
+            ? nativeForkStoredReadMount
+            : undefined,
+        service: context.orchestrationService,
+      },
     ),
   );
   // The bytes behind a transcript's attachment chips. Separate from

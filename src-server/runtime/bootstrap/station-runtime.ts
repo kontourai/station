@@ -1040,6 +1040,7 @@ export class StationRuntime {
   });
   private ollamaAdapter = new OllamaAdapter();
   private orchestrationService!: OrchestrationService;
+  private nativeForkStoredReadBinder?: import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['bindAtConversationMount'];
   private projectRoomRuntime?: { close(): Promise<void> };
   private resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
   private attachedSessionFollowService?: AttachedSessionFollowService;
@@ -4068,6 +4069,8 @@ export class StationRuntime {
           },
           onRouteServicesReady: async (services) => {
             this.orchestrationService = services.orchestrationService;
+            this.nativeForkStoredReadBinder =
+              services.nativeForkStoredReadBinder;
             // Route construction happens inside initializeRuntime before this
             // method returns. Publish the Dispatcher at that composition seam,
             // after its concrete orchestration Adapter exists and before any
@@ -4178,6 +4181,7 @@ export class StationRuntime {
     this.appConfig = initialized.appConfig;
     this.framework = initialized.framework;
     this.orchestrationService = initialized.orchestrationService;
+    this.nativeForkStoredReadBinder = initialized.nativeForkStoredReadBinder;
     this.resourcePosture = initialized.resourcePosture;
     this.attachedSessionFollowService =
       initialized.attachedSessionFollowService;
@@ -4677,6 +4681,7 @@ export class StationRuntime {
       delegationAttemptClaims: this.delegationAttemptClaims,
       orchestrationService: this.orchestrationService,
       resourcePosture: this.resourcePosture,
+      nativeForkStoredReadBinder: this.nativeForkStoredReadBinder,
       orchestrationEventStore: this.orchestrationEventStore,
       operationalEventPublisher: this.operationalEventPublisher,
       pluginInstallationHost: this.pluginInstallationHost,

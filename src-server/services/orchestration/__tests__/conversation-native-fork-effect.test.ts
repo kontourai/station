@@ -2,9 +2,23 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { tenantId } from '@kontourai/station-contracts/tenancy';
+import {
+  parseHostedTenantRegistry,
+  sessionReadAuthorityFromRequest,
+  tenantId,
+} from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { continuityRegistry } from '../../../__test-utils__/scripted-continuity-adapter.js';
+import { createRuntimeNativeForkReadAdmissionDomain } from '../../../security/native-fork-read-admission.js';
+import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
+import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
+import { createLogger } from '../../../utils/logger.js';
+import { EventBus } from '../event-bus.js';
+import { OrchestrationService } from '../orchestration-service.js';
+import { Hono } from 'hono';
+import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
+import { createConversationRoutes } from '../../../routes/chat/conversations.js';
 import {
   createConversationForkContext,
   decodeCommittedNativeForkCreation,
@@ -26,8 +40,11 @@ describe('native fork SQLite effect and publication ownership', () => {
   const temp = trackTempDirs();
   const stores = new Set<EventStore>();
   const peers = new Set<DatabaseSync>();
-  afterEach(() => {
+  const services = new Set<OrchestrationService>();
+  afterEach(async () => {
     vi.restoreAllMocks();
+    for (const service of services) await service.shutdown();
+    services.clear();
     for (const peer of peers) peer.close();
     peers.clear();
     for (const store of stores) store.close();
@@ -40,6 +57,7 @@ describe('native fork SQLite effect and publication ownership', () => {
       explicitOwned?: boolean;
       contextText?: string;
       initialChildModel?: string;
+      idempotencyKey?: string;
     } = {},
   ) {
     const root = temp('station-native-fork-effect-');
@@ -101,6 +119,9 @@ describe('native fork SQLite effect and publication ownership', () => {
       targetConversationId: 'child',
       targetAgent: 'codex',
       ownerUserId: 'owner',
+      ...(options.idempotencyKey
+        ? { idempotencyKey: options.idempotencyKey }
+        : {}),
       ...(options.tenant ? { tenantId: 'tenant-one' } : {}),
       ...(options.project ? { projectSlug: 'project-one' } : {}),
       branchPointTurnId: 'turn-one',
@@ -212,6 +233,7 @@ describe('native fork SQLite effect and publication ownership', () => {
     const peer = new DatabaseSync(path, { readOnly: true });
     peers.add(peer);
     return {
+      path,
       peer,
       get store() {
         return store;
@@ -242,6 +264,401 @@ describe('native fork SQLite effect and publication ownership', () => {
       },
     };
   }
+
+  async function storedReadFixture(
+    options: {
+      accountMember?: boolean;
+      foreignOwner?: boolean;
+      route?: boolean;
+      replay?: boolean;
+      hosted?: boolean;
+    } = {},
+  ) {
+    const f = fixture({
+      ...(options.route ? { idempotencyKey: 'stored-route-retry' } : {}),
+      ...(options.hosted ? { tenant: true } : {}),
+    });
+    if (options.replay) {
+      f.store.publishConversationForkContext(f.replay, f.snapshot.digest);
+    } else {
+      const effect = f.reserve();
+      effect.sessionStart.beginInvocation(NOW);
+      f.observe(effect);
+      effect.commit(f.commit);
+    }
+    const security = new EnvironmentSecurityService({
+      homeDir: temp('station-native-stored-request-'),
+    });
+    const credential = await security.initialize();
+    const request = new Request(
+      'http://stored-read.station/agents/codex/conversations/source/fork',
+      { method: 'POST' },
+    );
+    setRuntimeAuthenticatedRequestPrincipal(request, {
+      kind: 'credential',
+      authority: 'operator-credential',
+      source: 'bearer',
+      credential: credential.credential,
+    });
+    const registry = options.hosted
+      ? parseHostedTenantRegistry({
+          schemaVersion: 1,
+          tenants: [
+            { id: tenantId('tenant-one'), authority: 'tenant.example.test' },
+          ],
+        })
+      : undefined;
+    const authority = sessionReadAuthorityFromRequest(
+      options.foreignOwner
+        ? 'unrelated-owner'
+        : options.accountMember
+          ? 'account-reader'
+          : 'owner',
+      registry ? { tenantId: tenantId('tenant-one') } : undefined,
+      registry,
+    );
+    const domain = createRuntimeNativeForkReadAdmissionDomain(security);
+    const mount = domain.bindAtConversationMount(() => authority);
+    if (mount.kind !== 'bound') throw new Error('Expected paired mount');
+    const captured = mount.capture(request);
+    if (captured.kind !== 'captured')
+      throw new Error('Expected real credential capture');
+    const bus = new EventBus();
+    const service = new OrchestrationService({
+      eventStore: f.store,
+      eventBus: bus,
+      adapterRegistry: continuityRegistry([]),
+      logger: createLogger({
+        name: 'native-stored-read-owner',
+        level: 'error',
+      }),
+      idleSessionParkAfterMs: 0,
+      nativeForkStoredReadVerifier: domain.verifyForService,
+      ...(registry
+        ? {
+            requireTenantExecutionContext: () => true,
+            validateRecoveredTenantExecutionContext: (
+              context:
+                | import('@kontourai/station-contracts/tenancy').TenantExecutionContext
+                | undefined,
+            ) =>
+              context &&
+              registry.tenants.some((entry) => entry.id === context.tenantId)
+                ? context
+                : undefined,
+          }
+        : {}),
+      ...(options.accountMember
+        ? {
+            personalConversationAccess: {
+              canRead: (reader: string, owner: string) =>
+                reader === 'account-reader' && owner === 'owner',
+              ownerIds: () => ['owner'],
+            },
+          }
+        : {}),
+    });
+    services.add(service);
+    // Explicit test runtime setup is outside the read under test. The read
+    // entry must not initialize, recover, start providers or warm cold history.
+    service.initialize();
+    await service.whenSessionAttachmentSettled();
+    return {
+      f,
+      service,
+      bus,
+      security,
+      domain,
+      mount,
+      handle: captured.handle,
+      authority,
+    };
+  }
+
+  test('stored service read refuses cold history before any direct or activity-induced load', async () => {
+    const { f, service, bus, handle } = await storedReadFixture();
+    const history = vi.spyOn(f.store, 'listChildWorkHistoryForThreads');
+    const writes = vi.spyOn(f.store, 'upsertSession');
+    const append = vi.spyOn(f.store, 'appendEvent');
+    const live = vi.spyOn(bus, 'emit');
+    const result = service.readNativeForkStoredCreation(
+      'child',
+      f.snapshot.digest,
+      handle,
+    );
+    expect(result).toEqual({
+      kind: 'unavailable',
+      reason: 'cold-settled-evidence-budget-missing',
+    });
+    expect(history).not.toHaveBeenCalled();
+    expect(writes).not.toHaveBeenCalled();
+    expect(append).not.toHaveBeenCalled();
+    expect(live).not.toHaveBeenCalled();
+  });
+
+  test.each([false, true])(
+    'warm stored service read preserves current facts using existing owner/account policy: member=%s',
+    async (accountMember) => {
+      const { f, service, bus, authority, handle, mount } =
+        await storedReadFixture({ accountMember });
+      // Deliberate ordinary-reader setup reaches the EXISTING seed owner. The
+      // stored-only read below must neither repeat it nor refresh activity.
+      for (const threadId of ['source', 'child'])
+        expect(
+          await service.readSession(threadId, authority, {
+            eventMethods: ['session.started', 'session.configured'],
+          }),
+        ).not.toBeNull();
+      const current = f.store.readSessionByThread('child');
+      if (!current) throw new Error('Missing current stored child');
+      const later = {
+        ...current,
+        status: 'error' as const,
+        model: 'later-model',
+        resumeCursor: { nativeSessionId: 'later-current' },
+        updatedAt: '2030-01-01T00:02:00.000Z',
+      };
+      f.store.upsertSession(later);
+      const history = vi.spyOn(f.store, 'listChildWorkHistoryForThreads');
+      const writes = vi.spyOn(f.store, 'upsertSession');
+      const append = vi.spyOn(f.store, 'appendEvent');
+      const live = vi.spyOn(bus, 'emit');
+      const result = service.readNativeForkStoredCreation(
+        'child',
+        f.snapshot.digest,
+        handle,
+      );
+      expect(result.kind).toBe('stored-creation');
+      if (result.kind !== 'stored-creation')
+        throw new Error('Expected stored creation');
+      expect(result.observation.currentSession).toMatchObject(later);
+      expect(result.observation.creation.initialChild.resumeCursor).toEqual(
+        f.commit.child.resumeCursor,
+      );
+      expect(result.observation.canonicalProjection).toBe('not-supplied');
+      expect(result.observation.activation).toBe('unwired');
+      expect(history).not.toHaveBeenCalled();
+      expect(writes).not.toHaveBeenCalled();
+      expect(append).not.toHaveBeenCalled();
+      expect(live).not.toHaveBeenCalled();
+      mount.release(handle);
+      expect(
+        service.readNativeForkStoredCreation(
+          'child',
+          f.snapshot.digest,
+          handle,
+        ),
+      ).toEqual({ kind: 'unavailable', reason: 'request-not-current' });
+    },
+  );
+
+  test('service rejects an unknown handle before bounded creation read', async () => {
+    const { f, service } = await storedReadFixture();
+    const read = vi.spyOn(f.store, 'observeCommittedNativeFork');
+    const forgedCurrent = vi.fn(() => true);
+    expect(
+      service.readNativeForkStoredCreation('child', f.snapshot.digest, {
+        checkCurrent: forgedCurrent,
+      }),
+    ).toEqual({ kind: 'unavailable', reason: 'request-not-current' });
+    expect(read).not.toHaveBeenCalled();
+    expect(forgedCurrent).not.toHaveBeenCalled();
+  });
+
+  test('current credential cannot read a stored fork owned by an unrelated principal', async () => {
+    const { f, service, handle } = await storedReadFixture({
+      foreignOwner: true,
+    });
+    const read = vi.spyOn(f.store, 'observeCommittedNativeFork');
+    const history = vi.spyOn(f.store, 'listChildWorkHistoryForThreads');
+    expect(
+      service.readNativeForkStoredCreation('child', f.snapshot.digest, handle),
+    ).toEqual({ kind: 'unavailable', reason: 'affected-owner-unavailable' });
+    expect(read).not.toHaveBeenCalled();
+    expect(history).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    'cold',
+    'warm',
+    'rotated',
+    'record-missing',
+    'hosted',
+    'replay',
+  ] as const)(
+    'fork retry consumes actual final-Request admission without claiming native activation: %s',
+    async (mode) => {
+      const { f, service, security, domain, mount, authority } =
+        await storedReadFixture({
+          route: true,
+          replay: mode === 'replay',
+          hosted: mode === 'hosted',
+        });
+      if (mode === 'warm') {
+        for (const id of ['source', 'child'])
+          expect(
+            await service.readSession(id, authority, {
+              eventMethods: ['session.started', 'session.configured'],
+            }),
+          ).not.toBeNull();
+      }
+      if (mode === 'record-missing') {
+        // Corruption control: the canonical native fact must still prevent a
+        // replay reply when its native projection row was lost externally.
+        const canonicalBefore = f.peer
+          .prepare('SELECT payload FROM orchestration_events WHERE id = ?')
+          .get(f.snapshot.forkEventId);
+        expect(canonicalBefore).toBeDefined();
+        const corruption = new DatabaseSync(f.path);
+        try {
+          expect(
+            corruption
+              .prepare(
+                'DELETE FROM orchestration_conversation_native_fork_effect WHERE target_conversation_id = ?',
+              )
+              .run('child').changes,
+          ).toBe(1);
+        } finally {
+          corruption.close();
+        }
+        expect(
+          f.peer
+            .prepare(
+              'SELECT target_conversation_id FROM orchestration_conversation_native_fork_effect WHERE target_conversation_id = ?',
+            )
+            .get('child'),
+        ).toBeUndefined();
+        expect(
+          f.peer
+            .prepare('SELECT payload FROM orchestration_events WHERE id = ?')
+            .get(f.snapshot.forkEventId),
+        ).toEqual(canonicalBefore);
+      }
+      const credential = (await security.initialize()).credential;
+      const logger = createLogger({
+        name: 'native-stored-route-owner',
+        level: 'error',
+      });
+      const app = new Hono();
+      configureRuntimeHttp({
+        app,
+        logger,
+        eventBus: new EventBus(),
+        security: {
+          verifyCredential: (candidate, route) =>
+            route
+              ? security.authorizeCredential(candidate, route)
+              : security.verifyCredential(candidate),
+          recognizeCredential: (candidate) =>
+            security.verifyCredential(candidate),
+          resolveGrantedScope: (candidate) =>
+            security.resolveGrantedScope(candidate),
+          resolveCredentialAuthority: (candidate) =>
+            security.verifyOperatorCredential(candidate)
+              ? 'operator-credential'
+              : undefined,
+        },
+      });
+      let knownAgentCalls = 0;
+      const read = vi.spyOn(service, 'readNativeForkStoredCreation');
+      const publish = vi.spyOn(f.store, 'publishConversationForkContext');
+      const history = vi.spyOn(f.store, 'listChildWorkHistoryForThreads');
+      const writes = vi.spyOn(f.store, 'upsertSession');
+      const append = vi.spyOn(f.store, 'appendEvent');
+      const route = createConversationRoutes(
+        new Map(),
+        logger,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        service,
+        undefined,
+        undefined,
+        () => authority,
+        service,
+        async () => {
+          knownAgentCalls++;
+          // Genuine middleware admission already happened; rotation occurs
+          // during an existing awaited route preparation, before capture.
+          if (mode === 'rotated' && knownAgentCalls === 2)
+            await security.rotateCredential();
+          return true;
+        },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { admission: mount, service },
+      );
+      app.route('/agents', route);
+      const response = await app.request(
+        'http://stored-read.station/agents/codex/conversations/source/fork',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${credential}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            targetAgent: 'codex',
+            idempotencyKey: 'stored-route-retry',
+          }),
+        },
+      );
+      if (mode === 'replay') {
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          success: true,
+          data: { continuation: 'replay-seed', idempotent: true },
+        });
+        expect(read).not.toHaveBeenCalled();
+      } else {
+        expect(response.status).toBe(409);
+        expect(await response.json()).toMatchObject({
+          success: false,
+          code: 'conversation-context-unavailable',
+        });
+        if (mode === 'rotated') {
+          expect(read).not.toHaveBeenCalled();
+        } else {
+          expect(read).toHaveBeenCalledOnce();
+          const handle = read.mock.calls[0]?.[2];
+          expect(handle).toBeDefined();
+          // Real per-domain lookup, not a fake release/capture return value.
+          expect(domain.verifyForService(handle).kind).toBe('unavailable');
+          const result = read.mock.results[0];
+          expect(result?.type).toBe('return');
+          if (mode === 'warm')
+            expect(result?.value.kind).toBe('stored-creation');
+          if (mode === 'cold')
+            expect(result?.value).toEqual({
+              kind: 'unavailable',
+              reason: 'cold-settled-evidence-budget-missing',
+            });
+          if (mode === 'record-missing')
+            expect(result?.value).toEqual({
+              kind: 'unavailable',
+              reason: 'creation-not-verified',
+            });
+          if (mode === 'hosted')
+            expect(result?.value).toEqual({
+              kind: 'unavailable',
+              reason: 'affected-tenant-evidence-unavailable',
+            });
+        }
+      }
+      expect(publish).not.toHaveBeenCalled();
+      expect(history).not.toHaveBeenCalled();
+      expect(writes).not.toHaveBeenCalled();
+      expect(append).not.toHaveBeenCalled();
+    },
+  );
 
   test('committed observation preserves later current state/cursor/history and performs zero writes or claim acquisition', () => {
     const f = fixture();
