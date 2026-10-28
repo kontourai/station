@@ -78,7 +78,7 @@ export function conversationPartToContentParts(
 }
 
 /**
- * A durable window read plus the live frames past its watermark, in server
+ * A durable window read plus the live frames it does not hold, in server
  * sequence order: the chat dock's stitching, shared with the session detail.
  * Live frames come from the document-wide sequenced store, which keeps every
  * frame of an open turn (bounded per Station, with a truncation watermark the
@@ -94,14 +94,28 @@ export function stitchWindowWithLiveEvents(input: {
   const watermark =
     input.watermark ??
     Math.max(0, ...input.windowEvents.map((item) => item.sequence));
+  // The newest window page is capped by count and bytes: a long turn reads
+  // back as its `turn.started` plus its tail, with nothing between. A live
+  // frame inside the page's range that the page lacks is that gap, not a stale
+  // duplicate, so only frames older than the whole page are left to paging.
+  const oldestRead = input.windowEvents.length
+    ? Math.min(...input.windowEvents.map((item) => item.sequence))
+    : watermark + 1;
   const events = [...input.windowEvents];
   const persistedIds = new Set(
     input.windowEvents.map((item) => item.event.eventId).filter(Boolean),
   );
+  const persistedSequences = new Set(
+    input.windowEvents.map((item) => item.sequence),
+  );
   for (const item of input.liveEvents) {
-    if (item.sequence <= watermark || !input.threadIds.has(item.event.threadId))
+    if (item.sequence < oldestRead || !input.threadIds.has(item.event.threadId))
       continue;
-    if (persistedIds.has(item.event.eventId)) continue;
+    if (
+      persistedIds.has(item.event.eventId) ||
+      persistedSequences.has(item.sequence)
+    )
+      continue;
     events.push(item);
   }
   events.sort((left, right) => left.sequence - right.sequence);

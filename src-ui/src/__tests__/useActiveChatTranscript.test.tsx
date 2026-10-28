@@ -200,6 +200,94 @@ describe('useActiveChatTranscript', () => {
       activeChatsStore.removeChat(id);
     }
   });
+  // Navigating back to a streaming chat re-reads the newest window, which is
+  // capped: a long turn comes back as its `turn.started` plus its tail. The
+  // live frames this document already holds for the middle of the turn must
+  // fill that gap, not be dropped as older than the page's watermark.
+  test('a remount mid-stream keeps live frames the capped window left out', async () => {
+    const id = 'remount-gap';
+    const apiBase = 'http://remount-gap.test';
+    activeChatsStore.initChat(id, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Remount gap',
+      conversationId: id,
+      orchestrationSessionStarted: true,
+    });
+    activeChatsStore.updateChat(id, {
+      conversationActivity: {
+        conversationId: id,
+        asOfSequence: 6,
+        openTurn: {
+          turnId: 'turn-gap',
+          threadId: id,
+          startedAt: '2026-09-24T00:00:00.000Z',
+        },
+      },
+      orchestrationTurnOpen: true,
+    });
+    const delta = (sequence: number, text: string) => ({
+      ...event(`e${sequence}`, 'content.text-delta', {
+        threadId: id,
+        turnId: 'turn-gap',
+        itemId: 'answer',
+        delta: text,
+      }),
+      sequence,
+    });
+    const streamed = [
+      delta(2, 'A'),
+      delta(3, 'B'),
+      delta(4, 'C'),
+      delta(5, 'D'),
+      delta(6, 'E'),
+    ];
+    for (const item of streamed)
+      recordSequencedLiveEvent(
+        apiBase,
+        item.event as Parameters<typeof recordSequencedLiveEvent>[1],
+        item.sequence,
+      );
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 6,
+      hasMore: true,
+      events: [
+        {
+          ...event('e1', 'turn.started', {
+            threadId: id,
+            turnId: 'turn-gap',
+            prompt: 'Question',
+          }),
+          sequence: 1,
+        },
+        delta(5, 'D'),
+        delta(6, 'E'),
+      ],
+    });
+    const session = {
+      ...baseSession,
+      ...activeChatsStore.getSnapshot()[id],
+      id,
+    } as ChatSession;
+    const view = renderHook(() => useActiveChatTranscript(apiBase, session));
+    try {
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      expect(
+        view.result.current.messages
+          .filter((row) => row.role === 'assistant')
+          .map((row) => row.content)
+          .join(''),
+      ).toBe('ABCDE');
+      expect(view.result.current.events.map((item) => item.sequence)).toEqual([
+        1, 2, 3, 4, 5, 6,
+      ]);
+    } finally {
+      view.unmount();
+      activeChatsStore.removeChat(id);
+      resetSequencedLiveEventsForTests();
+    }
+  });
   test('evicted live frames keep the transcript catching up until a newer window loads', async () => {
     const id = 'overflow-window';
     const apiBase = 'http://station-overflow.test';
@@ -2667,6 +2755,61 @@ describe('useActiveChatTranscript', () => {
       new Set(result.current.messages.map((message) => message.id)).size,
     ).toBe(31);
     expect(result.current.hasMore).toBe(false);
+  });
+
+  // A capped newest page is its oldest anchor plus the newest tail. With older
+  // pages loaded the cursor never re-reads the hole between them, so a reload
+  // must keep the events this reader already holds there.
+  test('a capped reload keeps loaded events between its anchor and its tail', async () => {
+    resetSequencedLiveEventsForTests();
+    const turns = (from: number, to: number) =>
+      Array.from({ length: to - from + 1 }, (_, offset) => {
+        const turn = from + offset;
+        return event(`e${turn}`, 'turn.started', {
+          turnId: `turn-${turn}`,
+          prompt: `Q${turn}`,
+        });
+      });
+    fetchWindow
+      .mockResolvedValueOnce({
+        protocolVersion: 1,
+        watermark: 5,
+        hasMore: true,
+        nextCursor: 'older-3',
+        events: turns(3, 5),
+      })
+      .mockResolvedValueOnce({
+        protocolVersion: 1,
+        watermark: 5,
+        hasMore: false,
+        events: turns(1, 2),
+      })
+      .mockResolvedValueOnce({
+        protocolVersion: 1,
+        watermark: 7,
+        hasMore: true,
+        nextCursor: 'ignored-newest-cursor',
+        events: [...turns(1, 1), ...turns(6, 7)],
+      });
+    const { result, rerender } = renderHook(
+      ({ revision }) =>
+        useActiveChatTranscript('http://capped-reload.test', {
+          ...baseSession,
+          orchestrationHistoryRevision: revision,
+        }),
+      { initialProps: { revision: 0 } },
+    );
+    await waitFor(() => expect(result.current.hasMore).toBe(true));
+    await act(async () => result.current.loadOlder());
+    expect(result.current.messages).toHaveLength(5);
+
+    rerender({ revision: 1 });
+    await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(3));
+    await waitFor(() =>
+      expect(result.current.messages.map((message) => message.content)).toEqual(
+        ['Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Q7'],
+      ),
+    );
   });
 
   test('retains loaded older pages and ignores a stale terminal refresh', async () => {

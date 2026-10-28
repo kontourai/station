@@ -291,17 +291,14 @@ export function useSessionEventWindow(
             requestGeneration === generation.current,
         ).catch(() => {});
       }
-      const replacementBoundary = next.reduce(
-        (minimum, item) => Math.min(minimum, item.sequence),
-        Number.POSITIVE_INFINITY,
-      );
+      // The newest page is capped, so a long turn reads back as its
+      // `turn.started` plus its tail. Once older pages are loaded the cursor
+      // stays where they left it and will not re-read that gap, so the events
+      // already held are kept; stored events never change, and the new page
+      // wins where the two overlap. A first page alone is replaced: the live
+      // stitch refills its gap from frames this document still holds.
       setEvents((current) =>
-        olderLoadedRef.current
-          ? mergePages(
-              current.filter((item) => item.sequence < replacementBoundary),
-              next,
-            )
-          : mergePages([], next),
+        mergePages(olderLoadedRef.current ? current : [], next),
       );
       if (!olderLoadedRef.current) setCursor(page.nextCursor);
       setWatermark(page.watermark);
