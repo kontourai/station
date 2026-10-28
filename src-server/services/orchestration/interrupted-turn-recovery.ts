@@ -568,32 +568,25 @@ export class InterruptedTurnRecovery {
           // recovery abort closes its turn by id alone, so a newer dispatch
           // start of the same id under a different invocation is the thread
           // moving on, not this boundary's turn. Read from the starts since
-          // the claim (newest first), skipping steers, which carry no
-          // invocation. Unknown own invocation or a page overflow: no evidence.
-          const startsSinceClaim =
+          // the claim, skipping steers, which carry no invocation. A turn the
+          // engine opened on its own carries none either, so a dispatch that
+          // reused its id (which does) reads as different too. A newest start
+          // with no invocation is no evidence, and the abort is written: a
+          // dead turn left open is the worse error.
+          const dispatchStarts =
             ownTurnId === undefined
-              ? []
-              : eventStore.listTurnStartsSince(
+              ? undefined
+              : eventStore.dispatchStartsOfTurnSince(
                   record.threadId,
+                  ownTurnId,
                   record.createdAt,
-                  OWN_TURN_START_SCAN_LIMIT + 1,
-                );
-          const ownDispatchStarts =
-            startsSinceClaim.length > OWN_TURN_START_SCAN_LIMIT
-              ? []
-              : startsSinceClaim.filter(
-                  (event) =>
-                    event.turnId === ownTurnId &&
-                    event.payload.method === 'turn.started' &&
-                    event.payload.inputKind !== 'steer',
                 );
           const ownInvocationId =
             record.intent?.invocationId ??
-            ownDispatchStarts.at(-1)?.payload.invocationId;
-          const newestInvocationId = ownDispatchStarts[0]?.payload.invocationId;
+            dispatchStarts?.oldest.payload.invocationId;
+          const newestInvocationId =
+            dispatchStarts?.newest.payload.invocationId;
           const reusedByNewerInvocation =
-            !providerTurn &&
-            ownInvocationId !== undefined &&
             newestInvocationId !== undefined &&
             newestInvocationId !== ownInvocationId;
           if (
