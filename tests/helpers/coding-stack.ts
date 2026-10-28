@@ -87,7 +87,7 @@ export async function selectCodingPane(page: Page, name: string | RegExp) {
   await item.click();
   if (mobile) {
     await expect(page.getByRole('dialog', { name: 'Tools' })).toBeHidden();
-    await expect(picker).toContainText(label.split('\n')[0]);
+    await expect(picker).toContainText(label);
     await expect(
       page.locator('.coding-workbench__page--drill-in'),
     ).toHaveAttribute('data-active', 'true');
