@@ -76,8 +76,8 @@ export interface AppConfig {
    */
   checkoutStaleAfterCommits?: number;
   /**
-   * ...or once its upstream has held a commit it lacks for this many days.
-   * Absent: 3.
+   * ...or once it has lacked an upstream commit, or gone without a fetch,
+   * for this many days. Absent: 3.
    */
   checkoutStaleAfterDays?: number;
   logLevel?: 'trace' | 'debug' | 'info' | 'warn' | 'error';

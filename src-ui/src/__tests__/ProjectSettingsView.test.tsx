@@ -1314,6 +1314,44 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       expect(screen.queryByTestId('project-checkout-stale')).toBeNull();
     });
 
+    test('an old fetch with nothing behind says when it was fetched, not a count', () => {
+      enablePreview();
+      sdkMocks.checkoutFreshness = {
+        ...stale,
+        staleBecause: ['fetch-age'],
+        behind: 0,
+        upstreamFetchedAt: new Date(Date.now() - 4 * 86_400_000).toISOString(),
+      };
+      renderProjectSettings();
+      const notice = screen.getByTestId('project-checkout-stale');
+      expect(notice.textContent).toContain('Checkout last fetched 4d ago');
+      expect(notice.textContent).toContain('It may be behind origin/main');
+      expect(notice.textContent).not.toContain('0 commits');
+    });
+
+    test('a checkout Station refused to read says so quietly, and an unjudgeable one says nothing', () => {
+      enablePreview();
+      sdkMocks.checkoutFreshness = {
+        version: 'station.project-checkout-freshness/v1',
+        status: 'unknown',
+        reason: 'config-refused',
+        checkedAt: '2026-10-28T12:00:00.000Z',
+      };
+      const { unmount } = renderProjectSettings();
+      expect(
+        screen.getByTestId('project-checkout-unchecked').textContent,
+      ).toContain('its git config sets options Station refuses');
+      unmount();
+      sdkMocks.checkoutFreshness = {
+        version: 'station.project-checkout-freshness/v1',
+        status: 'unknown',
+        reason: 'not-a-repository',
+        checkedAt: '2026-10-28T12:00:00.000Z',
+      };
+      renderProjectSettings();
+      expect(screen.queryByTestId('project-checkout-unchecked')).toBeNull();
+    });
+
     test('a failed read offers a retry that reads again', () => {
       enablePreview();
       sdkMocks.checkoutFreshnessError = new Error('Station is unreachable');

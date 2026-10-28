@@ -24,7 +24,10 @@ export const DEFAULT_CHECKOUT_STALE_AFTER_DAYS = 3;
 export interface ProjectCheckoutStaleThresholds {
   /** Stale at this many commits behind, or more. */
   commits: number;
-  /** Stale once the upstream has held a commit this checkout lacks for this many days. */
+  /**
+   * Stale once this checkout has lacked an upstream commit for this many
+   * days (`behindSince`), or its last recorded fetch is this old.
+   */
   days: number;
 }
 
@@ -40,6 +43,11 @@ export type ProjectCheckoutUnknownReason =
   | 'detached-head'
   /** The branch has no upstream, or its upstream ref does not exist locally. */
   | 'no-upstream'
+  /**
+   * The repository's own config sets options Station does not run git with
+   * (a credential helper, an ssh command, …), so Station did not read it.
+   */
+  | 'config-refused'
   /** Station could not read the repository (refused, timed out, or changing). */
   | 'unreadable';
 
@@ -54,18 +62,28 @@ export interface ProjectCheckoutFacts {
   /** Commits on HEAD that the upstream lacks. */
   ahead: number;
   /**
-   * ISO time the oldest commit HEAD lacks landed on the upstream's
-   * first-parent line (its committer date). Absent when `behind` is 0.
+   * ISO time from which this checkout can be shown to have lacked an
+   * upstream commit: the later of the committer date of the oldest missing
+   * commit on the upstream's first-parent line, and the time the upstream
+   * ref's reflog first moved past HEAD. A committer date alone can be far
+   * older than when the commit arrived (a fast-forward of old work); the
+   * reflog time is never earlier than the arrival. Absent when `behind` is 0.
    */
-  oldestMissingCommitAt?: string;
+  behindSince?: string;
   /**
-   * ISO time of the most recent local record of a fetch (`FETCH_HEAD`, or
-   * the upstream ref's reflog). Absent when the checkout holds neither.
+   * ISO time of the most recent local record of a fetch: `FETCH_HEAD` (of
+   * any remote) or the upstream ref's reflog. Only for a remote-tracking
+   * upstream; absent when the checkout holds neither record.
    */
   upstreamFetchedAt?: string;
 }
 
-export type ProjectCheckoutStaleReason = 'commits' | 'age';
+/**
+ * `commits`: behind by the commit threshold. `age`: behind since at least
+ * the day threshold. `fetch-age`: the last recorded fetch is at least the day
+ * threshold old, so the local refs may hide more (`behind` can be 0).
+ */
+export type ProjectCheckoutStaleReason = 'commits' | 'age' | 'fetch-age';
 
 /** A checkout whose branch and upstream could be read. */
 export interface ProjectCheckoutKnownFreshness extends ProjectCheckoutFacts {
@@ -95,21 +113,24 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Which thresholds the facts cross, as of `now`. */
 export function projectCheckoutStaleReasons(
-  facts: Pick<ProjectCheckoutFacts, 'behind' | 'oldestMissingCommitAt'>,
+  facts: Pick<
+    ProjectCheckoutFacts,
+    'behind' | 'behindSince' | 'upstreamFetchedAt'
+  >,
   thresholds: ProjectCheckoutStaleThresholds,
   now: Date = new Date(),
 ): ProjectCheckoutStaleReason[] {
-  if (facts.behind <= 0) return [];
+  const olderThanDays = (iso: string | undefined) => {
+    const time = iso ? Date.parse(iso) : Number.NaN;
+    return (
+      Number.isFinite(time) && now.getTime() - time >= thresholds.days * DAY_MS
+    );
+  };
   const reasons: ProjectCheckoutStaleReason[] = [];
-  if (facts.behind >= thresholds.commits) reasons.push('commits');
-  const oldest = facts.oldestMissingCommitAt
-    ? Date.parse(facts.oldestMissingCommitAt)
-    : Number.NaN;
-  if (
-    Number.isFinite(oldest) &&
-    now.getTime() - oldest >= thresholds.days * DAY_MS
-  )
-    reasons.push('age');
+  if (facts.behind > 0 && facts.behind >= thresholds.commits)
+    reasons.push('commits');
+  if (facts.behind > 0 && olderThanDays(facts.behindSince)) reasons.push('age');
+  if (olderThanDays(facts.upstreamFetchedAt)) reasons.push('fetch-age');
   return reasons;
 }
 

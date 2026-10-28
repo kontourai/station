@@ -28,3 +28,9 @@
   font-size: var(--k-text-sm);
   color: var(--k-text-muted);
 }
+
+.project-checkout-stale__unchecked {
+  margin: 0;
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+}

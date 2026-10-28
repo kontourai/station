@@ -1,4 +1,11 @@
-import { mkdirSync, mkdtempSync, rmSync, statSync, utimesSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  utimesSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -15,6 +22,9 @@ afterEach(() => {
 
 const THRESHOLDS = { commits: 3, days: 3 };
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** git records whole seconds. */
+const whole = (date: Date) =>
+  new Date(Math.floor(date.getTime() / 1000) * 1000).toISOString();
 
 function git(cwd: string, args: string[], date?: Date): string {
   const stamp = date
@@ -122,22 +132,135 @@ describe('project checkout freshness', () => {
     expect(result).toMatchObject({ status: 'not-stale', behind: 2 });
   });
 
-  test('one missing commit that landed upstream longer ago than the day threshold is stale for age', async () => {
+  test('one missing commit this checkout has known about for longer than the day threshold is stale for age', async () => {
     const { checkout, land } = fixture();
-    const landed = new Date(Date.now() - 4 * DAY_MS);
+    const landed = new Date(Date.now() - 5 * DAY_MS);
     land(1, landed);
+    // git stamps the reflog entry with the committer date: this fetch is
+    // recorded four days ago.
+    const fetched = new Date(Date.now() - 4 * DAY_MS);
+    git(checkout, ['fetch', '-q'], fetched);
+    const result = await createProjectCheckoutFreshnessReader().read(checkout, {
+      commits: 3,
+      days: 3,
+    });
+    expect(result).toMatchObject({
+      status: 'stale',
+      behind: 1,
+      behindSince: whole(fetched),
+    });
+    expect(result.status === 'stale' && result.staleBecause).toContain('age');
+  });
+
+  test('an old commit fast-forwarded and fetched just now is not stale for age', async () => {
+    const { checkout, land } = fixture();
+    // Its committer date is thirty days old, but it reached the upstream,
+    // and this checkout, only now.
+    land(1, new Date(Date.now() - 30 * DAY_MS));
     git(checkout, ['fetch', '-q']);
     const result = await createProjectCheckoutFreshnessReader().read(
       checkout,
       THRESHOLDS,
     );
     expect(result).toMatchObject({
-      status: 'stale',
-      staleBecause: ['age'],
+      status: 'not-stale',
+      staleBecause: [],
       behind: 1,
-      oldestMissingCommitAt: new Date(
-        Math.floor(landed.getTime() / 1000) * 1000,
-      ).toISOString(),
+    });
+  });
+
+  test('without a reflog, age follows the first-parent line, not a merged branch’s older commits', async () => {
+    const { checkout, other } = fixture();
+    git(other, ['checkout', '-q', '-b', 'feature']);
+    git(
+      other,
+      ['commit', '-q', '--allow-empty', '-m', 'old work'],
+      new Date(Date.now() - 10 * DAY_MS),
+    );
+    git(other, ['checkout', '-q', 'main']);
+    git(
+      other,
+      ['merge', '-q', '--no-ff', '-m', 'merge feature', 'feature'],
+      new Date(Date.now() - DAY_MS),
+    );
+    git(other, ['push', '-q', 'origin', 'main']);
+    git(checkout, ['fetch', '-q']);
+    rmSync(join(checkout, '.git', 'logs', 'refs', 'remotes', 'origin', 'main'));
+    const result = await createProjectCheckoutFreshnessReader().read(checkout, {
+      commits: 50,
+      days: 3,
+    });
+    expect(result).toMatchObject({ status: 'not-stale', behind: 2 });
+  });
+
+  test('a last fetch older than the day threshold is stale for fetch age, even with nothing behind', async () => {
+    const { checkout } = fixture();
+    git(checkout, ['fetch', '-q']);
+    const old = new Date(Date.now() - 5 * DAY_MS);
+    utimesSync(join(checkout, '.git', 'FETCH_HEAD'), old, old);
+    const reflog = join(
+      checkout,
+      '.git',
+      'logs',
+      'refs',
+      'remotes',
+      'origin',
+      'main',
+    );
+    if (existsSync(reflog)) utimesSync(reflog, old, old);
+    const result = await createProjectCheckoutFreshnessReader().read(
+      checkout,
+      THRESHOLDS,
+    );
+    expect(result).toMatchObject({
+      status: 'stale',
+      staleBecause: ['fetch-age'],
+      behind: 0,
+      upstreamFetchedAt: old.toISOString(),
+    });
+  });
+
+  test('a local branch as upstream reports no fetch time', async () => {
+    const { checkout, land } = fixture();
+    land(1);
+    git(checkout, ['fetch', '-q']);
+    git(checkout, ['branch', '-q', 'local-base', 'origin/main']);
+    git(checkout, ['checkout', '-q', '-b', 'feature', 'main']);
+    git(checkout, ['branch', '-q', '--set-upstream-to=local-base']);
+    const result = await createProjectCheckoutFreshnessReader().read(
+      checkout,
+      THRESHOLDS,
+    );
+    expect(result).toMatchObject({ upstream: 'local-base', behind: 1 });
+    expect(result).not.toHaveProperty('upstreamFetchedAt');
+  });
+
+  test('an upstream whose ref is missing, or whose remote does not exist, is no-upstream', async () => {
+    const { checkout } = fixture();
+    const reader = createProjectCheckoutFreshnessReader({ ttlMs: 0 });
+    git(checkout, ['config', 'branch.main.remote', 'nowhere']);
+    await expect(reader.read(checkout, THRESHOLDS)).resolves.toMatchObject({
+      status: 'unknown',
+      reason: 'no-upstream',
+    });
+    git(checkout, ['config', 'branch.main.remote', 'origin']);
+    git(checkout, ['update-ref', '-d', 'refs/remotes/origin/main']);
+    await expect(reader.read(checkout, THRESHOLDS)).resolves.toMatchObject({
+      status: 'unknown',
+      reason: 'no-upstream',
+    });
+  });
+
+  test('a repository whose own config Station does not run git with is config-refused', async () => {
+    const { checkout } = fixture();
+    git(checkout, ['config', 'credential.helper', 'store']);
+    const result = await createProjectCheckoutFreshnessReader().read(
+      checkout,
+      THRESHOLDS,
+    );
+    expect(result).toMatchObject({
+      status: 'unknown',
+      reason: 'config-refused',
     });
   });
 

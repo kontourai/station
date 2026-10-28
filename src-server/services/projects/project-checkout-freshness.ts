@@ -6,14 +6,18 @@
  * fetch", and that fetch's time is reported beside it. Every git call runs
  * through {@link readProjectRepository}, because a Project's folder is
  * member-writable and the repository git would discover there is not
- * trusted on its own.
+ * trusted on its own. The two files read directly (the fetch records' times
+ * and the tail of the upstream ref's reflog) are opened without following a
+ * link, and nothing read from them reaches git unless it is a bare object id.
  *
  * Facts are remembered per directory for {@link FRESHNESS_TTL_MS}, and
- * callers that arrive while a read is running join it, so a settings page,
- * a new chat and an agent's `get_project` cost one read between them.
- * Thresholds are applied per call, so a changed setting applies at once.
+ * callers that arrive while a read is running join it, so a settings page
+ * and an agent's `get_project` cost one read between them. A read that could
+ * not complete is not remembered. Thresholds are applied per call, so a
+ * changed setting applies at once.
  */
-import { lstat, realpath } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { lstat, open, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   PROJECT_CHECKOUT_FRESHNESS_VERSION,
@@ -34,12 +38,18 @@ import {
 
 const logger = createLogger({ name: 'project-checkout-freshness' });
 
-/** How long a read's facts are reused. */
-export const FRESHNESS_TTL_MS = 60_000;
+/**
+ * How long a read's facts are reused. Short, so a warning clears soon after
+ * the person pulls.
+ */
+export const FRESHNESS_TTL_MS = 10_000;
 /** Directories remembered at once; the oldest is forgotten first. */
 const MAX_REMEMBERED = 256;
 /** Each git call is a local ref read; this only bounds a wedged mount. */
 const GIT_TIMEOUT_MS = 5_000;
+/** The newest reflog entries examined; enough for months of fetches. */
+const REFLOG_TAIL_BYTES = 64 * 1024;
+const MAX_REFLOG_ENTRIES = 32;
 
 type Observation =
   | { kind: 'known'; facts: ProjectCheckoutFacts; at: Date }
@@ -70,6 +80,57 @@ async function latestModification(
   return latest;
 }
 
+/**
+ * The last {@link REFLOG_TAIL_BYTES} of a regular file, or `undefined` when
+ * there is none (absent, a link, a FIFO, unreadable).
+ */
+async function readTail(path: string): Promise<string | undefined> {
+  let handle: Awaited<ReturnType<typeof open>>;
+  try {
+    handle = await open(
+      path,
+      constants.O_RDONLY |
+        (constants.O_NOFOLLOW ?? 0) |
+        (constants.O_NONBLOCK ?? 0),
+    );
+  } catch {
+    return undefined;
+  }
+  try {
+    const stats = await handle.stat();
+    if (!stats.isFile()) return undefined;
+    const length = Math.min(stats.size, REFLOG_TAIL_BYTES);
+    const bytes = Buffer.alloc(length);
+    let read = 0;
+    while (read < length) {
+      const { bytesRead } = await handle.read(
+        bytes,
+        read,
+        length - read,
+        stats.size - length + read,
+      );
+      if (bytesRead === 0) break;
+      read += bytesRead;
+    }
+    return bytes.subarray(0, read).toString('utf8');
+  } catch {
+    return undefined;
+  } finally {
+    await handle.close();
+  }
+}
+
+/** `<old> <new> <identity> <seconds> <zone>\t<message>`, newest last. */
+function reflogEntries(text: string): Array<{ old: string; time: number }> {
+  const entries: Array<{ old: string; time: number }> = [];
+  for (const line of text.split('\n')) {
+    const match =
+      /^([0-9a-f]{40,64}) [0-9a-f]{40,64} .*> (\d+) [+-]\d{4}\t/.exec(line);
+    if (match) entries.push({ old: match[1], time: Number(match[2]) * 1000 });
+  }
+  return entries;
+}
+
 type RepositoryFacts =
   | { kind: 'known'; facts: ProjectCheckoutFacts }
   | { kind: 'unknown'; reason: 'detached-head' | 'no-upstream' };
@@ -93,22 +154,22 @@ async function readFacts(repository: ReadRepository): Promise<RepositoryFacts> {
       return { kind: 'unknown', reason: 'detached-head' };
     throw error;
   }
-  let upstreamRef: string;
+  // The configured upstream, whether or not its ref exists; empty for none.
+  const upstreamRef = await git([
+    'for-each-ref',
+    '--format=%(upstream)',
+    `refs/heads/${branch}`,
+  ]);
+  if (!upstreamRef) return { kind: 'unknown', reason: 'no-upstream' };
   try {
-    upstreamRef = await git([
-      'rev-parse',
-      '--symbolic-full-name',
-      '--verify',
-      '--quiet',
-      '@{upstream}',
-    ]);
+    await git(['rev-parse', '--verify', '--quiet', `${upstreamRef}^{commit}`]);
   } catch (error) {
-    // No upstream configured, or the configured one has no local ref.
-    if (exitCode(error) !== undefined)
+    // `--verify --quiet` exits 1 exactly when the ref does not exist; any
+    // other failure is a failure to read, not a fact about the upstream.
+    if (exitCode(error) === 1)
       return { kind: 'unknown', reason: 'no-upstream' };
     throw error;
   }
-  if (!upstreamRef) return { kind: 'unknown', reason: 'no-upstream' };
 
   const [ahead, behind] = (
     await git(['rev-list', '--left-right', '--count', `HEAD...${upstreamRef}`])
@@ -118,9 +179,9 @@ async function readFacts(repository: ReadRepository): Promise<RepositoryFacts> {
   if (!Number.isInteger(ahead) || !Number.isInteger(behind))
     throw new Error('git reported an unreadable ahead/behind count');
 
-  let oldestMissingCommitAt: string | undefined;
+  let behindSince: number | undefined;
   if (behind > 0) {
-    // The upstream's first-parent line records when each change landed
+    // The upstream's first-parent line records each change as it landed
     // there; a merged branch's own commits keep their older dates.
     const landed = Number.parseInt(
       await git([
@@ -132,25 +193,34 @@ async function readFacts(repository: ReadRepository): Promise<RepositoryFacts> {
       10,
     );
     if (landed > 0) {
-      const committed = await git([
-        'log',
-        '-1',
-        '--first-parent',
-        `--skip=${landed - 1}`,
-        '--format=%cI',
-        `HEAD..${upstreamRef}`,
-      ]);
-      const time = Date.parse(committed);
-      if (Number.isFinite(time))
-        oldestMissingCommitAt = new Date(time).toISOString();
+      const committed = Date.parse(
+        await git([
+          'log',
+          '-1',
+          '--first-parent',
+          `--skip=${landed - 1}`,
+          '--format=%cI',
+          `HEAD..${upstreamRef}`,
+        ]),
+      );
+      if (Number.isFinite(committed)) behindSince = committed;
     }
+    // A committer date can be far older than the commit's arrival (a
+    // fast-forward of old work). When the upstream ref's reflog shows when
+    // it moved past HEAD, that time is never earlier than the arrival.
+    const learned = await reflogMovedPastHead(repository, upstreamRef, git);
+    if (learned !== undefined)
+      behindSince = Math.max(behindSince ?? learned, learned);
   }
 
-  const fetched = await latestModification([
-    join(repository.gitDir, 'FETCH_HEAD'),
-    join(repository.commonDir, 'FETCH_HEAD'),
-    join(repository.commonDir, 'logs', ...upstreamRef.split('/')),
-  ]);
+  const remoteTracking = upstreamRef.startsWith('refs/remotes/');
+  const fetched = remoteTracking
+    ? await latestModification([
+        join(repository.gitDir, 'FETCH_HEAD'),
+        join(repository.commonDir, 'FETCH_HEAD'),
+        join(repository.commonDir, 'logs', ...upstreamRef.split('/')),
+      ])
+    : undefined;
 
   return {
     kind: 'known',
@@ -159,10 +229,44 @@ async function readFacts(repository: ReadRepository): Promise<RepositoryFacts> {
       upstream: upstreamRef.replace(/^refs\/(?:remotes|heads)\//, ''),
       behind,
       ahead,
-      ...(oldestMissingCommitAt ? { oldestMissingCommitAt } : {}),
+      ...(behindSince !== undefined
+        ? { behindSince: new Date(behindSince).toISOString() }
+        : {}),
       ...(fetched ? { upstreamFetchedAt: fetched.toISOString() } : {}),
     },
   };
+}
+
+/**
+ * When the upstream ref moved from a commit HEAD contains to one it lacks:
+ * the newest reflog entry whose previous value HEAD contains. Walks back
+ * from the newest entry, at most {@link MAX_REFLOG_ENTRIES}; past that, or
+ * past the oldest entry kept, the oldest time examined (which can only
+ * understate how long the checkout has been behind). `undefined` without a
+ * reflog.
+ */
+async function reflogMovedPastHead(
+  repository: ReadRepository,
+  upstreamRef: string,
+  git: (args: string[]) => Promise<string>,
+): Promise<number | undefined> {
+  const text = await readTail(
+    join(repository.commonDir, 'logs', ...upstreamRef.split('/')),
+  );
+  const entries = text ? reflogEntries(text) : [];
+  if (entries.length === 0) return undefined;
+  const examined = entries.slice(-MAX_REFLOG_ENTRIES).reverse();
+  for (const entry of examined) {
+    if (/^0+$/.test(entry.old)) return entry.time;
+    try {
+      await git(['merge-base', '--is-ancestor', entry.old, 'HEAD']);
+      return entry.time;
+    } catch (error) {
+      // Exit 1: HEAD lacks it too, so the ref was already past HEAD then.
+      if (exitCode(error) !== 1) throw error;
+    }
+  }
+  return examined[examined.length - 1].time;
 }
 
 async function observe(directory: string): Promise<Observation> {
@@ -191,9 +295,15 @@ async function observe(directory: string): Promise<Observation> {
         ? { kind: 'known', facts: outcome.value.facts, at }
         : { kind: 'unknown', reason: outcome.value.reason, at };
     }
-    if (outcome.state === 'not-a-repository')
-      return { kind: 'unknown', reason: 'not-a-repository', at };
-    return { kind: 'unknown', reason: 'unreadable', at };
+    switch (outcome.state) {
+      case 'not-a-repository':
+        return { kind: 'unknown', reason: 'not-a-repository', at };
+      case 'config-refused':
+      case 'config-unreadable':
+        return { kind: 'unknown', reason: 'config-refused', at };
+      default:
+        return { kind: 'unknown', reason: 'unreadable', at };
+    }
   } catch (error) {
     logger.warn('Could not read a Project checkout against its upstream', {
       error: errorMessage(error),
@@ -240,7 +350,12 @@ export function createProjectCheckoutFreshnessReader(
       settledAt: undefined as number | undefined,
     };
     remembered.set(directory, fresh);
-    void fresh.observation.then(() => {
+    void fresh.observation.then((seen) => {
+      // A read that could not complete is not an answer worth keeping.
+      if (seen.kind === 'unknown' && seen.reason === 'unreadable') {
+        if (remembered.get(directory) === fresh) remembered.delete(directory);
+        return;
+      }
       fresh.settledAt = now().getTime();
     });
     while (remembered.size > MAX_REMEMBERED) {

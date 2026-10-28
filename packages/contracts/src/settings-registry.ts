@@ -565,9 +565,9 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'number', min: 1, integer: true },
     label: 'Stale checkout after days',
-    help: 'The stale checkout warning appears once a Project’s checkout has lacked an upstream commit for this many days.',
+    help: 'The stale checkout warning appears once a Project’s checkout has lacked an upstream commit, or gone unfetched, this many days.',
     description:
-      'Days a Project’s checkout may lack a commit on its upstream branch before it reads as stale. Used by the Stale checkout warning preview.',
+      'Days a Project’s checkout may lack a commit on its upstream branch, or go without a fetch, before it reads as stale. Used by the Stale checkout warning preview.',
     // `resolveProjectCheckoutStaleThresholds` falls through to
     // DEFAULT_CHECKOUT_STALE_AFTER_DAYS.
     defaultValue: 3,

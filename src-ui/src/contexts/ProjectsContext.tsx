@@ -137,7 +137,7 @@ export function useScopedProjectChatDefaultsQuery(
 
 /**
  * How far the Project's checkout is behind its upstream. The server
- * remembers each answer for a minute, so asking more often buys nothing.
+ * remembers each answer for ten seconds, so asking more often buys nothing.
  */
 export function useScopedProjectCheckoutFreshnessQuery(
   slug: string | null | undefined,
@@ -146,7 +146,7 @@ export function useScopedProjectCheckoutFreshnessQuery(
   const requestScope = useHostRequestAuthorityScope();
   const { namespace } = useAuthorityPersistence();
   return useProjectCheckoutFreshnessQuery(slug ?? '', {
-    staleTime: 60_000,
+    staleTime: 10_000,
     ...config,
     enabled: !!slug && (config?.enabled ?? true),
     requestScope,

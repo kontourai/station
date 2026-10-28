@@ -414,7 +414,7 @@
     {
       "id": "checkout-stale-after-days",
       "label": "Stale checkout after days",
-      "help": "The stale checkout warning appears once a Project’s checkout has lacked an upstream commit for this many days.",
+      "help": "The stale checkout warning appears once a Project’s checkout has lacked an upstream commit, or gone unfetched, this many days.",
       "scope": "station",
       "section": "agent-runs",
       "route": "/settings?view=agent-runs&highlight=checkout-stale-after-days",

@@ -33,13 +33,23 @@ export function ProjectCheckoutStaleCallout({
   const fetchedAt = freshness.upstreamFetchedAt
     ? Date.parse(freshness.upstreamFetchedAt)
     : undefined;
+  const fetchedAgo =
+    fetchedAt !== undefined && Number.isFinite(fetchedAt)
+      ? relativeTimeAgo(fetchedAt, now)
+      : undefined;
+  // Only an old fetch: the local refs show nothing behind, but cannot be
+  // trusted to.
+  const title =
+    freshness.behind > 0
+      ? `Checkout is ${plural(freshness.behind, 'commit')} behind ${freshness.upstream}`
+      : `Checkout last fetched ${fetchedAgo ?? 'long ago'}`;
   return (
     <PageCallout
       calloutId="stale-project-checkout"
       tone="warning"
       ariaLabel="Stale checkout"
       data-testid="project-checkout-stale"
-      title={`Checkout is ${plural(freshness.behind, 'commit')} behind ${freshness.upstream}`}
+      title={title}
       action={
         <Button
           onClick={() => {
@@ -50,7 +60,11 @@ export function ProjectCheckoutStaleCallout({
         </Button>
       }
     >
-      <p>Agents started here follow this checkout’s instructions.</p>
+      <p>
+        {freshness.behind > 0
+          ? 'Agents started here follow this checkout’s instructions.'
+          : `It may be behind ${freshness.upstream}, and agents here follow its instructions.`}
+      </p>
       <pre className="project-checkout-stale__command">
         <code>{freshness.updateCommand}</code>
       </pre>
@@ -60,8 +74,8 @@ export function ProjectCheckoutStaleCallout({
         </p>
       )}
       <p className="project-checkout-stale__meta">
-        {fetchedAt !== undefined && Number.isFinite(fetchedAt)
-          ? `Branch ${freshness.branch}, as of a fetch ${relativeTimeAgo(fetchedAt, now)}.`
+        {fetchedAgo
+          ? `Branch ${freshness.branch}, as of a fetch ${fetchedAgo}.`
           : `Branch ${freshness.branch}, as of its last fetch.`}
       </p>
     </PageCallout>
@@ -70,9 +84,11 @@ export function ProjectCheckoutStaleCallout({
 
 /**
  * Shown in a Project's Workspace settings while the Stale checkout warning
- * preview is on and the checkout reads as stale. Nothing renders while the
- * preview is off, while the read is pending, or when the checkout is not
- * stale or cannot be judged.
+ * preview is on and the checkout reads as stale. A checkout Station tried
+ * and failed to read says so in one quiet line. Nothing renders while the
+ * preview is off, while the read is pending, when the checkout is not stale,
+ * or when there is nothing to compare (no git checkout, a detached HEAD, no
+ * upstream).
  */
 export function ProjectCheckoutFreshnessNotice({ slug }: { slug: string }) {
   const enabled = useSurfaceVisibilityFlags().has(
@@ -95,6 +111,22 @@ export function ProjectCheckoutFreshnessNotice({ slug }: { slug: string }) {
           </Button>
         }
       />
+    );
+  }
+  if (
+    query.data?.status === 'unknown' &&
+    (query.data.reason === 'config-refused' ||
+      query.data.reason === 'unreadable')
+  ) {
+    return (
+      <p
+        className="project-checkout-stale__unchecked"
+        data-testid="project-checkout-unchecked"
+      >
+        {query.data.reason === 'config-refused'
+          ? 'Station did not compare this checkout with its upstream: its git config sets options Station refuses.'
+          : 'Station could not compare this checkout with its upstream.'}
+      </p>
     );
   }
   if (query.data?.status !== 'stale') return null;

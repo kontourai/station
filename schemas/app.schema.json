@@ -46,7 +46,7 @@
     },
     "checkoutStaleAfterDays": {
       "type": "integer",
-      "description": "Days a Project's checkout may lack an upstream commit before it reads as stale",
+      "description": "Days a Project's checkout may lack an upstream commit, or go without a fetch, before it reads as stale",
       "minimum": 1,
       "default": 3
     },

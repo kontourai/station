@@ -56,12 +56,15 @@ copies already made stay with their chat.
 Project reads that checkout's instructions, so a checkout far behind its
 upstream can give it rules the upstream has since dropped. With the preview on,
 Project settings → **Workspace** warns when the current branch is at least
-**Stale checkout after commits** (default 50) behind its upstream, or has lacked
-an upstream commit for **Stale checkout after days** (default 3), and shows
-`git -C <directory> pull --ff-only` to copy. Station never runs it. The counts
-come from the last fetch, whose time the warning shows; Station does not fetch.
-A folder that is not a git checkout, a detached HEAD, or a branch without a
-local upstream shows nothing. The two thresholds are in **Settings → General
+**Stale checkout after commits** (default 50) behind its upstream, has lacked
+an upstream commit for **Stale checkout after days** (default 3), or was last
+fetched at least that many days ago, and shows `git -C <directory> pull
+--ff-only` to copy. Station never runs it. The counts come from the last
+fetch, whose time the warning shows; Station does not fetch. A checkout whose
+git config sets options Station does not run git with (for example a
+credential helper) shows a line saying it was not compared. A folder that is
+not a git checkout, a detached HEAD, or a branch without a local upstream
+shows nothing. The two thresholds are in **Settings → General
 → Agent runs**.
 
 Turning a preview on affects everyone who uses this Station.
