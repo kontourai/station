@@ -100,6 +100,13 @@ test('project settings remain usable above the dock at phone and desktop widths 
           .locator('#section-workspace')
           .evaluate((element) => element.focus({ preventScroll: true }));
         await page.getByRole('textbox', { name: 'Name *' }).waitFor();
+        // Before any animation settles: the previous pass ended on Danger
+        // zone, and a fading fill read as a second selected tab.
+        expect(
+          await page
+            .getByRole('link', { name: 'Danger zone', exact: true })
+            .evaluate((element) => getComputedStyle(element).backgroundColor),
+        ).toBe('rgba(0, 0, 0, 0)');
         await page.evaluate(
           () =>
             new Promise((resolve) =>
@@ -130,11 +137,6 @@ test('project settings remain usable above the dock at phone and desktop widths 
             .getByRole('link', { name: 'Workspace', exact: true })
             .getAttribute('aria-current'),
         ).toBe('location');
-        expect(
-          await nav
-            .getByRole('link', { name: 'Danger zone', exact: true })
-            .evaluate((element) => getComputedStyle(element).backgroundColor),
-        ).toBe('rgba(0, 0, 0, 0)');
         const leafLines = await page
           .locator('.project-settings__path-pill code')
           .last()
