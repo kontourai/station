@@ -1606,8 +1606,8 @@ output. A dispatched child turn that a Station restart interrupted settles nothi
 it gets its own row instead, keyed by the recovery abort's event id: it tells
 the parent the task was cut off and quotes no output, since that turn's text
 cannot be attributed to the run without inferring an invocation from a turn
-id; a turn the engine opened on its own gets none. Every such row is the
-consumption record shared with `get_task`: the recorded
+id; a turn the engine opened on its own gets none. Every transition row,
+settled or interrupted, is the consumption record shared with `get_task`: the recorded
 parent's read of its own child at rest consumes it. `interrupt_task` from the
 recorded parent, or from the delegating owner in person, cancels it and
 suppresses the one turn it stops. An interrupt that names a turn suppresses only

@@ -1727,7 +1727,7 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     },
   );
 
-  test('a steer of the dead turn is not read as a newer dispatch', async () => {
+  test('a steer of the dead turn does not keep recovery from closing it', async () => {
     const path = databasePath();
     const threadId = 'thread-steered-dead-turn';
     const eventStore = bootAfterCrash({
@@ -1766,6 +1766,41 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     expect(
       activeTurnIdForEvents(events.map((row) => row.payload)),
     ).toBeUndefined();
+  });
+
+  test('a newer start without an invocation is no evidence of reuse: the dead turn is closed', async () => {
+    const path = databasePath();
+    const threadId = 'thread-uninvoked-newer-start';
+    const eventStore = bootAfterCrash({
+      path,
+      threadId,
+      provider: 'codex',
+      boundaryState: 'accepted',
+      startInvocationId: 'invocation-1',
+    });
+    stores.push(eventStore);
+    eventStore.appendEvent({
+      eventId: 'turn-started:uninvoked',
+      provider: 'codex',
+      threadId,
+      turnId: 'turn-1',
+      createdAt: '2026-08-16T00:00:04.000Z',
+      method: 'turn.started',
+      metadata: { trigger: 'provider' },
+    } as CanonicalRuntimeEvent);
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore,
+      logger,
+    });
+
+    await (service as any).interruptedTurns.consume();
+
+    const events = eventStore.listEvents(threadId);
+    expect(
+      events.filter((e) => e.payload.method === 'turn.aborted'),
+    ).toHaveLength(1);
   });
 
   test('a recovery abort persisted without an invocationId still closes its invocation-anchored turn', async () => {
