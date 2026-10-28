@@ -1,3 +1,4 @@
+import './project-access.css';
 import {
   type ApiRequestScope,
   StationHttpError,
@@ -105,7 +106,11 @@ function AccessPanel({
         Enable Project sharing
       </Button>
     );
-    const enableAlert = enableError && <p role="alert">{enableError}</p>;
+    const enableAlert = enableError && (
+      <p role="alert" className="project-access__error">
+        {enableError}
+      </p>
+    );
     if (error instanceof StationHttpError && error.status === 501)
       return (
         <AccessFrame>

@@ -287,7 +287,11 @@ export function AccessPanelView({
           }
         />
       )}
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert" className="project-access__error">
+          {error}
+        </p>
+      )}
       <ConfirmModal
         isOpen={!!confirmation}
         title={confirmation?.title ?? ''}
