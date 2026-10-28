@@ -1362,9 +1362,9 @@ describe('HomeView', () => {
       continuation: null,
       onNavigate: vi.fn(),
     });
-    expect(screen.getByRole('status').getAttribute('aria-label')).toBe(
-      'Loading recent work',
-    );
+    expect(
+      screen.getByRole('status', { name: 'Loading recent work' }),
+    ).toBeTruthy();
     expect(container.querySelector('.skeleton-list')).toBeTruthy();
     expect(screen.queryByText('No recent tasks yet.')).toBeNull();
     expect(
@@ -1379,9 +1379,9 @@ describe('HomeView', () => {
       onNavigate: vi.fn(),
     });
 
-    expect(screen.getByRole('status').getAttribute('aria-label')).toBe(
-      'Loading recent work',
-    );
+    expect(
+      screen.getByRole('status', { name: 'Loading recent work' }),
+    ).toBeTruthy();
     expect(container.querySelector('.skeleton-list')).toBeTruthy();
     expect(
       screen.queryByRole('button', { name: 'Start your first chat' }),

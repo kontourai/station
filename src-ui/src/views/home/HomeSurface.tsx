@@ -2,10 +2,12 @@ import {
   HomeActionSection,
   HomeContinueCard,
 } from '../../components/home/HomeActionSection';
+import { HomeCoordinatorCard } from '../../components/home/HomeCoordinatorCard';
 import { HomeRecentWorkSection } from '../../components/home/HomeRecentWorkSection';
 import { HomeStartComposer } from '../../components/home/HomeStartComposer';
 import { SkeletonBlock } from '../../components/state';
 import { useShowSurfacePage } from '../../contexts/useShowSurface';
+import { OVERVIEW_PRODUCT_NAME } from '../../lib/productNames';
 import type { NavigationView } from '../../types';
 import {
   ActivityBars,
@@ -194,7 +196,7 @@ export function HomeSurface({
           </p>
         </header>
       ) : (
-        <h1 className="sr-only">Home</h1>
+        <h1 className="sr-only">{OVERVIEW_PRODUCT_NAME}</h1>
       )}
       {/* A plain wrapper: the form is the one "Start work" landmark. A
           section named the same nested a second landmark with one name. */}
@@ -203,6 +205,9 @@ export function HomeSurface({
       >
         <HomeStartComposer compact={hasWork} />
       </div>
+      {/* #3628: the person's coordinator, pinned under the start form on
+          every Home, with or without work. */}
+      <HomeCoordinatorCard />
       {hasWork ? (
         <>
           {continueCard}
