@@ -886,6 +886,12 @@ function spilledTypeSql(path: string, payload = 'payload') {
  * A turn start with a typed prompt: non-blank inline text, or a prompt
  * stored out of line (which ingress only does for a long one).
  */
+/**
+ * A turn's own `turn.started`. A steer re-announces its turn with another
+ * `turn.started` of the same id; it neither starts a turn nor marks one.
+ */
+const OWN_TURN_START_SQL = `method = 'turn.started' AND (CASE WHEN json_valid(payload) THEN json_extract(payload, '$.inputKind') END) IS NOT 'steer'`;
+
 const PROMPTED_TURN_SQL = `((typeof(json_extract(payload, '$.prompt')) = 'text'
        AND trim(json_extract(payload, '$.prompt')) != '')
     OR json_extract(payload, '$.prompt."$stationContent"') = 1)`;
@@ -10622,7 +10628,7 @@ export class EventStore {
           ? []
           : (this.db
               .prepare(
-                `SELECT global_sequence FROM orchestration_events WHERE thread_id IN (${placeholders}) AND method = 'turn.started' AND turn_id IS NOT NULL AND global_sequence < ? ORDER BY global_sequence DESC LIMIT ?`,
+                `SELECT global_sequence FROM orchestration_events WHERE thread_id IN (${placeholders}) AND ${OWN_TURN_START_SQL} AND turn_id IS NOT NULL AND global_sequence < ? ORDER BY global_sequence DESC LIMIT ?`,
               )
               .all(
                 ...ids,
@@ -10699,7 +10705,7 @@ export class EventStore {
       ) {
         const anchor = this.db
           .prepare(
-            `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence FROM orchestration_events WHERE thread_id = ? AND turn_id = ? AND method = 'turn.started' AND global_sequence >= ? AND global_sequence < ? ORDER BY sequence ASC LIMIT 1`,
+            `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence FROM orchestration_events WHERE thread_id = ? AND turn_id = ? AND ${OWN_TURN_START_SQL} AND global_sequence >= ? AND global_sequence < ? ORDER BY sequence ASC LIMIT 1`,
           )
           .get(
             oldestTurned.threadId,

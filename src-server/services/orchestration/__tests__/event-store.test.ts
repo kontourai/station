@@ -1033,9 +1033,29 @@ describe('EventStore', () => {
     { label: 'steered', before: 200, steer: true, after: 20 },
     // The oldest row that fit is turnless; the turn behind it is anchored.
     { label: 'turnless oldest', before: 100, steer: false, after: 148 },
+    // A steer is not a turn: counting it would push the start out of range.
+    {
+      label: 'steered before the cap',
+      before: 20,
+      steer: true,
+      after: 200,
+      turnLimit: 1,
+    },
   ])(
     'a capped newest page re-adds the original turn start ($label)',
-    ({ label, before, steer, after }) => {
+    ({
+      label,
+      before,
+      steer,
+      after,
+      turnLimit = 10,
+    }: {
+      label: string;
+      before: number;
+      steer: boolean;
+      after: number;
+      turnLimit?: number;
+    }) => {
       const threadId = `anchor-${label}`;
       const fields = {
         provider: 'codex' as const,
@@ -1079,7 +1099,7 @@ describe('EventStore', () => {
       for (let i = before; i < before + after; i++) delta(i);
       const page = store.listConversationEventWindowByTurn([threadId], {
         direction: 'newest',
-        turnLimit: 10,
+        turnLimit,
       });
       expect(page.events[0].id).toBe(`${threadId}-start`);
       expect(page.turnStartDetached).toBe(true);
