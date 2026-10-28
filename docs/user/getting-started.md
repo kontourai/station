@@ -604,8 +604,10 @@ current layout default or Station’s runnable suggestion. A remembered Agent
 needing repair stays visible with its setup action; a removed choice asks you
 to choose another.
 
-Leaving the draft for another chat, or pressing Escape in it, discards it. To
-resume earlier work, choose it in the dock’s chat list.
+Leaving the draft for another chat, pressing Escape in it, or Back discards it.
+Collapsing the dock keeps it as you left it. Choosing **New chat** again while a
+draft is open returns you to that draft. To resume earlier work, choose it in
+the dock’s chat list.
 
 At the end of first-run setup, **Take the tour** and **Connect another device**
 are optional alternatives to **Start your first chat**. Both save the same selected answers before opening their next step.
