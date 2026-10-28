@@ -511,7 +511,11 @@ describe('wireCoordinatorWakes', () => {
       eventBus: bus,
       eventStore: store,
       store: store.coordinatorStore(),
-      threadInbox: { submit: vi.fn() as never },
+      threadInbox: {
+        submit: vi.fn() as never,
+        list: vi.fn(() => []),
+        cancel: vi.fn() as never,
+      },
       mayRead: () => true,
       logger: { warn: vi.fn() },
       setTimer: () => () => {},

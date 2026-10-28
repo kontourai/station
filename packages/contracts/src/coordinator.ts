@@ -89,7 +89,10 @@ export const COORDINATOR_WAKE_MAX_PENDING_ITEMS = 100;
  * attempt counts toward `COORDINATOR_WAKE_MAX_PER_HOUR`.
  */
 export const COORDINATOR_WAKE_RETRY_DELAYS_MS: readonly number[] = [
-  60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000,
+  60_000,
+  5 * 60_000,
+  15 * 60_000,
+  60 * 60_000,
 ];
 /**
  * How long a delivered item is remembered, so a repeat of it is not sent
