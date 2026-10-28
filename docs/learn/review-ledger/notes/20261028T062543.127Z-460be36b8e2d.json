@@ -1,0 +1,7 @@
+{
+  "revision": "c4aef0408f09b8973b9971052f23d2fb73d09b7c",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Corrects the previous note, which wrongly said no entry names forget: the glossary fixes Forget as the verb for a saved Station (Wi-Fi pattern) and bans profile/connection/host as the noun. The switcher change first used Remove; its copy, tests, gallery and the connections guide now say Forget, and no new copy names the record anything but Station. No glossary text needed to change.","inputs":["docs/glossary.md"]}
+  ]
+}

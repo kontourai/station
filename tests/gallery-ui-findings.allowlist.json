@@ -354,6 +354,24 @@
       "axe:label-content-name-mismatch:button.split-pane__item[search-first]",
       "hit-target:overlap:button.split-pane__item[design-probe] / button.split-pane__add-btn[Commands only]"
     ],
+    "station-switcher-dark-desktop": [
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
+    ],
+    "station-switcher-dark-mobile": [
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+      "hit-target:small:input.attachment-input[type=file]"
+    ],
+    "station-switcher-forget-dark-desktop": [
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
+    ],
+    "station-switcher-light-desktop": [
+      "axe:color-contrast:span.sidebar__project-name",
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]"
+    ],
+    "station-switcher-light-mobile": [
+      "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+      "hit-target:small:input.attachment-input[type=file]"
+    ],
     "telemetry-dialog-default-mobile": [
       "hit-target:small:input[type=radio][name=*][Anonymous usage counts]",
       "hit-target:small:input[type=radio][name=*][Detailed usage to help improve Station]",
