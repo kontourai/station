@@ -371,6 +371,7 @@ export class SessionEventReads {
       })),
       hasMore: window.hasMore,
       ...(window.nextCursor ? { nextCursor: window.nextCursor } : {}),
+      ...(window.turnStartDetached ? { turnStartDetached: true as const } : {}),
       watermark: window.watermark,
     };
   }
@@ -516,6 +517,7 @@ export class SessionEventReads {
       })),
       hasMore: window.hasMore,
       ...(window.nextCursor ? { nextCursor: window.nextCursor } : {}),
+      ...(window.turnStartDetached ? { turnStartDetached: true as const } : {}),
       watermark: window.watermark,
     };
   }

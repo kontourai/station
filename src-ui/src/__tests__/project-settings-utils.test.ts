@@ -80,7 +80,7 @@ describe('project-settings utils', () => {
       defaultApprovalModeSelection: null,
       defaultApprovalMode: null,
       defaultEnvironment: { kind: 'current' },
-      workingDirectory: undefined,
+      workingDirectory: '',
       agents: null,
       defaultAgent: null,
     });

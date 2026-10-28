@@ -3,6 +3,7 @@
  */
 
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -209,6 +210,33 @@ describe('FileTreePanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
     expect(createMutate).not.toHaveBeenCalled();
     expect(screen.getByText('Name cannot contain a slash')).toBeTruthy();
+  });
+
+  test('a touch hold on a file opens its menu and does not also open the file', () => {
+    vi.useFakeTimers();
+    try {
+      const onFileSelect = vi.fn();
+      renderPanel(onFileSelect);
+      const row = screen.getByText('app.ts').closest('button')!;
+      fireEvent.pointerDown(row, {
+        pointerType: 'touch',
+        button: 0,
+        clientX: 30,
+        clientY: 60,
+      });
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(
+        screen.getByRole('menu', { name: 'Actions for app.ts' }),
+      ).toBeTruthy();
+      fireEvent.pointerUp(row, { pointerType: 'touch' });
+      fireEvent.click(row);
+      expect(onFileSelect).not.toHaveBeenCalled();
+      expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('the header + button opens a New File / New Folder menu', () => {
