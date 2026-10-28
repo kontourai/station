@@ -63,6 +63,19 @@ function githubExpression(expression: string): string {
 }
 
 describe('promotion full-regression workflow', () => {
+  test('exclusive installs verified pnpm without its redundant managed Node runtime', () => {
+    const exclusive = workflow('full-regression.yml').jobs?.exclusive ?? {};
+    const setup = namedStep(exclusive, 'Setup pinned pnpm');
+    expect(setup.uses).toBe(
+      'kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20',
+    );
+    expect(setup.with).toBeUndefined();
+    const steps = exclusive.steps ?? [];
+    expect(steps.indexOf(setup)).toBeLessThan(
+      steps.findIndex((step) => step.run === 'npm run dependencies:ci'),
+    );
+  });
+
   test('qualifies every canonical phase against one immutable source without cancelling siblings', () => {
     const reusable = workflow('full-regression.yml');
     expect(Object.keys(reusable.on ?? {})).toEqual(['workflow_call']);
