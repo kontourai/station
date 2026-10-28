@@ -416,6 +416,36 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
     );
   });
 
+  // #4266: the inventory's finish time is what sorts finished work, and a
+  // copy read while the work ran holds its start time.
+  it('re-reads the conversation inventory when a turn ends, not when one starts', async () => {
+    const { client, invalidateQueries } = spiedClient();
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          openSseResponseWithOneFrame(
+            terminalFrame('evt-inventory-start', 'turn.started') +
+              terminalFrame('evt-inventory-done', 'turn.completed'),
+          ),
+        ),
+    );
+    ensureOrchestrationEventStream(
+      'https://ensure-orchestration-inventory.example.test',
+      client,
+    );
+    await vi.waitFor(() =>
+      expect(handleOrchestrationEvent).toHaveBeenCalledTimes(2),
+    );
+    const inventoryReads = invalidateQueries.mock.calls.filter(
+      ([filters]: unknown[]) =>
+        JSON.stringify(filters) ===
+        JSON.stringify({ queryKey: ['conversation-inventory'], type: 'active' }),
+    );
+    expect(inventoryReads).toHaveLength(1);
+  });
+
   it('leaves the read-model alone for ordinary streaming frames', async () => {
     const { client, invalidateQueries } = spiedClient();
     vi.stubGlobal(

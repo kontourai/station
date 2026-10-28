@@ -3,6 +3,7 @@ import {
   parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationListItem } from '@kontourai/station-contracts/orchestration';
+import { isSessionLifecycleStateAtRest } from '@kontourai/station-contracts/session-lifecycle';
 import { type HomeWorkItem, isTerminalLifecycle } from './home-view-model';
 
 function epochMs(value: string | undefined): number | undefined {
@@ -30,9 +31,16 @@ export function withConversationInventory<T extends HomeWorkItem>(
     const conversation = inventoryById.get(item.id);
     if (!conversation) return item;
     const acknowledgedAt = epochMs(conversation.acknowledgedAt);
-    const terminalAt = isTerminalLifecycle(item.lifecycleLabel)
-      ? epochMs(conversation.lifecycleChangedAt)
-      : undefined;
+    // The inventory's change time is a finish time only when the inventory
+    // itself read the conversation at rest. It is not refetched on every
+    // lifecycle event, so a copy read while the work ran holds its START
+    // time; the live row's own finish time then stands.
+    const terminalAt =
+      isTerminalLifecycle(item.lifecycleLabel) &&
+      conversation.lifecycleState !== undefined &&
+      isSessionLifecycleStateAtRest(conversation.lifecycleState)
+        ? (epochMs(conversation.lifecycleChangedAt) ?? item.terminalAt)
+        : item.terminalAt;
     const executionProviders = (conversation.executionProviders ?? [])
       .map((provider) => parseEngineId(provider))
       .filter((provider): provider is EngineId => provider !== undefined);

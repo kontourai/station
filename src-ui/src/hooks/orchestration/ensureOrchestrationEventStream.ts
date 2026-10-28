@@ -235,15 +235,33 @@ const SESSION_READ_MODEL_FACT_METHODS: ReadonlySet<string> = new Set([
 ]);
 const SESSION_READ_MODEL_REFRESH_WINDOW_MS = 1000;
 
+/**
+ * #4266: events after which a conversation can be at rest. The inventory
+ * carries the finish time Home and the inbox sort finished work by; a copy
+ * read while the work ran holds its start time instead, so it is re-read.
+ */
+const CONVERSATION_INVENTORY_REST_METHODS: ReadonlySet<string> = new Set([
+  'runtime.error',
+  'session.exited',
+  'turn.completed',
+  'turn.aborted',
+]);
+
 function refreshSessionReadModelOnFact(
   apiBase: string,
   event: OrchestrationEvent,
 ): void {
   if (!SESSION_READ_MODEL_FACT_METHODS.has(event.method)) return;
-  void currentStreamQueryClient(apiBase)?.invalidateQueries(
+  const client = currentStreamQueryClient(apiBase);
+  void client?.invalidateQueries(
     { queryKey: ['conversation-inbox', apiBase], type: 'active' },
     { cancelRefetch: false },
   );
+  if (CONVERSATION_INVENTORY_REST_METHODS.has(event.method))
+    void client?.invalidateQueries(
+      { queryKey: ['conversation-inventory'], type: 'active' },
+      { cancelRefetch: false },
+    );
   requestSessionReadModelRefresh(apiBase);
 }
 

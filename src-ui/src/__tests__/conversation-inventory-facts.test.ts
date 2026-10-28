@@ -2,6 +2,7 @@ import type { ConversationListItem } from '@kontourai/station-contracts/orchestr
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { describe, expect, it } from 'vitest';
 import { withConversationInventory } from '../views/home/conversation-inventory-facts';
+import { partitionHomeWorkItems } from '../views/home/home-lane-model';
 import {
   buildOrchestrationItems,
   type HomeWorkItem,
@@ -47,6 +48,7 @@ describe('withConversationInventory (#4266)', () => {
           conversation({
             id: 'c1',
             acknowledgedAt: '2026-10-28T10:00:00.000Z',
+            lifecycleState: 'completed',
             lifecycleChangedAt: '2026-10-28T11:00:00.000Z',
             executionProviders: ['claude', 'codex', 'not a clean id!'],
           }),
@@ -79,6 +81,32 @@ describe('withConversationInventory (#4266)', () => {
     expect(mappedRunning.terminalAt).toBeUndefined();
     expect(mappedRunning.executionProviders).toBeUndefined();
     expect(mappedUnlisted).toBe(unlisted);
+  });
+
+  it('a copy read while the work ran keeps the live finish time, not the start it holds', () => {
+    const finishedAt = Date.parse('2026-10-28T10:30:00.000Z');
+    const [mapped] = withConversationInventory(
+      [item({ id: 'c1', terminalAt: finishedAt, updatedAt: finishedAt })],
+      new Map([
+        [
+          'c1',
+          conversation({
+            id: 'c1',
+            lifecycleState: 'running',
+            lifecycleChangedAt: '2026-10-28T10:00:01.000Z',
+          }),
+        ],
+      ]),
+    );
+    expect(mapped.terminalAt).toBe(finishedAt);
+    // So the row sits with what just finished, not with older work.
+    const now = Date.parse('2026-10-28T10:30:30.000Z');
+    const lanes = partitionHomeWorkItems({
+      items: [mapped],
+      now,
+      snoozedUntil: new Map(),
+    });
+    expect(lanes.recentlyFinished.map((row) => row.id)).toEqual(['c1']);
   });
 });
 
