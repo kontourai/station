@@ -1075,9 +1075,6 @@ describe('service supervisor', () => {
       ).toBe(true);
     });
 
-    // Review of this change, finding 2: an intermittent foreign responder
-    // only ever drains through the 180s backstop, and a different identity
-    // answering is positive evidence against starvation.
     test('an unmeasurable reading after a deferral escalates without claiming a reading', async () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -1103,6 +1100,9 @@ describe('service supervisor', () => {
       ).toBe(true);
     });
 
+    // Review of this change, finding 2: an intermittent foreign responder
+    // only ever drains through the 180s backstop, and a different identity
+    // answering is positive evidence against starvation.
     test('pressure does not defer an intermittent foreign responder past the 180s window', async () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const error = vi.spyOn(console, 'error').mockImplementation(() => {});

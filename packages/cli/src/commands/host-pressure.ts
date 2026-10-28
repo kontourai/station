@@ -29,7 +29,7 @@ export const LOAD_PER_CPU_THRESHOLD = 1.5;
  * PSI files in preference order. Under cgroup v2 with a private cgroup
  * namespace (Docker's default), a container's root cpu.pressure measures the
  * container rather than the host; with the host's namespace, or when that file
- * is unreadable, the reading is host-wide.
+ * is unreadable or unparseable, the reading is host-wide.
  */
 export const PSI_CPU_PATHS = [
   '/sys/fs/cgroup/cpu.pressure',
