@@ -480,8 +480,9 @@ approval paths; these hooks do not establish external policy enforcement.
 
 | Hook | When it fires | What it does |
 |------|--------------|--------------|
-| `beforeToolCall` | Before any tool executes | Checks auto-approve; triggers approval flow if needed |
-| `afterToolCall` | After a tool returns | Debug logging |
+| `beforeToolCall` | Before any tool executes | Checks auto-approve and the untrusted-content permission; triggers approval flow if needed |
+| `afterToolCall` | After a tool returns | Debug logging; marks the turn when the result came from an integration classified untrusted |
+| `endInvocation` | Once when the turn ends, including on error and abort | Releases the turn's untrusted-content state |
 | `afterInvocation` | After the full turn completes | Updates conversation stats (tokens, cost, tool call count) in the memory adapter |
 
 `afterInvocation` also enriches the last assistant message with model metadata and pricing from the Bedrock model catalog.
