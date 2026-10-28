@@ -1,17 +1,14 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterAll, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
   PSI_CPU_PATHS,
   parsePsiCpuSomeAvg60,
   readHostPressure,
 } from '../commands/host-pressure.js';
 
-const PSI_ROOT = mkdtempSync(join(tmpdir(), 'station-host-pressure-'));
-afterAll(() => {
-  rmSync(PSI_ROOT, { force: true, recursive: true });
-});
+const PSI_ROOT = trackTempDirs({ lifetime: 'file' })('station-host-pressure-');
 let psiFiles = 0;
 
 /** Writes a real file the reader opens by path; returns the path. */

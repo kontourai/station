@@ -23,7 +23,7 @@ export const PSI_CPU_SOME_AVG60_THRESHOLD = 25;
  * as oversubscribed. Above 1 so a merely busy macOS desktop, whose load
  * average routinely sits near its core count, keeps the unpressured timing.
  */
-export const LOAD_PER_CPU_THRESHOLD = 1.5;
+const LOAD_PER_CPU_THRESHOLD = 1.5;
 
 /**
  * PSI files in preference order. Under cgroup v2 with a private cgroup
