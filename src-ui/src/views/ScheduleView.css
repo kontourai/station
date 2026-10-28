@@ -653,6 +653,12 @@
   text-transform: none;
   letter-spacing: 0;
 }
+/* A hint on its own line under a control (not inline in a label) reads as
+   secondary text, not as another field's body copy. */
+.schedule__field > .schedule__field-hint {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
 .schedule__field-error {
   font-size: 0.7rem;
   color: var(--error-text);
