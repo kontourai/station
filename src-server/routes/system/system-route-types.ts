@@ -17,8 +17,11 @@ import type { RuntimeResourcePostureProbe } from '../../services/infra/resource-
 import type { ServerUpdateCoordinator } from '../../services/server-update/server-update-coordinator.js';
 import type { UnconnectedACPRegistryEntry } from '../connections/acp.js';
 import type { BootHistoryRecord } from './boot-history.js';
+import type { WorkloadRouteDeps } from './workload-routes.js';
 
 export interface SystemStatusDeps {
+  /** Workload budget routes; absent leaves them unmounted (404). */
+  workload?: WorkloadRouteDeps;
   /**
    * The addresses this Station is reached on (`GET /routes`, Station routes).
    * Absent where the deployment does not serve them; the route then answers
