@@ -2,6 +2,7 @@ import type { InvocationTerminalRead } from '@kontourai/monument';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   advanceOpenTurnId,
+  isInvocationlessRecoveryAbort,
   nextTurnIdentityAnchor,
   type TurnIdentityAnchor,
 } from './session-lifecycle-service.js';
@@ -112,12 +113,17 @@ export function evaluateSessionWait(
       typeof anchor === 'object' &&
       nextAnchor === anchor;
     if (!retainedStart) open = advanceOpenTurnId(open, event, invocationId);
+    // A restart-recovery abort closes the turn the fold above matched by id,
+    // so the Session reads idle. It has no invocation to prove, so it is not
+    // a settlement: it supplies no terminal ACK for the requested work.
+    const recoveryAbort = isInvocationlessRecoveryAbort(event);
     let settledInvocation = invocationId;
     const ordinary =
       ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
         event.method,
       ) &&
-      (event.turnId !== undefined || event.invocationId !== undefined);
+      (event.turnId !== undefined || event.invocationId !== undefined) &&
+      !recoveryAbort;
     if (
       before !== undefined &&
       ordinary &&
@@ -137,9 +143,10 @@ export function evaluateSessionWait(
       } else open = before;
     }
     const canAcknowledge =
-      settledInvocation !== undefined ||
-      !ordinary ||
-      ports.readInputlessTurnDisposition?.(threadId)?.kind === 'inputless';
+      !recoveryAbort &&
+      (settledInvocation !== undefined ||
+        !ordinary ||
+        ports.readInputlessTurnDisposition?.(threadId)?.kind === 'inputless');
     if (
       before !== undefined &&
       open === undefined &&
