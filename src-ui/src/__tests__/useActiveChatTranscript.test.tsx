@@ -2913,6 +2913,63 @@ describe('useActiveChatTranscript', () => {
       expect(cursorOf(3)).toBe('below-9');
     });
 
+    // The fill completes the newest turn; it is not the reader asking for
+    // older history. A later reload still replaces the newest page, so a
+    // long-mounted chat does not accumulate every event it ever filled.
+    test('a fill does not make later reloads keep everything', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'gap',
+          turnStartDetached: true,
+          events: [...turnEvents(6, 6), ...turnEvents(11, 12)],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'older-turns',
+          events: turnEvents(6, 10),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 14,
+          hasMore: true,
+          nextCursor: 'below-8',
+          events: [
+            ...turnEvents(8, 12),
+            event('e13', 'turn.started', { turnId: 'turn-13', prompt: 'Q13' }),
+            event('e14', 'content.text-delta', {
+              turnId: 'turn-13',
+              itemId: 'answer-13',
+              delta: '14',
+            }),
+          ],
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://fill-then-reload.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([
+          6, 7, 8, 9, 10, 11, 12,
+        ]),
+      );
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([
+          8, 9, 10, 11, 12, 13, 14,
+        ]),
+      );
+      expect(fetchWindow).toHaveBeenCalledTimes(3);
+    });
+
     test('a page that cuts only an older turn reads nothing more', async () => {
       // Turn 1 is cut (its start re-added), turn 6 is whole: nothing the
       // reader is looking at is missing, so the gap waits for Load older.
