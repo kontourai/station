@@ -4231,18 +4231,27 @@ scheduled-turn adapter. [ScheduledConversationRuns](../../src-server/services/sc
 queues each run on the target conversation's thread inbox as a framed Station
 turn under `scheduler:<runId>`, through the same hand-off check-backs use
 ([`submitStationFramedTurn`](../../src-server/services/orchestration/station-turn-handoff.ts)),
-and settles from that turn's terminal event within a 30-minute deadline. A
-dedicated target's first run starts its conversation through the foreground
-execution seam and the ledger records the id once
-(`bindDedicatedConversation`). The run acts as the job's recorded `createdBy`
-with no full-access grant; the scheduler route admits a target only for a
-person who may send to the conversation or an agent naming its own (the
-`automation-target-stays-in-own-conversation` guard rule). A target refuses
+and settles from that turn's terminal event (a completion, an abort, or a
+non-retried `runtime.error`) within a 30-minute deadline. It holds a permit
+from its own pool (`maxConcurrentConversationHandoffs`) only until the turn is
+queued, never while it waits. A dedicated target's first run starts its
+conversation through the foreground execution seam; the ledger records the id
+once, and only if the target is still the one the run started from
+(`bindDedicatedConversation`). The run acts as the job's recorded
+`createdBy`, which no edit changes, with no full-access grant. The scheduler
+route admits a new target only for a person who may send to the conversation
+or an agent naming its own (the `automation-target-stays-in-own-conversation`
+guard rule), and admits every edit, run, enable, disable or delete of a
+targeted job against its stored target the same way. A target refuses
 monitors and retries. The ledger records a targeted occurrence more than six
-hours late as missed (`skipped: 'late'`, stamped so the failure outbox skips
-it), and the scheduler disables a job after five consecutive failures, a count
-derived from the run log. Without an inbox (hosted) no runner is composed and
-a targeted run fails before invocation. See the
+hours late as missed (`skipped: 'late'`, with every passed-over occurrence in
+`missedCount`, stamped so the failure outbox skips it). Fatigue disables a
+job after five consecutive failed occurrences (retries of one occurrence count
+once; a re-enable resets the count) through `applyFatigue`, one transaction
+that disables the job and records its owed notification
+(`scheduler_fatigue_announcements`), reconciled at startup, each tick and
+after every failed run. Without an inbox (hosted) no runner is composed and a
+targeted run fails before invocation. See the
 [dispatch test](../../src-server/services/scheduling/__tests__/scheduled-conversation-run-dispatch.test.ts)
 and [automation rule tests](../../src-server/services/scheduling/__tests__/automation-targets.test.ts).
 

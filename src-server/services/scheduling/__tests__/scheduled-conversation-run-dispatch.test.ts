@@ -30,6 +30,8 @@ import {
 import { FakeAcpProcess } from '../../../providers/__tests__/fake-acp-process.js';
 import { AcpAdapter } from '../../../providers/adapters/acp-adapter.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
+import { createSchedulerRoutes } from '../../../routes/operations/scheduler.js';
+import { composeAgentSchedule } from '../../../runtime/routes/agent-schedule-composition.js';
 import type { ACPProcess } from '../../acp/acp-process.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { EventStore } from '../../orchestration/event-store.js';
@@ -41,6 +43,7 @@ import {
   automationRunMessage,
   readScheduledTurnTerminal,
   SCHEDULED_TURN_TERMINAL_METHODS,
+  SCHEDULED_TURN_TERMINAL_READ_LIMIT,
   ScheduledConversationRuns,
 } from '../scheduled-conversation-runs.js';
 import { createSchedulerLedger } from '../scheduler-ledger.js';
@@ -246,12 +249,14 @@ describe.each([
           entry: (conversationId, key) => inbox.entry(conversationId, key),
           turnTerminal: (sessionId, turnId) =>
             readScheduledTurnTerminal(
-              store.listTurnEventsByMethods(
-                sessionId,
-                turnId,
-                SCHEDULED_TURN_TERMINAL_METHODS,
-                1,
-              )[0]?.payload,
+              store
+                .listTurnEventsByMethods(
+                  sessionId,
+                  turnId,
+                  SCHEDULED_TURN_TERMINAL_METHODS,
+                  SCHEDULED_TURN_TERMINAL_READ_LIMIT,
+                )
+                .map((stored) => stored.payload),
             ),
           startDedicated: async () => {
             throw new Error('not a dedicated target');
@@ -349,6 +354,83 @@ describe.each([
       expect(prompts()[1]).toContain(`Last successful run: ${lastSuccessAt}.`);
       engine.complete();
       await expect(secondRun).resolves.toMatchObject({ outcome: 'completed' });
+    });
+
+    // The reported bug: a job an agent proposed from a non-Station-engine chat,
+    // once approved, failed at run time with "Agent not found". The proposal
+    // targets the proposing chat, so the approved job runs on its engine.
+    // The approval is the real composition and scheduler create route; the
+    // proposal row is written as the propose_job route writes it (its target
+    // is asserted in agent-schedule-authority.routes.test.ts).
+    test('an approved propose_job runs as a turn in the proposing chat, on its engine', async () => {
+      await startChat();
+      const scheduler = startScheduler();
+      const agentSchedule = store.agentScheduleStore();
+      const proposed = agentSchedule.insertJobProposal({
+        conversationId: THREAD,
+        sessionId: THREAD,
+        job: {
+          name: JOB,
+          schedule: { kind: 'every', everyMs: 60 * 60_000 },
+          prompt: PROMPT,
+          agent: 'ops-bot',
+          target: { kind: 'conversation', conversationId: THREAD },
+        },
+        now: Date.now(),
+      });
+      if (proposed.outcome !== 'proposed') throw new Error('not proposed');
+      const composition = composeAgentSchedule({
+        store: agentSchedule,
+        threadInbox: undefined,
+        scope: undefined,
+        orchestration: {
+          canUserReadConversation: () => true,
+          canUserMutateSession: (_threadId, userId) => userId === OWNER,
+          currentConversationSessionId: (conversationId) => conversationId,
+          readUsageLimitRecovery: async () => undefined,
+        },
+        hosted: false,
+        isInternalRequest: () => false,
+        isRequestPrincipalCurrent: () => true,
+        requestUserId: () => OWNER,
+        readAuthorityFor: () => ({ mode: 'personal' }) as never,
+        tenantFor: () => undefined,
+        dispatchActor: () => ({ userId: OWNER }),
+        agentProject: async () => undefined,
+        logger: { warn: vi.fn() },
+      });
+      const routes = createSchedulerRoutes(
+        {
+          addJob: (opts: Parameters<BuiltinScheduler['addJob']>[0]) =>
+            scheduler.addJob(opts),
+          listJobs: () => scheduler.listJobs(),
+        } as never,
+        { error: vi.fn(), info: vi.fn(), debug: vi.fn() } as never,
+        {
+          jobProposals: composition.jobProposals,
+          admitAutomationTarget: composition.admitAutomationTarget,
+          admitAutomationJob: composition.admitAutomationJob,
+        },
+      );
+      const approved = await routes.request('/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...proposed.proposal.job,
+          proposalId: proposed.proposal.id,
+        }),
+      });
+      expect(approved.status).toBe(200);
+      expect(agentSchedule.jobProposal(proposed.proposal.id)?.state).toBe(
+        'approved',
+      );
+
+      const run = scheduler.runJob(JOB);
+      await waitFor(prompts, (seen) => seen.length === 1, 'the approved run');
+      expect(prompts()[0]).toContain(PROMPT);
+      expect(stationTurns.invoke).not.toHaveBeenCalled();
+      engine.complete();
+      await expect(run).resolves.toMatchObject({ outcome: 'completed' });
     });
 
     test('a restart between the hand-off and settling yields exactly one turn', async () => {

@@ -43,6 +43,8 @@ export interface SchedulerExecutionDeps {
   lastSuccessAt?: string;
   /** Record the conversation a dedicated target's first run started. */
   onConversationStarted?: (conversationId: string) => void;
+  /** The run's turn is in the conversation's hands; release its permit. */
+  onHandedOff?: () => void;
   notificationService: NotificationService | null;
   broadcast: (event: SchedulerEvent) => void;
   /**
@@ -141,6 +143,7 @@ export async function executeSchedulerJobAttempt({
   conversationRuns,
   lastSuccessAt,
   onConversationStarted,
+  onHandedOff,
   notificationService,
   broadcast,
   announcementOutbox,
@@ -203,6 +206,7 @@ export async function executeSchedulerJobAttempt({
             conversationRuns,
             lastSuccessAt,
             onConversationStarted,
+            onHandedOff,
             signal: controller.signal,
           })
         : turnAdapter.invoke({
@@ -639,6 +643,7 @@ async function invokeConversationTarget(input: {
   conversationRuns: ScheduledConversationRunner | undefined;
   lastSuccessAt: string | undefined;
   onConversationStarted: ((conversationId: string) => void) | undefined;
+  onHandedOff: (() => void) | undefined;
   signal: AbortSignal;
 }): Promise<ScheduledTurnOutcome> {
   if (!input.conversationRuns)
@@ -656,6 +661,7 @@ async function invokeConversationTarget(input: {
     lastSuccessAt: input.lastSuccessAt,
     onConversationStarted: (conversationId) =>
       input.onConversationStarted?.(conversationId),
+    onHandedOff: () => input.onHandedOff?.(),
     signal: input.signal,
   });
   if (outcome.kind === 'completed')

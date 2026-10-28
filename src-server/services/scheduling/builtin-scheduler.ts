@@ -142,8 +142,8 @@ function acceptedTarget(
 }
 
 /** One fatigue disable has one bell, whichever process noticed it. */
-function fatigueDedupeTag(jobId: string, runId: string): string {
-  return `scheduler:fatigue:${jobId}:${runId}`;
+function fatigueDedupeTag(announcementId: string): string {
+  return `scheduler:fatigue:${announcementId}`;
 }
 
 /** One terminal fact has one NotificationService identity across every retry. */
@@ -335,6 +335,8 @@ export class BuiltinScheduler implements ISchedulerProvider {
   private runningJobs = new Map<string, Promise<void>>();
   /** Invocation permits, intentionally narrower than whole retry lifecycles. */
   private activeInvocations = new Set<string>();
+  /** Targeted runs between claim and hand-off (`maxConcurrentConversationHandoffs`). */
+  private activeConversationHandoffs = new Set<string>();
   private invocationCapacityWaiters = new Set<{
     invocationId: string;
     resolve: (release: (() => void) | undefined) => void;
@@ -346,6 +348,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
   private readonly announcementOutbox: SchedulerAnnouncementOutbox;
   private readonly monitorTerminalOutbox: MonitorTerminalAnnouncementOutbox;
   private readonly monitorProbeTerminalOutbox: MonitorProbeTerminalAnnouncementOutbox;
+  private readonly fatigueOutbox: MonitorProbeTerminalAnnouncementOutbox;
   /** Failed runs this scheduler already announced (the outbox's fast path). */
   private readonly announcedRunIds = new Set<string>();
   /** In-flight announcements, so `stop()` cannot outrun the bell. */
@@ -390,6 +393,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
       this.ledger.monitorTerminalAnnouncementOutbox();
     this.monitorProbeTerminalOutbox =
       this.ledger.monitorProbeTerminalAnnouncementOutbox();
+    this.fatigueOutbox = this.ledger.fatigueAnnouncementOutbox();
   }
 
   start() {
@@ -405,6 +409,8 @@ export class BuiltinScheduler implements ISchedulerProvider {
     // that dies in between leaves a Failed row nobody was ever told about —
     // and the in-memory buffer that carried it is gone with the process.
     this.sweepOwedFailureAnnouncements();
+    // A disable or its bell a crash cut short is finished before anything runs.
+    void this.trackAnnouncement(this.reconcileFatigue());
     this.timer = setInterval(() => this.tick(), 60_000);
     this.watchdog = setInterval(() => this.checkHealth(), HEALTH_WINDOW_MS);
     schedulerHealthy.addCallback((obs) => {
@@ -548,6 +554,17 @@ export class BuiltinScheduler implements ISchedulerProvider {
     };
   }
 
+  /** A conversation hand-off permit; released once, with no waiters. */
+  private trackConversationHandoff(id: string): () => void {
+    this.activeConversationHandoffs.add(id);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.activeConversationHandoffs.delete(id);
+    };
+  }
+
   private trackInvocation(invocationId: string): () => void {
     this.activeInvocations.add(invocationId);
     let released = false;
@@ -644,11 +661,13 @@ export class BuiltinScheduler implements ISchedulerProvider {
   }
 
   private announceMonitorTerminal(job: SchedulerJob, triggerId: string): void {
-    this.announceMonitorTerminalNotification({
+    void this.announceOwedNotification({
       id: triggerId,
       jobName: job.name,
+      category: 'external-monitor',
       title: 'Monitor terminal result',
       body: 'Monitor task reached a terminal result; restart to resume.',
+      dedupeTag: monitorTerminalDedupeTag(triggerId),
       outbox: this.monitorTerminalOutbox,
     });
   }
@@ -662,36 +681,41 @@ export class BuiltinScheduler implements ISchedulerProvider {
         : announcement.outcome === 'budget-exhausted'
           ? 'Monitor budget exhausted'
           : 'Monitor complete';
-    this.announceMonitorTerminalNotification({
+    void this.announceOwedNotification({
       id: announcement.id,
       jobName: announcement.jobName,
+      category: 'external-monitor',
       title,
       body: announcement.detail,
+      dedupeTag: monitorTerminalDedupeTag(announcement.id),
       outbox: this.monitorProbeTerminalOutbox,
     });
   }
 
   /**
-   * Both Task and probe terminal outcomes use the same delivery protocol.
-   * The ledger claim protects concurrent schedulers; NotificationService's
-   * stable tag protects the crash-after-write-before-mark window.
+   * Task and probe terminal outcomes, and fatigue disables, use the same
+   * delivery protocol for a durably owed notification. The ledger claim
+   * protects concurrent schedulers; NotificationService's stable tag
+   * protects the crash-after-write-before-mark window.
    */
-  private announceMonitorTerminalNotification(input: {
+  private announceOwedNotification(input: {
     id: string;
     jobName: string;
+    category: 'external-monitor' | 'job-failure';
     title: string;
     body: string;
+    dedupeTag: string;
     outbox: {
       claim(id: string): SchedulerAnnouncementClaim;
       release(id: string, token: string): void;
       markDelivered(id: string, token: string): void;
     };
-  }): void {
+  }): Promise<void> {
     const claim = input.outbox.claim(input.id);
     // Unknown storage is not a delivery lease. Announcing on it would create
     // an unbounded duplicate bell on every cadence; leave the durable row
     // owed for a later successful claim instead.
-    if (claim.kind !== 'claimed') return;
+    if (claim.kind !== 'claimed') return Promise.resolve();
     const token = claim.token;
     const delivered = new Promise<boolean>((resolve) => {
       if (!this.notificationService) return resolve(false);
@@ -700,13 +724,13 @@ export class BuiltinScheduler implements ISchedulerProvider {
         async () => {
           try {
             await this.notificationService!.schedule('scheduler', {
-              category: 'external-monitor',
+              category: input.category,
               title: input.title,
               body: input.body,
               priority: 'high',
-              // Exactly one terminal outcome has exactly one bell identity.
-              dedupeTag: monitorTerminalDedupeTag(input.id),
-              actions: [{ id: 'view-scheduler', label: 'View Schedule' }],
+              // Exactly one owed outcome has exactly one bell identity.
+              dedupeTag: input.dedupeTag,
+              actions: [{ id: 'view-scheduler', label: 'View Automations' }],
               metadata: {
                 jobName: input.jobName,
                 link: `/automations?job=${encodeURIComponent(input.jobName)}`,
@@ -721,7 +745,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
       );
       if (!admitted) resolve(false);
     });
-    void this.trackAnnouncement(
+    return this.trackAnnouncement(
       delivered.then((persisted) => {
         if (persisted) input.outbox.markDelivered(input.id, token);
         else input.outbox.release(input.id, token);
@@ -734,6 +758,9 @@ export class BuiltinScheduler implements ISchedulerProvider {
     void this.reconcileExternalMonitorTerminals();
     this.sweepOwedMonitorTerminalAnnouncements();
     this.sweepOwedMonitorProbeTerminalAnnouncements();
+    // Before claiming: a job another process left over the threshold is
+    // disabled now (synchronously, in the ledger) rather than run again.
+    void this.trackAnnouncement(this.reconcileFatigue());
     let receipts: SchedulerDispatchReceipt[];
     try {
       receipts = this.requireRead(this.ledger.claimDue(Date.now()));
@@ -866,67 +893,55 @@ export class BuiltinScheduler implements ISchedulerProvider {
   private async executeJob(initialReceipt: SchedulerDispatchReceipt) {
     const result = await this.executeJobLifecycle(initialReceipt);
     if (!result.success && result.outcome !== 'deferred')
-      await this.applyFailureFatigue(initialReceipt, result.logId);
+      await this.reconcileFatigue();
     return result;
   }
 
   /**
-   * Fatigue: an automation that has failed `fatigueFailureThreshold` runs in
-   * a row is disabled, and the person is told once. The count is derived
-   * from the run log (`countConsecutiveFailures`), so a success resets it
-   * without any stored counter. Only the enabled-to-disabled transition
-   * notifies, and its bell is keyed by the run that tripped it.
+   * Fatigue: an automation whose last `fatigueFailureThreshold` occurrences
+   * failed is disabled, and the person is told once. The ledger makes the
+   * disable and the owed notification one transaction (`applyFatigue`),
+   * conditional on the job still being enabled, so a crash after the fifth
+   * failure is caught by the next reconcile (startup, each tick, each failed
+   * run), and a crash before the bell leaves it owed for the sweep below.
+   * The count is derived from the run log, so a success resets it, and so
+   * does a person turning the job back on (`failureCountResetAt`).
    */
-  private async applyFailureFatigue(
-    receipt: SchedulerDispatchReceipt,
-    logId: string,
-  ): Promise<void> {
-    const name = receipt.job.name;
-    const failures = this.ledger.consecutiveFailures(name);
-    if (
-      failures.kind !== 'available' ||
-      failures.value < AUTOMATION_RUN_POLICY.fatigueFailureThreshold
-    )
-      return;
-    const current = this.ledger.list();
-    if (current.kind !== 'available') return;
-    if (!current.value.find((job) => job.name === name)?.enabled) return;
-    const disabled = this.ledger.update(name, { enabled: false });
-    if (disabled.kind !== 'updated') return;
-    this.observe(() =>
-      this.options.logger?.warn('Automation disabled after repeated failures', {
-        job: name,
-        consecutiveFailures: failures.value,
-      }),
+  private async reconcileFatigue(): Promise<void> {
+    if (this.closed) return;
+    const applied = this.ledger.applyFatigue(
+      AUTOMATION_RUN_POLICY.fatigueFailureThreshold,
     );
-    const notificationService = this.notificationService;
-    if (!notificationService) return;
-    await this.trackAnnouncement(
-      new Promise<void>((resolve) => {
-        const admitted = notificationService.dispatch(
-          'scheduler-fatigue',
-          async () => {
-            try {
-              await notificationService.schedule('scheduler', {
-                category: 'job-failure',
-                title: `Automation "${name}" turned off`,
-                body: `It failed ${failures.value} times in a row. Fix it, then turn it back on.`,
-                priority: 'high',
-                dedupeTag: fatigueDedupeTag(receipt.jobId, logId),
-                actions: [{ id: 'view-logs', label: 'View Logs' }],
-                metadata: {
-                  jobName: name,
-                  link: `/automations?job=${encodeURIComponent(name)}`,
-                },
-              });
-            } finally {
-              resolve();
-            }
-          },
+    if (applied.kind === 'available')
+      for (const announcement of applied.value)
+        this.observe(() =>
+          this.options.logger?.warn(
+            'Automation disabled after repeated failures',
+            {
+              job: announcement.jobName,
+              consecutiveFailures: announcement.failures,
+            },
+          ),
         );
-        if (!admitted) resolve();
+    await this.sweepOwedFatigueAnnouncements();
+  }
+
+  private async sweepOwedFatigueAnnouncements(): Promise<void> {
+    if (this.stopping || this.closed) return;
+    const owed = this.ledger.owedFatigueAnnouncements();
+    if (owed.kind !== 'available') return;
+    const delivered = owed.value.map((announcement) =>
+      this.announceOwedNotification({
+        id: announcement.id,
+        jobName: announcement.jobName,
+        category: 'job-failure',
+        title: `Automation "${announcement.jobName}" turned off`,
+        body: `It failed ${announcement.failures} times in a row. Fix it, then turn it back on.`,
+        dedupeTag: fatigueDedupeTag(announcement.id),
+        outbox: this.fatigueOutbox,
       }),
     );
+    await Promise.all(delivered);
   }
 
   private async executeJobLifecycle(initialReceipt: SchedulerDispatchReceipt) {
@@ -953,10 +968,17 @@ export class BuiltinScheduler implements ISchedulerProvider {
         const attempt = receipt.attempt;
         const maxAttempts = receipt.maxAttempts;
         const id = `${receipt.id}-${attempt}`;
+        // A targeted run's own work is one hand-off to a conversation; it
+        // draws on its own pool and never on the invocation permits. It has
+        // no retries, so the waiting-retry branch below is never its path.
+        const targeted = job.target !== undefined;
         if (
           !receipt.manual &&
-          this.activeInvocations.size >=
-            SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs
+          (targeted
+            ? this.activeConversationHandoffs.size >=
+              SCHEDULER_EXECUTION_LIMITS.maxConcurrentConversationHandoffs
+            : this.activeInvocations.size >=
+              SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs)
         ) {
           if (attempt > 1) {
             const reason = SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason;
@@ -1069,7 +1091,11 @@ export class BuiltinScheduler implements ISchedulerProvider {
             };
           }
         }
-        releaseInvocation ??= this.trackInvocation(id);
+        releaseInvocation ??= targeted
+          ? this.trackConversationHandoff(id)
+          : this.trackInvocation(id);
+        // Read at call time: the permit this attempt holds, released once.
+        const releaseHeld = () => releaseInvocation?.();
         let jobLogger: Logger | undefined;
         try {
           jobLogger = this.options.logger?.child(
@@ -1112,10 +1138,14 @@ export class BuiltinScheduler implements ISchedulerProvider {
               ? {
                   conversationRuns: this.options.conversationRuns,
                   lastSuccessAt: this.lastSuccessAt(receipt.jobId),
+                  // The turn is queued (or the dedicated chat started): the
+                  // rest is waiting on the conversation, not scheduler work.
+                  onHandedOff: releaseHeld,
                   onConversationStarted: (conversationId: string) => {
                     const bound = this.ledger.bindDedicatedConversation(
                       receipt.jobId,
                       conversationId,
+                      job.target!,
                     );
                     if (bound.kind === 'unavailable')
                       this.options.logger?.warn(
@@ -1893,19 +1923,34 @@ export class BuiltinScheduler implements ISchedulerProvider {
    * job carries; the result must still satisfy `assertTargetAuthority`. A
    * dedicated target's conversation id stays server-written: an edit that
    * keeps the same dedicated agent and workspace keeps the recorded one.
+   *
+   * `createdBy` is who every run acts as, so an edit never replaces it: the
+   * route's admitted editor becomes the creator only of a job that had none
+   * (a legacy job gaining a target). There is no ownership transfer; to act
+   * as someone else, that person creates their own automation.
+   *
+   * Turning a disabled job back on resets its fatigue count: runs that ended
+   * before now no longer count toward the threshold.
    */
   private assertEditKeepsTargetAuthority(
     target: string,
     update: Record<string, unknown>,
   ): void {
-    const touches = ['target', 'retryCount', 'monitor', 'createdBy'].some(
-      (key) => Object.hasOwn(update, key),
-    );
+    const touches = [
+      'target',
+      'retryCount',
+      'monitor',
+      'createdBy',
+      'enabled',
+    ].some((key) => Object.hasOwn(update, key));
     if (!touches) return;
     const existing = this.ledger.list();
     if (existing.kind === 'unavailable') throw storageError(existing);
     const job = existing.value.find((candidate) => candidate.name === target);
     if (!job) throw new Error(`Job '${target}' not found`);
+    if (job.createdBy) delete update.createdBy;
+    if (update.enabled === true && !job.enabled)
+      update.failureCountResetAt = new Date().toISOString();
     if (Object.hasOwn(update, 'target')) {
       const next = update.target as SchedulerAutomationTarget | null;
       if (next === null) {

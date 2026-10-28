@@ -20,6 +20,14 @@ export const SCHEDULER_EXECUTION_LIMITS = {
    * changing it is an explicit contract change.
    */
   maxConcurrentJobs: 4,
+  /**
+   * Automations that run in a conversation, handing their turn over at once.
+   * A separate pool: such a run holds a permit only until its turn is queued
+   * on the conversation (or its dedicated conversation has started), never
+   * while it waits for the turn to finish, so turns waiting on a person
+   * cannot starve other jobs.
+   */
+  maxConcurrentConversationHandoffs: 4,
   /** Stable reason recorded when an occurrence defers or waits for a slot. */
   concurrencyDeferralReason: 'scheduler_concurrency_limit',
 } as const;

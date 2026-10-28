@@ -21,6 +21,7 @@
  */
 import type { ConversationAutomation } from '@kontourai/station-contracts/agent-schedule';
 import type { ConversationInboxEntry } from '@kontourai/station-contracts/orchestration';
+import { isDeferredRetriableTurnError } from '@kontourai/station-contracts/runtime-events';
 import {
   AUTOMATION_RUN_POLICY,
   automationRunClientTurnId,
@@ -51,6 +52,11 @@ export interface ScheduledConversationRunInput {
   readonly lastSuccessAt: string | undefined;
   /** Record the conversation a dedicated target's first run started. */
   readonly onConversationStarted: (conversationId: string) => void;
+  /**
+   * The turn is now the conversation's: queued on its inbox, or its
+   * dedicated conversation started. Called once; what follows is waiting.
+   */
+  readonly onHandedOff: () => void;
   readonly signal: AbortSignal;
 }
 
@@ -184,6 +190,7 @@ export class ScheduledConversationRuns implements ScheduledConversationRunner {
         error: 'The run key names a different queued message.',
         conversationId,
       };
+    input.onHandedOff();
     return this.awaitPlacement(input, conversationId, clientTurnId);
   }
 
@@ -224,6 +231,7 @@ export class ScheduledConversationRuns implements ScheduledConversationRunner {
       // The turn is running either way; an unrecorded id only means the next
       // run starts another conversation, which the run row still links.
     }
+    input.onHandedOff();
     return this.awaitTurn(
       input,
       started.conversationId,
@@ -339,30 +347,60 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** The events that end a turn, as `turnTerminal` reads them. */
+/**
+ * The events that can end a turn, as the lifecycle fold reads them
+ * (`ACTIVE_TURN_FOLD_METHODS`): a completion, an abort, or the
+ * `runtime.error` a failed turn ends with (Codex and Claude Code emit one
+ * for a failed turn and no completion).
+ */
 export const SCHEDULED_TURN_TERMINAL_METHODS: readonly string[] = [
   'turn.completed',
   'turn.aborted',
+  'runtime.error',
 ];
 
+/** How many of a turn's terminal-method events `turnTerminal` reads. */
+export const SCHEDULED_TURN_TERMINAL_READ_LIMIT = 50;
+
+type TurnTerminalEvent = {
+  method?: string;
+  finishReason?: string;
+  reason?: string;
+  message?: string;
+  provider?: string;
+  retriable?: boolean;
+};
+
 /**
- * A turn's terminal event, read as a run outcome. A completion the engine
- * cancelled is not a success; an abort is a failure with its reason.
+ * A turn's outcome from its terminal-method events, oldest first: the first
+ * one that decides it. A completion the engine cancelled is not a success; an
+ * abort or an engine error is a failure. A Codex error the engine will retry
+ * within the same turn (`isDeferredRetriableTurnError`) decides nothing.
  */
 export function readScheduledTurnTerminal(
-  event:
-    | { method?: string; finishReason?: string; reason?: string }
-    | undefined,
+  events: readonly TurnTerminalEvent[],
 ): ScheduledTurnTerminal | undefined {
-  if (event?.method === 'turn.completed')
-    return event.finishReason === 'cancelled'
-      ? { kind: 'failed', reason: 'The run’s turn was cancelled.' }
-      : { kind: 'completed' };
-  if (event?.method === 'turn.aborted')
-    return {
-      kind: 'failed',
-      reason: `The run’s turn stopped: ${event.reason ?? 'aborted'}.`,
-    };
+  for (const event of events) {
+    if (event.method === 'turn.completed')
+      return event.finishReason === 'cancelled'
+        ? { kind: 'failed', reason: 'The run’s turn was cancelled.' }
+        : { kind: 'completed' };
+    if (event.method === 'turn.aborted')
+      return {
+        kind: 'failed',
+        reason: `The run’s turn stopped: ${event.reason ?? 'aborted'}.`,
+      };
+    if (
+      event.method === 'runtime.error' &&
+      !isDeferredRetriableTurnError(
+        event as Parameters<typeof isDeferredRetriableTurnError>[0],
+      )
+    )
+      return {
+        kind: 'failed',
+        reason: `The engine reported an error: ${event.message ?? 'unknown error'}`,
+      };
+  }
   return undefined;
 }
 

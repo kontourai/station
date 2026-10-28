@@ -681,8 +681,9 @@ proposing chat as its `target`, and `ConversationAgentSchedule.automations`
 (`ConversationAutomation`) lists the automations whose runs land in the
 conversation. The scheduler contract owns automation targets:
 `SchedulerAutomationTarget`, `SchedulerAutomationCreator`,
-`AUTOMATION_RUN_POLICY` (fatigue threshold, lateness cutoff, turn deadline) and
-`automationRunClientTurnId`.
+`AUTOMATION_RUN_POLICY` (fatigue threshold, lateness cutoff, turn deadline),
+`automationRunClientTurnId`, and `SCHEDULER_EXECUTION_LIMITS.maxConcurrentConversationHandoffs`
+(the separate pool a targeted run holds only until its turn is queued).
 
 `@kontourai/station-contracts/station-control-refusal` owns the refusal view
 a transcript shows for a station-control tool (`StationControlRefusalView`:

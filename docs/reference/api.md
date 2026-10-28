@@ -4614,7 +4614,17 @@ else. An agent's request reaches none of them. The agent's own side is the stati
 
 `PUT /scheduler/jobs/:target` accepts supported partial job options, including
 that schedule union and `target` (`null` removes it, under the same admission
-as create), and returns `{success: true, data: {output}}`.
+as create), and returns `{success: true, data: {output}}`. An edit never
+changes `createdBy`. Re-enabling a disabled job resets its
+`consecutiveFailures`.
+
+For a job that already has a `target`, every edit (any field), `run`,
+`enable`, `disable` and `DELETE` is admitted against the **stored** target
+first, whatever the body names: a person must be able to send to its
+conversation (for a dedicated target not started yet, only its creator), and
+an agent's request may only act on a job targeting its own conversation.
+Refusals are 404 `automation_not_found` for a person and 403
+`automation_target_out_of_scope` for an agent.
 
 ### Run Job Now
 

@@ -776,6 +776,7 @@ import {
   conversationAutomationsFrom,
   readScheduledTurnTerminal,
   SCHEDULED_TURN_TERMINAL_METHODS,
+  SCHEDULED_TURN_TERMINAL_READ_LIMIT,
   ScheduledConversationRuns,
 } from '../../services/scheduling/scheduled-conversation-runs.js';
 import type { SchedulerService } from '../../services/scheduling/scheduler-service.js';
@@ -6010,12 +6011,14 @@ export function configureRuntimeRoutes(
         inbox.entry(conversationId, clientTurnId),
       turnTerminal: (sessionId, turnId) =>
         readScheduledTurnTerminal(
-          eventStore.listTurnEventsByMethods(
-            sessionId,
-            turnId,
-            SCHEDULED_TURN_TERMINAL_METHODS,
-            1,
-          )[0]?.payload,
+          eventStore
+            .listTurnEventsByMethods(
+              sessionId,
+              turnId,
+              SCHEDULED_TURN_TERMINAL_METHODS,
+              SCHEDULED_TURN_TERMINAL_READ_LIMIT,
+            )
+            .map((stored) => stored.payload),
         ),
       startDedicated: stationServerEntry(
         async ({ agent, workspace, message, clientTurnId, actor }) => {
@@ -10134,7 +10137,10 @@ export function configureRuntimeRoutes(
       readAuthorityForRequest,
       // A person approving an agent's `propose_job`.
       jobProposals: agentSchedule.jobProposals,
-      // Where an automation's runs land, and as whom.
+      // Where an automation's runs land, and as whom. Acting on an
+      // existing targeted job is admitted even without a runner, so it can
+      // still be inspected, disabled or deleted.
+      admitAutomationJob: agentSchedule.admitAutomationJob,
       ...(scheduledConversationRuns
         ? { admitAutomationTarget: agentSchedule.admitAutomationTarget }
         : {}),

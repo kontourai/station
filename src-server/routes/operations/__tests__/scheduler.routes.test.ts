@@ -22,8 +22,9 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 const { createSchedulerRoutes } = await import('../scheduler.js');
 
 // Realistic shapes matching what the UI reads
+// The built-in scheduler's job shape: `target` is an automation target
+// object when present, never the route's `:target` name.
 const mockJob = {
-  target: 'daily-report',
   name: 'daily-report',
   cron: '0 9 * * *',
   prompt: 'Generate daily report',
@@ -222,7 +223,6 @@ describe('Scheduler Routes', () => {
     const body = await json(await app.request('/jobs'));
     expect(body.success).toBe(true);
     expect(body.data[0]).toMatchObject({
-      target: 'daily-report',
       name: 'daily-report',
       cron: '0 9 * * *',
       enabled: true,

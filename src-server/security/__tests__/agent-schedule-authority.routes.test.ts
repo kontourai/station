@@ -37,6 +37,7 @@ import {
   test,
   vi,
 } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { createStationControlMcpRoutes } from '../../routes/mcp/station-control-mcp-route.js';
 import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
 import {
@@ -78,6 +79,9 @@ import {
   ThreadInboxDelivery,
   type ThreadInboxStore,
 } from '../../services/orchestration/thread-inbox.js';
+import { BuiltinScheduler } from '../../services/scheduling/builtin-scheduler.js';
+import type { ScheduledConversationRunInput } from '../../services/scheduling/scheduled-conversation-runs.js';
+import { createSchedulerLedger } from '../../services/scheduling/scheduler-ledger.js';
 import type { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../tools/station-control-shared.js';
 import {
@@ -196,7 +200,17 @@ interface World {
   close(): Promise<void>;
 }
 
-async function boot(options: { hosted: boolean }): Promise<World> {
+async function boot(options: {
+  hosted: boolean;
+  /** A real scheduler instead of the create-only stub. */
+  scheduler?: SchedulerService;
+  /**
+   * The guard's grant-store answer. Production answers false for a job that
+   * holds no unattended grants (conversation runs need none); absent, the
+   * guard fails closed.
+   */
+  retargetsGrantedJob?: () => boolean;
+}): Promise<World> {
   const store = createSqliteAgentScheduleStore(new DatabaseSync(':memory:'));
   const inboxStore = createSqliteThreadInboxStore(
     new DatabaseSync(':memory:') as never,
@@ -298,6 +312,9 @@ async function boot(options: { hosted: boolean }): Promise<World> {
       isOperatorPrincipal: (id) => id === LOCAL_OPERATOR_PRINCIPAL_ID,
       // The composition's own read, as production wires it.
       wakeUpConversation: composition.wakeUpConversation,
+      ...(options.retargetsGrantedJob
+        ? { retargetsGrantedJob: options.retargetsGrantedJob }
+        : {}),
       onRefusal: (refusal) => refusals.push(refusal.code),
     }),
   );
@@ -322,11 +339,13 @@ async function boot(options: { hosted: boolean }): Promise<World> {
   app.route(
     '/scheduler',
     createSchedulerRoutes(
-      { addJob } as unknown as SchedulerService,
+      options.scheduler ??
+        ({ addJob, listJobs: async () => [] } as unknown as SchedulerService),
       quietLogger(),
       {
         jobProposals: composition.jobProposals,
         admitAutomationTarget: composition.admitAutomationTarget,
+        admitAutomationJob: composition.admitAutomationJob,
       },
     ),
   );
@@ -1899,5 +1918,182 @@ describe('hosted: nothing to approve with, so nothing is offered', () => {
     );
     expect(approve.status).toBe(404);
     expect(hosted.addJob).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Fix round P1: every action on an existing automation that runs in a
+ * conversation is admitted against its STORED target and creator, whatever
+ * the body names. Real boundary, guard, composition, scheduler routes,
+ * BuiltinScheduler and SQLite ledger; only the conversation runner and the
+ * orchestration permission facts are scripted. The guard is given the
+ * production answer for an ungranted job (`retargetsGrantedJob: false`), so
+ * the route's own admission is what decides.
+ */
+describe('acting on an automation is admitted against its stored target', () => {
+  const makeTempDir = trackTempDirs();
+
+  async function realWorld() {
+    const runs: ScheduledConversationRunInput[] = [];
+    const scheduler = new BuiltinScheduler({
+      ledger: createSchedulerLedger({
+        directory: makeTempDir('automation-authority-'),
+      }),
+      turnAdapter: { invoke: vi.fn() },
+      conversationRuns: {
+        run: async (input) => {
+          runs.push(input);
+          return {
+            kind: 'completed',
+            output: '{}',
+            conversationId: 'conv-victim',
+          };
+        },
+      },
+    });
+    const served = await boot({
+      hosted: false,
+      scheduler: scheduler as unknown as SchedulerService,
+      retargetsGrantedJob: () => false,
+    });
+    await scheduler.addJob({
+      name: 'victim-job',
+      schedule: { kind: 'every', everyMs: 60_000 },
+      prompt: 'Original',
+      target: { kind: 'conversation', conversationId: 'conv-victim' },
+      createdBy: { userId: 'victim-person' },
+    });
+    return {
+      scheduler,
+      runs,
+      at: { baseUrl: served.baseUrl, port: served.port },
+      close: async () => {
+        await served.close();
+        await scheduler.stop();
+      },
+    };
+  }
+
+  test('another chat’s agent cannot rewrite the prompt by leaving target out (the reported injection)', async () => {
+    const world = await realWorld();
+    try {
+      const response = await agent(
+        'bound',
+        nextSession(),
+        'PUT',
+        '/scheduler/jobs/victim-job',
+        { prompt: 'Injected instructions' },
+        world.at,
+      );
+      expect(response.status).toBe(403);
+      expect(response.body.code).toBe('automation_target_out_of_scope');
+      await world.scheduler.runJob('victim-job');
+      expect(world.runs[0]).toMatchObject({
+        prompt: 'Original',
+        createdBy: { userId: 'victim-person' },
+      });
+    } finally {
+      await world.close();
+    }
+  });
+
+  test.each([
+    ['PUT', '/scheduler/jobs/victim-job/enable'],
+    ['PUT', '/scheduler/jobs/victim-job/disable'],
+    ['POST', '/scheduler/jobs/victim-job/run'],
+    ['DELETE', '/scheduler/jobs/victim-job'],
+  ])('another chat’s agent cannot %s %s', async (method, path) => {
+    const world = await realWorld();
+    try {
+      const response = await agent(
+        'bound',
+        nextSession(),
+        method,
+        path,
+        undefined,
+        world.at,
+      );
+      expect(response.status).toBe(403);
+      expect(world.runs).toHaveLength(0);
+      expect((await world.scheduler.listJobs()).map((job) => job.name)).toEqual(
+        ['victim-job'],
+      );
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('the agent of the target chat may edit and run it, and the creator stays', async () => {
+    const world = await realWorld();
+    try {
+      // `conv-victim` is the conversation of session `victim`.
+      const edited = await agent(
+        'bound',
+        'victim',
+        'PUT',
+        '/scheduler/jobs/victim-job',
+        { prompt: 'Revised' },
+        world.at,
+      );
+      expect(edited.status).toBe(200);
+      const ran = await agent(
+        'bound',
+        'victim',
+        'POST',
+        '/scheduler/jobs/victim-job/run',
+        undefined,
+        world.at,
+      );
+      expect(ran.status).toBe(200);
+      expect(world.runs[0]).toMatchObject({
+        prompt: 'Revised',
+        createdBy: { userId: 'victim-person' },
+      });
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('a person who may not send to the target chat cannot edit or run it', async () => {
+    const world = await realWorld();
+    facts.mayNotSend.add('conv-victim');
+    try {
+      const edited = await personRequest(
+        'PUT',
+        '/scheduler/jobs/victim-job',
+        { prompt: 'Injected instructions' },
+        world.at.baseUrl,
+      );
+      expect(edited.status).toBe(404);
+      expect(edited.body.code).toBe('automation_not_found');
+      const ran = await personRequest(
+        'POST',
+        '/scheduler/jobs/victim-job/run',
+        undefined,
+        world.at.baseUrl,
+      );
+      expect(ran.status).toBe(404);
+      expect(world.runs).toHaveLength(0);
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('a person’s save of the same target keeps the stored creator', async () => {
+    const world = await realWorld();
+    try {
+      const saved = await personRequest(
+        'PUT',
+        '/scheduler/jobs/victim-job',
+        { target: { kind: 'conversation', conversationId: 'conv-victim' } },
+        world.at.baseUrl,
+      );
+      expect(saved.status).toBe(200);
+      expect((await world.scheduler.listJobs())[0]!.createdBy).toEqual({
+        userId: 'victim-person',
+      });
+    } finally {
+      await world.close();
+    }
   });
 });

@@ -57,23 +57,44 @@ that proposed it, so an approved job runs on that chat's own engine.
   target only its own conversation, and never a dedicated one
   (`automation-target-stays-in-own-conversation`). The inbox applies the
   continuation rule again when each run is placed.
+- **Acting on an existing automation.** Editing (any field), running,
+  enabling, disabling or deleting an automation that has a target is
+  admitted against its **stored** target, whatever the request names: a
+  person must be able to send to that conversation (for a dedicated one not
+  started yet, only its creator), and an agent may act only on automations
+  targeting its own conversation. A changed target is admitted as well.
+- **Creator.** `createdBy` is set when the automation is created (or when a
+  job without one gains a target) and never changed by an edit. There is no
+  ownership transfer: to act as someone else, that person creates their own.
 - **No replay.** A target refuses a monitor and any `retryCount` above 0. A
   run that may have reached an engine settles `indeterminate` and is never
   repeated; a restart that hands the same key over again gets the inbox's
-  existing entry, so a run yields at most one turn.
+  existing entry, so a run yields at most one turn. (A crash after the run
+  is admitted but before its turn is queued yields none; it is recorded
+  indeterminate, not sent.)
 - **Settlement.** The run waits for its turn's terminal event, up to 30
   minutes (`AUTOMATION_RUN_POLICY.turnDeadlineMs`). A completed turn is a
-  success; an aborted or cancelled one is a failure; still running at the
-  deadline is indeterminate, and the turn continues in the conversation.
+  success; an aborted or cancelled one, or one that ended in an engine error
+  (`runtime.error`, except a Codex error it retries within the turn), is a
+  failure; still running at the deadline is indeterminate, and the turn
+  continues in the conversation.
+- **Capacity.** A targeted run takes a permit from its own pool
+  (`SCHEDULER_EXECUTION_LIMITS.maxConcurrentConversationHandoffs`, 4) and
+  gives it back once its turn is queued on the conversation, or its dedicated
+  conversation has started. Waiting for the turn (a busy chat, an approval)
+  holds no permit, so it never delays other jobs.
 - **Watermark.** The framed prompt states the last successful run's
   completion time, so recurring work can cover only what changed since.
-- **Fatigue.** After 5 failed runs in a row the automation is disabled and
-  one notification is sent. A success resets the count. The count is derived
-  from the run log, so nothing is stored to drift. Re-enabling does not
-  reset it: one more failure turns it off again.
+- **Fatigue.** After 5 failed occurrences in a row the automation is
+  disabled and one notification is sent. An occurrence counts once however
+  many retry attempts it took. A success resets the count, and so does a
+  person turning the automation back on (owner decision). The disable and the
+  owed notification are one durable transition, checked at startup, on every
+  tick and after every failed run, so a crash after the fifth failure, or
+  between the disable and the bell, still ends with the job off and one bell.
 - **Lateness.** A targeted occurrence more than 6 hours old when Station
   claims it is recorded missed (`skipped: 'late'`), not run and not
-  announced. Station only ever claims the latest due occurrence, so an
+  announced; its `missedCount` is every occurrence it passed over. Station only ever claims the latest due occurrence, so an
   `every` schedule shorter than 6 hours is never more than one interval
   late; the cutoff bounds cron, one-time and long-interval schedules after
   Station was off. Legacy jobs keep run-latest-once.
@@ -106,6 +127,9 @@ them.
   replacement templates.
 - Not shipped: GitHub event triggers (#3439 S2–S6), a new conversation per
   run, start notifications.
+- A dedicated target's conversation is recorded only if the target is still
+  the one the run started from, so a target edited during the start never
+  inherits the old agent's chat.
 - Known gap: if Station stops after a dedicated target's first run started
   its conversation but before the id was recorded, the next run starts
   another conversation.

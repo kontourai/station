@@ -5,6 +5,7 @@
 import type {
   SchedulerAutomationCreator,
   SchedulerAutomationTarget,
+  SchedulerJob,
   SchedulerManualRunReceipt,
 } from '@kontourai/station-contracts/scheduler';
 import {
@@ -130,6 +131,25 @@ function admitTarget(
   return { createdBy: admitted.createdBy };
 }
 
+/**
+ * Whether this request may act on an existing automation that targets a
+ * conversation (edit, run, enable, disable, delete): every run sends a turn
+ * there as the stored creator, so whoever changes or triggers it must be able
+ * to continue that conversation, and an agent may only touch automations
+ * targeting its own. Decided on the STORED target, whatever the body says.
+ */
+export type AutomationJobAdmission = (
+  c: Context,
+  job: SchedulerJob,
+) =>
+  | { readonly ok: true }
+  | {
+      readonly ok: false;
+      readonly status: 403 | 404;
+      readonly code: string;
+      readonly error: string;
+    };
+
 export function createSchedulerRoutes(
   schedulerService: SchedulerService,
   logger: Logger,
@@ -144,9 +164,41 @@ export function createSchedulerRoutes(
     jobProposals?: JobProposalApproval;
     /** Absent: a body with a `target` is refused (no conversation runs). */
     admitAutomationTarget?: AutomationTargetAdmission;
+    /** Absent: every action on a job with a stored target is refused. */
+    admitAutomationJob?: AutomationJobAdmission;
   } = {},
 ) {
   const app = new Hono();
+
+  /**
+   * The refusal for acting on `name`, or undefined when it may proceed.
+   * Jobs without a target keep their existing (operator) authority.
+   */
+  const refuseStoredTarget = async (
+    c: Context,
+    name: string,
+  ): Promise<Response | undefined> => {
+    const job = (await schedulerService.listJobs()).find(
+      (candidate) => candidate.name === name,
+    );
+    if (!job?.target) return undefined;
+    if (!options.admitAutomationJob)
+      return c.json(
+        {
+          success: false,
+          code: 'automation_target_unavailable',
+          error: "This Station can't run an automation in a conversation.",
+        },
+        503,
+      );
+    const admitted = options.admitAutomationJob(c, job);
+    return admitted.ok
+      ? undefined
+      : c.json(
+          { success: false, code: admitted.code, error: admitted.error },
+          admitted.status,
+        );
+  };
 
   // Scheduler storage and scheduler-originated output have no durable tenant
   // binding.  Do not expose a partially filtered API: every read, SSE frame,
@@ -339,6 +391,8 @@ export function createSchedulerRoutes(
   app.put('/jobs/:target', validate(editJobSchema), async (c) => {
     try {
       const opts = getBody(c) as Record<string, unknown>;
+      const stored = await refuseStoredTarget(c, param(c, 'target'));
+      if (stored) return stored;
       const admitted = admitTarget(
         c,
         options.admitAutomationTarget,
@@ -363,6 +417,8 @@ export function createSchedulerRoutes(
   app.post('/jobs/:target/run', async (c) => {
     const target = param(c, 'target');
     try {
+      const stored = await refuseStoredTarget(c, target);
+      if (stored) return stored;
       observeManualRunRequest();
       const result = await schedulerService.runJob(target);
       // Provider/storage diagnostics belong to the protected run record, not
@@ -456,6 +512,8 @@ export function createSchedulerRoutes(
 
   app.put('/jobs/:target/enable', async (c) => {
     try {
+      const stored = await refuseStoredTarget(c, param(c, 'target'));
+      if (stored) return stored;
       schedulerJobRuns.add(1, { op: 'enable_job' });
       await schedulerService.enableJob(param(c, 'target'));
       return c.json({ success: true });
@@ -470,6 +528,8 @@ export function createSchedulerRoutes(
 
   app.put('/jobs/:target/disable', async (c) => {
     try {
+      const stored = await refuseStoredTarget(c, param(c, 'target'));
+      if (stored) return stored;
       schedulerJobRuns.add(1, { op: 'disable_job' });
       await schedulerService.disableJob(param(c, 'target'));
       return c.json({ success: true });
@@ -484,6 +544,8 @@ export function createSchedulerRoutes(
 
   app.delete('/jobs/:target', async (c) => {
     try {
+      const stored = await refuseStoredTarget(c, param(c, 'target'));
+      if (stored) return stored;
       schedulerJobRuns.add(1, { op: 'delete_job' });
       await schedulerService.removeJob(param(c, 'target'));
       return c.json({ success: true });
