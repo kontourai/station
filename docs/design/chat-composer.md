@@ -129,8 +129,10 @@ Task** or **Fork from here**, and the header's own project controls (the
 desktop **New chats** chip, the phone project switcher) stand down: the draft's
 project chip is its one destination. On a phone the draft opens the dock full
 height, from collapsed or from a half sheet; dismissing it (Escape, Back,
-Cancel) gives the earlier size back (and the maximize memory with it), while a
-started chat, or a chat the person leaves the draft for, keeps the dock open. The body above the composer takes the room the composer leaves and
+Cancel, **Cancel return**) gives the earlier size back (and the maximize memory
+with it), while a started chat, a chat the person leaves the draft for, or a
+page they navigate to from a setup journey keeps the dock as that navigation
+left it. The body above the composer takes the room the composer leaves and
 scrolls itself; in a short dock a plain New chat's text box shrinks toward one
 line (New Task's compact text box keeps its own sizing), and the composer stays
 pinned so Start is never pushed off screen. While a setup panel shows, Start
@@ -144,7 +146,8 @@ or a send admission is not a move. Focus returns to the control that opened the
 draft, else the chat composer; after Start the new chat's composer takes it (also
 while its first turn runs, when it takes a draft) and gets it back each time it
 is disabled and enabled again while the chat opens, until the chat is writable
-or the person moves focus or clicks away. A
+or the person moves focus or clicks away (switching windows or tabs is not
+moving away). A
 plain New chat while a draft is open keeps that draft and focuses it; a request
 carrying a prompt, files, choices, a hand-off or a Task replaces it. Collapsing
 the dock, including a phone's setup journey, keeps the draft mounted but hidden,
