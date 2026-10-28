@@ -79,6 +79,16 @@ export class TerminalOutputError extends Error {
   }
 }
 
+type TerminalControl = z.infer<typeof control>;
+interface TerminalOutputConnection {
+  socket: TerminalOutputSocket;
+  generation: number;
+  requestId: string;
+  authenticated: boolean;
+  attached: boolean;
+  replayThrough: number;
+}
+
 export interface TerminalOutputSessionOptions {
   apiBase: string;
   projectId: string;
@@ -294,10 +304,14 @@ export class TerminalOutputSession {
       )(this.socketURL);
       socket.binaryType = 'arraybuffer';
       this.socket = socket;
-      let authenticated = false;
-      let attached = false;
-      let replayThrough = this.cursor;
-      const requestId = String(generation);
+      const connection: TerminalOutputConnection = {
+        socket,
+        generation,
+        requestId: String(generation),
+        authenticated: false,
+        attached: false,
+        replayThrough: this.cursor,
+      };
       socket.addEventListener('open', () => {
         if (generation !== this.generation || this.stopped) return;
         try {
@@ -332,98 +346,7 @@ export class TerminalOutputSession {
           return;
         }
         this.work = this.work
-          .then(async () => {
-            if (generation !== this.generation || this.stopped) return;
-            this.assertAuthority();
-            if (data instanceof ArrayBuffer) {
-              if (
-                !attached ||
-                data.byteLength >
-                  TERMINAL_WINDOW_BYTES + TERMINAL_FRAME_HEADER_BYTES
-              )
-                throw new TerminalOutputError('protocol');
-              const frame = decodeTerminalFrame(new Uint8Array(data));
-              if (
-                frame.kind !== TERMINAL_OUTPUT ||
-                frame.channel !== 1 ||
-                frame.seq !== this.cursor + 1
-              )
-                throw new TerminalOutputError('protocol');
-              await this.options.onOutput(
-                frame.data,
-                frame.seq,
-                this.outputLifetime.signal,
-              );
-              if (generation !== this.generation || this.stopped) return;
-              this.assertAuthority();
-              this.cursor = frame.seq;
-              if (socket.readyState === 1)
-                this.send(socket, {
-                  type: 'ack',
-                  channel: 1,
-                  seq: this.cursor,
-                });
-              return;
-            }
-            if (typeof data !== 'string' || data.length > 65536)
-              throw new TerminalOutputError('protocol');
-            const message = control.parse(JSON.parse(data));
-            if (message.type === 'authenticated') {
-              if (authenticated) throw new TerminalOutputError('protocol');
-              authenticated = true;
-              this.send(socket, {
-                type: 'attach',
-                requestId,
-                channel: 1,
-                projectId: this.options.projectId,
-                bindingKey: this.options.bindingKey,
-                terminalId: this.options.terminalId,
-                fromSeq: this.cursor,
-                windowBytes: TERMINAL_WINDOW_BYTES,
-              });
-            } else if (message.type === 'attached') {
-              if (
-                !authenticated ||
-                attached ||
-                message.requestId !== requestId ||
-                message.terminalId !== this.options.terminalId
-              )
-                throw new TerminalOutputError('protocol');
-              attached = true;
-              replayThrough = message.replayThrough;
-              this.setState('replaying');
-            } else if (message.type === 'error') {
-              throw new TerminalOutputError('terminal-refused');
-            } else {
-              if (!attached) throw new TerminalOutputError('protocol');
-              if (message.type === 'reset') {
-                await this.options.onReset(
-                  message.fromSeq,
-                  this.outputLifetime.signal,
-                );
-                if (generation !== this.generation || this.stopped) return;
-                this.assertAuthority();
-                this.cursor = message.fromSeq;
-                replayThrough = message.replayThrough;
-                this.setState('replaying');
-              } else if (message.type === 'progress') {
-                if (message.sentThrough !== this.cursor)
-                  throw new TerminalOutputError('protocol');
-                this.send(socket, {
-                  type: 'ack',
-                  channel: 1,
-                  seq: this.cursor,
-                });
-              } else if (message.type === 'ready') {
-                if (message.seq > this.cursor || message.seq < replayThrough)
-                  throw new TerminalOutputError('protocol');
-                clearTimeout(this.timer);
-                this.setState('ready');
-                this.pending?.resolve();
-                this.pending = undefined;
-              }
-            }
-          })
+          .then(() => this.receive(connection, data))
           .catch((error: unknown) => {
             this.fail(
               error instanceof TerminalOutputError
@@ -479,6 +402,116 @@ export class TerminalOutputSession {
           : new TerminalOutputError('credential-unavailable'),
       );
     }
+  }
+
+  private live(connection: TerminalOutputConnection): boolean {
+    return connection.generation === this.generation && !this.stopped;
+  }
+
+  private async receive(
+    connection: TerminalOutputConnection,
+    data: unknown,
+  ): Promise<void> {
+    if (!this.live(connection)) return;
+    this.assertAuthority();
+    if (data instanceof ArrayBuffer) return this.applyOutput(connection, data);
+    if (typeof data !== 'string' || data.length > 65536)
+      throw new TerminalOutputError('protocol');
+    const message = control.parse(JSON.parse(data));
+    if (message.type === 'authenticated') return this.authenticated(connection);
+    if (message.type === 'attached') return this.attached(connection, message);
+    if (message.type === 'error')
+      throw new TerminalOutputError('terminal-refused');
+    if (!connection.attached) throw new TerminalOutputError('protocol');
+    if (message.type === 'reset') return this.reset(connection, message);
+    if (message.type === 'ready') return this.ready(connection, message.seq);
+    if (message.sentThrough !== this.cursor)
+      throw new TerminalOutputError('protocol');
+    this.send(connection.socket, { type: 'ack', channel: 1, seq: this.cursor });
+  }
+
+  private authenticated(connection: TerminalOutputConnection): void {
+    if (connection.authenticated) throw new TerminalOutputError('protocol');
+    connection.authenticated = true;
+    this.send(connection.socket, {
+      type: 'attach',
+      requestId: connection.requestId,
+      channel: 1,
+      projectId: this.options.projectId,
+      bindingKey: this.options.bindingKey,
+      terminalId: this.options.terminalId,
+      fromSeq: this.cursor,
+      windowBytes: TERMINAL_WINDOW_BYTES,
+    });
+  }
+
+  private attached(
+    connection: TerminalOutputConnection,
+    message: Extract<TerminalControl, { type: 'attached' }>,
+  ): void {
+    if (
+      !connection.authenticated ||
+      connection.attached ||
+      message.requestId !== connection.requestId ||
+      message.terminalId !== this.options.terminalId
+    )
+      throw new TerminalOutputError('protocol');
+    connection.attached = true;
+    connection.replayThrough = message.replayThrough;
+    this.setState('replaying');
+  }
+
+  private async applyOutput(
+    connection: TerminalOutputConnection,
+    data: ArrayBuffer,
+  ): Promise<void> {
+    if (
+      !connection.attached ||
+      data.byteLength > TERMINAL_WINDOW_BYTES + TERMINAL_FRAME_HEADER_BYTES
+    )
+      throw new TerminalOutputError('protocol');
+    const frame = decodeTerminalFrame(new Uint8Array(data));
+    if (
+      frame.kind !== TERMINAL_OUTPUT ||
+      frame.channel !== 1 ||
+      frame.seq !== this.cursor + 1
+    )
+      throw new TerminalOutputError('protocol');
+    await this.options.onOutput(
+      frame.data,
+      frame.seq,
+      this.outputLifetime.signal,
+    );
+    if (!this.live(connection)) return;
+    this.assertAuthority();
+    this.cursor = frame.seq;
+    if (connection.socket.readyState === 1)
+      this.send(connection.socket, {
+        type: 'ack',
+        channel: 1,
+        seq: this.cursor,
+      });
+  }
+
+  private async reset(
+    connection: TerminalOutputConnection,
+    message: Extract<TerminalControl, { type: 'reset' }>,
+  ): Promise<void> {
+    await this.options.onReset(message.fromSeq, this.outputLifetime.signal);
+    if (!this.live(connection)) return;
+    this.assertAuthority();
+    this.cursor = message.fromSeq;
+    connection.replayThrough = message.replayThrough;
+    this.setState('replaying');
+  }
+
+  private ready(connection: TerminalOutputConnection, sequence: number): void {
+    if (sequence > this.cursor || sequence < connection.replayThrough)
+      throw new TerminalOutputError('protocol');
+    clearTimeout(this.timer);
+    this.setState('ready');
+    this.pending?.resolve();
+    this.pending = undefined;
   }
 
   private send(socket: TerminalOutputSocket, value: object): void {

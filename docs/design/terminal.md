@@ -1,6 +1,6 @@
 # Integrated terminal
 
-Status: In progress under #3994. The scoped in-process foundation is implemented on this branch; a personal-operator same-origin gateway is added in part b1; paired-device/remote admission, SDK runtime, Coding cutover and Ghostty remain proposed.
+Status: In progress under #3994. The scoped in-process foundation and personal-operator same-origin gateway are implemented. The SDK now has an output-only session reader; operating-session state, paired-device/remote admission, Coding cutover and Ghostty remain proposed.
 
 > **Reading status: proposal (2026-10-17).** Replaces the current terminal
 > stack end to end. The bounded implementation below precedes that replacement; the current Coding UI behavior is
@@ -138,7 +138,15 @@ revocation evidence qualifies that gateway/service boundary, not live pairing.
 The listener integration suite proves the registered gateway mounts and stops
 on the API listener. Windows/ConPTY and remote/native routes remain unqualified.
 
-The proposed split stops this review at b1. Part b2 owns Project/principal
+The gateway evidence stops at b1. The public SDK's output-only
+[`TerminalOutputSession`](../../packages/sdk/src/client/terminal-output-session.ts)
+adds authenticated attachment, applied-output credit and bounded reconnect for
+an existing terminal. Its real-gateway consumer tests cover loopback
+authentication and PTY output; its transport controls cover reset ordering,
+revocation and disposal. It does not open or operate a shell or replace the
+Coding view. See the [SDK contract](../reference/sdk.md#terminal-output-sessions).
+
+Part b2 still owns Project/principal
 admission for paired devices, remote relay/broker egress and its threat model,
 the SDK session store and public-entry proof, Coding's xterm adapter and saved
 terminal migration. The legacy listener, port discovery, Coding UI, saved tabs,
