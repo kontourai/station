@@ -661,6 +661,35 @@ describe('ProjectLayoutRenderer', () => {
     expect(screen.queryByText('Review rendered for demo')).toBeNull();
   });
 
+  test('re-checking an unplaced Review keeps the workbench mounted instead of flickering', () => {
+    layoutQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new StationHttpError(404, 'Layout not found'),
+      errorUpdatedAt: 1,
+      fetchStatus: 'idle',
+    });
+    const view = render(
+      <ProjectLayoutRenderer projectSlug="demo" layoutSlug="review" />,
+    );
+    expect(screen.getByText('Review rendered for demo')).toBeTruthy();
+
+    // What TanStack reports once a refetch of the 404 starts.
+    layoutQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+      errorUpdatedAt: 1,
+      fetchStatus: 'fetching',
+    });
+    view.rerender(
+      <ProjectLayoutRenderer projectSlug="demo" layoutSlug="review" />,
+    );
+
+    expect(screen.getByText('Review rendered for demo')).toBeTruthy();
+    expect(screen.queryByText('Current layout view')).toBeNull();
+  });
+
   test('a Review request that failed for any other reason is not an unplaced layout (#2065)', () => {
     // A 500 or a dead server means Station could not ASK whether the layout is
     // placed. Substituting the builtin there would answer a question nobody
