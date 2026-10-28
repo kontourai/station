@@ -25,6 +25,7 @@ import type { AgentData } from '../../contexts/AgentsContext';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
+import { useChatPaneFileDrop } from '../../hooks/useChatPaneFileDrop';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { useStationChoices } from '../../hooks/useExecutionStationCatalog';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -1558,6 +1559,11 @@ export function NewChatModal({
       initialFocusRef={taskShaping ? promptRef : undefined}
       historyActive={historyActive}
       startedRef={startedRef}
+      onDropFiles={
+        showStart && !submitting
+          ? (files) => setStartFiles((current) => [...current, ...files])
+          : undefined
+      }
       onClose={closeChatRequest}
     >
       <div className="new-chat-modal__header">
@@ -2375,6 +2381,11 @@ export function NewChatModal({
  * so Back there cannot discard what nobody can see. When it goes, focus
  * returns to the control that opened it, else to the chat composer it
  * covered; after a Start the dock focuses the new chat's composer instead.
+ *
+ * The whole draft owns a file dropped on it (the same `useChatPaneFileDrop`
+ * the composer and the chat pane use): a file let go over the line or the
+ * setup panel joins the draft's files instead of the browser opening it and
+ * leaving the app. A drop on the composer is the composer's own.
  */
 function NewChatDraftSurface({
   children,
@@ -2383,6 +2394,7 @@ function NewChatDraftSurface({
   initialFocusRef,
   historyActive = true,
   startedRef,
+  onDropFiles,
   onClose,
 }: {
   children: React.ReactNode;
@@ -2392,9 +2404,25 @@ function NewChatDraftSurface({
   historyActive?: boolean;
   /** Set once Start has handed the chat over: no return focus then. */
   startedRef?: React.RefObject<boolean>;
+  /** Where a dropped file goes; absent where the draft takes no files. */
+  onDropFiles?: (files: File[]) => void;
   onClose: () => void;
 }) {
   const sectionRef = useRef<HTMLElement>(null);
+  const [dropError, setDropError] = useState<string | null>(null);
+  const drop = useChatPaneFileDrop({
+    rootRef: sectionRef,
+    resetKey: ariaLabel,
+    reportError: setDropError,
+    selectFiles: async (files) => {
+      if (!onDropFiles) {
+        setDropError('This draft cannot take files.');
+        return;
+      }
+      setDropError(null);
+      onDropFiles(files);
+    },
+  });
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const historyId = useId();
@@ -2456,6 +2484,15 @@ function NewChatDraftSurface({
       ref={sectionRef}
       className={`new-chat-modal${className ? ` ${className}` : ''}`}
       aria-label={ariaLabel}
+      data-file-drag={drop.isDraggingFiles || undefined}
+      onDragEnter={drop.onDragEnter}
+      onDragOver={drop.onDragOver}
+      onDragLeave={drop.onDragLeave}
+      onDragEnd={drop.onDragEnd}
+      onDrop={drop.onDrop}
+      // A drop the composer takes never reaches this handler; clear the
+      // whole-draft cue first either way.
+      onDropCapture={drop.onDragEnd}
       onKeyDown={(event) => {
         if (event.key === 'Escape' && !event.defaultPrevented) {
           event.stopPropagation();
@@ -2463,6 +2500,14 @@ function NewChatDraftSurface({
         }
       }}
     >
+      {dropError && (
+        <p
+          role="alert"
+          className="start-composer__alert new-chat-draft__drop-error"
+        >
+          {dropError}
+        </p>
+      )}
       {children}
     </section>
   );

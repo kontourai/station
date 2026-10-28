@@ -1,4 +1,10 @@
-import { type RefObject, useCallback, useEffect, useState } from 'react';
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 
 interface WorkingChatFocusOptions {
   activeSessionId: string | null;
@@ -6,6 +12,14 @@ interface WorkingChatFocusOptions {
   terminal: boolean;
   surfaceRef: RefObject<HTMLElement | null>;
 }
+
+/**
+ * How long a focused composer must stay usable before the request is done. A
+ * chat that has just opened can disable its composer again ("Loading chat…")
+ * and re-enable it later; until then the request stays, so focus follows the
+ * composer back if nothing else claimed it.
+ */
+const SETTLE_MS = 2_000;
 
 export function useWorkingChatFocus({
   activeSessionId,
@@ -16,6 +30,10 @@ export function useWorkingChatFocus({
   const [pending, setPending] = useState<{ sessionId: string } | null>(null);
   const [composer, onComposerEnabledChange] =
     useState<HTMLTextAreaElement | null>(null);
+  // The composer focus was last put on: while it is being disabled it can
+  // still hold focus for a moment, and that is not the person moving away.
+  const lastComposer = useRef<HTMLTextAreaElement | null>(null);
+  if (composer) lastComposer.current = composer;
   const requestComposerFocus = useCallback((sessionId: string) => {
     setPending({ sessionId });
   }, []);
@@ -45,7 +63,11 @@ export function useWorkingChatFocus({
           '[role="dialog"], [role="alertdialog"], dialog[open]',
         ),
       ).some((dialog) => !dialog.closest('[aria-hidden="true"], [hidden]'));
-    if (dialogOpen() || !mayRestoreFocus(document.activeElement)) {
+    // Focus already on the composer (this request put it there) is ours too.
+    const ours = (element: EventTarget | null) =>
+      mayRestoreFocus(element) ||
+      (element !== null && element === lastComposer.current);
+    if (dialogOpen() || !ours(document.activeElement)) {
       setPending(null);
       return;
     }
@@ -56,13 +78,13 @@ export function useWorkingChatFocus({
         ?.focus();
       return;
     }
+    let settle: number | undefined;
     if (ready && composer && !composer.disabled && !composer.readOnly) {
-      setPending(null);
-      composer.focus();
-      return;
+      if (document.activeElement !== composer) composer.focus();
+      settle = window.setTimeout(() => setPending(null), SETTLE_MS);
     }
     const onFocusIn = (event: FocusEvent) => {
-      if (!mayRestoreFocus(event.target)) setPending(null);
+      if (!ours(event.target)) setPending(null);
     };
     const observer = new MutationObserver(() => {
       if (dialogOpen()) setPending(null);
@@ -75,6 +97,7 @@ export function useWorkingChatFocus({
       attributeFilter: ['role', 'open', 'aria-hidden', 'hidden'],
     });
     return () => {
+      window.clearTimeout(settle);
       document.removeEventListener('focusin', onFocusIn);
       observer.disconnect();
     };

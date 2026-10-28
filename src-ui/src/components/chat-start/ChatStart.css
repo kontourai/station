@@ -87,3 +87,18 @@
   min-height: 2.75rem;
   height: clamp(2.75rem, 100cqh - 25rem, 6rem);
 }
+/* A file dragged over the draft: the whole draft takes it. */
+.new-chat-modal[data-file-drag] {
+  outline: 2px dashed var(--k-focus);
+  outline-offset: -4px;
+}
+/* While a setup panel shows, Start cannot run yet: setup and the composer
+   scroll together in the draft (one scroller) instead of a squeezed body
+   over a pinned composer. */
+.new-chat-modal:has(.chat-start__setup) > .new-chat-draft__body {
+  flex: 1 0 auto;
+  overflow-y: visible;
+}
+.new-chat-modal:has(.chat-start__setup) > .start-composer {
+  position: static;
+}

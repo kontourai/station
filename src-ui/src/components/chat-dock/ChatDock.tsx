@@ -585,6 +585,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     setProject,
     setLayout,
     lastDockMaximized,
+    collapseMaximizedDock,
   } = useNavigation();
   const dismissPhoneLayer = useDismissPhoneLayer();
   const showSurface = useShowSurface();
@@ -1085,13 +1086,25 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // is (`useChatDockActions.focusSession`). A full-screen placement is
   // already showing.
   const conversationSurfaceRef = useRef<HTMLDivElement>(null);
+  // The dock as it was before a phone draft forced it to full height, so a
+  // dismissed draft puts it back (a started one keeps full height: it is a
+  // chat now). Includes the maximize memory the forcing overwrote.
+  const dockBeforeDraft = useRef<{ open: boolean; remembered: boolean } | null>(
+    null,
+  );
   const revealDockForDraft = useCallback(() => {
     if (isFullscreenPlacement) return;
     dismissPhoneLayer();
     // A phone shows the draft full height, as a chat: a half sheet cannot
     // hold the composer above the keyboard (it pushed Start off-screen).
     if (isMobile) {
-      if (!isDockOpen || !isDockMaximized) setDockState(true, true);
+      if (!isDockOpen || !isDockMaximized) {
+        dockBeforeDraft.current ??= {
+          open: isDockOpen,
+          remembered: lastDockMaximized,
+        };
+        setDockState(true, true);
+      }
     } else if (!isDockOpen) setDockState(true, lastDockMaximized);
   }, [
     isFullscreenPlacement,
@@ -1115,11 +1128,30 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ? 'New Task'
       : 'New chat';
   const closeNewChatDraft = useCallback(() => {
+    // Dismissed: the dock goes back to the size it had before the draft
+    // forced it, and the maximize memory with it.
+    const before = dockBeforeDraft.current;
+    dockBeforeDraft.current = null;
+    if (before) {
+      if (!before.open) setDockState(false, before.remembered);
+      else if (before.remembered) collapseMaximizedDock();
+      else setDockState(true, false);
+    }
     setShowNewChatModal(false);
     setNewChatProjectOverride(null);
     setHandoffSource(null);
     cancelFork();
-  }, [setShowNewChatModal, setHandoffSource, cancelFork]);
+  }, [
+    setShowNewChatModal,
+    setHandoffSource,
+    cancelFork,
+    setDockState,
+    collapseMaximizedDock,
+  ]);
+  // A started draft is a chat now: it keeps the full height it was given.
+  useEffect(() => {
+    if (!showNewChatModal) dockBeforeDraft.current = null;
+  }, [showNewChatModal]);
   // The draft shows in place of the chat on screen, so going to a chat (a
   // tab, an inbox row, a shortcut, an opened conversation) leaves it: the
   // request hears 'dismissed' with its text, as closing the dialog did.
@@ -2951,7 +2983,14 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           ) : null}
           {isMobile ? (
             <ChatDockMobileHeader
-              routeLabel={activeOrchestrationSession?.modelRoute?.label}
+              // While a draft is open the header names the draft only: the
+              // covered chat's route and the dock's destination controls would
+              // disagree with the draft's own project chip (the one destination).
+              routeLabel={
+                showNewChatModal
+                  ? undefined
+                  : activeOrchestrationSession?.modelRoute?.label
+              }
               // Only when the app toolbar is hidden — otherwise its drawer
               // toggle and this one are two controls with one accessible name.
               showDrawerToggle={isMobileToolbarHidden}
@@ -2984,14 +3023,22 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
               // no-project chat gets "No project" as the switcher's current
               // value and stays reachable via the same trigger, rather than
               // losing the affordance entirely.
-              sessionProjectMismatchLabel={visibleSessionProjectMismatchLabel}
-              projectSwitcher={{
-                projectSlug: dockProjectSlug ?? '',
-                projectName: dockBadgeProjectName ?? 'No project',
-                projects,
-                onOpenProject: handleSelectProject,
-                onSwitchProject: handleSwitchProject,
-              }}
+              sessionProjectMismatchLabel={
+                showNewChatModal
+                  ? undefined
+                  : visibleSessionProjectMismatchLabel
+              }
+              projectSwitcher={
+                showNewChatModal
+                  ? null
+                  : {
+                      projectSlug: dockProjectSlug ?? '',
+                      projectName: dockBadgeProjectName ?? 'No project',
+                      projects,
+                      onOpenProject: handleSelectProject,
+                      onSwitchProject: handleSwitchProject,
+                    }
+              }
               projectScope={
                 scopedProjectSlug && !hasImmutableProjectScope
                   ? {
@@ -3188,7 +3235,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 // hidden for. `ChatDockProjectContext` itself renders "No
                 // project" and keeps the badge switchable when
                 // `dockProjectSlug` is null.
-                !isMobile ? (
+                !isMobile && !showNewChatModal ? (
                   <ChatDockProjectContext
                     projectSlug={dockProjectSlug}
                     projectName={dockBadgeProjectName}

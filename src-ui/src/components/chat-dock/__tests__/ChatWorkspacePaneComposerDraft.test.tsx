@@ -64,7 +64,9 @@ const {
   pickerMounts,
   autoStarts,
   dockProbe,
+  sendAdmission,
 } = vi.hoisted(() => ({
+  sendAdmission: {} as { onActiveSessionChange?: (id: string) => void },
   createChatSession: vi.fn(() => 'new-session'),
   sendMessage: vi.fn(),
   updateChat: vi.fn(),
@@ -157,7 +159,14 @@ vi.mock('../../modals/NewChatModal', async () => {
 vi.mock('../../../hooks/useActiveChatSessions', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useCreateChatSession: () => createChatSession,
-  useSendMessage: () => sendMessage,
+  // Records the admission callback a send would call (`onSessionMigrate`).
+  useSendMessage: (
+    _apiBase: string,
+    onActiveSessionChange?: (id: string) => void,
+  ) => {
+    sendAdmission.onActiveSessionChange = onActiveSessionChange;
+    return sendMessage;
+  },
   useCancelMessage: () => vi.fn(),
   useRehydrateSessions: () => vi.fn(),
   useOpenConversation: () => vi.fn(),
@@ -1019,10 +1028,11 @@ async function flushHistory() {
     await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
 }
 
-// A collapsed dock keeps its draft hidden, so the draft holds no Back entry
-// then (`historyActive`, exercised on the real draft in StartComposerParity):
-// Back cannot discard what nobody can see.
-test('Back while the dock is collapsed does not dismiss the hidden draft', async () => {
+// Wiring only: a collapsed dock passes `historyActive: false` to its hidden
+// draft. The mocked draft holds no Back entry, so the Back half below cannot
+// fail here; the real seam is the StartComposerParity test "a draft out of
+// view holds no Back entry…".
+test('a collapsed dock tells its hidden draft it is out of view (no Back entry)', async () => {
   navigationStore.navigate('/', { dock: 'open' });
   renderDockedPane();
   await act(async () => {});
@@ -1130,4 +1140,103 @@ test('returning from setup reveals a collapsed dock’s draft', async () => {
   act(() => pickerProps.at(-1)!.onReturnFromSetup());
   await waitFor(() => expect(regionModel!.regions.bottom.visible).toBe(true));
   await screen.findByRole('region', { name: 'New chat picker' });
+});
+
+// A send admission completing in another chat moves the dock
+// (`onSessionMigrate`); that is not the person leaving the draft.
+test('a send admission moving the dock does not dismiss the open draft', async () => {
+  dockProbe.sessions = [chatSession('chat-a'), chatSession('chat-b')];
+  navigationStore.navigate('/', { dock: 'open', chat: 'chat-b' });
+  renderDockedPane();
+  await act(async () => {});
+  const onClosed = vi.fn();
+  act(() => {
+    dispatchNewChatIntent({ initialPrompt: 'Mine', onClosed });
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  expect(sendAdmission.onActiveSessionChange).toBeTypeOf('function');
+  act(() => sendAdmission.onActiveSessionChange!('chat-a'));
+  await act(async () => {});
+  expect(onClosed).not.toHaveBeenCalled();
+  expect(screen.getByRole('region', { name: 'New chat picker' })).toBeTruthy();
+});
+
+// The draft's own project chip is the one destination: the header's project
+// controls stand down while it is open, on desktop and on a phone.
+test('the header shows no project destination while a draft is open', async () => {
+  deviceSettingsStore.set('chatDockProjectSlug', 'pulse');
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+  expect(screen.getByRole('button', { name: 'New chats: Pulse' })).toBeTruthy();
+  act(() => {
+    dispatchNewChatIntent({});
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  expect(screen.queryByRole('button', { name: /^New chats:/ })).toBeNull();
+  act(() => pickerProps.at(-1)!.onClose());
+  await screen.findByRole('button', { name: 'New chats: Pulse' });
+  cleanup();
+
+  dockProbe.mobile = true;
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+  expect(screen.getByTestId('mobile-dock-project-name').textContent).toBe(
+    'Pulse',
+  );
+  act(() => {
+    dispatchNewChatIntent({});
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  expect(screen.getByTestId('mobile-dock-project-name').textContent).toBe('');
+});
+
+// A phone opens the draft full height from a half sheet; a dismissed draft
+// gives the half sheet back, maximize memory included. A started one stays.
+test('a phone draft dismissed from a half sheet restores the half sheet', async () => {
+  dockProbe.mobile = true;
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+  act(() => regionModel!.setRegion('bottom', { maximized: false }));
+  act(() => navigationStore.setDockState(true, false));
+  expect(navigationStore.lastDockMaximized).toBe(false);
+
+  act(() => {
+    dispatchNewChatIntent({});
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  await waitFor(() => expect(regionModel!.regions.bottom.maximized).toBe(true));
+
+  act(() => pickerProps.at(-1)!.onClose());
+  await waitFor(() =>
+    expect(regionModel!.regions.bottom.maximized).toBe(false),
+  );
+  expect(regionModel!.regions.bottom.visible).toBe(true);
+  expect(navigationStore.lastDockMaximized).toBe(false);
+  expect(
+    new URLSearchParams(window.location.search).get('maximize'),
+  ).toBeNull();
+
+  // Started: no restore; the new chat keeps the full height it was given.
+  act(() => {
+    dispatchNewChatIntent({});
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  await waitFor(() => expect(regionModel!.regions.bottom.maximized).toBe(true));
+  act(() => {
+    pickerProps
+      .at(-1)!
+      .onSelect(
+        { slug: 'assistant', name: 'Assistant' },
+        undefined,
+        undefined,
+        'Go',
+      );
+  });
+  await act(async () => {});
+  // No restore ran: the full-height memory the draft set is kept.
+  expect(createChatSession).toHaveBeenCalledTimes(1);
+  expect(navigationStore.lastDockMaximized).toBe(true);
 });

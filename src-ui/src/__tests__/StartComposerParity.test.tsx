@@ -1929,6 +1929,28 @@ describe("the dock's New chat is a draft, not a dialog", () => {
     expect(document.activeElement).not.toBe(opener);
   });
 
+  // The whole draft owns a dropped file: let go over the line (not the
+  // composer), it joins the draft's files instead of the browser opening it.
+  test('a file dropped on the draft outside the composer joins its files', async () => {
+    const ui = renderBoth();
+    const dock = ui.dock();
+    const lead = await within(dock).findByText(/^Start a chat/);
+    const file = new File(['x'], 'notes.txt', { type: 'text/plain' });
+    const dataTransfer = {
+      types: ['Files'],
+      files: [file],
+      items: [{ kind: 'file', type: 'text/plain', getAsFile: () => file }],
+    } as unknown as DataTransfer;
+    fireEvent.dragEnter(lead, { dataTransfer, relatedTarget: null });
+    const dropped = fireEvent.drop(lead, { dataTransfer });
+    // Handled: the browser's default (open the file, leave the app) is off.
+    expect(dropped).toBe(false);
+    const list = await within(dock).findByRole('list', {
+      name: 'Files for this chat',
+    });
+    expect(within(list).getByText('notes.txt')).toBeTruthy();
+  });
+
   test('with no project the line uses the chip’s words and names no Station before the device answers; a second Station adds the Station control', async () => {
     state.environments = [
       {

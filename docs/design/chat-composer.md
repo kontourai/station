@@ -122,22 +122,35 @@ text beside the Agent, Model and Permissions chips. Setup, repair and read
 errors render in the draft body. New Task keeps its **Shaping a Task** chip and
 the fork keeps its replay disclosure and **Cancel fork**. While a draft is
 open the dock's title slot (and the phone header) names it **New chat**, **New
-Task** or **Fork from here**. On a phone the draft opens the dock full height,
-from collapsed or from a half sheet. The body above the composer takes the room
-the composer leaves and scrolls itself; in a short dock the text box starts at
-one line, and the composer stays pinned so Start is never pushed off screen.
+Task** or **Fork from here**, and the header's own project controls (the
+desktop **New chats** chip, the phone project switcher) stand down: the draft's
+project chip is its one destination. On a phone the draft opens the dock full
+height, from collapsed or from a half sheet; dismissing it gives the earlier
+size back (and the maximize memory with it), while a started chat keeps full
+height. The body above the composer takes the room the composer leaves and
+scrolls itself; in a short dock a plain New chat's text box shrinks toward one
+line (New Task's compact text box keeps its own sizing), and the composer stays
+pinned so Start is never pushed off screen. While a setup panel shows, Start
+cannot run, so setup and the composer scroll together as one instead. A file
+dropped anywhere on the draft joins its files.
 Escape, Back (the draft takes a history entry, as a dialog does, but only while
 it is on screen), or the dock moving to another chat (a tab, the inbox, a
 toast's Open, `?chat=`, browser history) dismisses the draft and hands back its
 text. "Another chat" is by identity, so a cold `?chat=` hydrating into its tab
 or a send admission is not a move. Focus returns to the control that opened the
-draft, else the chat composer; after Start the new chat's composer takes it. A
+draft, else the chat composer; after Start the new chat's composer takes it, and
+gets it back if it is briefly disabled while the chat opens, unless the person
+has put focus elsewhere. A
 plain New chat while a draft is open keeps that draft and focuses it; a request
 carrying a prompt, files, choices, a hand-off or a Task replaces it. Collapsing
 the dock, including a phone's setup journey, keeps the draft mounted but hidden,
 so all its state (text, files, chips, setup return) survives and it never starts
 again by itself; returning from setup shows it again, and Back while it is
-hidden does not discard it. Idle auto-hide waits while a draft is open. The
+hidden does not discard it. When the collapse leaves the URL unchanged it can
+cost one extra Back press: the draft gives up its entry in place rather than
+travelling back, because a travel could cancel a navigation landing at the same
+moment (#2414), and the two cases cannot be told apart reliably there. Idle
+auto-hide waits while a draft is open. The
 chat it covers stays mounted, hidden and inert, takes no dropped files, and does
 not count as on screen for turn notifications while covered.
 The Project page opens on Overview and keeps its shared Project Room separate
