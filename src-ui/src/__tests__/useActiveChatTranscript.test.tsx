@@ -3090,6 +3090,87 @@ describe('useActiveChatTranscript', () => {
       expect(result.current.partialTurnStartEventIds.has('e6')).toBe(false);
     });
 
+    test('a newer reload continues an interrupted held gap using its own cursor', async () => {
+      const start = event('e6', 'turn.started', {
+        turnId: 'turn-6',
+        prompt: 'Q6',
+      });
+      const answer = (id: string) =>
+        event(id, 'content.text-delta', {
+          turnId: 'turn-6',
+          itemId: 'answer-6',
+          delta: id,
+        });
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 11,
+          hasMore: true,
+          nextCursor: 'gap',
+          turnStartDetached: true,
+          events: [start, answer('e11')],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 11,
+          hasMore: true,
+          nextCursor: 'older',
+          events: [start, answer('e7')],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 11,
+          hasMore: true,
+          nextCursor: 'older-old',
+          events: [
+            event('e1', 'turn.started', { turnId: 'old', prompt: 'old' }),
+          ],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 21,
+          hasMore: true,
+          nextCursor: 'gap2',
+          turnStartDetached: true,
+          events: [start, answer('e20')],
+        })
+        .mockRejectedValueOnce(new Error('gap failed'))
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 22,
+          hasMore: true,
+          nextCursor: 'new-gap',
+          events: [answer('e18'), answer('e22')],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 22,
+          hasMore: true,
+          nextCursor: 'older',
+          events: [answer('e11'), answer('e15')],
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://reload-held-gap.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(2));
+      await act(async () => result.current.loadOlder());
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(result.current.error?.message).toBe('gap failed'),
+      );
+      rerender({ revision: 2 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toContain(15),
+      );
+      expect(cursorOf(6)).toBe('new-gap');
+      expect(result.current.partialTurnStartEventIds.has('e6')).toBe(false);
+    });
+
     test('a fresh read fills the gap and leaves Load older after it', async () => {
       fetchWindow
         .mockResolvedValueOnce({

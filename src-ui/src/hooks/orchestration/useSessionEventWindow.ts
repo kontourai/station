@@ -397,7 +397,11 @@ export function useSessionEventWindow(
       // A fill a later read cut short still owes its gap, so its floor holds
       // until some fill reaches it.
       const floor = olderLoadedRef.current
-        ? lowest(eventsRef.current.at(-1)?.sequence, pendingFloorRef.current)
+        ? lowest(
+            eventsRef.current.at(-1)?.sequence,
+            pendingFloorRef.current,
+            heldGapRef.current?.floor,
+          )
         : newestTurnStart(next);
       if (
         page.nextCursor &&
@@ -426,6 +430,16 @@ export function useSessionEventWindow(
       if (fill && olderLoadedRef.current && anchor) {
         partialRef.current.add(anchor);
         heldGapRef.current = { anchor, floor: fill.floor, cursor: fill.cursor };
+      } else if (heldGapRef.current && fill) {
+        partialRef.current.add(heldGapRef.current.anchor);
+        heldGapRef.current.cursor = fill.cursor;
+      } else if (
+        heldGapRef.current &&
+        contiguousFrom(page) <= heldGapRef.current.floor
+      ) {
+        partialRef.current.delete(heldGapRef.current.anchor);
+        heldGapRef.current = undefined;
+        pendingFloorRef.current = undefined;
       }
       setPartialTurnStartEventIds(new Set(partialRef.current));
       if (!olderLoadedRef.current) setCursor(page.nextCursor);
