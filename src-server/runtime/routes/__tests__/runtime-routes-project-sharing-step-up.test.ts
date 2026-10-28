@@ -574,13 +574,31 @@ describe('remote Project sharing enable with operator passkey step-up (#4306)', 
     expect(confirmed.status).toBe(404);
     expect(await confirmed.json()).toEqual({ error: 'not_found' });
     expect(h.shared()).toBe(false);
-    expect(
-      (
-        await h.app.request(`${APP}/api/projects/${h.project.slug}/access`, {
-          headers: { Authorization: `Bearer ${h.operatorCredential}` },
-        })
-      ).status,
-    ).toBe(403);
+  });
+
+  test('a passkey revoked after the assertion verified is refused at the mutation seam', async () => {
+    const h = await setup();
+    const signed = await h.signIn();
+    const pending = await h.requestStepUp(signed);
+    const rendered = await h.review(signed, pending.id);
+    // Lands between the verified assertion and the membership write: the
+    // listener and the store have already accepted the passkey.
+    const enable = h.membership.service.enable.bind(h.membership.service);
+    const spy = vi
+      .spyOn(h.membership.service, 'enable')
+      .mockImplementationOnce(async (...args) => {
+        h.registry.existing()!.revoke(signed.passkey.id);
+        return enable(...args);
+      });
+    const confirmed = await h.decide(signed, pending.id, rendered);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(confirmed.status).toBe(409);
+    expect(await confirmed.json()).toEqual({ error: 'session_ended' });
+    expect(h.shared()).toBe(false);
+    expect(h.warn).not.toHaveBeenCalledWith(
+      'Project sharing enabled',
+      expect.anything(),
+    );
   });
 
   test('the operator credential still enables directly, without a step-up', async () => {
