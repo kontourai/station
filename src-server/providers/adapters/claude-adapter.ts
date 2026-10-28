@@ -702,6 +702,13 @@ type ClaudeSessionRecord = {
   deliveryProbeServerId?: string;
   /** #2932: the redacted end of the engine's stderr (claude-code-spawn.ts). */
   engineStderrTail?: () => string;
+  /**
+   * The SDK stream ended by an unexpected failure: the `claude` process is
+   * gone, so its still-running subagents settle `interrupted`.
+   */
+  engineDied?: boolean;
+  /** `stopSession` began: a stream failure after it is the stop, not a death. */
+  stopping?: boolean;
   promptQueue: AsyncUserMessageQueue;
   query: Query;
   pendingRequests: Map<string, PendingRequest>;
@@ -3105,6 +3112,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // Settle outstanding canUseTool promises before teardown so the SDK
     // callback never hangs on a stopped session (mirrors acp-adapter, archive#148).
     this.cancelPendingRequests(record, threadId);
+    record.stopping = true;
     record.promptQueue.close();
     record.query.close();
     await record.engineProcess?.terminate();
@@ -4413,12 +4421,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    */
   private settleSessionEnd(record: ClaudeSessionRecord): void {
     const publish = (event: CanonicalRuntimeEvent) => this.publish(event);
-    const endedChildren = settleOpenClaudeChildren({
-      provider: this.provider,
-      record,
-      publish,
-      createdAt: new Date().toISOString(),
-    });
+    const endedChildren = settleOpenClaudeChildren(
+      {
+        provider: this.provider,
+        record,
+        publish,
+        createdAt: new Date().toISOString(),
+      },
+      { engineDied: record.engineDied === true },
+    );
     // A child that ended with the session can no longer be waiting on the
     // approvals it raised (canUseTool's agentID is its task_id): withdraw
     // them, so a late "Allow for this session" cannot mint a grant.
@@ -4511,6 +4522,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           record.terminalResultObserved === 'binding-dead' ? 'dead' : 'error';
         return;
       }
+      // An unexpected failure ended the stream: the engine process is gone.
+      if (!record.stopping) record.engineDied = true;
       // The SDK folds the engine's stderr into an exit error only for its
       // own spawn; Station's spawn kept the tail, so add it here.
       const detail = claudeExitDetailWithStderr(

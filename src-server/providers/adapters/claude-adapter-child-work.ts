@@ -697,9 +697,14 @@ export function clearClaudeChildStopRequested(
  *
  * The registry is kept: a real terminal the SDK still drains afterwards
  * corrects the outcome recorded here.
+ *
+ * `engineDied`: the SDK stream ended by failing, so the `claude` process
+ * that ran these subagents is gone and nothing more can drain. Every child
+ * still running then settles `interrupted`, an observed end, instead.
  */
 export function settleOpenClaudeChildren(
   context: ClaudeChildWorkContext,
+  options: { engineDied?: boolean } = {},
 ): string[] {
   const state = context.record.childWork;
   if (!state || state.closed) return [];
@@ -707,6 +712,8 @@ export function settleOpenClaudeChildren(
   for (const item of open) {
     if (state.stopRequested.has(item.childId)) {
       settle(context, item.childId, 'stopped-unconfirmed');
+    } else if (options.engineDied) {
+      settle(context, item.childId, 'interrupted');
     }
   }
   if (runningChildren(context.record).length > 0) {

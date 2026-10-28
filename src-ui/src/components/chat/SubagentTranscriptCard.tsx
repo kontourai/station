@@ -14,6 +14,7 @@ import {
   ArrowRightGlyph,
   CheckGlyph,
   CloseGlyph,
+  WarningGlyph,
 } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { ChildWorkActivity } from './ChildWorkActivity';
@@ -62,6 +63,8 @@ function StatusGlyph({
   // observations of an absence (no result, an unconfirmed stop).
   if (status === 'cancelled')
     return <span className="subagent-card__stopped" aria-hidden="true" />;
+  // Its engine died under it: an observed end, so a solid mark, not a ring.
+  if (status === 'interrupted') return <WarningGlyph />;
   return <span className="subagent-card__hollow" aria-hidden="true" />;
 }
 

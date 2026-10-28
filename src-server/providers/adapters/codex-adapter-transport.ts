@@ -319,7 +319,7 @@ export class CodexAdapterTransport {
         record,
         () => new Error(`Codex app-server failed to start: ${error.message}`),
       );
-      this.settleUnresolvedToolCalls(record, nowIso);
+      this.settleUnresolvedToolCalls(record, nowIso, 'unresolved');
       this.publishOrphanedTurnFailure(
         record,
         nowIso,
@@ -370,7 +370,7 @@ export class CodexAdapterTransport {
         () =>
           new Error(`Codex app-server stdin write failed: ${error.message}`),
       );
-      this.settleUnresolvedToolCalls(record, nowIso);
+      this.settleUnresolvedToolCalls(record, nowIso, 'unresolved');
       this.publishOrphanedTurnFailure(
         record,
         nowIso,
@@ -875,7 +875,7 @@ export class CodexAdapterTransport {
     // `publishOrphanedTurnFailure`'s `skipSynthesis` doc): that RPC's caller
     // owns the turn's terminal fate and, for the one caller that also calls
     // `stopSession` (the cooperative-stop deadline), already published it.
-    this.settleUnresolvedToolCalls(record, nowIso());
+    this.settleUnresolvedToolCalls(record, nowIso(), 'interrupted');
     this.publishOrphanedTurnFailure(
       record,
       nowIso(),
@@ -1223,7 +1223,7 @@ export class CodexAdapterTransport {
       // ordinary path's comment for why that half is defensive rather than a
       // fix for an observed leak.
       if (!record.stopped) {
-        this.settleUnresolvedToolCalls(record, nowIso);
+        this.settleUnresolvedToolCalls(record, nowIso, 'interrupted');
       }
       return;
     }
@@ -1275,7 +1275,7 @@ export class CodexAdapterTransport {
       // `record.terminalPublishedForTurnId` — the superseded record's own
       // bookkeeping — and the turn it would close is not the one in flight).
       if (!record.stopped) {
-        this.settleUnresolvedToolCalls(record, nowIso);
+        this.settleUnresolvedToolCalls(record, nowIso, 'interrupted');
       }
       return;
     }
@@ -1290,7 +1290,7 @@ export class CodexAdapterTransport {
     // the turn's terminal fact before the session's, so nothing turnId-keyed
     // (the completion-notification listener, `hasActiveTurn`, the stall
     // watchdog) is left waiting on a turn that is already over.
-    this.settleUnresolvedToolCalls(record, nowIso);
+    this.settleUnresolvedToolCalls(record, nowIso, 'interrupted');
     this.publishOrphanedTurnFailure(
       record,
       nowIso,
@@ -1339,6 +1339,15 @@ export class CodexAdapterTransport {
   private settleUnresolvedToolCalls(
     record: CodexSessionRecord,
     nowIso: string,
+    /**
+     * How a still-running child ended. `interrupted` only where the
+     * app-server process is known to be gone (it exited, or `stopSession`
+     * reaped it): Codex runs children as threads inside that process. The
+     * process `error` and stdin EPIPE doors cannot say that, so their
+     * children stay `unresolved`. Tool calls stay `unresolved` at every
+     * door: whether the tool ran is unknown however the process ended.
+     */
+    childStatus: 'interrupted' | 'unresolved',
   ): void {
     settleUnresolvedCodexToolCalls({
       record,
@@ -1346,12 +1355,15 @@ export class CodexAdapterTransport {
       publish: (event) => this.publish(event, record),
     });
     // #2458: a subagent still running when its session ends can never
-    // report again, so it settles `unresolved` — same doors, same moment.
-    settleOpenCodexChildren({
-      record,
-      nowIso: () => nowIso,
-      publish: (event) => this.publish(event, record),
-    });
+    // report again, so it settles here — same doors, same moment.
+    settleOpenCodexChildren(
+      {
+        record,
+        nowIso: () => nowIso,
+        publish: (event) => this.publish(event, record),
+      },
+      childStatus,
+    );
   }
 
   /**

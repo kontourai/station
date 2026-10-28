@@ -12553,6 +12553,7 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
     const pending: unknown[] = [];
     let wake: (() => void) | null = null;
     let ended = false;
+    let failure: Error | undefined;
     const end = () => {
       ended = true;
       wake?.();
@@ -12565,9 +12566,15 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
         wake = null;
       },
       end,
+      /** The SDK iterator failing as it does when the `claude` process dies. */
+      crash(error: Error) {
+        failure = error;
+        end();
+      },
       async *[Symbol.asyncIterator]() {
         for (;;) {
           while (pending.length === 0) {
+            if (failure) throw failure;
             if (ended) return;
             await new Promise<void>((resolve) => {
               wake = resolve;
@@ -12747,6 +12754,23 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
     expect(settleAt).toBeLessThan(
       seen.findIndex((event) => event.method === 'session.exited'),
     );
+  });
+
+  test('the engine process dying settles the running child interrupted, not unresolved', async () => {
+    const threadId = 'thread-child-process-death';
+    const { query, until, seen } = await runningChild(threadId);
+    query.crash(new Error('Claude Code process terminated by signal SIGKILL'));
+    const settled = await Promise.race([
+      until(
+        (event) =>
+          event.method === 'child-work.updated' &&
+          event.delta.kind === 'settle' &&
+          event.delta.childId === capturedChildId,
+      ),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000)),
+    ]);
+    expect(settled, 'no settle after the engine died').not.toBeNull();
+    expect(childSettles(seen)).toEqual(['interrupted']);
   });
 
   test('the engine process ending on its own settles the running child too', async () => {

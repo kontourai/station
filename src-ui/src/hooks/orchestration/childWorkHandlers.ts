@@ -116,6 +116,7 @@ const SETTLE_HEADING: Record<ChildWorkTerminalStatus, string> = {
   cancelled: 'Background task stopped',
   'stopped-unconfirmed': 'Background task stop requested — not confirmed',
   unresolved: 'Background task ended — outcome unknown',
+  interrupted: 'Background task interrupted',
 };
 
 function settleHeading(status: ChildWorkTerminalStatus): string {

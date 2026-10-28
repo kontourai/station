@@ -23,6 +23,8 @@ export const CHILD_WORK_STATUS_LABEL: Record<ChildWorkStatus, string> = {
   'stopped-unconfirmed': 'Stop requested — not confirmed',
   // The reporter stopped listing it without an outcome.
   unresolved: 'No result',
+  // Its engine process ended while it ran: an observed end, not a gap.
+  interrupted: 'Interrupted',
 };
 
 /** `m:ss`, or `h:mm:ss` past an hour. */

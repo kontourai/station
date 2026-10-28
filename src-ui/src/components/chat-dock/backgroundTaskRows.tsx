@@ -59,6 +59,7 @@ const OUTCOME_LABEL: Partial<Record<BackgroundTaskState, string>> = {
   unresolved: 'No result',
   // #2459: never "Stopped" — nothing confirmed the stop took effect.
   'stopped-unconfirmed': 'Stop requested — not confirmed',
+  interrupted: 'Interrupted',
   failed: 'Failed',
 };
 

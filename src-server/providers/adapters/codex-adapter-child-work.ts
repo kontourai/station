@@ -953,15 +953,21 @@ function finalAgentMessage(items: unknown): string | undefined {
 }
 
 /**
- * Session end: every child still running can no longer report, so it settles
- * `unresolved` (nothing observed says how it ended). Called beside
+ * Session end: every child still running can no longer report. Codex runs
+ * its children as threads inside the app-server, so when that process ended
+ * under them (it died, or Station tore it down) they are `interrupted`: an
+ * observed end. A door that cannot say the process is gone settles them
+ * `unresolved` (nothing observed says how they ended). Called beside
  * `settleUnresolvedCodexToolCalls`, before `session.exited`. Idempotent.
  */
-export function settleOpenCodexChildren(context: ChildWorkContext): void {
+export function settleOpenCodexChildren(
+  context: ChildWorkContext,
+  status: 'interrupted' | 'unresolved',
+): void {
   const state = context.record.childWork;
   if (!state || state.closed) return;
   for (const item of runningChildren(context.record)) {
-    settleChild(context, item.childId, 'unresolved');
+    settleChild(context, item.childId, status);
   }
   state.closed = true;
   state.children.clear();

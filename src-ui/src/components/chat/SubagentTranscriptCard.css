@@ -87,7 +87,8 @@
 }
 
 .subagent-card__status--stopped-unconfirmed,
-.subagent-card__status--unresolved {
+.subagent-card__status--unresolved,
+.subagent-card__status--interrupted {
   color: var(--k-caution);
 }
 

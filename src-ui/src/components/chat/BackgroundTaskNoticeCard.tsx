@@ -44,6 +44,11 @@ const NOTICE_STATUS: Record<ChildWorkTerminalStatus, NoticeStatusPresentation> =
       glyph: '?',
       tone: 'warning',
     },
+    interrupted: {
+      text: 'Task interrupted',
+      glyph: STATUS_GLYPH_BY_STATE.Stopped.glyph,
+      tone: 'warning',
+    },
   };
 
 /**

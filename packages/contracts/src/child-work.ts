@@ -36,6 +36,12 @@ export const CHILD_WORK_STATUSES = [
    * and `failed` (the engine said it failed).
    */
   'unresolved',
+  /**
+   * The engine process the child ran in died (a signal, a crash, memory
+   * exhaustion) or was torn down while the child was running. That is an
+   * observed end, unlike `unresolved`: the child cannot report again.
+   */
+  'interrupted',
 ] as const;
 
 export type ChildWorkStatus = (typeof CHILD_WORK_STATUSES)[number];
