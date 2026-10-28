@@ -12,7 +12,6 @@
 
 import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
-import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import {
   getSessionDigest,
   listSessionActivity,
@@ -42,15 +41,15 @@ const SCOPES: Record<string, StationControlScope> = {
 };
 const SESSIONS = Object.keys(SCOPES);
 
-const summary = (threadId: string): OrchestrationSessionSummary =>
-  ({
-    threadId,
-    provider: 'codex',
-    status: 'ready',
-    createdAt: '2026-10-01T00:00:00.000Z',
-    updatedAt: '2026-10-01T00:00:00.000Z',
-    lastEventAt: `2026-10-01T00:00:0${SESSIONS.indexOf(threadId)}.000Z`,
-  }) as unknown as OrchestrationSessionSummary;
+/** A read-model row with the fields the routes read (the stub is untyped). */
+const summary = (threadId: string) => ({
+  threadId,
+  provider: 'codex',
+  status: 'ready',
+  createdAt: '2026-10-01T00:00:00.000Z',
+  updatedAt: '2026-10-01T00:00:00.000Z',
+  lastEventAt: `2026-10-01T00:00:0${SESSIONS.indexOf(threadId)}.000Z`,
+});
 
 const scopeOf = (id: string) => SCOPES[id];
 const dispatchScope = {
