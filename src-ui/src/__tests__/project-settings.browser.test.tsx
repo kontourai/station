@@ -26,11 +26,12 @@ const fixtures: Plugin = {
           useProjectLayoutsQuery=()=>query([{id:'code',slug:'code',name:'Coding',type:'coding'}]),
           useAvailableProjectLayoutsQuery=()=>query([]),useKnowledgeDocsQuery=()=>query([{id:'readme',filename:'README.md',chunkCount:4}]),
           useKnowledgeStatusQuery=()=>query({totalChunks:4,documentCount:1}),
-          useIntegrationsQuery=()=>query([]),useKnowledgeRootsQuery=()=>query([]);
+          useIntegrationsQuery=()=>query([]),useKnowledgeRootsQuery=()=>query([]),
+          useFeaturePreviewsQuery=()=>query([{id:'stale-project-checkout',enabled:true}]);
       `,
       ConfigContext:
         'export const useConfig=()=>({defaultApprovalMode:"ask"});',
-      ProjectsContext: `const project={id:'demo-id',slug:'demo',name:'Demo project',workingDirectory:'/home/developer/projects/station',description:'A workspace for product development'}; export const useScopedProjectQuery=()=>({data:project}); export const useScopedProjectChatDefaultsQuery=()=>({data:undefined});`,
+      ProjectsContext: `const project={id:'demo-id',slug:'demo',name:'Demo project',workingDirectory:'/home/developer/projects/station',description:'A workspace for product development'}; export const useScopedProjectQuery=()=>({data:project}); export const useScopedProjectChatDefaultsQuery=()=>({data:undefined}); export const useScopedProjectCheckoutFreshnessQuery=()=>({data:{version:'station.project-checkout-freshness/v1',status:'stale',staleBecause:['commits'],thresholds:{commits:50,days:3},branch:'main',upstream:'origin/main',behind:183,ahead:0,upstreamFetchedAt:new Date(Date.now()-2*86400000).toISOString(),updateCommand:'git -C /home/developer/projects/station pull --ff-only',checkedAt:new Date().toISOString()},error:null,isFetching:false,refetch:async()=>{}});`,
       AgentsContext: 'export const useAgents=()=>[];',
       useShowSurface: 'export const useShowSurface=()=>()=>{};',
       useKeyboardShortcut: 'export const useKeyboardShortcut=()=>{};',
@@ -100,6 +101,11 @@ test('project settings remain usable above the dock at phone and desktop widths 
           .locator('#section-workspace')
           .evaluate((element) => element.focus({ preventScroll: true }));
         await page.getByRole('textbox', { name: 'Name *' }).waitFor();
+        // The stale checkout warning renders in the Workspace section.
+        await page
+          .locator('#section-workspace')
+          .getByTestId('project-checkout-stale')
+          .waitFor();
         await page.evaluate(
           () =>
             new Promise((resolve) =>
