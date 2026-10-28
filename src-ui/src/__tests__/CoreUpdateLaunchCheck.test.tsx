@@ -110,7 +110,7 @@ afterEach(() => vi.restoreAllMocks());
 
 describe('CoreUpdateLaunchCheck notices', () => {
   test.each([1, 3])(
-    'publishes a source comparison of %i commits for review in the unified panel',
+    'publishes a source comparison of %i commits as a summary-only notice',
     (behind) => {
       desktopStatus = {
         updateAvailable: true,
@@ -125,16 +125,15 @@ describe('CoreUpdateLaunchCheck notices', () => {
         expect.objectContaining({
           target: 'server',
           message: `Server checkout is ${behind} commit${behind === 1 ? '' : 's'} behind its configured upstream.`,
-          actionLabel: 'Review server update',
+          // The server section states the same comparison: the notice
+          // only drives the Updates control status, with no action.
+          summaryOnly: true,
         }),
       ]);
+      expect(notices[0]?.onAction).toBeUndefined();
+      // Publishing never opens Updates by itself.
+      expect(openRequest.pending).toBe(false);
       expectQueryEnabled(true);
-      const sequence = openRequest.sequence;
-      act(() => notices[0].onAction?.());
-      expect(openRequest).toMatchObject({
-        target: 'server',
-        sequence: sequence + 1,
-      });
     },
   );
 

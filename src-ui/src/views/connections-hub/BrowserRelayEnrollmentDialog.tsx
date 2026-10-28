@@ -191,7 +191,7 @@ export function BrowserRelayEnrollmentDialog({
     <Dialog
       eyebrow="Station access"
       title={`Verify account on ${connection.name}`}
-      subtitle="A broker route only reaches this Station. Its operator must approve this Device; Project access remains separate."
+      subtitle="The Station's operator must approve this device."
       closeLabel="Close account verification"
       onClose={close}
       footer={

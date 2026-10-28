@@ -1,0 +1,7 @@
+{
+  "revision": "6c24735eff5449b54a29b2fa43aa584309cefa10",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"Added the Product copy section. Checked against scripts/ui-copy-length.mjs: the npm script resolves, the 140-character and two-sentence limits match LONG_COPY_CAP and MAX_SENTENCES, growth-only failure and --update regeneration match main/compareUiCopy. The 100-character target is guidance, not enforced. Existing routing and claims unchanged.","inputs":["src-ui/AGENTS.md","scripts/ui-copy-length.mjs"]}
+  ]
+}
