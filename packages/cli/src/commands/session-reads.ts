@@ -34,6 +34,7 @@ import {
   SessionReadsUnsupportedError,
   type SessionWaitAnswer,
   type SessionWaitUntil,
+  STATION_NOT_ANSWERING,
   StationHttpError,
   StationRequestTimeoutError,
   searchStation,
@@ -130,11 +131,23 @@ const isCapacityRefusal = (error: unknown) =>
  */
 const GATEWAY_STATUSES = new Set([502, 503, 504, 520, 521, 522, 523, 524, 530]);
 
-/** The Station did not answer, or answered as a proxy does while it is down. */
+/**
+ * The Station did not answer, answered as a proxy does while it is down, or
+ * its handshake said to try later (`STATION_NOT_ANSWERING`: a rate limit or
+ * a timeout as well as a gateway).
+ */
 const isUnreachable = (error: unknown) =>
   error instanceof TypeError ||
   error instanceof StationRequestTimeoutError ||
-  (error instanceof StationHttpError && GATEWAY_STATUSES.has(error.status));
+  (error instanceof StationHttpError &&
+    (GATEWAY_STATUSES.has(error.status) ||
+      error.code === STATION_NOT_ANSWERING));
+
+/** A route message's first sentence: its advice is for a caller that gives up. */
+function firstSentence(message: string): string {
+  const end = message.indexOf('. ');
+  return end === -1 ? message : message.slice(0, end + 1);
+}
 
 function abortableSleep(
   ms: number,
@@ -280,7 +293,7 @@ export async function waitOnSession(input: {
           toldCapacity = true;
           // The route says which limit it is (this person's, or Station's).
           input.onNotice?.(
-            `Waiting for a free wait slot (${(error as StationHttpError).message.replace(/\.$/, '')}).`,
+            `Waiting for a free wait slot: ${firstSentence((error as StationHttpError).message)}`,
           );
         }
         await sleep(Math.min(RETRY_DELAY_MS, remaining), input.signal);
@@ -296,9 +309,11 @@ export async function waitOnSession(input: {
         }
       }
       // Before anything was observed, a refusal is the command's answer
-      // (not found, preview off, an older Station): its message is shown.
+      // (not found, preview off, an older Station): its message is shown. A
+      // Station that never started answering is not a refusal.
       if (
         last === undefined &&
+        !isUnreachable(error) &&
         (error instanceof SessionReadsUnsupportedError ||
           (error instanceof StationHttpError &&
             error.status >= 400 &&

@@ -29,6 +29,15 @@ import { rethrowDeadline } from './request-deadline';
 
 const SESSION_READS_API = '/api/orchestration/session-reads';
 
+/**
+ * The code on a handshake answer that means "try again later": a gateway or
+ * edge answering for a Station that is down, a timeout or a rate limit.
+ */
+export const STATION_NOT_ANSWERING = 'station_not_answering';
+const TRY_LATER_STATUSES = new Set([
+  408, 429, 502, 503, 504, 520, 521, 522, 523, 524, 530,
+]);
+
 /** The host does not serve the person-facing Session reads (it predates them). */
 export class SessionReadsUnsupportedError extends Error {
   constructor() {
@@ -184,7 +193,7 @@ async function read<T>(
  * One uncached handshake read. A transport failure or timeout throws as
  * itself, and a server-side or rate status (5xx, 408, 429) throws a
  * `StationHttpError` with that status: none of those says the host is too
- * old, and the caller decides whether to retry. Any other answer is the
+ * old. The ones that mean "try later" carry `STATION_NOT_ANSWERING`. Any other answer is the
  * host's: its handshake, or `undefined` when it has none (an older host
  * answers 404, or 200 without the flag).
  */
@@ -205,7 +214,10 @@ async function probeHandshake(
     await response.body?.cancel().catch(() => undefined);
     throw new StationHttpError(
       response.status,
-      'The Station is not answering yet.',
+      `The Station's handshake answered HTTP ${response.status}.`,
+      TRY_LATER_STATUSES.has(response.status)
+        ? { code: STATION_NOT_ANSWERING }
+        : {},
     );
   }
   if (!response.ok) {

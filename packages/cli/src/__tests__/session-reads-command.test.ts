@@ -320,7 +320,7 @@ describe('waitOnSession (the wait loop)', () => {
         expect(result).toMatchObject({
           outcome: 'observation-lost',
           exitCode: 2,
-          lastError: `wait call failed with HTTP ${status}`,
+          lastError: `wait call failed with HTTP ${status} (station_not_answering)`,
         });
         expect(result.calls).toBeGreaterThan(20);
       } finally {
@@ -365,7 +365,7 @@ describe('waitOnSession (the wait loop)', () => {
     ]);
     // Told once, not on every retry, in the route's own words for its limit.
     expect(notices).toEqual([
-      'Waiting for a free wait slot (Station is serving the most waits it allows at once. Wait again shortly).',
+      'Waiting for a free wait slot: Station is serving the most waits it allows at once.',
     ]);
   });
 
@@ -753,6 +753,58 @@ describe('the session reads over HTTP', () => {
       expect(handshakeScript).toEqual([]);
     },
   );
+
+  test('a handshake that fails with a plain 500 is reported as that, never as an older Station or retried', async () => {
+    handshakeScript = [
+      { status: 500, raw: 'boom' },
+      { status: 500, raw: 'boom' },
+    ];
+    await expect(run(['sessions', 'digest', 's-1'])).rejects.toThrow(
+      "The Station's handshake answered HTTP 500.",
+    );
+    expect(requests).toEqual([]);
+    handshakeScript = [
+      { status: 500, raw: 'boom' },
+      { status: 500, raw: 'boom' },
+    ];
+    const result = await waitOnSession({
+      apiBase,
+      sessionId: 'session-1',
+      until: 'idle',
+      timeoutMs: 600_000,
+    });
+    expect(result).toMatchObject({
+      outcome: 'observation-lost',
+      calls: 1,
+      lastError: 'wait call failed with HTTP 500',
+    });
+  });
+
+  test('a rate-limited handshake is waited out like a Station that is not answering', async () => {
+    handshakeScript = Array.from({ length: 200 }, () => ({
+      status: 429,
+      raw: 'slow down',
+    }));
+    let t = 0;
+    const result = await waitOnSession({
+      apiBase,
+      sessionId: 'session-1',
+      until: 'idle',
+      timeoutMs: 600_000,
+      deps: {
+        now: () => t,
+        sleep: async (ms) => {
+          t += ms;
+        },
+      },
+    });
+    expect(result).toMatchObject({
+      outcome: 'observation-lost',
+      lastError: 'wait call failed with HTTP 429 (station_not_answering)',
+    });
+    expect(result.calls).toBeGreaterThan(20);
+    expect(requests).toEqual([]);
+  });
 
   test('a Station that comes back between the two handshake reads is read normally', async () => {
     handshakeScript = [{ status: 503, raw: 'Service Unavailable' }];
