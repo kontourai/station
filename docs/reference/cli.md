@@ -1258,9 +1258,13 @@ running.
 
 Some conditions make the wait keep going rather than end:
 
-- **The Station stops answering**, as it does while restarting. The wait keeps
-  calling with its cursor for up to 60 seconds, so it still sees a turn that
-  the restart cut off.
+- **The Station stops answering**, as it does while restarting, or is not
+  answering yet when the wait starts. The wait keeps calling with its cursor
+  for up to 60 seconds, so it still sees a turn that the restart cut off. A
+  `turn-settled` wait cut off before its first answer has no cursor yet. If a
+  new turn is already running when it reconnects, it waits for that turn and
+  does not report the cut-off one. Pass `--after-cursor` from an earlier answer
+  to avoid this.
 - **Every wait slot is taken** (4 per person, 256 per Station). The wait waits
   for a free slot within its budget.
 

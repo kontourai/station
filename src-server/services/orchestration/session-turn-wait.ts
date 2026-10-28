@@ -113,6 +113,13 @@ export function evaluateSessionWait(
   readonly satisfied: boolean;
   readonly view: SessionWaitState;
   readonly interrupted?: SessionInterruptedTurn;
+  /**
+   * The sequence of the newest event that closed a turn, of any kind (a
+   * settlement, an unverified terminal, a recovery abort, an engine-opened
+   * turn's end), so a reader can tell whether `interrupted` is still the
+   * newest end.
+   */
+  readonly lastTurnEndSequence?: number;
 } {
   const events = ports.foldEvents(threadId);
   const head = Math.max(
@@ -124,6 +131,7 @@ export function evaluateSessionWait(
   let anchor: TurnIdentityAnchor | undefined;
   let settled: SessionSettledTurn | undefined;
   let interrupted: SessionInterruptedTurn | undefined;
+  let lastTurnEnd: number | undefined;
   for (const { sequence, event } of events) {
     const before = open;
     const nextAnchor = nextTurnIdentityAnchor(anchor, event);
@@ -189,6 +197,7 @@ export function evaluateSessionWait(
         outcome: SETTLE_OUTCOME[event.method] ?? 'completed',
       };
     }
+    if (before !== undefined && open === undefined) lastTurnEnd = sequence;
     if (event.method === 'turn.started' && !retainedStart)
       invocationId = event.invocationId;
     else if (open === undefined) invocationId = undefined;
@@ -205,6 +214,7 @@ export function evaluateSessionWait(
     satisfied: until === 'idle' ? !busy : settled !== undefined,
     view,
     ...(interrupted ? { interrupted } : {}),
+    ...(lastTurnEnd !== undefined ? { lastTurnEndSequence: lastTurnEnd } : {}),
   };
 }
 
@@ -301,16 +311,16 @@ export class SessionTurnWaiter {
       const read = evaluateSessionWait(this.ports, threadId, asked, after);
       const cut = read.interrupted;
       // The interruption counts only when it is the newest way a turn ended
-      // after the cursor: a turn that settled later answers for itself. With
-      // no cursor (`idle`, or the first look of `turn-settled`) "after the
-      // cursor" is the whole history, so it counts only while nothing runs:
-      // a newer running turn makes it history, not this wait's answer.
+      // after the cursor: any turn that ended later (settled or not, an
+      // engine-opened one included) makes it history. With no cursor
+      // (`idle`, or the first look of `turn-settled`) "after the cursor" is
+      // the whole history, so it counts only while nothing runs: a newer
+      // running turn makes it history too.
       if (
         !request.reportInterrupted ||
         !cut ||
         cut.sequence <= after ||
-        (read.view.settledTurn !== undefined &&
-          read.view.settledTurn.sequence > cut.sequence) ||
+        (read.lastTurnEndSequence ?? cut.sequence) > cut.sequence ||
         (asked === 'idle' && read.view.state !== 'idle')
       )
         return { satisfied: read.satisfied, view: read.view };

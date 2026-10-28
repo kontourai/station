@@ -13,10 +13,14 @@
  * `wait_capacity`, …) is a `StationHttpError` carrying its status and code.
  */
 
+import { PUBLIC_STATION_HANDSHAKE_PATH } from '@kontourai/station-contracts/environment-security';
 import { envelopeError } from './api-error-message';
 import { hasCapability } from './capability';
 import { type ClientRequestOptions, getJson } from './http';
-import { fetchPublicStationCapabilities } from './publicStationCapabilities';
+import {
+  fetchPublicStationCapabilities,
+  invalidatePublicStationCapabilities,
+} from './publicStationCapabilities';
 import { rethrowDeadline } from './request-deadline';
 
 const SESSION_READS_API = '/api/orchestration/session-reads';
@@ -142,13 +146,21 @@ async function read<T>(
   fallback: string,
   opts?: ClientRequestOptions,
 ): Promise<T> {
-  if (
-    !hasCapability(
-      await fetchPublicStationCapabilities(apiBase),
-      'sessionPersonReads',
-    )
-  )
+  const handshake = await fetchPublicStationCapabilities(apiBase);
+  if (!hasCapability(handshake, 'sessionPersonReads')) {
+    // No handshake at all also means the Station did not answer (it is down
+    // or restarting), which is not "too old". Forget that answer and ask once
+    // more, so a transport failure surfaces as one and the caller can retry.
+    if (handshake === undefined) {
+      invalidatePublicStationCapabilities(apiBase);
+      await getJson(`${apiBase}${PUBLIC_STATION_HANDSHAKE_PATH}`, {
+        authentication: 'omit',
+        timeoutMs: 5000,
+        ...(opts?.signal ? { signal: opts.signal } : {}),
+      });
+    }
     throw new SessionReadsUnsupportedError();
+  }
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query))
     if (value !== undefined) params.set(key, String(value));

@@ -2048,6 +2048,27 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
       }
     });
 
+    test('the operator still reads their own Session whose folder is gone; an agent does not', async () => {
+      const { personRequest, startSession, tool } = await setup();
+      // A global Session whose recorded folder no longer exists: its scope
+      // cannot be read, so the agent rule refuses it.
+      startSession('a-gone', A, undefined, {
+        worktree: {
+          path: '/nonexistent/station-person-reads-gone',
+          branch: 'gone',
+        },
+      });
+      const listed = await personRequest(`${PERSON}/activity?limit=50`);
+      expect(ids(listed.body)).toContain('a-gone');
+      expect((await personRequest(`${PERSON}/a-gone/digest`)).status).toBe(200);
+      const agent = await tool(bearer('g-caller'), 'list_project_activity', {
+        limit: 50,
+      });
+      // The control: the scope really is unreadable, not merely global.
+      expect(ids(agent.body)).toContain('a-global');
+      expect(ids(agent.body)).not.toContain('a-gone');
+    });
+
     test('off, the preview refuses both leaves with its typed answer', async () => {
       const { personRequest } = await setup();
       personReadsPreviewOn = false;

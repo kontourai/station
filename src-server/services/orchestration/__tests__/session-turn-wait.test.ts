@@ -611,6 +611,20 @@ describe('a restart-interrupted turn, for a wait that asks (#3427)', () => {
         }),
       recoveryAbort: (turnId: string) =>
         push({ method: 'turn.aborted', turnId, recoveryTerminal: true }),
+      /** A turn the engine opened on its own, and a restart's close of it. */
+      engineTurn: (turnId: string) => {
+        push({
+          method: 'turn.started',
+          turnId,
+          metadata: { trigger: 'provider' },
+        });
+        push({
+          method: 'turn.aborted',
+          turnId,
+          recoveryTerminal: true,
+          metadata: { trigger: 'provider' },
+        });
+      },
     };
   }
 
@@ -736,6 +750,25 @@ describe('a restart-interrupted turn, for a wait that asks (#3427)', () => {
       state: 'running',
       interruptedTurn: { turnId: 'turn-1', sequence: 2 },
     });
+  });
+
+  test('a later engine-opened turn’s end makes an older interruption history', async () => {
+    const session = anchoredSession();
+    session.start('turn-1');
+    session.recoveryAbort('turn-1');
+    session.engineTurn('turn-2');
+    const waiter = new SessionTurnWaiter(session.ports);
+    for (const until of ['idle', 'turn-settled'] as const) {
+      const outcome = await waiter.wait({
+        callerSessionId: 'person:p',
+        threadId: 't1',
+        until,
+        timeoutMs: 1000,
+        reportInterrupted: true,
+      });
+      expect(outcome).toMatchObject({ kind: 'settled', state: 'idle' });
+      expect(outcome).not.toHaveProperty('interruptedTurn');
+    }
   });
 
   test('an interruption at or before the cursor is not this wait’s', async () => {

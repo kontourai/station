@@ -271,8 +271,31 @@ describe('waitOnSession (the wait loop)', () => {
     expect(time.now()).toBeLessThan(120_000);
   });
 
+  test('a Station that is down when the wait starts is waited for, never called too old', async () => {
+    // A port that refuses: listen, note it, close.
+    const probe = createServer();
+    await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
+    const port = (probe.address() as AddressInfo).port;
+    await new Promise<void>((resolve) => probe.close(() => resolve()));
+    const time = fakeTime();
+    const result = await waitOnSession({
+      apiBase: `http://127.0.0.1:${port}`,
+      sessionId: 'session-1',
+      until: 'idle',
+      timeoutMs: 600_000,
+      deps: time,
+    });
+    expect(result).toMatchObject({
+      outcome: 'observation-lost',
+      exitCode: 2,
+      lastError: 'the Station could not be reached',
+    });
+    expect(result.calls).toBeGreaterThan(20);
+  });
+
   test('a capacity refusal waits for a slot within the budget; nothing was lost', async () => {
     const time = fakeTime();
+    const notices: string[] = [];
     const replies: Array<() => unknown> = [
       () => {
         throw new StationHttpError(429, 'full', { code: 'wait_capacity' });
@@ -292,12 +315,17 @@ describe('waitOnSession (the wait loop)', () => {
       sessionId: 'session-1',
       until: 'turn-settled',
       timeoutMs: 600_000,
+      onNotice: (message) => notices.push(message),
       deps: { ...time, call: async () => replies.shift()!() as never },
     });
     expect([result.outcome, result.exitCode, result.calls]).toEqual([
       'completed',
       0,
       3,
+    ]);
+    // Told once, not on every retry.
+    expect(notices).toEqual([
+      'Every wait slot is taken (at most 4 per person); waiting for one to free up.',
     ]);
   });
 

@@ -58,6 +58,8 @@ const WAIT_CALL_SLACK_MS = 15_000;
 const RECONNECT_WINDOW_MS = 60_000;
 /** The pause before calling again after a capacity refusal or a lost call. */
 const RETRY_DELAY_MS = 2_000;
+/** The route's per-person wait limit, for the notice only. */
+const WAIT_SLOTS_PER_PERSON = 4;
 export const SESSION_WAIT_DEFAULT_TIMEOUT_SECONDS = 3600;
 export const SESSION_WAIT_MAX_TIMEOUT_SECONDS = 86_400;
 
@@ -186,6 +188,8 @@ export async function waitOnSession(input: {
   afterEventCursor?: number;
   timeoutMs: number;
   signal?: AbortSignal;
+  /** A line for the person while the wait keeps going without an answer. */
+  onNotice?: (message: string) => void;
   deps?: {
     now?: () => number;
     /** Resolves after `ms`, or as soon as `signal` aborts. */
@@ -217,6 +221,7 @@ export async function waitOnSession(input: {
   let calls = 0;
   /** When calls started failing to reach the Station, if they are failing. */
   let unreachableSince: number | undefined;
+  let toldCapacity = false;
   const finish = (
     outcome: SessionWaitOutcome,
     lastError?: string,
@@ -267,6 +272,12 @@ export async function waitOnSession(input: {
       // Every wait slot is taken (this person's, or Station's): nothing was
       // lost, so wait for one within the budget.
       if (isCapacityRefusal(error)) {
+        if (!toldCapacity) {
+          toldCapacity = true;
+          input.onNotice?.(
+            `Every wait slot is taken (at most ${WAIT_SLOTS_PER_PERSON} per person); waiting for one to free up.`,
+          );
+        }
         await sleep(Math.min(RETRY_DELAY_MS, remaining), input.signal);
         continue;
       }
@@ -389,6 +400,12 @@ export async function runSessionsWait(
       ...(afterEventCursor !== undefined ? { afterEventCursor } : {}),
       timeoutMs,
       signal: controller.signal,
+      // Progress goes to stderr, and not at all under --json.
+      ...(jsonMode
+        ? {}
+        : {
+            onNotice: (message: string) => process.stderr.write(`${message}\n`),
+          }),
     });
   } finally {
     process.removeListener('SIGINT', onSigint);
