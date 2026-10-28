@@ -510,6 +510,24 @@ describe('the picker project line draws one project mark (#4266)', () => {
     expect(line.querySelector('.project-icon--icon')?.textContent).toBe('🚀');
   });
 
+  it('an unsent draft is a pencil on the picker project line, not a chip', () => {
+    const base = rowFor();
+    chatDraftsStore.set('picker-draft', 'half a thought');
+    try {
+      const { container } = renderRow(
+        { ...base, item: { ...base.item, chatSessionId: 'picker-draft' } },
+        { actionsInDetails: true, chrome: 'touch' },
+      );
+      const line = container.querySelector('.inbox-row__project-context')!;
+      expect(
+        line.querySelector('[data-testid="inbox-row-draft-marker"]'),
+      ).not.toBeNull();
+      expect(container.querySelector('.inbox-row__chips')).toBeNull();
+    } finally {
+      chatDraftsStore.clear('picker-draft');
+    }
+  });
+
   it('the agent is named in visible text beside its marks', () => {
     const { container } = renderRow(rowFor(), {
       actionsInDetails: true,
