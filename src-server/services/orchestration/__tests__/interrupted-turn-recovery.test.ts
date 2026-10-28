@@ -1657,6 +1657,31 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
       reason: TURN_INTERRUPTED_MESSAGE,
       recoveryTerminal: true,
     });
+    // The banner recovery writes after the abort. As the thread's latest
+    // lifecycle event it takes the lifecycle slot of the session projection,
+    // so the abort must come from the turn-scoped terminal lookup.
+    eventStore.appendEvent({
+      eventId: 'turn-interrupted:legacy',
+      provider: 'codex',
+      threadId,
+      createdAt: '2026-08-16T00:00:05.000Z',
+      method: 'session.state-changed',
+      sessionId: threadId,
+      from: 'running',
+      to: 'awaiting-approval',
+      reason: TURN_INTERRUPTED_MESSAGE,
+      sessionState: 'needs_input',
+      transitionReason: 'runtime_exit',
+      transitionSource: 'system_recovery',
+      interruptedTurnBoundary: {
+        boundaryId: 'legacy',
+        priorState: 'accepted',
+        providerTurnId: 'turn-1',
+        ownerId: 'dead-owner',
+        boundaryCreatedAt: '2026-08-16T00:00:00.800Z',
+        boundaryUpdatedAt: '2026-08-16T00:00:02.500Z',
+      },
+    } as CanonicalRuntimeEvent);
     const service = new OrchestrationService({
       adapterRegistry: createRegistry(),
       eventBus: new EventBus(),
