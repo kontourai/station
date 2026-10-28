@@ -3,6 +3,7 @@ import {
   deleteAgentRaw,
   deleteConversation,
   fetchAgentsBare,
+  forkConversation,
   getConversationMessages,
   listAgentConversations,
   updateAgentRaw,
@@ -269,6 +270,54 @@ export function registerAgentTools(server: StationControlToolRegistry) {
         await api(`/api/conversations/${encodeURIComponent(id)}/read${search}`),
       );
     },
+  );
+
+  server.tool(
+    'fork_conversation',
+    [
+      'Fork a conversation into a new one that starts from its history up to a completed assistant turn, as the Station UI fork does. The source is unchanged.',
+      "The source must be your own conversation or one in your session's Project (or global space). The fork lands in targetProjectSlug, else the source's Project, and only where you could start a Session yourself; anything else is refused as out of scope.",
+      'Returns the new conversationId and the seed its first turn replays.',
+    ].join(' '),
+    {
+      agent: z.string().min(1).describe('The Agent slug that owns the source'),
+      conversationId: z.string().min(1).max(256),
+      targetAgent: z
+        .string()
+        .min(1)
+        .optional()
+        .describe('The Agent for the fork; defaults to agent'),
+      targetProjectSlug: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("The fork's Project; defaults to the source's"),
+      branchPointTurnId: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          'A completed assistant turn id; defaults to the latest completed turn',
+        ),
+      idempotencyKey: z
+        .string()
+        .min(1)
+        .max(128)
+        .optional()
+        .describe('Retrying with the same key returns the same fork'),
+    },
+    async ({ agent, conversationId, targetAgent, ...options }) =>
+      jsonToolResult(
+        await toAgentEnvelope(
+          forkConversation(
+            controlApiBase(),
+            agent,
+            conversationId,
+            targetAgent ?? agent,
+            { ...controlRequestOptions(), ...options },
+          ),
+        ),
+      ),
   );
 
   server.tool(
