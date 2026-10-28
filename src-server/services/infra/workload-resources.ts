@@ -221,11 +221,11 @@ function limitsFrom(budget: ResolvedWorkloadMemoryBudget): WorkloadLimits {
 
 /**
  * The workload slice's CPU weight. The slice sits directly under the user
- * manager, a sibling of the `app.slice` that holds the server's unit, so
- * under contention that subtree (default weight 100) gets 100/125 = 80% of
- * the CPU the two compete for. Weights are work-conserving: an idle control
- * plane leaves the CPU to workloads. IOWeight is not set: a user manager is
- * normally delegated only the cpu, memory and pids controllers.
+ * manager, a sibling of the `app.slice` that holds the server's unit, so when
+ * just those two contend, that subtree (default weight 100) gets 100/125 =
+ * 80% of the CPU. Weights are work-conserving: an idle control plane leaves
+ * the CPU to workloads. IOWeight is not set: a user manager is normally
+ * delegated only the cpu, memory and pids controllers.
  */
 const WORKLOAD_SLICE_CPU_WEIGHT = 25;
 
@@ -249,31 +249,32 @@ const CONTROL_PLANE_MEMORY_LOW_BYTES = 1536 * MIB;
 const CONTROL_PLANE_MEMORY_LOW_HOST_DIVISOR = 8;
 
 /**
- * Properties for the server's own unit. Resource pressure should select
- * workloads before the control plane; this is protection under the host
+ * Properties for the server's own unit. This is protection under the host
  * policy, not a global OOM guarantee.
  *
- * - `MemorySwapMax=0`: the server's anonymous memory stays resident. A swapped
- *   page faulted back in on the event loop stalls every request, and this
- *   limit holds whatever the ancestors set, unlike `MemoryLow`.
+ * - `MemorySwapMax=0`, only where the whole working set fits in 1/8 of host
+ *   RAM (12 GiB and up): the server's anonymous memory stays resident, since
+ *   a swapped page faulted back in on the event loop stalls every request.
+ *   Unlike `MemoryLow` this holds whatever the ancestors set, and it has no
+ *   size bound of its own, so a smaller host keeps swap (`infinity` replaces
+ *   any earlier runtime value). File-backed pages stay reclaimable either way.
  * - `MemoryLow`: the working set above, at most 1/8 of host RAM so the
- *   protection cannot starve a small host. The kernel caps a cgroup's
- *   effective protection by its ancestors', and a user manager cannot set
- *   `user.slice` or `user@.service`, so it takes effect only where the host
- *   protects those ancestors.
- * - `ManagedOOMPreference=avoid`: systemd-oomd picks other candidates first.
+ *   protection cannot starve a small host. Under host-wide reclaim the kernel
+ *   caps a cgroup's effective protection by its ancestors', and a user
+ *   manager cannot set `user.slice` or `user@.service`, so there it takes
+ *   effect only where the host protects those ancestors.
+ * - `ManagedOOMPreference=avoid`: systemd-oomd picks other candidates first,
+ *   but honours that for a user unit only when it acts on pressure at or
+ *   below the user manager.
  */
 function controlPlaneProperties(hostMemoryBytes: number): string[] {
-  const hostShareMiB = Math.floor(
-    hostMemoryBytes / MIB / CONTROL_PLANE_MEMORY_LOW_HOST_DIVISOR,
-  );
-  const memoryLow = Math.min(
-    CONTROL_PLANE_MEMORY_LOW_BYTES,
-    hostShareMiB * MIB,
-  );
+  const hostShareBytes =
+    Math.floor(hostMemoryBytes / MIB / CONTROL_PLANE_MEMORY_LOW_HOST_DIVISOR) *
+    MIB;
+  const fits = hostShareBytes >= CONTROL_PLANE_MEMORY_LOW_BYTES;
   return [
-    `MemoryLow=${memoryLow}`,
-    'MemorySwapMax=0',
+    `MemoryLow=${fits ? CONTROL_PLANE_MEMORY_LOW_BYTES : hostShareBytes}`,
+    `MemorySwapMax=${fits ? 0 : 'infinity'}`,
     'ManagedOOMPreference=avoid',
   ];
 }

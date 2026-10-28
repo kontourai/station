@@ -428,7 +428,25 @@ describe('workload manager budgets (fake systemd manager)', () => {
     const { calls } = await start({ hostMemoryBytes: 2 * GIB });
     const service = setPropertyFor(calls, 'station-test.service');
     expect(service).toContain(`MemoryLow=${256 * MIB}`);
-    expect(service).toContain('MemorySwapMax=0');
+    // A 1.1 GiB server pinned in RAM would be over half this host: it swaps.
+    expect(service).toContain('MemorySwapMax=infinity');
+  });
+
+  test('the swap ban starts where the working set fits in 1/8 of RAM', async () => {
+    // 12 GiB / 8 = 1536 MiB, exactly the working set.
+    const at = await start({ hostMemoryBytes: 12 * GIB });
+    expect(setPropertyFor(at.calls, 'station-test.service')).toEqual(
+      expect.arrayContaining([`MemoryLow=${1536 * MIB}`, 'MemorySwapMax=0']),
+    );
+    __workloadTestHooks.reset();
+    // One MiB less: floor(12287 / 8) = 1535 MiB, below the working set.
+    const below = await start({ hostMemoryBytes: 12 * GIB - MIB });
+    expect(setPropertyFor(below.calls, 'station-test.service')).toEqual(
+      expect.arrayContaining([
+        `MemoryLow=${1535 * MIB}`,
+        'MemorySwapMax=infinity',
+      ]),
+    );
   });
 
   test('a host size that is not whole MiB rounds the protection down', async () => {

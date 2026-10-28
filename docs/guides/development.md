@@ -246,21 +246,27 @@ can kill any workload in the slice, including a sibling engine.
 Under host pressure caused by those workloads, the server's own unit is
 favoured:
 
-- `MemorySwapMax=0` keeps the server's anonymous memory resident. A swapped
-  page faulted back in on the event loop stalls every request. This limit
-  holds whatever the unit's ancestors set.
 - `MemoryLow` asks for 1536 MiB, the measured working set of a busy server
   with headroom, but never more than 1/8 of physical RAM: 1536 MiB on a 16 GiB
-  host, 512 MiB on 4 GiB, 256 MiB on 2 GiB. The kernel caps a cgroup's
-  effective protection by its ancestors', and a user manager cannot set
-  `user.slice` or `user@.service`. So this protection takes effect only where
-  the host protects those ancestors; by default they have none.
+  host, 512 MiB on 4 GiB, 256 MiB on 2 GiB. Under host-wide reclaim the kernel
+  caps a cgroup's effective protection by its ancestors', and a user manager
+  cannot set `user.slice` or `user@.service`. So there this protection takes
+  effect only where the host protects those ancestors; by default they have
+  none.
+- `MemorySwapMax=0` keeps the server's anonymous memory resident on hosts
+  where the whole 1536 MiB fits in 1/8 of RAM (12 GiB and up). A swapped page
+  faulted back in on the event loop stalls every request. This limit holds
+  whatever the unit's ancestors set, but nothing else bounds it, so smaller
+  hosts get `MemorySwapMax=infinity` and keep swapping the server. File-backed
+  pages such as the Node.js binary stay reclaimable either way.
 - `ManagedOOMPreference=avoid` makes systemd-oomd pick other candidates first.
+  For a user unit, systemd-oomd honours this only when it acts on pressure at
+  or below the user manager, not on swap usage or on the whole host.
 - The workload slice has `CPUWeight=25`. It sits beside the `app.slice` that
-  holds the server's unit, so under CPU contention that subtree gets 80% of
-  the contended CPU. When the server is idle, workloads keep the whole quota.
-  There is no `IOWeight`: a user manager is normally delegated only the cpu,
-  memory and pids controllers.
+  holds the server's unit, so when just those two contend for CPU, that
+  subtree gets 80% of it. When the server is idle, workloads keep the whole
+  quota. There is no `IOWeight`: a user manager is normally delegated only the
+  cpu, memory and pids controllers.
 
 None of this guarantees survival under host-wide exhaustion or an ancestor
 policy that kills the entire user session.
