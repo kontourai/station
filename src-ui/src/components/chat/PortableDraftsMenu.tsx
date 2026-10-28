@@ -1,14 +1,14 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useId, useState, useSyncExternalStore } from 'react';
 import {
   chatDraftsStore,
   type PortableDraft,
 } from '../../contexts/chat-drafts-store';
 import type { FileAttachment } from '../../types';
 import type { SavedAnswerQuote } from '../../utils/answer-quotes';
-import {
-  ResponsiveDialogHeader,
-  ResponsiveDialogSurface,
-} from '../ResponsiveDialogSurface';
+import { Button } from '../Button';
+import { Dialog } from '../Dialog';
+import { Empty } from '../state';
+import './PortableDraftsMenu.css';
 import { ComposerIconAction } from './ComposerIconAction';
 import { composerDisplayValue } from './composer-mentions';
 
@@ -34,7 +34,9 @@ export function PortableDraftsMenu({
     chatDraftsStore.getPortableSnapshot,
     chatDraftsStore.getPortableSnapshot,
   );
+  const nameId = useId();
   const [name, setName] = useState('');
+  const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const close = () => onOpenChange(false);
 
@@ -60,20 +62,16 @@ export function PortableDraftsMenu({
         </svg>
       </ComposerIconAction>
       {open && (
-        <ResponsiveDialogSurface
-          layer="popover"
-          ariaLabel="Portable drafts"
+        <Dialog
+          title="Saved drafts"
+          subtitle="Keep a prompt to use in another chat on this device."
+          closeLabel="Close saved drafts"
           onClose={close}
           historyMode="entry"
-          overlayClassName="composer-popover-overlay composer-popover-overlay--end"
-          panelClassName="composer-popover-panel"
+          panelClassName="portable-drafts-menu"
         >
-          <ResponsiveDialogHeader
-            title="Portable drafts"
-            closeLabel="Close portable drafts"
-            onClose={close}
-          />
           <form
+            className="portable-drafts-menu__form"
             onSubmit={(event) => {
               event.preventDefault();
               if (
@@ -85,19 +83,27 @@ export function PortableDraftsMenu({
               setSaving(true);
               void chatDraftsStore
                 .stash(name, input, attachments, undefined, quotes)
-                .then(() => setName(''))
+                .then(() => {
+                  setName('');
+                  setSaved(true);
+                })
                 .finally(() => setSaving(false));
             }}
           >
-            <label>
-              Draft name
-              <input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="Name this prompt"
-              />
+            <label htmlFor={nameId}>
+              Draft name <span>(optional)</span>
             </label>
-            <button
+            <input
+              id={nameId}
+              value={name}
+              onChange={(event) => {
+                setName(event.target.value);
+                setSaved(false);
+              }}
+              placeholder="Use the prompt text as the name"
+            />
+            <Button
+              variant="primary"
               type="submit"
               disabled={
                 saving ||
@@ -106,13 +112,27 @@ export function PortableDraftsMenu({
                   quotes.length === 0)
               }
             >
-              {saving ? 'Stashing…' : 'Stash current prompt'}
-            </button>
+              {saving ? 'Saving…' : 'Save current prompt'}
+            </Button>
+            <p className="portable-drafts-menu__hint" role="status">
+              {saved
+                ? 'Draft saved. Your current message is still in the composer.'
+                : 'Saves a copy of your message, attachments, and quoted context.'}
+            </p>
           </form>
+          <h3 className="portable-drafts-menu__heading">Saved prompts</h3>
+          {drafts.length === 0 && (
+            <Empty
+              label="Save prompts for later"
+              description="Write a message in the composer, then save it here to reuse later. Drafts stay on this device."
+            />
+          )}
           <ul className="portable-drafts-menu__list" aria-label="Saved drafts">
             {drafts.map((draft) => (
               <li key={draft.id}>
-                <button
+                <Button
+                  variant="ghost"
+                  className="portable-drafts-menu__draft"
                   type="button"
                   onClick={() => {
                     onRestore(draft);
@@ -134,11 +154,11 @@ export function PortableDraftsMenu({
                       Unreadable: {draft.unreadableImageNames.join(', ')}
                     </small>
                   )}
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
-        </ResponsiveDialogSurface>
+        </Dialog>
       )}
     </>
   );

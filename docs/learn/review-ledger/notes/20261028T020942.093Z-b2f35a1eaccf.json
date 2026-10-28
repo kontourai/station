@@ -1,0 +1,7 @@
+{
+  "revision": "0d736803af500396d18f4cf17d72bc34ab422e83",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"ui-copy-length now also counts new *Error messages and excludes camelCase aria props; the Product copy section's claims (140 chars / two sentences, --update) still hold; no prose change.","inputs":["src-ui/AGENTS.md","scripts/ui-copy-length.mjs"]}
+  ]
+}

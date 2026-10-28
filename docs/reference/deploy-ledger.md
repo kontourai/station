@@ -28,6 +28,8 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-28T13:44:59Z | nightly-npm | 0.11.0-nightly.2492.40697396751 | `aacdba4` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/40697396751) |
+| 2026-10-28T12:46:33Z | nightly-npm | 0.11.0-nightly.2492.40689076116 | `a8f9cc4` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/40689076116) |
 | 2026-10-28T01:43:33Z | nightly-desktop | 0.1.11-nightly.2492 | `b43bf49` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40610686604) |
 | 2026-10-28T01:43:30Z | nightly-android | 0.1.11-nightly.2492 | `b43bf49` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40610686604) |
 | 2026-10-28T00:56:51Z | nightly-npm | 0.11.0-nightly.2492.40610686604 | `b43bf49` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/40610686604) |
@@ -367,6 +369,48 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-28T13:44:59Z · nightly-npm · 0.11.0-nightly.2492.40697396751
+
+- Ship SHA: `aacdba448bc461868cfcd149884185598b47e6ec`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.2492.40697396751 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `a8f9cc4` ([full sha](https://github.com/kontourai/station/commit/a8f9cc4673812e0782c14882c1b081f023df80ad)):
+
+_No user-visible changes recorded for this slice._
+
+## 2026-10-28T12:46:33Z · nightly-npm · 0.11.0-nightly.2492.40689076116
+
+- Ship SHA: `a8f9cc4673812e0782c14882c1b081f023df80ad`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.2492.40689076116 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `b43bf49` ([full sha](https://github.com/kontourai/station/commit/b43bf4983801c9450b11b4f27457a64107bbd6e5)):
+
+**Features**
+
+- [#4263](https://github.com/kontourai/station/pull/4263) feat(ui): say less — Updates dialog redesign, app-wide copy pass, ui-copy-length ratchet
+- [#4264](https://github.com/kontourai/station/pull/4264) feat(chat): show agent-produced host images behind a Feature Preview
+- [#4262](https://github.com/kontourai/station/pull/4262) feat(ui): replace the mobile coding rail with a tool picker
+- [#4259](https://github.com/kontourai/station/pull/4259) feat(terminal): deliver bounded same-origin server transport
+
+**Fixes**
+
+- [#4268](https://github.com/kontourai/station/pull/4268) fix(orchestration): unstick chats whose turn a restart interrupted
+- [#4267](https://github.com/kontourai/station/pull/4267) fix(ci): repair main qualification inventory and exclusive bootstrap
+- [#4265](https://github.com/kontourai/station/pull/4265) fix(ui): give saved chat drafts a responsive dialog
+- [#4260](https://github.com/kontourai/station/pull/4260) fix(ui): stop the layout error flicker and refetch loop when the server is unreachable
+
+**Other**
+
+- [#4261](https://github.com/kontourai/station/pull/4261) test(connect): include telemetry management in full scope fixture
 
 ## 2026-10-28T01:43:33Z · nightly-desktop · 0.1.11-nightly.2492
 

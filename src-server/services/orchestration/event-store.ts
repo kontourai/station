@@ -8576,7 +8576,16 @@ export class EventStore {
          FROM orchestration_events
          WHERE thread_id = ? AND turn_id = ?
            AND ${completionOnly ? "method = 'turn.completed'" : "method IN ('turn.completed', 'turn.aborted')"}
-           ${invocationId === undefined ? '' : "AND json_extract(payload, '$.invocationId') = ?"}
+           ${
+             invocationId === undefined
+               ? ''
+               : // An invocationless recovery abort closes the turn too
+                 // (session-lifecycle-service.ts's acceptsTurnTerminalEvent).
+                 `AND (json_extract(payload, '$.invocationId') = ?
+                   OR (method = 'turn.aborted'
+                     AND json_extract(payload, '$.invocationId') IS NULL
+                     AND json_extract(payload, '$.recoveryTerminal') = 1))`
+           }
          ORDER BY sequence DESC
          LIMIT 1`,
       )
@@ -8661,6 +8670,39 @@ export class EventStore {
       )
       .all(threadId, sinceCreatedAt, limit)
       .map((row) => this.mapEventRow(row));
+  }
+
+  /**
+   * The oldest and newest dispatch `turn.started` (not a steer) of one turn
+   * at or after `sinceCreatedAt`. Boot recovery compares their invocations
+   * to tell a later dispatch that reused a native turn id from the dead turn
+   * itself. Two single-row reads with no page bound to overflow; each walks
+   * the turn's rows, which only boot recovery pays.
+   */
+  dispatchStartsOfTurnSince(
+    threadId: string,
+    turnId: string,
+    sinceCreatedAt: string,
+  ):
+    | { oldest: PersistedRuntimeEvent; newest: PersistedRuntimeEvent }
+    | undefined {
+    const read = (order: 'ASC' | 'DESC') =>
+      this.db
+        .prepare(
+          `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
+           FROM orchestration_events
+           WHERE thread_id = ? AND turn_id = ? AND method = 'turn.started'
+             AND created_at >= ?
+             AND json_extract(payload, '$.inputKind') IS NOT 'steer'
+           ORDER BY sequence ${order}
+           LIMIT 1`,
+        )
+        .get(threadId, turnId, sinceCreatedAt);
+    const oldest = read('ASC');
+    const newest = read('DESC');
+    return oldest && newest
+      ? { oldest: this.mapEventRow(oldest), newest: this.mapEventRow(newest) }
+      : undefined;
   }
 
   private listRequestSettlementFacts(
@@ -9172,7 +9214,8 @@ export class EventStore {
                ROW_NUMBER() OVER (PARTITION BY requested.thread, requested.native, requested.invocation ORDER BY sequence ${order}) AS rn
              FROM orchestration_events AS event JOIN requested
                ON event.thread_id = requested.thread AND (
-                 (event.turn_id = requested.native AND (requested.invocation IS NULL OR json_extract(event.payload, '$.invocationId') = requested.invocation))
+                 (event.turn_id = requested.native AND (requested.invocation IS NULL OR json_extract(event.payload, '$.invocationId') = requested.invocation
+                   OR (event.method = 'turn.aborted' AND json_extract(event.payload, '$.invocationId') IS NULL AND json_extract(event.payload, '$.recoveryTerminal') = 1)))
                  ${includeSessionErrors ? "OR (event.turn_id IS NULL AND json_extract(event.payload, '$.invocationId') IS NULL)" : ''}
                )
              WHERE ${methodFilter}
