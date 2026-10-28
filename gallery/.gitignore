@@ -1,0 +1,4 @@
+# Generated screenshot gallery — contents are build artifacts, not source.
+# Keep this rule file so the dir + ignore travel with the repo.
+*
+!.gitignore
