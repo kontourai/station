@@ -22,14 +22,12 @@ import { GateTestAdapter } from '../../../__test-utils__/orchestration-gate-test
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FakeAcpProcess } from '../../../providers/__tests__/fake-acp-process.js';
 import type {
+  ProviderAdapterShape,
   ProviderSendTurnInput,
   ProviderTurnStartResult,
 } from '../../../providers/adapter-shape.js';
 import { AcpAdapter } from '../../../providers/adapters/acp-adapter.js';
-import type {
-  IProviderAdapterRegistry,
-  ProviderAdapterShape,
-} from '../../../providers/provider-interfaces.js';
+import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import type { ACPProcess } from '../../acp/acp-process.js';
 import { NotificationService } from '../../notifications/notification-service.js';
 import { wireCoordinatorWakes } from '../coordinator-session.js';

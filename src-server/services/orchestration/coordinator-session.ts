@@ -726,6 +726,31 @@ export class CoordinatorWakeDelivery {
 }
 
 /**
+ * The fields of a NOTIFICATION_DELIVERED frame the wake reads, or undefined
+ * when they are not there. The frame is the public notification as JSON.
+ */
+function deliveredNotificationOf(
+  data: Record<string, unknown> | undefined,
+): Parameters<typeof coordinatorAttentionOf>[0] | undefined {
+  if (
+    typeof data?.id !== 'string' ||
+    typeof data.category !== 'string' ||
+    typeof data.title !== 'string'
+  )
+    return undefined;
+  const metadata = data.metadata;
+  return {
+    id: data.id,
+    category: data.category,
+    title: data.title,
+    metadata:
+      metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+        ? (metadata as Record<string, unknown>)
+        : {},
+  };
+}
+
+/**
  * The production wiring: one EventBus listener for NOTIFICATION_DELIVERED,
  * the inbox's submit, and the conversation and delegation reads. Kept here
  * so the integration test drives exactly what the runtime runs. Never throws
@@ -761,7 +786,8 @@ export function wireCoordinatorWakes(deps: {
   const unsubscribe = deps.eventBus.subscribe((frame) => {
     if (frame.event !== SERVER_EVENTS.NOTIFICATION_DELIVERED) return;
     try {
-      delivery.observeNotification(frame.data as unknown as Notification);
+      const notification = deliveredNotificationOf(frame.data);
+      if (notification) delivery.observeNotification(notification);
     } catch (error) {
       deps.logger.warn('coordinator wake could not read a notification', {
         error: error instanceof Error ? error.message : String(error),

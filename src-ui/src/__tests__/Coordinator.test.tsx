@@ -154,7 +154,7 @@ describe('chat More-menu coordinator rows', () => {
     expect(result.current[0]!.label).toBe(
       `Make this ${COORDINATOR_PRODUCT_NAME}`,
     );
-    result.current[0]!.onSelect();
+    result.current[0]!.onSelect(document.createElement('button'));
     await waitFor(() =>
       expect(result.current[0]?.label).toBe(
         `Stop using as ${COORDINATOR_PRODUCT_NAME}`,
@@ -178,7 +178,7 @@ describe('chat More-menu coordinator rows', () => {
         `Make this ${COORDINATOR_PRODUCT_NAME} instead`,
       ),
     );
-    result.current[0]!.onSelect();
+    result.current[0]!.onSelect(document.createElement('button'));
     await waitFor(() =>
       expect(calls.find((call) => call.method === 'PUT')?.body).toEqual({
         conversationId: 'chat-new',
