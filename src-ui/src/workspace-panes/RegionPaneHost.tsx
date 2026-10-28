@@ -396,7 +396,7 @@ function RegionPaneUnavailable({
       <Empty
         variant="compact"
         label={`${title} is not available in this dock`}
-        description="Not available in this Project: it was opened for another one, where it still works, or Station no longer remembers what it showed. Removing it closes this tab. Open it again from the chat that linked it."
+        description="It belongs to another Project or is no longer known. Reopen it from the chat that linked it."
         action={<RemoveRegionPaneButton onRemove={onRemove} />}
       />
     </div>

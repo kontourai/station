@@ -1,3 +1,4 @@
+import { chatHostImageMapFromEvent } from '@kontourai/station-contracts/chat-host-images';
 import type {
   InputRequestOutcome,
   InputRequestRecord,
@@ -560,4 +561,33 @@ export function settleInputRequestRecordPart(
   activeChatsStore.updateChat(event.threadId, {
     streamingMessage: { ...chat.streamingMessage, contentParts: next },
   });
+}
+
+/**
+ * chat-host-images: the images a settled turn's reply named, onto that
+ * turn's committed assistant row. The event follows the turn's terminal, so
+ * the row is normally committed by now; a row this client never received
+ * (another device's history page) gets it from the durable projection.
+ */
+export function handleHostImagesEvent(
+  event: Extract<OrchestrationEvent, { method: 'content.host-images' }>,
+) {
+  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  if (!chat) return;
+  const messages = chat.messages ?? [];
+  const index = committedMessageIndexForTurn(messages, event.turnId);
+  if (index < 0) return;
+  const next = chatHostImageMapFromEvent(event);
+  const prior = messages[index].hostImages;
+  const nextMessages = [...messages];
+  nextMessages[index] = {
+    ...messages[index],
+    hostImages: prior
+      ? {
+          images: { ...prior.images, ...next.images },
+          refused: { ...prior.refused, ...next.refused },
+        }
+      : next,
+  };
+  activeChatsStore.updateChat(event.threadId, { messages: nextMessages });
 }

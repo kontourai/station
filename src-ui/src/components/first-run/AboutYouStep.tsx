@@ -151,7 +151,7 @@ export function AboutYouStep({
           role="alert"
           data-testid="first-run-profile-error"
         >
-          {error} Nothing was saved, so Station will add nothing to your chats.
+          {error} Nothing was saved.
         </p>
       ) : null}
 

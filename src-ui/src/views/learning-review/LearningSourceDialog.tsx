@@ -159,7 +159,7 @@ export function LearningSourceDialog({
           <ErrorState
             variant="compact"
             title="Source inspection is restricted"
-            description="The source is not disclosed. On a personal Station, open the local launch link on the machine that owns the store, then select the record again. Paired connections and operator API credentials do not grant this access. Hosted Stations are not supported. If the store changed, close this inspector and reload Memory before selecting its current record."
+            description="On a personal Station, open the local launch link on the machine that owns the store, then select the record again. Hosted Stations aren't supported."
           />
         ) : query.data ? (
           <p role="status">{gaps[query.data.state]}</p>

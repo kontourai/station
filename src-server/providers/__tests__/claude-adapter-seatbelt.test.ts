@@ -45,6 +45,15 @@ vi.mock('../adapters/claude-code-spawn.js', async (importOriginal) => {
   );
 });
 
+// chat-host-images: observe how often a start records its launch.
+vi.mock('../../services/infra/session-tmpdir.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../../services/infra/session-tmpdir.js')
+    >();
+  return { ...actual, commitEngineLaunch: vi.fn(actual.commitEngineLaunch) };
+});
+
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   deleteSession: vi.fn(),
   forkSession: mockForkSession,
@@ -68,6 +77,12 @@ import {
   createSeatbeltConfinementProvider,
   type SeatbeltEvidence,
 } from '../../security/confinement/seatbelt.js';
+import {
+  commitEngineLaunch,
+  installSessionTmpDirPolicy,
+  sessionTempRoot,
+  sessionTmpRoot,
+} from '../../services/infra/session-tmpdir.js';
 import {
   SendTurnRefusedError,
   SessionStartRefusedError,
@@ -618,6 +633,30 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
     expect((await started('adopted')).stationConfinementRecord).toMatchObject({
       fallback: 'config-root-pinned',
     });
+  });
+
+  test('chat-host-images: a confined session image root is exactly its Seatbelt TMPDIR, and no unused session-tmp folder is created', async () => {
+    vi.stubEnv('STATION_HOME', stationHome);
+    const uninstall = installSessionTmpDirPolicy(() => true);
+    try {
+      createAdapter();
+      startingQuery(Promise.resolve({}));
+      vi.mocked(commitEngineLaunch).mockClear();
+      await startConfined('confined-images');
+      // Recorded once for this start, not again when it is announced.
+      expect(vi.mocked(commitEngineLaunch)).toHaveBeenCalledTimes(1);
+      const tmpdir = spawnedEnv().TMPDIR;
+      expect(tmpdir).toContain(
+        join(stationHome, 'tmp', 'confined-sessions', 'session-'),
+      );
+      expect(sessionTempRoot('confined-images')).toBe(tmpdir);
+      expect(existsSync(sessionTmpRoot(stationHome))).toBe(false);
+      await adapter.stopSession('confined-images');
+      // Seatbelt removes its directory at stop; the root goes with it.
+      expect(sessionTempRoot('confined-images')).toBeUndefined();
+    } finally {
+      uninstall();
+    }
   });
 
   test('the confined engine gets an allowlisted environment: no ambient GH_TOKEN, cloud keys or SSH agent', async () => {

@@ -364,7 +364,7 @@ describe('assistant row identity composition (station#1434)', () => {
     // reading nothing (#2211: from the overflow menu's dialog).
     await openProvenanceDialog();
     expect(
-      screen.getByText(/cannot read\. Nothing about this answer is being/),
+      screen.getByText(/format this version of Station cannot read\.$/),
     ).toBeTruthy();
   });
 
