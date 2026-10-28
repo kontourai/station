@@ -9,10 +9,20 @@ export interface McpIntegrationEnvGrant {
   envName: string;
 }
 
-/** Exact authority for spending one binding as one MCP integration's OAuth client secret. */
+/**
+ * Exact authority for spending one binding as one MCP integration's OAuth
+ * client secret, at the authorization server and resource it was bound for.
+ * A definition that later names another issuer or endpoint, however it was
+ * written, cannot materialize the secret; nor can a new definition reusing
+ * the integration id with a different issuer or endpoint.
+ */
 export interface McpIntegrationOAuthClientGrant {
   kind: 'mcp-integration-oauth-client';
   integrationId: string;
+  /** The declared `oauthClient.issuer` when the secret was bound. */
+  issuer: string;
+  /** The integration's OAuth resource identity when the secret was bound. */
+  resource: string;
 }
 
 /** Exact authority for spending one binding as one ACP provider header. */

@@ -1456,10 +1456,14 @@ write; that body accepts no other field. The read projection omits the binding
 id; `GET /api/secret-bindings/integrations/:id` returns it as
 `oauthClientSecretBindingId`. A `clientId` requires `issuer`, and so does
 binding a secret. Changing `clientId`, `issuer` or `clientMetadataUrl` clears
-the integration's tokens. While a secret is bound, every integration writer
-(including registry installs and imports) refuses a change to the endpoint or
-`issuer`, and refuses a definition naming another binding; registry
-definitions never carry `clientSecretRef`. A declared `issuer` refuses any
+the integration's tokens. While a secret is bound, the shared integration writer (the API, the
+settings, registry installs, required plugin tools and binding) refuses a
+change to the endpoint or `issuer`, and refuses a definition naming another
+binding. Plugin bundles are checked before copying, and the CLI import before
+writing. Registry, plugin and imported definitions never carry
+`clientSecretRef`. Independently, the client-secret grant records the
+`issuer` and resource it was bound at, and the secret is released only for a
+definition naming both. A declared `issuer` refuses any
 other authorization server before a secret is read, a client is registered
 or a person is redirected. The callback's `iss` is checked per RFC 9207, and a
 callback with more than one `iss` returns 400. A server without client registration records

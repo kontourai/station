@@ -2279,10 +2279,19 @@ instance binding; environment grants confer none. The integration records only
 the binding id at `oauthClient.clientSecretRef`, written by
 `SecretBindingIntegrationService.bindOAuthClientSecret` (grant first) and
 removed by `unbindOAuthClientSecret` (reference first). Binding requires the integration's declared
-`oauthClient.issuer`; the provider never presents the secret to another issuer. The
-issuer/endpoint pin and the no-foreign-reference rule are enforced in
-`writeIntegrationConfigLocked` ([invariants](../../src-server/domain/integration-oauth-client-invariants.ts)),
-which every integration writer reaches. The secret is never
+`oauthClient.issuer`; the provider never presents the secret to another issuer. The grant
+records the `issuer` and resource identity it was bound at, and
+`resolveOAuthClientSecret` releases the secret only for that pair. A
+definition rewritten by any path cannot redirect the secret, and neither can
+an id reused after deletion, so grants are not tied to delete paths. Unbind
+removes every client-secret grant the binding holds for the integration. The
+issuer/endpoint pin and the no-foreign-reference rule
+(`assertToolOAuthClientWritable` in [the tool contract](../../packages/contracts/src/tool.ts))
+run in `writeIntegrationConfigLocked`, the writer behind
+`ConfigLoader.saveIntegration`/`updateIntegration` and `saveIntegrationConfig`.
+`assertPluginIntegrationsWritable` runs before `copyPluginIntegrations`, which
+copies bundles without that writer. The CLI portability import also calls the
+check. Plugin backup restores put back bytes that were already on disk. The secret is never
 cached or written to the credential store; see
 [Use your own OAuth client](../guides/connections.md#use-your-own-oauth-client).
 

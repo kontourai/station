@@ -288,6 +288,43 @@ export class ToolServerCredentialStore {
     });
     return applied;
   }
+  /**
+   * Publish several credentials of one server in a single document write, so
+   * values that only make sense together (an OAuth client and the tokens it
+   * obtained) are never observed half-replaced.
+   */
+  async upsertMany(
+    serverId: string,
+    entries: Readonly<Record<string, string>>,
+  ): Promise<void> {
+    assertCredentialKey(serverId, 'server id');
+    const names = Object.keys(entries);
+    if (serverId.length === 0 || names.length === 0)
+      throw new Error('Invalid tool-server credential');
+    for (const name of names) {
+      assertCredentialKey(name, 'env name');
+      const secret = entries[name];
+      if (
+        name.length === 0 ||
+        typeof secret !== 'string' ||
+        secret.length < 1 ||
+        secret.length > 65536
+      )
+        throw new Error('Invalid tool-server credential');
+    }
+    await this.#mutate((document) => {
+      const credentials = Object.assign(
+        dictionary<Record<string, string>>(),
+        document.credentials,
+      );
+      credentials[serverId] = Object.assign(
+        dictionary<string>(),
+        document.credentials[serverId],
+        entries,
+      );
+      return { ...document, credentials };
+    });
+  }
   async remove(serverId: string, name: string): Promise<void> {
     await this.removeMany(serverId, [name]);
   }

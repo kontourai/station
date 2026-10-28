@@ -1,4 +1,10 @@
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+} from 'node:fs';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
@@ -13,6 +19,7 @@ import type {
   SkillVariable,
 } from '@kontourai/station-contracts/catalog';
 import {
+  assertToolOAuthClientWritable,
   isSafeToolServerId,
   type ToolDef,
   type ToolMetadata,
@@ -27,7 +34,6 @@ import {
   toolServerIntegrationMutationLockPath,
 } from '../services/plugins/tool-server-credential-store.js';
 import { publishJsonFileWithOwnedLock } from './file-storage-helpers.js';
-import { assertIntegrationOAuthClientWritable } from './integration-oauth-client-invariants.js';
 import {
   assertSkillPackageDirectory,
   resolveSkillDirectory,
@@ -245,7 +251,7 @@ async function writeIntegrationConfigLocked(
   current: ToolDef | undefined,
 ): Promise<void> {
   rejectRetiredIntegrationCredentialFormat(current, id);
-  assertIntegrationOAuthClientWritable(current, def);
+  assertToolOAuthClientWritable(current, def);
   const persisted = { ...def };
   delete persisted.secretEnv;
   delete persisted.removeSecretEnvKeys;
@@ -590,4 +596,41 @@ export async function saveACPConfigFile(
   const path = join(projectHomeDir, 'config', 'acp.json');
   await mkdir(join(projectHomeDir, 'config'), { recursive: true });
   await writeFile(path, JSON.stringify(config, null, 2), 'utf-8');
+}
+
+/**
+ * `copyPluginIntegrations` publishes a plugin's bundled integration
+ * directories itself rather than through `writeIntegrationConfigLocked`. Its
+ * callers run this first, so a bundled definition meets the same OAuth client
+ * rules (`assertToolOAuthClientWritable`) against the definition it would
+ * replace, and never carries a secret-binding reference. Symlinked or
+ * unreadable entries are left to the copy, which refuses them.
+ */
+export function assertPluginIntegrationsWritable(
+  pluginDir: string,
+  projectHomeDir: string,
+): void {
+  const bundled = join(pluginDir, 'integrations');
+  if (!existsSync(bundled) || lstatSync(bundled).isSymbolicLink()) return;
+  const readDefinition = (path: string): ToolDef | undefined =>
+    existsSync(path) && !lstatSync(path).isSymbolicLink()
+      ? (JSON.parse(readFileSync(path, 'utf8')) as ToolDef)
+      : undefined;
+  for (const entry of readdirSync(bundled, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    assertSafeIntegrationId(entry.name);
+    const next = readDefinition(join(bundled, entry.name, 'integration.json'));
+    if (!next) continue;
+    if (
+      Object.keys(next.secretEnvRefs ?? {}).length > 0 ||
+      next.oauthClient?.clientSecretRef !== undefined
+    )
+      throw new Error(
+        `Plugin integration '${entry.name}' contains secret binding references; bind secrets through Station's operator binding flow.`,
+      );
+    assertToolOAuthClientWritable(
+      readDefinition(integrationConfigPath(projectHomeDir, entry.name)),
+      next,
+    );
+  }
 }

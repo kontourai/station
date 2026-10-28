@@ -340,6 +340,13 @@ describe('ACP provider secret resolution (#944)', () => {
   });
 });
 
+const GMAIL_GRANT = {
+  kind: 'mcp-integration-oauth-client' as const,
+  integrationId: 'gmail',
+  issuer: 'https://accounts.google.com',
+  resource: 'https://gmailmcp.googleapis.com/mcp/v1',
+};
+
 describe('MCP OAuth client secret resolution', () => {
   test('materializes only for the exactly granted integration, survives reopen, and stops after ungrant', async () => {
     const root = await home();
@@ -369,12 +376,14 @@ describe('MCP OAuth client secret resolution', () => {
       service.resolveOAuthClientSecret({
         integrationId: 'gmail',
         bindingId: 'gmail-client',
+        issuer: GMAIL_GRANT.issuer,
+        resource: GMAIL_GRANT.resource,
       }),
     ).rejects.toMatchObject({ reason: 'grant_missing' });
     await service.grant({
       id: 'gmail-client',
       expectedRevision: 2,
-      grant: { kind: 'mcp-integration-oauth-client', integrationId: 'gmail' },
+      grant: GMAIL_GRANT,
     });
     expect(reads).not.toHaveBeenCalled();
 
@@ -383,27 +392,50 @@ describe('MCP OAuth client secret resolution', () => {
       reopened.resolveOAuthClientSecret({
         integrationId: 'slack',
         bindingId: 'gmail-client',
+        issuer: GMAIL_GRANT.issuer,
+        resource: GMAIL_GRANT.resource,
       }),
     ).rejects.toMatchObject({ reason: 'grant_missing' });
     await expect(
       reopened.resolveOAuthClientSecret({
         integrationId: 'gmail',
         bindingId: 'gmail-client',
+        issuer: GMAIL_GRANT.issuer,
+        resource: GMAIL_GRANT.resource,
       }),
     ).resolves.toBe('oauth-client-canary');
     expect((await reopened.get('gmail-client'))?.oauthClientGrants).toEqual([
-      { kind: 'mcp-integration-oauth-client', integrationId: 'gmail' },
+      GMAIL_GRANT,
     ]);
+    // A definition for the same integration id that names another issuer or
+    // endpoint (a rewrite, or a deleted-and-recreated integration) is not the
+    // authority this grant records.
+    for (const elsewhere of [
+      { issuer: 'https://attacker-as.example', resource: GMAIL_GRANT.resource },
+      {
+        issuer: GMAIL_GRANT.issuer,
+        resource: 'https://mcp.attacker.example/mcp',
+      },
+    ])
+      await expect(
+        reopened.resolveOAuthClientSecret({
+          integrationId: 'gmail',
+          bindingId: 'gmail-client',
+          ...elsewhere,
+        }),
+      ).rejects.toMatchObject({ reason: 'grant_missing' });
 
     await reopened.ungrant({
       id: 'gmail-client',
       expectedRevision: 3,
-      grant: { kind: 'mcp-integration-oauth-client', integrationId: 'gmail' },
+      grant: GMAIL_GRANT,
     });
     await expect(
       reopened.resolveOAuthClientSecret({
         integrationId: 'gmail',
         bindingId: 'gmail-client',
+        issuer: GMAIL_GRANT.issuer,
+        resource: GMAIL_GRANT.resource,
       }),
     ).rejects.toMatchObject({ reason: 'grant_missing' });
     expect(reads).toHaveBeenCalledOnce();

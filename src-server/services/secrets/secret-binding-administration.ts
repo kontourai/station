@@ -23,6 +23,7 @@ import {
 import {
   isSafeToolServerId,
   type ToolDef,
+  toolServerOAuthResourceIdentity,
 } from '@kontourai/station-contracts/tool';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import type { ConfigLoader } from '../../domain/config-loader.js';
@@ -353,17 +354,23 @@ export class SecretBindingIntegrationService
   async bindOAuthClientSecret(
     input: SecretBindingOAuthClientInput,
   ): Promise<SecretBindingOAuthClientOutcome> {
-    const grant: McpIntegrationOAuthClientGrant = {
-      kind: 'mcp-integration-oauth-client',
-      integrationId: input.integrationId,
-    };
     const def = await this.assertOAuthClientConsumer(input.integrationId);
     // GHSA-6qxp-vccf-f47h: a secret is only ever presented to the issuer the
-    // operator declared, so it cannot be bound before one is.
-    if (!def.oauthClient?.issuer)
+    // operator declared, so it cannot be bound before one is. The grant
+    // records that issuer and the endpoint, so the secret materializes only
+    // for a definition still naming both, whichever writer produced it.
+    const issuer = def.oauthClient?.issuer;
+    const resource = toolServerOAuthResourceIdentity(def);
+    if (!issuer || !resource)
       throw new Error(
         "Declare the client's authorization server before binding its secret.",
       );
+    const grant: McpIntegrationOAuthClientGrant = {
+      kind: 'mcp-integration-oauth-client',
+      integrationId: input.integrationId,
+      issuer,
+      resource,
+    };
     const configured = def.oauthClient?.clientSecretRef;
     if (configured && configured !== input.id)
       throw new Error(
@@ -406,10 +413,6 @@ export class SecretBindingIntegrationService
   async unbindOAuthClientSecret(
     input: SecretBindingOAuthClientInput,
   ): Promise<SecretBindingOAuthClientOutcome> {
-    const grant: McpIntegrationOAuthClientGrant = {
-      kind: 'mcp-integration-oauth-client',
-      integrationId: input.integrationId,
-    };
     const def = await this.assertOAuthClientConsumer(input.integrationId);
     const configured = def.oauthClient?.clientSecretRef;
     if (configured && configured !== input.id)
@@ -435,14 +438,20 @@ export class SecretBindingIntegrationService
       return next;
     });
     try {
-      if (current.revokedAt || !secretBindingHasGrant(current, grant))
+      if (current.revokedAt)
         return this.oauthClientOutcome(input, current, 'complete');
-      const binding = await this.bindings.ungrant({
-        id: input.id,
-        expectedRevision: input.expectedRevision,
-        grant,
-        ...(input.viewer ? { viewer: input.viewer } : {}),
-      });
+      // Every client-secret grant this binding holds for the integration,
+      // whatever issuer or endpoint it was bound at.
+      let binding = current;
+      for (const grant of current.oauthClientGrants ?? []) {
+        if (grant.integrationId !== input.integrationId) continue;
+        binding = await this.bindings.ungrant({
+          id: input.id,
+          expectedRevision: binding.revision,
+          grant,
+          ...(input.viewer ? { viewer: input.viewer } : {}),
+        });
+      }
       return this.oauthClientOutcome(input, binding, 'complete');
     } catch {
       const binding = await this.bindings.get(input.id, input.viewer);
@@ -772,6 +781,9 @@ export interface IntegrationSecretResolver {
   resolveOAuthClientSecret?(input: {
     integrationId: string;
     bindingId: SecretBindingId;
+    /** The issuer and resource the secret is about to be used with. */
+    issuer: string;
+    resource: string;
   }): Promise<string>;
 }
 
@@ -1267,10 +1279,14 @@ export class FileSecretBindingAdministration
   async resolveOAuthClientSecret(input: {
     integrationId: string;
     bindingId: SecretBindingId;
+    issuer: string;
+    resource: string;
   }): Promise<string> {
     const expected: McpIntegrationOAuthClientGrant = {
       kind: 'mcp-integration-oauth-client',
       integrationId: input.integrationId,
+      issuer: input.issuer,
+      resource: input.resource,
     };
     try {
       assertBindingId(input.bindingId);
@@ -1966,6 +1982,8 @@ function assertGrant(grant: SecretBindingGrant): void {
   }
   if (grant?.kind === 'mcp-integration-oauth-client') {
     assertIntegrationId(grant.integrationId);
+    assertOAuthGrantUrl(grant.issuer, 'https:');
+    assertOAuthGrantUrl(grant.resource);
     return;
   }
   if (grant?.kind === 'acp-provider-header') {
@@ -1988,7 +2006,7 @@ function assertExactGrant(grant: unknown): asserts grant is SecretBindingGrant {
   } else if (
     (grant as { kind?: unknown }).kind === 'mcp-integration-oauth-client'
   ) {
-    assertOnlyKeys(grant, ['kind', 'integrationId']);
+    assertOnlyKeys(grant, ['kind', 'integrationId', 'issuer', 'resource']);
   } else if ((grant as { kind?: unknown }).kind === 'acp-provider-header') {
     assertOnlyKeys(grant, ['kind', 'connectionId', 'providerId', 'headerName']);
   } else if (
@@ -2012,7 +2030,7 @@ function grantKey(grant: SecretBindingGrant): string {
   return grant.kind === 'mcp-integration-env'
     ? `${grant.kind}\u0000${grant.integrationId}\u0000${grant.envName}`
     : grant.kind === 'mcp-integration-oauth-client'
-      ? `${grant.kind}\u0000${grant.integrationId}`
+      ? `${grant.kind}\u0000${grant.integrationId}\u0000${grant.issuer}\u0000${grant.resource}`
       : grant.kind === 'acp-provider-header'
         ? `${grant.kind}\u0000${grant.connectionId}\u0000${grant.providerId}\u0000${grant.headerName.toLowerCase()}`
         : `${grant.kind}\u0000${telemetryDestinationKey(grant)}`;
@@ -2041,13 +2059,40 @@ function telemetryDestinationKey(grant: TelemetryDestinationGrant): string {
     throw new Error('Invalid telemetry destination grant.');
   return `${grant.transport}\u0000${destination.href}`;
 }
+function auditDigest(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+/** An issuer or resource URL recorded in an OAuth client-secret grant. */
+function assertOAuthGrantUrl(value: unknown, protocol?: 'https:'): void {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 2048)
+    throw new Error('Invalid OAuth client secret grant.');
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error('Invalid OAuth client secret grant.');
+  }
+  if (
+    (protocol && url.protocol !== protocol) ||
+    (!protocol && url.protocol !== 'https:' && url.protocol !== 'http:') ||
+    url.username ||
+    url.password ||
+    url.hash
+  )
+    throw new Error('Invalid OAuth client secret grant.');
+}
 function grantAuditIdentifiers(
   grant: SecretBindingGrant,
 ): Record<string, string> {
   return grant.kind === 'mcp-integration-env'
     ? { integrationId: grant.integrationId, envName: grant.envName }
     : grant.kind === 'mcp-integration-oauth-client'
-      ? { integrationId: grant.integrationId, consumer: 'oauth-client' }
+      ? {
+          integrationId: grant.integrationId,
+          consumer: 'oauth-client',
+          issuerDigest: auditDigest(grant.issuer),
+          resourceDigest: auditDigest(grant.resource),
+        }
       : grant.kind === 'acp-provider-header'
         ? {
             connectionId: grant.connectionId,

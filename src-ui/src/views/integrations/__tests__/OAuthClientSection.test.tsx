@@ -144,11 +144,30 @@ describe('OAuthClientSection', () => {
     ).toBeTruthy();
   });
 
+  test('the authorization server is offered while the client fields are folded, for registered clients too', () => {
+    render(<Harness />);
+    expect(
+      screen
+        .getByRole('button', { name: 'Use your own OAuth client' })
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
+    fireEvent.change(
+      screen.getByLabelText('Authorization server (recommended)'),
+      { target: { value: 'https://accounts.example.com' } },
+    );
+    expect(latest.oauthClient).toEqual({
+      issuer: 'https://accounts.example.com',
+    });
+  });
+
   test('the declared authorization server is part of the client draft', () => {
     render(<Harness initial={{ ...base, oauthClient: { clientId: 'c' } }} />);
-    fireEvent.change(screen.getByLabelText('Authorization server'), {
-      target: { value: ' https://accounts.google.com ' },
-    });
+    fireEvent.change(
+      screen.getByLabelText('Authorization server (recommended)'),
+      {
+        target: { value: ' https://accounts.google.com ' },
+      },
+    );
     expect(latest.oauthClient).toEqual({
       clientId: 'c',
       issuer: 'https://accounts.google.com',

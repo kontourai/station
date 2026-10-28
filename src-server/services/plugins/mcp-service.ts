@@ -498,7 +498,7 @@ export class MCPService {
       toolServerOAuthResourceIdentity(existing) !==
         toolServerOAuthResourceIdentity(def);
     // A bound secret pins the issuer and endpoint; the storage writer every
-    // path shares enforces that (integration-oauth-client-invariants.ts).
+    // path shares enforces that (assertToolOAuthClientWritable).
     // Tokens and a registered client belong to the client that obtained them.
     const clientChanged =
       existing !== undefined &&

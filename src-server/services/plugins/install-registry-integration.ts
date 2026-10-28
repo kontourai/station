@@ -1,5 +1,5 @@
+import { withoutToolBindingReferences } from '@kontourai/station-contracts/tool';
 import type { ConfigLoader } from '../../domain/config-loader.js';
-import { withoutBindingReferences } from '../../domain/integration-oauth-client-invariants.js';
 import type { IIntegrationRegistryProvider } from '../../providers/provider-interfaces.js';
 import { recordIntegrationOrigin } from './integration-origin.js';
 
@@ -46,7 +46,10 @@ export async function installRegistryIntegration(
       success: false,
       message: 'Unbind secrets before replacing this source.',
     };
-  const persisted = withoutBindingReferences({ ...definition, enabled: false });
+  const persisted = withoutToolBindingReferences({
+    ...definition,
+    enabled: false,
+  });
   await loader.saveIntegration(definition.id, persisted);
   if ('origin' in installed && installed.origin)
     recordIntegrationOrigin(

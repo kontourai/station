@@ -65,6 +65,30 @@ export function OAuthClientSection({
 
   return (
     <section className="agent-editor__section" aria-label="OAuth client">
+      {/* Outside the fold: it also protects sign-ins that register a client
+          automatically, which the folded fields do not affect. */}
+      <div className="editor-field">
+        <label className="editor-label" htmlFor={ids.issuer}>
+          Authorization server (recommended)
+        </label>
+        <input
+          id={ids.issuer}
+          className="editor-input"
+          type="url"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="https://accounts.example.com"
+          value={client.issuer ?? ''}
+          disabled={locked}
+          onChange={(event) =>
+            update({ issuer: event.target.value.trim() || undefined })
+          }
+        />
+        <p className="editor-field-hint">
+          Sign-in uses only this server, so a changed MCP server cannot redirect
+          it. Required with a client ID.
+        </p>
+      </div>
       <div className="agent-editor__section-header">
         <DisclosureToggle
           expanded={expanded}
@@ -96,27 +120,6 @@ export function OAuthClientSection({
                 update({ clientId: event.target.value.trim() || undefined })
               }
             />
-          </div>
-          <div className="editor-field">
-            <label className="editor-label" htmlFor={ids.issuer}>
-              Authorization server
-            </label>
-            <input
-              id={ids.issuer}
-              className="editor-input"
-              type="url"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="https://accounts.example.com"
-              value={client.issuer ?? ''}
-              disabled={locked}
-              onChange={(event) =>
-                update({ issuer: event.target.value.trim() || undefined })
-              }
-            />
-            <p className="editor-field-hint">
-              The issuer this client belongs to. Required with a client ID.
-            </p>
           </div>
           <OAuthClientSecretBinding
             integrationId={editForm.id}

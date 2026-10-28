@@ -305,8 +305,9 @@ A [configured OAuth client](connections.md#authorization-server-binding) has no
 issuer of its own, so Station uses it only with the issuer the operator
 declares. Every pre-registered client needs one, and a mismatch is refused from
 configuration before a secret, code or verifier leaves Station, independent of
-per-person credentials, disconnects and concurrent sign-ins. The integration
-writer every path shares keeps a bound secret's issuer and endpoint fixed.
+per-person credentials, disconnects and concurrent sign-ins. The binding
+authority also releases the secret only for the issuer and endpoint its grant
+recorded, so no integration writer can redirect it.
 Dynamic registration without a declared issuer keeps a narrower mix-up
 exposure when the honest server omits RFC 9207 `iss`; the connections guide
 states it.

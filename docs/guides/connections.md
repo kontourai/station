@@ -1639,12 +1639,13 @@ Configure the client under **Use your own OAuth client** in the integration's
 settings:
 
 - **Client ID**: the ID the provider issued.
-- **Authorization server**: the `issuer` of the authorization server the client
-  was registered with, exactly as its OAuth metadata states it (an HTTPS URL).
-  Station uses the client only with that issuer. It is required with a client
-  ID, public or confidential; see [Authorization server binding](#authorization-server-binding).
-  It is optional without a client ID, where it pins dynamic registration and
-  the metadata document to that server.
+- **Authorization server (recommended)**: shown for every remote integration,
+  outside the folded client fields. It is the `issuer` of the authorization
+  server, exactly as its OAuth metadata states it (an HTTPS URL), and Station
+  signs in only with that server. It is required with a client ID, public or
+  confidential; see [Authorization server binding](#authorization-server-binding).
+  Without a client ID it pins dynamic registration and the metadata document
+  to that server, which closes the known limit below.
 - **Client secret**: a confidential client's secret, chosen from a shared secret
   binding (keychain, 1Password or environment). Create the binding under
   **Advanced: Secret bindings** first, declare the authorization server and save
@@ -1688,11 +1689,21 @@ an anchor a compromised resource could stage a mix-up: send a person to the
 honest authorization page while naming its own token endpoint, then redeem
 the code and PKCE verifier Station sends there.
 
-These rules are enforced where every writer saves an integration (the
-settings, the API, registry installs and imports, and binding), not only in
-the settings form. A registry or imported definition never carries a secret
-binding, and a source with a bound secret cannot be replaced from a registry;
-unbind first.
+Two independent layers enforce this:
+
+- **The integration writers.** The shared integration writer applies these
+  rules to the settings, the API, registry installs, a plugin's required
+  tools and the binding operations. A plugin's bundled integrations are
+  checked against the same rules before they are copied, and the CLI import
+  checks them before writing. Registry, plugin and imported definitions never
+  carry a secret binding, and a source with a bound secret cannot be replaced
+  from a registry; unbind first.
+- **The secret's own grant.** Binding records the authorization server and
+  endpoint it was made for. Station releases the client secret only to an
+  integration that still names both. A definition written by any path, a
+  restored backup or a hand edit included, that names another server or
+  endpoint cannot use the secret. Neither can a deleted integration recreated
+  under the same id.
 
 Station also checks the `iss` in the authorization response (RFC 9207). A
 response whose `iss` differs from the server sign-in started at is refused

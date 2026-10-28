@@ -2,7 +2,7 @@ import type {
   PluginInstallationRevision,
   PluginManifest,
 } from '@kontourai/station-contracts/plugin';
-import { withoutBindingReferences } from '../../domain/integration-oauth-client-invariants.js';
+import { withoutToolBindingReferences } from '@kontourai/station-contracts/tool';
 import { recordIntegrationOrigin } from '../../services/plugins/integration-origin.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import { ensurePluginInstallTrustMigration } from '../../services/plugins/plugin-install-trust-migration.js';
@@ -807,7 +807,7 @@ export function createRegistryRoutes(
         }
         // Registry/provider metadata is untrusted relative to the operator
         // binding authority. It can never author a reference.
-        const persisted = withoutBindingReferences({
+        const persisted = withoutToolBindingReferences({
           ...toolDef,
           enabled: false,
         });

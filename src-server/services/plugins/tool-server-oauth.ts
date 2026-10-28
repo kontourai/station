@@ -2,7 +2,10 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { principalIdMatchesKind } from '@kontourai/station-contracts/principal';
 import type { CredentialOwner } from '@kontourai/station-contracts/secret-binding';
-import type { ToolDef } from '@kontourai/station-contracts/tool';
+import {
+  type ToolDef,
+  toolServerOAuthResourceIdentity,
+} from '@kontourai/station-contracts/tool';
 import type {
   AuthProvider,
   OAuthClientInformationContext,
@@ -125,28 +128,8 @@ export function captureToolServerOperationFailure(
   return new ToolServerOperationError(operation);
 }
 
-/**
- * OAuth credential identity is the URL-standard serialized HTTP request target
- * with its fragment removed. Fragments never reach an HTTP server; path
- * trailing slashes and query ordering remain significant.
- */
-export function toolServerOAuthResourceIdentity(
-  def: ToolDef,
-): string | undefined {
-  if (
-    (def.transport !== 'sse' && def.transport !== 'streamable-http') ||
-    !def.endpoint
-  ) {
-    return undefined;
-  }
-  try {
-    const endpoint = new URL(def.endpoint);
-    endpoint.hash = '';
-    return endpoint.href;
-  } catch {
-    return undefined;
-  }
-}
+// One implementation, in the contract module that owns ToolDef.
+export { toolServerOAuthResourceIdentity };
 
 const KEYS = {
   tokens: 'oauth.tokens',
@@ -157,6 +140,8 @@ const KEYS = {
 } as const;
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+/** Stored beside a registration: the scopes Station asked it to cover. */
+const REQUESTED_SCOPE_FIELD = 'station_requested_scope';
 
 type BoundRecord<T> = {
   schemaVersion: 1;
@@ -562,6 +547,8 @@ export interface ToolServerOAuthClientSecretSource {
   resolveOAuthClientSecret?(input: {
     integrationId: string;
     bindingId: string;
+    issuer: string;
+    resource: string;
   }): Promise<string>;
 }
 
@@ -591,12 +578,17 @@ export function parseRequestedOAuthScopes(value: unknown): string[] {
 
 /** Builds the provider's client from an integration's `oauthClient`. */
 export function toolServerOAuthClientConfig(
-  def: Pick<ToolDef, 'id' | 'oauthClient'>,
+  def: Pick<ToolDef, 'id' | 'oauthClient' | 'transport' | 'endpoint'>,
   secrets?: ToolServerOAuthClientSecretSource,
 ): ToolServerOAuthClientConfig | undefined {
   const client = def.oauthClient;
   if (!client) return undefined;
   const bindingId = client.clientSecretRef;
+  // The binding authority releases the secret only for the issuer and
+  // resource its grant was made at, so a definition rewritten to name
+  // another server cannot materialize it.
+  const issuer = client.issuer;
+  const resource = toolServerOAuthResourceIdentity(def);
   return {
     ...(client.clientId ? { clientId: client.clientId } : {}),
     ...(client.issuer ? { issuer: client.issuer } : {}),
@@ -609,12 +601,14 @@ export function toolServerOAuthClientConfig(
           clientSecret: async () => {
             // A configured secret that cannot be read is a refusal, never a
             // silent downgrade to a public client.
-            if (!secrets?.resolveOAuthClientSecret)
+            if (!secrets?.resolveOAuthClientSecret || !issuer || !resource)
               throw new OAuthClientSecretUnavailableError();
             try {
               return await secrets.resolveOAuthClientSecret({
                 integrationId: def.id,
                 bindingId,
+                issuer,
+                resource,
               });
             } catch {
               throw new OAuthClientSecretUnavailableError();
@@ -790,15 +784,29 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
     if (value.client_id === this.clientMetadataUrl) return false;
     // Full registration responses carry `scope`; the stored union type
     // also admits client information without it.
-    const recorded = (value as { scope?: unknown }).scope;
-    const registered = new Set(
-      typeof recorded === 'string' ? recorded.split(' ') : [],
+    // A server may grant fewer scopes than asked; what was asked is recorded
+    // too, so asking again for the same set does not register again.
+    const { scope: granted, [REQUESTED_SCOPE_FIELD]: asked } = value as {
+      scope?: unknown;
+      [REQUESTED_SCOPE_FIELD]?: unknown;
+    };
+    const covered = new Set(
+      [granted, asked].flatMap((recorded) =>
+        typeof recorded === 'string' ? recorded.split(' ') : [],
+      ),
     );
-    return !requested.every((scope) => registered.has(scope));
+    return !requested.every((scope) => covered.has(scope));
   }
 
+  /**
+   * Registers a client for this consent when the server needs one. A first
+   * registration is saved at once; one that replaces an existing client is
+   * returned without saving (`persist: false`), so the old client and its
+   * tokens keep working until the new consent completes.
+   */
   private async requireClientRegistration(
     ctx: OAuthClientInformationContext,
+    persist: boolean,
   ): Promise<StoredOAuthClientInformation | undefined> {
     const discovery = await this.discoveryState();
     const metadata = discovery?.authorizationServerMetadata;
@@ -821,14 +829,16 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
       fetchFn: (url, init) =>
         fetch(url, { ...init, signal: AbortSignal.timeout(15_000) }),
     });
-    // Record what the client was registered for when the server does not
-    // echo it, so a later scope change can tell whether it is covered.
+    // Record what the client was registered for (the server's echo, else
+    // what was asked) and what was asked, so a later scope change can tell
+    // whether it is covered.
     const registered = {
       ...response,
       scope: response.scope ?? scope,
+      [REQUESTED_SCOPE_FIELD]: scope,
       issuer: ctx.issuer,
-    };
-    await this.saveClientInformation(registered, ctx);
+    } as StoredOAuthClientInformation;
+    if (persist) await this.saveClientInformation(registered, ctx);
     return registered;
   }
   async tokens(ctx?: OAuthClientInformationContext) {
@@ -880,17 +890,45 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
   }
 
   /** Explicit consent never lets the SDK start a second refresh flight. */
+  /**
+   * The provider one consent flow uses, from redirect to code exchange (the
+   * transport holds this one proxy for both). Its client is decided once,
+   * before the redirect: the exchange presents the same client the
+   * authorization was granted to. A replacement registration is kept here,
+   * not saved, until the exchange succeeds; then it is published together
+   * with its tokens, so an abandoned consent leaves the old client and
+   * tokens working.
+   */
   forAuthorization(): OAuthClientProvider {
+    let flowClient: StoredOAuthClientInformation | undefined;
+    let replacesClient = false;
     return new Proxy(this, {
       get(target, key) {
         if (key === 'tokens') return async () => undefined;
         if (key === 'clientInformation')
           return async (ctx?: OAuthClientInformationContext) => {
+            if (flowClient) return flowClient;
             const value = await target.clientInformation(ctx);
             if (!ctx) return value;
-            if (value && !target.registrationMissesScopes(value)) return value;
-            if (value) await target.invalidateCredentials('client');
-            return target.requireClientRegistration(ctx);
+            if (value && !target.registrationMissesScopes(value))
+              return (flowClient = value);
+            const registered = await target.requireClientRegistration(
+              ctx,
+              !value,
+            );
+            replacesClient = Boolean(value && registered);
+            flowClient = registered;
+            return registered;
+          };
+        if (key === 'saveTokens')
+          return async (
+            value: StoredOAuthTokens,
+            ctx?: OAuthClientInformationContext,
+          ) => {
+            if (replacesClient && flowClient)
+              await target.saveTokensWithClient(value, flowClient, ctx);
+            else await target.saveTokens(value, ctx);
+            replacesClient = false;
           };
         const value = Reflect.get(target, key);
         return typeof value === 'function' ? value.bind(target) : value;
@@ -1065,6 +1103,31 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
     );
     this.events?.tokensSaved?.(refresh);
   }
+  /** A consent that re-registered: the new client and its tokens in one write. */
+  private async saveTokensWithClient(
+    value: StoredOAuthTokens,
+    client: StoredOAuthClientInformation,
+    ctx?: OAuthClientInformationContext,
+  ): Promise<void> {
+    const refresh = Boolean((await this.tokens())?.refresh_token);
+    const issuer = this.resolveIssuer(value, ctx);
+    await this.store.upsertMany(this.bucket, {
+      [KEYS.client]: JSON.stringify(
+        this.boundRecord(client, this.resolveIssuer(client, ctx)),
+      ),
+      [KEYS.tokens]: JSON.stringify(
+        this.boundRecord(
+          value,
+          issuer,
+          undefined,
+          value.expires_in === undefined
+            ? undefined
+            : Date.now() + value.expires_in * 1000,
+        ),
+      ),
+    });
+    this.events?.tokensSaved?.(refresh);
+  }
   /** A refresh cannot resurrect an account removed while its publication was waiting. */
   async saveTokensIfCurrent(
     value: StoredOAuthTokens,
@@ -1182,7 +1245,22 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
     expiresAt?: number,
     accessTokenExpiresAt?: number,
   ): Promise<void> {
-    const record: BoundRecord<T> = {
+    await this.store.upsert(
+      this.bucket,
+      key,
+      JSON.stringify(
+        this.boundRecord(value, issuer, expiresAt, accessTokenExpiresAt),
+      ),
+    );
+  }
+
+  private boundRecord<T>(
+    value: T,
+    issuer?: string,
+    expiresAt?: number,
+    accessTokenExpiresAt?: number,
+  ): BoundRecord<T> {
+    return {
       schemaVersion: 1,
       resource: this.resourceIdentity,
       ...(issuer ? { issuer } : {}),
@@ -1190,7 +1268,6 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
       ...(accessTokenExpiresAt !== undefined ? { accessTokenExpiresAt } : {}),
       value,
     };
-    await this.store.upsert(this.bucket, key, JSON.stringify(record));
   }
 
   private async readBound<T>(

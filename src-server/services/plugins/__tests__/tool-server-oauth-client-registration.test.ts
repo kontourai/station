@@ -1,4 +1,10 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import {
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
@@ -56,6 +62,8 @@ type ServerOptions = {
    * authorization endpoint but keeps its own token endpoint.
    */
   mixUp?: boolean;
+  /** The scope the registration endpoint grants, when fewer than asked. */
+  registeredScope?: string;
 };
 
 type TokenRequest = {
@@ -126,6 +134,9 @@ function startAuthorizationServer(options: ServerOptions) {
         registrations.push({ ...body, origin: url.origin });
         return Response.json({
           ...body,
+          ...(options.registeredScope !== undefined
+            ? { scope: options.registeredScope }
+            : {}),
           client_id:
             registrations.length === 1
               ? 'dcr-registered-client'
@@ -859,6 +870,159 @@ describe('a registered client is registered again when scopes outgrow it (round 
       expect(narrowed.searchParams.get('client_id')).toBe(
         'dcr-registered-client-2',
       );
+    } finally {
+      await as.close();
+    }
+  });
+});
+
+describe('one client per consent, swapped only when it completes (round 3)', () => {
+  const instanceProvider = async (env: ReturnType<typeof setup>) =>
+    new StationToolServerOAuthProvider(
+      toolServerCredentialStoreFor(env.home, INSTANCE_CREDENTIAL_OWNER),
+      SERVER,
+      `${ORIGIN}/mcp`,
+      `http://127.0.0.1:${PORT}/integrations/${SERVER}/oauth/callback`,
+      undefined,
+      INSTANCE_CREDENTIAL_OWNER,
+      toolServerOAuthClientConfig(
+        await env.loader.loadIntegration(SERVER),
+        env.bindings,
+      ),
+    );
+
+  test('a server granting fewer scopes than asked: the exchange uses the authorizing client, and asking again does not register again', async () => {
+    const as = startAuthorizationServer({
+      dcr: true,
+      registeredScope: 'mail.readonly',
+    });
+    const env = setup();
+    try {
+      await createIntegration(env, {
+        oauthClient: { scopes: ['mail.readonly'] },
+      });
+      await consent(env);
+      const authorized = await consent(env, undefined, {
+        scopes: ['mail.readonly', 'mail.compose'],
+      });
+      // One re-registration for the wider request, decided before the
+      // redirect; the code exchange presents that same client.
+      expect(as.registrations).toHaveLength(2);
+      expect(as.tokenRequests.at(-1)!.params.get('client_id')).toBe(
+        authorized.searchParams.get('client_id'),
+      );
+      // The server's reduced grant is accepted: the same request again
+      // reuses the client instead of registering in a loop.
+      await consent(env, undefined, {
+        scopes: ['mail.readonly', 'mail.compose'],
+      });
+      expect(as.registrations).toHaveLength(2);
+    } finally {
+      await as.close();
+    }
+  });
+
+  test('an abandoned re-registration keeps the old client and its tokens; a completed one swaps both together', async () => {
+    const as = startAuthorizationServer({ dcr: true });
+    const env = setup();
+    try {
+      await createIntegration(env, {
+        oauthClient: { scopes: ['mail.readonly'] },
+      });
+      await consent(env);
+      expect(as.tokenRequests[0]!.params.get('client_id')).toBe(
+        'dcr-registered-client',
+      );
+
+      // Start a wider consent and abandon it before the callback.
+      await env.service.startOAuth(SERVER, 'remote', undefined, {
+        scopes: ['mail.readonly', 'mail.compose'],
+      });
+      expect(as.registrations).toHaveLength(2);
+      const beforeRefresh = as.tokenRequests.length;
+      expect(await (await instanceProvider(env)).accessToken()).toMatch(
+        /^access-/,
+      );
+      const refresh = as.tokenRequests[beforeRefresh]!;
+      expect(refresh.params.get('grant_type')).toBe('refresh_token');
+      expect(refresh.params.get('refresh_token')).toBe('refresh-1');
+      expect(refresh.params.get('client_id')).toBe('dcr-registered-client');
+
+      // A completed re-registration publishes the new client with its tokens.
+      await consent(env, undefined, {
+        scopes: ['mail.readonly', 'mail.compose'],
+      });
+      const exchange = as.tokenRequests.at(-1)!;
+      expect(exchange.params.get('grant_type')).toBe('authorization_code');
+      const swapped = exchange.params.get('client_id');
+      expect(swapped).toMatch(/^dcr-registered-client-\d+$/);
+      const afterSwap = as.tokenRequests.length;
+      await (await instanceProvider(env)).accessToken();
+      expect(as.tokenRequests[afterSwap]!.params.get('client_id')).toBe(
+        swapped,
+      );
+      // No refresh token was ever presented with a client it was not issued to.
+      for (const request of as.tokenRequests.filter(
+        (r) => r.params.get('grant_type') === 'refresh_token',
+      ))
+        expect(request.params.get('client_id')).toBe(
+          request.params.get('refresh_token') === 'refresh-1' ||
+            request.params.get('refresh_token') === 'refresh-2'
+            ? 'dcr-registered-client'
+            : swapped,
+        );
+    } finally {
+      await as.close();
+    }
+  });
+});
+
+describe('a client secret survives no rewrite of its integration (round 3)', () => {
+  test('deleting a bound integration and recreating the id with another issuer cannot materialize the secret', async () => {
+    const as = startAuthorizationServer({
+      dcr: false,
+      authMethods: ['client_secret_basic'],
+    });
+    const env = setup();
+    try {
+      await createIntegration(env, {
+        oauthClient: { clientId: CLIENT_ID, issuer: ORIGIN },
+      });
+      await bindClientSecret(env);
+      await consent(env);
+      await env.service.deleteIntegration(SERVER);
+      // Any writer that bypasses the integration guard: a raw file with the
+      // old binding reference, now naming the attacker as its issuer.
+      mkdirSync(join(env.home, 'integrations', SERVER), { recursive: true });
+      writeFileSync(
+        join(env.home, 'integrations', SERVER, 'integration.json'),
+        JSON.stringify({
+          id: SERVER,
+          kind: 'mcp',
+          transport: 'streamable-http',
+          endpoint: `${ORIGIN}/mcp`,
+          oauthClient: {
+            clientId: CLIENT_ID,
+            issuer: ATTACKER,
+            clientSecretRef: 'byo-client-secret',
+          },
+        }),
+      );
+      as.nameAuthorizationServer(ATTACKER);
+      const reads = vi.spyOn(env.bindings, 'resolveOAuthClientSecret');
+      await expect(env.service.startOAuth(SERVER, 'remote')).rejects.toThrow(
+        'The OAuth client secret is unavailable',
+      );
+      // The binding authority was asked for the attacker's issuer and said no.
+      expect(reads).toHaveBeenCalledWith(
+        expect.objectContaining({ issuer: ATTACKER }),
+      );
+      await expect(reads.mock.results[0]!.value).rejects.toMatchObject({
+        reason: 'grant_missing',
+      });
+      expect(
+        as.tokenRequests.filter((request) => request.origin === ATTACKER),
+      ).toEqual([]);
     } finally {
       await as.close();
     }
