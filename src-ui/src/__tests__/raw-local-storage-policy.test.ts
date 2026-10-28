@@ -17,6 +17,7 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'lastProjectLayout', // Navigation restore pointer to the last visited layout.
   'recentAgents', // Derived MRU used for picker ordering, not a setting.
   'recentLayouts', // Derived MRU used for picker ordering, not a setting.
+  'station.switcher.recent', // Derived MRU of saved Station ids for switcher ordering (bounded to 20), not a setting.
   'station-device-settings-v1', // The versioned device-settings envelope itself.
   'station.activity.snoozed', // Per-work-item snooze state, not a setting.
   'station.activity.terminalSince', // Terminal activity cursor.
