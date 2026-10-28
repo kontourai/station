@@ -2919,6 +2919,20 @@ describe('useActiveChatTranscript', () => {
           turnStartDetached: true,
           events: [
             start,
+            // A tool row: the text after it is a suffix of the terminal
+            // text, which the final-answer fallback would replace whole.
+            event('e18', 'tool.started', {
+              turnId: 'turn-6',
+              toolCallId: 'call-1',
+              toolName: 'exec',
+            }),
+            event('e19', 'tool.completed', {
+              turnId: 'turn-6',
+              toolCallId: 'call-1',
+              toolName: 'exec',
+              status: 'success',
+              output: 'ok',
+            }),
             answer('e20', 'E.'),
             event('e21', 'turn.completed', {
               turnId: 'turn-6',
@@ -2950,8 +2964,12 @@ describe('useActiveChatTranscript', () => {
       await waitFor(() =>
         expect(assistantText(result.current.messages)).toContain('E.'),
       );
-      // The hole (D.) is not pulled in from the terminal text.
+      // The hole (D.) is not pulled in from the terminal text, and what is
+      // held is not repeated.
       expect(assistantText(result.current.messages)).not.toContain('D.');
+      expect(assistantText(result.current.messages).split('A.')).toHaveLength(
+        2,
+      );
       await act(async () =>
         releaseHeldFill({
           protocolVersion: 1,
@@ -2961,9 +2979,12 @@ describe('useActiveChatTranscript', () => {
           events: [answer('e11', 'C. '), answer('e15', 'D. ')],
         }),
       );
-      // The fill reached what is held: the turn is whole again.
+      // The fill reached what is held: the turn is whole again, once.
       await waitFor(() =>
-        expect(assistantText(result.current.messages)).toBe('A. B. C. D. E.'),
+        expect(assistantText(result.current.messages)).toContain('D.'),
+      );
+      expect(assistantText(result.current.messages).split('A.')).toHaveLength(
+        2,
       );
     });
 
