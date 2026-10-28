@@ -1,0 +1,18 @@
+/* A menu opened at a point (`ContextMenu`). Panel and rows are the menu
+   family's (`.menu-surface`, `.menu-row`); this owns only placement and layer,
+   which the family deliberately leaves to each menu. Same tier as the other
+   body-portalled menus (`.chat-dock__more-menu`), backdrop one step below. */
+.context-menu {
+  position: fixed;
+  z-index: var(--layer-navigation);
+  min-width: 10rem;
+  max-width: min(20rem, calc(100vw - 2 * var(--space-4)));
+  max-height: calc(100vh - 2 * var(--space-4));
+  overflow-y: auto;
+}
+
+.context-menu__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--layer-navigation) - 1);
+}
