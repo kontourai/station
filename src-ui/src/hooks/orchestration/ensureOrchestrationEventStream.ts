@@ -241,6 +241,22 @@ const SESSION_READ_MODEL_FACT_METHODS: ReadonlySet<string> = new Set([
   'turn.completed',
   'turn.aborted',
 ]);
+const SESSION_READ_MODEL_REFRESH_WINDOW_MS = 1000;
+
+/**
+ * #4266: events after which a conversation can be at rest. The inventory
+ * carries the finish time Home and the inbox sort finished work by; a copy
+ * read while the work ran holds its start time instead, so it is re-read,
+ * at most once per {@link CONVERSATION_INVENTORY_REFRESH_WINDOW_MS}: the read
+ * refetches every loaded inventory page, and a busy Station ends turns
+ * often. The live row's own finish time covers the wait.
+ */
+const CONVERSATION_INVENTORY_REST_METHODS: ReadonlySet<string> = new Set([
+  'runtime.error',
+  'session.exited',
+  'turn.completed',
+  'turn.aborted',
+]);
 const CONVERSATION_INVENTORY_REFRESH_WINDOW_MS = 5000;
 
 /**
@@ -269,22 +285,6 @@ function requestConversationInventoryRefresh(apiBase: string): void {
       CONVERSATION_INVENTORY_REFRESH_WINDOW_MS - elapsed,
     );
 }
-const SESSION_READ_MODEL_REFRESH_WINDOW_MS = 1000;
-
-/**
- * #4266: events after which a conversation can be at rest. The inventory
- * carries the finish time Home and the inbox sort finished work by; a copy
- * read while the work ran holds its start time instead, so it is re-read,
- * at most once per {@link CONVERSATION_INVENTORY_REFRESH_WINDOW_MS}: the read
- * refetches every loaded inventory page, and a busy Station ends turns
- * often. The live row's own finish time covers the wait.
- */
-const CONVERSATION_INVENTORY_REST_METHODS: ReadonlySet<string> = new Set([
-  'runtime.error',
-  'session.exited',
-  'turn.completed',
-  'turn.aborted',
-]);
 
 function refreshSessionReadModelOnFact(
   apiBase: string,
