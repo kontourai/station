@@ -205,7 +205,8 @@ test('lists the active Station first, then by recent use, and focuses the previo
   recordStationUse('four');
   recordStationUse('two');
   recordStationUse('one');
-  openMenu([station, laptop, extras[0]]);
+  // Saved order is the reverse of use, so only recency can produce the order.
+  openMenu([extras[0], laptop, station]);
   const names = screen
     .getAllByRole('menuitemradio')
     .map((item) => item.textContent);
