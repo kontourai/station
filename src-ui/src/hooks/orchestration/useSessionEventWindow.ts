@@ -174,16 +174,29 @@ function contiguousFrom(
   );
 }
 
-/** The newest turn's `turn.started` sequence, when the page holds it. */
+/**
+ * Where the page's newest turn starts: its first `turn.started`. The newest
+ * event cannot name that turn (a finished turn is followed by a turnless
+ * `session.state-changed`), and a steer re-announces the turn later on.
+ */
 function newestTurnStart(
   events: readonly OrchestrationSequencedEvent[],
 ): number | undefined {
-  const turnId = events.at(-1)?.event.turnId;
-  if (!turnId) return undefined;
+  const newest = [...events]
+    .reverse()
+    .find((item) => item.event.method === 'turn.started')?.event;
+  if (!newest) return undefined;
   return events.find(
     (item) =>
-      item.event.method === 'turn.started' && item.event.turnId === turnId,
+      item.event.method === 'turn.started' &&
+      item.event.threadId === newest.threadId &&
+      item.event.turnId === newest.turnId,
   )?.sequence;
+}
+
+function lowest(...values: (number | undefined)[]): number | undefined {
+  const defined = values.filter((value) => value !== undefined);
+  return defined.length ? Math.min(...defined) : undefined;
 }
 
 /** REST-only bounded session history. Live content remains app-wide SSE state. */
@@ -233,6 +246,7 @@ export function useSessionEventWindow(
   );
   cursorRef.current = cursor;
   const eventsRef = useRef(events);
+  const pendingFloorRef = useRef<number | undefined>(undefined);
   eventsRef.current = events;
   watermarkRef.current = watermark;
   reconcileRevisionRef.current = reconcileRevision;
@@ -334,8 +348,10 @@ export function useSessionEventWindow(
       // land above what this reader holds. The page must run unbroken down to
       // what is held once older pages are loaded, or else to its newest turn's
       // start, so that turn reads whole. Its cursor reads the gap first.
+      // A fill a later read cut short still owes its gap, so its floor holds
+      // until some fill reaches it.
       const floor = olderLoadedRef.current
-        ? eventsRef.current.at(-1)?.sequence
+        ? lowest(eventsRef.current.at(-1)?.sequence, pendingFloorRef.current)
         : newestTurnStart(next);
       if (
         page.nextCursor &&
@@ -467,15 +483,23 @@ export function useSessionEventWindow(
   const fillToFloor = useCallback(
     async (cursor: string, floor: number) => {
       const adoptCursor = !olderLoadedRef.current;
+      pendingFloorRef.current = floor;
       let pageCursor: string | undefined = cursor;
       for (let pages = 0; pageCursor && pages < MAX_FILL_PAGES; pages += 1) {
         const page = await readOlder(pageCursor, {
           adoptCursor,
           olderLoaded: false,
         });
-        if (!page || contiguousFrom(page) <= floor) return;
+        // Superseded or failed: the floor stays owed to the next reload.
+        if (!page) return;
+        if (contiguousFrom(page) <= floor) {
+          pendingFloorRef.current = undefined;
+          return;
+        }
         pageCursor = page.nextCursor;
       }
+      // Bounded or out of pages: Load older owns the rest of the gap.
+      pendingFloorRef.current = undefined;
       if (!adoptCursor && pageCursor) setCursor(pageCursor);
     },
     [readOlder],
@@ -489,6 +513,7 @@ export function useSessionEventWindow(
     requestSerialRef.current += 1;
     requestControllerRef.current?.abort();
     olderLoadedRef.current = false;
+    pendingFloorRef.current = undefined;
     if (recoveryTimerRef.current !== undefined) {
       clearTimeout(recoveryTimerRef.current);
       recoveryTimerRef.current = undefined;

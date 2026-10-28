@@ -2773,6 +2773,18 @@ describe('useActiveChatTranscript', () => {
               delta: `${sequence} `,
             });
       });
+    const turn9 = (from: number, to: number) => [
+      ...(from === 9
+        ? [event('e9', 'turn.started', { turnId: 'turn-9', prompt: 'Q9' })]
+        : []),
+      ...Array.from({ length: to - Math.max(from, 10) + 1 }, (_, offset) =>
+        event(`e${Math.max(from, 10) + offset}`, 'content.text-delta', {
+          turnId: 'turn-9',
+          itemId: 'answer-9',
+          delta: `${Math.max(from, 10) + offset} `,
+        }),
+      ),
+    ];
     const sequences = (events: readonly { sequence: number }[]) =>
       events.map((item) => item.sequence);
     const cursorOf = (call: number) =>
@@ -2883,10 +2895,7 @@ describe('useActiveChatTranscript', () => {
           watermark: 12,
           hasMore: true,
           nextCursor: 'below-9',
-          events: [
-            event('e9', 'turn.started', { turnId: 'turn-9', prompt: 'Q9' }),
-            ...turnEvents(10, 12),
-          ],
+          events: turn9(9, 12),
         })
         .mockResolvedValueOnce({
           protocolVersion: 1,
@@ -2938,7 +2947,10 @@ describe('useActiveChatTranscript', () => {
           watermark: 14,
           hasMore: true,
           nextCursor: 'below-8',
+          // Turn 6 is now the older turn the page cuts; turn 13 is whole.
+          turnStartDetached: true,
           events: [
+            ...turnEvents(6, 6),
             ...turnEvents(8, 12),
             event('e13', 'turn.started', { turnId: 'turn-13', prompt: 'Q13' }),
             event('e14', 'content.text-delta', {
@@ -2964,10 +2976,124 @@ describe('useActiveChatTranscript', () => {
       rerender({ revision: 1 });
       await waitFor(() =>
         expect(sequences(result.current.events)).toEqual([
-          8, 9, 10, 11, 12, 13, 14,
+          6, 8, 9, 10, 11, 12, 13, 14,
         ]),
       );
       expect(fetchWindow).toHaveBeenCalledTimes(3);
+    });
+
+    // A finished turn is followed by a turnless `session.state-changed`, and a
+    // steer re-announces the turn mid-way: neither may hide where it started.
+    test('a finished, steered turn still reads whole', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 13,
+          hasMore: true,
+          nextCursor: 'gap',
+          turnStartDetached: true,
+          events: [
+            ...turnEvents(6, 6),
+            event('e11', 'turn.started', {
+              turnId: 'turn-6',
+              inputKind: 'steer',
+              prompt: 'Steer',
+            }),
+            ...turnEvents(12, 12),
+            event('e13', 'session.state-changed', { state: 'idle' }),
+          ],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 13,
+          hasMore: false,
+          events: turnEvents(6, 10),
+        });
+      const { result } = renderHook(() =>
+        useActiveChatTranscript('http://finished-steered.test', baseSession),
+      );
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([
+          6, 7, 8, 9, 10, 11, 12, 13,
+        ]),
+      );
+      expect(cursorOf(1)).toBe('gap');
+    });
+
+    test('a fill a newer reload cut short is still owed', async () => {
+      let resolveFirstFill: ((page: unknown) => void) | undefined;
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: true,
+          nextCursor: 'older',
+          events: turnEvents(3, 5),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: false,
+          events: turnEvents(1, 2),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'below-9',
+          events: turn9(9, 12),
+        })
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveFirstFill = resolve;
+            }),
+        )
+        // The next reload lands on held events (9..12), so on its own it
+        // would see nothing missing.
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 14,
+          hasMore: true,
+          nextCursor: 'below-9-again',
+          events: turn9(9, 14),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 14,
+          hasMore: false,
+          events: turnEvents(1, 8),
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://owed-fill.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.hasMore).toBe(true));
+      await act(async () => result.current.loadOlder());
+      rerender({ revision: 1 });
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(4));
+      rerender({ revision: 2 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual(
+          Array.from({ length: 14 }, (_, index) => index + 1),
+        ),
+      );
+      expect(cursorOf(5)).toBe('below-9-again');
+      // The superseded fill's late answer changes nothing.
+      await act(async () => {
+        resolveFirstFill?.({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: false,
+          events: turnEvents(6, 6),
+        });
+      });
+      expect(sequences(result.current.events)).toHaveLength(14);
+      expect(result.current.hasMore).toBe(false);
     });
 
     test('a page that cuts only an older turn reads nothing more', async () => {
