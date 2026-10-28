@@ -1725,7 +1725,8 @@ slot and then runs the script as the slot holder. These entry points use it:
   - The wait spends the lane's deadline, as coordinator queueing already
     does. A full-regression phase's own execution budget starts only once its
     slot is held. A wait cut short by the lane deadline makes the lane's
-    receipt report a timeout, and a cancel during the wait reports a cancel.
+    receipt report a timeout. A cancel during the wait ends the lane as any
+    other cancel would.
   - A refusal publishes an `infrastructure_error` receipt that names the
     holders. Only passing receipts are reused, so the next request retries.
 - Do not call the coordinator (`ci:fast`, `verify:static`, `run-verification`)
