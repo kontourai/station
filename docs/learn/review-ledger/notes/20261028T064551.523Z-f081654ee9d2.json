@@ -1,0 +1,7 @@
+{
+  "revision": "263d7e762481f8be9f1220e8539c421ccfedbc4b",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Reviewed only the learning-media guard instrumentation delta: existing tracked capture manifest, source bindings, real JOB_ENV freshness policy, conditional history replay, append-only source checks and capture assertions remain identical. Added bounded nested enter/exit markers around the three existing state/policy/history calls; original 30-second test deadline and failure propagation are unchanged. The canonical local owner passed 7 cases in11.81s, isolating1.207s initial state and9.309s scoped policy versus13ms media compilation; these are local-mode measurements, not reproduction or repair of the retained hosted38s failure. Documentation guidance about provenance, separate source/behavior evidence and scoped review freshness remains accurate. No prose or blanket approval is introduced.","inputs":["docs/guides/documentation.md","scripts/__tests__/learning-media.test.ts"]}
+  ]
+}

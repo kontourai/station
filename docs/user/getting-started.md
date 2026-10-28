@@ -824,8 +824,15 @@ every open window. It does not hold back the messages written after
 it.
 
 Quiet turns show elapsed silence without guessing that an engine retried. Retry
-status appears only when the engine reports it. The Drafts icon saves and restores
-unsent composer content; the trash icon clears the current message. Hold or focus
+status appears only when the engine reports it. The **Drafts** icon opens **Saved
+drafts** (also Ctrl/Cmd+S in the composer). Save a copy of an unsent prompt,
+including attachments and quoted context, then choose it from any chat on this
+device to put it in that chat's composer. Saving leaves the current message in
+place; restoring replaces the destination composer's content without sending it.
+Drafts are stored in this browser or app on this device, not synced to other
+devices. Station keeps the 20 newest saved drafts, with up to five images per
+draft, and lists any dropped or unreadable images. The trash icon clears the
+current message. Hold or focus
 either icon to read its label. Choose **Chat settings → Return in chat** to change
 Return behavior on this device. Touch devices default to a new line; desktop
 Return sends. Shift+Return adds a line and Ctrl/Cmd+Return sends.

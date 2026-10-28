@@ -4,12 +4,13 @@ import {
   useServerUpdateRunningTurnsQuery,
 } from '@kontourai/station-sdk';
 import { compareStationReleaseVersions } from '@kontourai/station-shared/release-version-order';
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { SkeletonBlock } from '../../components/state';
+import { autoDownloadLabel } from './coreUpdatePresentation';
 
 export function ServerUpdateStageApply({
   active = true,
@@ -18,7 +19,10 @@ export function ServerUpdateStageApply({
   latestVersion,
   canDownload,
   onRequested,
+  secondaryAction,
 }: {
+  /** Rendered after this card's own actions, in the same row. */
+  secondaryAction?: ReactNode;
   active?: boolean;
   apiBase: string;
   state: ServerUpdateState;
@@ -57,55 +61,60 @@ export function ServerUpdateStageApply({
       },
     });
 
+  const canOfferDownload =
+    newerThanStaged &&
+    canDownload &&
+    !!latestVersion &&
+    !idle &&
+    progress.state !== 'queued' &&
+    progress.state !== 'staging';
+
   return (
     <div className="settings__update-stage-apply">
       <div className="settings__update-row">
         {staged && !idle && (
-          <button
-            type="button"
-            className="settings__update-btn settings__update-btn--apply"
+          <Button
+            variant="primary"
             onClick={() => setConfirmingVersion(staged.version)}
             disabled={action.isPending}
           >
-            Restart server to update to {staged.version}
-          </button>
+            Restart server
+          </Button>
         )}
         {staged && idle && (
-          <button
-            type="button"
-            className="settings__update-btn settings__update-btn--check"
+          <Button
             onClick={() => run({ action: 'cancel-apply-when-idle' })}
             disabled={action.isPending}
           >
             Cancel update when idle
-          </button>
+          </Button>
         )}
-        {newerThanStaged &&
-          canDownload &&
-          latestVersion &&
-          !idle &&
-          progress.state !== 'queued' &&
-          progress.state !== 'staging' && (
-            <button
-              type="button"
-              className="settings__update-btn settings__update-btn--apply"
-              onClick={() => run({ action: 'stage' })}
-              disabled={action.isPending}
-            >
-              {action.isPending ? 'Requesting…' : `Download ${latestVersion}`}
-            </button>
-          )}
+        {canOfferDownload && (
+          // One primary action at a time: once a release is downloaded,
+          // restarting into it leads, and a newer one is the secondary
+          // choice, named by version because the header shows the staged one.
+          <Button
+            variant={staged ? 'secondary' : 'primary'}
+            onClick={() => run({ action: 'stage' })}
+            disabled={action.isPending}
+          >
+            {action.isPending
+              ? 'Requesting…'
+              : staged
+                ? `Download ${latestVersion}`
+                : 'Download server update'}
+          </Button>
+        )}
+        {secondaryAction}
       </div>
       {staged && idle && (
         <div className="settings__update-msg" role="status">
-          The server restarts into {idle.version} once no agent turn is running.
+          Restarts into {idle.version} once no agent turn is running.
         </div>
       )}
       {!staged && state.autoDownloadAt && (
         <span className="settings__field-hint">
-          Downloads by itself after{' '}
-          {new Date(state.autoDownloadAt).toLocaleString()} (Automatic server
-          download).
+          {autoDownloadLabel(state.autoDownloadAt)}
         </span>
       )}
       {action.error && (
