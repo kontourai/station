@@ -373,6 +373,15 @@ describe('project guest administration over the production composition', () => {
         ? localAccounts
         : authentication,
       localAccounts,
+      // #4305: the Settings-controlled sharing route, mounted for real.
+      accountSharing: () => ({
+        lockedBy: [],
+        active: {
+          projectSharing: false,
+          localAccounts: false,
+          externalProvider: false,
+        },
+      }),
       applicationSessions,
       storageAdapter: storage,
       knowledgeStoreProvider,
@@ -3371,5 +3380,96 @@ describe('project guest administration over the production composition', () => {
     const afterRevocation = await pendingGraph;
     expect(afterRevocation.status).toBe(404);
     expect(await afterRevocation.text()).not.toContain('Selected source');
+  });
+  test('#4305: only the Station operator reaches the Project sharing setting; a managing device is refused before anything is staged', async () => {
+    const h = await setup();
+    const path = '/api/operator/account-sharing';
+    const stored = join(h.homeDir, 'config', 'account-sharing.json');
+    const apply = (publicOrigin: string) => ({
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: true, publicOrigin }),
+    });
+
+    // A Project guest's device lacks access:manage: the scope gate refuses.
+    const { guest } = await h.shareWithGuestAdmin('sharing-setting', 'Sharing');
+    const scoped = await h.request(path, guest());
+    expect(scoped.status).toBe(403);
+    expect(await scoped.json()).toEqual({
+      error: { code: 'insufficient_scope' },
+    });
+
+    // An account-bound device with access:manage is refused by the
+    // account-bound route gate before the handler.
+    const accountBound = h.guestHeaders(
+      h.pairAccountBound('access manager', 'orchestration:read access:manage')
+        .credential,
+    );
+    const bound = await h.request(path, accountBound());
+    expect(await bound.json()).toEqual({
+      error: { code: 'account_bound_device_route_forbidden' },
+    });
+    // An ordinary paired device (a phone over the tailnet) that may manage
+    // access reaches the handler, and is not the Station operator: the
+    // real operator() check refuses it.
+    const pairing = h.security.devicePairing;
+    const offer = pairing.createOffer({
+      endpoint: ORIGIN,
+      scope: 'orchestration:read access:manage',
+    });
+    const pending = pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Phone',
+      requesterPosition: 'off-box',
+      source: 'same-origin',
+    });
+    pairing.confirmRequest(pending.requestId, { ...operatorApproval });
+    const { credential } = pairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: pending.requestId,
+    });
+    const phone = (extra?: RequestInit) => ({
+      ...extra,
+      headers: {
+        ...(extra?.headers ?? {}),
+        Authorization: `Bearer ${credential}`,
+      },
+    });
+    for (const response of [
+      await h.request(path, phone()),
+      await h.request(path, phone(apply('http://localhost:4321'))),
+    ]) {
+      const body = await response.text();
+      expect(response.status, body).toBe(403);
+      expect(JSON.parse(body).code, body).toBe('operator_required');
+    }
+    expect(existsSync(stored)).toBe(false);
+
+    // The operator reads the offered origins.
+    const read = await h.request(path, h.operatorHeaders());
+    expect(read.status, await read.clone().text()).toBe(200);
+    const view = (await read.json()).data;
+    expect(view.source).toBe('setting');
+    expect(view.origins).toContainEqual({
+      origin: 'http://localhost:4321',
+      sources: ['station-loopback'],
+    });
+    // A hand-typed origin Station does not offer is refused.
+    const typed = await h.request(
+      path,
+      h.operatorHeaders(apply('http://127.0.0.2:4321')),
+    );
+    expect(typed.status).toBe(400);
+    expect((await typed.json()).code).toBe('origin_not_offered');
+    // An offered one is valid, but this test process has no supervisor.
+    const unsupervised = await h.request(
+      path,
+      h.operatorHeaders(apply('http://localhost:4321')),
+    );
+    expect(unsupervised.status).toBe(409);
+    expect((await unsupervised.json()).code).toBe('restart_unavailable');
+    expect(existsSync(stored)).toBe(false);
   });
 });
