@@ -1487,6 +1487,11 @@
   .related-pane-strip .button.button {
     min-height: 44px;
   }
+  /* Qualified to outrank the base rule, which comes later in this file. */
+  .station-switcher__item .station-switcher__remove {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 
 /* The draft keeps the height `ChatInputArea`'s resize effect gives it (capped
@@ -2478,6 +2483,15 @@
     opacity: 1;
     pointer-events: auto;
   }
+  /* The Station switcher's forget control appears with its row; without
+     hover it stays visible, since there is nothing to reveal it. */
+  .station-switcher__remove:not(.station-switcher__remove--armed) {
+    opacity: 0;
+  }
+  .station-switcher__item:hover .station-switcher__remove,
+  .station-switcher__item:focus-within .station-switcher__remove {
+    opacity: 1;
+  }
 }
 
 /* The footer's controls are nested inside their own components, so the
@@ -2941,29 +2955,6 @@
 }
 .station-switcher__item:has(.station-switcher__remove) .station-switcher__row {
   padding-right: 44px;
-}
-/* With a pointer that hovers, the remove control appears with its row; on
-   touch it stays visible, and 44px tall, because there is no hover to find it. */
-@media (hover: hover) {
-  .station-switcher__remove:not(.station-switcher__remove--armed) {
-    opacity: 0;
-  }
-  .station-switcher__item:hover .station-switcher__remove,
-  .station-switcher__item:focus-within .station-switcher__remove {
-    opacity: 1;
-  }
-}
-@media (pointer: coarse) {
-  .station-switcher__remove {
-    min-width: 44px;
-    min-height: 44px;
-  }
-}
-.station-switcher__empty {
-  margin: 0;
-  padding: var(--k-space-3);
-  color: var(--k-text-muted);
-  font-size: var(--k-text-sm);
 }
 .station-switcher__bulk--armed,
 .station-switcher__bulk--armed:hover,

@@ -27,6 +27,7 @@ import {
 } from '../../lib/stationSwitcher';
 import { useStationConditions } from '../notifications/StationConditions';
 import { openStationDetails } from '../notifications/stationDetailsEvents';
+import { FilteredEmpty } from '../state';
 import './HeaderMenu.css';
 
 /** Below this many Stations a filter field is more clutter than help. */
@@ -282,7 +283,7 @@ export function StationSwitcherMenu({
     const probed = reachability[connection.id];
     if (probed === 'online') return 'Online';
     if (probed === 'unreachable') return 'Unreachable';
-    if (isProbeable(connection)) return 'Checking…';
+    if (isProbeable(connection) && !probed) return '';
     return connection.lastError ? "Can't connect" : '';
   };
 
@@ -346,7 +347,7 @@ export function StationSwitcherMenu({
             // active Station and for anything that needs attention.
             const shown = armed
               ? 'Forget on this device?'
-              : label === 'Online' || label === 'Checking…'
+              : label === 'Online'
                 ? ''
                 : label;
             return (
@@ -416,7 +417,14 @@ export function StationSwitcherMenu({
             );
           })}
           {visible.length === 0 && (
-            <p className="station-switcher__empty">No matching Stations</p>
+            <FilteredEmpty
+              query={filter}
+              title={`Nothing matches “${filter.trim()}”`}
+              onClear={() => {
+                setFilter('');
+                filterRef.current?.focus();
+              }}
+            />
           )}
         </div>
         {unreachable.length >= 2 && !filter && (

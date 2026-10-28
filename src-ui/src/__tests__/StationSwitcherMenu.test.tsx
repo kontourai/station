@@ -159,7 +159,8 @@ test('marks the current Station, reports peer reachability, and exposes manageme
   expect(row('Workstation — Connected').getAttribute('aria-checked')).toBe(
     'true',
   );
-  expect(row('Laptop — Checking…')).toBeTruthy();
+  // Until its probe answers, a peer shows only its name.
+  expect(row('Laptop')).toBeTruthy();
   expect(
     (
       await screen.findByRole('menuitemradio', { name: 'Laptop — Online' })
@@ -237,7 +238,9 @@ test('filters by typing, and Enter switches to the best match', async () => {
   await act(async () => {});
   expect(select).toHaveBeenCalledExactlyOnceWith(extras[1]);
   fireEvent.change(filter, { target: { value: 'nothing here' } });
-  expect(screen.getByText('No matching Stations')).toBeTruthy();
+  expect(screen.getByText('Nothing matches “nothing here”')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Clear filter' }));
+  expect(screen.getAllByRole('menuitemradio')).toHaveLength(5);
 });
 
 test('removes a Station after an inline confirmation, never the active one', async () => {
