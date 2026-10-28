@@ -337,13 +337,13 @@ async function runCompletionPhaseSequence(input) {
         getLease().phase?.executionDeadlineAt ?? executionDeadlineAt;
       let raw;
       let timedOut = false;
+      // A wait cut short by the lane deadline aborts the signal; the lane's
+      // own deadline runner then reports the timeout.
       if (heavyCheckRefusal?.name === 'AbortError')
         raw = { status: null, signal: 'SIGTERM' };
-      else if (heavyCheckRefusal) {
-        // A wait cut short by the lane deadline is that deadline expiring.
-        timedOut = context.now() >= context.absoluteDeadline;
+      else if (heavyCheckRefusal)
         raw = { status: null, error: heavyCheckRefusal };
-      } else
+      else
         try {
           ({ raw, timedOut } = await runWithinDeadline({
             execute,

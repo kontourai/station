@@ -24,9 +24,10 @@
  *
  * Admission is taken in one order: verification-coordinator admission, then
  * a heavy-check slot, then typecheck or Biome slots. A coordinator owner takes
- * its slot only once a lane (or one full-regression phase) has been admitted
- * and is about to execute (`withHeavyCheckSlot`), and releases it before the
- * next phase queues, so no slot is held while waiting on the coordinator.
+ * its slot only once a lane (`withHeavyCheckSlot`) or one full-regression
+ * phase (`holdHeavyCheckSlot`) has been admitted and is about to execute, and
+ * releases it before the next phase queues, so no slot is held while waiting
+ * on the coordinator.
  * Reused and joined requests take none. Heavy checks run through
  * `scripts/heavy-check-slot.mjs` never call the coordinator; a check that did,
  * and joined another owner's lane, would wait on an owner waiting for its own

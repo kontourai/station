@@ -633,6 +633,100 @@ describe('verification coordinator', () => {
       }
     }, 30_000);
 
+    test('a full-regression phase canceled while it waits for a slot leaves the queue holding nothing', async () => {
+      const temp = fixture();
+      const worktree = join(temp.root, 'worktree');
+      mkdirSync(worktree);
+      const slotDir = join(temp.root, 'heavy-check-slots');
+      holdOnlySlot(slotDir);
+      const controller = new AbortController();
+      const abort = setTimeout(() => controller.abort(), 300);
+      const ran: string[] = [];
+      try {
+        // A canceled full-regression ends the way it does when canceled
+        // mid-phase without any slot: publication is fenced.
+        await expect(
+          coordinateVerification({
+            laneId: 'full-regression',
+            root: temp.root,
+            cwd: worktree,
+            heartbeatMs: 1,
+            signal: controller.signal,
+            collectProvenance: () =>
+              worktreeProvenance(worktree, 'heavy-cancel'),
+            hostCpuSampler: healthySampler(),
+            env: heavyCheckEnv(slotDir, '600000'),
+            phaseRunner: async ({ phase }: { phase: { id: string } }) => {
+              ran.push(phase.id);
+              return { status: 0 };
+            },
+          }),
+        ).rejects.toThrow(/fenced/);
+        expect(ran).toEqual([]);
+        // The canceled waiter left the queue and took nothing.
+        expect(readdirSync(join(slotDir, 'queue'))).toEqual([]);
+        expect(
+          JSON.parse(readFileSync(join(slotDir, 'slot-0.lock'), 'utf8')).nonce,
+        ).toBe('another-worktree');
+      } finally {
+        clearTimeout(abort);
+        temp.remove();
+      }
+    }, 30_000);
+
+    test('a fenced full-regression phase keeps its slot while its child may still run', async () => {
+      const temp = fixture();
+      const worktree = join(temp.root, 'worktree');
+      mkdirSync(worktree);
+      const slotDir = join(temp.root, 'heavy-check-slots');
+      let clock = 10_000;
+      let release!: () => void;
+      const ignored = new Promise<{ status: number }>((resolvePending) => {
+        release = () => resolvePending({ status: 0 });
+      });
+      const firstPhase = ORDINARY_FULL_PHASE_IDS[0];
+      try {
+        await expect(
+          coordinateVerification({
+            laneId: 'full-regression',
+            root: temp.root,
+            cwd: worktree,
+            heartbeatMs: 1,
+            now: () => clock,
+            collectProvenance: () =>
+              worktreeProvenance(worktree, 'heavy-fenced'),
+            hostCpuSampler: async () =>
+              buildHostPressureSample({
+                busyPercent: 40,
+                cpuCount: 4,
+                sampleMs: 1,
+                sampledAt: clock,
+                threshold: 85,
+                source: 'override',
+              }),
+            env: heavyCheckEnv(slotDir, '20000'),
+            phaseRunner: async ({
+              phase,
+            }: {
+              phase: { id: string; timeoutMs: number };
+            }) => {
+              if (phase.id !== firstPhase) return { status: 0 };
+              // Past its deadline and never settling: an owned child that
+              // ignored termination.
+              clock += phase.timeoutMs;
+              return ignored;
+            },
+          }),
+        ).rejects.toThrow(/fenced/);
+        expect(
+          JSON.parse(readFileSync(join(slotDir, 'slot-0.lock'), 'utf8')).label,
+        ).toBe(`verification:full-regression:${firstPhase}`);
+      } finally {
+        release();
+        temp.remove();
+      }
+    }, 60_000);
+
     test('a reused receipt takes no slot, even while the pool is full', async () => {
       const temp = fixture();
       const slotDir = join(temp.root, 'heavy-check-slots');
