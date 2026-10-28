@@ -8672,6 +8672,39 @@ export class EventStore {
       .map((row) => this.mapEventRow(row));
   }
 
+  /**
+   * The oldest and newest dispatch `turn.started` (not a steer) of one turn
+   * at or after `sinceCreatedAt`. Boot recovery compares their invocations
+   * to tell a later dispatch that reused a native turn id from the dead turn
+   * itself. Two single-row reads with no page bound to overflow; each walks
+   * the turn's rows, which only boot recovery pays.
+   */
+  dispatchStartsOfTurnSince(
+    threadId: string,
+    turnId: string,
+    sinceCreatedAt: string,
+  ):
+    | { oldest: PersistedRuntimeEvent; newest: PersistedRuntimeEvent }
+    | undefined {
+    const read = (order: 'ASC' | 'DESC') =>
+      this.db
+        .prepare(
+          `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
+           FROM orchestration_events
+           WHERE thread_id = ? AND turn_id = ? AND method = 'turn.started'
+             AND created_at >= ?
+             AND json_extract(payload, '$.inputKind') IS NOT 'steer'
+           ORDER BY sequence ${order}
+           LIMIT 1`,
+        )
+        .get(threadId, turnId, sinceCreatedAt);
+    const oldest = read('ASC');
+    const newest = read('DESC');
+    return oldest && newest
+      ? { oldest: this.mapEventRow(oldest), newest: this.mapEventRow(newest) }
+      : undefined;
+  }
+
   private listRequestSettlementFacts(
     threadId: string,
     unresolvedRequests: readonly PersistedRuntimeEvent[],

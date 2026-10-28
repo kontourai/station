@@ -147,6 +147,9 @@
     "src-ui/src/components/CommandPalette.tsx": {
       "bespoke-dialog:div": 1
     },
+    "src-ui/src/components/ContextMenu.tsx": {
+      "bespoke-action:{`menu-row${action.tone === 'danger' ? ' action-overflow__row--danger' : ''}`}": 1
+    },
     "src-ui/src/components/CreatePlusButton.css": {
       "legacy-token:--radius-pill": 1
     },
@@ -940,9 +943,6 @@
     },
     "src-ui/src/components/coding-layout/DiffPanel.tsx": {
       "alert-with-action:p": 1
-    },
-    "src-ui/src/components/coding-layout/FileTreeContextMenu.tsx": {
-      "bespoke-action:{`file-tree-context-menu__item${\n              action.danger ? ' file-tree-context-menu__item--danger' : ''\n            }`}": 1
     },
     "src-ui/src/components/coding-layout/FileTreePanel.css": {
       "legacy-token:--text-muted": 4,

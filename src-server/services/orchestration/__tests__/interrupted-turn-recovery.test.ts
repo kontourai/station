@@ -1628,31 +1628,38 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
   });
 
   test.each([
-    { shape: 'plain', earlierUse: 0, steered: false, captured: false },
+    { shape: 'plain', earlierUse: 0, steers: 0, captured: false },
     // The id's earlier use fills a per-turn page ahead of this dispatch.
     {
       shape: 'a long earlier use of the id',
       earlierUse: 70,
-      steered: false,
+      steers: 0,
       captured: false,
     },
     // Steer starts carry no invocation and land after the reused start.
     {
       shape: 'a steer after the reuse',
       earlierUse: 0,
-      steered: true,
+      steers: 1,
+      captured: false,
+    },
+    // More starts since the claim than any one page of them.
+    {
+      shape: 'more steers after the reuse than a page',
+      earlierUse: 0,
+      steers: 70,
       captured: false,
     },
     // Only the captured intent names this dispatch's invocation.
     {
       shape: 'a captured dispatch whose start has no invocation',
       earlierUse: 0,
-      steered: false,
+      steers: 0,
       captured: true,
     },
   ])(
     'leaves a newer invocation that reuses the dead turn id running ($shape)',
-    async ({ earlierUse, steered, captured }) => {
+    async ({ earlierUse, steers, captured }) => {
       const path = databasePath();
       const threadId = 'thread-reused-turn-id';
       const eventStore = bootAfterCrash({
@@ -1690,9 +1697,9 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
         method: 'turn.started',
         prompt: 'again',
       } as CanonicalRuntimeEvent);
-      if (steered)
+      for (let index = 0; index < steers; index += 1)
         eventStore.appendEvent({
-          eventId: 'turn-started:steer',
+          eventId: `turn-started:steer:${index}`,
           provider: 'codex',
           threadId,
           turnId: 'turn-1',
@@ -1719,6 +1726,82 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
       );
     },
   );
+
+  test('a steer of the dead turn does not keep recovery from closing it', async () => {
+    const path = databasePath();
+    const threadId = 'thread-steered-dead-turn';
+    const eventStore = bootAfterCrash({
+      path,
+      threadId,
+      provider: 'codex',
+      boundaryState: 'accepted',
+      startInvocationId: 'invocation-1',
+      duringTurn: [
+        {
+          eventId: 'turn-started:steer',
+          provider: 'codex',
+          threadId,
+          turnId: 'turn-1',
+          createdAt: '2026-08-16T00:00:01.500Z',
+          method: 'turn.started',
+          prompt: 'and this',
+          inputKind: 'steer',
+        } as CanonicalRuntimeEvent,
+      ],
+    });
+    stores.push(eventStore);
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore,
+      logger,
+    });
+
+    await (service as any).interruptedTurns.consume();
+
+    const events = eventStore.listEvents(threadId);
+    expect(
+      events.filter((e) => e.payload.method === 'turn.aborted'),
+    ).toHaveLength(1);
+    expect(
+      activeTurnIdForEvents(events.map((row) => row.payload)),
+    ).toBeUndefined();
+  });
+
+  test('a newer start without an invocation is no evidence of reuse: the dead turn is closed', async () => {
+    const path = databasePath();
+    const threadId = 'thread-uninvoked-newer-start';
+    const eventStore = bootAfterCrash({
+      path,
+      threadId,
+      provider: 'codex',
+      boundaryState: 'accepted',
+      startInvocationId: 'invocation-1',
+    });
+    stores.push(eventStore);
+    eventStore.appendEvent({
+      eventId: 'turn-started:uninvoked',
+      provider: 'codex',
+      threadId,
+      turnId: 'turn-1',
+      createdAt: '2026-08-16T00:00:04.000Z',
+      method: 'turn.started',
+      metadata: { trigger: 'provider' },
+    } as CanonicalRuntimeEvent);
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore,
+      logger,
+    });
+
+    await (service as any).interruptedTurns.consume();
+
+    const events = eventStore.listEvents(threadId);
+    expect(
+      events.filter((e) => e.payload.method === 'turn.aborted'),
+    ).toHaveLength(1);
+  });
 
   test('a recovery abort persisted without an invocationId still closes its invocation-anchored turn', async () => {
     // The row shape boot recovery wrote before it stamped the invocation:
@@ -1879,6 +1962,38 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
       expect(
         eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
       ).toEqual({ kind: 'available', active: false });
+    });
+
+    test('a dispatch that reused its turn id before recovery ran is left running', async () => {
+      const path = databasePath();
+      const threadId = 'thread-provider-reused';
+      const dying = new EventStore(path);
+      dying.appendEvent(sessionStartedEvent({ threadId, provider: 'claude' }));
+      (serviceOn(dying) as any).projectAndPublishEvent(providerStart(threadId));
+      dying.close();
+
+      const eventStore = new EventStore(path);
+      stores.push(eventStore);
+      // A new owner sent before recovery ran, and the engine reused the id.
+      eventStore.appendEvent({
+        eventId: 'turn-started:reused',
+        provider: 'claude',
+        threadId,
+        turnId: 'provider:turn-1',
+        invocationId: 'invocation-2',
+        createdAt: '2026-08-16T00:00:04.000Z',
+        method: 'turn.started',
+        prompt: 'again',
+      } as CanonicalRuntimeEvent);
+      await (serviceOn(eventStore) as any).interruptedTurns.consume();
+
+      const events = eventStore.listEvents(threadId);
+      expect(events.filter((e) => e.payload.method === 'turn.aborted')).toEqual(
+        [],
+      );
+      expect(activeTurnIdForEvents(events.map((row) => row.payload))).toBe(
+        'provider:turn-1',
+      );
     });
 
     test('L4: a send queued behind it when the process died (accepted, never started) still gets its terminal and banner', async () => {

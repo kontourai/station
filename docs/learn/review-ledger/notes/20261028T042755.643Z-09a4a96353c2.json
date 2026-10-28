@@ -1,0 +1,7 @@
+{
+  "revision": "138b5dd1d399d4a48aa0f1e307bd65bcefb26dd7",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Reviewed live-status.css at 138b5dd1d: active border becomes transparent; glyph orbit, entry/morph/exit animations, hidden-page pause and reduced-motion declarations are unchanged. Existing status tests: 18 passed; isolated Chromium CSS renders inspected at 390/1440 in light/dark. Motion grammar remains accurate; no prose change. Full chat/device motion not requalified.","inputs":["docs/design/motion.md","src-ui/src/components/status/live-status.css"]}
+  ]
+}
