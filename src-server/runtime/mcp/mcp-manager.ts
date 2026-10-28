@@ -43,6 +43,7 @@ import {
   StationToolServerOAuthProvider,
   toolServerCredentialCandidates,
   toolServerCredentialStoreFor,
+  toolServerOAuthClientConfig,
   toolServerOAuthResourceIdentity,
 } from '../../services/plugins/tool-server-oauth.js';
 import { establishMcpSecretChild } from '../../services/secrets/mcp-secret-child-env.js';
@@ -282,6 +283,7 @@ async function createMCPTools(
                 configLoader,
                 toolDef,
                 serverPort,
+                integrationSecretResolver,
               )?.forTransport(),
             },
           ),
@@ -631,6 +633,7 @@ export async function loadAgentTools(
           configLoader,
           serverPort,
           custody,
+          integrationSecretResolver,
         );
         tools.push(
           ...wrapPlatformMutationGatedTools(
@@ -875,6 +878,7 @@ function createPrincipalScopedMCPTools(
   configLoader: ConfigLoader,
   serverPort: number,
   custody: MCPLocalConnectionCustody,
+  integrationSecretResolver: IntegrationSecretResolver | undefined,
 ): Tool<any>[] {
   const resourceIdentity = toolServerOAuthResourceIdentity(toolDef);
   if (!resourceIdentity)
@@ -896,6 +900,10 @@ function createPrincipalScopedMCPTools(
     return [];
   }
   const redirectUrl = toolServerOAuthRedirectUrl(serverPort, toolId);
+  const oauthClient = toolServerOAuthClientConfig(
+    toolDef,
+    integrationSecretResolver,
+  );
   const selectProvider = async (): Promise<StationToolServerOAuthProvider> => {
     // The session owner's `PrincipalRef.id`, only when it can own an account.
     const principalId = connectedAccountOwnerIdForTurnAccount(
@@ -913,6 +921,7 @@ function createPrincipalScopedMCPTools(
         redirectUrl,
         undefined,
         owner,
+        oauthClient,
       );
       if (await provider.tokens()) return provider;
     }
@@ -989,6 +998,7 @@ function createRuntimeOAuthProvider(
   configLoader: ConfigLoader,
   def: ToolDef,
   serverPort: number,
+  integrationSecretResolver: IntegrationSecretResolver | undefined,
 ): StationToolServerOAuthProvider | undefined {
   if (
     (def.transport !== 'sse' && def.transport !== 'streamable-http') ||
@@ -1003,6 +1013,9 @@ function createRuntimeOAuthProvider(
     def.id,
     resourceIdentity,
     toolServerOAuthRedirectUrl(serverPort, def.id),
+    undefined,
+    undefined,
+    toolServerOAuthClientConfig(def, integrationSecretResolver),
   );
 }
 

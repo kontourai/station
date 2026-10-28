@@ -120,6 +120,36 @@ export interface ToolDef {
    * used for such a turn only when `allowInstanceFallback` is true.
    */
   credentialOwnership?: ToolCredentialOwnership;
+  /**
+   * How Station identifies itself to a remote tool server's OAuth
+   * authorization server. Absent means Dynamic Client Registration, as before.
+   * Selection follows the MCP authorization spec: a pre-registered `clientId`
+   * first, then `clientMetadataUrl` when the server advertises Client ID
+   * Metadata Document support, then registration.
+   */
+  oauthClient?: ToolOAuthClient;
+}
+
+/**
+ * A remote tool server's OAuth client. The client identifies the app, not a
+ * person: everyone who signs in uses it, and their tokens keep the
+ * integration's `credentialOwnership`.
+ */
+export interface ToolOAuthClient {
+  /** A client ID registered with the authorization server ahead of time. */
+  clientId?: string;
+  /** HTTPS URL of a Client ID Metadata Document, used as the client ID. */
+  clientMetadataUrl?: string;
+  /**
+   * Default scopes to request at sign-in, replacing the scopes the server
+   * advertises. The person signing in can change them for their sign-in.
+   */
+  scopes?: string[];
+  /**
+   * Secret binding id holding the client secret, never the secret. Only the
+   * secret-binding bind/unbind routes write it.
+   */
+  clientSecretRef?: string;
 }
 
 export interface ToolCredentialOwnership {
@@ -153,7 +183,9 @@ export interface ToolServerProbeResult {
     | { state: 'awaiting-operator-consent' }
     | { state: 'authorized' }
     | { state: 'authorization-failed'; reason: string }
-    | { state: 'token-expired-refresh-failed'; reason: string };
+    | { state: 'token-expired-refresh-failed'; reason: string }
+    /** The server offers no client registration and no client is configured. */
+    | { state: 'client-id-required'; reason: string };
 }
 
 export interface ToolMetadata {

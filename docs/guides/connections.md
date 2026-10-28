@@ -1504,7 +1504,8 @@ OAuth and the Station host must be able to reach that address.
 2. Choose **Sign in → Open sign-in page** (or **Connect your account** for a
    source configured for personal accounts). Station discovers the
    OAuth metadata and registers its client automatically; no client secret is
-   needed for servers that support dynamic registration.
+   needed for servers that support dynamic registration. For a server that
+   does not, see [Use your own OAuth client](#use-your-own-oauth-client).
 3. Follow the remote server's approval flow. If it requires a pairing code,
    obtain one from the workspace's connection settings; otherwise approve from
    an authorized signed-in browser. Choose the access level you intend to grant.
@@ -1596,6 +1597,91 @@ with an empty body, malformed HTTP 200 responses and OAuth `invalid_request`,
 are treated as transient and do not request sign-in again. They preserve consent
 and show as temporarily unavailable when the access token cannot be used. You can
 reconnect manually from the integration's account panel if the failure persists.
+
+### Use your own OAuth client
+
+Some remote MCP servers do not register clients automatically. Google's Gmail
+MCP server and Slack's MCP server are examples: each expects a client that you
+registered with the provider ahead of time. Station picks a client in the order
+the MCP authorization specification gives:
+
+1. A **client ID** you configured (a pre-registered client).
+2. A **client metadata URL** you configured, only when the authorization server
+   advertises `client_id_metadata_document_supported`. The URL is the client ID
+   and must be an HTTPS URL with a path. Station does not host a metadata
+   document, and none is configured by default.
+3. Dynamic Client Registration, when the server offers it.
+
+If none of those applies, sign-in stops before contacting the token endpoint.
+The integration shows **Client ID required** and the authorization state
+`client-id-required`; add a client ID and sign in again.
+
+Configure the client under **Use your own OAuth client** in the integration's
+settings:
+
+- **Client ID**: the ID the provider issued.
+- **Client secret**: a confidential client's secret, chosen from a shared secret
+  binding (keychain, 1Password or environment). Create the binding under
+  **Advanced: Secret bindings** first, save the integration, then choose it and
+  **Bind**. The integration stores only the binding id. The secret is read for
+  each token request and sent with the method the server advertises
+  (`client_secret_basic`, then `client_secret_post`). It is never written to
+  `integration.json`, the credential store or logs. A public client leaves this
+  empty. A configured secret that cannot be read refuses sign-in and refresh;
+  Station does not fall back to a public client.
+- **Default scopes**: space-separated. They prefill the **Scopes** field in the
+  sign-in panel and replace the scopes the server advertises. A manifest or
+  `integration.json` can supply them.
+- **Client metadata URL**: optional; see the order above.
+
+Which access to grant is the choice of the person signing in, not Station's.
+The sign-in panel's **Scopes** field starts with the integration's default
+scopes; add or remove scopes there before **Sign in** or **Connect your
+account**. Station requests exactly that list for that sign-in and does not
+write it back as the default. An empty field leaves the choice to the server.
+Station checks only that each scope is a well-formed OAuth scope (1–32 distinct
+values); the provider decides what each scope allows.
+
+Changing the client ID or metadata URL clears the integration's tokens, because
+they belong to the client that obtained them; everyone signs in again. While a
+client secret is bound, the endpoint cannot change; remove the secret first.
+Raw integration JSON cannot set the binding; only the secret-binding routes can.
+
+The client identifies the app, not a person. Everyone who signs in uses the same
+client. Tokens keep the integration's account ownership: for a source configured
+for personal accounts, each person's tokens stay in their own bucket, and the
+shared account is used only when the fallback is explicitly allowed. A person-owned
+secret binding cannot be bound as a client secret.
+
+#### Example: Gmail MCP server (Developer Preview)
+
+Google's Gmail MCP server (`https://gmailmcp.googleapis.com/mcp/v1`) is a
+Developer Preview. Its behavior, scopes and client requirements may change, and
+Google's preview terms apply. Station has fixture tests for this flow. A live sign-in against
+Google is **NOT_VERIFIED**.
+
+1. In a Google Cloud project you own, follow Google's Gmail MCP preview
+   instructions to enable access, configure the OAuth consent screen and create
+   the OAuth client type the preview requires. Add Station's redirect URI,
+   `http://127.0.0.1:<port>/integrations/<id>/oauth/callback`, where `<port>`
+   is the Station server port and `<id>` the integration id.
+2. Create the integration with connection type **HTTP** and the endpoint above.
+3. Under **Use your own OAuth client**, enter the client ID and, optionally,
+   **Default scopes**. Save.
+4. If the client has a secret, store it as a secret binding and **Bind** it.
+5. Sign in as in the steps above, choosing the scopes you want to grant.
+
+Vendor facts, as Google documents the preview at the time of writing: the Gmail
+MCP server offers only `https://www.googleapis.com/auth/gmail.readonly` and
+`https://www.googleapis.com/auth/gmail.compose`. Station doesn't restrict this
+list; the provider does. Starting with `gmail.readonly` and adding
+`gmail.compose` when an Agent needs to draft mail is one reasonable approach,
+not a Station requirement.
+
+Implementation: [client selection](../../src-server/services/plugins/tool-server-oauth.ts),
+[client-secret binding](../../src-server/services/secrets/secret-binding-administration.ts)
+and [settings](../../src-ui/src/views/integrations/OAuthClientSection.tsx).
+Evidence: [fake authorization server tests](../../src-server/services/plugins/__tests__/tool-server-oauth-client-registration.test.ts).
 
 Known limitation: tool-server credentials are plaintext JSON with mode `0600` in
 `<home>/security/tool-server-credentials.json` (personal accounts use

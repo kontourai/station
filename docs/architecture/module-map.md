@@ -2267,8 +2267,19 @@ captures reject before sender construction. These source boundaries need
 executed interleaving controls; they do not establish generic embedded-runtime
 service cleanup after a late startup failure.
 
+`IntegrationSecretResolver.resolveOAuthClientSecret` materializes one remote
+integration's OAuth client secret for its token requests. It requires an exact
+`mcp-integration-oauth-client` grant for that integration on a non-revoked
+instance binding; environment grants confer none. The integration records only
+the binding id at `oauthClient.clientSecretRef`, written by
+`SecretBindingIntegrationService.bindOAuthClientSecret` (grant first) and
+removed by `unbindOAuthClientSecret` (reference first). The secret is never
+cached or written to the credential store; see
+[Use your own OAuth client](../guides/connections.md#use-your-own-oauth-client).
+
 The v1 document retains legacy records unchanged and adds optional
-`telemetryDestinationGrants` only when a telemetry grant is written. Older
+`telemetryDestinationGrants` only when a telemetry grant is written, and
+`oauthClientGrants` only when an OAuth client-secret grant is written. Older
 strict readers reject that new property; an upgrade/rollback must preserve and
 restore a compatible binding document, never delete grants to bypass admission.
 

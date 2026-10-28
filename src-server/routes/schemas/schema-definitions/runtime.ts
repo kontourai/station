@@ -303,7 +303,53 @@ export const integrationSchema = z.object({
     })
     .strict()
     .optional(),
+  // `clientSecretRef` is deliberately absent, like `secretEnvRefs`: only the
+  // secret-binding routes write it, and a save preserves the existing one.
+  oauthClient: z
+    .object({
+      clientId: z
+        .string()
+        .trim()
+        .min(1)
+        .max(512)
+        .regex(/^[\x21-\x7e]+$/, 'Client ID must be visible ASCII')
+        .optional(),
+      clientMetadataUrl: z
+        .string()
+        .max(2048)
+        .refine(isClientMetadataDocumentUrl, {
+          message:
+            'Client metadata URL must be an HTTPS URL with a path and no credentials or fragment',
+        })
+        .optional(),
+      scopes: z
+        .array(z.string().regex(/^[\x21\x23-\x5b\x5d-\x7e]{1,256}$/))
+        .max(32)
+        .optional(),
+    })
+    .strict()
+    .optional(),
 });
+
+/**
+ * The MCP spec's Client ID Metadata Document shape: an HTTPS URL with a
+ * non-root path. The SDK rejects anything else at consent time; refusing it
+ * on write keeps a bad value out of the integration.
+ */
+function isClientMetadataDocumentUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === 'https:' &&
+      url.pathname !== '/' &&
+      !url.username &&
+      !url.password &&
+      !url.hash
+    );
+  } catch {
+    return false;
+  }
+}
 export const integrationEnabledSchema = z.object({ enabled: z.boolean() });
 export const integrationToolsApplySchema = z.object({
   disabledTools: z.array(z.string()),

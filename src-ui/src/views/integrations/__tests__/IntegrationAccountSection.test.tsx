@@ -294,3 +294,59 @@ test('a shared remote account can start sign-in and complete authenticated paste
     screen.queryByRole('button', { name: 'Disconnect your account' }),
   ).toBeNull();
 });
+
+test('the person chooses the scopes requested at sign-in, starting from the default', async () => {
+  const authorizeBodies: unknown[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/oauth/authorize')) {
+        authorizeBodies.push(JSON.parse(String(init?.body)));
+        return Response.json({
+          success: true,
+          data: { authorizationUrl: 'https://signin.example.test/consent' },
+        });
+      }
+      return Response.json({
+        success: true,
+        data: {
+          ownership: 'principal',
+          connectedAs: null,
+          personal: { connected: false },
+          shared: { usable: false, connected: false },
+        },
+      });
+    }),
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  clients.push(client);
+  render(
+    <QueryClientProvider client={client}>
+      <IntegrationAccountSection
+        integrationId="gmail"
+        defaultScopes={['mail.readonly']}
+      />
+    </QueryClientProvider>,
+  );
+  const scopes = (await screen.findByLabelText('Scopes')) as HTMLInputElement;
+  expect(scopes.value).toBe('mail.readonly');
+
+  // Adding write access is the person's call, not Station's.
+  fireEvent.change(scopes, {
+    target: { value: 'mail.readonly mail.compose' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Connect your account' }));
+  await waitFor(() => expect(authorizeBodies).toHaveLength(1));
+  expect(authorizeBodies[0]).toEqual({
+    mode: 'remote',
+    scopes: ['mail.readonly', 'mail.compose'],
+  });
+
+  // Clearing the field leaves the choice to the server.
+  fireEvent.change(scopes, { target: { value: '  ' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Connect your account' }));
+  await waitFor(() => expect(authorizeBodies).toHaveLength(2));
+  expect(authorizeBodies[1]).toEqual({ mode: 'remote' });
+});

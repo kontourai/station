@@ -9,6 +9,12 @@ export interface McpIntegrationEnvGrant {
   envName: string;
 }
 
+/** Exact authority for spending one binding as one MCP integration's OAuth client secret. */
+export interface McpIntegrationOAuthClientGrant {
+  kind: 'mcp-integration-oauth-client';
+  integrationId: string;
+}
+
 /** Exact authority for spending one binding as one ACP provider header. */
 export interface ACPProviderHeaderGrant {
   kind: 'acp-provider-header';
@@ -26,6 +32,7 @@ export interface TelemetryDestinationGrant {
 
 export type SecretBindingGrant =
   | McpIntegrationEnvGrant
+  | McpIntegrationOAuthClientGrant
   | ACPProviderHeaderGrant
   | TelemetryDestinationGrant;
 
@@ -60,6 +67,8 @@ export interface SecretBinding {
   acpProviderHeaderGrants?: ACPProviderHeaderGrant[];
   /** Separate from MCP/ACP grants; absent on earlier binding documents. */
   telemetryDestinationGrants?: TelemetryDestinationGrant[];
+  /** OAuth client-secret authorities; absent on earlier binding documents. */
+  oauthClientGrants?: McpIntegrationOAuthClientGrant[];
   createdAt: string;
   updatedAt: string;
   /** Terminal: revoked bindings cannot be reactivated or re-used. */

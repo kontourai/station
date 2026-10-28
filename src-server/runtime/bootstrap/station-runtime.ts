@@ -1165,6 +1165,12 @@ export class StationRuntime {
     getIntegration: (id) => this.mcpService.getIntegration(id),
     needsSignIn: (id, resource) =>
       this.mcpService.markOAuthNeedsSignIn(id, resource),
+    // Read per refresh: the field is assigned during startup, after this
+    // initializer runs.
+    oauthClientSecrets: {
+      resolveOAuthClientSecret: (input) =>
+        this.secretBindingAdministration.resolveOAuthClientSecret(input),
+    },
   });
 
   private async resolveExternalMcpOAuth(input: ProviderSessionStartInput) {

@@ -491,6 +491,107 @@ export class ConnectAccountRequiredError extends StationOwnedToolServerError {
   }
 }
 
+/**
+ * The authorization server offers no client registration (no DCR endpoint and
+ * no usable Client ID Metadata Document) and the integration names no client.
+ */
+export class OAuthClientRequiredError extends StationOwnedToolServerError {
+  override name = 'OAuthClientRequiredError';
+  constructor(readonly serverId: string) {
+    super(
+      `Integration '${serverId}' needs an OAuth client ID. Its server does not register clients automatically; add your own OAuth client in the integration's settings.`,
+    );
+  }
+}
+
+/** The configured client secret's binding could not be materialized. */
+export class OAuthClientSecretUnavailableError extends StationOwnedToolServerError {
+  override name = 'OAuthClientSecretUnavailableError';
+  constructor() {
+    super(
+      "The OAuth client secret is unavailable. Check the integration's client secret binding.",
+    );
+  }
+}
+
+/**
+ * The OAuth client a provider presents. Material-free: the secret is read
+ * through `clientSecret` on each use and is never cached or persisted here.
+ */
+export interface ToolServerOAuthClientConfig {
+  clientId?: string;
+  clientMetadataUrl?: string;
+  scopes?: readonly string[];
+  clientSecret?: () => Promise<string>;
+}
+
+/** The narrow secret-binding capability an OAuth client needs. */
+export interface ToolServerOAuthClientSecretSource {
+  resolveOAuthClientSecret?(input: {
+    integrationId: string;
+    bindingId: string;
+  }): Promise<string>;
+}
+
+const OAUTH_SCOPE_TOKEN = /^[\x21\x23-\x5b\x5d-\x7e]{1,256}$/;
+const MAX_REQUESTED_SCOPES = 32;
+
+/**
+ * The scopes a person chose for one sign-in: 1–32 distinct RFC 6749 scope
+ * tokens. Station does not judge which scopes are appropriate; it only bounds
+ * the shape. Refuses rather than truncating.
+ */
+export function parseRequestedOAuthScopes(value: unknown): string[] {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > MAX_REQUESTED_SCOPES ||
+    !value.every(
+      (scope) => typeof scope === 'string' && OAUTH_SCOPE_TOKEN.test(scope),
+    ) ||
+    new Set(value).size !== value.length
+  )
+    throw new StationOwnedToolServerError(
+      'Scopes must be 1 to 32 distinct OAuth scope values.',
+    );
+  return [...value];
+}
+
+/** Builds the provider's client from an integration's `oauthClient`. */
+export function toolServerOAuthClientConfig(
+  def: Pick<ToolDef, 'id' | 'oauthClient'>,
+  secrets?: ToolServerOAuthClientSecretSource,
+): ToolServerOAuthClientConfig | undefined {
+  const client = def.oauthClient;
+  if (!client) return undefined;
+  const bindingId = client.clientSecretRef;
+  return {
+    ...(client.clientId ? { clientId: client.clientId } : {}),
+    ...(client.clientMetadataUrl
+      ? { clientMetadataUrl: client.clientMetadataUrl }
+      : {}),
+    ...(client.scopes?.length ? { scopes: [...client.scopes] } : {}),
+    ...(bindingId
+      ? {
+          clientSecret: async () => {
+            // A configured secret that cannot be read is a refusal, never a
+            // silent downgrade to a public client.
+            if (!secrets?.resolveOAuthClientSecret)
+              throw new OAuthClientSecretUnavailableError();
+            try {
+              return await secrets.resolveOAuthClientSecret({
+                integrationId: def.id,
+                bindingId,
+              });
+            } catch {
+              throw new OAuthClientSecretUnavailableError();
+            }
+          },
+        }
+      : {}),
+  };
+}
+
 /** A refresh outage preserves consent and may be retried after the cooldown. */
 export class ToolServerOAuthUnavailableError extends StationOwnedToolServerError {
   override name = 'ToolServerOAuthUnavailableError';
@@ -540,6 +641,7 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
       authorizationRedirect?(afterRefresh: boolean): void;
     },
     readonly owner: CredentialOwner = INSTANCE_CREDENTIAL_OWNER,
+    private readonly client?: ToolServerOAuthClientConfig,
   ) {
     // A person's tokens never enter the shared instance document, and the
     // instance credential is never read through a person's provider.
@@ -555,7 +657,16 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
       token_endpoint_auth_method: 'none',
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
+      ...(this.client?.scopes ? { scope: this.client.scopes.join(' ') } : {}),
     };
+  }
+  /**
+   * Client ID Metadata Document URL. The SDK uses it only when the server
+   * advertises `client_id_metadata_document_supported`; a pre-registered
+   * client ID wins over it.
+   */
+  get clientMetadataUrl(): string | undefined {
+    return this.client?.clientId ? undefined : this.client?.clientMetadataUrl;
   }
   async state(): Promise<string> {
     const state = randomBytes(32).toString('base64url');
@@ -575,14 +686,47 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
     await this.store.remove(this.bucket, KEYS.state);
     return state;
   }
-  async clientInformation(ctx?: OAuthClientInformationContext) {
+  async clientInformation(
+    ctx?: OAuthClientInformationContext,
+  ): Promise<StoredOAuthClientInformation | undefined> {
+    const clientId = this.client?.clientId;
+    if (clientId) {
+      // Pre-registered: rebuilt from configuration on every use, so the
+      // secret stays in its binding and never reaches the credential store.
+      const secret = this.client?.clientSecret
+        ? await this.client.clientSecret()
+        : undefined;
+      return {
+        client_id: clientId,
+        ...(secret ? { client_secret: secret } : {}),
+        ...(ctx ? { issuer: ctx.issuer } : {}),
+      };
+    }
     return this.readBound<StoredOAuthClientInformation>(KEYS.client, ctx);
   }
   async saveClientInformation(
     value: StoredOAuthClientInformation,
     ctx?: OAuthClientInformationContext,
   ): Promise<void> {
+    if (this.client?.clientId) return;
     await this.writeBound(KEYS.client, value, this.resolveIssuer(value, ctx));
+  }
+
+  /**
+   * Called when consent has no client yet, after discovery is saved. Refuses
+   * with an actionable error when the server can neither register a client nor
+   * accept the configured metadata document; without discovered metadata the
+   * SDK's own registration fallback decides.
+   */
+  private async requireClientRegistration(): Promise<void> {
+    const metadata = (await this.discoveryState())?.authorizationServerMetadata;
+    if (!metadata || metadata.registration_endpoint) return;
+    if (
+      this.clientMetadataUrl &&
+      metadata.client_id_metadata_document_supported === true
+    )
+      return;
+    throw new OAuthClientRequiredError(this.serverId);
   }
   async tokens(ctx?: OAuthClientInformationContext) {
     return this.readBound<StoredOAuthTokens>(KEYS.tokens, ctx);
@@ -637,6 +781,12 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
     return new Proxy(this, {
       get(target, key) {
         if (key === 'tokens') return async () => undefined;
+        if (key === 'clientInformation')
+          return async (ctx?: OAuthClientInformationContext) => {
+            const value = await target.clientInformation(ctx);
+            if (!value && ctx) await target.requireClientRegistration();
+            return value;
+          };
         const value = Reflect.get(target, key);
         return typeof value === 'function' ? value.bind(target) : value;
       },
@@ -858,6 +1008,12 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
     )?.accessTokenExpiresAt;
   }
   async redirectToAuthorization(url: URL): Promise<void> {
+    // The SDK prefers the resource's advertised scopes over client metadata,
+    // and the provider has no other scope seam. Configured scopes (the
+    // integration's default, or the person's choice for this sign-in)
+    // replace them here.
+    if (this.client?.scopes)
+      url.searchParams.set('scope', this.client.scopes.join(' '));
     this.events?.authorizationRedirect?.(
       Boolean((await this.tokens())?.refresh_token),
     );

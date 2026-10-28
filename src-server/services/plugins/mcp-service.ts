@@ -37,6 +37,10 @@ import {
 } from '../../runtime/mcp/mcp-apps-metadata.js';
 import { sameMCPConnectionDefinition } from '../../runtime/mcp/mcp-definition-currentness.js';
 import {
+  OAUTH_CLIENT_CHANGED_REASON,
+  OAUTH_CLIENT_ID_REQUIRED_REASON,
+} from '../../security/tool-server-reason.js';
+import {
   toolServerLifecycle,
   toolServerOAuth,
   toolServerProbes,
@@ -61,6 +65,8 @@ import {
   classifyToolServerProbeFailure,
   formatToolServerFailure,
   INSTANCE_CREDENTIAL_OWNER,
+  OAuthClientRequiredError,
+  parseRequestedOAuthScopes,
   principalCredentialOwner,
   removeToolServerOAuthCredentials,
   requireHttpAuthorizationUrl,
@@ -68,6 +74,7 @@ import {
   StationOwnedToolServerError,
   StationToolServerOAuthProvider,
   toolServerCredentialStoreFor,
+  toolServerOAuthClientConfig,
   toolServerOAuthResourceIdentity,
   validateOAuthCallbackUrl,
 } from './tool-server-oauth.js';
@@ -475,19 +482,51 @@ export class MCPService {
         'Unbind secret bindings before changing an integration execution configuration.',
       );
     }
+    const existingSecretRef = existing?.oauthClient?.clientSecretRef;
+    if (
+      def.oauthClient &&
+      Object.hasOwn(def.oauthClient, 'clientSecretRef') &&
+      def.oauthClient.clientSecretRef !== existingSecretRef
+    ) {
+      throw new Error(
+        'Secret bindings can be changed only through the operator binding API.',
+      );
+    }
     const identityChanged =
       existing !== undefined &&
       toolServerOAuthResourceIdentity(existing) !==
         toolServerOAuthResourceIdentity(def);
-    const withPreservedBindings = existing?.secretEnvRefs
-      ? { ...def, secretEnvRefs: { ...existing.secretEnvRefs } }
-      : def;
+    // The client secret goes to whichever authorization server the endpoint
+    // names, so a bound secret pins the endpoint, as bindings pin a command.
+    if (existingSecretRef && identityChanged) {
+      throw new Error(
+        'Unbind the OAuth client secret before changing the integration endpoint.',
+      );
+    }
+    // Tokens and a registered client belong to the client that obtained them.
+    const clientChanged =
+      existing !== undefined &&
+      !identityChanged &&
+      (existing.oauthClient?.clientId !== def.oauthClient?.clientId ||
+        existing.oauthClient?.clientMetadataUrl !==
+          def.oauthClient?.clientMetadataUrl);
+    const withPreservedBindings = withPreservedOAuthClientSecret(
+      existing?.secretEnvRefs
+        ? { ...def, secretEnvRefs: { ...existing.secretEnvRefs } }
+        : def,
+      existingSecretRef,
+    );
     const persisted = identityChanged
       ? withAuthorizationRequired(
           withPreservedBindings,
           'Tool server endpoint changed',
         )
-      : withPreservedBindings;
+      : clientChanged && toolServerOAuthResourceIdentity(def)
+        ? withAuthorizationRequired(
+            withPreservedBindings,
+            OAUTH_CLIENT_CHANGED_REASON,
+          )
+        : withPreservedBindings;
     const write = async () => {
       await this.configLoader.saveIntegration(def.id, persisted);
       if (!existing)
@@ -496,7 +535,7 @@ export class MCPService {
           persisted,
           { kind: 'manual' },
         );
-      if (identityChanged || def.enabled === false) {
+      if (identityChanged || clientChanged || def.enabled === false) {
         await removeToolServerOAuthCredentials(this.credentialStore(), def.id);
         await removePrincipalToolServerCredentials(
           this.configLoader.getProjectHomeDir(),
@@ -568,10 +607,15 @@ export class MCPService {
     return updated;
   }
 
+  /**
+   * `requested.scopes` is the signing-in person's choice for this sign-in;
+   * without it the integration's default scopes apply, then the server's.
+   */
   async startOAuth(
     id: string,
     mode: 'local' | 'remote',
     actor?: ToolServerAccountActor,
+    requested: { scopes?: readonly string[] } = {},
   ): Promise<{
     authorizationUrl: string;
     mode: 'local-browser-opened' | 'remote-manual-open';
@@ -588,7 +632,13 @@ export class MCPService {
         );
       const owner = this.accountOwner(def, actor);
       const flowKey = this.oauthFlowKey(def, actor);
-      const provider = this.createOAuthProvider(def, owner);
+      const provider = this.createOAuthProvider(
+        def,
+        owner,
+        requested.scopes === undefined
+          ? undefined
+          : parseRequestedOAuthScopes(requested.scopes),
+      );
       let transport: Transport | undefined;
       try {
         const connection = await this.establishChild(def, async (child) =>
@@ -612,6 +662,22 @@ export class MCPService {
         );
         const authorizationUrl = provider.takeAuthorizationUrl();
         await this.requireCurrentDefinition(claim, def);
+        // A server without client registration is a configuration state the
+        // operator can act on, not a failed authorization.
+        if (
+          publicError instanceof OAuthClientRequiredError &&
+          !def.credentialOwnership
+        ) {
+          const resourceIdentity = toolServerOAuthResourceIdentity(def);
+          if (resourceIdentity)
+            await this.saveAuthorizationHealth(
+              id,
+              resourceIdentity,
+              'client-id-required',
+              OAUTH_CLIENT_ID_REQUIRED_REASON,
+              claim,
+            );
+        }
         if (!authorizationUrl || !transport || !('finishAuth' in transport))
           throw publicError;
         try {
@@ -915,7 +981,8 @@ export class MCPService {
       | 'awaiting-operator-consent'
       | 'authorized'
       | 'authorization-failed'
-      | 'token-expired-refresh-failed',
+      | 'token-expired-refresh-failed'
+      | 'client-id-required',
     reason?: string,
     claim?: MCPLocalClaim,
   ): Promise<ToolDef> {
@@ -977,7 +1044,12 @@ export class MCPService {
   private createOAuthProvider(
     def: ToolDef,
     owner: CredentialOwner = INSTANCE_CREDENTIAL_OWNER,
+    scopes?: readonly string[],
   ): StationToolServerOAuthProvider {
+    const client = toolServerOAuthClientConfig(
+      def,
+      this.integrationSecretResolver,
+    );
     const resourceIdentity = toolServerOAuthResourceIdentity(def);
     if (!resourceIdentity)
       throw new Error('OAuth tool server endpoint is missing or invalid');
@@ -999,6 +1071,7 @@ export class MCPService {
         },
       },
       owner,
+      scopes ? { ...client, scopes } : client,
     );
   }
 
@@ -1811,6 +1884,22 @@ export function openSystemBrowser(
 
 export function toolServerOAuthRedirectUrl(port: number, id: string): string {
   return `http://127.0.0.1:${port}/integrations/${encodeURIComponent(id)}/oauth/callback`;
+}
+
+/**
+ * Raw integration JSON never carries the client-secret binding id; the
+ * binding routes own it. A save keeps the existing one, even when the client
+ * fields are cleared, so the binding can still be unbound.
+ */
+function withPreservedOAuthClientSecret(
+  def: ToolDef,
+  clientSecretRef: string | undefined,
+): ToolDef {
+  if (!clientSecretRef) return def;
+  return {
+    ...def,
+    oauthClient: { ...(def.oauthClient ?? {}), clientSecretRef },
+  };
 }
 
 function withAuthorizationRequired(def: ToolDef, reason: string): ToolDef {

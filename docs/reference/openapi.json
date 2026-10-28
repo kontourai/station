@@ -1549,6 +1549,30 @@
               "owner"
             ],
             "additionalProperties": false
+          },
+          "oauthClient": {
+            "type": "object",
+            "properties": {
+              "clientId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512,
+                "pattern": "^[\\x21-\\x7e]+$"
+              },
+              "clientMetadataUrl": {
+                "type": "string",
+                "maxLength": 2048
+              },
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[\\x21\\x23-\\x5b\\x5d-\\x7e]{1,256}$"
+                },
+                "maxItems": 32
+              }
+            },
+            "additionalProperties": false
           }
         },
         "required": [
@@ -1679,6 +1703,30 @@
             "required": [
               "owner"
             ],
+            "additionalProperties": false
+          },
+          "oauthClient": {
+            "type": "object",
+            "properties": {
+              "clientId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512,
+                "pattern": "^[\\x21-\\x7e]+$"
+              },
+              "clientMetadataUrl": {
+                "type": "string",
+                "maxLength": 2048
+              },
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[\\x21\\x23-\\x5b\\x5d-\\x7e]{1,256}$"
+                },
+                "maxItems": 32
+              }
+            },
             "additionalProperties": false
           }
         },
