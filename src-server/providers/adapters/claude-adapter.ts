@@ -703,8 +703,8 @@ type ClaudeSessionRecord = {
   /** #2932: the redacted end of the engine's stderr (claude-code-spawn.ts). */
   engineStderrTail?: () => string;
   /**
-   * The SDK stream ended by an unexpected failure: the `claude` process is
-   * gone, so its still-running subagents settle `interrupted`.
+   * The SDK stream failed and the `claude` process was seen to exit, so its
+   * still-running subagents settle `interrupted`.
    */
   engineDied?: boolean;
   /** `stopSession` began: a stream failure after it is the stop, not a death. */
@@ -4522,8 +4522,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           record.terminalResultObserved === 'binding-dead' ? 'dead' : 'error';
         return;
       }
-      // An unexpected failure ended the stream: the engine process is gone.
-      if (!record.stopping) record.engineDied = true;
+      // The engine died only when its process is seen gone: a stream can
+      // fail (a malformed frame, a transport error) with `claude` alive.
+      if (!record.stopping && record.engineProcess?.exited() === true)
+        record.engineDied = true;
       // The SDK folds the engine's stderr into an exit error only for its
       // own spawn; Station's spawn kept the tail, so add it here.
       const detail = claudeExitDetailWithStderr(

@@ -413,7 +413,7 @@ describe('#2458 Codex subagents as child work — real captures', () => {
     expect(deltasOf(events)).toEqual([]);
   });
 
-  test('a session stop reaps the app-server, so a child still open settles interrupted, before session.exited', async () => {
+  test('a requested session stop is no interruption: a child still open settles unresolved, before session.exited', async () => {
     const capture = CODEX_COLLAB_V1_CLIENT_TURN_INTERRUPT;
     const childDone = capture.findIndex((line) => {
       const { msg } = JSON.parse(line);
@@ -422,13 +422,10 @@ describe('#2458 Codex subagents as child work — real captures', () => {
     const replay = replayCodexCapture(capture, { limit: childDone });
     expect(child(replay.events).status).toBe('running');
     await replay.stop();
-    // Codex children are threads inside the app-server Station just reaped:
-    // their end was observed. The wire keeps `unresolved` (older clients
-    // know it); `endedBy` is what reads as interrupted.
-    expect(child(replay.events)).toMatchObject({
-      status: 'unresolved',
-      endedBy: 'engine-exit',
-    });
+    // #4266: Station reaped the app-server because a stop was requested, so
+    // the child reads "No result", as Claude's does, never interrupted.
+    expect(child(replay.events)).toMatchObject({ status: 'unresolved' });
+    expect(child(replay.events).endedBy).toBeUndefined();
     const settleAt = replay.events.findIndex(
       (event) =>
         event.method === 'child-work.updated' && event.delta.kind === 'settle',

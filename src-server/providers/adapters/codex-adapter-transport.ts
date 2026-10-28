@@ -880,7 +880,9 @@ export class CodexAdapterTransport {
     // `publishOrphanedTurnFailure`'s `skipSynthesis` doc): that RPC's caller
     // owns the turn's terminal fate and, for the one caller that also calls
     // `stopSession` (the cooperative-stop deadline), already published it.
-    this.settleUnresolvedToolCalls(record, nowIso(), 'engine-exit');
+    // A requested stop is not an interruption: a child still running reads
+    // "No result", as Claude's does, never `engine-exit` (#4266).
+    this.settleUnresolvedToolCalls(record, nowIso(), undefined);
     this.publishOrphanedTurnFailure(
       record,
       nowIso(),
@@ -1351,9 +1353,11 @@ export class CodexAdapterTransport {
     nowIso: string,
     /**
      * What ended a still-running child, when observed. `engine-exit` only
-     * where the app-server process is known to be gone (it exited, or
-     * `stopSession` reaped it): Codex runs children as threads inside that
-     * process. The process `error` and stdin EPIPE doors cannot say that.
+     * where the app-server process is known to have gone unbidden (it
+     * exited): Codex runs children as threads inside that process. A
+     * deliberate `stopSession` passes none, since a requested stop is not an
+     * interruption, and the process `error` and stdin EPIPE doors cannot
+     * say the process is gone.
      * Either way the child settles `unresolved`; `engine-exit` is what makes
      * it read as interrupted. Tool calls stay `unresolved` at every door:
      * whether the tool ran is unknown however the process ended.

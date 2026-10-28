@@ -43,8 +43,9 @@ export type ChildWorkTerminalStatus = Exclude<ChildWorkStatus, 'running'>;
 
 /**
  * Why an `unresolved` child ended, when that much was observed.
- * `engine-exit`: the engine process the child ran in died (a signal, a
- * crash, memory exhaustion) or was torn down while the child ran.
+ * `engine-exit`: the engine process the child ran in died while the child
+ * ran (a signal, a crash, memory exhaustion). A stop someone requested is
+ * not one: its children end without it.
  *
  * Carried beside the status, never as a status of its own, so a client built
  * before it keeps reading a known status ("No result") instead of an unknown

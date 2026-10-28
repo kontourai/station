@@ -983,11 +983,10 @@ function finalAgentMessage(items: unknown): string | undefined {
 
 /**
  * Session end: every child still running can no longer report. Codex runs
- * its children as threads inside the app-server, so when that process ended
- * under them (it died, or Station tore it down) they settle `unresolved`
- * with `endedBy: 'engine-exit'`, shown as interrupted: an observed end. A
- * door that cannot say the process is gone leaves `endedBy` off (nothing
- * observed says how they ended). Called beside
+ * its children as threads inside the app-server, so when that process died
+ * under them they settle `unresolved` with `endedBy: 'engine-exit'`, shown
+ * as interrupted: an observed end. A requested stop, and a door that cannot
+ * say the process is gone, leave `endedBy` off. Called beside
  * `settleUnresolvedCodexToolCalls`, before `session.exited`. Idempotent.
  */
 export function settleOpenCodexChildren(

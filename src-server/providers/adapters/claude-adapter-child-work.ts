@@ -701,8 +701,8 @@ export function clearClaudeChildStopRequested(
  * The registry is kept: a real terminal the SDK still drains afterwards
  * corrects the outcome recorded here.
  *
- * `engineDied`: the SDK stream ended by failing, so the `claude` process
- * that ran these subagents is gone and nothing more can drain. Every child
+ * `engineDied`: the SDK stream failed and the `claude` process that ran
+ * these subagents was seen to exit, so nothing more can drain. Every child
  * still running then settles `unresolved` with `endedBy: 'engine-exit'`
  * (shown as interrupted), an observed end that nothing later corrects.
  */
