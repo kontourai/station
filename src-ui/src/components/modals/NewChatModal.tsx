@@ -32,6 +32,7 @@ import {
   useBindStartProject,
   useStartSelection,
 } from '../../hooks/useStartSelection';
+import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import type {
   NewChatHandoff,
@@ -90,7 +91,10 @@ import {
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
 import { ModelPickerDialogFrame } from '../session/ModelPickerDialogFrame';
-import { SkillExperiencePicker } from '../skill-experiences/SkillExperiencePicker';
+import {
+  SkillExperiencePicker,
+  VISUAL_SKILLS_PREVIEW_ID,
+} from '../skill-experiences/SkillExperiencePicker';
 import { describeReadFailure, Empty, ErrorState, SkeletonList } from '../state';
 import {
   AutomaticEnginePreparation,
@@ -267,8 +271,12 @@ export function NewChatModal({
     startSelection?.approvalMode,
   );
   const automaticMode = startWithDefault && !mode && !showChatOptions;
+  // Visual skills are a Feature Preview: off, nothing here offers or fetches them.
+  const visualSkillsEnabled = useSurfaceVisibilityFlags().has(
+    VISUAL_SKILLS_PREVIEW_ID,
+  );
   const experienceInventory = useSkillExperienceInventoryQuery({
-    enabled: !mode && !automaticMode,
+    enabled: visualSkillsEnabled && !mode && !automaticMode,
     refetchOnMount: 'always',
   });
   const [skillsOpen, setSkillsOpen] = useState(false);
@@ -512,7 +520,7 @@ export function NewChatModal({
       // Visual skills can show in the composer (opened there, or handed
       // over from Home with a message), so a Registry round trip refetches
       // them whenever this is not a fork.
-      if (!mode) await experienceInventory.refetch();
+      if (!mode && visualSkillsEnabled) await experienceInventory.refetch();
       if (refreshSetup) await refreshSetup();
       else
         await Promise.all([
@@ -1574,32 +1582,39 @@ export function NewChatModal({
           </div>
         )}
 
-        {!showStart && !mode && !startWithDefault && !initialPrompt && (
-          <SkillExperiencePicker
-            query={experienceInventory}
-            selected={experience}
-            current={Boolean(currentExperience)}
-            inputs={experienceInputs}
-            onChange={setExperienceInputs}
-            onSelect={(entry) => {
-              if (
-                experience &&
-                sameSkillExperienceIdentity(experience.identity, entry.identity)
-              )
-                return;
-              setExperience(entry);
-              setExperienceInputs(
-                skillExperienceInputDefaults(entry.definition),
-              );
-            }}
-            onRemove={() => setExperience(null)}
-            onBrowse={() => {
-              preservedAgentSlug.current = flatList[selectedAgentIndex]?.slug;
-              preserveSetupContext.current = true;
-              setupReturn.begin('/registry');
-            }}
-          />
-        )}
+        {visualSkillsEnabled &&
+          !showStart &&
+          !mode &&
+          !startWithDefault &&
+          !initialPrompt && (
+            <SkillExperiencePicker
+              query={experienceInventory}
+              selected={experience}
+              current={Boolean(currentExperience)}
+              inputs={experienceInputs}
+              onChange={setExperienceInputs}
+              onSelect={(entry) => {
+                if (
+                  experience &&
+                  sameSkillExperienceIdentity(
+                    experience.identity,
+                    entry.identity,
+                  )
+                )
+                  return;
+                setExperience(entry);
+                setExperienceInputs(
+                  skillExperienceInputDefaults(entry.definition),
+                );
+              }}
+              onRemove={() => setExperience(null)}
+              onBrowse={() => {
+                preservedAgentSlug.current = flatList[selectedAgentIndex]?.slug;
+                preserveSetupContext.current = true;
+                setupReturn.begin('/registry');
+              }}
+            />
+          )}
 
         {/* Context picker (the list; the composer has its project chip) */}
         {!showStart && (
@@ -1890,14 +1905,18 @@ export function NewChatModal({
             onOpenProject={(trigger) =>
               setChipMenu({ kind: 'project', trigger })
             }
-            overflowActions={[
-              {
-                key: 'skills',
-                label: 'Use a visual skill',
-                checked: skillsOpen || Boolean(experience),
-                onSelect: () => setSkillsOpen((open) => !open),
-              },
-            ]}
+            overflowActions={
+              visualSkillsEnabled
+                ? [
+                    {
+                      key: 'skills',
+                      label: 'Use a visual skill',
+                      checked: skillsOpen || Boolean(experience),
+                      onSelect: () => setSkillsOpen((open) => !open),
+                    },
+                  ]
+                : []
+            }
             skill={
               experience
                 ? {
@@ -1941,7 +1960,7 @@ export function NewChatModal({
             }
           >
             {taskNotice && <p role="status">{taskNotice}</p>}
-            {(skillsOpen || experience) && (
+            {visualSkillsEnabled && (skillsOpen || experience) && (
               <SkillExperiencePicker
                 query={experienceInventory}
                 selected={experience}

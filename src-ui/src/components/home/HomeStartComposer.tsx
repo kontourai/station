@@ -21,6 +21,7 @@ import {
   useBindStartProject,
   useStartSelection,
 } from '../../hooks/useStartSelection';
+import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import {
   dispatchNewChatIntent,
   type NewChatHandoff,
@@ -50,6 +51,7 @@ import {
   withProjectRunLocations,
   workspaceHintText,
 } from '../modals/new-chat-modal-utils';
+import { VISUAL_SKILLS_PREVIEW_ID } from '../skill-experiences/SkillExperiencePicker';
 import { describeReadFailure, SkeletonList } from '../state';
 
 // The pickers and setup guidance load on first use, outside Home's bundle.
@@ -193,6 +195,9 @@ export function HomeStartComposer({
 }) {
   const { namespace } = useAuthorityPersistence();
   const { setDockState } = useNavigation();
+  const visualSkillsEnabled = useSurfaceVisibilityFlags().has(
+    VISUAL_SKILLS_PREVIEW_ID,
+  );
   const draftStore = useMemo(() => {
     if (!projectSlug) return homeDraftStore;
     const key = JSON.stringify([namespace, projectSlug]);
@@ -575,14 +580,18 @@ export function HomeStartComposer({
         }}
         project={projectChip}
         onOpenProject={(trigger) => setMenu({ kind: 'project', trigger })}
-        overflowActions={[
-          {
-            key: 'skills',
-            label: 'Use a visual skill',
-            haspopup: 'dialog',
-            onSelect: () => handOff({ kind: 'skills' }),
-          },
-        ]}
+        overflowActions={
+          visualSkillsEnabled
+            ? [
+                {
+                  key: 'skills',
+                  label: 'Use a visual skill',
+                  haspopup: 'dialog',
+                  onSelect: () => handOff({ kind: 'skills' }),
+                },
+              ]
+            : []
+        }
         canStart={canStart}
         pending={pending}
         files={{
