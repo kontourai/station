@@ -264,7 +264,7 @@ export class SessionTurnWaiter {
     /**
      * Report a turn a restart interrupted (`interruptedTurn`), and let it end
      * a `turn-settled` wait. Off for `wait_session`, whose answer is
-     * unchanged; the person's wait (`station session wait`) asks for it so a
+     * unchanged; the person's wait (`station sessions wait`) asks for it so a
      * cut-off turn never reads as settled or as a silent idle.
      */
     readonly reportInterrupted?: boolean;
@@ -301,13 +301,17 @@ export class SessionTurnWaiter {
       const read = evaluateSessionWait(this.ports, threadId, asked, after);
       const cut = read.interrupted;
       // The interruption counts only when it is the newest way a turn ended
-      // after the cursor: a turn that settled later answers for itself.
+      // after the cursor: a turn that settled later answers for itself. With
+      // no cursor (`idle`, or the first look of `turn-settled`) "after the
+      // cursor" is the whole history, so it counts only while nothing runs:
+      // a newer running turn makes it history, not this wait's answer.
       if (
         !request.reportInterrupted ||
         !cut ||
         cut.sequence <= after ||
         (read.view.settledTurn !== undefined &&
-          read.view.settledTurn.sequence > cut.sequence)
+          read.view.settledTurn.sequence > cut.sequence) ||
+        (asked === 'idle' && read.view.state !== 'idle')
       )
         return { satisfied: read.satisfied, view: read.view };
       return {

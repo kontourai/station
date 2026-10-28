@@ -6527,14 +6527,14 @@ export function configureRuntimeRoutes(
       hostedTenantRegistry,
     }),
   );
-  // #3427: the person-facing Session reads (`station session wait|digest`,
+  // #3427: the person-facing Session reads (`station sessions wait|digest`,
   // `station activity`). Bound here, at composition, so the preview is
   // offered whether or not it is enabled.
   const sessionPersonReadsPreview = context.featurePreviews.bind({
     id: 'session-cli-reads',
     label: 'Session reads from the station CLI',
     description:
-      'Lets a person wait on, digest and list their own Sessions from the station CLI (station session wait, station session digest, station activity). Read-only.',
+      'Lets a person wait on, digest and list their own Sessions from the station CLI (station sessions wait, station sessions digest, station activity). Read-only.',
   });
   // One Session wait per Station: the agent leaf and the person leaf share
   // its caps.
@@ -6612,6 +6612,10 @@ export function configureRuntimeRoutes(
     // refusing a request with no station-control caller.
     const personMayView = (userId: string, localProjectId: string) =>
       principalMayInProject(userId, localProjectId, 'view');
+    // The rule `principalMayInProject` applies: only a deployment account is
+    // held to its memberships.
+    const personViewsEveryProject = (userId: string) =>
+      !isDeploymentAccountPrincipalId(userId);
     context.app.route(
       '/api/orchestration/session-reads',
       createSessionPersonActivityRoutes({
@@ -6623,6 +6627,7 @@ export function configureRuntimeRoutes(
         workClaims,
         projectIdForSlug,
         personMayView,
+        personViewsEveryProject,
         preview: sessionPersonReadsPreview,
       }),
     );
@@ -6630,6 +6635,7 @@ export function configureRuntimeRoutes(
       const personScope = personSessionScope({
         stationControlDispatchScope,
         personMayView,
+        personViewsEveryProject,
       });
       context.app.route(
         '/api/orchestration/session-reads',

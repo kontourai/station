@@ -276,6 +276,12 @@ export interface SessionPersonActivityDeps extends SessionProjectActivityDeps {
   /** Whether `userId` holds the Project `view` action in `localProjectId`. */
   personMayView(userId: string, localProjectId: string): boolean;
   /**
+   * Whether `userId` may view every Project (the local operator, any owner
+   * that is not a deployment account): then a Session whose Project cannot be
+   * read (its folder is gone) is still visible to its owner.
+   */
+  personViewsEveryProject(userId: string): boolean;
+  /**
    * The Feature Preview selector: the leaves answer only while it is on, and
    * a typed `feature_preview_disabled` refusal otherwise.
    */
@@ -846,17 +852,20 @@ export function createSessionProjectActivityRoutes(
  * Session read. The Session's scope comes from Station's own records (the
  * same resolver the agent rule reads); the action checked is the PERSON's
  * `view` there, never the recorded owner's. The global space admits; a
- * Project the person may not view, or a scope that cannot be read, does not.
+ * Project the person may not view does not. A scope that cannot be read (a
+ * Session whose folder is gone) admits only a person who may view every
+ * Project, since no Project they might lack is at stake.
  */
 export function personSessionScope(
   deps: Pick<
     SessionPersonActivityDeps,
-    'stationControlDispatchScope' | 'personMayView'
+    'stationControlDispatchScope' | 'personMayView' | 'personViewsEveryProject'
   >,
 ) {
   const admits = (userId: string, scope: StationControlScope | undefined) =>
     scope?.kind === 'global' ||
-    (scope?.kind === 'project' && deps.personMayView(userId, scope.id));
+    (scope?.kind === 'project' && deps.personMayView(userId, scope.id)) ||
+    (scope?.kind === 'unreadable' && deps.personViewsEveryProject(userId));
   const ofThread = (threadId: string) =>
     deps.stationControlDispatchScope?.target(
       { kind: 'thread', threadId, remote: false },
@@ -879,7 +888,7 @@ export function personSessionScope(
 
 /**
  * #3427: the person-facing leaves of the same two reads, for `station
- * activity` and `station session digest`. A person's own credential reads
+ * activity` and `station sessions digest`. A person's own credential reads
  * here, never an agent's: every internal request is refused
  * (`person_credential_required`), so the agent leaves above keep their scope
  * rule and these never apply the person rule to an agent.
@@ -891,7 +900,8 @@ export function personSessionScope(
  * - a Session in a Project is visible only while the person holds that
  *   Project's `view` action (the same membership rule as the Project routes),
  *   a Session in the global space always, one whose Project cannot be read
- *   never. A Session out of reach reads like one that does not exist;
+ *   only to a person who may view every Project (`personSessionScope`). A
+ *   Session out of reach reads like one that does not exist;
  * - `projectSlug` narrows the list to one Project (its Sessions only, not the
  *   global space). A Project the person may not view, or that does not exist,
  *   answers `project_not_found` alike. Without it, the list is every visible

@@ -964,7 +964,7 @@ export interface SessionPersonWaitDeps
 }
 
 /**
- * #3427: the person-facing leaf of `wait_session`, for `station session
+ * #3427: the person-facing leaf of `wait_session`, for `station sessions
  * wait`. It refuses every internal request (an agent waits through its own
  * leaf), holds the Session to the person's owner read and their Project
  * `view` rule, and reports a turn a Station restart cut off as

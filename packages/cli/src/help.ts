@@ -747,7 +747,8 @@ const VERBS: Record<string, VerbSpec> = {
       'Exit codes: 0 completed or idle; 3 the turn ended without completing,',
       'including a turn a Station restart interrupted; 5 the wait budget ran out;',
       '6 superseded by a newer Session (wait on currentSessionId) or',
-      'unclassifiable; 2 observation lost; 130 Ctrl-C.',
+      'unclassifiable; 2 observation lost (or the Station stayed unreachable',
+      'for 60 s); 130 Ctrl-C.',
     ],
   },
   activity: {

@@ -1157,7 +1157,7 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
     });
   });
 
-  describe('the person leaf: station session wait (#3427)', () => {
+  describe('the person leaf: station sessions wait (#3427)', () => {
     const PERSON_PATH = '/api/orchestration/session-reads';
     async function personWait(
       base: string,

@@ -5042,9 +5042,10 @@ Preview is off, each answers `404` `feature_preview_disabled` with `previewId`
 and `settingsPath`.
 
 Reads are owner-scoped. A Session in a Project is visible only while the
-person holds that Project's `view` action, a Session in the global space
-always, and a Session whose Project cannot be read never. Anything out of reach
-is `404` `session_not_found`.
+person holds that Project's `view` action, and a Session in the global space is
+always visible. A Session whose Project cannot be read, such as one whose
+folder is gone, is visible only to a person who may view every Project (anyone
+but a deployment account). Anything out of reach is `404` `session_not_found`.
 
 - **Activity** answers the list shape above, with no `self`. Without
   `projectSlug` it lists every visible Session. With it, it lists only that
@@ -5061,8 +5062,9 @@ is `404` `session_not_found`.
   settledTurn?, interruptedTurn?, eventCursor, superseded?,
   currentSessionId?}`. `interruptedTurn` (`{turnId, sequence}`) names a turn a
   restart-recovery abort closed, when that is the newest way a turn ended after
-  the cursor. It ends a `turn-settled` wait with `settled: true` and no
-  `settledTurn`, because it acknowledges no work. `wait_session` does not carry
+  the cursor. With no cursor (`idle`), it counts only while nothing is running.
+  It ends a `turn-settled` wait with `settled: true` and no `settledTurn`,
+  because it acknowledges no work. `wait_session` does not carry
   it. A person holds at most 4 waits at once (`429` `wait_capacity`), counted
   apart from any Session's, within Station's shared 256.
 

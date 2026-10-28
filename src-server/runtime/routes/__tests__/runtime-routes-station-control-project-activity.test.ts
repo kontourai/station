@@ -1966,7 +1966,7 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
     });
   });
 
-  describe('the person leaves: station activity and station session digest (#3427)', () => {
+  describe('the person leaves: station activity and station sessions digest (#3427)', () => {
     const PERSON = '/api/orchestration/session-reads';
     const P2_SESSIONS = ['a-child-p2', 'a-other-project'];
     const GLOBAL_SESSIONS = ['a-global', 'g-caller'];

@@ -248,6 +248,7 @@ const CONSUMED_FLAGS: Record<
         : {}),
       projectIdForSlug: () => undefined,
       personMayView: () => true,
+      personViewsEveryProject: () => true,
       preview: { select: (branches) => branches.enabled() },
     });
     return (await routes.request('/activity')).status === 200;

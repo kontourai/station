@@ -7,6 +7,7 @@ import {
   STATION_COMPAT_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
 import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
+import { StationHttpError } from '@kontourai/station-sdk/client';
 import {
   afterEach,
   beforeEach,
@@ -56,6 +57,8 @@ const handshake = (capabilities: Record<string, boolean>) => ({
   capabilities,
 });
 
+type WaitQuery = { timeoutMs: number; afterEventCursor?: number };
+
 /** A wait answer in the route's shape. */
 const answer = (fields: Record<string, unknown>) => ({
   sessionId: 'session-1',
@@ -93,7 +96,7 @@ describe('waitOnSession (the wait loop)', () => {
         settledTurn: { turnId: 't', sequence: 9, outcome: 'completed' },
       }),
     ];
-    const call = vi.fn(async () => answers.shift() as never);
+    const call = vi.fn(async (_query: WaitQuery) => answers.shift() as never);
     const result = await waitOnSession({
       sessionId: 'session-1',
       until: 'turn-settled',
@@ -190,13 +193,66 @@ describe('waitOnSession (the wait loop)', () => {
     });
   });
 
-  test('a failed read after an answer is observation-lost, never a turn outcome', async () => {
+  /** A clock the loop's sleeps advance, so retry windows run instantly. */
+  function fakeTime() {
+    let t = 0;
+    return {
+      now: () => t,
+      sleep: async (ms: number) => {
+        t += ms;
+      },
+    };
+  }
+
+  test('a Station that stops answering is reached for again with the cursor, and its interruption is seen', async () => {
+    const time = fakeTime();
+    const replies: Array<() => unknown> = [
+      () => answer({ eventCursor: 3 }),
+      () => {
+        throw new TypeError('fetch failed');
+      },
+      () => {
+        throw new StationHttpError(503, 'Service Unavailable');
+      },
+      () =>
+        answer({
+          settled: true,
+          timedOut: false,
+          state: 'idle',
+          eventCursor: 4,
+          interruptedTurn: { turnId: 't', sequence: 4 },
+        }),
+    ];
+    const call = vi.fn(
+      async (_query: WaitQuery) => replies.shift()!() as never,
+    );
+    const result = await waitOnSession({
+      sessionId: 'session-1',
+      until: 'turn-settled',
+      timeoutMs: 600_000,
+      deps: { ...time, call },
+    });
+    expect([result.outcome, result.exitCode]).toEqual([
+      'restart-interrupted',
+      3,
+    ]);
+    expect(call.mock.calls.map(([query]) => query.afterEventCursor)).toEqual([
+      undefined,
+      3,
+      3,
+      3,
+    ]);
+  });
+
+  test('a Station unreachable past the reconnect window is observation-lost, never a turn outcome', async () => {
+    const time = fakeTime();
     let calls = 0;
     const result = await waitOnSession({
       sessionId: 'session-1',
       until: 'turn-settled',
       timeoutMs: 600_000,
       deps: {
+        ...time,
         call: async () => {
           calls += 1;
           if (calls === 1) return answer({}) as never;
@@ -210,7 +266,68 @@ describe('waitOnSession (the wait loop)', () => {
       lastError: 'the Station could not be reached',
       state: 'running',
     });
+    // 60 s of 2 s retries, not one failure and not the whole budget.
+    expect(calls).toBeGreaterThan(20);
+    expect(time.now()).toBeLessThan(120_000);
   });
+
+  test('a capacity refusal waits for a slot within the budget; nothing was lost', async () => {
+    const time = fakeTime();
+    const replies: Array<() => unknown> = [
+      () => {
+        throw new StationHttpError(429, 'full', { code: 'wait_capacity' });
+      },
+      () => {
+        throw new StationHttpError(429, 'full', { code: 'wait_capacity' });
+      },
+      () =>
+        answer({
+          settled: true,
+          timedOut: false,
+          state: 'idle',
+          settledTurn: { turnId: 't', sequence: 2, outcome: 'completed' },
+        }),
+    ];
+    const result = await waitOnSession({
+      sessionId: 'session-1',
+      until: 'turn-settled',
+      timeoutMs: 600_000,
+      deps: { ...time, call: async () => replies.shift()!() as never },
+    });
+    expect([result.outcome, result.exitCode, result.calls]).toEqual([
+      'completed',
+      0,
+      3,
+    ]);
+  });
+
+  test.each(['idle', 'turn-settled'] as const)(
+    'an idle superseded Session is superseded (exit 6), never idle: --until=%s',
+    async (until) => {
+      const result = await waitOnSession({
+        sessionId: 'session-1',
+        until,
+        timeoutMs: 60_000,
+        deps: {
+          call: async () =>
+            answer({
+              settled: true,
+              timedOut: false,
+              state: 'idle',
+              ...(until === 'turn-settled' ? { alreadyIdle: true } : {}),
+              superseded: true,
+              currentSessionId: 'session-2',
+            }) as never,
+        },
+      });
+      expect(result).toMatchObject({
+        outcome: 'superseded',
+        exitCode: 6,
+        superseded: true,
+        currentSessionId: 'session-2',
+      });
+    },
+  );
 
   test('an abort that races an answer reports cancelled, never the answer', async () => {
     const controller = new AbortController();

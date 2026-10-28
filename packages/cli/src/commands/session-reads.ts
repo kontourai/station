@@ -18,7 +18,9 @@
  * - 5: the wait budget ran out with the Session still running.
  * - 6: a newer Session now serves the conversation (`superseded`: wait on
  *   `currentSessionId`), or an answer this CLI cannot classify.
- * - 2: observation was lost (a read failed after the wait began).
+ * - 2: observation was lost: a read failed after the wait began, or the
+ *   Station stayed unreachable for the reconnect window. A Station that stops
+ *   answering (a restart) and a full wait budget are waited out, not reported.
  * - 130: Ctrl-C. The Session keeps running in every case.
  */
 
@@ -48,6 +50,14 @@ import {
 const WAIT_CALL_MAX_MS = 50_000;
 /** The request deadline beyond the server's hold, for the answer to arrive. */
 const WAIT_CALL_SLACK_MS = 15_000;
+/**
+ * How long a wait keeps reaching for a Station that stopped answering, such
+ * as one restarting: the restart is exactly when a turn can be cut off, and
+ * giving up at once would report observation lost instead of that turn.
+ */
+const RECONNECT_WINDOW_MS = 60_000;
+/** The pause before calling again after a capacity refusal or a lost call. */
+const RETRY_DELAY_MS = 2_000;
 export const SESSION_WAIT_DEFAULT_TIMEOUT_SECONDS = 3600;
 export const SESSION_WAIT_MAX_TIMEOUT_SECONDS = 86_400;
 
@@ -86,6 +96,7 @@ export interface SessionWaitResult {
   interruptedTurn?: SessionWaitAnswer['interruptedTurn'];
   alreadyIdle?: true;
   eventCursor?: number;
+  superseded?: true;
   currentSessionId?: string;
   calls: number;
   elapsedMs: number;
@@ -107,6 +118,34 @@ function describeWaitError(error: unknown): string {
 const isAbort = (error: unknown) =>
   error instanceof Error && error.name === 'AbortError';
 
+const isCapacityRefusal = (error: unknown) =>
+  error instanceof StationHttpError &&
+  error.status === 429 &&
+  error.code === 'wait_capacity';
+
+/** The Station did not answer, or answered as a proxy does while it is down. */
+const isUnreachable = (error: unknown) =>
+  error instanceof TypeError ||
+  error instanceof StationRequestTimeoutError ||
+  (error instanceof StationHttpError &&
+    (error.status === 502 || error.status === 503 || error.status === 504));
+
+function abortableSleep(
+  ms: number,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const done = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener('abort', done, { once: true });
+  });
+}
+
 /** What one answer says, or `undefined` to keep waiting. */
 function classify(
   until: SessionWaitUntil,
@@ -115,13 +154,21 @@ function classify(
   // A turn a restart cut off is never a settlement, whatever else held.
   if (answer.interruptedTurn) return 'restart-interrupted';
   const turn = answer.settledTurn;
+  // A turn that ended after the cursor answers the wait, superseded or not.
+  if (
+    until === 'turn-settled' &&
+    !answer.alreadyIdle &&
+    turn &&
+    (answer.settled || answer.timedOut)
+  )
+    return turn.outcome === 'completed' ? 'completed' : 'failed';
+  // A newer Session serves the conversation: this one being idle says
+  // nothing about the work, so it is never reported as idle.
+  if (answer.superseded) return 'superseded';
   // Nothing was running to wait on; an earlier turn's outcome is not this
   // wait's (it stays in the output).
   if (until === 'turn-settled' && answer.alreadyIdle) return 'idle';
-  if (until === 'turn-settled' && turn && (answer.settled || answer.timedOut))
-    return turn.outcome === 'completed' ? 'completed' : 'failed';
   if (answer.settled) return until === 'idle' ? 'idle' : 'unknown';
-  if (answer.superseded) return 'superseded';
   return undefined;
 }
 
@@ -141,6 +188,8 @@ export async function waitOnSession(input: {
   signal?: AbortSignal;
   deps?: {
     now?: () => number;
+    /** Resolves after `ms`, or as soon as `signal` aborts. */
+    sleep?: (ms: number, signal: AbortSignal | undefined) => Promise<void>;
     call?: (
       query: { timeoutMs: number; afterEventCursor?: number },
       signal: AbortSignal | undefined,
@@ -148,6 +197,7 @@ export async function waitOnSession(input: {
   };
 }): Promise<SessionWaitResult> {
   const now = input.deps?.now ?? Date.now;
+  const sleep = input.deps?.sleep ?? abortableSleep;
   const call =
     input.deps?.call ??
     ((query, signal) =>
@@ -165,6 +215,8 @@ export async function waitOnSession(input: {
   let cursor = input.afterEventCursor;
   let last: SessionWaitAnswer | undefined;
   let calls = 0;
+  /** When calls started failing to reach the Station, if they are failing. */
+  let unreachableSince: number | undefined;
   const finish = (
     outcome: SessionWaitOutcome,
     lastError?: string,
@@ -183,6 +235,7 @@ export async function waitOnSession(input: {
             : {}),
           ...(last.alreadyIdle ? { alreadyIdle: true as const } : {}),
           eventCursor: last.eventCursor,
+          ...(last.superseded ? { superseded: true as const } : {}),
           ...(last.currentSessionId
             ? { currentSessionId: last.currentSessionId }
             : {}),
@@ -211,6 +264,21 @@ export async function waitOnSession(input: {
       );
     } catch (error) {
       if (input.signal?.aborted || isAbort(error)) return finish('cancelled');
+      // Every wait slot is taken (this person's, or Station's): nothing was
+      // lost, so wait for one within the budget.
+      if (isCapacityRefusal(error)) {
+        await sleep(Math.min(RETRY_DELAY_MS, remaining), input.signal);
+        continue;
+      }
+      // A Station that stopped answering may be restarting: keep reaching
+      // for it, carrying the cursor, so a turn the restart cut off is seen.
+      if (isUnreachable(error)) {
+        unreachableSince ??= now();
+        if (now() - unreachableSince < RECONNECT_WINDOW_MS) {
+          await sleep(Math.min(RETRY_DELAY_MS, remaining), input.signal);
+          continue;
+        }
+      }
       // Before anything was observed, a refusal is the command's answer
       // (not found, preview off, an older Station): its message is shown.
       if (
@@ -223,6 +291,7 @@ export async function waitOnSession(input: {
         throw error;
       return finish('observation-lost', describeWaitError(error));
     }
+    unreachableSince = undefined;
     // An abort that raced this answer wins: it never claims an outcome.
     if (input.signal?.aborted) return finish('cancelled');
     last = answer;
@@ -285,7 +354,7 @@ function waitLine(result: SessionWaitResult): string {
     case 'superseded':
       return `Session ${id} no longer serves its conversation; wait on ${result.currentSessionId} instead.`;
     case 'observation-lost':
-      return `Observation stopped while waiting on Session ${id}: ${result.lastError}. Its outcome is not known from here; the Session was not stopped.`;
+      return `Observation stopped while waiting on Session ${id}: ${result.lastError}. Its outcome is not known from here; the Session was not stopped.${result.eventCursor !== undefined && result.until === 'turn-settled' ? ` Wait again with --after-cursor=${result.eventCursor} to see what happened since.` : ''}`;
     case 'cancelled':
       return `Stopped waiting on Session ${id}. The Session keeps running.`;
     default:

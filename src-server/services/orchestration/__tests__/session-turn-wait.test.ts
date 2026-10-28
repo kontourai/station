@@ -695,6 +695,49 @@ describe('a restart-interrupted turn, for a wait that asks (#3427)', () => {
     expect(outcome).not.toHaveProperty('interruptedTurn');
   });
 
+  test('an idle wait never reports an old interruption while a newer turn runs', async () => {
+    const session = anchoredSession();
+    session.start('turn-1');
+    session.recoveryAbort('turn-1');
+    session.start('turn-2');
+    const waiter = new SessionTurnWaiter(session.ports);
+    const outcome = await waiter.wait({
+      callerSessionId: 'person:p',
+      threadId: 't1',
+      until: 'idle',
+      timeoutMs: 30,
+      reportInterrupted: true,
+    });
+    expect(outcome).toMatchObject({
+      kind: 'timeout',
+      state: 'running',
+      openTurnId: 'turn-2',
+    });
+    expect(outcome).not.toHaveProperty('interruptedTurn');
+  });
+
+  test('a cursor wait still names an interruption after its cursor though a newer turn runs', async () => {
+    const session = anchoredSession();
+    session.start('turn-1');
+    session.recoveryAbort('turn-1');
+    session.start('turn-2');
+    const waiter = new SessionTurnWaiter(session.ports);
+    expect(
+      await waiter.wait({
+        callerSessionId: 'person:p',
+        threadId: 't1',
+        until: 'turn-settled',
+        timeoutMs: 1000,
+        afterEventCursor: 1,
+        reportInterrupted: true,
+      }),
+    ).toMatchObject({
+      kind: 'settled',
+      state: 'running',
+      interruptedTurn: { turnId: 'turn-1', sequence: 2 },
+    });
+  });
+
   test('an interruption at or before the cursor is not this wait’s', async () => {
     const session = anchoredSession();
     session.start('turn-1');

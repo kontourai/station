@@ -1,7 +1,7 @@
 /**
  * #3427: the person-facing Session reads — one fetcher per route under
  * `/api/orchestration/session-reads`, the leaves a person's own credential
- * reads (`station session wait|digest`, `station activity`). Station
+ * reads (`station sessions wait|digest`, `station activity`). Station
  * Control's agent tools read the agent-only leaves of the same capabilities;
  * these never send a station-control caller.
  *

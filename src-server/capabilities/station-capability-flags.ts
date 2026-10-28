@@ -105,7 +105,7 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // engine invocation). Senders gate the field on this flag.
   delegatedInputAnswers: true,
   // #3427: the person-facing Session reads under
-  // `/api/orchestration/session-reads` (`station session wait|digest`,
+  // `/api/orchestration/session-reads` (`station sessions wait|digest`,
   // `station activity`). A STATIC protocol fact about this build: whether
   // the reads answer is the `session-cli-reads` Feature Preview's, which
   // refuses with its own typed answer, so an older host's 404 and an off

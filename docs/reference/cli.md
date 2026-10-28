@@ -1247,12 +1247,25 @@ condition holds or `--timeout` (1–86400 seconds, default 3600) runs out.
 | 3 | `failed` (the turn was aborted, failed or exited) or `restart-interrupted` |
 | 5 | `wait-timeout`: the budget ran out with the Session still running |
 | 6 | `superseded` (a newer Session serves the conversation; wait on `currentSessionId`) or `unknown` |
-| 2 | `observation-lost`: a read failed after the wait began |
+| 2 | `observation-lost`: a read failed after the wait began, or the Station stayed unreachable for 60 seconds |
 | 130 | `cancelled` (Ctrl-C) |
 
 A turn that a Station restart cut off is reported as `restart-interrupted`,
 with its `interruptedTurn`. It is never reported as settled, and never as a
-silent idle, because nothing proves its work completed. A wait that ends with
+silent idle, because nothing proves its work completed. With no cursor, it is
+reported only while it is still the Session's newest turn end and nothing is
+running.
+
+Some conditions make the wait keep going rather than end:
+
+- **The Station stops answering**, as it does while restarting. The wait keeps
+  calling with its cursor for up to 60 seconds, so it still sees a turn that
+  the restart cut off.
+- **Every wait slot is taken** (4 per person, 256 per Station). The wait waits
+  for a free slot within its budget.
+
+A superseded Session is reported as `superseded`, even when it is idle,
+because its being idle says nothing about the conversation's work. A wait that ends with
 `wait-timeout` prints the `eventCursor` to pass back as `--after-cursor`.
 `--json` prints one `{ ok, kind: "sessions.wait", data }` line, where `data`
 has the outcome, exit code, last state and turn fields, and a safe

@@ -3444,7 +3444,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/orchestration/session-activity/:sessionId/digest',
     },
     // #3427 the person-facing leaves of the same reads (`station activity`,
-    // `station session digest|wait`): owner-scoped, held to the Projects the
+    // `station sessions digest|wait`): owner-scoped, held to the Projects the
     // person may view, and refused to every internal request. They read
     // nothing the family's `/events` stream does not already stream to the
     // same credential, so the family's read tier is enough.
