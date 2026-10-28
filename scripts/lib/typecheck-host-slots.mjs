@@ -51,6 +51,7 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
   renameSync,
   statSync,
@@ -478,6 +479,52 @@ function forLabel(label) {
 }
 
 /**
+ * Live slot holders, read without claiming or reclaiming anything: what a
+ * queued waiter reports while it is not yet its turn.
+ */
+function observeHolders(dir, slots, liveness) {
+  const holders = [];
+  for (let index = 0; index < slots; index += 1) {
+    const observed = readSlotRecord(slotPath(dir, index));
+    if (observed.record && !recordIsStale(observed, liveness))
+      holders.push(observed.record);
+  }
+  return holders;
+}
+
+/**
+ * FIFO admission (opt-in). Without it, waiters poll at random intervals and
+ * the fastest poller wins, so under sustained load one waiter can lose every
+ * round until its bounded wait fails. With it, each waiter publishes a ticket
+ * named for its arrival and only the earliest N live tickets may claim a slot.
+ * A ticket whose waiter died is removed by whoever reads it.
+ */
+function enqueue(dir, record, startedAt) {
+  const queueDir = join(dir, 'queue');
+  mkdirSync(queueDir, { recursive: true, mode: 0o700 });
+  const name = `${String(startedAt).padStart(15, '0')}-${record.nonce}.json`;
+  const path = join(queueDir, name);
+  writePrivateFile(path, JSON.stringify(record));
+  return { queueDir, name, path };
+}
+
+function waitersAhead(ticket, liveness) {
+  let ahead = 0;
+  for (const name of readdirSync(ticket.queueDir).sort()) {
+    if (name >= ticket.name) break;
+    const path = join(ticket.queueDir, name);
+    const observed = readSlotRecord(path);
+    if (observed.missing) continue;
+    if (!observed.busy && recordIsStale(observed, liveness)) {
+      unlinkQuietly(path);
+      continue;
+    }
+    ahead += 1;
+  }
+  return ahead;
+}
+
+/**
  * Wait (bounded) for a host-wide slot in `pool` (typecheck by default).
  *
  * @param {{
@@ -495,6 +542,7 @@ function forLabel(label) {
  *   sleep?: (ms: number) => Promise<void>,
  *   log?: (message: string) => void,
  *   pool?: SlotPool,
+ *   fifo?: boolean,
  * }} [options]
  * @returns {Promise<{ index: number, dir: string, slots: number, reentrant: boolean, release: () => void }>}
  */
@@ -513,6 +561,7 @@ export async function acquireTypecheckSlot({
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   log = (message) => process.stderr.write(`${message}\n`),
   pool = TYPECHECK_POOL,
+  fifo = false,
 } = {}) {
   if (env[pool.heldEnv]) {
     return { index: -1, dir, slots, reentrant: true, release: () => {} };
@@ -528,39 +577,49 @@ export async function acquireTypecheckSlot({
   };
   const birthCache = new Map();
   const startedAt = now();
+  const ticket = fifo ? enqueue(dir, record, startedAt) : null;
   let lastLogAt = null;
-  for (;;) {
-    const liveness = {
-      now: now(),
-      pidAlive,
-      lookupBirth,
-      birthCache,
-      warn: log,
-    };
-    record.acquiredAt = liveness.now;
-    const { index, holders } = scanSlots(dir, slots, record, liveness);
-    const seconds = Math.round((now() - startedAt) / 1000);
-    if (index >= 0) {
-      if (lastLogAt !== null)
-        log(
-          `[${pool.tag}] acquired slot ${index + 1}/${slots} after ${seconds}s${forLabel(label)}.`,
+  try {
+    for (;;) {
+      const liveness = {
+        now: now(),
+        pidAlive,
+        lookupBirth,
+        birthCache,
+        warn: log,
+      };
+      record.acquiredAt = liveness.now;
+      const ahead = ticket ? waitersAhead(ticket, liveness) : 0;
+      const { index, holders } =
+        ahead < slots
+          ? scanSlots(dir, slots, record, liveness)
+          : { index: -1, holders: observeHolders(dir, slots, liveness) };
+      const seconds = Math.round((now() - startedAt) / 1000);
+      const queued = ahead > 0 ? `; ${ahead} earlier waiter(s) queued` : '';
+      if (index >= 0) {
+        if (lastLogAt !== null)
+          log(
+            `[${pool.tag}] acquired slot ${index + 1}/${slots} after ${seconds}s${forLabel(label)}.`,
+          );
+        const release = releaser(slotPath(dir, index), record.nonce);
+        return { index, dir, slots, reentrant: false, release };
+      }
+      if (now() - startedAt >= waitMs) {
+        throw new Error(
+          `FAIL: waited ${seconds}s for a ${pool.noun}${forLabel(label)}; ${ahead > 0 ? `${holders.length}/${slots}` : `all ${slots} are`} held: ${describeHolders(holders)}${queued}. ` +
+            `Slots live in ${dir} (${pool.dirEnv}); raise ${pool.waitEnv} to wait longer, or ${pool.countEnv} if the host has capacity to spare.`,
         );
-      const release = releaser(slotPath(dir, index), record.nonce);
-      return { index, dir, slots, reentrant: false, release };
+      }
+      if (lastLogAt === null || now() - lastLogAt >= PROGRESS_LOG_MS) {
+        lastLogAt = now();
+        log(
+          `[${pool.tag}] waiting for a ${pool.noun}${forLabel(label)}: ${holders.length}/${slots} held by ${describeHolders(holders)}${queued}. ` +
+            `Bounded by ${pool.countEnv}=${slots} across every worktree on this host.`,
+        );
+      }
+      await sleep(pollMs / 2 + Math.random() * pollMs);
     }
-    if (now() - startedAt >= waitMs) {
-      throw new Error(
-        `FAIL: waited ${seconds}s for a ${pool.noun}${forLabel(label)}; all ${slots} are held: ${describeHolders(holders)}. ` +
-          `Slots live in ${dir} (${pool.dirEnv}); raise ${pool.waitEnv} to wait longer, or ${pool.countEnv} if the host has capacity to spare.`,
-      );
-    }
-    if (lastLogAt === null || now() - lastLogAt >= PROGRESS_LOG_MS) {
-      lastLogAt = now();
-      log(
-        `[${pool.tag}] waiting for a ${pool.noun}${forLabel(label)}: ${holders.length}/${slots} held by ${describeHolders(holders)}. ` +
-          `Bounded by ${pool.countEnv}=${slots} across every worktree on this host.`,
-      );
-    }
-    await sleep(pollMs / 2 + Math.random() * pollMs);
+  } finally {
+    if (ticket) unlinkQuietly(ticket.path);
   }
 }

@@ -1,9 +1,17 @@
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
+  acquireHeavyCheckSlot,
   HEAVY_CHECK_HELD_ENV,
   resolveHeavyCheckSlotCount,
 } from '../lib/heavy-check-slots.mjs';
@@ -247,7 +255,7 @@ describe('heavy-check slot runner (child processes)', () => {
     expect(result.stderr).not.toContain('waiting for a heavy-check slot');
   });
 
-  test('a held marker admits only while the pid it names is alive', () => {
+  test('a held marker admits only while the exact process it names is alive', () => {
     const w = workspace();
     holdSlot(w.slotDir);
     const leaked = runSync(
@@ -269,17 +277,136 @@ describe('heavy-check slot runner (child processes)', () => {
       }),
     );
     expect(live.status, live.stderr).toBe(0);
+    expect(live.stderr).toContain(
+      `[heavy-check-slots] live-marker runs under the heavy-check slot held by pid ${process.pid}.`,
+    );
     expect(w.lines()).toEqual(['F start', 'F end']);
+
+    // A live pid whose birth differs from the marker's is a recycled pid.
+    if (process.platform !== 'win32') {
+      const recycled = runSync(
+        ['recycled-marker', w.check, w.log, 'R', '', '0'],
+        poolEnv(w.slotDir, {
+          STATION_HEAVY_CHECK_SLOT_WAIT_MS: '0',
+          [HEAVY_CHECK_HELD_ENV]: `${process.pid}:not-this-process-birth`,
+        }),
+      );
+      expect(recycled.status).toBe(1);
+      expect(recycled.stderr).toContain(
+        'FAIL: waited 0s for a heavy-check slot for recycled-marker',
+      );
+      expect(w.lines()).toEqual(['F start', 'F end']);
+    }
   });
 
-  test('hosted CI runs the check without taking a slot', () => {
+  test('queued checks are admitted in arrival order, not by who polls fastest', async () => {
     const w = workspace();
     holdSlot(w.slotDir);
-    const result = runSync(
-      ['hosted-check', w.check, w.log, 'G', '', '0'],
-      poolEnv(w.slotDir, { STATION_HEAVY_CHECK_SLOT_WAIT_MS: '0', CI: 'true' }),
+    const env = poolEnv(w.slotDir);
+    const order: string[] = [];
+    const quiet = () => {};
+    // The earlier waiter polls slowly and the later one forty times as
+    // often: without arrival order the later one claims the freed slot.
+    const early = acquireHeavyCheckSlot({
+      label: 'early',
+      env,
+      pollMs: 400,
+      log: quiet,
+    }).then((slot) => {
+      order.push('early');
+      return slot;
+    });
+    await new Promise((done) => setTimeout(done, 100));
+    const late = acquireHeavyCheckSlot({
+      label: 'late',
+      env,
+      pollMs: 10,
+      log: quiet,
+    }).then((slot) => {
+      order.push('late');
+      return slot;
+    });
+    await new Promise((done) => setTimeout(done, 300));
+    expect(order).toEqual([]);
+    rmSync(slotPath(w.slotDir, 0));
+    const first = await early;
+    await new Promise((done) => setTimeout(done, 300));
+    expect(order).toEqual(['early']);
+    first.release();
+    (await late).release();
+    expect(order).toEqual(['early', 'late']);
+    // No ticket outlives its waiter.
+    expect(readdirSync(join(w.slotDir, 'queue'))).toEqual([]);
+  }, 30_000);
+
+  test('the check receives the Node flags given to the runner', () => {
+    const w = workspace();
+    const probe = join(w.root, 'flags.mjs');
+    writeFileSync(
+      probe,
+      'process.stdout.write(JSON.stringify(process.execArgv));\n',
+    );
+    const result = spawnSync(
+      process.execPath,
+      ['--max-old-space-size=321', RUNNER, 'flags', probe],
+      { env: poolEnv(w.slotDir), encoding: 'utf8', windowsHide: true },
     );
     expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toContain('--max-old-space-size=321');
+  });
+
+  test('a local verification request queues for a heavy-check slot before the coordinator', () => {
+    const w = workspace();
+    holdSlot(w.slotDir);
+    const coordinatorRun = join(w.root, 'coordinator');
+    const result = spawnSync(
+      process.execPath,
+      [resolve('scripts/run-verification.mjs'), 'request', 'ci-fast'],
+      {
+        env: poolEnv(w.slotDir, {
+          STATION_HEAVY_CHECK_SLOT_WAIT_MS: '0',
+          STATION_VITEST_RUN_ROOT: coordinatorRun,
+        }),
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 60_000,
+      },
+    );
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain(
+      `FAIL: waited 0s for a heavy-check slot for verification:ci-fast; all 1 are held: pid ${process.pid} (docs:truth:gate)`,
+    );
+    // Refused before the coordinator saw a request.
+    expect(existsSync(join(coordinatorRun, 'verification-coordinator'))).toBe(
+      false,
+    );
+  }, 90_000);
+
+  test('hosted CI runs the check without taking a slot, and says so', () => {
+    const w = workspace();
+    holdSlot(w.slotDir);
+    const hosted = runSync(
+      ['hosted-check', w.check, w.log, 'G', '', '0'],
+      poolEnv(w.slotDir, {
+        STATION_HEAVY_CHECK_SLOT_WAIT_MS: '0',
+        GITHUB_ACTIONS: 'true',
+      }),
+    );
+    expect(hosted.status, hosted.stderr).toBe(0);
+    expect(hosted.stderr).toContain(
+      '[heavy-check-slots] hosted CI (GITHUB_ACTIONS=true): hosted-check runs without a host slot.',
+    );
+    expect(w.lines()).toEqual(['G start', 'G end']);
+
+    // Local tools export CI too; that alone does not skip the queue.
+    const local = runSync(
+      ['local-ci-flag', w.check, w.log, 'L', '', '0'],
+      poolEnv(w.slotDir, { STATION_HEAVY_CHECK_SLOT_WAIT_MS: '0', CI: '1' }),
+    );
+    expect(local.status).toBe(1);
+    expect(local.stderr).toContain(
+      'FAIL: waited 0s for a heavy-check slot for local-ci-flag',
+    );
     expect(w.lines()).toEqual(['G start', 'G end']);
   });
 

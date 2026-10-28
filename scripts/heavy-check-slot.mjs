@@ -15,6 +15,7 @@
 import {
   acquireHeavyCheckSlot,
   HEAVY_CHECK_HELD_ENV,
+  withHeavyCheckHeld,
 } from './lib/heavy-check-slots.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { execAsSlotHolder } from './lib/slot-holder-exec.mjs';
@@ -37,12 +38,15 @@ async function main([label, script, ...args] = process.argv.slice(2)) {
   }
   if (!slot.reentrant && !slot.skipped) {
     process.once('exit', slot.release);
-    // The pid survives execve, so descendants see their holder as alive.
-    process.env[HEAVY_CHECK_HELD_ENV] = String(process.pid);
+    // The pid and birth survive execve, so descendants see their holder.
+    process.env[HEAVY_CHECK_HELD_ENV] = withHeavyCheckHeld(process.env)[
+      HEAVY_CHECK_HELD_ENV
+    ];
   }
   await execAsSlotHolder({
     file: process.execPath,
-    args: [script, ...args],
+    // Node flags given to this runner apply to the check it becomes.
+    args: [...process.execArgv, script, ...args],
     label,
   });
 }

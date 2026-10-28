@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+import {
+  acquireHeavyCheckSlot,
+  HEAVY_CHECK_HELD_ENV,
+  withHeavyCheckHeld,
+} from './lib/heavy-check-slots.mjs';
 import { ensureLivenessScale } from './lib/liveness-scale-resolve.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
@@ -588,6 +593,22 @@ export async function runVerificationCli(
       // a runtime that can change product behavior and create false failures.
       assertSupportedNode();
       assertWorkspacePackageProvenance();
+      // A local request is a heavy check: it queues for a host heavy-check
+      // slot BEFORE asking the coordinator, and the lane it runs inherits
+      // that slot. Lanes never wait on a heavy-check slot, so holding one
+      // while waiting for coordinator capacity cannot deadlock. Waiting
+      // here, before the cancel handlers, keeps an interrupt fatal.
+      const slot =
+        parsed.command === 'request'
+          ? await acquireHeavyCheckSlot({
+              label: `verification:${parsed.laneId}`,
+            })
+          : null;
+      const inheritedMarker = process.env[HEAVY_CHECK_HELD_ENV];
+      if (slot && !slot.reentrant && !slot.skipped)
+        process.env[HEAVY_CHECK_HELD_ENV] = withHeavyCheckHeld(process.env)[
+          HEAVY_CHECK_HELD_ENV
+        ];
       const controller = new AbortController();
       const cancel = () => controller.abort();
       process.once('SIGINT', cancel);
@@ -604,6 +625,10 @@ export async function runVerificationCli(
       } finally {
         process.off('SIGINT', cancel);
         process.off('SIGTERM', cancel);
+        slot?.release();
+        if (inheritedMarker === undefined)
+          delete process.env[HEAVY_CHECK_HELD_ENV];
+        else process.env[HEAVY_CHECK_HELD_ENV] = inheritedMarker;
       }
     }
     // The CLI is intentionally a bounded handoff surface: raw child output

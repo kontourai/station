@@ -1,7 +1,8 @@
 /**
  * Host-wide heavy-check slots: at most N heavy repository checks (Vitest
  * selections, `docs:truth:gate`, the learning-guide build, the pre-push
- * gates) run at once on this machine, across every worktree and caller.
+ * gates, local verification-coordinator requests) run at once on this
+ * machine, across every worktree and caller.
  *
  * Why this exists: three agents on one 4-core, 15 GiB host each ran
  * pre-push hooks, readiness and docs gates at once; load reached ~10 and a
@@ -11,25 +12,28 @@
  * The protocol is the typecheck pool's (`typecheck-host-slots.mjs`): atomic
  * link(2) claims, pid plus birth-fingerprint liveness, dead-holder reclaim,
  * and a bounded wait that fails naming the holders. This is a second pool
- * with its own directory, count and held marker.
+ * with its own directory, count and held marker, and it admits waiters in
+ * arrival order (FIFO tickets) so a waiter cannot lose every round.
  *
  * ## Nesting and lock order
  *
- * A holder exports `STATION_HEAVY_CHECK_SLOT_HELD=<its pid>`; a descendant
- * that asks for a slot while that pid is alive is admitted under its
- * ancestor's slot instead of waiting on it. A marker naming a dead pid (a
- * leaked environment) is ignored and the caller queues normally.
+ * A holder exports `STATION_HEAVY_CHECK_SLOT_HELD=<pid>[:<birth>]`; a
+ * descendant that asks for a slot while that exact process is alive is
+ * admitted under its ancestor's slot instead of waiting on it. A marker
+ * naming a dead or recycled pid is ignored and the caller queues normally.
  *
- * The verification coordinator (`ci:fast`, `verify:static`,
- * `full:regression`) is already a host-wide, pressure-gated admission, so its
- * children carry the marker for the coordinator's pid
- * (`verification-request-context.mjs`). Admission is therefore always taken
- * in one order -- coordinator, then heavy check, then typecheck or Biome --
- * and no holder ever waits on an admission that a waiter for its own slot
- * holds.
+ * Admission is taken in one order: heavy-check slot, then the verification
+ * coordinator, then typecheck or Biome slots. `run-verification.mjs request`
+ * takes a heavy-check slot before it asks the coordinator for admission, and
+ * every lane the coordinator runs gives its children the marker of the
+ * process running it (`verification-request-context.mjs`). A coordinator lane
+ * therefore never waits on a heavy-check slot, so a request holding a slot
+ * while it waits for coordinator capacity cannot deadlock against a running
+ * lane.
  *
- * Hosted CI (`CI` or `GITHUB_ACTIONS`) takes no slot: each runner is a single
- * tenant, and a pool there would only serialize one job's own steps.
+ * Hosted CI (`GITHUB_ACTIONS=true`) takes no slot: each runner is a single
+ * tenant, and a pool there would only serialize one job's own steps. `CI`
+ * alone does not exempt a run, because local tools set it too.
  */
 import {
   availableParallelism,
@@ -37,7 +41,11 @@ import {
   totalmem as osTotalmem,
 } from 'node:os';
 import { join } from 'node:path';
-import { acquireTypecheckSlot } from './typecheck-host-slots.mjs';
+import {
+  acquireTypecheckSlot,
+  holderIsLive,
+  ownBirthFingerprint,
+} from './typecheck-host-slots.mjs';
 
 export const HEAVY_CHECK_HELD_ENV = 'STATION_HEAVY_CHECK_SLOT_HELD';
 const COUNT_ENV = 'STATION_HEAVY_CHECK_SLOTS';
@@ -102,8 +110,6 @@ export function resolveHeavyCheckSlotCount({
  * The one directory every caller on this host shares; see
  * `resolveSlotDirectory` in `typecheck-host-slots.mjs` for why POSIX uses a
  * fixed uid-scoped `/tmp` path rather than `os.tmpdir()`.
- *
- * @param {{ env?: NodeJS.ProcessEnv, platform?: string, uid?: number, tmpdir?: string }} [options]
  */
 function resolveHeavyCheckSlotDirectory({
   env = process.env,
@@ -127,57 +133,55 @@ function resolveWaitMs(env) {
   return parsed;
 }
 
-function isHostedCi(env) {
-  return env.CI === 'true' || env.CI === '1' || env.GITHUB_ACTIONS === 'true';
-}
-
-/** Only ESRCH proves a pid is gone; EPERM and anything else is "maybe alive". */
-function defaultPidAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error?.code !== 'ESRCH';
-  }
-}
-
 /**
- * Whether `env` carries the marker of a live ancestor holder. A malformed
- * marker or one naming a dead pid does not admit anything.
+ * The live holder `env`'s marker names, or null. The marker is the holder's
+ * pid and, where cheap to read, its birth fingerprint, so a recycled pid does
+ * not inherit an old holder's admission.
  *
  * @param {NodeJS.ProcessEnv} env
- * @param {(pid: number) => boolean} [pidAlive]
+ * @param {{ pidAlive?: (pid: number) => boolean, lookupBirth?: (pid: number) => string | null }} [liveness]
  */
-function heldByLiveAncestor(env, pidAlive = defaultPidAlive) {
-  const raw = env[HEAVY_CHECK_HELD_ENV];
-  if (!raw || !/^[1-9]\d*$/.test(raw)) return false;
-  return pidAlive(Number(raw));
+function liveMarkedHolder(env, liveness = {}) {
+  const match = /^([1-9]\d*)(?::(.+))?$/.exec(env[HEAVY_CHECK_HELD_ENV] ?? '');
+  if (!match) return null;
+  const record = {
+    pid: Number(match[1]),
+    start: match[2] ?? null,
+    acquiredAt: Date.now(),
+  };
+  return holderIsLive(record, liveness) ? record.pid : null;
 }
 
 /**
- * `env` with this process marked as the heavy-check holder for its
- * descendants: the slot runner after it claims a slot, and the verification
- * coordinator for the lanes it has admitted.
+ * `env` marking the process `pid` as the heavy-check holder for its
+ * descendants: the slot runner after it claims a slot, `run-verification`
+ * after it claims one, and the coordinator for the lanes it runs.
  *
  * @param {NodeJS.ProcessEnv} env
  * @param {number} [pid]
  */
 export function withHeavyCheckHeld(env, pid = process.pid) {
-  return { ...env, [HEAVY_CHECK_HELD_ENV]: String(pid) };
+  const start = ownBirthFingerprint({ pid });
+  return {
+    ...env,
+    [HEAVY_CHECK_HELD_ENV]: start ? `${pid}:${start}` : String(pid),
+  };
 }
 
 /**
- * Wait (bounded) for a host-wide heavy-check slot.
+ * Wait (bounded, first come first served) for a host-wide heavy-check slot.
  *
  * `skipped` means hosted CI, where no pool applies; `reentrant` means a live
- * ancestor already holds one. Otherwise the caller holds slot `index` until
- * it calls `release` or exits. Throws a `FAIL:` error naming the holders when
- * the wait runs out.
+ * ancestor already holds one. Both print one line saying so. Otherwise the
+ * caller holds slot `index` until it calls `release` or exits. Throws a
+ * `FAIL:` error naming the holders when the wait runs out.
  *
  * @param {{
  *   label?: string,
  *   env?: NodeJS.ProcessEnv,
  *   pidAlive?: (pid: number) => boolean,
+ *   lookupBirth?: (pid: number) => string | null,
+ *   log?: (message: string) => void,
  * } & Record<string, unknown>} [options] Remaining options pass through to `acquireTypecheckSlot` (test seams).
  * @returns {Promise<{ index: number, dir: string, slots: number, reentrant: boolean, skipped: boolean, release: () => void }>}
  */
@@ -185,30 +189,46 @@ export async function acquireHeavyCheckSlot({
   label = '',
   env = process.env,
   pidAlive,
+  lookupBirth,
+  log = (message) => process.stderr.write(`${message}\n`),
   ...seams
 } = {}) {
   const dir = resolveHeavyCheckSlotDirectory({ env });
-  if (isHostedCi(env))
-    return {
-      index: -1,
-      dir,
-      slots: 0,
-      reentrant: false,
-      skipped: true,
-      release: () => {},
-    };
-  const slots = resolveHeavyCheckSlotCount({ env });
-  const waitMs = resolveWaitMs(env);
+  const unheld = {
+    index: -1,
+    dir,
+    slots: 0,
+    release: () => {},
+  };
+  if (env.GITHUB_ACTIONS === 'true') {
+    log(
+      `[heavy-check-slots] hosted CI (GITHUB_ACTIONS=true): ${label || 'check'} runs without a host slot.`,
+    );
+    return { ...unheld, reentrant: false, skipped: true };
+  }
+  const liveness = {
+    ...(pidAlive ? { pidAlive } : {}),
+    ...(lookupBirth ? { lookupBirth } : {}),
+  };
+  const ancestor = liveMarkedHolder(env, liveness);
+  if (ancestor !== null) {
+    log(
+      `[heavy-check-slots] ${label || 'check'} runs under the heavy-check slot held by pid ${ancestor}.`,
+    );
+    return { ...unheld, reentrant: true, skipped: false };
+  }
   const ownEnv = { ...env };
-  if (!heldByLiveAncestor(env, pidAlive)) delete ownEnv[HEAVY_CHECK_HELD_ENV];
+  delete ownEnv[HEAVY_CHECK_HELD_ENV];
   const slot = await acquireTypecheckSlot({
     label,
     env: ownEnv,
     dir,
-    slots,
-    waitMs,
+    slots: resolveHeavyCheckSlotCount({ env }),
+    waitMs: resolveWaitMs(env),
     pool: HEAVY_CHECK_POOL,
-    ...(pidAlive ? { pidAlive } : {}),
+    fifo: true,
+    log,
+    ...liveness,
     ...seams,
   });
   return { ...slot, skipped: false };
