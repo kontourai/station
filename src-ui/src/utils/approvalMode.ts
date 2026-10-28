@@ -146,10 +146,12 @@ const ENGINE_MODE_DESCRIPTIONS: Partial<
     // for a host session in a folder with no trust entry, and workspace-write
     // without network (temp writable too) for a trusted host folder and
     // under Station's `station-workspace` profile. The copy is a bound on
-    // what runs unasked, which holds for all three; it is not "Codex Auto",
-    // which the read-only case is not.
+    // which commands run unasked, which holds for all three; it is not
+    // "Codex Auto", which the read-only case is not. It is scoped to
+    // commands: Codex's hosted web search and MCP tool calls are not
+    // sandboxed commands, so they fall outside it.
     codex:
-      'Your Codex settings apply until you pick a mode. Unset, Codex never uses network or writes outside this folder and temp unasked.',
+      'Your Codex settings apply until you pick a mode. If unset, no command uses the network or writes beyond this folder and temp unasked.',
   },
   ask: {
     codex:

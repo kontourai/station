@@ -218,8 +218,10 @@ remain local. Different Stations keep separate account preferences.
 The approval chip shows the known mode, including **Full access**, **Auto** or
 **Ask**. **Engine default** means the engine's active mode has not been confirmed.
 For Codex the picker says what that is: your own Codex settings. If you set
-none, Codex never uses the network or writes outside the chat's folder and
-temporary directories without asking; it may ask before other writes too. Open the picker to see the source, the confirmed mode and whether a request takes
+none, no command Codex runs uses the network or writes outside the chat's
+folder and temporary directories without asking; it may ask before other
+writes too. Codex's web search and MCP tools are not commands and are not
+covered by this. Open the picker to see the source, the confirmed mode and whether a request takes
 effect next turn or requires restarting the session. A Claude chat started in a
 chosen mode by someone who may grant full access can switch to full access on
 its next turn. A chat left on Claude's own settings, one that started before
