@@ -15,13 +15,17 @@ browser's effective WebRTC policy before loading authored content. It refuses an
 unsupported browser or enterprise override that prevents the restrictive policy,
 even when the profile file requests it.
 
-Local HTML and raster-image links in a Project conversation also open inline.
-Station reads the file through that Project's workspace or a verified Git
-worktree of the same repository. HTML uses the same isolated viewer. An
-image's alt text is shown as its caption, beside a Hide/Show control. A file
-that cannot be shown stays in the conversation as a card that says why: not
-on the host, outside the Project's folders, not a PNG image or HTML page, too
-large, no Project folder, unreadable, signed out, or a Station error. A path
+Local HTML pages and PNG images that a reply links (`[label](path)`) or
+embeds (`![alt](path)`) in a Project conversation also open inline. A path
+named in a sentence or in inline code stays in its sentence. Station reads the
+file through that Project's workspace or a verified Git worktree of the same
+repository. HTML uses the same isolated viewer. An image's alt text is shown as
+its caption, beside a Hide/Show control. An embedded image that cannot be shown
+stays in the conversation as a card that says why; a link keeps its place in
+the sentence with the reason beside it: not on the host, outside the Project's
+folders, not a PNG image or HTML page (a JPEG, GIF or WebP in the Project is
+not shown), too large, no Project folder, unreadable, signed out, or a Station
+error. A path
 that does not resolve inside the Project gets the same answer whether or not
 anything exists there. These file previews follow
 the current file bytes and are not retained published pages.
