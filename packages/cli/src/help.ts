@@ -738,8 +738,9 @@ const VERBS: Record<string, VerbSpec> = {
     targets: true,
     actions: ['list', 'respond'],
     detail: [
-      'station approvals list [--session=<id>] [--json]',
-      'station approvals respond <request-id> <decision>',
+      'station approvals list [--agent=<slug>] [--thread=<id>] [--watch] [--json]',
+      'station approvals respond <thread-id> <request-id> <decision>',
+      'Without --agent, list covers every session on the Station.',
     ],
   },
   operate: {
