@@ -2,10 +2,12 @@ import { isStationCheckBackTurn } from '@kontourai/station-contracts/agent-sched
 import {
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
   APPROVAL_ESCALATION_REQUIRES_RESTART_CODE,
+  ENGINE_MEMORY_EXHAUSTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
   ENGINE_TURN_FAILED_CODE,
   isApprovalMode,
+  isStationMemoryContinuationTurn,
 } from '@kontourai/station-contracts/provider';
 import { runtimeEventContentDisplayText } from '@kontourai/station-contracts/runtime-event-content';
 import {
@@ -36,6 +38,7 @@ import { settlePendingApprovalsOnTurnEnd } from './approvalHandlers';
 import { finalizeAssistantTurn } from './assistantTurn';
 import { createAssistantStreamingMessage } from './messageParts';
 import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
+import { withRecordedAttachments } from './recordedAttachments';
 import { isReplayThread } from './replay/replay-registry';
 import { notifyTurnTerminal } from './turnAttentionNotifications';
 import type { OrchestrationEvent } from './types';
@@ -192,12 +195,16 @@ export function handleTurnStartedEvent(
       : currentChat?.pendingClientTurnId
         ? [...userMessages]
             .reverse()
-            .find((message) => message.role === 'user' && message.clientId)
+            .find(
+              (message) =>
+                message.role === 'user' && message.clientId && !message.turnId,
+            )
         : undefined;
     if (pending) {
       const index = userMessages.indexOf(pending);
       userMessages[index] = {
         ...pending,
+        ...withRecordedAttachments(pending, event.attachments),
         turnId: event.turnId,
         sourceEventId: event.eventId,
       };
@@ -215,6 +222,9 @@ export function handleTurnStartedEvent(
         turnId: event.turnId,
         sessionId: event.threadId,
         ...(isStationCheckBackTurn(event) ? { stationCheckBack: true } : {}),
+        ...(isStationMemoryContinuationTurn(event)
+          ? { stationMemoryContinuation: true }
+          : {}),
       });
     }
   }
@@ -608,6 +618,7 @@ export function handleRuntimeErrorEvent(
   // `event.message` display — unchanged.
   const translation =
     event.code === ENGINE_SESSION_BINDING_DEAD_CODE ||
+    event.code === ENGINE_MEMORY_EXHAUSTED_CODE ||
     event.code === ENGINE_SIGN_IN_REQUIRED_CODE ||
     event.code === ENGINE_TURN_FAILED_CODE
       ? translateChatError({ message: event.message, code: event.code })

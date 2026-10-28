@@ -1,0 +1,7 @@
+{
+  "revision": "2d6080ca48dcd6b7d4d9dba23456af6f5b32a6c5",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Reviewed packaging rewrite at2d6080 against actual source and consumer. Clean66cb regression failed missing inherited receiver read_only; installed js-yaml5 CORE schema excludes merge tags. Producer and verifier now use CORE_SCHEMA.withTags(mergeTag); policies and image pins unchanged.34 package/archive tests passed and actual Docker Compose config accepted the resulting source-bound candidate. Full isolated Compose startup settled its PG health condition but host storage GET failed; retained diagnostic returned200 alive and authenticated postgres-schema-v1 ready inside receiver while published host ports refused connections. Project stopped; private credentials/volumes retained. This is not host reachability, full deployment, real Station ingestion, restore or release qualification; README unqualified status remains accurate. No manifest scope, publisher authority, source/person grant, export setting or consent was promoted.","inputs":["deployment/telemetry/README.md","scripts/__tests__/package-telemetry-companion.test.ts","scripts/package-telemetry-companion.mjs"]}
+  ]
+}

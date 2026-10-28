@@ -1,6 +1,10 @@
 import {
+  isProjectTaskRoomMentions,
   isTaskRoomAttachments,
   type ProjectTaskRoomOutputFeedback,
+  type ProjectTaskRoomPersonMention,
+  type ProjectTaskRoomPresenceLocation,
+  parseProjectTaskRoomPresenceLocation,
   type TaskRoomAttachment,
 } from './project-task-room.js';
 /** Closed browser projection for the Project/Task room transport. */
@@ -31,6 +35,7 @@ export type ProjectTaskRoomBrowserBody =
       readonly kind: 'human-message';
       readonly text: string;
       readonly attachments?: TaskRoomAttachment[];
+      readonly mentions?: ProjectTaskRoomPersonMention[];
     }
   | {
       readonly kind: 'live-work-started';
@@ -55,12 +60,19 @@ export type ProjectTaskRoomBrowserBody =
       readonly kind: 'outcome-link';
       readonly link: ProjectTaskRoomBrowserLink;
     };
+export interface ProjectTaskRoomBrowserPerson {
+  readonly principalId: string;
+  readonly label: string;
+  readonly standing: 'operator' | 'member';
+}
 export interface ProjectTaskRoomBrowserRecord {
   readonly actor: {
     readonly kind: 'human' | 'agent';
     readonly label: string;
     readonly id?: string;
+    readonly standing?: 'operator' | 'member';
   };
+  readonly startedBy?: ProjectTaskRoomBrowserPerson;
   readonly sequence: number;
   readonly occurredAt?: string;
   readonly execution?: {
@@ -117,7 +129,10 @@ export interface ProjectTaskRoomBrowserLiveParticipant {
     readonly actorId: string;
     readonly kind: 'human' | 'agent';
     readonly label: string;
+    readonly standing?: 'operator' | 'member';
   };
+  readonly startedBy?: ProjectTaskRoomBrowserPerson;
+  readonly location?: ProjectTaskRoomPresenceLocation;
   readonly work: {
     readonly sessionId: string;
     readonly runId?: string;
@@ -301,14 +316,18 @@ function body(value: unknown): ProjectTaskRoomBrowserBody | undefined {
     };
   if (
     kind === 'human-message' &&
-    own(row, ['kind', 'text'], ['attachments']) &&
+    own(row, ['kind', 'text'], ['attachments', 'mentions']) &&
     humanText(row.text) &&
-    (row.attachments === undefined || isTaskRoomAttachments(row.attachments))
+    (row.attachments === undefined || isTaskRoomAttachments(row.attachments)) &&
+    (!hasOwn(row, 'mentions') || isProjectTaskRoomMentions(row.mentions))
   )
     return {
       kind: 'human-message',
       text: row.text,
       ...(row.attachments ? { attachments: row.attachments } : {}),
+      ...(row.mentions
+        ? { mentions: row.mentions as ProjectTaskRoomPersonMention[] }
+        : {}),
     };
   if (
     kind === 'live-work-started' &&
@@ -407,18 +426,33 @@ function checkpoint(
     retainedAnchorDigest: value.retainedAnchorDigest,
   };
 }
+function standing(value: unknown): value is 'operator' | 'member' {
+  return value === 'operator' || value === 'member';
+}
+function person(value: unknown): value is ProjectTaskRoomBrowserPerson {
+  return (
+    own(value, ['principalId', 'label', 'standing']) &&
+    id(value.principalId) &&
+    text(value.label) &&
+    standing(value.standing)
+  );
+}
 function record(value: unknown): ProjectTaskRoomBrowserRecord | undefined {
   if (!value || typeof value !== 'object') return undefined;
   if (
     !own(
       value,
       ['actor', 'sequence', 'body', 'digests', 'integrity'],
-      ['occurredAt', 'execution', 'threadSessionId', 'system'],
+      ['occurredAt', 'execution', 'threadSessionId', 'system', 'startedBy'],
     ) ||
-    !own(value.actor, ['kind', 'label'], ['id']) ||
+    !own(value.actor, ['kind', 'label'], ['id', 'standing']) ||
     !['human', 'agent'].includes(String(value.actor.kind)) ||
     !text(value.actor.label) ||
     (value.actor.id !== undefined && !id(value.actor.id)) ||
+    (hasOwn(value.actor, 'standing') &&
+      (value.actor.kind !== 'human' || !standing(value.actor.standing))) ||
+    (hasOwn(value, 'startedBy') &&
+      (value.actor.kind !== 'agent' || !person(value.startedBy))) ||
     (value.occurredAt !== undefined &&
       (typeof value.occurredAt !== 'string' ||
         !Number.isFinite(Date.parse(value.occurredAt)))) ||
@@ -445,7 +479,11 @@ function record(value: unknown): ProjectTaskRoomBrowserRecord | undefined {
           kind: value.actor.kind as 'human' | 'agent',
           label: value.actor.label,
           ...(typeof value.actor.id === 'string' ? { id: value.actor.id } : {}),
+          ...(standing(value.actor.standing)
+            ? { standing: value.actor.standing }
+            : {}),
         },
+        ...(person(value.startedBy) ? { startedBy: value.startedBy } : {}),
         sequence: value.sequence,
         ...(typeof value.occurredAt === 'string'
           ? { occurredAt: value.occurredAt }
@@ -474,11 +512,17 @@ function liveParticipant(
   value: unknown,
 ): ProjectTaskRoomBrowserLiveParticipant | undefined {
   if (
-    !own(value, ['actor', 'work', 'publication']) ||
-    !own(value.actor, ['actorId', 'kind', 'label']) ||
+    !own(value, ['actor', 'work', 'publication'], ['startedBy', 'location']) ||
+    !own(value.actor, ['actorId', 'kind', 'label'], ['standing']) ||
     !id(value.actor.actorId) ||
     !['human', 'agent'].includes(String(value.actor.kind)) ||
     !text(value.actor.label) ||
+    (hasOwn(value.actor, 'standing') &&
+      (value.actor.kind !== 'human' || !standing(value.actor.standing))) ||
+    (hasOwn(value, 'startedBy') &&
+      (value.actor.kind !== 'agent' || !person(value.startedBy))) ||
+    (hasOwn(value, 'location') &&
+      !parseProjectTaskRoomPresenceLocation(value.location)) ||
     !['published', 'private'].includes(String(value.publication))
   )
     return undefined;
@@ -508,7 +552,14 @@ function liveParticipant(
       actorId: value.actor.actorId,
       kind: value.actor.kind as 'human' | 'agent',
       label: value.actor.label,
+      ...(standing(value.actor.standing)
+        ? { standing: value.actor.standing }
+        : {}),
     },
+    ...(person(value.startedBy) ? { startedBy: value.startedBy } : {}),
+    ...(hasOwn(value, 'location')
+      ? { location: parseProjectTaskRoomPresenceLocation(value.location)! }
+      : {}),
     work: {
       sessionId: work.sessionId,
       ...(typeof work.runId === 'string' ? { runId: work.runId } : {}),

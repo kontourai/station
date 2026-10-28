@@ -116,8 +116,14 @@ The only channel today is `modelOptions.approvalMode`. It is read by
 
 - **Claude** (`src-server/providers/adapters/claude-adapter.ts`).
   - At spawn, `resolvePermissionMode` runs (`:1253`). The adapter grants
-    `allowDangerouslySkipPermissions` only for `bypassPermissions`
-    (`:2553-2554`), and that grant can be made **only at spawn**.
+    `allowDangerouslySkipPermissions` for `bypassPermissions`, and also for
+    a `host`-confined start (its caller may grant full access) that Station
+    gives a concrete mode, so a later recorded `never` applies at a turn with
+    no restart. That grant can be made **only at spawn**. It is not taken by
+    a `workspace` start below full access, by a start that leaves the mode to
+    the engine's own settings, by a raw `plan` start, or as root outside a
+    sandbox (Claude refuses to spawn with it there). A tool session grant never forwards an
+    engine-suggested switch into `bypassPermissions`.
   - At each turn, `setPermissionMode` is called only when the mode is defined
     and changed (`:1468-1511`). An absent or `connection-default` mode is a
     **no-op**, and that no-op is the #2409 bug.
@@ -230,7 +236,8 @@ engine with an approval knob, and it resolves in this order:
    - Later addition: between the two, a start in a Project applies that
      Project's new-chat approval mode (`defaultApprovalMode`, or with
      `last-used` the mode the person's last chat there started in;
-     `resolveProjectChatApprovalDefault`). It is start-only: a recorded
+     `resolveProjectChatApprovalDefault`). The start composer's Permissions
+     chip picks the new chat's own mode, which outranks all of these. It is start-only: a recorded
      Default (§4.3) and the full-access checks over it still read the Agent
      and Station defaults, and the composer shows a Default pick that way.
      The person's per-engine default comes after it: the composer sends it as
@@ -310,7 +317,10 @@ A session spawned before this change has nothing recorded.
 
 - Its first recorded decision applies at its next turn.
 - Claude's spawn-only bypass grant still applies. A recorded `never` on a
-  session spawned without bypass is refused by the adapter.
+  session spawned without bypass is refused by the adapter. A `host` start
+  given a concrete mode is spawned with the grant, so this refusal is left to
+  sessions spawned before that, sessions started on the engine's own
+  settings or in plan mode, and Stations running as root outside a sandbox.
 - The adapter warns once per refusal, not on every turn.
   - `turn.started` still reports `approvalEscalationRejected`.
   - The chip says the pick needs a restart, not that it takes effect next

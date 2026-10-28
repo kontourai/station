@@ -522,6 +522,87 @@ describe('Home and the dock start the same way', () => {
     ).toBeTruthy();
   });
 
+  test('the Permissions chip picks this start’s mode, and the start carries it', async () => {
+    state.agents = [
+      {
+        ...CLAUDE,
+        engineConnectionType: 'claude',
+        execution: { agentConnectionId: 'claude' },
+      },
+    ];
+    state.agentConnections = [
+      {
+        id: 'claude',
+        name: 'Claude',
+        type: 'claude',
+        kind: 'agent',
+        config: {},
+        enabled: true,
+        status: 'ready',
+        capabilities: ['agent-runtime'],
+      },
+    ];
+    const ui = renderBoth();
+    const home = screen.getByTestId('home');
+    const typeAndStart = async (root: HTMLElement) => {
+      fireEvent.change(
+        within(formOf(root)).getByRole('textbox', {
+          name: 'What would you like done?',
+        }),
+        { target: { value: 'Go' } },
+      );
+      await waitFor(() =>
+        expect(
+          within(formOf(root)).getByRole('button', { name: 'Start' }),
+        ).not.toHaveProperty('disabled', true),
+      );
+      fireEvent.click(
+        within(formOf(root)).getByRole('button', { name: 'Start' }),
+      );
+    };
+
+    // Home: Ask, chosen in the picker, is what the start sends.
+    fireEvent.click(
+      await within(formOf(home)).findByRole('button', {
+        name: /^Permissions: Full access/,
+      }),
+    );
+    fireEvent.click(await screen.findByRole('radio', { name: /^Ask first/ }));
+    expect(
+      await within(formOf(home)).findByRole('button', {
+        name: /^Permissions: Ask\. Chosen for this chat/,
+      }),
+    ).toBeTruthy();
+    await typeAndStart(home);
+    expect(ui.starts.at(-1)!.detail.selection).toMatchObject({
+      agentSlug: 'claude',
+      approvalMode: 'ask',
+    });
+
+    // The dock: full access takes its confirmation, then reaches onSelect.
+    fireEvent.click(
+      within(formOf(ui.dock())).getByRole('button', {
+        name: /^Permissions: /,
+      }),
+    );
+    fireEvent.click(await screen.findByRole('radio', { name: /^Auto/ }));
+    fireEvent.click(
+      within(formOf(ui.dock())).getByRole('button', {
+        name: /^Permissions: Auto/,
+      }),
+    );
+    fireEvent.click(
+      await screen.findByRole('radio', { name: /^Never ask \(full access\)/ }),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Enable full access' }),
+    );
+    await typeAndStart(ui.dock());
+    await waitFor(() => expect(ui.dockSelect).toHaveBeenCalled());
+    expect(ui.dockSelect.mock.calls.at(-1)![18]).toBe('never');
+    ui.cleanupListener();
+  }, 30_000);
+
   test('a Project page fixes its start context independently of the ambient dock', () => {
     const ui = renderBoth('station');
     const home = screen.getByTestId('home');

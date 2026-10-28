@@ -185,6 +185,11 @@ export interface ChatMessage {
    */
   stationCheckBack?: boolean;
   /**
+   * Station's own continuation after the engine was killed for exceeding its
+   * memory budget: written by Station, not the person.
+   */
+  stationMemoryContinuation?: boolean;
+  /**
    * #3419: the agent that sent this user-role row, from the server's own
    * record. Its presence is what makes the row an incoming agent message
    * rather than the person's; `content` is the sender's own words.

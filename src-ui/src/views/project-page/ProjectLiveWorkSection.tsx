@@ -154,6 +154,7 @@ export function ProjectLiveWorkSection({ slug }: { slug: string }) {
     const detail = focusChatEventDetailForAction(
       resolveConversationOpenAction({
         threadId: session.threadId,
+        conversationId: session.conversationId,
         agentSlug: session.assignedAgentSlug,
         controlMode: session.controlMode,
         projectSlug: session.projectSlug,

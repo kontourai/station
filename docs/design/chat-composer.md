@@ -580,8 +580,11 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 - Compact value pickers use the shared `.choice-trigger` / `.choice-caret` styles
   and `ArrowDownGlyph`, also used by the layout switcher and scheduler agent picker.
   Standard actions continue to use `Button`.
-- Startup permissions show the requested mode and source before Start. The running
-  chip shows engine-confirmed values or a pending/restart state. Personal defaults
+- Startup permissions show the requested mode and source before Start, and the
+  chip opens the same approval picker as a running chat (full access still
+  takes its confirmation); the pick is the new chat's own and rides its first
+  send. Inside the dock's New chat dialog the picker opens on the dialog layer.
+  The running chip shows engine-confirmed values or a pending/restart state. Personal defaults
   apply to new interactive chats; saving a future default is explicit.
 - Agent, Model, and approval mode share control geometry and chevrons. Values size
   naturally and truncate with an ellipsis before the chevron, never under it;
@@ -903,7 +906,7 @@ names the project. This revises the earlier independent-sidebar/default behavior
 Chat actions offers **New Task from this** for a writable Station conversation,
 sending shaping instructions immediately in the same conversation. Further focus can be typed as the next message. The
 agent shapes a proposal; only **Create Task** on its card accepts the brief
-and links the source Session without assigning an Agent or execution Session. The Goal sentence is the description; the complete accepted markdown seeds the shared Task document through its authorized human edit path. Acceptance also clears shaping mode when the conversation has moved to another Session. A mismatched proposal asks for a fresh proposal; an oversized brief asks for a shorter one, including a brief over the 12,000-character proposal limit and one the Task document cannot hold (413, about 5,400 characters of plain text). When the Station-wide revision history is full ([#4055](https://github.com/kontourai/station/issues/4055)) the card shows the server's refusal and promises no retry; when the Task was created without its brief, the card offers **Open Task**. A transient seed failure retains the Task and shows a recoverable acceptance error; retry reuses the source identity and never overwrites a populated document. Shaping instructions use model context, leaving
+and links the source Session without assigning an Agent or execution Session. The Goal sentence is the description; the complete accepted markdown seeds the shared Task document through its authorized human edit path. Acceptance also clears shaping mode when the conversation has moved to another Session. A mismatched proposal asks for a fresh proposal; an oversized brief asks for a shorter one, including a brief over the 12,000-character proposal limit and one the Task document cannot hold (413, about 5,400 characters of plain text). The accepted brief is a replaceable revision candidate; a full immutable revision ledger no longer prevents seeding ([freeze policy](../decisions/revision-evidence-freeze-policy.md)). When the Task was created without its brief, the card offers **Open Task**. A transient seed failure retains the Task and shows a recoverable acceptance error; retry reuses the source identity and never overwrites a populated document. Shaping instructions use model context, leaving
 the person's idea as the visible message. The answer/input **Add to Task**
 picker offers **New Task from this** even with an empty Task catalog.
 

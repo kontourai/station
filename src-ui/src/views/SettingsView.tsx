@@ -122,6 +122,7 @@ import {
   NotificationsSection,
   VoiceFeaturesSection,
 } from './settings/VoiceFeaturesSection';
+import { WorkloadBudgetSettings } from './settings/WorkloadBudgetSettings';
 
 const ALL_LEAF_SECTION_IDS = SETTINGS_SECTIONS.map(({ id }) => id);
 const ALL_SETTINGS_VIEWS = [
@@ -1256,6 +1257,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       containerScope="station"
                       projectOverride={projectOverride}
                     />
+                    {/* Behind the workload-budget-settings Feature Preview;
+                  renders nothing while it is off. */}
+                    <WorkloadBudgetSettings />
                   </EnvironmentStatus>
                 )}
 

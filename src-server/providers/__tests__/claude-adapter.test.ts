@@ -12,7 +12,15 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import * as childWorkload from '@kontourai/station-shared/child-workload';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  onTestFinished,
+  test,
+  vi,
+} from 'vitest';
 import { scenarios as deliveryScenarios } from '../../../scripts/engine-delivery-probes.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
@@ -2729,6 +2737,34 @@ describe('ClaudeAdapter', () => {
       if (plain.kind === 'prompted') await plain.answer('decline');
 
       await adapter.stopSession('thread-escalation-no-mint');
+    });
+
+    test('a tool session answer never forwards a suggested switch into full access', async () => {
+      const { adapter, ask } = await grantHarness('thread-tool-no-bypass', {
+        modelOptions: { approvalMode: 'ask' },
+      });
+      const toolRule = {
+        type: 'addRules',
+        rules: [{ toolName: 'Bash', ruleContent: 'git status' }],
+        behavior: 'allow',
+        destination: 'session',
+      };
+      const bypass = {
+        type: 'setMode',
+        mode: 'bypassPermissions',
+        destination: 'session',
+      };
+      const plain = await ask(
+        'Bash',
+        { command: 'git status' },
+        { suggestions: [toolRule, bypass] },
+      );
+      if (plain.kind !== 'prompted') throw new Error('expected a prompt');
+      await expect(plain.answer('acceptForSession')).resolves.toMatchObject({
+        behavior: 'allow',
+        updatedPermissions: [toolRule],
+      });
+      await adapter.stopSession('thread-tool-no-bypass');
     });
 
     test("a file edit's session answer forwards acceptEdits and mints nothing: a later sensitive-file edit prompts", async () => {
@@ -8209,6 +8245,148 @@ describe('ClaudeAdapter', () => {
         approvalEscalationRejected: true,
         recoveryCorrelationId: 'recovery-correlation-claude',
       },
+    });
+  });
+
+  test('a host start below full access takes the bypass grant at spawn, so a later full-access turn applies with no restart', async () => {
+    const mockedQuery = createControlledMockQuery();
+    mockQuery.mockReturnValue(mockedQuery);
+    const adapter = new ClaudeAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    const threadId = 'thread-host-ask-escalate';
+    // Whoever runs the suite: the engine's root guard is out of play.
+    vi.stubEnv('IS_SANDBOX', '1');
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+    });
+
+    await adapter.startSession({
+      provider: 'claude',
+      threadId,
+      // An operator start: its caller proved it may grant full access.
+      confinement: 'host',
+      modelOptions: { approvalMode: 'ask' },
+    });
+    // Granted, but not used: the engine starts at Ask.
+    expect(mockQuery).toHaveBeenCalledWith({
+      prompt: expect.anything(),
+      options: expect.objectContaining({
+        permissionMode: 'default',
+        allowDangerouslySkipPermissions: true,
+      }),
+    });
+    await iterator.next(); // session.started
+    expect((await iterator.next()).value).toMatchObject({
+      method: 'session.configured',
+      metadata: { approvalMode: 'ask', allowDangerouslySkipPermissions: true },
+    });
+
+    await adapter.sendTurn({
+      threadId,
+      input: 'switch to full access mid-chat',
+      modelOptions: { approvalMode: 'never' },
+      confinement: 'host',
+    });
+    expect(mockedQuery.setPermissionMode).toHaveBeenCalledWith(
+      'bypassPermissions',
+    );
+    const turnStarted = await iterator.next();
+    expect(turnStarted.value).toMatchObject({
+      method: 'turn.started',
+      metadata: { approvalMode: 'never' },
+    });
+    expect(turnStarted.value.metadata).not.toHaveProperty(
+      'approvalEscalationRejected',
+      true,
+    );
+  });
+
+  test('a host plan start is not granted bypass, which the engine would read as permission to skip prompts in plan mode', async () => {
+    mockQuery.mockReturnValue(createMockQuery([]));
+    vi.stubEnv('IS_SANDBOX', '1');
+    try {
+      const adapter = new ClaudeAdapter();
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-host-plan',
+        confinement: 'host',
+        modelOptions: { permissionMode: 'plan' },
+      });
+      expect(mockQuery).toHaveBeenCalledWith({
+        prompt: expect.anything(),
+        options: expect.objectContaining({
+          permissionMode: 'plan',
+          allowDangerouslySkipPermissions: undefined,
+        }),
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  test('a host start with no mode from Station is not granted bypass: the engine settings decide alone', async () => {
+    mockQuery.mockReturnValue(createMockQuery([]));
+    const adapter = new ClaudeAdapter();
+
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-host-no-mode',
+      confinement: 'host',
+    });
+
+    expect(mockQuery).toHaveBeenCalledWith({
+      prompt: expect.anything(),
+      options: expect.objectContaining({
+        allowDangerouslySkipPermissions: undefined,
+      }),
+    });
+  });
+
+  test('a host start below full access is not granted bypass as root outside a sandbox, where the engine would refuse it', async () => {
+    mockQuery.mockReturnValue(createMockQuery([]));
+    // Defined where the platform has none (Windows), so the guard sees root.
+    const realGetuid = process.getuid;
+    process.getuid = () => 0;
+    vi.stubEnv('IS_SANDBOX', undefined);
+    vi.stubEnv('CLAUDE_CODE_BUBBLEWRAP', undefined);
+    try {
+      const adapter = new ClaudeAdapter();
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-host-root',
+        confinement: 'host',
+        modelOptions: { approvalMode: 'ask' },
+      });
+      expect(mockQuery).toHaveBeenCalledWith({
+        prompt: expect.anything(),
+        options: expect.objectContaining({
+          permissionMode: 'default',
+          allowDangerouslySkipPermissions: undefined,
+        }),
+      });
+    } finally {
+      process.getuid = realGetuid;
+      vi.unstubAllEnvs();
+    }
+  });
+
+  test('a workspace start below full access is not granted bypass at spawn', async () => {
+    mockQuery.mockReturnValue(createMockQuery([]));
+    const adapter = new ClaudeAdapter();
+
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-workspace-ask',
+      confinement: 'workspace',
+      modelOptions: { approvalMode: 'ask' },
+    });
+
+    expect(mockQuery).toHaveBeenCalledWith({
+      prompt: expect.anything(),
+      options: expect.objectContaining({
+        permissionMode: 'default',
+        allowDangerouslySkipPermissions: undefined,
+      }),
     });
   });
 

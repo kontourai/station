@@ -49,6 +49,7 @@ import {
   commitEngineLaunch,
   engineSessionTmpDir,
 } from '../../services/infra/session-tmpdir.js';
+import { WORKLOAD_SESSION_ENV } from '../../services/infra/workload-budget.js';
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
 import { SESSION_CONFINEMENT_ROOT_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
 import type { EngineMcpOAuthResolver } from '../../services/plugins/engine-mcp-oauth.js';
@@ -790,6 +791,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     builtin: true,
     engineId: engineId('codex'),
     abortSettlement: 'await',
+    workloadScope: 'engine-process' as const,
     recovery: {
       sameSession: true,
       maxAttempts: 1,
@@ -1978,15 +1980,23 @@ export class CodexAdapter implements ProviderAdapterShape {
     // Only a session start gets the per-session TMPDIR; quota, model and
     // maintenance probes keep the shared engine-spawn directory.
     const sessionTmpDir = engineSessionTmpDir(input.threadId);
-    // Without a session folder the call is exactly the two-argument one it
-    // always was.
+    // The workload launcher attributes this engine's scope to the session.
+    const sessionSpawnEnv = {
+      ...spawnEnv,
+      [WORKLOAD_SESSION_ENV]: input.threadId,
+    };
+    // Without a session folder the call is exactly the two-argument one
+    // the workload change made.
     const processHandle = sessionTmpDir
       ? this.processFactory(
-          spawnEnv,
+          sessionSpawnEnv,
           spawnArgs.length ? spawnArgs : undefined,
           sessionTmpDir,
         )
-      : this.processFactory(spawnEnv, spawnArgs.length ? spawnArgs : undefined);
+      : this.processFactory(
+          sessionSpawnEnv,
+          spawnArgs.length ? spawnArgs : undefined,
+        );
     const record = createCodexSessionRecord({
       externalThreadId: input.threadId,
       process: processHandle,

@@ -522,7 +522,7 @@ or the grant.
 `POST /api/tasks` accepts an optional `shapingSource: { sessionId, turnId }`
 when a person accepts a chat proposal. The normal `title` carries the proposal title; `description`
 carries the Goal sentence, and `proposalBrief` carries the accepted markdown for the shared Task document. Station requires an authorized, normally completed
-assistant turn in the same Project (or a conversation without a Project), parses its `station-task-proposal` block using the shared contract, and requires an exact title, Goal and brief match. Inline edits are not supported; mismatches return 409 before creation. A brief longer than a Task document can hold (about 5,400 characters of plain text, against the 12,000-character proposal limit) returns 413 `task-document-full` before creation. When the Station-wide revision ledger (256 receipts / 4 MiB, a full document snapshot per save, [#4055](https://github.com/kontourai/station/issues/4055)) has no room for the brief, acceptance returns 507 `revision-history-full` before creation; if the ledger fills between that check and the seed, the 507 says the Task was created without its brief and names it in `details.taskId`. Neither promises a retry. Re-accepting an already-accepted source skips that pre-check and reuses its existing Task. If its brief still needs seeding, a capacity refusal names that Task in `details.taskId`. Missing document authority/runtime availability returns 503 before creation. Station then commits the Task and its `spawned_session` link together. Reaccepting the
+assistant turn in the same Project (or a conversation without a Project), parses its `station-task-proposal` block using the shared contract, and requires an exact title, Goal and brief match. Inline edits are not supported; mismatches return 409 before creation. A brief longer than a Task document can hold (about 5,400 characters of plain text, against the 12,000-character proposal limit) returns 413 `task-document-full` before creation. Proposal seeding retains a replaceable revision candidate and does not consume the Station-wide receipt ledger. A full ledger therefore does not prevent Task creation or brief seeding. Missing document authority/runtime availability returns 503 before creation. Station then commits the Task and its `spawned_session` link together. Reaccepting the
 same source returns the existing Task; acceptance leaves `sessionId` and `agentId` unset. The user-sourced link records `shapingTurnId`, and `proposalBriefSaved: true` only after successful seeding. Changing its destination Project is
 refused. This is Station proposal acceptance, not a Builder Kit gate receipt. Seeding uses the room runtime's human edit-plan/batch authority. A transient seed failure returns 503 with a recovery message after the Task and Session link have persisted; retrying the same source reuses that Task and seeds only an empty document. Concurrent accepts that commit the matching brief both succeed. A successful response is returned after seeding. This is recoverable creation across the graph and document stores, not a cross-store transaction.
 
@@ -1937,6 +1937,34 @@ addresses fail before persistence. Product destination changes fence the old
 queue and requests; saved collector changes require restart activation. See
 [telemetry settings](config.md#telemetry-destinations) for the exact fields.
 
+### Broker restore publication policy
+
+The standalone broker's offline `--fence-managed-restore` command supports
+product/diagnostic-only restores. All receivers must be stopped and network
+disabled; recreate processes after success. Compatible schema migration and
+fencing commit atomically before listeners/timers or credential refresh.
+There is no HTTP restore/resume API. `PgProductRepository.fenceManagedRestore()`
+is the offline command owner and has the same precondition.
+
+After fencing, Lite ingestion/feedback and publisher enrollment refuse with
+503 `publication_suppressed`. Public `/v1/public/aggregates` and syntactically
+authenticated `/v1/publishers/:publisher/aggregates` return empty `cells`, null
+`nextCursor`, `Cache-Control: no-store`, and `publicationState` equal to
+`publication permanently suppressed; history unreconciled`. Cached pages cannot
+bypass suppression. Operator exact/product queries remain available; copied
+product source credentials are revoked and publisher keys deleted. Historical
+publication/noise/receipts remain stored. No supported API, enrollment,
+configuration, restart or migration clears the fence.
+
+Private vault custody makes the command refuse with
+`private_restore_unsupported` and roll back; keep receivers offline. The older
+`--fence-product-sources-after-restore` command only revokes product credentials
+and does not qualify publisher or private restore. Reapply managed fencing for
+every restore; arbitrary SQL/VM rollback, old binaries and live response draining
+are outside the supported boundary. Already released data cannot be retracted.
+See the [broker README](../../packages/telemetry-broker/README.md) for the command
+and qualification limits.
+
 ### Telemetry tiers
 
 `GET /api/usage-telemetry/status` uses the existing `orchestration:read` read
@@ -2010,6 +2038,55 @@ user's choice or authorize Full. See [Publisher analytics](../guides/plugins.md#
 The [usage reference](usage-telemetry.md) owns the program and deployment limits.
 
 ### Telemetry delivery status and connection checks
+
+`GET /api/operator/telemetry-companion/prerequisites` is a separate, no-store
+host-capability read. It requires the operator in person and `orchestration:read` for
+paired credentials; agents and raw internal-token callers are refused. It
+returns `{data: TelemetryCompanionPrerequisites}`: either observed local
+Docker/Compose versions and Linux container architecture, or a typed missing
+capability. Operator authority is checked before probing and before response.
+Unexpected probe failures return 503 `companion_probe_unavailable` without raw
+host output. This route starts no service and proves neither artifact admission
+nor storage/ingestion readiness. See the [companion profile](../../deployment/telemetry/README.md#station-host-prerequisite-api).
+
+`GET /api/operator/telemetry-companion/product-incidents?from=<ISO>&to=<ISO>`
+returns `{data:ProductTelemetryIncidents}` under current operator authority.
+The UTC instants must be canonical ISO strings with `to > from`, at most 365
+days apart; duplicate or additional query keys return 400
+`invalid_product_incident_window`. The report groups retained received product
+observations by component, classified failure and immutable build. It keeps
+failed, aborted, unresolved and unknown counts separate, with observed
+denominators and distinct reported installation counts. Delivery coverage is
+unknown; storage probes contribute no observations. A missing qualified managed
+companion, invalid report or storage failure returns 503
+`companion_query_unavailable`. Responses are no-store, with operator authority
+checked before the read and before release. This is an operator aggregate,
+not private source detail.
+
+Under the same prefix, `/product-incidents/<groupId>/links` supports:
+
+- `GET` with exactly `from` and `to`: `{data:ProductTelemetryIncidentLink[]}`.
+- `POST` with exactly `{operationId,window:{from,to},issueUrl}`: a retained link
+  receipt `{data:{id,state}}`, where `state` is `active` or `deleted`.
+- `DELETE /<linkId>` with exactly `{window:{from,to}}`: a deletion receipt.
+
+POST and DELETE require `telemetry:manage` for paired credentials in addition
+to current operator authority. Verified operator identities act directly.
+Bodies are bounded to 4 KiB. Operation/link IDs are lowercase UUIDv4; group IDs
+are 64 lowercase hexadecimal characters. The current installation and report
+scope bind list/create. Removal permits cleanup of an owned link even when its
+group is no longer in that report. Agents and plugin panes are refused. An issue
+URL must parse as a supported GitHub issue reference; the URL is supplied by the
+operator, and existence or access is not verified. No external issue is created.
+Identical operation retries recover the same receipt; changed input conflicts,
+and replay after removal cannot resurrect a link. Duplicate active references
+conflict. Core retains at most eight active links per group and 1,000 records in
+its 1 MiB private file. Links expire logically after 30 days; expired records
+are pruned on a later successful creation, not by a timed erasure job.
+Invalid input is 400, missing owned group/link 404, conflicts 409, capacity 507,
+and unavailable custody/storage 503. Current operator checks fence reads and
+writes. See [incident handoff](../guides/monitoring.md#review-an-incident-draft)
+for draft, evidence and qualification limits.
 
 `GET /api/usage-telemetry/delivery-status` requires `orchestration:read` and
 returns the current process's product queue, exact-receipt acknowledgements,
@@ -2517,7 +2594,11 @@ observations, not a billing statement or precise consumption dates. See
 UTC Station-observed dates, at most 366 days. `scope` defaults to `individual`;
 `personal-account` explicitly selects the existing approved personal owner set
 and refuses nonmembers or hosted use. `pageSize` is 1–100 observation events;
-`cursor` continues the fixed committed source watermark. Unknown/repeated
+`cursor` continues the fixed committed source watermark. Its opaque state also
+binds the source's transactional deletion/scope revision. Destructive changes
+invalidate queued pages and old continuations; restart from a fresh first page.
+The page body remains schema version 1, while old opaque cursor encodings are
+not reusable after this upgrade. Unknown/repeated
 query keys, invalid dates and malformed continuations refuse with 400.
 
 The page contains `schemaVersion: 1`, `stationId`, `streamEpoch`, `highWater`,
@@ -2537,11 +2618,445 @@ over-budget cumulative-cost projection return 503. All responses use
 Focused mounted-route and runtime-composition controls have exercised paging,
 scope and revocation with controlled identity fixtures. This does not qualify
 live source enrollment or persistent deployment. The path does not provide a
-companion source credential, deletion journal,
-restore-generation fence or durable sync checkpoint/index. A backup copies
-`streamEpoch`; it does not establish current restore authority. See
+companion credential or checkpoint by itself. The separately enrolled flow
+below adds credential custody, invalidation replay and durable sync/indexing.
+A backup copies generic `streamEpoch`; private export instead uses a distinct
+home-activation fence, described in the [recovery contract](../guides/monitoring.md#source-approval-review). See
 [the monitoring guide](../guides/monitoring.md#canonical-usage-export-source)
 for source bounds and the open #3459/#3460 acceptance.
+
+### Prepare a personal source enrollment proposal
+
+`POST /api/analytics/source-enrollments` accepts exactly `operationId` (lowercase
+UUIDv4), `proposedDestination:{stationId,origin}`, `scope` (`individual` or
+`personal-account`), canonical ISO `expiresAt` within 30 days, and `retention`
+(`{mode:"live-mirror"}` or `{mode:"retained-copy",days:1..90}`). The origin must
+be canonical HTTPS or HTTP loopback and is not contacted. The body is bounded to
+4 KiB. Optional `operationalConsent:"terminal-outcomes/v1"` records a separate,
+immutable opt-in for content-free terminal outcomes. Omission remains usage-only;
+booleans, unknown profiles and changing consent under an existing operation ID
+are refused. A grant approved from this intent adds canonical turn terminals to its
+source export, and its receiving slot can query them through
+[the outcome summary](#query-receiving-terminal-outcomes). No UI offers this
+opt-in yet.
+The current verified person and server-derived owner/tenant policy bind
+the record; callers cannot supply those identities or authority flags.
+
+GET on the collection returns the latest 20 own records. GET `/<operationId>`
+reads one; DELETE cancels it. Results use `{data: AnalyticsSourceEnrollmentIntent}`
+(or an array for the collection), with protocol
+`station-analytics-source-enrollment-intent/v1`, source Station, proposed target,
+scope/policy/expiry, recorded phase/time, `destinationVerified:false` and
+`exportAuthority:false`. A prepared receipt is not a credential or an active
+export grant. Repeated identical IDs return their receipt; altered intents
+conflict and cancelled IDs remain cancelled. Unowned records return 404.
+
+These routes require `orchestration:read` plus a verified person; agents,
+plugins, unbound Devices and operator-only fallback are refused. They preserve
+current authority through queued response release. Hosted mode accepts only
+individual scope. Invalid input returns 400, conflicts/quotas 409, unsafe storage
+503. Responses are no-store. This proposal alone establishes none of destination
+verification, credential issuance or synchronization. The following endpoints
+and the enrollment UI compose those separate steps; see
+[monitoring](../guides/monitoring.md#source-enrollment-proposals).
+
+### Prepare a receiving analytics key candidate
+
+`POST /api/analytics/recipient-candidates` accepts exactly `operationId`
+(lowercase UUIDv4), `proposedSourceOrigin` (canonical HTTPS or HTTP loopback)
+and `sourceIntent` (`AnalyticsSourceEnrollmentIntent` in prepared phase). The
+body is bounded to 8 KiB. The proposed destination Station must match current
+serving identity. The origin and source proposal remain unverified and are not
+contacted. The receiving person/tenant is derived from current authentication.
+
+GET on the collection returns the latest 20 own views; GET `/<recipientId>`
+recovers one and DELETE cancels it. `{data: AnalyticsRecipientCandidateView}`
+contains `observedAt`, the proposed `sourceIntent`, candidate/expired/cancelled
+phase, confirmation code, `sourceVerified:false`, `exportAuthority:false`,
+`verification:"key-possession-only"` and `{claims,signature}`. The signed claims
+bind the recipient slot, source intent/source identity and digest, proposed
+origins, actual destination identity, local recipient/context binding, separate
+X25519 encryption and Ed25519 proof public keys, and epoch-millisecond creation/
+expiry (at most five minutes). The Ed25519 domain is the protocol string
+`station-analytics-recipient-candidate/v1`, a newline and the owning schema's
+canonical claims JSON. Private key material is never returned.
+
+Repeated identical operations recover the same candidate/keys. Altered intents
+conflict; cancelled slots remain cancelled. Invalid input returns 400,
+conflicts/quotas 409, unowned slots 404 and unsafe/corrupt private state 503.
+These exact leaves require `orchestration:read` plus current verified person;
+agent/plugin and unbound/operator-only callers are refused. Authority is checked
+through queued response release and all results are no-store. There are at most
+20 unexpired candidates per person/tenant and 1,000 retained slots.
+
+This is receiving-key custody and key-possession evidence only. It is not
+remote-person authentication, a source grant or approval of a destination.
+Source approval, encrypted credential materialization and explicit sync use the
+separate operations below. Restored or legacy unbound slots report
+`restore-required`, omit stored-credential/confirmation/sync fields, and cannot
+materialize, sync or query private data. Cancel the old slot and prepare a fresh
+unapproved key; restoring key bytes grants no access.
+
+### Request source-user approval
+
+`POST /api/analytics/source-grant-approvals` accepts exactly `operationId`
+(UUIDv4), `sourceOperationId` and `recipientCandidate`, bounded to 16 KiB. It
+requires a live person-bound Device, current verified person and read scope;
+generic personal tokens, operator fallback, agents and plugins are refused.
+The saved source scope/owner/tenant snapshot must remain current. The candidate
+must match source, intent digest, proposed destination/origin and exact canonical
+person ID, with valid signature and unexpired five-minute lifetime. A local
+username match across different identity issuers is not accepted.
+
+The reply contains `{approval:{id,status,reviewUrl}}` and a host-only HttpOnly
+transaction cookie. The separate-origin review URL uses an opaque source/person/
+tenant partition. Only that transaction's requester session can render/decide it;
+operator or promoted-device consent authority does not override the policy.
+The one-use review nonce and unchanged-target guard remain mandatory. The native
+requester path uses a transaction-bound secret retained by the native HTTP owner,
+never renderer IPC; generic native HTTP cannot relay the consent route family.
+It does not fall back to operator authority. Native shell qualification remains
+separate from route tests. Listener
+unavailability or a different cookie hostname refuses creation with 503.
+
+GET `/requests/<id>` returns own review status and any recorded result. GET
+`/<operationId>` reads the own `AnalyticsSourceApproval`; DELETE revokes it.
+Recorded results identify the source, receiving key/person claim, scope, expiry,
+retention, consent transaction and approved/revoked phase. `sourceApproved:true`
+is historical source-user consent; `exportAuthority:false` remains mandatory.
+It does not authenticate a remote person, issue a credential or activate export.
+See [source approval](../guides/monitoring.md#source-approval-review).
+
+Approved source records bind to the current home activation. Normal restore or
+in-place update rollback invalidates copied approvals even if the snapshot
+predates revocation. Legacy records are not adopted automatically: create a new
+source connection and obtain fresh consent. The same activation separately fences
+private receipt/invalidation epochs without rewriting generic stream identity.
+
+### Deliver and store an encrypted source credential
+
+`POST /api/analytics/source-grant-approvals/<operationId>/delivery` requires the
+approved source person, exact saved owner/tenant/set and approving Device binding,
+current read access/account standing since approval, approved phase and unexpired
+policy. It returns `{data: AnalyticsSourceCredentialDelivery}` with protocol
+`station-analytics-source-delivery/v1`, approval/source/intent/recipient IDs,
+revision, expiry, compact JWE and `exportAuthority:false`. The source stores the
+credential hash and ciphertext only. Repeating delivery returns identical
+ciphertext; revocation or changed eligibility refuses with 409/403.
+
+`POST /api/analytics/recipient-candidates/<recipientId>/credentials` accepts that
+exact delivery DTO, bounded to 24 KiB. The current receiving owner/tenant must own
+an uncancelled slot. ECDH-ES/A256GCM decryption checks the protected type/key/context
+and exact payload/delivery IDs, revision, source-intent hash, scope, retention and
+expiry against the saved proposal. Altered ciphertext or outer metadata refuses;
+same-revision/different-ciphertext and revision rollback conflict. An identical
+retry returns the same metadata receipt. No origin is contacted.
+
+The reply `{data: AnalyticsStoredSourceCredential}` has source/approval/recipient
+IDs, revision, expiry, `credentialStored:true`, `sourceVerified:false` and
+`exportAuthority:false`. Plaintext stays in private receiving custody. A slot
+read also reports credential-stored phase and this metadata. Storage is not source
+identity verification or active export authority. Actual synchronization remains unfinished.
+
+### Confirm a receiving source address and read a page
+
+`POST /api/analytics/recipient-candidates/<recipientId>/source-confirmation`
+accepts exactly `{}` (1 KiB limit) and returns
+`{approval:{id,status,reviewUrl}}` plus a transaction-bound requester cookie.
+The existing distinct-origin consent listener reviews the exact person, HTTPS
+source address, expected Station, scope, expiry and credential-generation
+fingerprint. Only that requester session can decide. The source address must be
+HTTPS; HTTP slots refuse with 409 `recipient_source_https_required`.
+
+`GET /api/analytics/recipient-candidates/<recipientId>/source-confirmation/requests/<id>`
+returns the own transaction's historical status. An approved slot GET additionally
+includes `sourceConfirmation:{assurance:"person-approved-https-origin",origin,stationId,revision,approvedAt}`.
+This records explicit address choice, not an enduring authentication verdict.
+Rotation/materialization clears confirmation; it never silently transfers to a
+new credential generation. Cancelled, expired, foreign-person or foreign-tenant
+slots cannot read.
+
+`POST /api/analytics/recipient-candidates/<recipientId>/read` accepts exactly
+`{from,to,pageSize?,cursor?,snapshot?}` (8 KiB limit). Dates use the canonical UTC
+window, at most 365 days apart; page size is 1–100. A cursor requires
+`snapshot:{streamEpoch,highWater,afterGlobalSequence}` from the previous page.
+Scope, source address, approval, credential and proof derive from private custody;
+body identity or scope fields are refused. Success is `{data:UsageExportPage}`.
+
+Core checks the approved HTTPS origin's public Station identity before sending
+only the narrow credential and delivery proof. Redirects are errors; ambient
+cookies and HTTP fallback are omitted. Reads have a 10-second deadline and 2 MiB
+body limit. The shared canonical decoder checks exact source/scope/window,
+snapshot, committed order, receipt allowlist and pricing provenance. Receiving
+person/slot authority and source grant permission are rechecked before queued
+release; source refusal maps to 403. Oversized, malformed or unavailable source
+responses return 503. The reader captures the source mutation revision header
+and requires its exact echo from HEAD; it does not substitute a later source
+revision for the received page's snapshot. Deletion or scope mutation after the
+page reaches Core therefore refuses queued release. This endpoint does not
+persist pages or advance a durable
+sync checkpoint. The enrollment SDK/UI and background synchronization remain
+separate work.
+
+### Rotate an approved source credential
+
+`POST /api/analytics/source-grant-approvals/<operationId>/rotate` accepts exactly
+`{rotationId: UUID, expectedRevision: positiveInteger}` in a body of at most
+1 KiB. It requires the same current approving Device/person, owner set and
+policy eligibility as delivery, and returns
+`{data: AnalyticsSourceCredentialDelivery}` with a fresh credential and the next
+revision. The source stores only its hash and recipient-encrypted envelope.
+
+The expected revision is a compare-and-set condition. Repeating the latest
+rotation ID and original expected revision returns the same envelope. Stale
+revisions, older rotation replays or changed input conflict (409); invalid input
+returns 400. Each grant retains at most 128 rotation IDs, after which a new
+enrollment is required. Rotation does not change scope, retention or expiry.
+Old credentials and continuation contexts refuse, including queued export
+bodies. Materialization accepts the new revision and refuses rollback. A reply
+lost after commit is recovered by repeating the same operation, never by blindly
+creating another rotation ID.
+
+### Read an approved source export
+
+`GET /api/analytics/source-grant-export/<approvalId>` is an exact alternate-auth
+leaf. It requires `Authorization: Bearer stax_<credential>` and
+`x-station-analytics-proof`, the base64url-encoded JSON delivery proof returned
+in `AnalyticsStoredSourceCredential.deliveryProof`. This static Ed25519 proof
+binds receiving-key possession and the decrypted credential hash; it is not a
+fresh per-request signature or source identity verification.
+
+Only unique `from`, `to`, `pageSize` (1–100) and `cursor` query fields are accepted.
+Scope and owners derive from the approved policy. Success returns
+`{success:true,data:UsageExportPage,grant:{sourceApprovalId,revision,scope}}`.
+When the current approval record carries `operationalConsent:"terminal-outcomes/v1"`,
+`grant` echoes it, the page carries the same literal, and the committed-order page
+also contains canonical turn terminals: `turn.completed`, `turn.aborted`, and a
+turn-scoped `runtime.error` other than codex's deferred retry. Each is an
+observation with no receipts and
+`terminal:{outcome,engine,observedAt,eventId,threadId,turnId?}`: class
+`completed`/`aborted`/`failed`, engine family, Station-observed UTC time and
+opaque IDs. Prompts, outputs, tool data, error text and paths are not
+representable. Consent comes from the grant record, never the request, and the
+cursor context binds it. Usage-only grants receive byte-identical receipt pages.
+Current source Device/account standing, tenant, owner set, expiry, credential
+hash and proof are checked before reading and before queued bytes release.
+Revocation refuses further pages and ends held responses. Continuations bind
+the grant generation as well as the canonical snapshot; interactive export
+cursors cannot substitute. This credential is refused by ordinary Station APIs.
+Hosted ingress tenant requirements remain in force. `HEAD` on this same leaf
+requires the same credential/proof, accepts no query fields, revalidates current
+source authority and returns 204 without selecting or returning usage facts.
+GET and HEAD return `x-station-usage-source-revision`, an integer mutation revision
+separate from the credential revision. HEAD optionally accepts that same header
+as the expected source snapshot; malformed values return 400 and mismatches
+return 403. The receiving reader requires this header, status 204 and an exact
+revision echo. Missing or unsupported source snapshot responses fail closed.
+Deletion/scope tombstones remain private source metadata; invalidation replay uses the explicit mode below. No durable replica checkpoint
+is delivered by these source endpoints. The receiving Station fetches only through the separately confirmed-source
+page reader; a proposed origin alone grants no fetch permission.
+
+### Replay an approved source's invalidations
+
+`GET /api/analytics/source-grant-export/<approvalId>?mode=invalidations` requires
+the same `stax_` credential and delivery proof as canonical export. Accepted
+query fields are exactly `mode`, `after`, `streamEpoch`, `pageSize` and `cursor`,
+with no repeats. Scope and owners derive from the grant. `after` is a safe
+nonnegative integer journal revision; nonzero values require `streamEpoch`.
+`pageSize` is 1–100. A cursor cannot be combined with `after` or `streamEpoch`.
+Fact-export filters and body identity fields are not accepted here.
+
+Success returns `{success:true,data:UsageInvalidationPage,grant:{sourceApprovalId,revision,scope}}`.
+The page has protocol `station-usage-invalidations/v1`, Station/scope/epoch,
+fixed `highWater`, `retainedAfter`, `nextAfter`, up to 100
+`{revision,threadId,reason,observedAt}` entries, optional `nextCursor`, and
+`coverage:"retained-invalidations-only"`. Reasons are `thread-deleted`,
+`scope-changed` and `scope-entered`. Private owner/tenant fields are selected
+server-side and omitted. `nextAfter` is the last page entry while more matching
+entries remain, otherwise the fixed high water. Later appends are excluded;
+start the next incremental cycle with that position and epoch.
+
+A pruned checkpoint or continuation returns 410 `usage_export_history_gap`.
+Foreign epochs, future positions, changed authority or rotated cursors refuse;
+malformed query combinations return 400. Current grant/membership and retained
+journal evidence are checked before queued release. Unlike fact snapshots,
+later append-only invalidations do not invalidate an earlier replay cycle;
+retention overtaking that cycle does. The source revision header denotes the
+replay snapshot high water, not a lease for current fact visibility. These pages
+do not themselves materialize a companion checkpoint or prove complete history.
+
+### Capture or recover one source page
+
+`POST /api/analytics/recipient-candidates/<recipientId>/sync` accepts exactly
+`{operationId: UUID, from: YYYY-MM-DD, to: YYYY-MM-DD, restart?: boolean}` in at most
+2 KiB. The UTC window is at most 365 days apart. Scope/person/tenant, private
+keys, source/destination URLs and checkpoint inputs are not accepted. Core uses
+the current owned slot and confirmed source, plus the selected Station's current
+qualified managed companion. Agents and plugin panes cannot initiate this flow.
+
+New capture rechecks the verified person/source before each fetch and after
+target validation immediately before a private write. The operator service may
+register an absent bucket by key hash only; missing management permission is 403
+`private_usage_provision_required`. Existing private buckets use their own
+capability. Neither key nor page body is returned in the API response.
+
+Success is `{data:AnalyticsSourceSyncStatus}` with operation/recipient/installation,
+window, credential revision, phase, optional checkpoint/counts/stored time and
+`sourceAuthority:"not-established-by-status"`. Phases are `pending`, `page-stored`,
+`facts-captured`, `invalidations-pending`, `cancelled`, `unconfirmed` (plus reserved `prepared`). `pending`
+is durable intent, not proof that a process is active. The slot GET returns this
+same metadata in `sync`. Use a new operation ID after `page-stored` or
+`invalidations-pending`; repeat
+the same operation after an uncertain reply. Changed input, competing intent,
+reused older operation IDs and changed receiver incarnation conflict. Explicit
+restart creates a fresh source fact snapshot under the existing checkpoint CAS;
+it does not erase unrelated retained history. Core first replays one bounded
+source invalidation page when a private bucket is already bound. An incomplete
+page returns `invalidations-pending` with `invalidationCheckpoint`; no facts
+advance in that action. After replay completes, a changed source revision restarts
+the selected fact snapshot automatically. A retained source journal gap returns
+`410 usage_export_history_gap` and requires reconciliation.
+
+Core retains bounded fact/replay intent within its private file.
+Expiry (earlier of source access expiry or 24 hours) and cancellation discard the
+body; content-free expectations remain for receipt recovery. A recovered receipt
+is historical acknowledgement, even if source access has since ended. If the
+original body is gone and no receipt exists, the operation remains unconfirmed
+and cannot be resent blindly. This status grants no live index/query authority;
+queries recheck current source access separately. The enrollment and Insights UI
+consume these operations without treating a stored status as permission.
+
+### Query receiving private receipts
+
+`POST /api/analytics/recipient-candidates/<recipientId>/query` accepts exactly
+`{from,to,indexId?,after?,mode?,groupBy?,summaryId?,provider?,model?,accountKey?}` with the same valid date-window limit as sync.
+`after` requires the returned index UUID. The verified person must own the slot;
+agents/plugins and body-supplied identities, keys, URLs or checkpoint fences are
+not accepted. Query never provisions infrastructure.
+
+Core checks source permission, captured fact completeness and invalidation
+position, then supplies the companion snapshot fences. A new query requires the
+captured and current source heads to match; otherwise 409
+`private_usage_sync_required` requests sync. An explicit index continuation can
+finish its pinned head while new usage appends, with both heads and freshness
+reported in `asOf`. Mutation/revocation checks still apply on every page and
+before queued response release.
+
+Success is `{data:{...PrivateUsageReceiptPage,recipientId,asOf}}`. `indexing`
+contains no rows. Repeat with its `indexId` until `ready`; use `nextAfter` as
+`after` for subsequent receipt pages. Up to four selected windows are indexed per bucket.
+A changed snapshot/index or expired continuation conflicts instead of mixing
+pages. `validUntil` bounds retention/source expiry; coverage stays
+`retained-observations-only`. Receipt pages are not aggregate totals, invoices, complete history, or a
+delivered Insights UI.
+
+For grouped totals, set `mode:"summary"` with `groupBy` of `provider` (default),
+`model`, `station` or `day`. Provider/model/account-key filters are exact canonical
+attribution; account key requires provider. Unknown project/engine fields refuse.
+After indexing, the result includes `summary:{id,groupBy,phase,scanned,rows}`.
+`aggregating` withholds rows; repeat with both `indexId` and `summaryId` until
+`ready`. Each action processes at most 1,000 normalized receipts. Ready rows page
+100 groups at a time with `nextAfter`; `after` in summary mode requires its
+summary ID. Group/filter changes conflict with an old summary ID, preventing
+mislabelled cached totals. Receipt-mode drilldown is independent of these totals.
+Currencies, estimates and snapshot provenance remain explicit buckets.
+
+Derived caches are bounded to four index windows, eight summaries per index,
+1,000 groups and a 1 MiB accumulator. Budget/storage failure does not return
+partial totals as ready. These grouped rows still have retained-only coverage;
+operational/product measure composition and installed/native qualification
+remain unfinished. The owned definitions and shared Insights UI are described below.
+
+### Query receiving terminal outcomes
+
+`POST /api/analytics/recipient-candidates/<recipientId>/outcomes` accepts exactly
+`{from,to,groupBy}` (at most 2 KiB), where `groupBy` is `engine` or `day` and
+the window follows the sync limit. It uses the same verified-person slot,
+agent/plugin refusal, managed companion and no-provisioning rules as the receipt
+query. The decrypted receiving credential must carry
+`operationalConsent:"terminal-outcomes/v1"`; otherwise the response is 403
+`private_usage_operational_consent_required` before the source or companion is
+contacted. The current source grant must echo that consent on the fencing read,
+and the companion refuses a bucket whose binding lacks it.
+
+The captured checkpoint, current source head, source revision and invalidation
+position must agree, or the response is 409 `private_usage_sync_required`. There
+is no pinned continuation. Success is
+`{data:{...PrivateOperationalOutcomeSummary,recipientId,asOf}}` with
+`observedTurns` (the denominator) and up to 400 rows of
+`{key,completed,aborted,failed}`. Each opaque thread/turn counts once with its
+latest committed terminal, so replay and restatement never double-count.
+Withdrawn and retention-expired observations are excluded; an expired or revoked
+companion binding refuses. Coverage
+is `{state:"unknown",reason:"retained-terminal-observations-only",retentionDays}`.
+Source revocation and person, tenant and companion changes end held responses.
+The route has no capability flag or SDK/UI client yet, and is not joined to
+product telemetry.
+
+### Principal-owned saved analytics views
+
+`GET /api/analytics/saved-views` lists active definitions for the verified person
+and tenant. `POST` accepts exactly `{operationId,definition}`; the operation UUID
+becomes the view ID and matching replay is idempotent. `GET /<id>` and
+`GET /<id>/export` return `{data:AnalyticsSavedView}`. `PUT /<id>` accepts
+`{expectedRevision,definition}`; `DELETE /<id>` accepts `{expectedRevision}`.
+Conflicting revisions are 409, foreign/missing IDs 404, invalid fields 400.
+Deletion erases the definition and retains a minimal tombstone so an old create
+ID cannot resurrect it. The private file bounds all records to 1,000 and active
+views per principal to 100; its byte budget also applies.
+
+Definitions contain title, owned recipient references (maximum four), actual
+provider/model/account-key filters, relative or fixed UTC range, optional
+previous/fixed comparison, grouping and usage measure. Account-key filtering
+requires provider. Metadata-source ownership is validated without treating it as
+live query permission. Agent/plugin callers and body owner/tenant identities
+refuse. Definition deletion remains available to its owner for cleanup; it grants
+no data read or remote erasure. Data queries separately reauthorize current source
+access. These APIs do not create source grants or expose credentials.
+
+### Private companion storage API
+
+These are receiver `/v1` endpoints, not browser-facing Core `/api` routes.
+Core must authorize the actual person/source and keep the private capability out
+of viewer/plugin/provider/peer credentials. The operator service may register
+an empty bucket with `POST /v1/operator/private-usage-vaults` and exactly
+`{credentialHash}`. Success returns `{created,receiverEpoch}`. The private key is
+not returned or stored in plaintext by the receiver.
+
+Private endpoints accept only `Bearer stai_<43-base64url-characters>`:
+
+| Endpoint | Behavior |
+| --- | --- |
+| `POST /v1/private-usage/pages` | Validates `PrivateUsageCommit`; atomically stores observations, checkpoint and receipt; returns 201 `{receipt}`. |
+| `POST /v1/private-usage/invalidations` | Atomically withdraws older facts and advances the private replay checkpoint; returns 201 `{receipt}`. |
+| `GET /v1/private-usage/invalidation-commits/<operationId>` | Recovers the historical invalidation receipt or returns 404. |
+| `GET /v1/private-usage/checkpoint?from=YYYY-MM-DD&to=YYYY-MM-DD` | Returns `{receiverEpoch,checkpoint,journal}`; null checkpoint means no committed snapshot for that window, not zero usage. |
+| `GET /v1/private-usage/commits/<operationId>` | Returns the historical receipt or 404; recovers a lost reply without creating another write. |
+| `GET /v1/private-usage/observations?after=0&highWater=<optional>` | Returns at most 100 stored observations and captured source revisions, with retained-only coverage and `sourceAuthority:"not-verified-by-storage"`. |
+| `DELETE /v1/private-usage/vault` | Erases that capability's data and retains a revoked tombstone; repeated erasure is idempotent. |
+
+The commit includes the expected receiver epoch/checkpoint, operation UUID,
+immutable source binding (Station/approval/recipient/scope/expiry/retention),
+validated captured query/page and source mutation revision. Stale checkpoints,
+changed epochs/content or binding conflicts return 409. Product/operator keys
+cannot access these private routes. Missing checkpoint evidence/schema returns
+503; quota rejection is 507 and rolls back the whole write. Bodies are bounded
+to 2 MiB. Invalidation commits use protocol `station-private-usage-invalidations/v1`,
+`operationId`, `expectedReceiverEpoch`, `expectedAfter`, and the strict
+`UsageInvalidationPage`. The receiver verifies the page's pinned Station/scope/
+epoch, ordering, progress and retained floor. Stale positions conflict; unknown
+content fields and invalid snapshot shapes return 400. Withdrawals affect earlier
+source captures only. Receipt fields include protocol, operation/receiver IDs,
+`checkpoint:{after,streamEpoch,highWater,nextCursor?}`, `removed`,
+`refreshThreads` and stored time. Delayed older fact writes conflict across all
+windows after the journal advances. The schema-v2 upgrade preserves v1 data and
+starts existing journal positions at zero; older schema code refuses the upgrade.
+
+The receiver does not replace source/person authorization or calculate
+current usage totals. Core page capture/recovery is described above;
+Grouped/saved Insights
+remain separate work. See the [private storage contract](../../packages/telemetry-broker/README.md#private-usage-storage)
+for retention, replay and qualification limits.
 
 ### Get Achievements
 
@@ -4134,10 +4649,69 @@ returns 503; unknown CPU load is never fabricated as zero. These observations
 do not grant execution authority or influence admission.
 
 `data.workloads` reports workload enforcement state, configured budgets, active
-scopes, recent outcomes and available slice measurements. Measurement failure
+scopes, recent outcomes and available slice measurements. A recent outcome's
+`result` is `oom-kill-in-scope` when the kernel killed any process in the
+scope (the engine or a command), with `oomKills`, its `oomKillsSource`
+(`close`, exact; or `last-poll` when the scope was already collected) and
+systemd's own `systemdResult`. Measurement failure
 is separate from enforcement state; see
 [Linux service workload budgets](../guides/development.md#linux-service-workload-budgets)
 for platform scope and admission behavior.
+
+### Workload Budgets
+
+The [workload routes](../../src-server/routes/system/workload-routes.ts) answer
+under `/api/system/workload`:
+
+- `GET /api/system/workload` returns `WorkloadBudgetStatus`
+  (`@kontourai/station-contracts/system-status`): enforcement `state`
+  (`ready`, `unmanaged`, `unavailable` or `stopping`) with any reason, host
+  memory, effective `limits`, the `sources` of the two memory budgets
+  (`environment`, `settings` or `default`), saved `settings`, any
+  `settingsError`, and `applies` (`new-scopes` or `restart`).
+- `PUT /api/system/workload/settings` takes `{ memoryMiB, totalMemoryMiB }`
+  (whole MiB, or `null` for the default) and returns the new status. While the
+  `workload-budget-settings` Feature Preview is off it answers 404 with
+  `code: 'feature_preview_disabled'` and writes nothing; an out-of-range value
+  answers 400 with `code: 'workload_settings_invalid'`.
+- `GET /api/system/workload/session` answers only for the session named by the
+  forwarded station-control credential (the `workload_status` tool), with its
+  scope's cgroup counters or `scope.state` `none`, `unattributed` or
+  `unmeasured`. Without a verified caller it answers 403
+  `station_control_caller_required`.
+
+`GET /api/system/workload` also lists running `scopes`, each with the limit
+it was launched with (a saved change reaches only later launches), its OOM
+kill count and `lastOomKillAt`, and for an engine scope `holder: placed | unplaced` with a short `holderReason`
+code when unplaced (`not-in-scope` after two polls in a row miss it,
+`holder-gone` once a found holder has left the scope, `holder-unavailable`
+when the host has no `setsid`(1) or `sleep`(1))
+(an unplaced holder means that scope's OOM count will be unknown after the
+engine dies). The session read's measured scope carries
+`lastOomKillAt` too. A save refuses a total below the slice's current usage
+(400 `workload_settings_invalid`), because the total binds running engines at
+once.
+
+Hosted deployments mount only the session read; the first two answer 404 there.
+
+### Continue after a memory kill
+
+`POST /api/orchestration/conversations/:conversationId/memory-continuation`
+continues a conversation whose latest turn ended with `engine-memory-exhausted`
+([continuation module](../../src-server/services/orchestration/memory-exhaustion-continuation.ts)).
+It sends one Station-authored turn through the conversation inbox as the caller,
+under a key derived from the dead Session and turn, and answers 202 with that
+`clientTurnId`. Any later request for the same dead turn while a live entry exists, from anyone
+and including after Station's own automatic continuation, gets 409
+`memory_continuation_already_started`; after an entry the inbox proves unsent
+(refused, or cancelled before placement) a person's Continue is sent under the
+next person key, and once all are spent the answer is 409
+`memory_continuation_retries_exhausted`. A `clientTurnId` starting
+`memory-continue-` is refused (400) on `POST /chat` and continue sends. A latest turn that did not end that way
+is 409 `memory_continuation_not_applicable`; a conversation the caller cannot
+read is 404; one the inbox refuses the caller is 403
+`memory_continuation_not_permitted`. A Station without a conversation inbox
+(hosted) answers 404, as an older Station does.
 
 `GET /api/system/status` returns a plain status object. It includes prerequisites
 and `prerequisitesState`, configured/detected providers, CLI observations,
@@ -5510,8 +6084,12 @@ plan yields `outdated: "unknown"`; a resolved thread is never Outdated. Whole
 plan/summary anchors retain no body quote; changed revisions have unknown
 freshness and remain visible through `currentRevision`, following the shared
 contract. Review
-reads plan working state and never writes the room document, room history,
-Task status or revision-bound evidence.
+reads plan working state. Creating a plan thread first freezes and links that
+exact working revision through the room evidence bridge; if the revision
+changed before its claim, or a receipt cannot be retained, creation returns
+`artifact-unavailable` without creating a thread. Output anchors use their
+already retained digest snapshots. Review never edits the room document or
+Task status. See the [freeze policy](../decisions/revision-evidence-freeze-policy.md).
 
 The internal-only station-control routes are `GET
 /api/orchestration/station-control/task-threads?state=open|outdated|resolved`,
@@ -5569,3 +6147,55 @@ Owners: [review routes](../../src-server/routes/orchestration/task-review.ts),
 [contracts](../../packages/contracts/src/task-review.ts). The
 [runtime route tests](../../src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts)
 exercise the composed runtime and plan editing.
+
+### Private operational outcomes
+
+`POST /api/analytics/recipient-candidates/:recipientId/outcomes` is a read-only
+data POST. Body: `{ "from": "2026-10-01", "to": "2026-10-14", "groupBy": "engine" }`
+(`day` is also supported). It requires current verified-person ownership and the
+immutable optional `terminal-outcomes/v1` grant. Missing consent returns 403
+`private_usage_operational_consent_required`; stale private capture returns 409
+`private_usage_sync_required`. The `privateOperationalOutcomes` handshake flag
+advertises the route in personal and hosted mode; it grants no authority.
+The response includes retained terminal counts, `observedTurns`, unknown coverage
+and source revision fences. Queued response release checks current authority.
+
+### Prepare a receiving person's private analytics storage
+
+`POST /api/analytics/recipient-candidates/:recipientId/storage-preparation` accepts
+exactly `{requestId:<UUID>}` from the current receiving person Device with
+`orchestration:read`, after credential storage and source-address confirmation.
+It returns `{data:TelemetryPrivateUsagePreparation}`: secret-free review metadata
+binding the real person, receiving slot, Station, managed installation/custody,
+credential revision, fingerprint, expiry and phase. No vault is provisioned by
+this person request. Requests expire after at most five minutes or on process
+restart; a new request for a slot retires its earlier request.
+
+`GET /api/operator/telemetry-companion/private-usage-preparations/:requestId`
+reviews that live request. `POST` to the same path accepts exactly
+`{fingerprint:<reviewed SHA-256>}` and prepares its vault. Both retain the existing
+companion operator/home authority; scoped Devices additionally need
+`telemetry:manage`. The server retains the actual requesting person and rechecks
+that authority, receiving credential, source confirmation, current source grant
+and managed companion custody. The operator never becomes the receiving person.
+No caller supplies a credential hash, vault key, receiver URL or person ID.
+Allocation sends only `{credentialHash}` and creates an empty vault plus capacity
+reservation. It grants no source export, transfer or query authority and carries
+no source credential or usage page. Retries of the live reviewed request provision the same vault.
+A source refusal after allocation withholds success; it does not roll back the
+empty allocation. Actual reads, commits, queries and invalidations retain source
+authorization. Source-qualified preparation release probes target and operator
+before the final source HEAD, then synchronously asserts local person, operator,
+preparation generation and held target custody immediately before enqueue.
+The source is authorized at its validation boundary; local authority is valid
+at dispatch/enqueue. Remote revocation after HEAD cannot atomically retract a
+release. A stronger remote transaction/lease profile is unsupported and must be
+refused. Bounded installation leases exclude cooperating install/start/stop
+through dispatch or enqueue, and are released between chunks. They do not
+exclude external Docker administration, filesystem replacement or daemon failure. Expired, changed
+or missing requests require a fresh person request and operator review. Sync
+remains a separate person action. An older host's 404 is treated as unsupported
+or missing/expired, with refresh/request-again/update recovery.
+
+See [the user journey](../guides/monitoring.md#connect-a-personal-source-in-insights).
+This source contract has not established installed/native/release acceptance.

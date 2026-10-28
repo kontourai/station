@@ -1,0 +1,11 @@
+{
+  "revision": "886e459fb775190a5e814ffe9dded63207518547",
+
+  "notes": [
+    {"path":"docs/design/session-tape-replay.md","note":"Re-checked recorder.ts after the second review round: one JSON replacer (withoutAttachmentBytes) now runs over the initial tape (initialChat and initialHistory) and every appended frame, dropping a string dataUrl that is a data: URL and a type:'file' part's data: url. Narrowed the capture paragraph to say exactly that: initial state, history reads and frames keep attachment names, types and references, never inline bytes. The 16 MiB / 20,000-frame limits, coverage, redaction and import-validation claims are unchanged; tape-file.test covers initial chat, history and runtime frame stripping plus tape validity.","inputs":["docs/design/session-tape-replay.md","src-ui/src/hooks/orchestration/replay/recorder.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Re-checked FilePartPreview after the second round: thumbnails now use attachmentThumbnailKey and read a cached thumbnail on first render; a thumbnail finished for an inline data URL after its bubble switched is dropped. None of this touches GET /api/attachments/:ref: same route, octet-stream/nosniff response, client-applied declared type, 404 chip behavior. No edit needed.","inputs":["docs/reference/api.md","src-ui/src/components/chat/FilePartPreview.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Re-checked the Chat attachments sentence added earlier (the sending browser's chips skip the /api/attachments fetch because the client drops its inline copy and caches the sent bytes under the recorded reference) against the second-round FilePartPreview / cache changes: still accurate, and now also true for large images, whose chip thumbnail moves to the reference key. Seeded bytes take the recorded media type, matching the fetch path. Storage, retention and variables unchanged; no edit needed.","inputs":["docs/reference/config.md","src-ui/src/components/chat/FilePartPreview.tsx"]}
+  ]
+}

@@ -75,6 +75,10 @@ import {
 import { parseStationControlRefusal } from '@kontourai/station-contracts/station-control-refusal';
 import { parseTenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
+import type {
+  UsageInvalidationPage,
+  UsageTerminalFact,
+} from '@kontourai/station-contracts/usage-export';
 import { isAuthoredInputContent } from '@kontourai/station-shared/authored-input';
 import { htmlReplyReference } from '@kontourai/station-shared/html-reply-document';
 import { isSuccessfulMcpResult } from '@kontourai/station-shared/mcp-app-result';
@@ -145,9 +149,14 @@ import { TASK_LEARNING_DISMISSALS_MIGRATION } from '../../domain/migrations/021-
 import { TASK_LEARNING_PROMOTIONS_MIGRATION } from '../../domain/migrations/022-task-learning-promotions.js';
 import { TASK_REVIEW_MIGRATION } from '../../domain/migrations/023-task-review.js';
 import {
+  ensureUsageExportInvalidations,
+  USAGE_EXPORT_JOURNAL_MARKER,
+} from '../../domain/migrations/023-usage-export-invalidations.js';
+import {
   EVENT_CONTENT_MIGRATION,
   EVENT_CONTENT_ORPHAN_SWEEP,
 } from '../../domain/migrations/024-event-content.js';
+import { ensureProjectTaskRoomRevisionFreezeColumn } from '../../domain/migrations/024-project-task-room-revision-freeze.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -227,6 +236,11 @@ import {
   attachmentBlobRefFor,
   isAttachmentBlobRef,
 } from './attachment-blob-store.js';
+import {
+  CANONICAL_TERMINAL_EVENT_SQL,
+  canonicalTerminalOutcome,
+  terminalEngineFamily,
+} from './canonical-terminal-outcome.js';
 import {
   ConversationContextBoundaryConflictError,
   type ConversationContextBoundaryMarker,
@@ -2467,6 +2481,7 @@ export class EventStore {
   private readonly standingUnresolvedCache = new Map<string, Set<string>>();
   /** Kept private: room history receives a separate connection, never this DB. */
   private readonly databasePath: string;
+  private usageExportActivation?: () => string;
   private steerReceipts?: SqliteKernelStorage;
   private htmlReplyPageStore?: ReturnType<typeof createHtmlReplyPages>;
   private readonly db: InstanceType<typeof DatabaseSync>;
@@ -2802,6 +2817,7 @@ export class EventStore {
       this.db.exec(REVISION_EVIDENCE_RECEIPTS_MIGRATION);
       this.db.exec(PROJECT_TASK_ROOM_REVISION_PUBLICATION_MIGRATION);
       ensureProjectTaskRoomRevisionAttributionColumn(this.db);
+      ensureProjectTaskRoomRevisionFreezeColumn(this.db);
       this.db.exec(`
       CREATE TABLE IF NOT EXISTS orchestration_attachment_quota (
         thread_id TEXT PRIMARY KEY,
@@ -2869,6 +2885,7 @@ export class EventStore {
       this.db.exec(TASK_LEARNING_DISMISSALS_MIGRATION);
       // #4003 layer 4: the store each promoted record version went to.
       this.db.exec(TASK_LEARNING_PROMOTIONS_MIGRATION);
+      ensureUsageExportInvalidations(this.db);
       this.db.exec(TASK_REVIEW_MIGRATION);
       this.db.exec(EVENT_CONTENT_MIGRATION);
       this.sweepOrphanedEventContent();
@@ -6937,7 +6954,13 @@ export class EventStore {
     };
   }
 
-  /** Committed-order selection for paged canonical usage, distinct from interactive rollups. */
+  /**
+   * Committed-order selection for paged canonical usage, distinct from
+   * interactive rollups. `terminalOutcomes` is set only by the export reader
+   * for a grant whose current consent is exactly `terminal-outcomes/v1`; it
+   * adds canonical turn terminals to the same ordered, owner/tenant-joined
+   * page so one high water and cursor cover both fact kinds.
+   */
   readUsageReceiptExportPage(options: {
     ownerUserIds: readonly string[];
     tenantId?: string;
@@ -6946,11 +6969,17 @@ export class EventStore {
     after: number;
     highWater?: number;
     streamEpoch?: string;
+    sourceRevision?: number;
     limit: number;
+    terminalOutcomes?: boolean;
   }): {
     streamEpoch: string;
+    sourceRevision: number;
     highWater: number;
-    rows: Array<{ globalSequence: number; usage: UsageReceiptEventRow }>;
+    rows: Array<
+      | { globalSequence: number; usage: UsageReceiptEventRow }
+      | { globalSequence: number; terminal: UsageTerminalFact }
+    >;
     hasMore: boolean;
   } {
     if (
@@ -6967,13 +6996,16 @@ export class EventStore {
     const owners = usageOwnerPlaceholders(options.ownerUserIds);
     this.db.exec('BEGIN');
     try {
-      const streamEpoch = this.streamEpoch();
+      const streamEpoch = this.usageExportEpoch();
+      const sourceRevision = this.usageExportRevision();
       const head = this.headGlobalSequence();
       const highWater = options.highWater ?? head;
       if (
         (options.streamEpoch !== undefined &&
           options.streamEpoch !== streamEpoch) ||
-        highWater > head
+        highWater > head ||
+        (options.sourceRevision !== undefined &&
+          options.sourceRevision !== sourceRevision)
       )
         throw new Error('Usage export source changed');
       const rows = this.db
@@ -6982,7 +7014,11 @@ export class EventStore {
            FROM orchestration_events e
            INNER JOIN orchestration_conversation_history h ON h.thread_id = e.thread_id
            LEFT JOIN orchestration_conversation_sessions cs ON cs.session_id = e.thread_id
-          WHERE e.method = 'token-usage.updated'
+          WHERE (e.method = 'token-usage.updated'${
+            options.terminalOutcomes
+              ? ` OR ${CANONICAL_TERMINAL_EVENT_SQL}`
+              : ''
+          })
             AND e.global_sequence > ? AND e.global_sequence <= ?
             AND e.observed_at >= ? AND e.observed_at <= ?
             AND h.owner_user_id IN (${owners})
@@ -7003,6 +7039,7 @@ export class EventStore {
       const cumulativeThreads = selected
         .filter(
           (row) =>
+            row.method === 'token-usage.updated' &&
             typeof row.provider === 'string' &&
             providerCostScope(row.provider) === 'engine-process-cumulative',
         )
@@ -7018,6 +7055,11 @@ export class EventStore {
           !Number.isSafeInteger(row.global_sequence)
         )
           throw new Error('Invalid usage export sequence');
+        if (row.method !== 'token-usage.updated')
+          return {
+            globalSequence: row.global_sequence,
+            terminal: usageTerminalFact(this.mapEventRow(row, false)),
+          };
         return {
           globalSequence: row.global_sequence,
           usage: this.mapUsageReceiptEventRow(row, segments),
@@ -7026,6 +7068,7 @@ export class EventStore {
       this.db.exec('COMMIT');
       return {
         streamEpoch,
+        sourceRevision,
         highWater,
         rows: page,
         hasMore: rows.length > options.limit,
@@ -7201,26 +7244,30 @@ export class EventStore {
    */
   private cumulativeCostSegmentsFor(
     threadIds: readonly string[],
-    maximumSequenceBudget?: number,
+    maximumEvidenceRows?: number,
   ): Map<string, string> {
     const segments = new Map<string, string>();
-    let remainingEvidenceRows = maximumSequenceBudget;
-    if (maximumSequenceBudget !== undefined) {
-      let sequences = 0;
+    let remainingEvidenceRows = maximumEvidenceRows;
+    if (maximumEvidenceRows !== undefined) {
+      let evidenceRows = 0;
       for (const threadId of new Set(threadIds)) {
-        const latest = this.db
-          .prepare(
-            'SELECT sequence FROM orchestration_events WHERE thread_id = ? ORDER BY sequence DESC LIMIT 1',
-          )
-          .get(threadId) as { sequence: number } | undefined;
-        const sequence = latest?.sequence ?? 0;
-        if (!Number.isSafeInteger(sequence) || sequence < 0)
-          throw new Error('Invalid cumulative usage sequence');
-        sequences += sequence;
-        if (sequences > maximumSequenceBudget)
-          throw new Error(
-            'Cumulative usage projection exceeds its sequence budget',
-          );
+        for (const method of ['session.started', 'token-usage.updated']) {
+          // The covering index counts only segment evidence, without reading
+          // unrelated terminal/tool payloads or scanning an unbounded history.
+          evidenceRows += this.db
+            .prepare(
+              'SELECT sequence FROM orchestration_events INDEXED BY idx_events_history_projection WHERE thread_id = ? AND method = ? LIMIT ?',
+            )
+            .all(
+              threadId,
+              method,
+              maximumEvidenceRows - evidenceRows + 1,
+            ).length;
+          if (evidenceRows > maximumEvidenceRows)
+            throw new Error(
+              'Cumulative usage projection exceeds its evidence budget',
+            );
+        }
       }
     }
     // Chunks partition by THREAD, never inside one, so every thread's whole
@@ -7237,7 +7284,7 @@ export class EventStore {
                        THEN 1 ELSE 0 END AS resumed,
                   CASE WHEN method = 'token-usage.updated'
                        THEN json_extract(payload, '$.reportedCostUsd') END AS cost
-             FROM orchestration_events
+             FROM orchestration_events${maximumEvidenceRows === undefined ? '' : ' INDEXED BY idx_events_history_projection'}
             WHERE thread_id IN (${chunk.map(() => '?').join(', ')})
               AND method IN ('session.started', 'token-usage.updated')
               AND json_valid(payload)
@@ -11135,6 +11182,163 @@ export class EventStore {
       throw new Error(
         'Cannot publish an orchestration event inside an outer transaction',
       );
+  }
+
+  /** Scoped replay of committed invalidations; a pruned checkpoint is never an empty success. */
+  readUsageExportInvalidations(options: {
+    ownerUserIds: readonly string[];
+    tenantId?: string;
+    after: number;
+    highWater?: number;
+    streamEpoch?: string;
+    limit: number;
+  }):
+    | { kind: 'gap' | 'changed' }
+    | {
+        kind: 'page';
+        streamEpoch: string;
+        highWater: number;
+        retainedAfter: number;
+        rows: Array<{
+          revision: number;
+          threadId: string;
+          reason: 'thread-deleted' | 'scope-changed' | 'scope-entered';
+          observedAt: string;
+        }>;
+        hasMore: boolean;
+      } {
+    if (
+      !Number.isSafeInteger(options.after) ||
+      options.after < 0 ||
+      !Number.isSafeInteger(options.limit) ||
+      options.limit < 1 ||
+      options.limit > 100
+    )
+      throw new Error('Invalid usage invalidation bounds');
+    const owners = usageOwnerPlaceholders(options.ownerUserIds);
+    this.db.exec('BEGIN');
+    try {
+      const state = this.usageExportJournalState();
+      const streamEpoch = this.usageExportEpoch();
+      const highWater = options.highWater ?? state.revision;
+      if (
+        (options.streamEpoch !== undefined &&
+          options.streamEpoch !== streamEpoch) ||
+        !Number.isSafeInteger(highWater) ||
+        highWater < options.after ||
+        highWater > state.revision
+      ) {
+        this.db.exec('COMMIT');
+        return { kind: 'changed' };
+      }
+      if (options.after < state.retainedAfter) {
+        this.db.exec('COMMIT');
+        return { kind: 'gap' };
+      }
+      const records = this.db
+        .prepare(`SELECT revision,thread_id,reason,observed_at
+        FROM orchestration_usage_export_invalidations
+        WHERE revision>? AND revision<=? AND owner_user_id IN (${owners})
+          AND ((? IS NULL AND tenant_id IS NULL) OR tenant_id=?)
+        ORDER BY revision LIMIT ?`)
+        .all(
+          options.after,
+          highWater,
+          ...options.ownerUserIds,
+          options.tenantId ?? null,
+          options.tenantId ?? null,
+          options.limit + 1,
+        );
+      const rows: UsageInvalidationPage['invalidations'] = records
+        .slice(0, options.limit)
+        .map((row) => {
+          if (
+            typeof row.revision !== 'number' ||
+            !Number.isSafeInteger(row.revision) ||
+            typeof row.thread_id !== 'string' ||
+            typeof row.observed_at !== 'string' ||
+            !Number.isFinite(Date.parse(row.observed_at)) ||
+            (row.reason !== 'thread-deleted' &&
+              row.reason !== 'scope-changed' &&
+              row.reason !== 'scope-entered')
+          )
+            throw new Error('Usage invalidation is invalid');
+          return {
+            revision: row.revision,
+            threadId: row.thread_id,
+            reason: row.reason,
+            observedAt: row.observed_at,
+          };
+        });
+      this.db.exec('COMMIT');
+      return {
+        kind: 'page',
+        streamEpoch,
+        highWater,
+        retainedAfter: state.retainedAfter,
+        rows,
+        hasMore: records.length > options.limit,
+      };
+    } catch (error) {
+      if (this.db.isTransaction) this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  /** Deletion/scope mutation state is independent of append-only event high water. */
+  usageExportRevision(): number {
+    return this.usageExportJournalState().revision;
+  }
+
+  usageExportJournalState(): { revision: number; retainedAfter: number } {
+    const state = this.db
+      .prepare(`
+      SELECT s.revision,s.retained_after,
+        (SELECT COUNT(*) FROM orchestration_usage_export_invalidations) AS retained,
+        (SELECT MIN(revision) FROM orchestration_usage_export_invalidations) AS first,
+        (SELECT MAX(revision) FROM orchestration_usage_export_invalidations) AS last
+      FROM orchestration_usage_export_state s WHERE singleton=1
+        AND EXISTS(SELECT 1 FROM orchestration_event_store_backfills WHERE name=?)
+    `)
+      .get(USAGE_EXPORT_JOURNAL_MARKER);
+    if (
+      !state ||
+      typeof state.revision !== 'number' ||
+      !Number.isSafeInteger(state.revision) ||
+      state.revision < 0 ||
+      state.retained_after !== Math.max(0, state.revision - 10000) ||
+      state.retained !== Math.min(state.revision, 10000) ||
+      (state.revision === 0
+        ? state.first !== null || state.last !== null
+        : state.first !== Number(state.retained_after) + 1 ||
+          state.last !== state.revision)
+    )
+      throw new Error('Usage export invalidation journal is unavailable');
+    return {
+      revision: state.revision,
+      retainedAfter: Number(state.retained_after),
+    };
+  }
+
+  /** Runtime binds this once to the current home activation; it is not a grant. */
+  bindUsageExportActivation(readActivation: () => string): void {
+    if (this.usageExportActivation)
+      throw new Error('Usage export activation already bound');
+    this.usageExportActivation = readActivation;
+  }
+
+  /** Analytics generations can change without rewriting the generic event stream identity. */
+  usageExportEpoch(): string {
+    const epoch = this.streamEpoch();
+    if (!this.usageExportActivation) return epoch;
+    const activation = this.usageExportActivation();
+    if (!/^[a-f0-9]{64}$/.test(activation))
+      throw new Error('Usage export activation unavailable');
+    return createHash('sha256')
+      .update(
+        JSON.stringify(['station-private-export-epoch/v1', epoch, activation]),
+      )
+      .digest('hex');
   }
 
   /** Durable identity of this database, independent of its numeric cursor. */
@@ -16254,6 +16458,33 @@ function mapPersistedSessionRow(row: any): ProviderSession {
     ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+/**
+ * The `terminal-outcomes/v1` allowlist projection. It copies only the class,
+ * engine family, Station-observed time and opaque identities; the payload's
+ * message, details, tool data and paths are never read into the fact.
+ */
+function usageTerminalFact(event: PersistedRuntimeEvent): UsageTerminalFact {
+  const payload = event.payload as { retriable?: unknown };
+  const outcome = canonicalTerminalOutcome({
+    method: event.method,
+    ...(event.turnId ? { turnId: event.turnId } : {}),
+    provider: event.provider,
+    ...(typeof payload.retriable === 'boolean'
+      ? { retriable: payload.retriable }
+      : {}),
+  });
+  if (!outcome || !event.observedAt)
+    throw new Error('Invalid usage export terminal');
+  return {
+    outcome,
+    engine: terminalEngineFamily(event.provider),
+    observedAt: event.observedAt,
+    eventId: event.id,
+    threadId: event.threadId,
+    ...(event.turnId ? { turnId: event.turnId } : {}),
   };
 }
 

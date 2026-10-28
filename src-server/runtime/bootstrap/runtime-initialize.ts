@@ -79,6 +79,7 @@ import {
   createEnvironmentRuntimeResourcePostureProbe,
   type RuntimeResourcePostureProbe,
 } from '../../services/infra/resource-posture.js';
+import { enforcedWorkloadLimits } from '../../services/infra/workload-resources.js';
 import { createAdoptedChildExecutionBindingResolver } from '../../services/orchestration/adopted-child-execution-binding.js';
 import {
   AttachedSessionFollowService,
@@ -585,6 +586,8 @@ export async function initializeRuntime(
     ]),
     eventBus,
     eventStore: orchestrationEventStore,
+    // The budget an engine is told about is the one its scope enforces.
+    workloadEngineLimits: (sessionId) => enforcedWorkloadLimits(sessionId),
     pricingSnapshotCapture: {
       capture: async (input) => usagePricingSnapshotCapture?.capture(input),
     },

@@ -454,13 +454,15 @@ function MessageBubbleComponent({
       : resolvedRowAgent;
   // A check-back Station sent is nobody's words: not the person's avatar.
   const stationCheckBack = msg.role === 'user' && msg.stationCheckBack === true;
+  const stationMemoryContinuation =
+    msg.role === 'user' && msg.stationMemoryContinuation === true;
   const avatarContent = sender ? (
     <span className="agent-incoming__avatar" aria-hidden="true">
       <InboxGlyph />
     </span>
   ) : isAssistant ? (
     <AgentIcon agent={rowAgent ?? FALLBACK_AGENT} size={20} />
-  ) : stationCheckBack ? (
+  ) : stationCheckBack || stationMemoryContinuation ? (
     <TimeGlyph className="message__station-glyph" />
   ) : (
     <UserIcon size={20} />
@@ -1059,7 +1061,7 @@ function MessageBubbleComponent({
               : undefined
             : '70%',
         }}
-        className={`message ${sender ? 'agent-incoming' : msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}${stationCheckBack ? ' message--station-check-back' : ''}${
+        className={`message ${sender ? 'agent-incoming' : msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}${stationCheckBack || stationMemoryContinuation ? ' message--station-check-back' : ''}${
           // Outlined, not filled, until the agent has the message.
           undelivered
             ? ` message--undelivered message--delivery-${undelivered}`
@@ -1082,10 +1084,12 @@ function MessageBubbleComponent({
         {sender && !isMobile && <IncomingAgentHeader sender={sender} />}
         {!isMobile && metadataControls}
         {!isMobile && metadataIdentity}
-        {stationCheckBack ? (
+        {stationCheckBack || stationMemoryContinuation ? (
           <div className="message__station-label">
             {isMobile ? <TimeGlyph className="message__station-glyph" /> : null}
-            Scheduled check-back
+            {stationMemoryContinuation
+              ? 'Station continued after the engine ran out of memory'
+              : 'Scheduled check-back'}
           </div>
         ) : null}
         <div
