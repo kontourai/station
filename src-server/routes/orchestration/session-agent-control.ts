@@ -85,6 +85,10 @@ import {
   resolveActorPrincipal,
   resolveDispatchActor,
 } from './orchestration.js';
+import {
+  refuseNonPersonRequest,
+  sessionPersonReadsDisabled,
+} from './session-project-activity.js';
 
 /** The longest JSON a send can be: every character escaped to six bytes. */
 const SEND_BODY_MAX_BYTES = CHAT_INPUT_MAX_CHARS * 6 + 4096;
@@ -800,76 +804,200 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
   app.get('/:sessionId/wait', async (c) => {
     const caller = callerOf(c);
     if (caller instanceof Response) return caller;
-    const sessionId = c.req.param('sessionId');
-    const parsed = waitSessionQuerySchema.safeParse(c.req.query());
-    if (!parsed.success)
-      return c.json(
-        {
-          success: false,
-          code: 'invalid_request',
-          error: 'Validation failed',
-          details: parsed.error.flatten(),
-        },
-        400,
-      );
-    // A wait reads: it needs only that the owner may read the Session. It
-    // watches exactly the Session named (a returned `sessionId`), because its
-    // cursor counts that Session's events.
-    if (
-      !deps.orchestrationService.canUserReadSession(
-        sessionId,
-        readAuthorityFor(c),
-      )
-    )
-      return notFound(c);
-    const result = await waiter.wait({
-      callerSessionId: caller.sessionId,
-      threadId: sessionId,
-      until: parsed.data.until,
-      timeoutMs: parsed.data.timeoutMs,
-      ...(parsed.data.afterEventCursor !== undefined
-        ? { afterEventCursor: parsed.data.afterEventCursor }
-        : {}),
-      signal: c.req.raw.signal,
-    });
-    if (result.kind === 'capacity')
-      return c.json(
-        {
-          success: false,
-          code: 'wait_capacity',
-          error:
-            result.scope === 'caller'
-              ? 'This session already has the most waits Station allows at once. Let one finish, then wait again.'
-              : 'Station is serving the most waits it allows at once. Wait again shortly.',
-        },
-        429,
-      );
-    if (result.kind === 'aborted')
-      return c.json(
-        {
-          success: false,
-          code: 'wait_aborted',
-          error: 'The wait was cancelled.',
-        },
-        408,
-      );
-    const { kind, ...state } = result;
-    // The wait watched exactly the Session named. When a successor now serves
-    // the conversation, say so: the named Session will not see its turns.
-    const current = actingSession(sessionId).threadId;
-    return c.json({
-      success: true,
-      data: {
-        sessionId,
-        settled: kind === 'settled',
-        timedOut: kind === 'timeout',
-        ...(current !== sessionId
-          ? { superseded: true, currentSessionId: current }
-          : {}),
-        ...state,
-      },
+    return answerWait(c, {
+      waiter,
+      readAuthority: readAuthorityFor(c),
+      orchestrationService: deps.orchestrationService,
+      eventStore: deps.eventStore,
+      waiterKey: caller.sessionId,
+      capacityMessage:
+        'This session already has the most waits Station allows at once. Let one finish, then wait again.',
     });
   });
 
+  return app;
+}
+
+/**
+ * The Station-wide Session wait: one per Station, shared by the agent leaf
+ * above and the person leaf (`createSessionPersonWaitRoutes`) so their caps
+ * are one budget.
+ */
+export function createSessionTurnWaiter(
+  deps: Pick<
+    SessionAgentControlDeps,
+    'eventStore' | 'eventBus' | 'orchestrationService'
+  >,
+): SessionTurnWaiter {
+  return new SessionTurnWaiter(sessionTurnWaitPorts(deps));
+}
+
+/** The conversation's current Session, whichever of its ids was named. */
+function currentSessionOf(
+  deps: Pick<SessionAgentControlDeps, 'eventStore' | 'orchestrationService'>,
+  sessionId: string,
+): string {
+  const conversationId =
+    deps.eventStore.conversationForSession(sessionId)?.conversationId ??
+    sessionId;
+  return deps.orchestrationService.currentConversationSessionId(conversationId);
+}
+
+/**
+ * The wait itself, after the leaf decided who waits: validate, hold the
+ * Session to the owner's read, wait, and answer. `reportInterrupted` adds the
+ * turn a restart cut off (the person's leaf only).
+ */
+async function answerWait(
+  c: Context,
+  input: {
+    waiter: SessionTurnWaiter;
+    readAuthority: ReturnType<typeof sessionReadAuthorityFromRequest>;
+    orchestrationService: SessionAgentControlDeps['orchestrationService'];
+    eventStore: SessionAgentControlDeps['eventStore'];
+    /** Whose wait this is, for the per-waiter cap. */
+    waiterKey: string;
+    capacityMessage: string;
+    /** A further scope rule; a Session it refuses reads as absent. */
+    admits?: (sessionId: string) => boolean;
+    reportInterrupted?: boolean;
+  },
+): Promise<Response> {
+  const sessionId = c.req.param('sessionId');
+  if (!sessionId) return notFound(c);
+  const parsed = waitSessionQuerySchema.safeParse(c.req.query());
+  if (!parsed.success)
+    return c.json(
+      {
+        success: false,
+        code: 'invalid_request',
+        error: 'Validation failed',
+        details: parsed.error.flatten(),
+      },
+      400,
+    );
+  // A wait reads: it needs only that the owner may read the Session. It
+  // watches exactly the Session named (a returned `sessionId`), because its
+  // cursor counts that Session's events.
+  if (
+    !input.orchestrationService.canUserReadSession(
+      sessionId,
+      input.readAuthority,
+    ) ||
+    (input.admits !== undefined && !input.admits(sessionId))
+  )
+    return notFound(c);
+  const result = await input.waiter.wait({
+    callerSessionId: input.waiterKey,
+    threadId: sessionId,
+    until: parsed.data.until,
+    timeoutMs: parsed.data.timeoutMs,
+    ...(parsed.data.afterEventCursor !== undefined
+      ? { afterEventCursor: parsed.data.afterEventCursor }
+      : {}),
+    signal: c.req.raw.signal,
+    ...(input.reportInterrupted ? { reportInterrupted: true } : {}),
+  });
+  if (result.kind === 'capacity')
+    return c.json(
+      {
+        success: false,
+        code: 'wait_capacity',
+        error:
+          result.scope === 'caller'
+            ? input.capacityMessage
+            : 'Station is serving the most waits it allows at once. Wait again shortly.',
+      },
+      429,
+    );
+  if (result.kind === 'aborted')
+    return c.json(
+      {
+        success: false,
+        code: 'wait_aborted',
+        error: 'The wait was cancelled.',
+      },
+      408,
+    );
+  const { kind, interruptedTurn, ...state } = result;
+  // The wait watched exactly the Session named. When a successor now serves
+  // the conversation, say so: the named Session will not see its turns.
+  const current = currentSessionOf(input, sessionId);
+  return c.json({
+    success: true,
+    data: {
+      sessionId,
+      settled: kind === 'settled',
+      timedOut: kind === 'timeout',
+      ...(current !== sessionId
+        ? { superseded: true, currentSessionId: current }
+        : {}),
+      ...state,
+      // Its turn id and the sequence that closed it; the event id stays in.
+      ...(interruptedTurn
+        ? {
+            interruptedTurn: {
+              turnId: interruptedTurn.turnId,
+              sequence: interruptedTurn.sequence,
+            },
+          }
+        : {}),
+    },
+  });
+}
+
+export interface SessionPersonWaitDeps
+  extends Pick<
+    SessionAgentControlDeps,
+    | 'eventStore'
+    | 'orchestrationService'
+    | 'resolvePrincipal'
+    | 'hostedTenantRegistry'
+  > {
+  /** The Station's one waiter (`createSessionTurnWaiter`). */
+  waiter: SessionTurnWaiter;
+  /** The person's Project rule: whether `userId` may see this Session. */
+  personSeesSession(userId: string, sessionId: string): boolean;
+  preview: {
+    select<T>(branches: { enabled: () => T; disabled: () => T }): T;
+  };
+}
+
+/**
+ * #3427: the person-facing leaf of `wait_session`, for `station session
+ * wait`. It refuses every internal request (an agent waits through its own
+ * leaf), holds the Session to the person's owner read and their Project
+ * `view` rule, and reports a turn a Station restart cut off as
+ * `interruptedTurn` (ending a `turn-settled` wait) so it never reads as
+ * settled or as a silent idle. Gated by the `session-cli-reads` preview.
+ */
+export function createSessionPersonWaitRoutes(deps: SessionPersonWaitDeps) {
+  const app = new Hono();
+  app.get('/:sessionId/wait', async (c) => {
+    const refused = refuseNonPersonRequest(c);
+    if (refused) return refused;
+    return deps.preview.select({
+      disabled: async () => sessionPersonReadsDisabled(c),
+      enabled: async () => {
+        const userId = resolveActorPrincipal(deps, c).userId;
+        return answerWait(c, {
+          waiter: deps.waiter,
+          readAuthority: sessionReadAuthorityFromRequest(
+            userId,
+            getTenantRequestContext(c.req.raw),
+            deps.hostedTenantRegistry,
+          ),
+          orchestrationService: deps.orchestrationService,
+          eventStore: deps.eventStore,
+          // A person's waits share one slot count, apart from any Session's.
+          waiterKey: `person:${userId}`,
+          capacityMessage:
+            'You already have the most Session waits Station allows at once. Let one finish, then wait again.',
+          admits: (sessionId) => deps.personSeesSession(userId, sessionId),
+          reportInterrupted: true,
+        });
+      },
+    });
+  });
   return app;
 }

@@ -454,8 +454,16 @@ import {
 } from '../../routes/orchestration/orchestration.js';
 import { createProjectTaskRoomRoutes } from '../../routes/orchestration/project-task-rooms.js';
 import { createRunRoutes } from '../../routes/orchestration/runs.js';
-import { createSessionAgentControlRoutes } from '../../routes/orchestration/session-agent-control.js';
-import { createSessionProjectActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
+import {
+  createSessionAgentControlRoutes,
+  createSessionPersonWaitRoutes,
+  createSessionTurnWaiter,
+} from '../../routes/orchestration/session-agent-control.js';
+import {
+  createSessionPersonActivityRoutes,
+  createSessionProjectActivityRoutes,
+  personSessionScope,
+} from '../../routes/orchestration/session-project-activity.js';
 import { createSessionWorkClaimRoutes } from '../../routes/orchestration/session-work-claims.js';
 import { createTaskBriefRoutes } from '../../routes/orchestration/task-brief.js';
 import { createTaskLearningRoutes } from '../../routes/orchestration/task-learning.js';
@@ -2200,6 +2208,36 @@ export function configureRuntimeRoutes(
         getProject: (slug) => context.storageAdapter.getProject(slug),
       }),
     );
+  const projectIdForSlug = (slug: string): string | undefined => {
+    const id = context.storageAdapter.getProject(slug).id;
+    return typeof id === 'string' && id ? id : undefined;
+  };
+  // The same membership rule as the Project routes: an account principal
+  // holds exactly its membership's actions; any other owner is
+  // unrestricted in its own requests, so it may view and execute.
+  // Approving a worker's request is the operator's there: no membership
+  // row names anyone else an admin. A session's recorded owner is checked
+  // by the dispatch scope; a person reading their own Sessions (#3427) by
+  // the person-facing Session reads.
+  const principalMayInProject = (
+    principalId: string,
+    localProjectId: string,
+    action: 'view' | 'execute' | 'approve',
+  ): boolean => {
+    if (!isDeploymentAccountPrincipalId(principalId))
+      return (
+        action !== 'approve' || principalId === LOCAL_OPERATOR_PRINCIPAL_ID
+      );
+    if (!context.projectMembership) return false;
+    return context.projectMembership
+      .admissionsForResolvedPrincipal(principalId)
+      .some(
+        ({ scope, member }) =>
+          scope.localProjectId === localProjectId &&
+          member.status === 'active' &&
+          member.actions.includes(action),
+      );
+  };
   // #2377 slices C1 and C2a: the server's records for whatever a
   // station-control call aims at (a steer, an adoption, a dispatch, a
   // follow-up, an answer), read from the same records as the caller's own
@@ -2229,28 +2267,8 @@ export function configureRuntimeRoutes(
     projectDirectories: () => context.projectService.listProjects(),
     sessionCwd: (threadId) =>
       context.orchestrationEventStore?.readSessionByThread(threadId)?.cwd,
-    projectIdForSlug: (slug) => {
-      const id = context.storageAdapter.getProject(slug).id;
-      return typeof id === 'string' && id ? id : undefined;
-    },
-    // The same membership rule as the Project routes: an account principal
-    // holds exactly its membership's actions; any other owner is
-    // unrestricted in its own requests, so it may view and execute.
-    // Approving a worker's request is the operator's there: no membership
-    // row names anyone else an admin.
-    ownerMay: (ownerId, localProjectId, action) => {
-      if (!isDeploymentAccountPrincipalId(ownerId))
-        return action !== 'approve' || ownerId === LOCAL_OPERATOR_PRINCIPAL_ID;
-      if (!context.projectMembership) return false;
-      return context.projectMembership
-        .admissionsForResolvedPrincipal(ownerId)
-        .some(
-          ({ scope, member }) =>
-            scope.localProjectId === localProjectId &&
-            member.status === 'active' &&
-            member.actions.includes(action),
-        );
-    },
+    projectIdForSlug,
+    ownerMay: principalMayInProject,
   });
   // #1796: a refused full-access request names this Station and the paired
   // device that asked, read from the pairing service's own records (a
@@ -6509,13 +6527,32 @@ export function configureRuntimeRoutes(
       hostedTenantRegistry,
     }),
   );
+  // #3427: the person-facing Session reads (`station session wait|digest`,
+  // `station activity`). Bound here, at composition, so the preview is
+  // offered whether or not it is enabled.
+  const sessionPersonReadsPreview = context.featurePreviews.bind({
+    id: 'session-cli-reads',
+    label: 'Session reads from the station CLI',
+    description:
+      'Lets a person wait on, digest and list their own Sessions from the station CLI (station session wait, station session digest, station activity). Read-only.',
+  });
+  // One Session wait per Station: the agent leaf and the person leaf share
+  // its caps.
+  const sessionTurnWaiter = context.orchestrationEventStore
+    ? createSessionTurnWaiter({
+        orchestrationService: context.orchestrationService,
+        eventStore: context.orchestrationEventStore,
+        eventBus: context.eventBus,
+      })
+    : undefined;
   // #3160: Station Control's Session tools (send, interrupt, wait). Agent-only
   // leaves with their own scope check; their own prefix so the dispatch
   // routes above stay exactly as they are.
-  if (context.orchestrationEventStore) {
+  if (context.orchestrationEventStore && sessionTurnWaiter) {
     context.app.route(
       '/api/orchestration/session-control',
       createSessionAgentControlRoutes({
+        waiter: sessionTurnWaiter,
         orchestrationService: context.orchestrationService,
         eventStore: context.orchestrationEventStore,
         eventBus: context.eventBus,
@@ -6570,6 +6607,43 @@ export function configureRuntimeRoutes(
           localProjectIdFor(context.projectService, identity),
       }),
     );
+    // #3427: the same reads, and the Session wait, for a person's own
+    // credential: their own prefix, so the agent-only leaves above keep
+    // refusing a request with no station-control caller.
+    const personMayView = (userId: string, localProjectId: string) =>
+      principalMayInProject(userId, localProjectId, 'view');
+    context.app.route(
+      '/api/orchestration/session-reads',
+      createSessionPersonActivityRoutes({
+        orchestrationService: context.orchestrationService,
+        eventStore: context.orchestrationEventStore,
+        stationControlDispatchScope,
+        resolvePrincipal: resolveOrchestrationRequestPrincipal,
+        hostedTenantRegistry,
+        workClaims,
+        projectIdForSlug,
+        personMayView,
+        preview: sessionPersonReadsPreview,
+      }),
+    );
+    if (sessionTurnWaiter) {
+      const personScope = personSessionScope({
+        stationControlDispatchScope,
+        personMayView,
+      });
+      context.app.route(
+        '/api/orchestration/session-reads',
+        createSessionPersonWaitRoutes({
+          orchestrationService: context.orchestrationService,
+          eventStore: context.orchestrationEventStore,
+          resolvePrincipal: resolveOrchestrationRequestPrincipal,
+          hostedTenantRegistry,
+          waiter: sessionTurnWaiter,
+          personSeesSession: personScope.seesSession,
+          preview: sessionPersonReadsPreview,
+        }),
+      );
+    }
   }
 
   const runtimeContext = context.buildRuntimeContext();

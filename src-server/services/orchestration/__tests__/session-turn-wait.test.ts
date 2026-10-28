@@ -545,3 +545,170 @@ describe('a restart-recovered turn', () => {
     expect(settled.view).not.toHaveProperty('settledTurn');
   });
 });
+
+describe('a restart-interrupted turn, for a wait that asks (#3427)', () => {
+  /** A Session whose fold the test drives, invocation-anchored like dispatch. */
+  function anchoredSession() {
+    const log: SessionWaitFoldEvent[] = [];
+    const listeners = new Set<() => void>();
+    const ports: SessionTurnWaitPorts = {
+      foldEvents: () => [...log],
+      headSequence: () => log.at(-1)?.sequence ?? 0,
+      coordinatorBusy: () => false,
+      readInputlessTurnDisposition: () => ({ kind: 'inputless' }),
+      // The boundary store records no invocation terminal for a recovery
+      // abort; an ordinary completion is its own invocation's terminal.
+      readInvocationTerminal: (_thread, invocationId) => {
+        const terminal = [...log]
+          .reverse()
+          .find(
+            ({ event }) =>
+              event.method === 'turn.completed' &&
+              (event as { invocationId?: string }).invocationId ===
+                invocationId,
+          );
+        return terminal
+          ? {
+              kind: 'found',
+              fact: {
+                invocationId,
+                terminalEventId: (terminal.event as { eventId: string })
+                  .eventId,
+              },
+            }
+          : { kind: 'absent' };
+      },
+      subscribe: (_thread, listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    } as SessionTurnWaitPorts;
+    const push = (fields: Record<string, unknown>) => {
+      const sequence = (log.at(-1)?.sequence ?? 0) + 1;
+      log.push({
+        sequence,
+        event: {
+          threadId: 't1',
+          eventId: `e${sequence}`,
+          ...fields,
+        } as unknown as CanonicalRuntimeEvent,
+      });
+      for (const listener of [...listeners]) listener();
+    };
+    return {
+      ports,
+      start: (turnId: string) =>
+        push({
+          method: 'turn.started',
+          turnId,
+          invocationId: `inv-${turnId}`,
+        }),
+      complete: (turnId: string) =>
+        push({
+          method: 'turn.completed',
+          turnId,
+          invocationId: `inv-${turnId}`,
+        }),
+      recoveryAbort: (turnId: string) =>
+        push({ method: 'turn.aborted', turnId, recoveryTerminal: true }),
+    };
+  }
+
+  test('a turn-settled wait ends on the interruption and names it, never as settled', async () => {
+    const session = anchoredSession();
+    session.start('turn-1');
+    const waiter = new SessionTurnWaiter(session.ports);
+    const pending = waiter.wait({
+      callerSessionId: 'person:p',
+      threadId: 't1',
+      until: 'turn-settled',
+      timeoutMs: 5000,
+      afterEventCursor: 1,
+      reportInterrupted: true,
+    });
+    session.recoveryAbort('turn-1');
+    const outcome = await pending;
+    expect(outcome).toMatchObject({
+      kind: 'settled',
+      state: 'idle',
+      interruptedTurn: { turnId: 'turn-1', sequence: 2 },
+    });
+    expect(outcome).not.toHaveProperty('settledTurn');
+  });
+
+  test('without asking, the same wait times out idle with no interruption (wait_session unchanged)', async () => {
+    const session = anchoredSession();
+    session.start('turn-1');
+    session.recoveryAbort('turn-1');
+    const waiter = new SessionTurnWaiter(session.ports);
+    const outcome = await waiter.wait({
+      callerSessionId: 'agent',
+      threadId: 't1',
+      until: 'turn-settled',
+      timeoutMs: 30,
+      afterEventCursor: 1,
+    });
+    expect(outcome).toMatchObject({ kind: 'timeout', state: 'idle' });
+    expect(outcome).not.toHaveProperty('interruptedTurn');
+  });
+
+  test('idle and an already-idle turn-settled wait report the interruption as the newest end', async () => {
+    const session = anchoredSession();
+    session.start('turn-1');
+    session.recoveryAbort('turn-1');
+    const waiter = new SessionTurnWaiter(session.ports);
+    for (const until of ['idle', 'turn-settled'] as const)
+      expect(
+        await waiter.wait({
+          callerSessionId: 'person:p',
+          threadId: 't1',
+          until,
+          timeoutMs: 1000,
+          reportInterrupted: true,
+        }),
+      ).toMatchObject({
+        kind: 'settled',
+        state: 'idle',
+        interruptedTurn: { turnId: 'turn-1' },
+      });
+  });
+
+  test('a turn that settled after the interruption answers for itself', async () => {
+    const session = anchoredSession();
+    session.start('turn-1');
+    session.recoveryAbort('turn-1');
+    session.start('turn-2');
+    session.complete('turn-2');
+    const waiter = new SessionTurnWaiter(session.ports);
+    const outcome = await waiter.wait({
+      callerSessionId: 'person:p',
+      threadId: 't1',
+      until: 'turn-settled',
+      timeoutMs: 1000,
+      afterEventCursor: 0,
+      reportInterrupted: true,
+    });
+    expect(outcome).toMatchObject({
+      kind: 'settled',
+      settledTurn: { turnId: 'turn-2', outcome: 'completed' },
+    });
+    expect(outcome).not.toHaveProperty('interruptedTurn');
+  });
+
+  test('an interruption at or before the cursor is not this wait’s', async () => {
+    const session = anchoredSession();
+    session.start('turn-1');
+    session.recoveryAbort('turn-1');
+    const waiter = new SessionTurnWaiter(session.ports);
+    const outcome = await waiter.wait({
+      callerSessionId: 'person:p',
+      threadId: 't1',
+      until: 'turn-settled',
+      timeoutMs: 30,
+      afterEventCursor: 2,
+      reportInterrupted: true,
+    });
+    expect(outcome).toMatchObject({ kind: 'timeout', state: 'idle' });
+    expect(outcome).not.toHaveProperty('interruptedTurn');
+  });
+});

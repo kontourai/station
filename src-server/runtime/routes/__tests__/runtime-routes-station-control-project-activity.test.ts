@@ -131,6 +131,9 @@ const PROJECT_1_SESSIONS = [
 
 const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
 
+/** Whether the `session-cli-reads` Feature Preview is on (read per request). */
+let personReadsPreviewOn = true;
+
 describe('station-control Project activity, digest and read anchor (#3413)', () => {
   const closers: Array<() => Promise<void> | void> = [];
 
@@ -138,6 +141,7 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
     vi.restoreAllMocks();
     __resetStationControlMcpTokensForTests();
     __resetStationControlStdioEntryForTests();
+    personReadsPreviewOn = true;
     delete process.env.STATION_API_BASE;
     for (const close of closers.splice(0)) await close();
   });
@@ -561,6 +565,12 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
       ]),
       metricsLog: [],
       monitoringEvents: [],
+      featurePreviews: {
+        bind: () => ({
+          select: <T>(branches: { enabled: () => T; disabled: () => T }) =>
+            personReadsPreviewOn ? branches.enabled() : branches.disabled(),
+        }),
+      },
       orchestrationEventStore: store,
       orchestrationService: orchestration,
       runtimeSearch: options.nativeSearch === false ? undefined : runtimeSearch,
@@ -718,7 +728,19 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
       };
     }
 
+    /** A person's own request: the operator's credential, no caller. */
+    async function personRequest(path: string) {
+      const response = await realFetch(`${base}${path}`, {
+        headers: { authorization: `Bearer ${OPERATOR_CREDENTIAL}` },
+      });
+      return {
+        status: response.status,
+        body: (await response.json()) as any,
+      };
+    }
+
     return {
+      personRequest,
       store,
       memory: context.memoryAdapters.get('default')!,
       orchestration,
@@ -1940,6 +1962,103 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
           'Chats',
           true,
         ]);
+      }
+    });
+  });
+
+  describe('the person leaves: station activity and station session digest (#3427)', () => {
+    const PERSON = '/api/orchestration/session-reads';
+    const P2_SESSIONS = ['a-child-p2', 'a-other-project'];
+    const GLOBAL_SESSIONS = ['a-global', 'g-caller'];
+
+    test('without a Project, a person lists their own Sessions in every Project and the global space', async () => {
+      const { personRequest } = await setup();
+      const listed = await personRequest(`${PERSON}/activity?limit=50`);
+      expect(listed.status).toBe(200);
+      const seen = ids(listed.body);
+      for (const id of [
+        ...PROJECT_1_SESSIONS,
+        ...P2_SESSIONS,
+        ...GLOBAL_SESSIONS,
+      ])
+        expect(seen).toContain(id);
+      // Another person's Session and another host's record never.
+      expect(seen).not.toContain('carol-p1');
+      expect(JSON.stringify(listed.body)).not.toMatch(
+        /CAROL-SECRET|remote-conversation|peer-env/,
+      );
+      // A person is no Session: nothing is `self`.
+      expect(JSON.stringify(listed.body)).not.toMatch(/"self"/);
+    });
+
+    test('a Project narrows to exactly its Sessions; an unknown Project is not found', async () => {
+      const { personRequest } = await setup();
+      const listed = await personRequest(
+        `${PERSON}/activity?projectSlug=project-1&limit=50`,
+      );
+      expect(listed.status).toBe(200);
+      // The person's own unconfined Session too: the `host` rule keeps an
+      // AGENT out of another Session that runs `host`, not its owner.
+      expect(ids(listed.body)).toEqual(
+        [...PROJECT_1_SESSIONS, 'a-host'].sort(),
+      );
+      const missing = await personRequest(
+        `${PERSON}/activity?projectSlug=no-such-project`,
+      );
+      expect([missing.status, missing.body.code]).toEqual([
+        404,
+        'project_not_found',
+      ]);
+    });
+
+    test('a digest reads a person’s own Session, and another owner’s as not found', async () => {
+      const { personRequest } = await setup();
+      const own = await personRequest(`${PERSON}/a-peer/digest`);
+      expect(own.status).toBe(200);
+      expect(own.body.data.session).toMatchObject({
+        sessionId: 'a-peer',
+        projectSlug: 'project-1',
+      });
+      expect(own.body.data.turns.length).toBeGreaterThan(0);
+      const other = await personRequest(`${PERSON}/carol-p1/digest`);
+      expect([other.status, other.body.code]).toEqual([
+        404,
+        'session_not_found',
+      ]);
+      expect(JSON.stringify(other.body)).not.toMatch(/CAROL-SECRET/);
+    });
+
+    test('agents and internal requests never reach the person leaves; the person never reaches the agent leaves', async () => {
+      const { personRequest, rawRequest } = await setup();
+      for (const path of [`${PERSON}/activity`, `${PERSON}/a-peer/digest`]) {
+        const raw = await rawRequest(path);
+        expect([path, raw.status]).toEqual([path, 403]);
+        expect(JSON.stringify(raw.body)).not.toMatch(/a-peer|sessions/);
+      }
+      for (const path of [
+        '/api/orchestration/session-activity',
+        '/api/orchestration/session-activity/a-peer/digest',
+      ]) {
+        const asPerson = await personRequest(path);
+        expect([path, asPerson.status, asPerson.body.code]).toEqual([
+          path,
+          403,
+          'station_control_caller_required',
+        ]);
+      }
+    });
+
+    test('off, the preview refuses both leaves with its typed answer', async () => {
+      const { personRequest } = await setup();
+      personReadsPreviewOn = false;
+      for (const path of [`${PERSON}/activity`, `${PERSON}/a-peer/digest`]) {
+        const refused = await personRequest(path);
+        expect([path, refused.status, refused.body.code]).toEqual([
+          path,
+          404,
+          'feature_preview_disabled',
+        ]);
+        expect(refused.body.previewId).toBe('session-cli-reads');
       }
     });
   });

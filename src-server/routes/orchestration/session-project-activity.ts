@@ -69,6 +69,7 @@ import {
   workClaimSessionEnded,
 } from '../../services/orchestration/work-claims.js';
 import {
+  type StationControlScope,
   sameScope,
   stationControlRefusal,
   stationControlRefusalBody,
@@ -245,39 +246,91 @@ const activityClaim = (claim: WorkClaimRecord) => ({
   expiresAt: claim.expiresAt,
 });
 
-export function createSessionProjectActivityRoutes(
-  deps: SessionProjectActivityDeps,
-) {
-  const app = new Hono();
+/**
+ * Who is reading, as the list and the digest decide visibility for them. An
+ * agent caller is held to its own Project by the scope rule; a person is held
+ * to the Projects they may `view` (`createSessionPersonActivityRoutes`). Both
+ * read through the same owner-scoped read model.
+ */
+interface ActivityViewer {
+  /** The viewer's own conversation: listed and digested whatever its scope. */
+  isOwn(
+    session: Pick<OrchestrationSessionSummary, 'threadId' | 'conversationId'>,
+  ): boolean;
+  /** Whether a Session that is not the viewer's own is listed. */
+  listsSession(threadId: string): boolean;
+  /** Whether a claim on a listed Session that is not the viewer's own shows. */
+  showsClaim(claim: WorkClaimRecord): boolean;
+  /** Whether a digest names a delegated child. */
+  seesChild(threadId: string): boolean;
+  /** Whether a digest's conversation (with its lineage) is the viewer's own. */
+  ownsConversation(conversationId: string, lineage: readonly string[]): boolean;
+  /** Whether a conversation that is not the viewer's own may be digested. */
+  digestsConversation(conversationId: string): boolean;
+}
 
+/** The person-facing leaves' extra facts: which Projects a person may view. */
+export interface SessionPersonActivityDeps extends SessionProjectActivityDeps {
+  /** `ProjectConfig.id` for a slug; `undefined` when there is none. */
+  projectIdForSlug(slug: string): string | undefined;
+  /** Whether `userId` holds the Project `view` action in `localProjectId`. */
+  personMayView(userId: string, localProjectId: string): boolean;
+  /**
+   * The Feature Preview selector: the leaves answer only while it is on, and
+   * a typed `feature_preview_disabled` refusal otherwise.
+   */
+  preview: {
+    select<T>(branches: { enabled: () => T; disabled: () => T }): T;
+  };
+}
+
+/** The Feature Preview that gates the person-facing Session reads. */
+export const SESSION_PERSON_READS_PREVIEW = {
+  id: 'session-cli-reads',
+  label: 'Session reads from the station CLI',
+} as const;
+
+/**
+ * Refuses a request that is not a person's own: every internal request (a
+ * station-control caller, a caller-less child, Station's own server code)
+ * has its own routes and its own scope rule, so the person rule is never
+ * applied to it.
+ */
+export function refuseNonPersonRequest(c: Context): Response | undefined {
+  if (stationControlRequestAuthority(c.req.raw) === undefined) return undefined;
+  return c.json(
+    {
+      success: false,
+      code: 'person_credential_required',
+      error:
+        "This read answers a person's own credential. Agents use their Station Control tools.",
+    },
+    403,
+  );
+}
+
+/** The Feature Preview refusal every person-facing Session read answers while off. */
+export function sessionPersonReadsDisabled(c: Context): Response {
+  return c.json(
+    {
+      success: false,
+      error: `Enable ${SESSION_PERSON_READS_PREVIEW.label} in Settings → Advanced → Feature previews.`,
+      code: 'feature_preview_disabled',
+      previewId: SESSION_PERSON_READS_PREVIEW.id,
+      settingsPath:
+        '/settings?view=feature-previews&highlight=feature-previews',
+    },
+    404,
+  );
+}
+
+function createSessionActivityCore(deps: SessionProjectActivityDeps) {
   const readAuthorityFor = (c: Context) =>
     sessionReadAuthorityFromRequest(
       resolveActorPrincipal(deps, c).userId,
       getTenantRequestContext(c.req.raw),
       deps.hostedTenantRegistry,
     );
-
-  /**
-   * Whether the caller may see this Session at all: the one scope rule, with
-   * the owner's Project `view` action. A Session Station holds no record of
-   * has no target and is not visible to anyone but, for a bound operator,
-   * the read authority below still has to find it.
-   */
-  const visibleToCaller = (
-    caller: StationControlCaller,
-    threadId: string,
-  ): {
-    visible: boolean;
-    scope?: ReturnType<typeof stationControlSessionScope>;
-  } => {
-    const target = deps.stationControlDispatchScope?.target(
-      { kind: 'thread', threadId, remote: false },
-      'view',
-    );
-    if (!target || stationControlScopeRefusal(caller, target))
-      return { visible: false };
-    return { visible: true, scope: target.scope };
-  };
 
   /** What the list and the digest both say about a Session. */
   const identityOf = (
@@ -317,33 +370,30 @@ export function createSessionProjectActivityRoutes(
       );
 
   /**
-   * The scope rule is decided per row, newest first, over the candidates the
-   * caller's Project selected BEFORE the fold (`listThreadIdsStartedIn`), so a
-   * call costs its own Project's Sessions (plus those that name none), not the
-   * Station's. That narrowing is an optimization and never the check: every
-   * row still passes `visibleToCaller` and the caller's own scope here, except
-   * the caller's own conversation, which is its own whatever its scope. Every
-   * caller, bound or not, sees only its own Project (or the global space).
+   * The visibility rule is decided per row, newest first, over the candidates
+   * the request selected BEFORE the fold, so a call costs those Sessions, not
+   * the Station's. That narrowing is an optimization and never the check:
+   * every row still passes the viewer's rule here, except the viewer's own
+   * conversation, which is its own whatever its scope.
    */
   const visibleRowsPage = (
-    caller: StationControlCaller,
+    viewer: ActivityViewer,
     rows: ReturnType<typeof activityRows>,
     cursor: ListCursor | undefined,
     limit: number,
   ) => {
-    const callerScope = stationControlSessionScope(caller);
     const page: typeof rows = [];
     for (const row of rows) {
       const position = { at: row.at, id: row.session.threadId };
       if (cursor && !isAfter(cursor, position)) continue;
-      // The caller's own conversation is listed whatever its scope, as its
+      // The viewer's own conversation is listed whatever its scope, as its
       // digest is read: the `host` and Project checks keep a scoped caller
       // out of OTHER Sessions, and its own Session is not another.
-      if (!isOwnSession(caller, row.session)) {
-        const seen = visibleToCaller(caller, row.session.threadId);
-        if (!seen.visible || !seen.scope || !sameScope(callerScope, seen.scope))
-          continue;
-      }
+      if (
+        !viewer.isOwn(row.session) &&
+        !viewer.listsSession(row.session.threadId)
+      )
+        continue;
       // One visible row past the page proves there is more.
       if (page.length === limit) return { page, more: true };
       page.push(row);
@@ -354,10 +404,10 @@ export function createSessionProjectActivityRoutes(
   /**
    * The page's active claims, by row: a claim is its Session's, or its
    * conversation's (a later Session of the same conversation keeps it). A row
-   * other than the caller's own shows only claims in the caller's scope.
+   * other than the viewer's own shows only claims the viewer may see.
    */
   const claimsByRow = (
-    caller: StationControlCaller,
+    viewer: ActivityViewer,
     page: ReturnType<typeof activityRows>,
   ): Map<string, WorkClaimRecord[]> => {
     const byRow = new Map<string, WorkClaimRecord[]>();
@@ -371,15 +421,14 @@ export function createSessionProjectActivityRoutes(
         ),
       },
     });
-    const callerScope = stationControlSessionScope(caller);
     for (const row of live) {
-      const own = isOwnSession(caller, row.session);
+      const own = viewer.isOwn(row.session);
       const mine = claims.filter(
         (claim) =>
           (claim.sessionId === row.session.threadId ||
             (claim.conversationId !== undefined &&
               claim.conversationId === row.session.conversationId)) &&
-          (own || sameScope(callerScope, claim.scope)),
+          (own || viewer.showsClaim(claim)),
       );
       if (mine.length > 0) byRow.set(row.session.threadId, mine);
     }
@@ -387,7 +436,7 @@ export function createSessionProjectActivityRoutes(
   };
 
   const listRow = (
-    caller: StationControlCaller,
+    viewer: ActivityViewer,
     { session, at }: ReturnType<typeof activityRows>[number],
     claims: readonly WorkClaimRecord[] | undefined,
   ) => {
@@ -399,7 +448,7 @@ export function createSessionProjectActivityRoutes(
     const worktree = recordedWorktree(
       deps.orchestrationService.firstStartedMetadataOfThread(session.threadId),
     );
-    const isCaller = isOwnSession(caller, session);
+    const isSelf = viewer.isOwn(session);
     return {
       sessionId: session.threadId,
       ...(session.conversationId
@@ -410,16 +459,24 @@ export function createSessionProjectActivityRoutes(
       lastActivityAt: at,
       ...(session.cwd ? { workingDirectory: session.cwd } : {}),
       ...(worktree ? { worktree } : {}),
-      ...(isCaller ? { self: true as const } : {}),
+      ...(isSelf ? { self: true as const } : {}),
       ...(claims && claims.length > 0
         ? { claims: claims.map(activityClaim) }
         : {}),
     };
   };
 
-  const listActivity = async (c: Context, activeOnly: boolean) => {
-    const caller = callerOf(c);
-    if (caller instanceof Response) return caller;
+  /**
+   * One page of the list. `candidates` are the Sessions the request selected
+   * before the fold; `undefined` reads every Session the read authority may
+   * read (the viewer's rule still decides each row).
+   */
+  const listActivity = async (
+    c: Context,
+    viewer: ActivityViewer,
+    activeOnly: boolean,
+    candidates: () => readonly string[] | undefined,
+  ) => {
     const limit = parseBoundedInteger(
       c.req.query('limit'),
       activeOnly
@@ -442,31 +499,10 @@ export function createSessionProjectActivityRoutes(
         'cursor is not a cursor this read returned. Omit it to start from the newest.',
         'project_activity_cursor_invalid',
       );
-
-    // A caller whose own scope cannot be read matches no other Session (the
-    // rule refuses it); its own conversation's current Session, and its own,
-    // are candidates whatever its scope.
-    const callerScope = stationControlSessionScope(caller);
-    const candidates = [
-      ...new Set([
-        caller.sessionId,
-        ...(caller.conversationId !== undefined
-          ? [
-              deps.orchestrationService.currentConversationSessionId(
-                caller.conversationId,
-              ),
-            ]
-          : []),
-        ...(callerScope.kind === 'unreadable'
-          ? []
-          : deps.eventStore.listThreadIdsStartedIn(
-              callerScope.kind === 'project' ? callerScope.id : undefined,
-            )),
-      ]),
-    ];
+    const threadIds = candidates();
     const sessions = await deps.orchestrationService.listSessionReadModel(
       readAuthorityFor(c),
-      { threadIds: candidates },
+      threadIds === undefined ? undefined : { threadIds },
     );
     const minutes = parseBoundedInteger(
       c.req.query('activeWithinMinutes'),
@@ -486,14 +522,14 @@ export function createSessionProjectActivityRoutes(
         session.hasActiveTurn === true ||
         Date.parse(at) >= since,
     );
-    const { page, more } = visibleRowsPage(caller, rows, cursor, limit);
+    const { page, more } = visibleRowsPage(viewer, rows, cursor, limit);
     const last = page.at(-1);
-    const claims = claimsByRow(caller, page);
+    const claims = claimsByRow(viewer, page);
     return c.json({
       success: true,
       data: {
         sessions: page.map((row) =>
-          listRow(caller, row, claims.get(row.session.threadId)),
+          listRow(viewer, row, claims.get(row.session.threadId)),
         ),
         nextCursor:
           more && last
@@ -502,16 +538,14 @@ export function createSessionProjectActivityRoutes(
       },
     });
   };
-  app.get('/', (c) => listActivity(c, false));
-  app.get('/active-work', (c) => listActivity(c, true));
 
   /**
    * Delegated children: Sessions Station itself derived as launched from the
    * conversation, read with the same owner-scoped read as the list and only
-   * those the caller may see (another Project's read as absent).
+   * those the viewer may see (another Project's read as absent).
    */
   const delegatedChildren = async (
-    caller: StationControlCaller,
+    viewer: ActivityViewer,
     authority: SessionReadAuthority,
     conversationId: string,
   ) => {
@@ -530,8 +564,7 @@ export function createSessionProjectActivityRoutes(
           });
     const children: Array<DigestDelegatedChild & { startedAt: string }> = [];
     for (const child of summaries) {
-      if (isRemote(child) || !visibleToCaller(caller, child.threadId).visible)
-        continue;
+      if (isRemote(child) || !viewer.seesChild(child.threadId)) continue;
       const title =
         deps.eventStore.conversationTitle([child.threadId]) ??
         child.displayTitle;
@@ -569,12 +602,12 @@ export function createSessionProjectActivityRoutes(
 
   /**
    * Scope and read authority, decided before anything about the Session is
-   * read, so a cursor or limit tells a caller nothing about a Session it may
+   * read, so a cursor or limit tells a viewer nothing about a Session it may
    * not see. A Session out of reach is `undefined`: it reads as absent.
    */
   const digestSubject = async (
     c: Context,
-    caller: StationControlCaller,
+    viewer: ActivityViewer,
     requestedId: string,
   ) => {
     const { conversationId, lineage } = sessionDigestLineage(
@@ -584,25 +617,14 @@ export function createSessionProjectActivityRoutes(
     const currentId =
       deps.orchestrationService.currentConversationSessionId(conversationId);
     const subjectId = lineage.includes(currentId) ? currentId : requestedId;
-    // A caller reads the digest of its OWN conversation whatever its scope, as
-    // `read_conversation` reads its own: a Session whose Project cannot be
+    // A viewer reads the digest of its OWN conversation whatever its scope,
+    // as `read_conversation` reads its own: a Session whose Project cannot be
     // confirmed is still its own.
-    const own =
-      lineage.includes(caller.sessionId) ||
-      (caller.conversationId !== undefined &&
-        caller.conversationId === conversationId) ||
-      deps.eventStore.conversationForSession(caller.sessionId)
-        ?.conversationId === conversationId;
-    if (!own) {
-      // The conversation as a whole: its newest started Session decides the
-      // scope, and `host` is read across every Session of it.
-      const target = deps.stationControlDispatchScope?.target(
-        { kind: 'conversation', conversationId, remote: false },
-        'view',
-      );
-      if (!target || stationControlScopeRefusal(caller, target))
-        return undefined;
-    }
+    if (
+      !viewer.ownsConversation(conversationId, lineage) &&
+      !viewer.digestsConversation(conversationId)
+    )
+      return undefined;
     const authority = readAuthorityFor(c);
     // Defense in depth: the read model below applies the same owner check, so
     // this only keeps an unreadable Session from reaching the fold at all.
@@ -616,9 +638,7 @@ export function createSessionProjectActivityRoutes(
     return { conversationId, lineage, subjectId, summary, authority };
   };
 
-  app.get('/:sessionId/digest', async (c) => {
-    const caller = callerOf(c);
-    if (caller instanceof Response) return caller;
+  const digest = async (c: Context, viewer: ActivityViewer) => {
     const requestedId = c.req.param('sessionId');
     if (!requestedId || requestedId.length > 512) return sessionNotFound(c);
     const turnLimit = parseBoundedInteger(
@@ -632,7 +652,7 @@ export function createSessionProjectActivityRoutes(
         `turnLimit must be a whole number from 1 to ${SESSION_DIGEST_MAX_TURNS}.`,
         'session_digest_limit_out_of_range',
       );
-    const subject = await digestSubject(c, caller, requestedId);
+    const subject = await digestSubject(c, viewer, requestedId);
     if (!subject) return sessionNotFound(c);
     const { conversationId, lineage, subjectId, summary, authority } = subject;
 
@@ -661,7 +681,7 @@ export function createSessionProjectActivityRoutes(
       throw error;
     }
     const { children, incomplete } = await delegatedChildren(
-      caller,
+      viewer,
       authority,
       conversationId,
     );
@@ -709,6 +729,254 @@ export function createSessionProjectActivityRoutes(
               })
             : null,
       },
+    });
+  };
+
+  return { listActivity, digest };
+}
+
+export function createSessionProjectActivityRoutes(
+  deps: SessionProjectActivityDeps,
+) {
+  const app = new Hono();
+  const core = createSessionActivityCore(deps);
+
+  /**
+   * Whether the caller may see this Session at all: the one scope rule, with
+   * the owner's Project `view` action. A Session Station holds no record of
+   * has no target and is not visible to anyone but, for a bound operator,
+   * the read authority still has to find it.
+   */
+  const visibleToCaller = (
+    caller: StationControlCaller,
+    threadId: string,
+  ): {
+    visible: boolean;
+    scope?: ReturnType<typeof stationControlSessionScope>;
+  } => {
+    const target = deps.stationControlDispatchScope?.target(
+      { kind: 'thread', threadId, remote: false },
+      'view',
+    );
+    if (!target || stationControlScopeRefusal(caller, target))
+      return { visible: false };
+    return { visible: true, scope: target.scope };
+  };
+
+  /**
+   * The agent's rule: every caller, bound or not, lists only its own Project
+   * (or the global space); a bound operator keeps the operator's reach for a
+   * digest, as for `read_conversation`.
+   */
+  const callerViewer = (caller: StationControlCaller): ActivityViewer => {
+    const callerScope = stationControlSessionScope(caller);
+    return {
+      isOwn: (session) => isOwnSession(caller, session),
+      listsSession: (threadId) => {
+        const seen = visibleToCaller(caller, threadId);
+        return (
+          seen.visible &&
+          seen.scope !== undefined &&
+          sameScope(callerScope, seen.scope)
+        );
+      },
+      showsClaim: (claim) => sameScope(callerScope, claim.scope),
+      seesChild: (threadId) => visibleToCaller(caller, threadId).visible,
+      // A caller reads the digest of its OWN conversation whatever its scope,
+      // as `read_conversation` reads its own.
+      ownsConversation: (conversationId, lineage) =>
+        lineage.includes(caller.sessionId) ||
+        (caller.conversationId !== undefined &&
+          caller.conversationId === conversationId) ||
+        deps.eventStore.conversationForSession(caller.sessionId)
+          ?.conversationId === conversationId,
+      digestsConversation: (conversationId) => {
+        // The conversation as a whole: its newest started Session decides
+        // the scope, and `host` is read across every Session of it.
+        const target = deps.stationControlDispatchScope?.target(
+          { kind: 'conversation', conversationId, remote: false },
+          'view',
+        );
+        return (
+          target !== undefined && !stationControlScopeRefusal(caller, target)
+        );
+      },
+    };
+  };
+
+  const listActivity = (c: Context, activeOnly: boolean) => {
+    const caller = callerOf(c);
+    if (caller instanceof Response) return caller;
+    // A caller whose own scope cannot be read matches no other Session (the
+    // rule refuses it); its own conversation's current Session, and its own,
+    // are candidates whatever its scope.
+    const callerScope = stationControlSessionScope(caller);
+    return core.listActivity(c, callerViewer(caller), activeOnly, () => [
+      ...new Set([
+        caller.sessionId,
+        ...(caller.conversationId !== undefined
+          ? [
+              deps.orchestrationService.currentConversationSessionId(
+                caller.conversationId,
+              ),
+            ]
+          : []),
+        ...(callerScope.kind === 'unreadable'
+          ? []
+          : deps.eventStore.listThreadIdsStartedIn(
+              callerScope.kind === 'project' ? callerScope.id : undefined,
+            )),
+      ]),
+    ]);
+  };
+  app.get('/', (c) => listActivity(c, false));
+  app.get('/active-work', (c) => listActivity(c, true));
+
+  app.get('/:sessionId/digest', (c) => {
+    const caller = callerOf(c);
+    if (caller instanceof Response) return caller;
+    return core.digest(c, callerViewer(caller));
+  });
+
+  return app;
+}
+
+/**
+ * #3427: a person's Project rule for a Session, shared by every person-facing
+ * Session read. The Session's scope comes from Station's own records (the
+ * same resolver the agent rule reads); the action checked is the PERSON's
+ * `view` there, never the recorded owner's. The global space admits; a
+ * Project the person may not view, or a scope that cannot be read, does not.
+ */
+export function personSessionScope(
+  deps: Pick<
+    SessionPersonActivityDeps,
+    'stationControlDispatchScope' | 'personMayView'
+  >,
+) {
+  const admits = (userId: string, scope: StationControlScope | undefined) =>
+    scope?.kind === 'global' ||
+    (scope?.kind === 'project' && deps.personMayView(userId, scope.id));
+  const ofThread = (threadId: string) =>
+    deps.stationControlDispatchScope?.target(
+      { kind: 'thread', threadId, remote: false },
+      'view',
+    )?.scope;
+  const ofConversation = (conversationId: string) =>
+    deps.stationControlDispatchScope?.target(
+      { kind: 'conversation', conversationId, remote: false },
+      'view',
+    )?.scope;
+  return {
+    admits,
+    ofThread,
+    ofConversation,
+    /** Whether `userId` may see this Session under the Project rule. */
+    seesSession: (userId: string, threadId: string) =>
+      admits(userId, ofThread(threadId)),
+  };
+}
+
+/**
+ * #3427: the person-facing leaves of the same two reads, for `station
+ * activity` and `station session digest`. A person's own credential reads
+ * here, never an agent's: every internal request is refused
+ * (`person_credential_required`), so the agent leaves above keep their scope
+ * rule and these never apply the person rule to an agent.
+ *
+ * Authority, decided per Session before anything about it is read:
+ *
+ * - reads are owner-scoped: the read model is read with the person's own read
+ *   authority, so another person's Session is never in it;
+ * - a Session in a Project is visible only while the person holds that
+ *   Project's `view` action (the same membership rule as the Project routes),
+ *   a Session in the global space always, one whose Project cannot be read
+ *   never. A Session out of reach reads like one that does not exist;
+ * - `projectSlug` narrows the list to one Project (its Sessions only, not the
+ *   global space). A Project the person may not view, or that does not exist,
+ *   answers `project_not_found` alike. Without it, the list is every visible
+ *   Session;
+ * - no remote host or other Station is ever returned, and nothing is `self`.
+ *
+ * Gated by the `session-cli-reads` Feature Preview.
+ */
+export function createSessionPersonActivityRoutes(
+  deps: SessionPersonActivityDeps,
+) {
+  const app = new Hono();
+  const core = createSessionActivityCore(deps);
+
+  const scope = personSessionScope(deps);
+
+  /** The Project-scope rule for a person, `only` narrowing to one Project. */
+  const personViewer = (userId: string, only?: string): ActivityViewer => {
+    const admits = (
+      found: StationControlScope | undefined,
+      narrowed: boolean,
+    ) =>
+      narrowed && only !== undefined
+        ? found?.kind === 'project' &&
+          found.id === only &&
+          scope.admits(userId, found)
+        : scope.admits(userId, found);
+    return {
+      isOwn: () => false,
+      listsSession: (threadId) => admits(scope.ofThread(threadId), true),
+      showsClaim: (claim) => admits(claim.scope, false),
+      seesChild: (threadId) => admits(scope.ofThread(threadId), false),
+      ownsConversation: () => false,
+      digestsConversation: (conversationId) =>
+        admits(scope.ofConversation(conversationId), false),
+    };
+  };
+
+  const projectNotFound = (c: Context) =>
+    c.json(
+      { success: false, code: 'project_not_found', error: 'Project not found' },
+      404,
+    );
+
+  app.get('/activity', (c) => {
+    const refused = refuseNonPersonRequest(c);
+    if (refused) return refused;
+    return deps.preview.select<Response | Promise<Response>>({
+      disabled: () => sessionPersonReadsDisabled(c),
+      enabled: () => {
+        const userId = resolveActorPrincipal(deps, c).userId;
+        const slug = c.req.query('projectSlug');
+        let projectId: string | undefined;
+        if (slug !== undefined) {
+          projectId = undefined;
+          try {
+            if (slug.length > 0 && slug.length <= 256)
+              projectId = deps.projectIdForSlug(slug);
+          } catch {
+            // A slug Station cannot read names no Project it may list.
+          }
+          if (!projectId || !deps.personMayView(userId, projectId))
+            return projectNotFound(c);
+        }
+        const activeOnly = c.req.query('activeWithinMinutes') !== undefined;
+        return core.listActivity(
+          c,
+          personViewer(userId, projectId),
+          activeOnly,
+          () =>
+            projectId === undefined
+              ? undefined
+              : deps.eventStore.listThreadIdsStartedIn(projectId),
+        );
+      },
+    });
+  });
+
+  app.get('/:sessionId/digest', (c) => {
+    const refused = refuseNonPersonRequest(c);
+    if (refused) return refused;
+    return deps.preview.select<Response | Promise<Response>>({
+      disabled: () => sessionPersonReadsDisabled(c),
+      enabled: () =>
+        core.digest(c, personViewer(resolveActorPrincipal(deps, c).userId)),
     });
   });
 

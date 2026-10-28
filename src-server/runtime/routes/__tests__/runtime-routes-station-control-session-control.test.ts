@@ -63,6 +63,8 @@ const support = vi.hoisted(() => ({
   /** What an interrupt answers. */
   interruptOutcome: 'cooperative' as string,
   bus: undefined as unknown as { emit(event: string, data: unknown): void },
+  /** Whether the `session-cli-reads` Feature Preview is on. */
+  previewOn: true,
 }));
 
 vi.mock('../runtime-route-support.js', () => {
@@ -168,6 +170,7 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
     support.current.clear();
     support.steerOutcome = 'steered';
     support.interruptOutcome = 'cooperative';
+    support.previewOn = true;
     for (const close of closers.splice(0)) await close();
   });
 
@@ -215,6 +218,13 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
       memoryAdapters: new Map(),
       metricsLog: [],
       monitoringEvents: [],
+      // Every preview is one switch here; the selector is read per request.
+      featurePreviews: {
+        bind: () => ({
+          select: <T>(branches: { enabled: () => T; disabled: () => T }) =>
+            support.previewOn ? branches.enabled() : branches.disabled(),
+        }),
+      },
       orchestrationEventStore: deepStub({
         readInputlessTurnDisposition: () => ({ kind: 'inputless' as const }),
         sessionTurnBoundaryAuthority: () => ({
@@ -1144,6 +1154,167 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
           })
         ).status,
       ).toBe(400);
+    });
+  });
+
+  describe('the person leaf: station session wait (#3427)', () => {
+    const PERSON_PATH = '/api/orchestration/session-reads';
+    async function personWait(
+      base: string,
+      sessionId: string,
+      headers: Record<string, string>,
+      query: Record<string, string>,
+    ): Promise<Answer> {
+      const response = await fetch(
+        `${base}${PERSON_PATH}/${encodeURIComponent(sessionId)}/wait?${new URLSearchParams(query)}`,
+        { headers },
+      );
+      return {
+        status: response.status,
+        body: (await response.json()) as Record<string, any>,
+      };
+    }
+
+    test('a person reads their own Sessions in any Project and the global space, never another owner’s', async () => {
+      const { base } = await setup();
+      const rows: string[][] = [];
+      for (const [target, expected] of [
+        ['op-thread-a', 'reached'],
+        ['op-thread-b', 'reached'],
+        ['op-thread-global', 'reached'],
+        ['person-thread-a', NOT_FOUND],
+        ['new-thread-a', NOT_FOUND],
+      ] as const) {
+        const answer = await personWait(base, target, operatorUi, {
+          until: 'idle',
+        });
+        rows.push([target, verdict(answer, answer.status === 200), expected]);
+      }
+      for (const [target, actual, expected] of rows)
+        expect([target, actual]).toEqual([target, expected]);
+    });
+
+    test('every internal request is refused, and the agent leaf still refuses the person', async () => {
+      const { base } = await setup();
+      const pooled = () =>
+        internal({ 'x-station-control-caller-binding': 'a'.repeat(43) });
+      for (const [label, headers] of [
+        ['raw token', internal],
+        ['pooled child', pooled],
+        ['bound caller', as('bound', 'op-caller-a')],
+        ['bearer caller', as('bearer-exposed', 'op-caller-a')],
+      ] as const) {
+        const answer = await personWait(base, 'op-thread-a', headers(), {
+          until: 'idle',
+        });
+        // The station-control guard refuses an internal request to a route
+        // its table does not map before the leaf runs; the leaf's own
+        // refusal (`person_credential_required`) is the second wall, proven
+        // by the route test.
+        expect([label, answer.status, answer.body.code]).toEqual([
+          label,
+          403,
+          'station_control_route_unmapped',
+        ]);
+      }
+      const agentLeaf = await wait(base, 'op-thread-a', operatorUi, {
+        until: 'idle',
+      });
+      expect([agentLeaf.status, agentLeaf.body.code]).toEqual([
+        403,
+        CALLER_REQUIRED,
+      ]);
+    });
+
+    test('off, the preview refuses with its typed answer and waits for nothing', async () => {
+      const { base } = await setup();
+      support.previewOn = false;
+      support.busy.add('op-thread-a');
+      const answer = await personWait(base, 'op-thread-a', operatorUi, {
+        until: 'turn-settled',
+        timeoutMs: '20000',
+      });
+      expect(answer.status).toBe(404);
+      expect(answer.body).toMatchObject({
+        success: false,
+        code: 'feature_preview_disabled',
+        previewId: 'session-cli-reads',
+      });
+    });
+
+    test('a turn a restart cut off ends the wait as interrupted, never as settled', async () => {
+      const { base } = await setup();
+      support.busy.add('op-thread-a');
+      appendFold('op-thread-a', 'turn.started', 'live-turn');
+      const pending = personWait(base, 'op-thread-a', operatorUi, {
+        until: 'turn-settled',
+        timeoutMs: '20000',
+        afterEventCursor: '1',
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      support.busy.clear();
+      const log = support.fold.get('op-thread-a')!;
+      const recovery = {
+        method: 'turn.aborted',
+        turnId: 'live-turn',
+        threadId: 'op-thread-a',
+        eventId: 'recovery-abort',
+        recoveryTerminal: true,
+      };
+      log.push({ sequence: 2, payload: recovery });
+      support.bus.emit('orchestration:event', { event: recovery });
+      const answer = await pending;
+      expect(answer.status).toBe(200);
+      expect(answer.body.data).toMatchObject({
+        sessionId: 'op-thread-a',
+        settled: true,
+        timedOut: false,
+        state: 'idle',
+        interruptedTurn: { turnId: 'live-turn', sequence: 2 },
+      });
+      expect(answer.body.data.settledTurn).toBeUndefined();
+      expect(answer.body.data.interruptedTurn.eventId).toBeUndefined();
+      // The agent's wait over the same log reports no interruption.
+      const agent = await wait(
+        base,
+        'op-thread-a',
+        as('bearer-exposed', 'op-caller-a')(),
+        { until: 'idle' },
+      );
+      expect(agent.body.data.interruptedTurn).toBeUndefined();
+    });
+
+    test('a person has their own wait budget, apart from any Session’s', async () => {
+      const { base } = await setup();
+      support.busy.add('op-thread-a');
+      appendFold('op-thread-a', 'turn.started', 'live-turn');
+      const controllers = Array.from({ length: 4 }, () => {
+        const controller = new AbortController();
+        open.push(controller);
+        return controller;
+      });
+      const held = controllers.map((controller) =>
+        fetch(
+          `${base}${PERSON_PATH}/op-thread-a/wait?until=turn-settled&timeoutMs=20000`,
+          { headers: operatorUi, signal: controller.signal },
+        ).catch(() => undefined),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const fifth = await personWait(base, 'op-thread-a', operatorUi, {
+        until: 'turn-settled',
+        timeoutMs: '50',
+      });
+      expect([fifth.status, fifth.body.code]).toEqual([429, 'wait_capacity']);
+      // An agent's own budget is untouched by the person's.
+      const agent = await wait(
+        base,
+        'op-thread-a',
+        as('bearer-exposed', 'op-caller-a')(),
+        { until: 'turn-settled', timeoutMs: '50' },
+      );
+      expect(agent.status).toBe(200);
+      for (const controller of controllers) controller.abort();
+      await Promise.all(held);
     });
   });
 });
