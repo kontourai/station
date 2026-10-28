@@ -60,3 +60,47 @@ The shell-skeleton design's loading policy remains accurate.
 - The Sources and older Project knowledge sections retain separate functions:
   canonical store management versus the earlier corpus and migration. Combining
   them would require a storage/migration journey change, not just deleting UI.
+
+## Final validation — 2026-10-28
+
+Production changes: `bc040c03b`; documentation review notes: `0179312f1`;
+browser fixture correction: `21350ccc1`. Retention: the PNGs beside this note
+are inspected, source-pinned component captures for this audit, retained with
+its review history. They are after-change captures, not live-shell acceptance.
+
+- PASS: 142 tests in all 15 focused settings files, including Sources/access
+  owner tests and browser layout/interaction checks.
+- PASS: E2E typecheck after building the missing Station Connect declarations.
+- PASS: repository lint, governance, code hygiene, component-style hygiene,
+  and verification-policy checks in the completed readiness run.
+- PASS: documentation freshness after recording seven reviewed source changes:
+  467 reviews and 33 captures checked, zero advisories. The documentation
+  index/reachability recheck passes.
+- PASS: controlled regressions for dirty-draft refresh, cleared directory
+  serialization and partial upload failure each fail for their intended
+  reason with the old behavior injected; restored focused run passes.
+- PASS: removing mobile dock padding fails the corrected browser geometry
+  assertion (842.86px exceeds the 828px boundary); restored browser test passes.
+  The earlier fixture allowed ancestor scrolling and failed this effectiveness
+  check; its corrected viewport frame and ordinary Delete/Cancel interaction
+  were independently reviewed. No production changes followed the review.
+- Deslop: no additional behavior-neutral cleanup was needed in the final diff.
+  Independent production review and the browser delta review found no blockers.
+
+Readiness is **not fully green**. Its documentation lane initially found stale
+reviews (repaired above) and a learning-media timeout. The targeted recheck
+has 38 passing tests and that one remaining timeout: the phase trace spends
+46.2 seconds in `read-review-state`, exceeding its 30-second deadline. Its
+assertion phase completes, but the test remains failed; no deadline was raised.
+The required code-health attempt also remains unverified: Fallow received
+SIGTERM before producing its report (exit 2). These are retained verification
+limits, not passing receipts. Broad selector output executed no tests and is
+not counted as completion evidence.
+
+Live qualification still needs real provider/environment execution, AWS,
+shared-member permission journeys, persistence across restart, native shells,
+and the actual shell dock. A refresh skipped during a dirty draft is retained
+until another query change; reverting the draft alone does not adopt that
+skipped remote snapshot.
+
+The branch is local; no PR, deployment, or merge was performed.
