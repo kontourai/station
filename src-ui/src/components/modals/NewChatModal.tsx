@@ -184,6 +184,8 @@ interface NewChatModalProps {
     approvalMode?: ApprovalMode,
   ) => void | Promise<void>;
   onClose: () => void;
+  /** The person navigated away mid-setup: the draft is left, not dismissed. */
+  onLeave?: () => void;
   onTaskStarted?: () => void;
   draftContext?: CodingChatContextDraft | null;
   mode?: NewChatModalMode;
@@ -245,6 +247,7 @@ export function NewChatModal({
   activeProjectSlug,
   onSelect,
   onClose,
+  onLeave,
   onTaskStarted,
   draftContext = null,
   mode,
@@ -520,6 +523,7 @@ export function NewChatModal({
           : defaultSelection?.agent,
       ),
     onCancel: onClose,
+    onLeave,
     allowedPaths: ['/registry', '/connections', '/agents'],
     revalidate: async () => {
       // Visual skills can show in the composer (opened there, or handed

@@ -3736,6 +3736,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           setHandoffSource(null);
                         },
                         onClose: dismissNewChatDraft,
+                        onLeave: closeNewChatDraft,
                         historyActive: workspaceShown,
                         onReturnFromSetup: revealDockForDraft,
                       }}

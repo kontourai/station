@@ -56,16 +56,19 @@ export function useWorkingChatFocus({
   );
   const canFocus = ready || (draftable && pending?.whileBusy === true);
 
-  // The deadline covers only waiting for a focusable composer: a busy chat
-  // holding a draft-ready composer may run a turn far longer than a minute.
+  // The deadline covers only waiting for a focusable composer (including a
+  // writable chat whose composer never registers): a busy chat holding a
+  // draft-ready composer may run a turn far longer than a minute.
+  const composerUsable =
+    composer !== null && !composer.disabled && !composer.readOnly;
   useEffect(() => {
-    if (!pending || canFocus) return;
+    if (!pending || (canFocus && composerUsable)) return;
     const deadline = window.setTimeout(
       () => setPending(null),
       NOT_READY_DEADLINE_MS,
     );
     return () => window.clearTimeout(deadline);
-  }, [pending, canFocus]);
+  }, [pending, canFocus, composerUsable]);
 
   useEffect(() => {
     if (!pending) return;
@@ -111,10 +114,12 @@ export function useWorkingChatFocus({
     };
     // Leaving the composer for nothing focusable (a click on transcript text)
     // lands on the page without a `focusin`: that is the person moving away,
-    // unless the composer lost focus because it was disabled.
+    // unless the composer lost focus because it was disabled, or the window
+    // lost focus (a tab or app switch returns it to the composer).
     const onFocusOut = (event: FocusEvent) => {
       const target = event.target;
       if (
+        document.hasFocus() &&
         target === lastComposer.current &&
         target instanceof HTMLTextAreaElement &&
         !target.disabled

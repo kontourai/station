@@ -93,11 +93,40 @@ test('blurring the composer to the page ends the request', () => {
   act(() => api!.requestComposerFocus('chat-1', { whileBusy: true }));
   setComposerEnabled(true);
   expect(document.activeElement).toBe(composer());
+  // jsdom reports an unfocused window; a person clicking the page has one.
+  const hasFocus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
   act(() => composer().blur());
+  hasFocus.mockRestore();
   expect(document.activeElement).toBe(document.body);
   setComposerEnabled(false);
   setComposerEnabled(true);
   expect(document.activeElement).not.toBe(composer());
+});
+
+// A tab or app switch blurs the composer while the window is unfocused; the
+// browser hands focus back on return, so the request must survive it.
+test('a window blur does not end the request', () => {
+  vi.useFakeTimers();
+  render(<Harness ready={false} draftable />);
+  act(() => api!.requestComposerFocus('chat-1', { whileBusy: true }));
+  setComposerEnabled(true);
+  const hasFocus = vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+  act(() => composer().blur());
+  hasFocus.mockRestore();
+  setComposerEnabled(false);
+  setComposerEnabled(true);
+  expect(document.activeElement).toBe(composer());
+});
+
+// A writable chat whose composer never registers must not hold the request
+// (and its document listeners) forever.
+test('a ready chat with no composer gives up after the deadline', () => {
+  vi.useFakeTimers();
+  render(<Harness ready />);
+  act(() => api!.requestComposerFocus('chat-1'));
+  act(() => vi.advanceTimersByTime(60_000));
+  setComposerEnabled(true);
+  expect(document.activeElement).toBe(document.body);
 });
 
 // Once the composer has stayed usable for a moment the request is done: a

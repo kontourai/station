@@ -438,6 +438,22 @@ describe('New Chat repair and return', () => {
       screen.queryByRole('button', { name: 'Return to New Chat' }),
     ).toBeNull();
   });
+  // Navigating away from setup is leaving the draft (the dock keeps the size
+  // that navigation asked for), while the banner's Cancel return dismisses it.
+  test('navigating away from setup leaves the draft; Cancel return dismisses it', async () => {
+    const onLeave = vi.fn();
+    const view = harness({ onLeave });
+    await openSetup();
+    act(() => navigationStore.navigate('/settings'));
+    expect(onLeave).toHaveBeenCalledTimes(1);
+    expect(view.onClose).not.toHaveBeenCalled();
+    view.unmount();
+    const second = harness({ onLeave });
+    await openSetup();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel return' }));
+    expect(second.onClose).toHaveBeenCalledTimes(1);
+    expect(onLeave).toHaveBeenCalledTimes(1);
+  });
   test('cancel and unmount clear the exact banner', async () => {
     const view = harness();
     await openSetup();
