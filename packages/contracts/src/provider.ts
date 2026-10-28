@@ -787,6 +787,30 @@ export const ACP_APPROVAL_TAKEOVER_FAILED_CODE = 'acp-approval-takeover-failed';
 export const ENGINE_SESSION_BINDING_DEAD_CODE = 'engine-session-binding-dead';
 
 /**
+ * `runtime.error` code for a turn whose engine process was killed because its
+ * workload scope exhausted its memory budget. The evidence is the kernel's own
+ * `oom_kill` count in the engine scope's `memory.events`, read before the
+ * scope is stopped: the engine exited by SIGKILL and the scope recorded an
+ * OOM kill that was not already reported as a command kill, or systemd
+ * reported the scope `oom-kill` (`childWorkloadMemoryExhausted` in
+ * `@kontourai/station-shared/child-workload`). A signal alone, or an unknown
+ * count, is never enough. `details.workload` carries `result`,
+ * `memoryPeakBytes`, `memoryMaxBytes`, `oomKills` and `unreportedOomKills`
+ * when observed. Published by the Codex adapter today; the conversation is then
+ * continued with a Station recovery note.
+ */
+export const ENGINE_MEMORY_EXHAUSTED_CODE = 'engine-memory-exhausted';
+
+/**
+ * `runtime.warning` code: the kernel OOM killer killed a process inside an
+ * engine's workload scope (normally a command the engine started) while the
+ * engine kept running. `details` carries `newKills`, `oomKills` and
+ * `memoryMaxBytes`. Which command it was is not known to Station; the engine
+ * reports that command's own failure.
+ */
+export const WORKLOAD_COMMAND_OOM_KILLED_CODE = 'workload-command-oom-killed';
+
+/**
  * A provider reported a failed query/turn without disproving its native binding.
  * This is not a completed turn, a retry instruction, or a resumability claim.
  */
@@ -1371,4 +1395,41 @@ export interface ProviderTurnStartResult {
   threadId: string;
   turnId: string;
   resumeCursor?: unknown;
+}
+
+/**
+ * The send key of the turn Station sends to continue a conversation whose
+ * engine was killed for memory: one per dead Session and turn, so every path
+ * that continues it (Station's automatic continuation, a person's Continue on
+ * any device) names the same turn and the conversation inbox and turn
+ * deduplication admit it once. Derived server-side; clients only test it.
+ */
+export const MEMORY_CONTINUATION_CLIENT_TURN_PREFIX = 'memory-continue-';
+
+const MEMORY_CONTINUATION_KEY = /^memory-continue-[0-9a-f]{40}(-p[2-5]?)?$/;
+
+/**
+ * Who asked for a continuation after a memory kill, read from its send key:
+ * Station's automatic continuation uses the bare key; a person's Continue
+ * uses `-p` (then `-p2` to `-p5` after a cancelled or refused one).
+ */
+export function memoryContinuationKeyKind(
+  clientTurnId: string | undefined,
+): 'automatic' | 'person' | undefined {
+  const match = clientTurnId
+    ? MEMORY_CONTINUATION_KEY.exec(clientTurnId)
+    : null;
+  if (!match) return undefined;
+  return match[1] ? 'person' : 'automatic';
+}
+
+/** Whether a turn is Station's continuation after a memory kill. */
+export function isStationMemoryContinuationTurn(turn: {
+  readonly clientTurnId?: string;
+  readonly clientOrigin?: { readonly actor: { readonly kind: string } };
+}): boolean {
+  return (
+    turn.clientOrigin?.actor.kind === 'internal' &&
+    memoryContinuationKeyKind(turn.clientTurnId) !== undefined
+  );
 }

@@ -185,6 +185,8 @@ export type ChatMessage = {
   steerInterruptedRun?: boolean;
   /** See `ChatMessage.stationCheckBack` in types.ts. */
   stationCheckBack?: boolean;
+  /** See `ChatMessage.stationMemoryContinuation` in types.ts. */
+  stationMemoryContinuation?: boolean;
   /** See `ChatMessage.sender` in types.ts. */
   sender?: ClientOriginSender;
   model?: string;

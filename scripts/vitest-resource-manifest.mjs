@@ -164,6 +164,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/adapters/__tests__/node-pty-adapter.test.ts',
   // Real node-pty shells in isolated homes; no shared ports or host state.
   'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+  // Production route/auth composition opens real terminal PTYs in a private home.
+  'src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts',
+  'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
   // Two disposable workers contend on private SQLite connections; no shared host output or timing assertion.
   'src-server/services/outside-agent/__tests__/oauth-concurrency.test.ts',
   // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.
@@ -172,6 +175,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/server-scenario.test.ts',
   // Tiny disposable user-service/scope budgets exercise actual OOM containment.
   'src-server/services/infra/__tests__/workload-resources.process.test.ts',
+  // A real detached engine-shaped process and the scope holder Station spawns.
+  'src-server/services/infra/__tests__/workload-scope-holder.process.test.ts',
+  // Fake systemd manager; one case starts and reaps a real short-lived process.
+  'src-server/services/infra/__tests__/workload-budget.test.ts',
   'scripts/__tests__/run-biome.process.test.ts',
   'scripts/__tests__/component-style-hygiene.process.test.ts',
   // Real second-process Task/share writers contend with the publication fence.

@@ -269,6 +269,7 @@ import {
   isDeviceRequestableScope,
   PAIRING_SCOPE_DESCRIPTIONS,
   PAIRING_SCOPE_PRESETS,
+  PAIRING_SCOPE_TERMINAL_OPERATE,
   PAIRING_SCOPES,
   type PairedDevice,
   type PairingScope,
@@ -308,6 +309,10 @@ import {
   INTERNAL_SESSION_READ_SCOPE,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
+import {
+  TERMINAL_SOCKET_PATH,
+  terminalScopeAllows,
+} from '@kontourai/station-contracts/terminal-transport';
 import { workItemRefKey } from '@kontourai/station-contracts/work-item-provider';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { isStationNativeShellOrigin } from '@kontourai/station-shared/native-shell-origin';
@@ -521,6 +526,7 @@ import { createNativeDeviceProofSelfReceiptRoutes } from '../../routes/system/na
 import { createSettingsRegistryRoutes } from '../../routes/system/settings-registry.js';
 import { createSystemRoutes } from '../../routes/system/system.js';
 import { resolveThisServerProvenance } from '../../routes/system/system-update-routes.js';
+import { WORKLOAD_BUDGET_SETTINGS_PREVIEW } from '../../routes/system/workload-routes.js';
 import { createTelemetryProducerRoutes } from '../../routes/telemetry-producers.js';
 import { createInboundWebhookRoutes } from '../../routes/webhooks/inbound-webhooks.js';
 import { createWebhookTurnStarter } from '../../routes/webhooks/webhook-turn-starter.js';
@@ -535,6 +541,7 @@ import {
   type PairingFailureState,
 } from '../../security/pairing-failure-limiter.js';
 import {
+  credentialAuthorizedForScope,
   grantedPairingScope,
   type PairingScopeContextStore,
 } from '../../security/pairing-route-scopes.js';
@@ -686,6 +693,7 @@ import {
 } from '../../services/orchestration/delegation-result-delivery.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
+import { memoryContinuationForInbox } from '../../services/orchestration/memory-exhaustion-continuation.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import type { OrchestrationStreamPresence } from '../../services/orchestration/orchestration-stream-presence.js';
 import { ProjectTaskRoomRevisionEvidenceBridge } from '../../services/orchestration/project-task-room-revision-evidence-bridge.js';
@@ -810,6 +818,10 @@ import {
   TelemetryProducerStore,
 } from '../../services/telemetry-producers/telemetry-producer-store.js';
 import { InProcessShellHost } from '../../services/terminal/shell-host.js';
+import {
+  registerTerminalGateway,
+  TerminalGateway,
+} from '../../services/terminal/terminal-gateway.js';
 import type { TerminalService } from '../../services/terminal/terminal-service.js';
 import {
   TerminalSessionRefusal,
@@ -3169,11 +3181,32 @@ export function configureRuntimeRoutes(
       context.eventBus.emit(SERVER_EVENTS.SERVER_UPDATE_CHANGED, state),
     logger: context.logger,
   });
+  // Host workload budgets belong to the personal host's operator; a hosted
+  // tenant neither reads nor sets them. Bound here, at composition, so the
+  // preview is offered whether or not it is enabled.
+  const workloadOperator =
+    !hostedTenantRegistry && !isHostedTenantExecutionRequired()
+      ? {
+          settingsPreview: context.featurePreviews.bind({
+            id: 'workload-budget-settings',
+            label: WORKLOAD_BUDGET_SETTINGS_PREVIEW.label,
+            description: WORKLOAD_BUDGET_SETTINGS_PREVIEW.description,
+          }),
+        }
+      : undefined;
   context.app.route(
     '/api/system',
     createSystemRoutes(
       {
         ...createRuntimeSystemRouteDeps(context),
+        workload: {
+          ...(workloadOperator ? { operator: workloadOperator } : {}),
+          resolveCallerSession: (request) =>
+            resolveStationControlCallerForRequest(
+              request,
+              resolveStationControlCallerRecord,
+            )?.sessionId ?? null,
+        },
         serverUpdate,
         listRunningTurnsFor: async (c) => {
           // What the restart would stop: every session with an active turn,
@@ -6131,6 +6164,26 @@ export function configureRuntimeRoutes(
     }
   })();
 
+  // A Session killed for exhausting its workload memory continues once,
+  // through the same inbox (capped, idempotent per dead turn). The person's
+  // Continue reaches the same entry through the orchestration route.
+  const memoryContinuation = context.orchestrationEventStore
+    ? memoryContinuationForInbox({
+        eventStore: context.orchestrationEventStore,
+        service: context.orchestrationService,
+        inbox: threadInbox,
+        logger: context.logger,
+      })
+    : undefined;
+  if (memoryContinuation)
+    context.eventBus.subscribe((frame) => {
+      if (frame.event !== SERVER_EVENTS.ORCHESTRATION_EVENT) return;
+      const event = frame.data?.event as
+        | { method?: unknown; threadId?: unknown; reason?: unknown }
+        | undefined;
+      if (event) memoryContinuation.observe(event);
+    });
+
   // Agent wake-ups ride the thread inbox: due ones are handed to it, so the
   // same placement rules (wait for a running turn, the live continuation's
   // permission rule, no stored full-access grant) apply. Without an inbox
@@ -6174,6 +6227,7 @@ export function configureRuntimeRoutes(
       eventBus: context.eventBus,
       ...(delegationResults ? { delegationResults } : {}),
       ...(threadInbox ? { threadInbox } : {}),
+      ...(memoryContinuation && threadInbox ? { memoryContinuation } : {}),
       logger: context.logger,
       actionOperations,
       terminalService: context.terminalService,
@@ -7890,7 +7944,19 @@ export function configureRuntimeRoutes(
         async () => (await context.configLoader.loadAppConfig()).terminalShell,
       ),
       {
-        authorize: (request) => authorizeTerminalRequest(request),
+        authorize: (request, _scope, operation) => {
+          const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+          return (
+            authorizeTerminalRequest(request) &&
+            !!principal &&
+            terminalScopeAllows(
+              context.environmentSecurityService.resolveGrantedScope(
+                principal.credential,
+              ) ?? '',
+              operation,
+            )
+          );
+        },
         resolveRoot: async (request, scope) => {
           const project = context.storageAdapter
             .listProjects()
@@ -7915,6 +7981,45 @@ export function configureRuntimeRoutes(
       },
     );
     context.terminalService.scopedSessions = terminalSessions;
+    context.app.get('/api/terminal/socket', (c) =>
+      authorizeTerminalRequest(c.req.raw)
+        ? c.body(null, 204)
+        : c.json({ success: false, error: 'Terminal access refused' }, 403),
+    );
+    registerTerminalGateway(
+      context.app,
+      new TerminalGateway({
+        sessions: terminalSessions,
+        allowedOrigins: resolveConfiguredRuntimeOrigins(context),
+        authenticate: async (credential, incoming) => {
+          if (
+            !(await credentialAuthorizedForScope(
+              context.environmentSecurityService,
+              PAIRING_SCOPE_TERMINAL_OPERATE,
+              credential,
+            ))
+          )
+            return undefined;
+          const request = new Request(
+            `http://localhost:${context.port}${TERMINAL_SOCKET_PATH}`,
+            {
+              headers: {
+                authorization: `Bearer ${credential}`,
+                ...(incoming.headers.origin && {
+                  origin: incoming.headers.origin,
+                }),
+              },
+            },
+          );
+          // Run the real HTTP admission pipeline; never synthesize a principal
+          // from a token or forward caller-controlled internal proxy headers.
+          const response = await context.app.fetch(request, { incoming });
+          return response.status === 204 && authorizeTerminalRequest(request)
+            ? request
+            : undefined;
+        },
+      }),
+    );
     context.app.route(
       '/api/projects',
       createTerminalSessionRoutes(

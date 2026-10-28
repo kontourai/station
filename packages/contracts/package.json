@@ -25,6 +25,7 @@
     "LICENSE"
   ],
   "exports": {
+    "./terminal-transport": "./src/terminal-transport.ts",
     "./walkthrough": "./src/walkthrough.ts",
     "./station-control-external-client": "./src/station-control-external-client.ts",
     "./required-slots": "./src/required-slots.ts",

@@ -1,0 +1,11 @@
+{
+  "revision": "954475a853894fa1636309c1952357bf41d3e588",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"contracts.md change adds two rows to the diagnostic-code to failure-kind table (engine-memory-exhausted, workload-command-oom-killed); no glossary term is introduced or changed.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"contracts.md change adds two runtime diagnostic rows to the failure-kind table; this guide points at the provider-failure contract without listing codes, so nothing here changes.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"contracts.md change documents two new PROVIDER_FAILURE_KINDS entries in provider-failure.ts; additive mapping of existing exported codes, within the package rules (no rename or removal).","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

@@ -1,12 +1,17 @@
 import { useConnections } from '@kontourai/station-connect';
 import type { ToolPolicyDelivery } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
-import { ENGINE_SIGN_IN_REQUIRED_CODE } from '@kontourai/station-contracts/provider';
+import {
+  ENGINE_MEMORY_EXHAUSTED_CODE,
+  ENGINE_SIGN_IN_REQUIRED_CODE,
+} from '@kontourai/station-contracts/provider';
 import { MCP_SIGN_IN_REQUIRED_CODE } from '@kontourai/station-contracts/provider-failure';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
 import { stationControlToolName } from '@kontourai/station-contracts/station-control-refusal';
 import {
+  continueAfterMemoryExhaustion,
   inspectOrchestrationSteerInput,
+  MemoryContinuationUnsupportedError,
   type OrchestrationSessionSummary,
   steerOrchestrationTurn,
 } from '@kontourai/station-sdk';
@@ -61,6 +66,8 @@ import {
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import {
   formatChatErrorDisplay,
+  MEMORY_EXHAUSTION_CONTINUE_TEXT,
+  MEMORY_EXHAUSTION_CONTINUING_DISPLAY,
   SESSION_START_INDETERMINATE_CODE,
   translateChatError,
 } from '../../utils/chatErrorTranslation';
@@ -1161,6 +1168,34 @@ export function ChatDockBody({
     [apiBase, surfaceRecoveryFailure],
   );
 
+  // Continue after a memory kill goes through Station, which sends the
+  // continuation once per dead turn whoever asks first (this device, another
+  // one, or Station's own automatic continuation). An older Station has no
+  // such route: then the short continuation is sent as an ordinary message.
+  const continueAfterMemoryKill = useCallback(async () => {
+    try {
+      await continueAfterMemoryExhaustion(
+        activeSession.conversationId ?? activeSession.id,
+        apiBase,
+      );
+    } catch (error) {
+      if (error instanceof MemoryContinuationUnsupportedError) {
+        await runRecoveredTurn(
+          { text: MEMORY_EXHAUSTION_CONTINUE_TEXT, attachments: [] },
+          (text, attachments) => sendRef.current(text, attachments),
+        );
+        return;
+      }
+      surfaceRecoveryFailure(error);
+    }
+  }, [
+    activeSession.conversationId,
+    activeSession.id,
+    apiBase,
+    runRecoveredTurn,
+    surfaceRecoveryFailure,
+  ]);
+
   const handleDismissEphemeral = useCallback(
     (messageId: string) => {
       setRemovingMessages((prev) => new Set(prev).add(messageId));
@@ -1343,9 +1378,18 @@ export function ChatDockBody({
         const turnInterruptedMatch = eventBody.match(
           /^\[TURN_INTERRUPTED\]\s*([\s\S]*)$/,
         );
-        const displayContent = translation
-          ? formatChatErrorDisplay(translation)
-          : (turnInterruptedMatch?.[1] ?? eventBody);
+        // Station already continued after this memory kill (its own
+        // continuation turn follows): say so, and offer Stop while it runs.
+        const memoryContinued =
+          chatErrorCode === ENGINE_MEMORY_EXHAUSTED_CODE &&
+          renderedSession.messages
+            .slice(idx + 1)
+            .some((message) => message.stationMemoryContinuation === true);
+        const displayContent = memoryContinued
+          ? MEMORY_EXHAUSTION_CONTINUING_DISPLAY
+          : translation
+            ? formatChatErrorDisplay(translation)
+            : (turnInterruptedMatch?.[1] ?? eventBody);
         // #797: the failed turn's own user message now survives the failure,
         // so the marker can offer to send it again — text and attachments
         // both — rather than leaving the user to retype it. station#1827
@@ -1398,33 +1442,47 @@ export function ChatDockBody({
                             `/connections/engines/${encodeURIComponent(activeSession.agentConnectionId ?? '')}`,
                           ),
                       }
-                    : translation?.retryable === false &&
-                        chatErrorCode !== SESSION_START_INDETERMINATE_CODE &&
-                        onNewChat
-                      ? {
-                          label: 'Switch agent',
-                          onClick: () =>
-                            void Promise.resolve(onNewChat()).catch(
-                              surfaceRecoveryFailure,
-                            ),
-                        }
-                      : translation?.terminalSession && onNewChat && retryTurn
-                        ? {
-                            label: 'New chat',
-                            onClick: () =>
-                              void runRecoveredTurn(retryTurn, onNewChat),
-                          }
-                        : canRetry && retryTurn
+                    : chatErrorCode === ENGINE_MEMORY_EXHAUSTED_CODE
+                      ? memoryContinued
+                        ? isTurnInFlight(activeSession)
                           ? {
-                              label: 'Send again',
-                              onClick: () =>
-                                void runRecoveredTurn(
-                                  retryTurn,
-                                  (text, attachments) =>
-                                    sendRef.current(text, attachments),
-                                ),
+                              label: 'Stop',
+                              onClick: () => void chatInput.handleCancel(),
                             }
                           : undefined
+                        : {
+                            // Not a resend: Station's continuation, whose
+                            // model input carries the recovery note.
+                            label: 'Continue',
+                            onClick: () => void continueAfterMemoryKill(),
+                          }
+                      : translation?.retryable === false &&
+                          chatErrorCode !== SESSION_START_INDETERMINATE_CODE &&
+                          onNewChat
+                        ? {
+                            label: 'Switch agent',
+                            onClick: () =>
+                              void Promise.resolve(onNewChat()).catch(
+                                surfaceRecoveryFailure,
+                              ),
+                          }
+                        : translation?.terminalSession && onNewChat && retryTurn
+                          ? {
+                              label: 'New chat',
+                              onClick: () =>
+                                void runRecoveredTurn(retryTurn, onNewChat),
+                            }
+                          : canRetry && retryTurn
+                            ? {
+                                label: 'Send again',
+                                onClick: () =>
+                                  void runRecoveredTurn(
+                                    retryTurn,
+                                    (text, attachments) =>
+                                      sendRef.current(text, attachments),
+                                  ),
+                              }
+                            : undefined
             }
           />
         );
@@ -1446,6 +1504,9 @@ export function ChatDockBody({
       onNewChat,
       runRecoveredTurn,
       surfaceRecoveryFailure,
+      continueAfterMemoryKill,
+      activeSession,
+      chatInput.handleCancel,
     ],
   );
 
