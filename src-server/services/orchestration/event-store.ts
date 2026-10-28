@@ -280,6 +280,10 @@ import {
 } from './conversation-start-context.js';
 import { derivedConversationTitle } from './conversation-title.js';
 import {
+  type CoordinatorStore,
+  createSqliteCoordinatorStore,
+} from './coordinator-session.js';
+import {
   type CredentialApplicationHandle,
   createCredentialApplicationFactory,
 } from './credential-application-ledger.js';
@@ -2571,6 +2575,7 @@ export class EventStore {
   private taskMemory?: TaskMemoryStore;
   private taskReview?: TaskReviewStore;
   private agentSchedule?: AgentScheduleStore;
+  private coordinator?: CoordinatorStore;
   private resumeChoices?: UsageLimitResumeChoices;
   private mcpAppResourceResolver?: (toolRef: string) => string | undefined;
 
@@ -14482,6 +14487,12 @@ export class EventStore {
   agentScheduleStore(): AgentScheduleStore {
     this.agentSchedule ??= createSqliteAgentScheduleStore(this.db);
     return this.agentSchedule;
+  }
+
+  /** #3628: coordinator designations and their wakes (`coordinator-session.ts`). */
+  coordinatorStore(): CoordinatorStore {
+    this.coordinator ??= createSqliteCoordinatorStore(this.db);
+    return this.coordinator;
   }
 
   private steerReceiptStorage(): SqliteKernelStorage {

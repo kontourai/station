@@ -442,6 +442,7 @@ import { fullAccessGrantForRequest } from '../../routes/orchestration/approval-a
 import { createAttachmentStagingRoutes } from '../../routes/orchestration/attachment-staging.js';
 import { createAttachmentRoutes } from '../../routes/orchestration/attachments.js';
 import { createAttentionRoutes } from '../../routes/orchestration/attention.js';
+import { createCoordinatorRoutes } from '../../routes/orchestration/coordinator.js';
 import { createDeclarePullRequestRoutes } from '../../routes/orchestration/declare-pull-request.js';
 import { createEventRoutes } from '../../routes/orchestration/events.js';
 import { createLiveActivityRoutes } from '../../routes/orchestration/live-activity.js';
@@ -681,6 +682,7 @@ import type { ActionOperationService } from '../../services/operations/action-op
 import { AttachmentStagingService } from '../../services/orchestration/attachment-staging-service.js';
 import { recoverCompletedTaskDispatches } from '../../services/orchestration/completed-task-dispatch-recovery.js';
 import { FileConversationAcknowledgementStore } from '../../services/orchestration/conversation-acknowledgement-store.js';
+import { wireCoordinatorWakes } from '../../services/orchestration/coordinator-session.js';
 import {
   type DelegationAttemptClaimStore,
   delegationAttemptClaimKey,
@@ -6221,6 +6223,43 @@ export function configureRuntimeRoutes(
     '/api/orchestration',
     createAgentScheduleRoutes(agentSchedule.routeDeps),
   );
+  // #3628: a person's coordinator Session, woken through the same inbox when
+  // work they can read needs them, finished or failed. Not on a hosted
+  // Station (no inbox there).
+  const coordinatorStore =
+    hostedTenantRegistry === undefined
+      ? context.orchestrationEventStore?.coordinatorStore()
+      : undefined;
+  context.app.route(
+    '/api/orchestration',
+    createCoordinatorRoutes({
+      store: coordinatorStore,
+      person: agentSchedule.person,
+      dispatchActor: (c) =>
+        resolveDispatchActor(
+          {
+            resolvePrincipal: resolveOrchestrationRequestPrincipal,
+            resolveAgentDispatchActor,
+          },
+          c,
+        ),
+    }),
+  );
+  const coordinatorWakes =
+    coordinatorStore && threadInbox && context.orchestrationEventStore
+      ? wireCoordinatorWakes({
+          eventBus: context.eventBus,
+          eventStore: context.orchestrationEventStore,
+          store: coordinatorStore,
+          threadInbox,
+          mayRead: (userId, sessionId) =>
+            context.orchestrationService.canUserReadSession(
+              sessionId,
+              readAuthorityForExecution(userId),
+            ),
+          logger: context.logger,
+        })
+      : undefined;
   context.app.route(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
@@ -10191,6 +10230,15 @@ export function configureRuntimeRoutes(
       .then(() => agentWakeUps.reconcile())
       .catch((error: unknown) =>
         context.logger.warn('agent wake-up reconcile failed', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+  // #3628: coordinator wakes a restart cut short, and items still waiting.
+  if (coordinatorWakes)
+    void kitLifecycleReady
+      .then(() => coordinatorWakes.reconcile())
+      .catch((error: unknown) =>
+        context.logger.warn('coordinator wake reconcile failed', {
           error: error instanceof Error ? error.message : String(error),
         }),
       );

@@ -84,6 +84,12 @@ interface SessionAgentResolverOptions {
   /** Resolve a Station skill id to its installed on-disk directory; `null` when unknown. */
   resolveSkillDir: (id: string) => Promise<string | null>;
   logger?: { warn?: (message: string, ...args: unknown[]) => void };
+  /**
+   * #3628: whether this Session's conversation is a person's designated
+   * coordinator. A coordinator gets the built-in Station tool servers
+   * whatever Agent it runs, so it can delegate and read work.
+   */
+  isCoordinatorSession?: (threadId: string) => boolean;
 }
 
 type ResolveSessionAgent = (
@@ -149,6 +155,35 @@ function withBuiltinStationAgentCapabilities(
     tools: {
       ...builtin.tools,
       ...authored.tools,
+      mcpServers: [
+        ...BUILTIN_STATION_AGENT_MCP_SERVER_IDS,
+        ...authoredServers.filter((id) => !builtins.has(id)),
+      ],
+    },
+  };
+}
+
+/**
+ * #3628: a person's coordinator Session gets the built-in Station tool
+ * servers and their default auto-approvals on whatever Agent and engine it
+ * runs, as the reserved Station role does. The person designated it, so this
+ * is their explicit opt-in, not an alias acquiring control-plane authority
+ * implicitly. Anything the Agent authored is kept and wins on conflict (its
+ * own `autoApprove` included), so the person's configuration still governs.
+ */
+export function withCoordinatorCapabilities(
+  authored: AgentSpec | null,
+): AgentSpec {
+  const builtins = new Set<string>(BUILTIN_STATION_AGENT_MCP_SERVER_IDS);
+  const authoredServers = authored?.tools?.mcpServers ?? [];
+  return {
+    ...(authored ?? { name: 'Coordinator' }),
+    prompt: [authored?.prompt, STATION_CAPABILITY_DISCOVERY_GUIDANCE]
+      .filter(Boolean)
+      .join('\n\n'),
+    tools: {
+      autoApprove: SC_AUTO_APPROVED_TOOLS,
+      ...authored?.tools,
       mcpServers: [
         ...BUILTIN_STATION_AGENT_MCP_SERVER_IDS,
         ...authoredServers.filter((id) => !builtins.has(id)),
@@ -280,6 +315,12 @@ export function createSessionAgentResolver(
       let spec = captured
         ? authored
         : withBuiltinStationAgentCapabilities(slug, authored);
+      // The reserved Station role already carries them.
+      if (
+        !builtinStationAgentSpec(slug) &&
+        options.isCoordinatorSession?.(input.threadId) === true
+      )
+        spec = withCoordinatorCapabilities(spec);
       if (!spec) {
         if (input.metadata?.executionAgentId)
           throw new Error(

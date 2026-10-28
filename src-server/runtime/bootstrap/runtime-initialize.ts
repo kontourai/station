@@ -535,6 +535,22 @@ export async function initializeRuntime(
       }
     },
     logger,
+    // #3628: read at each Session start, so a designation reaches the
+    // coordinator's next Session (and a successor Session of it).
+    isCoordinatorSession: (threadId) => {
+      try {
+        const conversationId =
+          orchestrationEventStore.conversationForSession(threadId)
+            ?.conversationId ?? threadId;
+        return (
+          orchestrationEventStore
+            .coordinatorStore()
+            .designationForConversation(conversationId) !== undefined
+        );
+      } catch {
+        return false;
+      }
+    },
   });
   // archive#1745: the `providerRegistrationSettled` barrier that used to be
   // built here is gone. Plugin-contributed adapters still do not exist in
