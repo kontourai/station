@@ -228,6 +228,13 @@ interface NewChatModalProps {
    * read. Absent until it answers; the composer then names the stored folder.
    */
   projectRunLocations?: ProjectRunLocations;
+  /**
+   * Whether the draft is on screen (the dock that holds it is open). A
+   * collapsed dock keeps it mounted but hidden; it then holds no Back entry.
+   */
+  historyActive?: boolean;
+  /** The draft came back from a setup journey: show it again. */
+  onReturnFromSetup?: () => void;
 }
 
 /** "Global" sentinel for the context picker */
@@ -255,6 +262,8 @@ export function NewChatModal({
   projectAccentBySlug = NO_PROJECT_ACCENTS,
   projectIconBySlug,
   projectRunLocations,
+  historyActive = true,
+  onReturnFromSetup,
 }: NewChatModalProps) {
   const { namespace, status: authorityStatus } = useAuthorityPersistence();
   // In the automatic start, "Chat options" (or a start that cannot use
@@ -308,6 +317,9 @@ export function NewChatModal({
   }, [prompt]);
   const [submitting, setSubmitting] = useState(false);
   const submitInFlight = useRef(false);
+  // A Start handed the chat to the dock; its composer takes focus, not the
+  // control that opened the draft.
+  const startedRef = useRef(false);
   // The control that opened the model picker; focus returns there on close.
   const modelPickerTrigger = useRef<HTMLElement | null>(null);
   // Every opening goes through here so the picker always knows where to
@@ -521,6 +533,7 @@ export function NewChatModal({
         ]);
     },
     onResume: (error) => {
+      onReturnFromSetup?.();
       if (showStart) setAgentSearch('');
       setAdmissionError(error);
       setReturnedFromSetup(true);
@@ -969,6 +982,7 @@ export function NewChatModal({
           submitInFlight.current = true;
           setSubmitting(true);
         }
+        startedRef.current = true;
         void Promise.resolve(
           onSelect(
             agent,
@@ -997,6 +1011,7 @@ export function NewChatModal({
           })
           .catch((error) => {
             submitInFlight.current = false;
+            startedRef.current = false;
             setSubmitting(false);
             console.error(
               mode?.kind === 'fork'
@@ -1010,6 +1025,7 @@ export function NewChatModal({
           });
       } catch (error) {
         submitInFlight.current = false;
+        startedRef.current = false;
         setSubmitting(false);
         console.error('New chat start failed:', error);
         setSelectFeedback(
@@ -1398,7 +1414,12 @@ export function NewChatModal({
         resolveNewChatAgentEnable(agent) && agentFixRoute(agent) === 'enable',
     );
     return (
-      <NewChatDraftSurface ariaLabel="New chat" onClose={closeChatRequest}>
+      <NewChatDraftSurface
+        ariaLabel="New chat"
+        historyActive={historyActive}
+        startedRef={startedRef}
+        onClose={closeChatRequest}
+      >
         <div className="new-chat-modal__body">
           {readError || (selectFeedback && !enableInFlight) ? (
             <ErrorState
@@ -1535,6 +1556,8 @@ export function NewChatModal({
       // it covered the dock; the plain draft focuses on desktop only (the
       // effect above), so a phone keyboard waits for a tap.
       initialFocusRef={taskShaping ? promptRef : undefined}
+      historyActive={historyActive}
+      startedRef={startedRef}
       onClose={closeChatRequest}
     >
       <div className="new-chat-modal__header">
@@ -2347,20 +2370,28 @@ export function NewChatModal({
  *
  * Like a dialog it takes a history entry (`registerDialogHistory`, the
  * mechanism `ResponsiveDialogSurface` uses), so a phone's Back dismisses the
- * draft rather than leaving the page; and when it goes, focus returns to the
- * control that opened it, else to the chat composer it covered.
+ * draft rather than leaving the page — but only while it is on screen
+ * (`historyActive`): a draft a collapsed dock keeps hidden holds no entry,
+ * so Back there cannot discard what nobody can see. When it goes, focus
+ * returns to the control that opened it, else to the chat composer it
+ * covered; after a Start the dock focuses the new chat's composer instead.
  */
 function NewChatDraftSurface({
   children,
   ariaLabel,
   className,
   initialFocusRef,
+  historyActive = true,
+  startedRef,
   onClose,
 }: {
   children: React.ReactNode;
   ariaLabel: string;
   className?: string;
   initialFocusRef?: React.RefObject<HTMLElement | null>;
+  historyActive?: boolean;
+  /** Set once Start has handed the chat over: no return focus then. */
+  startedRef?: React.RefObject<boolean>;
   onClose: () => void;
 }) {
   const sectionRef = useRef<HTMLElement>(null);
@@ -2368,16 +2399,30 @@ function NewChatDraftSurface({
   onCloseRef.current = onClose;
   const historyId = useId();
   const historyHost = useDialogHistoryHost();
-  useEffect(
-    () =>
-      registerDialogHistory(historyId, () => onCloseRef.current(), historyHost),
-    [historyHost, historyId],
-  );
-  // Captured before the draft takes focus (layout effects run first), read
-  // when it unmounts.
-  const returnFocus = useRef<HTMLElement[]>([]);
+  // Read when the entry's deferred cleanup runs, after the commit that
+  // released it: a release because the draft went out of view (still
+  // mounted, `historyActive` now false) takes the orphan route and never
+  // travels back, so it cannot cancel a navigation landing in the same
+  // moment (#2414: a phone's setup journey collapses the dock and navigates
+  // together). Only an ordinary close folds the entry by travelling back.
+  const releasedOutOfView = useRef(false);
+  releasedOutOfView.current = !historyActive;
+  useEffect(() => {
+    if (!historyActive) return;
+    const host = {
+      get removed() {
+        return releasedOutOfView.current || Boolean(historyHost?.removed);
+      },
+    };
+    return registerDialogHistory(historyId, () => onCloseRef.current(), host);
+  }, [historyActive, historyHost, historyId]);
+  // Captured once, before the draft takes focus (layout effects run first).
+  // StrictMode replays effects while the draft stays mounted; a second
+  // capture would record the draft's own text box.
+  const returnFocus = useRef<HTMLElement[] | null>(null);
   useLayoutEffect(() => {
-    returnFocus.current = captureReturnFocus();
+    if (returnFocus.current === null)
+      returnFocus.current = captureReturnFocus();
   }, []);
   // StrictMode replays the cleanup while the draft stays mounted: cancel that
   // provisional restore, as `ResponsiveDialogSurface` does.
@@ -2391,20 +2436,18 @@ function NewChatDraftSurface({
     );
     return () => {
       restoreFrame.current = requestAnimationFrame(() => {
+        if (startedRef?.current) return;
         const composer = surface?.querySelector<HTMLElement>(
           'textarea:not([disabled])',
         );
+        const chain = returnFocus.current ?? [];
         applyReturnFocus(
-          returnFocus.current.length > 0
-            ? returnFocus.current
-            : composer
-              ? [composer]
-              : [],
+          chain.length > 0 ? chain : composer ? [composer] : [],
           section,
         );
       });
     };
-  }, []);
+  }, [startedRef]);
   useEffect(() => {
     initialFocusRef?.current?.focus();
   }, [initialFocusRef]);

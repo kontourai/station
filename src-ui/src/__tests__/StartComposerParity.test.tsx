@@ -21,7 +21,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { useState } from 'react';
+import { StrictMode, useState } from 'react';
 import {
   afterEach,
   beforeAll,
@@ -1809,7 +1809,13 @@ describe("the dock's New chat is a draft, not a dialog", () => {
         </AuthorityPersistenceContext.Provider>
       );
     }
-    render(<Harness />);
+    // As main.tsx renders the app: StrictMode replays effects, which must
+    // not re-capture the draft's own text box as the place to return to.
+    render(
+      <StrictMode>
+        <Harness />
+      </StrictMode>,
+    );
     const opener = screen.getByRole('button', { name: 'Open draft' });
     opener.focus();
     fireEvent.click(opener);

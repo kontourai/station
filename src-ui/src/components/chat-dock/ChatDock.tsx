@@ -1088,11 +1088,16 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const revealDockForDraft = useCallback(() => {
     if (isFullscreenPlacement) return;
     dismissPhoneLayer();
-    if (!isDockOpen) setDockState(true, isMobile ? true : lastDockMaximized);
+    // A phone shows the draft full height, as a chat: a half sheet cannot
+    // hold the composer above the keyboard (it pushed Start off-screen).
+    if (isMobile) {
+      if (!isDockOpen || !isDockMaximized) setDockState(true, true);
+    } else if (!isDockOpen) setDockState(true, lastDockMaximized);
   }, [
     isFullscreenPlacement,
     dismissPhoneLayer,
     isDockOpen,
+    isDockMaximized,
     setDockState,
     isMobile,
     lastDockMaximized,
@@ -1103,6 +1108,12 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   useEffect(() => {
     if (newChatRequestEpoch > 0) revealNewChatDraft();
   }, [newChatRequestEpoch]);
+  // What the dock's title slot calls an open draft, as the draft names itself.
+  const newChatDraftTitle = forkSource
+    ? 'Fork from here'
+    : newChatTaskShaping
+      ? 'New Task'
+      : 'New chat';
   const closeNewChatDraft = useCallback(() => {
     setShowNewChatModal(false);
     setNewChatProjectOverride(null);
@@ -1141,14 +1152,42 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // Back/Forward), the draft no longer stands in front of the chat it opened
   // over, so it is dismissed with its text. The fast paths above leave it
   // first; a fork's own open is still in flight, so it is never cut short.
+  //
+  // "Another chat" is by identity, not by raw id: the draft records every
+  // name the covered chat goes by (its tab id, the `?chat=` pointer, its
+  // conversation and execution ids), so a cold `?chat=` hydrating into its tab
+  // after the draft opened, or a chat promoted to its conversation id, is the
+  // same chat. A send admission moving the dock (`onSessionMigrate`) is not a
+  // person going somewhere either; it re-anchors instead.
   const draftOpenedOver = useRef<{
-    active: string | null;
+    ids: Set<string>;
     imported: string | null;
   } | null>(null);
+  const chatIdentityIds = useCallback(
+    (id: string | null | undefined) => {
+      if (!id) return [];
+      const session = allSessions.find(
+        (entry) =>
+          entry.id === id ||
+          entry.conversationId === id ||
+          entry.currentSessionId === id,
+      );
+      return [
+        id,
+        session?.id,
+        session?.conversationId,
+        session?.currentSessionId,
+      ].filter((value): value is string => Boolean(value));
+    },
+    [allSessions],
+  );
   // Captured per request (its epoch), not per active-chat change.
   const captureDraftOpenedOver = useEffectEvent(() => {
     draftOpenedOver.current = {
-      active: activeSessionId,
+      ids: new Set([
+        ...chatIdentityIds(activeSessionId),
+        ...chatIdentityIds(activeChat),
+      ]),
       imported: importedSessionId,
     };
   });
@@ -1156,22 +1195,49 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     void newChatRequestEpoch;
     captureDraftOpenedOver();
   }, [newChatRequestEpoch]);
+  const reanchorNewChatDraft = useCallback(
+    (id: string) => {
+      for (const name of chatIdentityIds(id))
+        draftOpenedOver.current?.ids.add(name);
+    },
+    [chatIdentityIds],
+  );
   useEffect(() => {
     const over = draftOpenedOver.current;
     if (!showNewChatModal || !over || forkOperation.pending) return;
-    if (over.active !== activeSessionId || over.imported !== importedSessionId)
+    if (over.imported !== importedSessionId) {
       closeNewChatDraft();
+      return;
+    }
+    if (!activeSessionId) return;
+    const current = chatIdentityIds(activeSessionId);
+    if (current.some((id) => over.ids.has(id))) {
+      // Still the same chat: remember any name it has gained since.
+      for (const id of current) over.ids.add(id);
+      return;
+    }
+    closeNewChatDraft();
   }, [
     showNewChatModal,
     activeSessionId,
     importedSessionId,
     forkOperation.pending,
+    chatIdentityIds,
     closeNewChatDraft,
   ]);
   // While the draft covers the chat, that chat is not on screen: its
-  // end-of-turn toasts and attention come back (`chatForeground`).
+  // end-of-turn toasts and attention come back (`chatForeground`). A text
+  // selection left in the covered transcript would keep its Quote toolbar
+  // (portalled outside the hidden, inert chat) floating over the draft.
   useEffect(() => {
     if (!showNewChatModal) return;
+    const selection = window.getSelection();
+    if (
+      selection &&
+      !selection.isCollapsed &&
+      conversationSurfaceRef.current?.contains(selection.anchorNode)
+    )
+      selection.removeAllRanges();
     return registerChatDraftCover();
   }, [showNewChatModal]);
   // station#4525: the dock header's project binding is DockShell-owned state
@@ -1273,6 +1339,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     mentionAuthority,
     defaultModelSource: activeSessionForHook?.defaultModelSource,
     onSessionMigrate: (newSessionId) => {
+      // A send admission, not the person moving: a draft open over the dock
+      // stays open.
+      reanchorNewChatDraft(newSessionId);
       setActiveSessionId(newSessionId);
       // station#3782: stamp this chat's durable identity — the conversation id
       // its first successful turn just assigned, or its session id if that
@@ -2831,8 +2900,12 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
               { display: 'contents' }
         }
         enabled={isChatPaneFileDropEnabled({
+          // An open New chat draft owns drops (its own composer takes them);
+          // the chat it covers must not stage a file dropped on the draft.
           hasAttachmentOwner:
-            !importedSessionId && activeSessionForHook !== null,
+            !importedSessionId &&
+            !showNewChatModal &&
+            activeSessionForHook !== null,
           isPaneOpen,
           isCollapsedDragPreview,
         })}
@@ -2888,15 +2961,17 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
               // name starts "Manage Stations".
               showConnection={isMobileToolbarHidden}
               sessionTitle={
-                importedSessionId
-                  ? importedTitle
-                  : activeSession?.title || 'Chat'
+                showNewChatModal
+                  ? newChatDraftTitle
+                  : importedSessionId
+                    ? importedTitle
+                    : activeSession?.title || 'Chat'
               }
               // station#3309: same identity the desktop header leads with,
               // from the same session-committed slug — artwork only when the
               // catalog resolved this agent, identicon from the slug otherwise.
               agentIdentity={
-                !importedSessionId && activeSession
+                !showNewChatModal && !importedSessionId && activeSession
                   ? {
                       name: activeChatAgent?.name ?? activeSession.agentName,
                       slug: activeSession.agentSlug,
@@ -3053,7 +3128,17 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             <ChatDockHeader
               retainIdentityInNamedPane={Boolean(importedSessionId)}
               chatIdentity={
-                importedSessionId ? (
+                showNewChatModal ? (
+                  // The draft stands in front of the chat on screen, so the
+                  // bar names the draft, in the same title slot.
+                  <div className="chat-dock__active-identity">
+                    <div className="chat-dock__active-identity-text">
+                      <span className="chat-dock__active-identity-title">
+                        {newChatDraftTitle}
+                      </span>
+                    </div>
+                  </div>
+                ) : importedSessionId ? (
                   <ChatDockActiveIdentity
                     session={{
                       id: importedSessionId,
@@ -3440,6 +3525,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                               'The chat could not be opened. Check the selected Agent and try again.',
                             );
                           navigate(pathname, { chat: sessionId });
+                          // The new chat's composer takes focus once it can, as
+                          // choosing a working chat does; the draft hands it over
+                          // rather than returning focus to its opener.
+                          requestComposerFocus(sessionId);
                           setShowNewChatModal(false, undefined, 'started');
                           setNewChatProjectOverride(null);
                           setHandoffSource(null);
@@ -3599,6 +3688,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           setHandoffSource(null);
                         },
                         onClose: closeNewChatDraft,
+                        historyActive: workspaceShown,
+                        onReturnFromSetup: revealDockForDraft,
                       }}
                       pending={
                         <SkeletonBlock count={1} label="Opening New chat" />

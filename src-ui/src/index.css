@@ -8316,6 +8316,11 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   display: flex;
   flex-direction: column;
   background: var(--bg-primary);
+  /* A height container, so a short dock can give the composer a smaller text
+     box (ChatStart.css), and a last-resort scroller whose composer stays
+     pinned (sticky) when even that does not fit: Start is never pushed out. */
+  container: new-chat-draft / size;
+  overflow-y: auto;
 }
 
 .new-chat-modal__header:empty {

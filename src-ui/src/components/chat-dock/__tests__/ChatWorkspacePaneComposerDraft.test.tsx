@@ -47,6 +47,7 @@ import {
 } from '../../../contexts/RegionModelContext';
 import { ToastProvider } from '../../../contexts/ToastContext';
 import { useShowSurface } from '../../../contexts/useShowSurface';
+import { isChatInForeground } from '../../../hooks/orchestration/chatForeground';
 import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import { dispatchNewChatIntent } from '../../../lib/newChatIntent';
 import {
@@ -244,8 +245,10 @@ beforeAll(() => {
   );
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // An open draft folds its Back entry on unmount; let that traversal land.
+  await flushHistory();
   pickerProps.length = 0;
   pickerMounts.length = 0;
   autoStarts.length = 0;
@@ -1008,4 +1011,105 @@ test('collapsing and reopening the dock keeps the same draft and never re-runs i
   await screen.findByRole('region', { name: 'New chat picker' });
   expect(pickerMounts).toHaveLength(mounts);
   expect(autoStarts).toEqual(['Go once']);
+});
+
+/** jsdom runs `history.back()` as chained 0ms tasks; let queued ones land. */
+async function flushHistory() {
+  for (let turn = 0; turn < 4; turn += 1)
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+}
+
+// A collapsed dock keeps its draft hidden, so the draft holds no Back entry
+// then: Back cannot discard what nobody can see.
+test('Back while the dock is collapsed does not dismiss the hidden draft', async () => {
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+  const onClosed = vi.fn();
+  act(() => {
+    dispatchNewChatIntent({ initialPrompt: 'Keep me', onClosed });
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  await flushHistory();
+
+  act(() => regionModel!.setRegion('bottom', { visible: false }));
+  await flushHistory();
+  act(() => window.history.back());
+  await flushHistory();
+
+  expect(onClosed).not.toHaveBeenCalled();
+  expect(
+    document.querySelector('section[aria-label="New chat picker"]'),
+  ).not.toBeNull();
+});
+
+// A chat hydrating into its tab after the draft opened (a cold `?chat=`) is
+// the same chat, not the person going somewhere: the draft stays.
+test('a cold ?chat= hydrating under an open draft does not dismiss it', async () => {
+  dockProbe.sessions = [];
+  navigationStore.navigate('/', { dock: 'open', chat: 'conv-a' });
+  renderDockedPane();
+  await act(async () => {});
+  const onClosed = vi.fn();
+  act(() => {
+    dispatchNewChatIntent({ initialPrompt: 'Mine', onClosed });
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+
+  // The tab for `?chat=conv-a` arrives: its id differs from the pointer.
+  dockProbe.sessions = [{ ...chatSession('chat-a'), conversationId: 'conv-a' }];
+  act(() => regionModel!.setRegion('bottom', { maximized: true }));
+  await act(async () => {});
+  await act(async () => {});
+
+  expect(onClosed).not.toHaveBeenCalled();
+  expect(screen.getByRole('region', { name: 'New chat picker' })).toBeTruthy();
+});
+
+// The dock's own cover registration, end to end: the chat under a draft is
+// not on screen for turn notifications.
+test('the chat a draft covers is not foreground while the draft is open', async () => {
+  dockProbe.sessions = [chatSession('chat-a')];
+  navigationStore.navigate('/', { dock: 'open', chat: 'chat-a' });
+  renderDockedPane();
+  await act(async () => {});
+  const ids = { chatKey: 'chat-a', threadId: 'chat-a' };
+  expect(isChatInForeground(ids)).toBe(true);
+  act(() => {
+    dispatchNewChatIntent({});
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  expect(isChatInForeground(ids)).toBe(false);
+  act(() => pickerProps.at(-1)!.onClose());
+  await waitFor(() => expect(isChatInForeground(ids)).toBe(true));
+});
+
+// The draft owns a file dropped on it; the chat it covers must not take it.
+test('the covered chat does not take file drops while a draft is open', async () => {
+  dockProbe.sessions = [chatSession('chat-a')];
+  navigationStore.navigate('/', { dock: 'open', chat: 'chat-a' });
+  renderDockedPane();
+  await act(async () => {});
+  expect(dragFileOverPane(), 'the active chat refused a file').toBe(true);
+  act(() => {
+    dispatchNewChatIntent({});
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  expect(dragFileOverPane(), 'the covered chat took a file').toBe(false);
+});
+
+// Coming back from a setup journey that collapsed the dock shows the draft.
+test('returning from setup reveals a collapsed dock’s draft', async () => {
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+  act(() => {
+    dispatchNewChatIntent({ initialPrompt: 'Mine' });
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  act(() => regionModel!.setRegion('bottom', { visible: false }));
+  expect(regionModel!.regions.bottom.visible).toBe(false);
+  act(() => pickerProps.at(-1)!.onReturnFromSetup());
+  await waitFor(() => expect(regionModel!.regions.bottom.visible).toBe(true));
+  await screen.findByRole('region', { name: 'New chat picker' });
 });

@@ -48,9 +48,11 @@
 /* The dock's New chat draft reads like an empty chat: a quiet line centred
    in the body, setup and errors under it, and the start composer pinned
    where a reply composer sits. */
+/* The body takes the room the composer leaves and scrolls itself, so setup
+   and errors are never underneath the composer. */
 .new-chat-draft__body {
   display: flex;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   flex-direction: column;
   gap: var(--k-space-3);
 }
@@ -71,5 +73,17 @@
 .new-chat-modal > .start-composer {
   flex: 0 0 auto;
   box-sizing: border-box;
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  background: var(--bg-primary);
   padding: 0 var(--k-space-3) max(var(--k-space-3), var(--safe-bottom, 0px));
+}
+/* A short dock (a desktop bottom dock at its normal height) keeps the body
+   readable: the draft's text box starts at one line instead of three. */
+@container new-chat-draft (max-height: 560px) {
+  .new-chat-modal > .start-composer .start-composer__input {
+    min-height: 44px;
+    height: 2.75rem;
+  }
 }
