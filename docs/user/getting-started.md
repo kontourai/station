@@ -529,10 +529,10 @@ Project's model or the usual default applies and the Model chip's tooltip says
 why. The approval mode can be set for the Project (Ask first, Auto or full
 access) or follow your last chat there. It applies below the Agent's own mode
 and replaces your personal default for that engine, and full access is only
-reused when you can grant it. **Permissions** on the composer names where its
-mode came from, and opens the approval picker to choose this chat's mode
-before you start; picking **Default** there uses the Agent's, then the
-Station's default instead.
+reused when you can grant it. The composer's permissions button shows the
+requested mode. Open it to see where the mode came from or choose this chat's
+mode before you start. **Engine default** uses the engine's saved permissions;
+the active mode is confirmed after startup.
 
 Until Station has loaded your projects, the chips show placeholders and
 **Start** waits, so a start never runs in a project Station has guessed. If
