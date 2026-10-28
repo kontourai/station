@@ -1518,7 +1518,7 @@ An operator can add one more subregistry with `STATION_MCP_SUBREGISTRY_URL`.
 Its entries are unqualified. When it cannot be reached, its last saved copy
 is shown as offline and cannot be added from until it is refreshed. A
 catalog entry pointing at this host or a private network (for example
-`127.0.0.1`, `10.0.0.5` or `localhost`) cannot be added unless the operator
+loopback, a private range or `localhost`) cannot be added unless the operator
 sets `STATION_MCP_SUBREGISTRY_ALLOW_PRIVATE_ADDRESSES=1`.
 
 ### Tools after untrusted content
