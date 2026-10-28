@@ -37,10 +37,21 @@ import {
  * below the home must be a real one and the file a regular one, as
  * `transcript-jsonl-file.ts` checks; the home itself may be a link.
  *
+ * A forked child (`session_meta.forked_from_id` set, as Codex 0.164 spawns
+ * one) starts with a copy of its parent's conversation: the parent's
+ * `session_meta`, prompt, tool calls and spawn call, then a developer
+ * message saying the preceding conversation is inherited parent context.
+ * Only the child's own part is mapped: records from the meta's
+ * `subagent_history_start_ordinal` on (each record carries its
+ * `ordinal`), or, where a build writes no start ordinal, the records after
+ * that inherited-context message. A forked rollout with neither boundary
+ * maps nothing rather than show the parent's history as the child's.
+ *
  * Mapped, in file order, from `response_item` records:
  * - the parent's task (`agent_message`) and real user input as prompt text,
  *   leaving out the context Codex injects as user messages (AGENTS.md,
- *   environment) and every developer message;
+ *   environment) and every developer message; a task whose payload is
+ *   encrypted reads as its header alone, without the empty `Payload:`;
  * - assistant `output_text`;
  * - `function_call` / `custom_tool_call` as tool calls, their `*_output` as
  *   tool results (text blocks only: encrypted content is never shown).
@@ -76,6 +87,16 @@ const INJECTED_CONTEXT_PREFIXES = [
   '<permissions instructions>',
   '<skills_instructions>',
 ];
+
+/** An inter-agent message's `Payload:` label with nothing after it. */
+const EMPTY_PAYLOAD_LABEL = /\n?Payload:\s*$/;
+
+/**
+ * The developer message a forked child's own part starts after, when the
+ * meta names no start ordinal.
+ */
+const INHERITED_CONTEXT_MARKER =
+  'The preceding conversation is inherited parent context';
 
 const resolvedPaths = createResolvedPathCache(RESOLVED_PATHS_MAX);
 
@@ -269,10 +290,12 @@ export function codexRolloutEntries(
       return [];
     }
     case 'agent_message':
-      // Another agent's message to this child (the parent's task).
-      return textBlocks(payload.content).map((text) =>
-        textEntry('user', text, message),
-      );
+      // Another agent's message to this child (the parent's task). Codex
+      // 0.164 encrypts the payload and leaves its label empty in the text.
+      return textBlocks(payload.content).flatMap((text) => {
+        const readable = text.replace(EMPTY_PAYLOAD_LABEL, '');
+        return readable ? [textEntry('user', readable, message)] : [];
+      });
     case 'function_call':
     case 'custom_tool_call': {
       if (typeof payload.name !== 'string' || payload.name.length === 0)
@@ -335,13 +358,45 @@ function capEntries(
   ];
 }
 
-/** Whether `record` is this thread's own `session_meta`. */
-function isOwnSessionMeta(
+/**
+ * Where the child's own records start: everywhere for a thread that was not
+ * forked, else from an ordinal or after the inherited-context message.
+ */
+type OwnHistoryStart =
+  | { kind: 'whole' }
+  | { kind: 'ordinal'; ordinal: number }
+  | { kind: 'after-marker' };
+
+/**
+ * This thread's own `session_meta` as where its own history starts, or
+ * undefined when the record is not this thread's meta.
+ */
+function ownSessionStart(
   record: TranscriptJsonlRecord,
   threadId: string,
-): boolean {
-  if (record.tooLarge || record.type !== 'session_meta') return false;
-  return asRecord(record.payload)?.id === threadId;
+): OwnHistoryStart | undefined {
+  if (record.tooLarge || record.type !== 'session_meta') return undefined;
+  const meta = asRecord(record.payload);
+  if (meta?.id !== threadId) return undefined;
+  if (typeof meta.forked_from_id !== 'string' || !meta.forked_from_id)
+    return { kind: 'whole' };
+  const start = meta.subagent_history_start_ordinal;
+  return typeof start === 'number' && Number.isInteger(start) && start >= 0
+    ? { kind: 'ordinal', ordinal: start }
+    : { kind: 'after-marker' };
+}
+
+/** Whether `record` is the developer message ending inherited context. */
+function isInheritedContextMarker(record: TranscriptJsonlRecord): boolean {
+  if (record.tooLarge || record.type !== 'response_item') return false;
+  const payload = asRecord(record.payload);
+  return (
+    payload?.type === 'message' &&
+    payload.role === 'developer' &&
+    textBlocks(payload.content).some((text) =>
+      text.includes(INHERITED_CONTEXT_MARKER),
+    )
+  );
 }
 
 /**
@@ -358,12 +413,33 @@ async function readPage(
   const entries: ChildWorkTranscriptEntry[] = [];
   let index = 0;
   let first = true;
+  let start: OwnHistoryStart = { kind: 'whole' };
+  let inherited = false;
+  let line = -1;
   for await (const record of transcriptJsonlRecords(handle)) {
+    line += 1;
     if (first) {
       first = false;
       // Not this thread's rollout: nothing in it is this child's.
-      if (!isOwnSessionMeta(record, threadId)) return undefined;
+      const own = ownSessionStart(record, threadId);
+      if (!own) return undefined;
+      start = own;
+      inherited = own.kind !== 'whole';
       continue;
+    }
+    if (inherited) {
+      if (start.kind === 'ordinal') {
+        const ordinal =
+          !record.tooLarge && typeof record.ordinal === 'number'
+            ? record.ordinal
+            : line;
+        if (ordinal < start.ordinal) continue;
+        inherited = false;
+      } else {
+        // The marker itself is a developer message, never mapped.
+        if (isInheritedContextMarker(record)) inherited = false;
+        continue;
+      }
     }
     const mapped = record.tooLarge
       ? [{ message: index, kind: 'too-large' as const }]

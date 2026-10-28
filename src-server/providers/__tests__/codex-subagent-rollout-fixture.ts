@@ -22,6 +22,25 @@ const FIXTURE = readFileSync(
   'utf8',
 );
 
+/**
+ * A scrubbed codex-cli 0.164.0 rollout of a FORKED subagent, copied from a
+ * real one the same way: the child's `session_meta` (`forked_from_id`,
+ * `subagent_history_start_ordinal`), then the parent's `session_meta` and
+ * conversation Codex copies in (prompt, commands, `spawn_agent` call), the
+ * "inherited parent context" developer message, and the child's own turn,
+ * whose task payload is encrypted. Readable placeholders: the parent's
+ * prompt and commentary, and the child's command, output and answer.
+ */
+const FORKED_FIXTURE = readFileSync(
+  fileURLToPath(
+    new URL(
+      './fixtures/codex-0.164.0-forked-subagent-rollout.jsonl',
+      import.meta.url,
+    ),
+  ),
+  'utf8',
+);
+
 /** A UUIDv7 child thread id: its timestamp names its day directory. */
 export const CODEX_ROLLOUT_THREAD_ID = '01a15c8b-0000-7000-8000-000000000003';
 
@@ -54,6 +73,10 @@ export function installCodexSubagentRollout(
     day?: [string, string, string];
     home?: string;
     extraRecords?: readonly Record<string, unknown>[];
+    /** The forked 0.164.0 rollout instead of the un-forked 0.162.1 one. */
+    forked?: boolean;
+    /** Edits each record before it is written. */
+    mapRecord?: (record: Record<string, unknown>) => Record<string, unknown>;
   } = {},
 ): { home: string; file: string; threadId: string } {
   const threadId = options.threadId ?? CODEX_ROLLOUT_THREAD_ID;
@@ -61,9 +84,11 @@ export function installCodexSubagentRollout(
   const [year, month, day] = options.day ?? codexRolloutDay(threadId);
   const directory = join(home, 'sessions', year, month, day);
   mkdirSync(directory, { recursive: true });
-  const records = FIXTURE.trim()
+  const records = (options.forked ? FORKED_FIXTURE : FIXTURE)
+    .trim()
     .split('\n')
-    .map((line) => JSON.parse(line) as Record<string, unknown>);
+    .map((line) => JSON.parse(line) as Record<string, unknown>)
+    .map((record) => options.mapRecord?.(record) ?? record);
   const meta = records[0] as { type: string; payload: { id: string } };
   if (meta.type !== 'session_meta') throw new Error('fixture lost its meta');
   meta.payload.id = options.metaThreadId ?? threadId;
