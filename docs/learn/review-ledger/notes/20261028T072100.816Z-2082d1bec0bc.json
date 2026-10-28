@@ -1,0 +1,7 @@
+{
+  "revision": "4520f1bab0603e7d08faf3fcc9af945336254e5d",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Dependent of connect.md's new canForgetConnection line. The glossary's Station/Forget vocabulary is what the switcher copy uses; no term changes.","inputs":["docs/glossary.md","docs/reference/connect.md"]}
+  ]
+}
