@@ -1798,6 +1798,43 @@ pin the bounds. Their presence is not an executed receipt against a real engine.
 See [agent configuration](../guides/self-configuring-agent.md#project-activity)
 for the tool-level behavior.
 
+## CoordinatorWakeDelivery
+
+A person's coordinator Session (#3628, product name Houston) learns when their
+work needs them, fails or finishes, without polling.
+[coordinator-session.ts](../../src-server/services/orchestration/coordinator-session.ts)
+holds the designation and the wake, on the orchestration database.
+
+**Interface.** `EventStore.coordinatorStore()` returns `designate`,
+`undesignate`, `designation`, `designationForConversation`, and the item and
+wake records. `wireCoordinatorWakes` subscribes to `NOTIFICATION_DELIVERED`,
+maps each record through `coordinatorAttentionOf` (needs-input, failed and
+done tiers that name a Session; a requested stop is left out) and hands one
+framed turn per burst to `ThreadInboxDelivery.submit`. The person's
+[routes](../../src-server/routes/orchestration/coordinator.ts) read and set
+the designation. The agent resolver's `isCoordinatorSession` gives the
+coordinator's Sessions the built-in Station tool servers
+(`withCoordinatorCapabilities`).
+
+**Invariants.** One designation per person and at most one person per
+conversation; a second is refused unless the request says `replace`. An item
+is recorded once per person, so a repeat is never sent. A burst waits
+`COORDINATOR_WAKE_COALESCE_MS`, and at most `COORDINATOR_WAKE_MAX_PER_HOUR`
+wakes go per rolling hour: items past the cap wait for the next slot, and past
+`COORDINATOR_WAKE_MAX_PENDING_ITEMS` a new item is refused. The coordinator's
+own conversation and children it delegated (#3158 already delivers those) do
+not wake it. The wake row is committed before the inbox call under a key
+derived from its id, so a restart re-submits it and the inbox accepts it once.
+The turn replays the person's dispatch actor and an internal client origin.
+
+**Composition and evidence.** The runtime mounts the routes and the wake in
+`runtime-routes.ts`, withdrawn on a hosted Station (`servesCoordinatorSession`).
+Tests: `coordinator-session.test.ts` (designation across a restart, coalescing,
+the hourly and pending caps at max + 1, exclusions, restart hand-over),
+`coordinator-wake-dispatch.test.ts` (a worker's turn ending reaches the
+coordinator's engine once, on ACP and a Claude-provider seam),
+`coordinator.routes.test.ts`, and `session-agent-resolution.test.ts`.
+
 ## WorkClaimStore
 
 A Session in a Project says what it is on so peers do not duplicate it.
