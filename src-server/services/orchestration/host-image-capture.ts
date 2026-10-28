@@ -419,7 +419,7 @@ function isStructurallyValidPng(bytes: Buffer): boolean {
  * not. The name a reply gave the file decides nothing: `.png` text is refused
  * and SVG/HTML are never one of the sniffed types.
  */
-export function validateHostImageBytes(
+function validateHostImageBytes(
   bytes: Buffer,
 ): { mimeType: ChatImageMimeType } | Refused {
   const mimeType = sniffChatImageMimeType(bytes.subarray(0, 16));

@@ -249,11 +249,6 @@ export function takeLaunchAtExit(eventId: string): LaunchedRoot | undefined {
   return launched ?? undefined;
 }
 
-/** Whether a policy is installed and admits `threadId` now. */
-export function sessionTmpDirAdmitted(threadId: string): boolean {
-  return admitted(threadId);
-}
-
 /**
  * The session's temp root as its engine was launched with it, while it still
  * exists as a private directory this user owns; otherwise undefined.
