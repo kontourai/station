@@ -1627,6 +1627,46 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     });
   });
 
+  test('leaves a newer invocation that reuses the dead turn id running', async () => {
+    const path = databasePath();
+    const threadId = 'thread-reused-turn-id';
+    const eventStore = bootAfterCrash({
+      path,
+      threadId,
+      provider: 'codex',
+      boundaryState: 'accepted',
+      startInvocationId: 'invocation-1',
+    });
+    stores.push(eventStore);
+    // A new owner sent again before recovery ran; the engine reused the id.
+    eventStore.appendEvent({
+      eventId: 'turn-started:reused',
+      provider: 'codex',
+      threadId,
+      turnId: 'turn-1',
+      invocationId: 'invocation-2',
+      createdAt: '2026-08-16T00:00:04.000Z',
+      method: 'turn.started',
+      prompt: 'again',
+    } as CanonicalRuntimeEvent);
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore,
+      logger,
+    });
+
+    await (service as any).interruptedTurns.consume();
+
+    const events = eventStore.listEvents(threadId);
+    expect(events.filter((e) => e.payload.method === 'turn.aborted')).toEqual(
+      [],
+    );
+    expect(activeTurnIdForEvents(events.map((row) => row.payload))).toBe(
+      'turn-1',
+    );
+  });
+
   test('a recovery abort persisted without an invocationId still closes its invocation-anchored turn', async () => {
     // The row shape boot recovery wrote before it stamped the invocation:
     // those conversations read an active turn forever, so every send waited.
@@ -1695,12 +1735,22 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
         eventStore.listEvents(threadId).map((row) => row.payload),
       ),
     ).toBeUndefined();
-    // The bounded fact set the conversation-open read folds.
+    // The bounded fact set the conversation-open read folds, and its batched
+    // twin behind the session list and agent runs.
     expect(
       activeTurnIdForEvents(
         eventStore
           .listSessionProjectionEvents(threadId)
           .map((row) => row.payload),
+      ),
+    ).toBeUndefined();
+    expect(
+      activeTurnIdForEvents(
+        (
+          eventStore
+            .listSessionProjectionEventsForThreads([threadId])
+            .get(threadId) ?? []
+        ).map((row) => row.payload),
       ),
     ).toBeUndefined();
     const detail = await service.readSession(

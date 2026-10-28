@@ -2,6 +2,7 @@ import type { InvocationTerminalRead } from '@kontourai/monument';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   advanceOpenTurnId,
+  isInvocationlessRecoveryAbort,
   nextTurnIdentityAnchor,
   type TurnIdentityAnchor,
 } from './session-lifecycle-service.js';
@@ -113,11 +114,14 @@ export function evaluateSessionWait(
       nextAnchor === anchor;
     if (!retainedStart) open = advanceOpenTurnId(open, event, invocationId);
     let settledInvocation = invocationId;
+    // A recovery abort has no invocation to prove; the fold above already
+    // matched it to the open turn by id.
     const ordinary =
       ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
         event.method,
       ) &&
-      (event.turnId !== undefined || event.invocationId !== undefined);
+      (event.turnId !== undefined || event.invocationId !== undefined) &&
+      !isInvocationlessRecoveryAbort(event);
     if (
       before !== undefined &&
       ordinary &&

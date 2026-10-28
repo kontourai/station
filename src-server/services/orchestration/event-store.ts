@@ -9181,7 +9181,8 @@ export class EventStore {
                ROW_NUMBER() OVER (PARTITION BY requested.thread, requested.native, requested.invocation ORDER BY sequence ${order}) AS rn
              FROM orchestration_events AS event JOIN requested
                ON event.thread_id = requested.thread AND (
-                 (event.turn_id = requested.native AND (requested.invocation IS NULL OR json_extract(event.payload, '$.invocationId') = requested.invocation))
+                 (event.turn_id = requested.native AND (requested.invocation IS NULL OR json_extract(event.payload, '$.invocationId') = requested.invocation
+                   OR (event.method = 'turn.aborted' AND json_extract(event.payload, '$.invocationId') IS NULL AND json_extract(event.payload, '$.recoveryTerminal') = 1)))
                  ${includeSessionErrors ? "OR (event.turn_id IS NULL AND json_extract(event.payload, '$.invocationId') IS NULL)" : ''}
                )
              WHERE ${methodFilter}

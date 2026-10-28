@@ -663,7 +663,7 @@ export const ACTIVE_TURN_FOLD_METHODS = [
  * every send read as an active-turn wait. Callers still require the turn id
  * to match.
  */
-function isInvocationlessRecoveryAbort(event: {
+export function isInvocationlessRecoveryAbort(event: {
   method?: string;
   invocationId?: string;
   recoveryTerminal?: unknown;

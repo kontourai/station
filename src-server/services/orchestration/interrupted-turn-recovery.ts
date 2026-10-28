@@ -15,6 +15,7 @@ import { errorMessage } from '../../utils/error-message.js';
 import { sleep } from '../../utils/sleep.js';
 import type { EventStore, PersistedRuntimeEvent } from './event-store.js';
 import { TURN_ABORT_SETTLED_REQUEST_STATUS } from './open-requests.js';
+import { isInvocationlessRecoveryAbort } from './session-lifecycle-service.js';
 import {
   isProviderTurnBoundary,
   type SessionTurnBoundaryRecord,
@@ -266,6 +267,11 @@ function ownTurnEnding(
   )) {
     if (event.turnId !== own.turnId) continue;
     const terminal = event.payload;
+    // This module's own abort carries no invocation; it ends the turn by id.
+    if (isInvocationlessRecoveryAbort(terminal)) {
+      ending = 'ended';
+      continue;
+    }
     if (
       terminal.invocationId !== undefined &&
       terminal.invocationId !== own.invocationId
@@ -500,8 +506,9 @@ export class InterruptedTurnRecovery {
         // session's future. If the thread opened a NEWER turn after this
         // boundary was claimed — a new owner attached and the user kept
         // going before this boot's consume ran — both recovery events would
-        // be stale: the abort is anchor-rejected by every fold (harmless),
-        // but the banner still forces needs_input over a genuinely running
+        // be stale: the abort would close that newer turn when it reuses the
+        // dead turn's id (folds accept a recovery abort by id alone), and the
+        // banner still forces needs_input over a genuinely running
         // turn (and the live client would tear down that turn's shell and
         // grants). Resolve the row silently and publish nothing: the folds
         // moved on. Compared by turn identity AND creation time: a start
@@ -552,12 +559,37 @@ export class InterruptedTurnRecovery {
           // a pass landing in between banners `needs_input`. It self-heals,
           // because that start then folds the session back to running. It is
           // the first pass's window, only longer.
-          const ownTurnStarted =
-            ownTurnId !== undefined &&
-            eventStore
-              .listEventsForTurn(record.threadId, ownTurnId, 64)
-              .some((event) => event.payload.method === 'turn.started');
+          const ownStarts =
+            ownTurnId === undefined
+              ? []
+              : eventStore
+                  .listEventsForTurn(record.threadId, ownTurnId, 64)
+                  .filter((event) => event.payload.method === 'turn.started');
+          const ownTurnStarted = ownStarts.length > 0;
+          // A native turn id can be reused by a later invocation. The
+          // recovery abort closes its turn by id alone, so a newer start of
+          // the same id under a different invocation is the thread moving on,
+          // not this boundary's turn. Unknown own invocation: no evidence.
+          const ownInvocationId =
+            record.intent?.invocationId ??
+            (
+              derivedOwn?.start ??
+              ownStarts.find(
+                (event) =>
+                  event.createdAt >= record.createdAt &&
+                  event.payload.method === 'turn.started' &&
+                  event.payload.inputKind !== 'steer',
+              )
+            )?.payload.invocationId;
+          const reusedByNewerInvocation =
+            !providerTurn &&
+            ownInvocationId !== undefined &&
+            latestTurnStarted?.turnId === ownTurnId &&
+            latestTurnStarted.createdAt > record.createdAt &&
+            latestTurnStarted.payload.invocationId !== undefined &&
+            latestTurnStarted.payload.invocationId !== ownInvocationId;
           if (
+            reusedByNewerInvocation ||
             (providerTurn &&
               latestTurnStarted?.turnId !== record.providerTurnId) ||
             (!providerTurn &&
