@@ -1,5 +1,8 @@
 import { useNavigation } from '../../contexts/NavigationContext';
-import { useCoordinator } from '../../hooks/useCoordinator';
+import {
+  coordinatorStatusLine,
+  useCoordinator,
+} from '../../hooks/useCoordinator';
 import { COORDINATOR_PRODUCT_NAME } from '../../lib/productNames';
 import { Button } from '../Button';
 import { ErrorState, SkeletonBlock } from '../state';
@@ -42,7 +45,7 @@ export function HomeCoordinatorCard() {
         />
       ) : state.designation ? (
         <div className="home-view__coordinator-body">
-          <p>Your personal agent. It hears when your work needs you.</p>
+          <p>{coordinatorStatusLine(state.delivery)}</p>
           <Button
             variant="primary"
             onClick={() =>

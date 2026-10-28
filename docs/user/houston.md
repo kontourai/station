@@ -10,25 +10,29 @@ happened and bring you the result or the decision.
 
 ## Set up Houston
 
-1. Open any chat. Its Agent and engine can be anything you use: Claude Code,
-   Codex, an ACP agent or Station's own engine.
+1. Open a chat on Claude Code, an ACP agent or Station's own engine.
+   Station can't send updates to Codex or Muse chats yet (see
+   [Limits](#limits)).
 2. Open the chat's **More** menu (the **⋯** sheet on a phone) and choose
    **Make this Houston**.
 
 Home (Mission Control) now shows a **Houston** card with **Talk to Houston**,
 which opens that chat. You have one Houston. If another chat already is,
 the menu offers **Make this Houston instead**, which replaces it. **Stop using
-as Houston** removes it.
+as Houston** removes it. If you delete Houston's chat, you can choose another
+without replacing anything.
 
 Houston gets Station's own tools (Station Control) whatever Agent it runs, so
 it can delegate work to other engines, read Sessions and Tasks, and message
 you. An ACP agent receives them only if it supports HTTP MCP servers;
 otherwise the chat works without them and Station records that they were not
-delivered. They arrive with Houston's next Session: a chat that was already
-running when you chose it picks them up when it next starts a Session. It acts with
-your normal permissions and approval mode, and asks you for approvals as any
-chat does. Anything your Agent configures, including its own auto-approvals,
-still applies.
+delivered. The tools arrive when Houston's next session starts. If the chat
+was already running when you chose it, Station says so, and the Houston card
+reads "Station tools arrive with its next session" until then.
+
+Houston acts with your normal permissions and approval mode, and asks you for
+approvals as any chat does. Anything your Agent configures, including its own
+auto-approvals, still applies.
 
 ## When Houston is woken
 
@@ -50,16 +54,31 @@ Station keeps this from getting noisy:
 | Messages per hour | 12; anything past that waits for the next free slot |
 | Sessions named in one message | 10, then a count of the rest |
 | Items waiting at once | 100; newer ones still show in your Attention |
+| An item already sent | not sent again for 7 days |
 
-The same item is never sent twice. Houston's own turns don't wake it. Work it delegated
-itself doesn't wake it when it finishes or fails, because that result already
-comes back to it directly; if that work needs you, Houston is told. A message waits for Houston's current turn to finish;
-it never interrupts it.
+If Station can't hand a message over (Houston's chat is full, or something
+failed), it tries again after 1 minute, then 5, then 15, then every hour. Each
+try counts toward the hourly limit.
+
+Houston's own turns don't wake it. Work it delegated itself doesn't wake it
+when it finishes or fails, because that result already comes back to it
+directly; if that work needs you, Houston is told. A message waits for
+Houston's current turn to finish; it never interrupts it.
+
+Station checks again that you can read each Session just before it sends a
+message, and leaves out any you no longer can. When you stop using a chat as
+Houston (or replace it), messages still waiting for that chat are withdrawn.
 
 ## Limits
 
+- **Codex and Muse.** Station can't deliver updates to a Codex or Muse chat
+  yet: those engines don't report when a turn ends, so Station keeps the chat
+  marked busy and holds the message. The Houston card says "Updates can't reach
+  this chat yet" when this applies. Tracked in
+  [#4051](https://github.com/kontourai/station/issues/4051).
 - Requested stops, pairing requests and scheduler notices don't wake Houston.
   Only work that names a Session does.
+- A message that is already being delivered can't be withdrawn.
 - A hosted Station has no Houston.
 - Houston doesn't keep a separate record of your Projects yet. It works from
   its own conversation and what it reads from Station.

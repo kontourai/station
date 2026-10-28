@@ -1,4 +1,5 @@
 import type {
+  CoordinatorDelivery,
   CoordinatorDesignation,
   CoordinatorDesignationRead,
   CoordinatorRefusalCode,
@@ -19,6 +20,8 @@ export type CoordinatorState =
   | {
       readonly kind: 'ready';
       readonly designation: CoordinatorDesignation | null;
+      /** How Station can reach the coordinator now (with a designation). */
+      readonly delivery?: CoordinatorDelivery;
     };
 
 const UNAVAILABLE = Symbol('coordinator-unavailable');
@@ -70,7 +73,7 @@ export function useCoordinator() {
       const body = await readBody<CoordinatorDesignationRead>(response);
       if (!body.ok)
         throw new Error(`Could not read the coordinator (${response.status})`);
-      return body.data.designation;
+      return body.data;
     },
   });
   // No current host authority: nothing to read, so nothing to show.
@@ -82,18 +85,25 @@ export function useCoordinator() {
         ? { kind: 'error', message: query.error.message }
         : query.data === UNAVAILABLE
           ? { kind: 'unavailable' }
-          : { kind: 'ready', designation: query.data ?? null };
+          : {
+              kind: 'ready',
+              designation: query.data?.designation ?? null,
+              ...(query.data?.delivery
+                ? { delivery: query.data.delivery }
+                : {}),
+            };
   const settle = () => client.invalidateQueries({ queryKey: key });
   const designate = useMutation({
     mutationFn: async (input: {
       conversationId: string;
       replace?: boolean;
     }) => {
-      const body = await readBody<{ designation: CoordinatorDesignation }>(
-        await mutateJson(url, 'PUT', options(), input),
-      );
+      const body = await readBody<{
+        designation: CoordinatorDesignation;
+        delivery?: CoordinatorDelivery;
+      }>(await mutateJson(url, 'PUT', options(), input));
       if (!body.ok) throw new CoordinatorRefusal(body.code ?? 'failed');
-      return body.data.designation;
+      return body.data;
     },
     onSettled: settle,
   });
@@ -108,4 +118,19 @@ export function useCoordinator() {
     onSettled: settle,
   });
   return { state, retry: () => void query.refetch(), designate, undesignate };
+}
+
+/**
+ * The coordinator's one status line (Home card, menu notices), from what the server derived about the
+ * coordinator's current Session. Blocked delivery outranks pending tools: the
+ * person would otherwise expect updates that cannot arrive.
+ */
+export function coordinatorStatusLine(
+  delivery: CoordinatorDelivery | undefined,
+): string {
+  if (delivery?.wakes === 'blocked')
+    return "Updates can't reach this chat yet: its engine doesn't report when a turn ends.";
+  if (delivery?.toolsPending)
+    return 'It hears when your work needs you. Station tools arrive with its next session.';
+  return 'Your personal agent. It hears when your work needs you.';
 }

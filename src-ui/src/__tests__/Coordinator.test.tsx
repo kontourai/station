@@ -4,7 +4,10 @@
  * real components over the real hook. Only the network is stubbed, answering
  * the envelopes the coordinator routes produce.
  */
-import type { CoordinatorDesignation } from '@kontourai/station-contracts/coordinator';
+import type {
+  CoordinatorDelivery,
+  CoordinatorDesignation,
+} from '@kontourai/station-contracts/coordinator';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -37,14 +40,21 @@ const navigate = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate }),
 }));
+const showToast = vi.hoisted(() => vi.fn());
+vi.mock('../contexts/ToastContext', () => ({
+  useToast: () => ({ showToast }),
+}));
 
 let designation: CoordinatorDesignation | null;
+let delivery: CoordinatorDelivery | undefined;
 let status: number;
 let calls: Array<{ method: string; body?: unknown }>;
 
 beforeEach(() => {
   designation = null;
+  delivery = undefined;
   status = 200;
+  showToast.mockReset();
   calls = [];
   navigate.mockReset();
   setClientCredentialResolver(() => ({
@@ -76,13 +86,22 @@ beforeEach(() => {
           conversationId: body.conversationId,
           designatedAt: '2026-10-28T09:00:00.000Z',
         };
-        return Response.json({ success: true, data: { designation } });
+        return Response.json({
+          success: true,
+          data: { designation, ...(delivery ? { delivery } : {}) },
+        });
       }
       if (method === 'DELETE') {
         designation = null;
         return Response.json({ success: true, data: { undesignated: true } });
       }
-      return Response.json({ success: true, data: { designation } });
+      return Response.json({
+        success: true,
+        data: {
+          designation,
+          ...(designation && delivery ? { delivery } : {}),
+        },
+      });
     }),
   );
 });
@@ -184,6 +203,70 @@ describe('chat More-menu coordinator rows', () => {
         conversationId: 'chat-new',
         replace: true,
       }),
+    );
+  });
+});
+
+describe('what the person is told about delivery', () => {
+  const houston = {
+    conversationId: 'chat-houston',
+    designatedAt: '2026-10-28T09:00:00.000Z',
+  };
+
+  test.each([
+    [
+      { wakes: 'blocked', toolsPending: false, engine: 'codex' },
+      "Updates can't reach this chat yet: its engine doesn't report when a turn ends.",
+    ],
+    [
+      { wakes: 'ready', toolsPending: true },
+      'It hears when your work needs you. Station tools arrive with its next session.',
+    ],
+    [
+      { wakes: 'ready', toolsPending: false },
+      'Your personal agent. It hears when your work needs you.',
+    ],
+  ] as const)('the card states %o', async (state, line) => {
+    designation = houston;
+    delivery = state;
+    render(<HomeCoordinatorCard />, { wrapper: wrapper() });
+    expect(await screen.findByText(line)).toBeTruthy();
+  });
+
+  test('designating a running chat says its tools arrive with the next session', async () => {
+    delivery = { wakes: 'ready', toolsPending: true };
+    const { result } = renderHook(() => useCoordinatorDockActions('chat-a'), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => expect(result.current).toHaveLength(1));
+    result.current[0]!.onSelect(document.createElement('button'));
+    await waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith(
+        `This chat is ${COORDINATOR_PRODUCT_NAME}. It hears when your work needs you. Station tools arrive with its next session.`,
+        undefined,
+        undefined,
+        undefined,
+        'success',
+      ),
+    );
+  });
+
+  test('a refused designation is told, not silent', async () => {
+    const { result } = renderHook(() => useCoordinatorDockActions('chat-a'), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => expect(result.current).toHaveLength(1));
+    // Another device designated a chat in the meantime.
+    designation = houston;
+    result.current[0]!.onSelect(document.createElement('button'));
+    await waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith(
+        `Another chat is ${COORDINATOR_PRODUCT_NAME}. Reopen this menu to replace it.`,
+        undefined,
+        undefined,
+        undefined,
+        'error',
+      ),
     );
   });
 });

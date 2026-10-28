@@ -1805,8 +1805,10 @@ for the tool-level behavior.
 
 ## CoordinatorWakeDelivery
 
-A person's coordinator Session (#3628, product name Houston) learns when their
-work needs them, fails or finishes, without polling.
+A person's coordinator Session (#3628) learns when their work needs them,
+fails or finishes, without polling. Its product names live only in the UI copy
+source ([`productNames.ts`](../../src-ui/src/lib/productNames.ts)), which a
+guard test enforces.
 [coordinator-session.ts](../../src-server/services/orchestration/coordinator-session.ts)
 holds the designation and the wake, on the orchestration database.
 
@@ -1823,7 +1825,11 @@ coordinator's Sessions the built-in Station tool servers
 
 **Invariants.** One designation per person and at most one person per
 conversation; a second is refused unless the request says `replace`. An item
-is recorded once per person, so a repeat is never sent. A burst waits
+is recorded once per person and remembered for
+`COORDINATOR_WAKE_DEDUPE_WINDOW_MS` (7 days), so a repeat in that window is not
+sent; producers key items per turn or request, so only a replay can repeat one
+later. Read access to each item's Session is decided again when a wake is
+composed, and an unreadable item is dropped. A burst waits
 `COORDINATOR_WAKE_COALESCE_MS`, and at most `COORDINATOR_WAKE_MAX_PER_HOUR`
 wakes go per rolling hour: items past the cap wait for the next slot, and past
 `COORDINATOR_WAKE_MAX_PENDING_ITEMS` a new item is refused. The coordinator's
@@ -1831,6 +1837,12 @@ own conversation does not wake it, nor does a delegated child's finished or
 failed turn (#3158 already delivers settled turns); a delegated child that
 needs the person does. The wake row is committed before the inbox call under a key
 derived from its id, so a restart re-submits it and the inbox accepts it once.
+When the inbox takes nothing, the items go back and the wake is tried again
+after `COORDINATOR_WAKE_RETRY_DELAYS_MS`, within the hourly cap. Replacing,
+removing (`retire`) or deleting the coordinator conversation withdraws the
+wakes still queued in its inbox. The routes' `delivery`
+(`readCoordinatorDelivery`) says whether wakes are blocked (#4051) and whether
+the live Session still lacks the Station tools.
 The turn replays the person's dispatch actor and an internal client origin.
 
 **Composition and evidence.** The runtime mounts the routes and the wake in

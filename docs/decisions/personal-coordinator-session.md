@@ -74,14 +74,42 @@ holds items for the next slot rather than dropping them; only the pending cap
 refuses, and the item stays in the person's Attention. Each bound has a test
 at max + 1.
 
+Dedupe is a 7-day window (`COORDINATOR_WAKE_DEDUPE_WINDOW_MS`), not forever.
+Items are keyed by the producer's dedupe tag, which is per turn or per
+request, and a notification lives at most a day, so a repeat after the window
+can only come from a replay. Keeping every item key forever would grow without
+bound to guard against an event the producers don't emit; the window is the
+stated guarantee.
+
 ## Delivery
 
 The wake is a conversation inbox entry (#3568), the path agent wake-ups use:
 it waits for a running turn, and placement applies the live continuation's
 permission rule. The wake row and its claimed items are committed before the
 inbox call, under a key derived from the wake id, so a restart re-submits the
-same turn and the inbox accepts it once. An inbox refusal that wrote nothing
-releases the items for the next wake.
+same turn and the inbox accepts it once. An inbox refusal or error that wrote
+nothing releases the items and retries after 1, 5, 15 and then every 60
+minutes (`COORDINATOR_WAKE_RETRY_DELAYS_MS`); each attempt is a wake row, so
+the hourly cap bounds retries too.
+
+Read access to each item's Session is decided at observation and again when a
+wake is composed or re-sent after a restart; an unreadable item is dropped.
+Text already handed to the inbox was readable then; it is not re-checked at
+placement.
+
+When the person replaces or removes the designation, or deletes the
+conversation, the wakes still queued in the old conversation's inbox are
+withdrawn through the inbox's own cancel (the person is their sender). A wake
+already being placed cannot be withdrawn. A designation whose conversation the
+person can no longer read counts as absent: it is not shown, and a new
+designation replaces it without `replace`.
+
+The person is told what Station can do: the read and write routes return
+`delivery`, derived from the current Session. Wakes are `blocked` when no turn
+runs but the inbox still reads the Session as busy (#4051: Codex and Muse turn
+terminals carry no invocation id). `toolsPending` holds while the live Session
+started without the Station tools. This is derived rather than keyed to engine
+names, so it stops reporting `blocked` once #4051 is fixed.
 
 ## Provisioning and permissions
 
