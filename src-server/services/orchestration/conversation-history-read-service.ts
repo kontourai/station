@@ -124,6 +124,11 @@ export class ConversationHistoryReadService {
   }): ConversationHistoryPage {
     const page = this.readPage(input);
     const observedAt = new Date().toISOString();
+    // One read for the page, not one per row.
+    const executionProviders =
+      this.options.eventStore.readConversationExecutionProviders(
+        page.records.map((record) => record.conversationId),
+      );
     const sessionItems = page.records.flatMap(
       (record): ConversationListItem[] => {
         const persisted = this.options.hydratePersistedSession(record.threadId);
@@ -175,6 +180,10 @@ export class ConversationHistoryReadService {
         if (summary.projectSlug) item.projectSlug = summary.projectSlug;
         if (summary.lifecycleState)
           item.lifecycleState = summary.lifecycleState;
+        if (summary.lifecycleChangedAt)
+          item.lifecycleChangedAt = summary.lifecycleChangedAt;
+        const ran = executionProviders.get(record.conversationId);
+        if (ran?.length) item.executionProviders = ran;
         if (summary.pendingReview !== undefined)
           item.pendingReview = summary.pendingReview;
         const activity = this.options.readConversationActivity?.(

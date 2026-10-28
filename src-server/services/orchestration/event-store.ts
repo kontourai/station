@@ -10184,6 +10184,51 @@ export class EventStore {
     return counts;
   }
 
+  /**
+   * The engines each conversation actually ran on: distinct providers of its
+   * execution sessions, in lineage order (#4266). A handoff to another engine
+   * is a lineage session too, so it appears once that session exists; a
+   * reserved handoff whose session never started ran nothing and is absent.
+   * A legacy conversation with no lineage rows is its own single session.
+   */
+  readConversationExecutionProviders(
+    conversationIds: readonly string[],
+  ): Map<string, string[]> {
+    const unique = [...new Set(conversationIds)];
+    const providers = new Map<string, string[]>();
+    for (const chunk of this.chunkArray(unique, EVENT_STORE_BATCH_CHUNK_SIZE)) {
+      const placeholders = chunk.map(() => '?').join(', ');
+      const rows = this.db
+        .prepare(
+          `SELECT m.conversation_id AS conversationId, s.provider AS provider,
+                  m.ordinal AS ordinal
+           FROM orchestration_conversation_sessions m
+           JOIN provider_session_state s ON s.thread_id = m.session_id
+           WHERE m.conversation_id IN (${placeholders})
+           UNION ALL
+           SELECT s.thread_id AS conversationId, s.provider AS provider,
+                  -1 AS ordinal
+           FROM provider_session_state s
+           WHERE s.thread_id IN (${placeholders})
+             AND NOT EXISTS (
+               SELECT 1 FROM orchestration_conversation_sessions x
+               WHERE x.conversation_id = s.thread_id
+             )
+           ORDER BY conversationId, ordinal`,
+        )
+        .all(...chunk, ...chunk) as Array<{
+        conversationId: string;
+        provider: string;
+      }>;
+      for (const row of rows) {
+        const list = providers.get(row.conversationId) ?? [];
+        if (!list.includes(row.provider)) list.push(row.provider);
+        providers.set(row.conversationId, list);
+      }
+    }
+    return providers;
+  }
+
   /** Latest adapter-accepted model across every child Session in a lineage. */
   readLatestAcceptedConversationModel(input: {
     conversationId: string;

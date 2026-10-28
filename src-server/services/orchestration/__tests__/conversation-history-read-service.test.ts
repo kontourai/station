@@ -657,6 +657,98 @@ describe('ConversationHistoryReadService', () => {
     }
   });
 
+  test('#4266: lists every engine the conversation ran on, in lineage order, and the real finish time', () => {
+    const root = 'handoff-root';
+    const addSession = (threadId: string, provider: string, at: string) => {
+      eventStore.upsertSession({
+        provider,
+        threadId,
+        status: 'ready',
+        createdAt: at,
+        updatedAt: at,
+      });
+      eventStore.appendEvent({
+        eventId: `${threadId}-started`,
+        provider,
+        threadId,
+        createdAt: at,
+        method: 'session.started',
+        sessionId: threadId,
+        metadata: { userId: 'owner-alpha', agentSlug: 'station' },
+      });
+    };
+    const turn = (threadId: string, provider: string, at: string) => {
+      eventStore.appendEvent({
+        eventId: `${threadId}-turn`,
+        provider,
+        threadId,
+        createdAt: at,
+        method: 'turn.started',
+        turnId: `${threadId}-turn`,
+        prompt: 'work',
+      });
+    };
+    addSession(root, 'claude', '2026-10-28T10:00:00.000Z');
+    turn(root, 'claude', '2026-10-28T10:00:01.000Z');
+    const children = [
+      [`${root}:session:codex-1`, 'codex', '2026-10-28T10:05:00.000Z'],
+      [`${root}:session:claude-2`, 'claude', '2026-10-28T10:10:00.000Z'],
+      [`${root}:session:codex-3`, 'codex', '2026-10-28T10:15:00.000Z'],
+    ] as const;
+    let predecessor = root;
+    for (const [threadId, provider, at] of children) {
+      eventStore.reserveNextConversationSession({
+        conversationId: root,
+        predecessorSessionId: predecessor,
+        proposedSessionId: threadId,
+        createdAt: at,
+      });
+      addSession(threadId, provider, at);
+      predecessor = threadId;
+    }
+    const [current, currentProvider] = children[2];
+    turn(current, currentProvider, '2026-10-28T10:15:01.000Z');
+    eventStore.appendEvent({
+      eventId: 'finished',
+      provider: currentProvider,
+      threadId: current,
+      createdAt: '2026-10-28T10:20:00.000Z',
+      method: 'turn.completed',
+      turnId: `${current}-turn`,
+    });
+    // Bookkeeping after the finish moves `updatedAt`, never the finish time.
+    eventStore.appendEvent({
+      eventId: 'later-note',
+      provider: currentProvider,
+      threadId: current,
+      createdAt: '2026-10-28T11:00:00.000Z',
+      method: 'runtime.warning',
+      message: 'later',
+    });
+
+    const items = new ConversationHistoryReadService(
+      readServiceOptions(eventStore),
+    ).list({
+      authority: sessionReadAuthorityFromRequest(
+        'owner-alpha',
+        undefined,
+        undefined,
+      ),
+      limit: 10,
+    }).items;
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      id: root,
+      executionProviders: ['claude', 'codex'],
+      lifecycleState: 'idle',
+      lifecycleChangedAt: '2026-10-28T10:20:00.000Z',
+    });
+    expect(
+      eventStore.readConversationExecutionProviders(['unknown-conversation']),
+    ).toEqual(new Map());
+  });
+
   test('never lists a NULL-owner record, even when the authority check would permit it', () => {
     eventStore.upsertSession({
       provider: 'claude',
