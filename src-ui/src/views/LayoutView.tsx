@@ -349,7 +349,6 @@ export function LayoutView({
         action={
           <ResponsiveSurfaceActions>
             <Button
-              variant="primary"
               pending={layoutFailure.retrying}
               onClick={() => void refetchLayout()}
             >
