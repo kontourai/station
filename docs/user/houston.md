@@ -22,8 +22,10 @@ as Houston** removes it.
 
 Houston gets Station's own tools (Station Control) whatever Agent it runs, so
 it can delegate work to other engines, read Sessions and Tasks, and message
-you. They arrive with Houston's next Session. A chat that was already running
-when you chose it picks them up when it next starts a Session. It acts with
+you. An ACP agent receives them only if it supports HTTP MCP servers;
+otherwise the chat works without them and Station records that they were not
+delivered. They arrive with Houston's next Session: a chat that was already
+running when you chose it picks them up when it next starts a Session. It acts with
 your normal permissions and approval mode, and asks you for approvals as any
 chat does. Anything your Agent configures, including its own auto-approvals,
 still applies.

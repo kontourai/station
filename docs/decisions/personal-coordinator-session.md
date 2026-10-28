@@ -83,7 +83,9 @@ releases the items for the next wake.
 ## Provisioning and permissions
 
 A coordinator's Sessions get the built-in Station tool servers and their
-default auto-approvals on any Agent and engine. This is the same list the
+default auto-approvals on any Agent and engine. Delivery follows each engine's
+existing rule: an ACP connection without HTTP MCP support gets an
+`engine-capability-absent` receipt instead. This is the same list the
 reserved Station role gets, and the person's designation is the opt-in. What
 the Agent authored is kept and wins on conflict, its own `autoApprove`
 included. No other restriction or grant is added.
