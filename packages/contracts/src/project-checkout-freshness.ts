@@ -96,8 +96,9 @@ export interface ProjectCheckoutKnownFreshness extends ProjectCheckoutFacts {
   staleBecause: ProjectCheckoutStaleReason[];
   thresholds: ProjectCheckoutStaleThresholds;
   /**
-   * The command that updates the checkout. Station never runs it. It
-   * refuses when `ahead` is also above 0 (the histories diverged).
+   * The command that updates the checkout, naming its absolute path.
+   * Station never runs it. It refuses when both `ahead` and `behind` are
+   * above 0 (the histories diverged).
    */
   updateCommand: string;
   checkedAt: string;

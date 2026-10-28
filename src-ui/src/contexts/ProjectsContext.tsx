@@ -147,6 +147,11 @@ export function useScopedProjectCheckoutFreshnessQuery(
   const { namespace } = useAuthorityPersistence();
   return useProjectCheckoutFreshnessQuery(slug ?? '', {
     staleTime: 10_000,
+    // Station's query defaults refetch neither on mount nor on focus; this
+    // answer changes outside Station (a pull in a terminal), so ask again
+    // when the person comes back to it.
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
     ...config,
     enabled: !!slug && (config?.enabled ?? true),
     requestScope,

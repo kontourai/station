@@ -72,7 +72,7 @@ export function ProjectCheckoutStaleCallout({
       <pre className="project-checkout-stale__command">
         <code>{freshness.updateCommand}</code>
       </pre>
-      {freshness.ahead > 0 && (
+      {freshness.ahead > 0 && freshness.behind > 0 && (
         <p>
           {`It also has ${plural(freshness.ahead, 'local commit')}, so this pull will refuse until they are merged.`}
         </p>

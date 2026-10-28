@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { execGitSync } from '../../../utils/git-exec.js';
 import { createProjectCheckoutFreshnessReader } from '../project-checkout-freshness.js';
@@ -596,6 +596,55 @@ describe('project checkout freshness', () => {
       upstream: 'evil/main',
       behind: 0,
       upstreamFetchedAt: old.toISOString(),
+    });
+  });
+
+  test('a fetch of another remote does not count as a fetch of the upstream', async () => {
+    const { root, checkout } = fixture();
+    git(checkout, ['fetch', '-q']);
+    const old = new Date(Date.now() - 5 * DAY_MS);
+    for (const name of ['main', 'HEAD']) {
+      const reflog = join(
+        checkout,
+        '.git',
+        'logs',
+        'refs',
+        'remotes',
+        'origin',
+        name,
+      );
+      if (existsSync(reflog)) utimesSync(reflog, old, old);
+    }
+    utimesSync(join(checkout, '.git', 'FETCH_HEAD'), old, old);
+    // Another remote, with history of its own, fetched just now.
+    const elsewhere = join(root, 'elsewhere.git');
+    git(root, ['init', '-q', '--bare', '-b', 'main', elsewhere]);
+    const seed = join(root, 'seed');
+    git(root, ['clone', '-q', elsewhere, seed]);
+    git(seed, ['checkout', '-q', '-b', 'main']);
+    git(seed, ['commit', '-q', '--allow-empty', '-m', 'unrelated']);
+    git(seed, ['push', '-q', 'origin', 'main']);
+    git(checkout, ['remote', 'add', 'elsewhere', elsewhere]);
+    git(checkout, ['fetch', '-q', 'elsewhere']);
+    const result = await createProjectCheckoutFreshnessReader().read(
+      checkout,
+      THRESHOLDS,
+    );
+    expect(result).toMatchObject({
+      status: 'stale',
+      staleBecause: ['fetch-age'],
+      upstreamFetchedAt: old.toISOString(),
+    });
+  });
+
+  test('a relative working directory gives a command naming its absolute path', async () => {
+    const { checkout } = fixture();
+    const result = await createProjectCheckoutFreshnessReader().read(
+      relative(process.cwd(), checkout),
+      THRESHOLDS,
+    );
+    expect(result).toMatchObject({
+      updateCommand: `git -C ${checkout} pull --ff-only`,
     });
   });
 

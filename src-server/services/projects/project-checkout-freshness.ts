@@ -19,7 +19,7 @@
  */
 import { constants } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import {
   PROJECT_CHECKOUT_FRESHNESS_VERSION,
   type ProjectCheckoutFacts,
@@ -50,6 +50,13 @@ const MAX_REMEMBERED = 256;
 const GIT_TIMEOUT_MS = 5_000;
 /** The newest reflog entries examined; enough for months of fetches. */
 const REFLOG_TAIL_BYTES = 64 * 1024;
+/** A FETCH_HEAD larger than this is read from its end only. */
+const FETCH_HEAD_BYTES = 1024 * 1024;
+/**
+ * A whole observation, file system included: a wedged mount can hold a
+ * `realpath` or `lstat` that no git timeout bounds.
+ */
+const OBSERVATION_DEADLINE_MS = 15_000;
 const MAX_REFLOG_ENTRIES = 32;
 
 type Observation =
@@ -64,19 +71,31 @@ function exitCode(error: unknown): number | undefined {
     : undefined;
 }
 
+interface Walk {
+  path: string;
+  /** `dev:ino` of each part, the record itself last. */
+  identities: string[];
+  /** The record's own `lstat`. */
+  stat: Awaited<ReturnType<typeof lstat>>;
+}
+
 /**
  * `base` joined with `parts` when none of those parts is a link (each is
- * checked with `lstat`), else `undefined`. `base` is a git directory and
- * is already symlink-resolved. A member could otherwise point a record at any
- * file this process can read and learn or forge its time. Checked part by
- * part rather than by comparing a resolved path, which on a case-insensitive
- * file system can differ in case alone.
+ * checked with `lstat`), with the identity of each. `base` is a git
+ * directory and is already symlink-resolved. A member could otherwise point
+ * a record at any file this process can read and learn or forge its time.
+ * Checked part by part rather than by comparing a resolved path, which on a
+ * case-insensitive file system can differ in case alone. A part swapped for
+ * a link after this walk is caught by walking again after the read
+ * ({@link sameWalk}).
  */
-async function unlinked(
+async function walk(
   base: string,
   parts: readonly string[],
-): Promise<string | undefined> {
+): Promise<Walk | undefined> {
   let path = base;
+  const identities: string[] = [];
+  let stat: Walk['stat'] | undefined;
   for (const part of parts) {
     // The parts come from ref and remote names in member-written config;
     // none may step out of `base`.
@@ -84,47 +103,55 @@ async function unlinked(
       return undefined;
     path = join(path, part);
     try {
-      if ((await lstat(path)).isSymbolicLink()) return undefined;
+      stat = await lstat(path);
     } catch {
       return undefined;
     }
+    if (stat.isSymbolicLink()) return undefined;
+    identities.push(`${stat.dev}:${stat.ino}`);
   }
-  return path;
+  return stat ? { path, identities, stat } : undefined;
 }
 
-/** The latest modification time among regular files that exist. */
-async function latestModification(
-  records: ReadonlyArray<readonly [base: string, parts: readonly string[]]>,
+/** Whether every part still is what {@link walk} saw. */
+async function sameWalk(
+  base: string,
+  parts: readonly string[],
+  before: Walk,
+): Promise<boolean> {
+  const after = await walk(base, parts);
+  return (
+    after !== undefined &&
+    after.identities.join('/') === before.identities.join('/')
+  );
+}
+
+/** A record's modification time, when it is a regular file reached without a link. */
+async function recordTime(
+  base: string,
+  parts: readonly string[],
 ): Promise<Date | undefined> {
-  let latest: Date | undefined;
-  for (const [base, parts] of records) {
-    const path = await unlinked(base, parts);
-    if (!path) continue;
-    try {
-      const stat = await lstat(path);
-      if (stat.isFile() && (!latest || stat.mtime > latest))
-        latest = stat.mtime;
-    } catch {
-      // Absent: this record of a fetch does not exist.
-    }
-  }
-  return latest;
+  const seen = await walk(base, parts);
+  if (!seen?.stat.isFile()) return undefined;
+  return (await sameWalk(base, parts, seen)) ? seen.stat.mtime : undefined;
 }
 
 /**
- * The last {@link REFLOG_TAIL_BYTES} of a regular file, or `undefined` when
- * there is none (absent, a link, a FIFO, unreadable).
+ * The last `maxBytes` of a record and its modification time, or
+ * `undefined` when there is none (absent, a link anywhere on the way, a
+ * FIFO, unreadable, or swapped while it was read).
  */
-async function readTail(
+async function readRecord(
   base: string,
   parts: readonly string[],
-): Promise<string | undefined> {
-  const path = await unlinked(base, parts);
-  if (!path) return undefined;
+  maxBytes: number,
+): Promise<{ text: string; mtime: Date } | undefined> {
+  const seen = await walk(base, parts);
+  if (!seen) return undefined;
   let handle: Awaited<ReturnType<typeof open>>;
   try {
     handle = await open(
-      path,
+      seen.path,
       constants.O_RDONLY |
         (constants.O_NOFOLLOW ?? 0) |
         (constants.O_NONBLOCK ?? 0),
@@ -132,10 +159,16 @@ async function readTail(
   } catch {
     return undefined;
   }
+  let result: { text: string; mtime: Date } | undefined;
   try {
     const stats = await handle.stat();
-    if (!stats.isFile()) return undefined;
-    const length = Math.min(stats.size, REFLOG_TAIL_BYTES);
+    // The file opened must be the one the walk saw.
+    if (
+      !stats.isFile() ||
+      `${stats.dev}:${stats.ino}` !== seen.identities.at(-1)
+    )
+      return undefined;
+    const length = Math.min(stats.size, maxBytes);
     const bytes = Buffer.alloc(length);
     let read = 0;
     while (read < length) {
@@ -148,12 +181,16 @@ async function readTail(
       if (bytesRead === 0) break;
       read += bytesRead;
     }
-    return bytes.subarray(0, read).toString('utf8');
+    result = {
+      text: bytes.subarray(0, read).toString('utf8'),
+      mtime: stats.mtime,
+    };
   } catch {
     return undefined;
   } finally {
     await handle.close();
   }
+  return (await sameWalk(base, parts, seen)) ? result : undefined;
 }
 
 /**
@@ -170,6 +207,23 @@ function reflogEntries(text: string): Array<{ old: string; time: number }> {
     if (match) entries.push({ old: match[1], time: Number(match[2]) * 1000 });
   }
   return entries;
+}
+
+/**
+ * A name under `refs/` with none of the characters git forbids in a ref
+ * (control characters, space, DEL, `~^:?*[\`): never an option, a revision
+ * or a line break.
+ */
+function isRefName(name: string): boolean {
+  return (
+    name.length > 'refs/'.length &&
+    name.startsWith('refs/') &&
+    !/[~^:?*[\\]/.test(name) &&
+    ![...name].some((character) => {
+      const code = character.charCodeAt(0);
+      return code <= 0x20 || code === 0x7f;
+    })
+  );
 }
 
 type RepositoryFacts =
@@ -212,7 +266,7 @@ async function readFacts(repository: ReadRepository): Promise<RepositoryFacts> {
   // A ref name, never something git would take as an option, with none of
   // the characters git forbids in one (control characters, space, `~^:?*[\`).
   // A remote's refspec may map it anywhere under `refs/`.
-  if (!/^refs\/[^\x00-\x20\x7f~^:?*[\\]+$/.test(upstreamRef))
+  if (!isRefName(upstreamRef))
     return { kind: 'unknown', reason: 'no-upstream' };
   // Whether exactly that ref exists. `show-ref --verify` takes the full name
   // as written, with no guessing at other refs, and reads it by name (so a
@@ -269,20 +323,10 @@ async function readFacts(repository: ReadRepository): Promise<RepositoryFacts> {
       behindSince = Math.max(behindSince ?? learned, learned);
   }
 
-  // An upstream from a remote only (a local branch's remote is `.`). `git
-  // clone` writes neither FETCH_HEAD nor the branch's reflog, only the
-  // remote's HEAD reflog.
+  // An upstream from a remote only (a local branch's remote is `.`).
   const fetched =
     remote && remote !== '.'
-      ? await latestModification([
-          [repository.gitDir, ['FETCH_HEAD']],
-          [repository.commonDir, ['FETCH_HEAD']],
-          [repository.commonDir, ['logs', ...upstreamRef.split('/')]],
-          [
-            repository.commonDir,
-            ['logs', 'refs', 'remotes', ...remote.split('/'), 'HEAD'],
-          ],
-        ])
+      ? await lastFetch(repository, upstreamRef, remote, git)
       : undefined;
 
   return {
@@ -301,6 +345,45 @@ async function readFacts(repository: ReadRepository): Promise<RepositoryFacts> {
 }
 
 /**
+ * The newest record of a fetch that brought in the upstream: a FETCH_HEAD
+ * (the worktree's or the repository's) that lists the upstream's current
+ * commit, so a fetch of some other remote does not count; the upstream
+ * ref's reflog; or the remote's HEAD reflog, which `git clone` writes when
+ * it writes neither of the others.
+ */
+async function lastFetch(
+  repository: ReadRepository,
+  upstreamRef: string,
+  remote: string,
+  git: (args: string[]) => Promise<string>,
+): Promise<Date | undefined> {
+  const tip = await git(['rev-parse', '--verify', `${upstreamRef}^{commit}`]);
+  const times: Array<Date | undefined> = [];
+  for (const base of new Set([repository.gitDir, repository.commonDir])) {
+    const record = await readRecord(base, ['FETCH_HEAD'], FETCH_HEAD_BYTES);
+    times.push(
+      record?.text.split('\n').some((line) => line.startsWith(`${tip}\t`))
+        ? record.mtime
+        : undefined,
+    );
+  }
+  times.push(
+    await recordTime(repository.commonDir, ['logs', ...upstreamRef.split('/')]),
+    await recordTime(repository.commonDir, [
+      'logs',
+      'refs',
+      'remotes',
+      ...remote.split('/'),
+      'HEAD',
+    ]),
+  );
+  let latest: Date | undefined;
+  for (const time of times)
+    if (time && (!latest || time > latest)) latest = time;
+  return latest;
+}
+
+/**
  * When the upstream ref moved from a commit HEAD contains to one it lacks:
  * the newest reflog entry whose previous value HEAD contains. Walks back
  * from the newest entry, at most {@link MAX_REFLOG_ENTRIES}; past that, or
@@ -313,10 +396,13 @@ async function reflogMovedPastHead(
   upstreamRef: string,
   git: (args: string[]) => Promise<string>,
 ): Promise<number | undefined> {
-  const text = await readTail(repository.commonDir, [
-    'logs',
-    ...upstreamRef.split('/'),
-  ]);
+  const text = (
+    await readRecord(
+      repository.commonDir,
+      ['logs', ...upstreamRef.split('/')],
+      REFLOG_TAIL_BYTES,
+    )
+  )?.text;
   const entries = text ? reflogEntries(text) : [];
   if (entries.length === 0) return undefined;
   const examined = entries.slice(-MAX_REFLOG_ENTRIES).reverse();
@@ -392,10 +478,11 @@ export interface ProjectCheckoutFreshnessReader {
 }
 
 export function createProjectCheckoutFreshnessReader(
-  options: { now?: () => Date; ttlMs?: number } = {},
+  options: { now?: () => Date; ttlMs?: number; deadlineMs?: number } = {},
 ): ProjectCheckoutFreshnessReader {
   const now = options.now ?? (() => new Date());
   const ttlMs = options.ttlMs ?? FRESHNESS_TTL_MS;
+  const deadlineMs = options.deadlineMs ?? OBSERVATION_DEADLINE_MS;
   const remembered = new Map<
     string,
     { observation: Promise<Observation>; settledAt?: number }
@@ -441,8 +528,21 @@ export function createProjectCheckoutFreshnessReader(
           checkedAt: now().toISOString(),
         };
       }
-      const directory = expandTilde(workingDirectory.trim());
-      const seen = await observation(directory);
+      // Absolute, so the command means the same folder in any terminal.
+      const directory = resolve(expandTilde(workingDirectory.trim()));
+      const pending = observation(directory);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const seen = await Promise.race([
+        pending,
+        new Promise<Observation>((settle) => {
+          timer = setTimeout(() => {
+            // Forget the wedged read, so the next request tries again.
+            if (remembered.get(directory)?.observation === pending)
+              remembered.delete(directory);
+            settle({ kind: 'unknown', reason: 'unreadable', at: now() });
+          }, deadlineMs);
+        }),
+      ]).finally(() => clearTimeout(timer));
       if (seen.kind === 'unknown') {
         return {
           version: PROJECT_CHECKOUT_FRESHNESS_VERSION,

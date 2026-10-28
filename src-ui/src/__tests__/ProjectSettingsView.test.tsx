@@ -1414,6 +1414,34 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       expect(screen.queryByTestId('project-checkout-unchecked')).toBeNull();
     });
 
+    test('a checkout only ahead is not told its pull will refuse', () => {
+      enablePreview();
+      sdkMocks.checkoutFreshness = {
+        ...stale,
+        staleBecause: ['fetch-age'],
+        behind: 0,
+        ahead: 2,
+        upstreamFetchedAt: new Date(Date.now() - 5 * 86_400_000).toISOString(),
+      };
+      renderProjectSettings();
+      expect(
+        screen.getByTestId('project-checkout-stale').textContent,
+      ).not.toContain('will refuse');
+    });
+
+    test('asks again whenever the person comes back, since a pull happens outside Station', () => {
+      enablePreview();
+      renderProjectSettings();
+      expect(sdkMocks.checkoutFreshnessQuery).toHaveBeenCalledWith(
+        'demo',
+        expect.objectContaining({
+          enabled: true,
+          refetchOnMount: true,
+          refetchOnWindowFocus: true,
+        }),
+      );
+    });
+
     test('a failed read offers a retry that reads again', () => {
       enablePreview();
       sdkMocks.checkoutFreshnessError = new Error('Station is unreachable');
