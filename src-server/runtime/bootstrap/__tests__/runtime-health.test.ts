@@ -277,9 +277,15 @@ describe('runtime-health', () => {
     });
 
     // Hold the loop with allocation so the stall both burns CPU and collects.
-    const startedAt = performance.now();
+    // Bounded by this process's CPU time, not wall time: on a loaded runner a
+    // wall-clock bound can get far less CPU than it waited.
+    const cpuAtStart = process.cpuUsage();
+    const cpuSpentMs = () => {
+      const spent = process.cpuUsage(cpuAtStart);
+      return (spent.user + spent.system) / 1e3;
+    };
     let retained: Array<{ index: number }> = [];
-    while (performance.now() - startedAt < 150) {
+    while (cpuSpentMs() < 150) {
       for (let index = 0; index < 50_000; index += 1) retained.push({ index });
       if (retained.length > 1_000_000) retained = [];
     }
@@ -290,8 +296,7 @@ describe('runtime-health', () => {
     expect(report.gcTotalMs).toBeGreaterThanOrEqual(0);
     expect(
       (report.cpuUserMs as number) + (report.cpuSystemMs as number),
-    ).toBeGreaterThanOrEqual(100);
-    expect(report.elapsedMs).toBeGreaterThanOrEqual(150);
+    ).toBeGreaterThanOrEqual(150);
     expect(report.rssMb).toBeGreaterThan(0);
     expect(report.heapUsedMb).toBeGreaterThan(0);
   });

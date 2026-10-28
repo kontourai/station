@@ -1452,12 +1452,14 @@ event-loop delay reached one second writes an `Event loop stalled` warning to
 the server log (`<STATION_HOME>/logs/server/`). The warning carries
 `maxDelayMs` and `p99DelayMs`, plus what the process did during `elapsedMs`:
 `cpuUserMs`, `cpuSystemMs`, `majorPageFaults`, and `gcCount`, `gcTotalMs`,
-`gcMaxMs`, with `rssMb` and `heapUsedMb` at the end of the window. CPU time near
-the stall means the process was busy, and the GC totals show how much of that
-was garbage collection. Many major page faults with little CPU time mean memory
-was being read back from swap. Neither means a call blocked without using the
-CPU, or the host ran other work. The warning is written about 250 ms after the
-window ends, so it includes GC pauses that Node reports late.
+`gcMaxMs`, with `rssMb` and `heapUsedMb` at the end of the window. Read them as
+leads. CPU time is the whole process's, across all of its threads, not only
+the event loop. GC totals are main-thread pause time, so a GC total near the
+stall points at garbage collection. Many major page faults mean the process
+waited on pages read from disk (swap, or evicted code and mapped files). Little
+CPU time and few faults point at a call that blocked without computing, or at a
+host that ran other work. The warning is written about 250 ms after the window
+ends, so it includes GC pauses that Node reports late.
 
 The cost counter has USD semantics in its producer but no declared instrument
 unit. Token counters likewise have no explicit unit property.

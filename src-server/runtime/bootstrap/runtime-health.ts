@@ -47,9 +47,10 @@ function sampleRuntimeResources(): RuntimeResourceSample {
 }
 
 /**
- * Calls `onGc` with each GC's start (performance clock) and duration. Like the
- * delay histogram, the observer lives as long as the process; it holds only
- * the monitor's fixed-size window totals.
+ * Calls `onGc` with each GC's start (performance clock) and main-thread pause.
+ * Like the delay histogram, the observer is never disconnected: runtime
+ * teardown clears only timers, so it keeps the monitor's closure (logger and
+ * fixed-size window totals) alive for the life of the process.
  */
 function observeGarbageCollection(
   onGc: (startTime: number, durationMs: number) => void,
@@ -184,12 +185,14 @@ export async function startRuntimeHealthChecks(context: {
  *
  * The delay alone does not say what held the loop, so a stall line also
  * carries what this process did during that window: CPU time, major page
- * faults, and GC pauses, plus memory at the tick. CPU time close to the stall
- * means the process was busy (JavaScript, or GC when the GC total accounts for
- * it). Major page faults with little CPU time mean its memory was being read
- * back from swap. Neither means a call blocked without using the CPU (a
- * synchronous child process, file read, or lock wait), or that the host
- * scheduled other work instead.
+ * faults, and GC pauses, plus memory at the tick. These are leads, not a
+ * verdict. CPU time is the whole process's, across worker and helper threads
+ * as well as the event loop. GC totals are main-thread pause wall time, so a
+ * GC total close to the stall points at collection. Many major page faults
+ * mean the process waited on pages read from disk (swap, or evicted code and
+ * mapped files). Little CPU time and few faults point at a call that blocked
+ * without computing (a synchronous child process, file read, or lock wait), or
+ * at a host that ran other work instead.
  */
 export function startRuntimeEventLoopLagMonitoring(context: {
   timers: NodeJS.Timeout[];
