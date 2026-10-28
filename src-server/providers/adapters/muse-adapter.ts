@@ -1103,6 +1103,9 @@ export class MuseAdapter implements ProviderAdapterShape {
     }
     const startedAt = Date.now();
     const requestedApprovalMode = readApprovalMode(input.modelOptions);
+    // chat-host-images: prepared once, here; the serve host and every exec
+    // turn get this one folder, and none is created later in the session.
+    const sessionTmpDir = engineSessionTmpDir(input.threadId);
     // #2452: a `muse serve` host first, when this runtime enables it. Any
     // failure to use it (no such subcommand, a failed handshake, a schema
     // this Station has not verified, a refused session start) falls back to
@@ -1113,7 +1116,11 @@ export class MuseAdapter implements ProviderAdapterShape {
       | undefined;
     let serveUnavailable: string | undefined;
     if (this.options.serve && this.providerOverride !== 'echo') {
-      const candidate = this.createServeSession(input.threadId, input.cwd);
+      const candidate = this.createServeSession(
+        input.threadId,
+        input.cwd,
+        sessionTmpDir,
+      );
       try {
         serveStarted = await candidate.start({
           ...(input.cwd ? { cwd: input.cwd } : {}),
@@ -1160,14 +1167,13 @@ export class MuseAdapter implements ProviderAdapterShape {
       modelId: input.modelId,
       stopped: false,
       ...(serve ? { serve } : {}),
+      ...(sessionTmpDir ? { tmpDir: sessionTmpDir } : {}),
     };
     this.sessions.set(input.threadId, record);
-    // chat-host-images: the session's temp folder (the one a serve host or
-    // every turn's exec gets) is recorded now that this record is the
-    // thread's session. An exec session spawns per turn, after the first
-    // turn's instruction is composed, so recording it at the start is what
-    // lets that instruction name it.
-    const sessionTmpDir = engineSessionTmpDir(input.threadId);
+    // chat-host-images: the folder prepared at the start is recorded now that
+    // this record is the thread's session. An exec session spawns per turn,
+    // after the first turn's instruction is composed, so recording it here is
+    // what lets that instruction name it.
     commitEngineLaunch(
       input.threadId,
       sessionTmpDir ? { own: sessionTmpDir } : undefined,
@@ -1282,17 +1288,13 @@ export class MuseAdapter implements ProviderAdapterShape {
   private createServeSession(
     threadId: string,
     cwd: string | undefined,
+    tmpDir: string | undefined,
   ): MuseServeSession {
     const serve = this.options.serve ?? {};
     const spawnHost =
       serve.spawnHost ??
       ((posture: MuseServeHostPosture, hostCwd?: string) =>
-        createMuseServeHost(
-          posture,
-          hostCwd,
-          serve.dataHome,
-          engineSessionTmpDir(threadId),
-        ));
+        createMuseServeHost(posture, hostCwd, serve.dataHome, tmpDir));
     return new MuseServeSession({
       threadId,
       now: this.now,
@@ -1444,11 +1446,7 @@ export class MuseAdapter implements ProviderAdapterShape {
 
     let spawned: MuseSpawnResult;
     try {
-      spawned = this.processFactory(
-        args,
-        record.cwd,
-        engineSessionTmpDir(input.threadId),
-      );
+      spawned = this.processFactory(args, record.cwd, record.tmpDir);
     } catch (error) {
       cleanupImages();
       throw error;

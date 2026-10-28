@@ -184,6 +184,7 @@ interface Harness {
   processes: FakeMuseProcess[];
   spawnArgs: string[][];
   spawnCwds: Array<string | undefined>;
+  spawnTmpDirs: Array<string | undefined>;
   released: number;
   logger: { warn: ReturnType<typeof vi.fn>; info: ReturnType<typeof vi.fn> };
 }
@@ -192,19 +193,22 @@ function createHarness(overrides: Partial<MuseAdapterOptions> = {}): Harness {
   const processes: FakeMuseProcess[] = [];
   const spawnArgs: string[][] = [];
   const spawnCwds: Array<string | undefined> = [];
+  const spawnTmpDirs: Array<string | undefined> = [];
   const logger = { warn: vi.fn(), info: vi.fn() };
   const harness = {
     processes,
     spawnArgs,
     spawnCwds,
+    spawnTmpDirs,
     released: 0,
     logger,
   } as Harness;
   const adapter = new MuseAdapter({
     newSessionId: () => 'muse-session-fixed',
-    processFactory: (args, cwd) => {
+    processFactory: (args, cwd, tmpDir) => {
       spawnArgs.push(args);
       spawnCwds.push(cwd);
+      spawnTmpDirs.push(tmpDir);
       const processHandle = new FakeMuseProcess();
       processes.push(processHandle);
       return {
@@ -352,6 +356,43 @@ describe('MuseAdapter', () => {
       await capture.settled();
       expect(sessionTempRoot('thread-muse-stop')).toBeUndefined();
       expect(existsSync(dir)).toBe(false);
+    } finally {
+      uninstall();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  test('chat-host-images: an exec turn uses the start folder and never creates one later', async () => {
+    const home = makeSessionHome('muse-turn-tmp-');
+    vi.stubEnv('STATION_HOME', home);
+    let admitted = false;
+    const uninstall = installSessionTmpDirPolicy(() => admitted);
+    try {
+      const harness = createHarness();
+      // Started while the preview was off; turned on before the turn.
+      await harness.adapter.startSession({
+        provider: 'muse',
+        threadId: 'late-on',
+        cwd: '/tmp/project',
+      });
+      admitted = true;
+      void harness.adapter
+        .sendTurn({ threadId: 'late-on', input: 'hi' })
+        .catch(() => undefined);
+      await vi.waitFor(() => expect(harness.spawnTmpDirs).toHaveLength(1));
+      expect(harness.spawnTmpDirs[0]).toBeUndefined();
+      expect(existsSync(sessionTmpDirPath('late-on', home))).toBe(false);
+      // Admitted at start: every turn gets that same folder.
+      await harness.adapter.startSession({
+        provider: 'muse',
+        threadId: 'on',
+        cwd: '/tmp/project',
+      });
+      void harness.adapter
+        .sendTurn({ threadId: 'on', input: 'hi' })
+        .catch(() => undefined);
+      await vi.waitFor(() => expect(harness.spawnTmpDirs).toHaveLength(2));
+      expect(harness.spawnTmpDirs[1]).toBe(sessionTmpDirPath('on', home));
     } finally {
       uninstall();
       vi.unstubAllEnvs();
