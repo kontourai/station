@@ -461,7 +461,11 @@ describe('verification coordinator', () => {
       const runCheck = (env: NodeJS.ProcessEnv) =>
         spawnSync(
           process.execPath,
-          [join(process.cwd(), 'scripts', 'heavy-check-slot.mjs'), 'lane-check', check],
+          [
+            join(process.cwd(), 'scripts', 'heavy-check-slot.mjs'),
+            'lane-check',
+            check,
+          ],
           {
             env: {
               ...env,

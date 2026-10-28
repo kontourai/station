@@ -161,9 +161,9 @@ describe('heavy-check slot count', () => {
     expect(count(2, 4)).toBe(1);
     expect(count(2, 4, { STATION_HEAVY_CHECK_SLOTS: '3' })).toBe(3);
     for (const bad of ['0', '65', '1.5', 'two'])
-      expect(() =>
-        count(4, 16, { STATION_HEAVY_CHECK_SLOTS: bad }),
-      ).toThrow(/STATION_HEAVY_CHECK_SLOTS/);
+      expect(() => count(4, 16, { STATION_HEAVY_CHECK_SLOTS: bad })).toThrow(
+        /STATION_HEAVY_CHECK_SLOTS/,
+      );
   });
 });
 
@@ -171,7 +171,10 @@ describe('heavy-check slot runner (child processes)', () => {
   test('a second check waits for the holder, names it, and runs after it exits', async () => {
     const w = workspace();
     const env = poolEnv(w.slotDir);
-    const first = start(['first-check', w.check, w.log, 'A', w.release, '0'], env);
+    const first = start(
+      ['first-check', w.check, w.log, 'A', w.release, '0'],
+      env,
+    );
     await until(() => w.lines().includes('A start'), 'the first check');
     const second = start(['second-check', w.check, w.log, 'B', '', '7'], env);
     await until(

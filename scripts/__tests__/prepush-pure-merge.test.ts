@@ -318,7 +318,7 @@ describe.skipIf(process.platform === 'win32')(
       for (const gate of EXPENSIVE)
         writeFileSync(
           join(f.repo, gate),
-        `import { appendFileSync } from 'node:fs';\nappendFileSync(${JSON.stringify(report)}, ${JSON.stringify(`${gate}\n`)});\n`,
+          `import { appendFileSync } from 'node:fs';\nappendFileSync(${JSON.stringify(report)}, ${JSON.stringify(`${gate}\n`)});\n`,
         );
       const slotDir = join(f.root, 'heavy-check-slots');
       // Hook files are untracked in the fixture so they never affect the merge.
@@ -376,9 +376,7 @@ if (/^scripts\\/commit-message-gate/.test(args[0] ?? '')) {
             timeout: 30_000,
           },
         );
-        expect(result.status, result.stdout + result.stderr).toBe(
-          expectStatus,
-        );
+        expect(result.status, result.stdout + result.stderr).toBe(expectStatus);
         return {
           output: result.stdout + result.stderr,
           gates: readFileSync(report, 'utf8')

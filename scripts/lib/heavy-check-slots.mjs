@@ -31,7 +31,11 @@
  * Hosted CI (`CI` or `GITHUB_ACTIONS`) takes no slot: each runner is a single
  * tenant, and a pool there would only serialize one job's own steps.
  */
-import { availableParallelism, tmpdir as osTmpdir, totalmem as osTotalmem } from 'node:os';
+import {
+  availableParallelism,
+  tmpdir as osTmpdir,
+  totalmem as osTotalmem,
+} from 'node:os';
 import { join } from 'node:path';
 import { acquireTypecheckSlot } from './typecheck-host-slots.mjs';
 

@@ -1676,6 +1676,53 @@ typecheck through `ci:fast`; the pre-push hook retains cheap and scoped checks. 
 with `npm run gate:for` evidence and a single `typecheck:<lane>`; do not start
 the full aggregate or `ci:fast` in the background and poll for its result.
 
+### Host heavy-check slots
+
+Typecheck slots bound compilers only. Several agents on one small host can
+still run `docs:truth:gate`, Vitest selections and pre-push gates together and
+starve everything else on it, Station included. These heavy checks therefore
+queue for a second host-wide pool, `scripts/lib/heavy-check-slots.mjs`, which
+uses the same lock-file protocol as the typecheck slots (atomic claims,
+dead-holder reclaim, a bounded wait), in its own directory:
+`/tmp/station-heavy-check-slots-<uid>` on macOS and Linux and the per-user
+temp directory on Windows.
+
+`node scripts/heavy-check-slot.mjs <label> <script.mjs> [arguments]` holds a
+slot and then runs the script as the slot holder. These entry points use it:
+
+| Entry point | Label |
+| --- | --- |
+| `npm run test:focused` | `test:focused` |
+| `npm run test:changed` | `test:changed` |
+| `npm run docs:truth:gate` (also a Veritas readiness evidence check) | `docs:truth:gate` |
+| `npm run docs:learn:build`, `npm run docs:learn:check` | `docs:learn:build`, `docs:learn:check` |
+| Pre-push transfer budgets, static gates, SDK barrel | `pre-push:transfer-budgets`, `pre-push:static-gates`, `pre-push:sdk-barrel` |
+
+- N is the smaller of one slot per four logical CPUs (floored) and one per
+  8 GiB of RAM (rounded), between 1 and 4. A 4-core, 15 GiB host gets 1.
+- A queued check prints `[heavy-check-slots] waiting for a heavy-check slot
+  for <label>: 1/1 held by pid <N> (<holder label>) in <worktree>`, repeated
+  every minute.
+- The wait is bounded. After `STATION_HEAVY_CHECK_SLOT_WAIT_MS` (default 30
+  minutes) the check fails with exit status 1 and names the holders. It never
+  passes without running.
+- A slotted check started inside another one (for example `test:focused`
+  inside `docs:truth:gate`) runs under its ancestor's slot.
+  `STATION_HEAVY_CHECK_SLOT_HELD` carries the holder's pid, and a marker
+  naming a dead pid is ignored.
+- Lanes run by the verification coordinator (`ci:fast`, `verify:static`,
+  `full:regression`) are already admitted by the coordinator's host-wide,
+  pressure-gated scheduler, so their heavy checks take no second slot. The
+  order of admission is always coordinator, then heavy check, then typecheck
+  or Biome. No holder waits on an admission its own waiter holds.
+- Hosted CI (`CI` or `GITHUB_ACTIONS`) takes no slot, because each runner is
+  single-tenant.
+- A dead holder's slot is reclaimed by the next waiter.
+
+Overrides: `STATION_HEAVY_CHECK_SLOTS` (count, 1–64),
+`STATION_HEAVY_CHECK_SLOT_WAIT_MS`, and `STATION_HEAVY_CHECK_SLOT_DIR` (set it
+identically for every caller).
+
 ### Host-pressure liveness scale (#3302)
 
 A fixed liveness bound is a dead-child guard sized for an idle machine. On a
