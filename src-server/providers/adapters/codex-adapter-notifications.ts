@@ -32,11 +32,23 @@ import {
   type CodexSessionRecord,
   markCodexTurnTerminal,
 } from './codex-adapter-types.js';
+import { cleanCodexDiagnosticLine } from './codex-stderr-tail.js';
 import {
   codexUsageLimitDetails,
   observeCodexRateLimits,
 } from './codex-usage-limit.js';
 import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
+
+/** A `configWarning` text as published: one bounded, redacted, plain line each. */
+function boundedConfigWarningText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const text = value
+    .split(/\r?\n/)
+    .map(cleanCodexDiagnosticLine)
+    .filter(Boolean)
+    .join('\n');
+  return text || undefined;
+}
 
 /**
  * station#1569 (item 4): settle every tool item still open when the SESSION
@@ -412,6 +424,35 @@ export function handleCodexNotification(
       providerOps.add(1, {
         operation: 'adapter-turn-complete',
         provider: 'codex',
+      });
+      return;
+    }
+    case 'configWarning': {
+      // Codex's own warning about its configuration (an untrusted project
+      // folder, a key it ignored), sent once on stdout. It is also printed
+      // to stderr, which is only logged, so this is the one user-facing copy.
+      if (!isRecord(notification.params)) return;
+      const summary = boundedConfigWarningText(notification.params.summary);
+      if (!summary) return;
+      const details = boundedConfigWarningText(notification.params.details);
+      const path = boundedConfigWarningText(notification.params.path);
+      publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: nowIso(),
+        method: 'runtime.warning',
+        severity: 'warning',
+        code: 'codex-config-warning',
+        message: summary,
+        ...(details || path
+          ? {
+              details: {
+                ...(details ? { details } : {}),
+                ...(path ? { path } : {}),
+              },
+            }
+          : {}),
       });
       return;
     }

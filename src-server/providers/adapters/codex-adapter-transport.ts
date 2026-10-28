@@ -67,6 +67,7 @@ import {
   refuseCodexApprovalReply,
 } from './codex-approval-delivery.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
+import { CodexStderrTail, withCodexStderrTail } from './codex-stderr-tail.js';
 
 type JsonRpcRequest = {
   id?: JsonRpcId;
@@ -193,6 +194,8 @@ export class CodexAdapterTransport {
     ) => void,
     private readonly onNotificationError?: (method: string) => void,
     private readonly onSessionExit?: (threadId: string) => void,
+    /** Each cleaned, redacted stderr line, for the server log at debug level. */
+    private readonly onStderrLine?: (threadId: string, line: string) => void,
   ) {}
 
   streamEvents(options?: {
@@ -254,19 +257,15 @@ export class CodexAdapterTransport {
       this.handleStdoutLine(record, line),
     );
 
+    // Stderr is diagnostics, not events: kept as a bounded redacted tail for
+    // a failure to explain itself with, and logged at debug level. Codex's
+    // own warnings arrive on stdout (`configWarning`).
+    const stderrTail = new CodexStderrTail();
+    record.stderrTail = stderrTail;
     const stderr = createInterface({ input: record.process.stderr });
-    stderr.on('line', (line) => {
-      if (!line.trim()) return;
-      this.publish({
-        eventId: crypto.randomUUID(),
-        provider: 'codex',
-        threadId: record.externalThreadId,
-        createdAt: this.now().toISOString(),
-        method: 'runtime.warning',
-        severity: 'warning',
-        message: 'Codex app-server emitted stderr output.',
-        code: 'codex-stderr',
-      });
+    stderr.on('line', (raw) => {
+      const line = stderrTail.push(raw);
+      if (line) this.onStderrLine?.(record.externalThreadId, line);
     });
 
     const workloadOutcome = childWorkloadOutcome(record.process);
@@ -286,11 +285,16 @@ export class CodexAdapterTransport {
       if (record.stopped) return;
       this.settleAcknowledgementWatches(record);
       const nowIso = this.now().toISOString();
+      // A request still pending here is usually startup (`initialize`,
+      // `thread/start`): the stderr tail is what says why.
       const interruptedTurnId = this.rejectPendingRpcRequests(
         record,
         () =>
           new Error(
-            `Codex app-server exited before responding (${signal ? `signal: ${signal}` : `code: ${code ?? 'unknown'}`})`,
+            withCodexStderrTail(
+              `Codex app-server exited before responding (${signal ? `signal: ${signal}` : `code: ${code ?? 'unknown'}`})`,
+              stderrTail.text(),
+            ),
           ),
       );
       // archive#3451 fix round D2: only skip synthesis when the interrupt
@@ -1291,16 +1295,21 @@ export class CodexAdapterTransport {
     // (the completion-notification listener, `hasActiveTurn`, the stall
     // watchdog) is left waiting on a turn that is already over.
     this.settleUnresolvedToolCalls(record, nowIso, 'interrupted');
+    const stderrTail = record.stderrTail?.text() ?? '';
     this.publishOrphanedTurnFailure(
       record,
       nowIso,
       memoryExhausted && outcome
         ? memoryExhaustedMessage(outcome)
-        : `Codex app-server exited before the turn finished (${signal ? `signal: ${signal}` : `code: ${code ?? 'unknown'}`}).`,
+        : withCodexStderrTail(
+            `Codex app-server exited before the turn finished (${signal ? `signal: ${signal}` : `code: ${code ?? 'unknown'}`}).`,
+            stderrTail,
+          ),
       {
         skipSynthesis: interruptWasInFlight,
         workloadOutcome: outcome,
         exitSignal: signal,
+        ...(stderrTail ? { stderrTail } : {}),
         ...(memoryExhausted ? { code: ENGINE_MEMORY_EXHAUSTED_CODE } : {}),
       },
     );
@@ -1471,6 +1480,8 @@ export class CodexAdapterTransport {
       skipSynthesis: boolean;
       workloadOutcome?: ChildWorkloadOutcome;
       exitSignal?: NodeJS.Signals | null;
+      /** The app-server's redacted stderr tail, when it exited on its own. */
+      stderrTail?: string;
       code?: string;
     },
   ): void {
@@ -1496,11 +1507,14 @@ export class CodexAdapterTransport {
         turnId,
         message,
         code: options.code ?? 'codex-turn-orphaned',
-        ...(options.exitSignal || options.workloadOutcome
+        ...(options.exitSignal || options.workloadOutcome || options.stderrTail
           ? {
               details: {
                 exitSignal: options.exitSignal ?? undefined,
                 workload: options.workloadOutcome,
+                ...(options.stderrTail
+                  ? { stderrTail: options.stderrTail }
+                  : {}),
               },
             }
           : {}),
