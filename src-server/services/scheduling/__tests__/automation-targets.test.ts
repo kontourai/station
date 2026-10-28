@@ -17,6 +17,7 @@ import {
   SCHEDULED_TURN_TERMINAL_METHODS,
   type ScheduledConversationRunInput,
   type ScheduledConversationRunOutcome,
+  ScheduledConversationRuns,
 } from '../scheduled-conversation-runs.js';
 import {
   countConsecutiveFailures,
@@ -644,5 +645,47 @@ describe('fix round: a turn that ends in an engine error fails the run', () => {
     expect(
       readScheduledTurnTerminal([retrying, { method: 'turn.completed' }]),
     ).toEqual({ kind: 'completed' });
+  });
+});
+
+describe('fix round: the runner hands its permit back once the turn is queued', () => {
+  test('onHandedOff fires after the inbox accepts the run, before the turn ends', async () => {
+    let terminal: { kind: 'completed' } | undefined;
+    const handedOff = vi.fn();
+    const runner = new ScheduledConversationRuns({
+      submit: () =>
+        ({
+          outcome: 'queued',
+          entry: { state: 'queued' },
+        }) as never,
+      entry: () =>
+        ({
+          state: 'sent',
+          sessionId: 'session-1',
+          turnId: 'turn-1',
+        }) as never,
+      turnTerminal: () => terminal,
+      startDedicated: async () => {
+        throw new Error('not dedicated');
+      },
+      isIndeterminateStart: () => false,
+      pollMs: 5,
+    });
+    const run = runner.run({
+      jobId: 'job-1',
+      jobName: 'digest',
+      runId: 'run-1',
+      prompt: 'Summarize',
+      target: TARGET,
+      createdBy: CREATOR,
+      lastSuccessAt: undefined,
+      onConversationStarted: vi.fn(),
+      onHandedOff: handedOff,
+      signal: new AbortController().signal,
+    });
+    await vi.waitFor(() => expect(handedOff).toHaveBeenCalledTimes(1));
+    terminal = { kind: 'completed' };
+    await expect(run).resolves.toMatchObject({ kind: 'completed' });
+    expect(handedOff).toHaveBeenCalledTimes(1);
   });
 });
