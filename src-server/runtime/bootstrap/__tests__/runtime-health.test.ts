@@ -1,11 +1,20 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { runtimeEventLoopLag } from '../../../telemetry/metrics.js';
 import {
+  EVENT_LOOP_STALL_REPORT_DELAY_MS,
   EVENT_LOOP_STALL_WARN_MS,
   runRuntimeHealthChecks,
   startRuntimeEventLoopLagMonitoring,
   startRuntimeHealthChecks,
 } from '../runtime-health.js';
+
+const idleResources = {
+  cpuUserMicros: 0,
+  cpuSystemMicros: 0,
+  majorPageFaults: 0,
+  rssBytes: 0,
+  heapUsedBytes: 0,
+};
 
 describe('runtime-health', () => {
   afterEach(() => {
@@ -98,6 +107,7 @@ describe('runtime-health', () => {
   // the metric is exported only when OTel is configured.
   test('writes a stall of at least the warning threshold to the log, then resets the window', () => {
     let tick: (() => void) | undefined;
+    const reports: Array<() => void> = [];
     const logger = { debug: vi.fn(), warn: vi.fn() };
     const histogram = {
       enable: vi.fn(),
@@ -117,22 +127,173 @@ describe('runtime-health', () => {
       },
       recordLag: vi.fn(),
       delayHistogram: histogram,
+      sampleResources: () => idleResources,
+      observeGc: () => {},
+      scheduleReport: (report, delayMs) => {
+        expect(delayMs).toBe(EVENT_LOOP_STALL_REPORT_DELAY_MS);
+        reports.push(report);
+      },
     });
     expect(histogram.enable).toHaveBeenCalledTimes(1);
 
     histogram.max = (EVENT_LOOP_STALL_WARN_MS - 1) * 1e6;
     tick?.();
-    expect(logger.warn).not.toHaveBeenCalled();
+    expect(reports).toHaveLength(0);
     expect(histogram.reset).toHaveBeenCalledTimes(1);
 
     histogram.max = 17_842 * 1e6;
     tick?.();
-    expect(logger.warn).toHaveBeenCalledWith('Event loop stalled', {
-      maxDelayMs: 17_842,
-      p99DelayMs: 40,
-      windowMs: 10_000,
-    });
     expect(histogram.reset).toHaveBeenCalledTimes(2);
+    expect(reports).toHaveLength(1);
+    expect(logger.warn).not.toHaveBeenCalled();
+    reports[0]();
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Event loop stalled',
+      expect.objectContaining({
+        maxDelayMs: 17_842,
+        p99DelayMs: 40,
+        windowMs: 10_000,
+      }),
+    );
+  });
+
+  // The 2026-10 probe-failure restarts logged 72s and 86s stalls with nothing
+  // to say whether the process was computing, collecting garbage, or waiting
+  // on swap. The stall line carries the window's own counters.
+  test('attributes a stall window its CPU time, page faults, memory, and the GCs that started in it', () => {
+    let now = 1_000;
+    let tick: (() => void) | undefined;
+    let onGc: ((startTime: number, durationMs: number) => void) | undefined;
+    const reports: Array<() => void> = [];
+    const logger = { debug: vi.fn(), warn: vi.fn() };
+    const histogram = {
+      enable: vi.fn(),
+      reset: vi.fn(),
+      max: 0,
+      percentile: vi.fn(() => 0),
+    };
+    let resources = {
+      cpuUserMicros: 5_000_000,
+      cpuSystemMicros: 1_000_000,
+      majorPageFaults: 300,
+      rssBytes: 200 * 1024 * 1024,
+      heapUsedBytes: 90 * 1024 * 1024,
+    };
+
+    startRuntimeEventLoopLagMonitoring({
+      timers: [],
+      logger,
+      interval: 10_000,
+      now: () => now,
+      scheduleInterval: (callback) => {
+        tick = callback;
+        return {} as NodeJS.Timeout;
+      },
+      recordLag: vi.fn(),
+      delayHistogram: histogram,
+      sampleResources: () => resources,
+      observeGc: (callback) => {
+        onGc = callback;
+      },
+      scheduleReport: (report) => reports.push(report),
+    });
+
+    // A quiet window: GC in it must not leak into the stalled one.
+    onGc?.(4_000, 30);
+    now = 11_000;
+    tick?.();
+
+    onGc?.(12_000, 5);
+    resources = {
+      cpuUserMicros: 5_000_000 + 61_400_000,
+      cpuSystemMicros: 1_000_000 + 2_600_000,
+      majorPageFaults: 300 + 41_250,
+      rssBytes: 1_210 * 1024 * 1024,
+      heapUsedBytes: 845 * 1024 * 1024,
+    };
+    histogram.max = 72_276 * 1e6;
+    histogram.percentile.mockReturnValue(72_276 * 1e6);
+    now = 93_000;
+    tick?.();
+    // Node delivers a GC's entry after the loop resumes, so the pause that
+    // made this stall arrives after the tick that measured it.
+    onGc?.(20_000, 66_000);
+    // A GC in the next window belongs to that window.
+    onGc?.(93_500, 7);
+    expect(reports).toHaveLength(1);
+    reports[0]();
+
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith('Event loop stalled', {
+      maxDelayMs: 72_276,
+      p99DelayMs: 72_276,
+      windowMs: 10_000,
+      elapsedMs: 82_000,
+      cpuUserMs: 61_400,
+      cpuSystemMs: 2_600,
+      majorPageFaults: 41_250,
+      rssMb: 1_210,
+      heapUsedMb: 845,
+      gcCount: 2,
+      gcTotalMs: 66_005,
+      gcMaxMs: 66_000,
+    });
+
+    // The late next-window GC is reported with that window, not dropped.
+    now = 103_000;
+    histogram.max = 2_000 * 1e6;
+    tick?.();
+    reports[1]();
+    expect(logger.warn).toHaveBeenLastCalledWith(
+      'Event loop stalled',
+      expect.objectContaining({ gcCount: 1, gcTotalMs: 7, cpuUserMs: 0 }),
+    );
+  });
+
+  // Reaches the real process counters and the real `gc` performance entries,
+  // whose delivery after the loop resumes is why the report is deferred.
+  test('a real stall report counts the CPU and GC the stall spent', async () => {
+    let tick: (() => void) | undefined;
+    const warned = new Promise<Record<string, unknown>>((resolve) => {
+      startRuntimeEventLoopLagMonitoring({
+        timers: [],
+        logger: {
+          debug: vi.fn(),
+          warn: (_message, metadata) => resolve(metadata ?? {}),
+        },
+        interval: 10_000,
+        scheduleInterval: (callback) => {
+          tick = callback;
+          return {} as NodeJS.Timeout;
+        },
+        recordLag: vi.fn(),
+        delayHistogram: {
+          enable: vi.fn(),
+          reset: vi.fn(),
+          max: EVENT_LOOP_STALL_WARN_MS * 1e6,
+          percentile: () => 0,
+        },
+      });
+    });
+
+    // Hold the loop with allocation so the stall both burns CPU and collects.
+    const startedAt = performance.now();
+    let retained: Array<{ index: number }> = [];
+    while (performance.now() - startedAt < 150) {
+      for (let index = 0; index < 50_000; index += 1) retained.push({ index });
+      if (retained.length > 1_000_000) retained = [];
+    }
+    tick?.();
+
+    const report = await warned;
+    expect(report.gcCount).toBeGreaterThan(0);
+    expect(report.gcTotalMs).toBeGreaterThanOrEqual(0);
+    expect(
+      (report.cpuUserMs as number) + (report.cpuSystemMs as number),
+    ).toBeGreaterThanOrEqual(100);
+    expect(report.elapsedMs).toBeGreaterThanOrEqual(150);
+    expect(report.rssMb).toBeGreaterThan(0);
+    expect(report.heapUsedMb).toBeGreaterThan(0);
   });
 
   test('rejects an invalid event-loop lag monitor interval', () => {
