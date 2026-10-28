@@ -146,7 +146,7 @@ function WorkloadBudgetEditor() {
         )}
         <p className="settings__field-hint">
           {data.applies === 'new-scopes'
-            ? 'A new per-engine budget applies to engines started after saving; running engines keep theirs. A new total applies at once to every running engine, so Station refuses a total below what they use now.'
+            ? 'Per-engine changes apply to engines started later. The total applies now and can’t go below current use.'
             : 'Station reads these budgets when workload enforcement starts. Restart Station to apply them.'}
         </p>
         {update.error && (

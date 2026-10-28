@@ -820,8 +820,9 @@ Its posture comes from the `sandbox` and `activePermissionProfile` of Codex's
 `thread/start`, `thread/resume` or `thread/fork` response:
 
 - `readOnly` is `confined`. `workspaceWrite` is `confined` only when every
-  extra writable root it lists lies inside the resolved workspace or
-  Station's own engine temp directory. A root such as `/`, the home directory
+  extra writable root it lists lies inside the resolved workspace,
+  Station's shared engine temp directory, or the session's own temp directory
+  when the `chat-host-images` preview gave it one. A root such as `/`, the home directory
   or another checkout makes it `configured-but-failed`. Codex's implicit
   roots (the cwd, `TMPDIR` and `/tmp`, governed by its exclude flags) are part
   of what `workspaceWrite` means and are accepted. Network access is not

@@ -11,6 +11,7 @@ import type {
 } from '@kontourai/station-contracts/agent-identity';
 import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
 import type { BoardReference } from '@kontourai/station-contracts/board';
+import type { ChatHostImageMap } from '@kontourai/station-contracts/chat-host-images';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import type {
   InputRequestForm,
@@ -289,6 +290,8 @@ export interface ChatMessage {
   }>;
   /** archive#1410: the canonical turn this assistant row projects, when known. */
   turnId?: string;
+  /** chat-host-images: host image paths this turn's reply named, by path. */
+  hostImages?: ChatHostImageMap;
   /** Execution Session that produced this historical assistant row. */
   sessionId?: string;
   /**

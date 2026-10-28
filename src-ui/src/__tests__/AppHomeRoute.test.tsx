@@ -645,19 +645,15 @@ describe('App home route resolution', () => {
           target: 'server',
           message:
             'Server checkout is 3 commits behind its configured upstream.',
-          actionLabel: 'Review server update',
+          // The Updates server section states the comparison itself.
+          summaryOnly: true,
         }),
       ),
     );
-    const sequence = request!.sequence;
-    act(() =>
-      notices.find((notice) => notice.id === 'launch-update')!.onAction?.(),
-    );
-    expect(request!).toMatchObject({
-      target: 'server',
-      sequence: sequence + 1,
-      pending: true,
-    });
+    expect(
+      notices.find((notice) => notice.id === 'launch-update')!.onAction,
+    ).toBeUndefined();
+    expect(request!.pending).toBe(false);
   });
 
   test('renders pending root route without exposing stale restore state, then settles on Home without redirecting', async () => {

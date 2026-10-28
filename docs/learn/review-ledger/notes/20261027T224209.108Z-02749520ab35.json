@@ -1,0 +1,7 @@
+{
+  "revision": "0c1993c3ac6ae7ff3d4ba2d04c3b486dab2db3c2",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"Server section prose updated: header with connection name, version once and status badge; address/install/history in collapsed Details. Traced UpdatesPanel, ConnectedServerUpdates, CoreUpdateCheck. Server notices carry no open-Updates action (ServerOlderLaunchCheck; updatesEvents summaryOnly); app release-link notices unchanged.","inputs":["docs/guides/desktop-build.md","src-ui/src/components/ServerOlderLaunchCheck.tsx","src-ui/src/components/updates/UpdatesPanel.tsx","src-ui/src/components/updates/__tests__/UpdatesControl.test.tsx","src-ui/src/components/updates/updatesEvents.ts"]}
+  ]
+}

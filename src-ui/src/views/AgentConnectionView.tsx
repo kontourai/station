@@ -674,10 +674,7 @@ export function AgentConnectionView({
                   </option>
                 ))}
               </select>
-              <p className="editor-help">
-                Models reported by this connection. Save connection changes
-                before refreshing this list.
-              </p>
+              <p className="editor-help">Save changes before refreshing.</p>
               <button
                 type="button"
                 className="editor-btn"
@@ -1006,7 +1003,7 @@ export function AgentConnectionView({
             <ConfirmModal
               isOpen={confirmResetOpen}
               title="Reset this engine"
-              message={`This removes ${form.name}'s saved settings and disconnects it from this Station. It returns to the Add list and can be connected again. This cannot be undone.`}
+              message={`Removes ${form.name}'s saved settings and disconnects it. This cannot be undone.`}
               confirmLabel="Reset"
               cancelLabel="Cancel"
               onCancel={() => setConfirmResetOpen(false)}
@@ -1052,8 +1049,8 @@ export function AgentConnectionView({
                * that the refetch happened.
                */}
               <p className="editor-help">
-                Checking sends one short message and uses a small amount of your
-                model allowance. Save changes first.
+                Sends one short message (uses a little model allowance). Save
+                changes first.
               </p>
               {testMutation.data &&
                 testMutation.data.smoke.testedAt ===
@@ -1137,10 +1134,8 @@ function ClaudeSkillsMaterializationField({
           Skills materialization
         </legend>
         <p className="editor-help">
-          Off by default. Checking a skill copies it into this session's{' '}
-          <code>.claude/skills/</code> so Claude Code loads it natively. Station
-          never overwrites files it didn't write there, and removes only what it
-          wrote once the session ends.
+          Checked skills are copied into the session's{' '}
+          <code>.claude/skills/</code> and removed when it ends.
         </p>
         {skills.length === 0 ? (
           <p className="editor-help">
@@ -1210,16 +1205,16 @@ function AppHomeProfileField({
           Run sessions in a Station-managed app home
         </Checkbox>
         <p className="editor-help">
-          Keeps your global {engineLabel} settings untouched. Station points
-          sessions at ~/.station/app-homes/{connectionId} instead.
+          Leaves your global {engineLabel} settings untouched. Uses{' '}
+          <code>~/.station/app-homes/{connectionId}</code>.
         </p>
         {useAppHome && (
           <div style={{ marginTop: 8 }}>
             {status && (
               <p className="editor-help">
                 {status.exists
-                  ? `This app home is ${status.seededFrom === 'global-import' ? 'seeded from an imported snapshot' : 'currently empty'}. Sign-in status: ${status.authState}.${status.keychainAuthPossible ? ' On macOS, sign-in through the system Keychain works independently of this app home.' : ''}`
-                  : 'No app home exists yet — Station creates it automatically the first time a session runs with this option on.'}
+                  ? `Contents: ${status.seededFrom === 'global-import' ? 'imported snapshot' : 'empty'} · Sign-in: ${status.authState}${status.keychainAuthPossible ? ' · macOS Keychain sign-in also works' : ''}`
+                  : 'Created on the first session with this on.'}
               </p>
             )}
             <label
@@ -1269,11 +1264,7 @@ function AppHomeProfileField({
                   </>
                 )}
                 {!importMutation.data.provenanceUpdated && (
-                  <>
-                    {' '}
-                    · Nothing was copied, so this app home was not marked as
-                    imported.
-                  </>
+                  <> · Not marked as imported.</>
                 )}
               </p>
             )}
@@ -1293,7 +1284,7 @@ function AppHomeProfileField({
         {status?.exists && status.usage && (
           <div style={{ marginTop: 8 }}>
             <p className="editor-help">
-              {`This app home is using ${formatBytes(status.usage.sizeBytes)} across ${status.usage.entryCount}${status.usage.truncated ? '+' : ''} items.`}
+              {`Using ${formatBytes(status.usage.sizeBytes)} across ${status.usage.entryCount}${status.usage.truncated ? '+' : ''} items.`}
             </p>
             <div className="editor-row">
               <button
@@ -1328,7 +1319,7 @@ function AppHomeProfileField({
       <ConfirmModal
         isOpen={confirmClearOpen}
         title="Clear app home"
-        message={`This permanently removes the Station-managed app home at ~/.station/app-homes/${connectionId}, including any imported settings. This cannot be undone.`}
+        message={`Deletes ~/.station/app-homes/${connectionId}, including imported settings. This cannot be undone.`}
         confirmLabel="Clear"
         cancelLabel="Cancel"
         variant="danger"
@@ -1464,9 +1455,7 @@ function CredentialRecoveryLayout({
           Credential entries
         </h3>
         <p className="editor-help">
-          Add opaque credential references for this Station-managed app home.
-          Labels are only for managing entries; Station does not store or show
-          credentials here.
+          References only; Station doesn't store or show credentials here.
         </p>
       </div>
 
@@ -1573,7 +1562,7 @@ function CredentialProfileApplyConfirmation({
     <ConfirmModal
       isOpen={state.profileToApply !== null}
       title="Apply credential entry"
-      message="Station will verify this credential entry with one potentially billable engine turn before making it active. If verification fails, the previous active credential is preserved."
+      message="Verifying uses one potentially billable engine turn. If it fails, the current credential stays active."
       confirmLabel="Apply and verify"
       cancelLabel="Cancel"
       variant="warning"
@@ -1859,9 +1848,8 @@ function CredentialProfileProvisioning({
     <fieldset>
       <legend className="editor-label">Provisioning import</legend>
       <p className="editor-help">
-        Import a selected credential entry’s global {engineLabel} snapshot only
-        when you choose to. Credentials are excluded unless you check the option
-        below.
+        Imports the entry’s global {engineLabel} snapshot. Credentials are
+        excluded unless checked below.
       </p>
       <Checkbox
         id={`${connectionId}-credential-profile-include-credentials`}
@@ -1942,8 +1930,7 @@ function CredentialRecoveryPolicy({
         capacity or rate-limit failure
       </Checkbox>
       <p className="editor-help">
-        Off by default. Station only considers explicitly enrolled credential
-        entries after observed account-scoped capacity or rate-limit failures.
+        Only enrolled entries are tried.
         {unsupported
           ? ' This engine does not declare a safe application capability.'
           : ''}

@@ -27665,6 +27665,7 @@ describe('OrchestrationService', () => {
       'runtime.error': 'fold',
       'content.text-delta': 'non-fold',
       'content.reasoning-delta': 'non-fold',
+      'content.host-images': 'non-fold',
       'tool.started': 'non-fold',
       'tool.progress': 'non-fold',
       'tool.completed': 'non-fold',

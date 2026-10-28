@@ -1,0 +1,7 @@
+{
+  "revision": "0915b662650efae469ba64c24fdf3a50fa30a07f",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked against the saved-drafts dialog change in PortableDraftsMenu.tsx: the design doc makes no claim about that dialog's layout, labels or storage; the dock draft/session-storage claims are about a separate path and stay accurate.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/PortableDraftsMenu.tsx"]}
+  ]
+}

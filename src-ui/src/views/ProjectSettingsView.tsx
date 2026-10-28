@@ -498,7 +498,6 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           className="project-settings__section"
           eyebrow="Project identity"
           title="Basic info"
-          description="Set the name and description Station uses throughout the project."
         >
           <div className="project-settings__identity-grid">
             <div className="editor-field">
@@ -654,7 +653,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           className="project-settings__section"
           eyebrow="New thread default"
           title="Thread execution"
-          description="Choose where new threads for this project begin. A thread-specific selection takes precedence."
+          description="A thread's own selection takes precedence."
         >
           <EnvironmentPicker
             id="project-default-environment"

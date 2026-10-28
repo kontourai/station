@@ -1,4 +1,5 @@
 import type { PersistedChatAttachment } from './chat-attachment.js';
+import type { ChatHostImageSource } from './chat-host-images.js';
 import type { ChildWorkDelta } from './child-work.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { HtmlReplyReference } from './html-reply.js';
@@ -564,6 +565,24 @@ export interface ContentTextDeltaEvent extends CanonicalRuntimeEventBase {
    */
   itemId: string;
   delta: string;
+}
+
+/**
+ * Images the turn's reply named by host path, copied into the attachment
+ * store once the turn settled (`chat-host-images` Feature Preview; see
+ * `chat-host-images.ts`). Station writes this event itself after the turn's
+ * `turn.completed`; one from an engine is discarded.
+ *
+ * `attachments` carry data URLs only on the way in: the EventStore stores
+ * the bytes, binds each to this thread and persists `blobRef` instead, as
+ * for a `tool.completed`'s images. `sources` maps each named path to an
+ * attachment or to the reason it was not kept.
+ */
+export interface ContentHostImagesEvent extends CanonicalRuntimeEventBase {
+  method: 'content.host-images';
+  turnId: string;
+  attachments?: PersistedChatAttachment[];
+  sources: ChatHostImageSource[];
 }
 
 export interface ContentReasoningDeltaEvent extends CanonicalRuntimeEventBase {
@@ -1305,6 +1324,7 @@ export type CanonicalRuntimeEvent =
   | SessionApprovalModeSetEvent
   | ContentTextDeltaEvent
   | ContentReasoningDeltaEvent
+  | ContentHostImagesEvent
   | ToolStartedEvent
   | ToolProgressEvent
   | ToolCompletedEvent
@@ -1335,5 +1355,5 @@ export type ProviderRuntimeErrorBody = Omit<
 >;
 
 export type ProviderRuntimeEvent =
-  | Exclude<CanonicalRuntimeEvent, RuntimeErrorEvent>
+  | Exclude<CanonicalRuntimeEvent, RuntimeErrorEvent | ContentHostImagesEvent>
   | ProviderRuntimeErrorEvent;
