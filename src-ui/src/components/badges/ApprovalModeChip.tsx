@@ -14,7 +14,7 @@ import {
   approvalModeLabel,
   resolveEffectiveApprovalMode,
 } from '../../utils/approvalMode';
-import { ArrowDownGlyph } from '../icons/Glyph';
+import { ComposerChoice } from '../ComposerChoice';
 import { LazyBoundary } from '../LazyBoundary';
 import '../chat/chat.css';
 
@@ -261,10 +261,9 @@ export function ApprovalModeChip({
 
   return (
     <>
-      <button
+      <ComposerChoice
         ref={triggerRef}
-        type="button"
-        className={`choice-trigger chat-input__approval-chip ${
+        className={`chat-input__approval-chip ${
           isPendingApply || isPendingRestrict || isRefused || notApplied
             ? 'chat-input__approval-chip--pending'
             : isOverride
@@ -285,17 +284,10 @@ export function ApprovalModeChip({
         }${reviewerDisclosure}`}
         title={`Approval mode: ${selectedLabel}. ${policyDisclosure}${reviewerDisclosure}`}
         onClick={() => setIsSheetOpen((open) => !open)}
-      >
-        <span className="chat-input__chip-stack">
-          <span className="chat-input__chip-caption" aria-hidden="true">
-            Approval
-          </span>
-          <span className="chat-input__approval-chip-label" aria-hidden="true">
-            {chipText}
-          </span>
-        </span>
-        <ArrowDownGlyph className="choice-caret" />
-      </button>
+        caption="Approval"
+        value={chipText}
+        valueClassName="chat-input__approval-chip-label"
+      />
       {isSheetOpen && (
         <LazyBoundary
           load={loadComposerModeSheet}

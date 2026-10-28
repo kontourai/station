@@ -8,7 +8,7 @@ import {
   approvalModeChipLabel,
   resolveEffectiveApprovalMode,
 } from '../../utils/approvalMode';
-import { ArrowDownGlyph } from '../icons/Glyph';
+import { ComposerChoice } from '../ComposerChoice';
 import { LazyBoundary } from '../LazyBoundary';
 
 /** The chat composer's own picker, loaded only when opened (ApprovalModeChip). */
@@ -95,31 +95,30 @@ export function StartApprovalSummary({
         : ''
   }`;
   const visible = `Permissions: ${label}`;
-  const text = <span className="start-composer__chip-text">{label}</span>;
   if (!onPick)
     return (
-      <span
-        className="start-composer__chip start-composer__chip--status"
+      <ComposerChoice
+        className="start-composer__chip"
+        caption="Approval"
+        value={label}
+        aria-label={`${visible}. ${title}`}
         title={title}
-      >
-        {text}
-      </span>
+        disabled
+      />
     );
   return (
     <>
-      <button
+      <ComposerChoice
         ref={triggerRef}
-        type="button"
-        className="choice-trigger start-composer__chip start-composer__chip--approval"
+        className="start-composer__chip start-composer__chip--approval"
         aria-haspopup="dialog"
         aria-expanded={isSheetOpen}
         aria-label={`${visible}. ${title}`}
         title={title}
         onClick={() => setIsSheetOpen((open) => !open)}
-      >
-        {text}
-        <ArrowDownGlyph className="choice-caret" />
-      </button>
+        caption="Approval"
+        value={label}
+      />
       {isSheetOpen && (
         <LazyBoundary
           load={loadComposerModeSheet}

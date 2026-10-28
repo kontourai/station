@@ -590,11 +590,15 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   send. Inside the dock's New chat dialog the picker opens on the dialog layer.
   The running chip shows engine-confirmed values or a pending/restart state. Personal defaults
   apply to new interactive chats; saving a future default is explicit.
-- Agent, Model, and approval mode share control geometry and chevrons. Values size
+- New-chat and running-chat selectors use `ComposerChoice` for the caption,
+  value, optional Agent icon, and chevron; picker behavior stays with each caller.
+  Agent, Model, and approval mode share control geometry and chevrons. Values size
   naturally and truncate with an ellipsis before the chevron, never under it;
-  Model does not stretch into unused space. On a phone, Agent and Model keep a
-  readable minimum (88px and 112px) and the rail scrolls instead, its
-  trailing edge faded until scrolled to the end.
+  Model does not stretch into unused space. Both composers share the horizontal
+  selector rail. Selectors keep an 88px minimum (112px for Model or with an icon).
+  The rail scrolls instead of wrapping, its trailing edge faded until scrolled
+  to the end. A model caption with an Agent-move hint keeps 144px so the hint
+  remains visible.
 - On an ACP engine the approval control says who decides which actions ask
   (#3290). OpenCode, whose rules Station sets at launch, offers Station's
   approval modes, with OpenCode-specific descriptions. Its Default says

@@ -579,7 +579,8 @@ describe('Home and the dock start the same way', () => {
     const engineDefault = await within(formOf(home)).findByRole('button', {
       name: /^Permissions: Engine default/,
     });
-    expect(engineDefault.textContent).toBe('Engine default');
+    expect(within(engineDefault).getByText('Approval')).toBeTruthy();
+    expect(within(engineDefault).getByText('Engine default')).toBeTruthy();
     fireEvent.click(engineDefault);
     expect(
       await screen.findByText(

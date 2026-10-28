@@ -1,7 +1,7 @@
 /* The start composer (Home, inline, and the dock's draft). No viewport
    query: the bar is one flex line that wraps. On a desktop the chips and
    [attach mic ⋯ Start] share one line. When they do not fit (a phone), the
-   chips keep row one, on one line, each shrinking to an ellipsis, and
+   chips scroll on row one without wrapping, and
    [attach mic ⋯ … Start] takes row two. Every target is 44px. */
 .start-composer {
   display: flex;
@@ -110,11 +110,6 @@
   border: 0;
 }
 .start-composer__chips {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--k-space-2);
-  min-width: 0;
   /* Grows far more than the actions, so on a shared line the actions keep
      their own width and sit together at the end. */
   flex: 1000 1 auto;
@@ -152,18 +147,6 @@
 }
 .start-composer__chip--attention {
   border-color: var(--k-caution);
-}
-/* A read-only fact among the choice chips (Permissions): the same frame as
-   the Agent and Model triggers beside it (`.choice-trigger`), without the
-   pointer or caret of a control. */
-.start-composer__chip--status {
-  padding: 0 var(--k-space-2);
-  border: 1px solid var(--k-line);
-  border-radius: var(--k-radius-sm);
-  background: var(--k-panel);
-  color: var(--k-text);
-  font-size: var(--k-text-xs);
-  font-weight: 500;
 }
 .start-composer__chip--skill {
   padding-left: var(--k-space-3);
