@@ -730,6 +730,8 @@ async function inSharedFolder(real: string, root: string): Promise<boolean> {
 
 /** Why a working folder (or one of its worktrees) is not an image root. */
 export type WorkingFolderRefusal =
+  /** Not an absolute path (a worktree listing can report a relative one). */
+  | 'not-absolute'
   /** Its path passes a folder someone else could change (see workingFolderSwappable). */
   | 'swappable-path'
   /** It is or contains the home folder or Station's data, or is the filesystem root. */
@@ -760,6 +762,7 @@ export async function hostImageCaptureRoots(input: {
   const refusal = async (
     directory: string,
   ): Promise<WorkingFolderRefusal | undefined> => {
+    if (!isAbsolute(directory)) return 'not-absolute';
     if (await workingFolderSwappable(directory)) return 'swappable-path';
     const resolved = await resolvedOrSelf(directory);
     if (seatbeltWorkspaceRefusal(resolved, bounds))

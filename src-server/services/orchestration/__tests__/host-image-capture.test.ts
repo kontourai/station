@@ -296,6 +296,33 @@ describe('captureHostImages', () => {
     expect(await workingFolderSwappable(join(base, 'rel-safe'))).toBe(false);
   });
 
+  test('a chain of 41 links is refused, 40 is followed: the link cap, not the depth cap', async () => {
+    const target = join(base, 'chain-target');
+    mkdirSync(target);
+    const link = (i: number) => join(base, `chain-${i}`);
+    // chain-40 -> target, chain-39 -> chain-40, ..., chain-0 -> chain-1.
+    symlinkSync(target, link(40));
+    for (let i = 39; i >= 0; i -= 1) symlinkSync(link(i + 1), link(i));
+    expect(await workingFolderSwappable(link(1))).toBe(false);
+    expect(await workingFolderSwappable(link(0))).toBe(true);
+  });
+
+  test('a relative worktree path is refused as not-absolute', async () => {
+    const refusals: Array<[string, string]> = [];
+    const project = join(base, 'rel-project');
+    mkdirSync(project);
+    const roots = await hostImageCaptureRoots({
+      cwd: project,
+      home: join(base, 'home'),
+      stationHome: join(base, 'station-home'),
+      listWorktrees: async () => ['relative/worktree'],
+      sharedTempDirs: [],
+      onRefused: (directory, reason) => refusals.push([directory, reason]),
+    });
+    expect(roots).toEqual([project]);
+    expect(refusals).toEqual([['relative/worktree', 'not-absolute']]);
+  });
+
   test('depth and link count are limited separately', async () => {
     // 70 nested folders: deeper than the old 64-step cap, a normal path.
     let deep = join(base, 'deep');
