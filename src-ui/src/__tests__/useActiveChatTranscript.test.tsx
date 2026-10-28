@@ -4309,6 +4309,63 @@ describe('useActiveChatTranscript stored memory kill', () => {
     expect(found[0]?.content ?? '').not.toContain('[CHAT_ERROR');
   });
 
+  test('a continuation killed in turn gets the card, not the kill it continued', async () => {
+    const found = await read([
+      ...killed('turn-1', 'engine-memory-exhausted', CURRENT, 2),
+      event('e10', 'turn.started', {
+        turnId: 'turn-2',
+        prompt: 'Continue the task from where it stopped.',
+        clientTurnId: `memory-continue-${'a'.repeat(40)}`,
+        clientOrigin: {
+          version: 1,
+          actor: { kind: 'internal' },
+          reported: { surface: 'unknown' },
+        },
+      }),
+      event('e11', 'runtime.error', {
+        turnId: 'turn-2',
+        severity: 'error',
+        code: 'engine-memory-exhausted',
+        message: CURRENT,
+      }),
+    ]);
+    const markers = found.filter((message) =>
+      (message.content ?? '').startsWith('[SYSTEM_EVENT] [CHAT_ERROR'),
+    );
+    expect(markers.map((message) => message.turnId)).toEqual(['turn-2']);
+  });
+
+  test.each([
+    ['a memory kill after another failure', ['other', 'memory'], true],
+    ['another failure after a memory kill', ['memory', 'other'], false],
+  ] as const)(
+    "the turn's last failure decides, as the server reads it (%s)",
+    async (_label, failures, card) => {
+      const found = await read([
+        event('e2', 'turn.started', { turnId: 'turn-1', prompt: 'run' }),
+        ...failures.map((failure, index) =>
+          event(`e${3 + index}`, 'runtime.error', {
+            turnId: 'turn-1',
+            severity: 'error',
+            ...(failure === 'memory'
+              ? { code: 'engine-memory-exhausted', message: CURRENT }
+              : {
+                  code: 'codex-turn-orphaned',
+                  message: 'The Codex turn was orphaned.',
+                }),
+          }),
+        ),
+      ]);
+      expect(
+        found.some((message) =>
+          (message.content ?? '').startsWith(
+            '[SYSTEM_EVENT] [CHAT_ERROR:engine-memory-exhausted]',
+          ),
+        ),
+      ).toBe(card);
+    },
+  );
+
   test('another failure in the newest turn gets no recreated card', async () => {
     const found = await read(
       killed('turn-1', 'codex-turn-orphaned', 'The Codex turn was orphaned.'),

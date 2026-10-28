@@ -598,6 +598,46 @@ describe('automatic continuation after a memory kill', () => {
     ).toEqual({ kind: 'skipped', reason: 'not-memory-exhausted' });
   });
 
+  // #4266: the chat's stored-event card (`useActiveChatTranscript`) mirrors
+  // these: a turn's LAST failure decides, and a continuation killed in turn
+  // is itself the turn to continue.
+  test.each([
+    ['a memory kill after another failure', ['other', 'memory'], 'queued'],
+    ['another failure after a memory kill', ['memory', 'other'], 'skipped'],
+  ] as const)(
+    '#4266: the last failure of the turn decides (%s)',
+    (_label, failures, expected) => {
+      const continuation = coordinator();
+      const threadId = `thread-last-${failures.join('-')}`;
+      append(threadId, { method: 'session.started', sessionId: threadId });
+      append(threadId, {
+        method: 'turn.started',
+        turnId: 'last-turn',
+        prompt: 'Build it',
+        clientOrigin: PERSON,
+      });
+      for (const failure of failures)
+        append(threadId, {
+          method: 'runtime.error',
+          turnId: 'last-turn',
+          severity: 'error',
+          ...(failure === 'memory'
+            ? {
+                code: ENGINE_MEMORY_EXHAUSTED_CODE,
+                message: 'Codex ran out of memory and was stopped.',
+              }
+            : { code: 'codex-turn-orphaned', message: 'exited' }),
+        });
+      owners.set(threadId, 'person-1');
+      expect(
+        continuation.continueOnRequest({
+          conversationId: threadId,
+          actor: { userId: 'person-1' },
+        }).kind,
+      ).toBe(expected);
+    },
+  );
+
   test('#4266: a memory kill stored before #4257, under the orphaned-turn code, can be continued', () => {
     const continuation = coordinator();
     append('thread-legacy', {

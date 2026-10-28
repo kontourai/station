@@ -80,7 +80,7 @@ interface ProjectedTurnFailure {
   failure?: { code?: string; message: string };
 }
 
-/** Each projected turn's first moment and the failure it shows, if any. */
+/** Each projected turn's first moment and its last failure, if any. */
 function projectedTurnFailures(
   projected: readonly ChatMessage[],
 ): ProjectedTurnFailure[] {
@@ -91,9 +91,10 @@ function projectedTurnFailures(
       typeof message.timestamp !== 'number'
     )
       continue;
-    const part = message.contentParts?.find(
-      (candidate) => candidate.runtimeError === true,
-    );
+    // The turn's LAST failure, as the server reads it (`deadTurn`).
+    const part = [...(message.contentParts ?? [])]
+      .reverse()
+      .find((candidate) => candidate.runtimeError === true);
     const failure = part
       ? {
           code: part.runtimeErrorCode,
@@ -115,7 +116,7 @@ function projectedTurnFailures(
     turn.startedAt = Math.min(turn.startedAt, message.timestamp);
     turn.endedAt = Math.max(turn.endedAt, message.timestamp);
     turn.memoryContinuation ||= memoryContinuation;
-    turn.failure ??= failure;
+    turn.failure = failure ?? turn.failure;
   }
   return [...turns.values()].sort((a, b) => a.startedAt - b.startedAt);
 }
@@ -181,7 +182,9 @@ function adoptStoredFailureMarkers(
  * which offers nothing. The marker is recreated for the one kill Continue
  * still applies to, as the server's `continueOnRequest` decides it: the
  * newest turn in the window, or the turn whose only successors are Station's
- * own continuations (the card then says Station continued). A kill a person
+ * own continuations that have not failed themselves (the card then says
+ * Station continued). A continuation that was killed too is that turn.
+ * The failure read is the turn's last, as `deadTurn` reads it. A kill a person
  * has moved on from keeps its projected part, read in today's words by
  * `translateProjectedRuntimeError`, with no action. Recognition is the
  * server's own `isEngineMemoryExhaustedFailure`, so a kill stored before
@@ -192,7 +195,13 @@ function storedMemoryKillMarkers(
   markedTurnIds: ReadonlySet<string>,
 ): ChatMessage[] {
   let index = turns.length - 1;
-  while (index > 0 && turns[index]?.memoryContinuation) index -= 1;
+  // A continuation that itself failed is the turn to continue next.
+  while (
+    index > 0 &&
+    turns[index]?.memoryContinuation &&
+    !turns[index]?.failure
+  )
+    index -= 1;
   const turn = turns[index];
   if (
     !turn?.failure ||
