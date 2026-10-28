@@ -57,9 +57,9 @@ restarts while an agent is working, the chat marks the cut-off turn ("Station
 restarted mid-turn" or the restart notice). With the preview on, that marker
 offers **Continue** while it is still the chat's latest message and no turn is
 running. Continue sends the agent a fixed note, as your message, asking it to
-continue from where it stopped and to check what already finished first. A
-second tap, here or on another device, does not send it again. A newer message
-retires the button.
+continue from where it stopped and to check what already finished first.
+Anything you were writing stays in the composer. A second tap, here or on
+another device, does not send it again. A newer message retires the button.
 
 Turning a preview on affects everyone who uses this Station.
 

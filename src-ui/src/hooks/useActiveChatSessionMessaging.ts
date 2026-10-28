@@ -398,6 +398,12 @@ export function useSendMessage(
          * default send-while-busy path.
          */
         queueOnBusy?: boolean;
+        /**
+         * A message Station composed, not the composer's: the composer's
+         * text, attachments and visual skill are neither sent nor cleared,
+         * and a refusal puts nothing back in it.
+         */
+        preserveComposer?: boolean;
         /** Form ownership observes admission without inferring delivery from the legacy return value. */
         onAdmission?: (status: SendAdmission) => void;
         /**
@@ -484,12 +490,17 @@ export function useSendMessage(
         ambientContext = [ambientContext, TASK_SHAPING_INSTRUCTION]
           .filter(Boolean)
           .join('\n\n');
-      const submittedDraft = content;
-      const experienceDraft = options?.dispatch
-        ? undefined
-        : currentState?.skillExperienceDraft;
+      const preserveComposer = options?.preserveComposer === true;
+      // What a refusal restores to an empty composer: nothing, for a message
+      // the composer never held.
+      const submittedDraft = preserveComposer ? '' : content;
+      const experienceDraft =
+        options?.dispatch || preserveComposer
+          ? undefined
+          : currentState?.skillExperienceDraft;
       if (
         !options?.dispatch &&
+        !preserveComposer &&
         (experienceDraft ||
           currentState?.skillExperienceDraftInvalid ||
           options?.skillExperienceDraft)
@@ -560,7 +571,9 @@ export function useSendMessage(
           });
           return false;
         }
-        if (options?.skipInMemoryQueueOnBusy) {
+        // A composed message is never steered or queued under a new key: it
+        // waits for the person to ask again once the turn has ended.
+        if (options?.skipInMemoryQueueOnBusy || preserveComposer) {
           // A turn still running is a temporary gate, not a refusal: the
           // message waits without spending one of its attempts, so a queue
           // replayed during a long turn never wears out to failed.
@@ -824,7 +837,7 @@ export function useSendMessage(
 
       const abortController = new AbortController();
 
-      clearInput(sessionId);
+      if (!preserveComposer) clearInput(sessionId);
       updateChat(sessionId, {
         status: 'sending',
         // #2309: the optimistic window the server has not acknowledged yet.
@@ -834,8 +847,7 @@ export function useSendMessage(
         // The window a Stop has to be held through, named (
         // review): from here until this dispatch's own `turn.started`.
         pendingClientTurnId: resolvedTurnId,
-        attachments: [],
-        attachmentStages: [],
+        ...(preserveComposer ? {} : { attachments: [], attachmentStages: [] }),
         // A new attempt for this key: a lookup answer about an earlier one
         // (a `received` whose refusal was lost in transit, before the
         // lookup-driven resend) describes nothing in flight now.
@@ -862,7 +874,7 @@ export function useSendMessage(
         !options?.dispatch &&
         !sourceStart &&
         !attachments?.length &&
-        !currentState?.attachmentStages?.length
+        (preserveComposer || !currentState?.attachmentStages?.length)
       ) {
         try {
           const { outboundDispatch } = await import('../lib/outboundQueue');

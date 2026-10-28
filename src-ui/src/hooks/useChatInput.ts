@@ -494,11 +494,6 @@ export function useChatInput({
         ambientContext?: string;
         /** Hold this as a follow-up even when the engine can steer. */
         queueOnBusy?: boolean;
-        /**
-         * The send key, when the caller derives one so every repeat of this
-         * send names the same turn; a fresh one otherwise.
-         */
-        clientTurnId?: string;
       },
     ) => {
       if (!sessionId || !agentSlug) return;
@@ -650,7 +645,7 @@ export function useChatInput({
         text.trim(),
         selectedAttachments,
         options?.ambientContext,
-        options?.clientTurnId,
+        undefined,
         {
           ...(submittedExperienceDraft
             ? {
@@ -716,6 +711,29 @@ export function useChatInput({
       mentionRequestScope,
       mentionAuthority,
     ],
+  );
+
+  /**
+   * Send a message Station composed (Continue after a restart) under the
+   * caller's key, so every repeat names the same turn. The composer is not
+   * part of it: its draft, quotes, attachments and visual skill stay as they
+   * are, and nothing is sent while a turn is running.
+   */
+  const sendComposedMessage = useCallback(
+    async (text: string, clientTurnId: string) => {
+      if (!sessionId || !agentSlug) return false;
+      return sendMessageAction(
+        sessionId,
+        agentSlug,
+        conversationId,
+        text,
+        [],
+        undefined,
+        clientTurnId,
+        { preserveComposer: true },
+      );
+    },
+    [sessionId, agentSlug, conversationId, sendMessageAction],
   );
 
   const handleCancel = useCallback(async () => {
@@ -1259,6 +1277,7 @@ export function useChatInput({
       // Handlers
       handleInputChange,
       handleSend,
+      sendComposedMessage,
       handleCancel,
       handleClearInput,
       handleAddAttachments,
@@ -1306,6 +1325,7 @@ export function useChatInput({
       slashCommands,
       handleInputChange,
       handleSend,
+      sendComposedMessage,
       handleCancel,
       handleClearInput,
       handleAddAttachments,

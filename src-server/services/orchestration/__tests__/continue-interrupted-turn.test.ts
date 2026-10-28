@@ -78,7 +78,7 @@ async function boot() {
 describe('Continue after a restart interrupted a turn', () => {
   test('a repeated Continue for one interruption starts one turn', async () => {
     const { adapter, continueTurn } = await boot();
-    const boundaryId = `provider-turn-boundary:${randomUUID()}`;
+    const boundaryId = `turn-boundary:${randomUUID()}`;
 
     const first = await continueTurn(boundaryId);
     const again = await continueTurn(boundaryId);
@@ -91,7 +91,7 @@ describe('Continue after a restart interrupted a turn', () => {
 
   test('two taps racing each other still start one turn', async () => {
     const { adapter, continueTurn } = await boot();
-    const boundaryId = `provider-turn-boundary:${randomUUID()}`;
+    const boundaryId = `turn-boundary:${randomUUID()}`;
 
     const [one, two] = await Promise.all([
       continueTurn(boundaryId),
@@ -105,15 +105,15 @@ describe('Continue after a restart interrupted a turn', () => {
   test('a later interruption gets its own Continue', async () => {
     const { adapter, continueTurn } = await boot();
 
-    await continueTurn(`provider-turn-boundary:${randomUUID()}`);
-    await continueTurn(`provider-turn-boundary:${randomUUID()}`);
+    await continueTurn(`turn-boundary:${randomUUID()}`);
+    await continueTurn(`turn-boundary:${randomUUID()}`);
 
     expect(adapter.sends).toHaveLength(2);
   });
 
   test('the key is one the chat send route accepts', () => {
     const clientTurnId = turnInterruptedContinueClientTurnId(
-      `provider-turn-boundary:${randomUUID()}`,
+      `turn-boundary:${randomUUID()}`,
     );
     expect(
       foregroundMessageObjectSchema.shape.clientTurnId.safeParse(clientTurnId)

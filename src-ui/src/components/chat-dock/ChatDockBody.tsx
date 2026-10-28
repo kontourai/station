@@ -1212,11 +1212,14 @@ export function ChatDockBody({
 
   // Continue after a restart cut a turn off: an ordinary send of a fixed
   // prompt, keyed on the interruption so a repeat (a double tap, another
-  // device) names the same turn and the server admits it once. The local set
-  // only covers the tap before the send's own row renders.
+  // device) names the same turn and the server admits it once. It leaves the
+  // composer alone. The local set only covers the tap before the send's own
+  // row renders.
   const continueInterruptedEnabled = useSurfaceVisibilityFlags().has(
     CONTINUE_INTERRUPTED_TURN_PREVIEW_ID,
   );
+  const sendComposedRef = useRef(chatInput.sendComposedMessage);
+  sendComposedRef.current = chatInput.sendComposedMessage;
   const continuingInterruptedRef = useRef(new Set<string>());
   const continueInterruptedTurn = useCallback(
     async (boundaryId: string) => {
@@ -1224,9 +1227,10 @@ export function ChatDockBody({
       if (continuing.has(boundaryId)) return;
       continuing.add(boundaryId);
       try {
-        await sendRef.current(TURN_INTERRUPTED_CONTINUE_PROMPT, [], {
-          clientTurnId: turnInterruptedContinueClientTurnId(boundaryId),
-        });
+        await sendComposedRef.current(
+          TURN_INTERRUPTED_CONTINUE_PROMPT,
+          turnInterruptedContinueClientTurnId(boundaryId),
+        );
       } catch (error) {
         surfaceRecoveryFailure(error);
       } finally {
@@ -1235,12 +1239,14 @@ export function ChatDockBody({
     },
     [surfaceRecoveryFailure],
   );
+  // By the row itself: the list may hide rows `renderedSession.messages`
+  // keeps, so its index can name a different row.
   const continueInterruptedAction = useCallback(
-    (idx: number) => {
+    (msg: ChatMessage) => {
       if (!continueInterruptedEnabled) return undefined;
       const boundaryId = continuableInterruptedBoundary(
         renderedSession.messages,
-        idx,
+        renderedSession.messages.indexOf(msg),
         {
           replay: Boolean(activeSession.replay),
           turnInFlight: isTurnInFlight(activeSession),
@@ -1497,7 +1503,7 @@ export function ChatDockBody({
               activeSession.replay
                 ? undefined
                 : turnInterruptedMatch
-                  ? continueInterruptedAction(idx)
+                  ? continueInterruptedAction(msg)
                   : chatErrorCode === MCP_SIGN_IN_REQUIRED_CODE
                     ? {
                         label: 'Sign in to tool',
@@ -1587,9 +1593,9 @@ export function ChatDockBody({
   // The stopped row that says "Station restarted mid-turn" in place of the
   // restart notice offers the notice's Continue under it.
   const renderAfterMessage = useCallback(
-    (msg: ChatMessage, idx: number): React.ReactNode | null => {
+    (msg: ChatMessage): React.ReactNode | null => {
       if (msg.role !== 'assistant') return null;
-      const action = continueInterruptedAction(idx);
+      const action = continueInterruptedAction(msg);
       return action ? (
         <div className="interrupted-turn-continue">
           <Button size="sm" onClick={action.onClick}>

@@ -1264,3 +1264,114 @@ describe('useSendMessage: durable before the request', () => {
     ).toBe('delivered');
   });
 });
+
+/**
+ * A message Station composed (Continue after a restart) is sent under its own
+ * key and is not the composer's: the person's draft and attachments stay, a
+ * refusal puts nothing in the composer, and a running turn sends nothing.
+ */
+describe('useSendMessage: a composed message leaves the composer alone', () => {
+  const KEY = 'continue-interrupted:turn-boundary:1';
+  const draftFile = {
+    id: 'draft-file',
+    name: 'notes.txt',
+    type: 'text/plain',
+    size: 5,
+    data: 'data:text/plain;base64,aGVsbG8=',
+  };
+  const composed = (send: ReturnType<typeof useSendMessage>) =>
+    send(chat, 'codex', undefined, 'Continue please', [], undefined, KEY, {
+      preserveComposer: true,
+    });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    memoryStorage();
+    activeChatsStore.initChat(chat, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'New chat',
+      projectSlug: 'station',
+    });
+    activeChatsStore.updateChat(chat, {
+      input: 'my unsent draft',
+      attachments: [draftFile],
+    });
+  });
+  afterEach(() => {
+    _resetOutboundQueueStorage();
+    activeChatsStore.removeChat(chat);
+  });
+
+  it('sends under its key and keeps the draft and its attachments', async () => {
+    sendExecutionMessageMock.mockResolvedValueOnce(receipt());
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await composed(result.current);
+    });
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+    const body = sendExecutionMessageMock.mock.calls[0]?.[1];
+    expect(body).toMatchObject({
+      message: 'Continue please',
+      clientTurnId: KEY,
+    });
+    expect(body.attachments ?? []).toEqual([]);
+    const state = activeChatsStore.getSnapshot()[chat];
+    expect(state?.input).toBe('my unsent draft');
+    expect(state?.attachments).toEqual([draftFile]);
+  });
+
+  it('control: an ordinary send of the same text takes the composer with it', async () => {
+    sendExecutionMessageMock.mockResolvedValueOnce(receipt());
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(chat, 'codex', undefined, 'Continue please', []);
+    });
+    const state = activeChatsStore.getSnapshot()[chat];
+    expect(state?.input).toBe('');
+    expect(state?.attachments).toEqual([]);
+  });
+
+  it('a refusal puts nothing in an empty composer', async () => {
+    activeChatsStore.updateChat(chat, { input: '', attachments: [] });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new ChatHttpError({ status: 400, message: 'Refused' } as never),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await composed(result.current);
+    });
+    expect(activeChatsStore.getSnapshot()[chat]?.input).toBe('');
+  });
+
+  it('a visual skill selection in the composer neither blocks nor joins it', async () => {
+    activeChatsStore.updateChat(chat, { skillExperienceDraftInvalid: true });
+    sendExecutionMessageMock.mockResolvedValueOnce(receipt());
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await composed(result.current);
+    });
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+    expect(sendExecutionMessageMock.mock.calls[0]?.[1]).not.toHaveProperty(
+      'skillExperience',
+    );
+    expect(
+      activeChatsStore.getSnapshot()[chat]?.skillExperienceDraftInvalid,
+    ).toBe(true);
+  });
+
+  it('while a turn is running it is neither sent, steered nor queued', async () => {
+    activeChatsStore.updateChat(chat, {
+      status: 'sending',
+      abortController: new AbortController(),
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await composed(result.current);
+    });
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    const state = activeChatsStore.getSnapshot()[chat];
+    expect(state?.queuedMessages ?? []).toEqual([]);
+    expect(state?.input).toBe('my unsent draft');
+  });
+});

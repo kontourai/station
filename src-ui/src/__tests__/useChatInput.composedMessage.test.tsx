@@ -1,9 +1,10 @@
 /**
  * @vitest-environment jsdom
  *
- * A caller that derives its send key (Continue after a restart) passes it to
- * `handleSend`, and the send it makes carries exactly that key, so a repeat
- * names the same turn. An ordinary send leaves the key to the send itself.
+ * Continue after a restart sends a message Station composed through
+ * `sendComposedMessage`: under the caller's key, with the composer left out of
+ * it (no saved quotes, no attachments, the composer kept). An ordinary
+ * `handleSend` still leaves the key to the send.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -53,6 +54,7 @@ vi.mock('../hooks/useActiveChatSessions', () => ({
 }));
 
 import { activeChatsStore } from '../contexts/active-chats-store';
+import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { useChatInput } from '../hooks/useChatInput';
 
 const CHAT = 'codex:client-turn-id';
@@ -81,7 +83,7 @@ function renderChatInput() {
 /** `sendMessage`'s seventh argument is the turn's send key. */
 const sentKey = () => (send.mock.calls[0] as unknown[] | undefined)?.[6];
 
-describe('handleSend send key', () => {
+describe('sendComposedMessage', () => {
   beforeEach(() => {
     send.mockClear();
     activeChatsStore.removeChat(CHAT);
@@ -91,18 +93,42 @@ describe('handleSend send key', () => {
       title: 'key',
       conversationId: CHAT,
     });
+    chatDraftsStore.addQuote(CHAT, {
+      version: 1,
+      origin: 'http://station.test',
+      sessionId: CHAT,
+      turnId: 'turn-1',
+      messageId: 'message-1',
+      revision: 'a'.repeat(64),
+      excerpt: 'a saved quote',
+    });
   });
-  afterEach(() => activeChatsStore.removeChat(CHAT));
+  afterEach(() => {
+    chatDraftsStore.consumeQuotes(CHAT, chatDraftsStore.getQuotes(CHAT));
+    activeChatsStore.removeChat(CHAT);
+  });
 
-  test('a caller-derived key reaches the send unchanged', async () => {
+  test('sends the text alone under the caller’s key, keeping the composer', async () => {
     const { result } = renderChatInput();
     await act(async () => {
-      await result.current.handleSend('Continue', [], {
-        clientTurnId: 'continue-interrupted:turn-boundary:1',
-      });
+      await result.current.sendComposedMessage(
+        'Continue',
+        'continue-interrupted:turn-boundary:1',
+      );
     });
     expect(send).toHaveBeenCalledTimes(1);
-    expect(sentKey()).toBe('continue-interrupted:turn-boundary:1');
+    expect(send.mock.calls[0]).toEqual([
+      CHAT,
+      'codex',
+      CHAT,
+      'Continue',
+      [],
+      undefined,
+      'continue-interrupted:turn-boundary:1',
+      { preserveComposer: true },
+    ]);
+    // The saved quote stays for the person's own next message.
+    expect(chatDraftsStore.getQuotes(CHAT)).toHaveLength(1);
   });
 
   test('an ordinary send leaves the key to the send', async () => {

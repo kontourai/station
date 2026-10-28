@@ -142,6 +142,7 @@ function buildChatInput() {
     slashCommands: [],
     handleInputChange: vi.fn(),
     handleSend: vi.fn(async () => {}),
+    sendComposedMessage: vi.fn(async () => true),
     handleCancel: vi.fn(),
     handleClearInput: vi.fn(),
     handleAddAttachments: vi.fn(),
@@ -327,12 +328,14 @@ describe('ChatDockBody Continue after a restart', () => {
 
   function renderWith(
     session: ChatSession,
-    handleSend: (...args: unknown[]) => Promise<void> = vi.fn(async () => {}),
+    sendComposedMessage: (...args: unknown[]) => Promise<unknown> = vi.fn(
+      async () => true,
+    ),
   ) {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    const chatInput = { ...buildChatInput(), handleSend };
+    const chatInput = { ...buildChatInput(), sendComposedMessage };
     render(
       <QueryClientProvider client={queryClient}>
         <ChatDockBody
@@ -359,23 +362,29 @@ describe('ChatDockBody Continue after a restart', () => {
 
   test('sends the fixed prompt keyed on the interruption, once for a double tap', async () => {
     let finish: () => void = () => {};
-    const handleSend = vi.fn(
+    const sendComposed = vi.fn(
       () => new Promise<void>((resolve) => (finish = resolve)),
     );
-    renderWith(buildSession({ messages: [prompt, banner] }), handleSend);
+    const chatInput = renderWith(
+      buildSession({ messages: [prompt, banner] }),
+      sendComposed,
+    );
 
     const action = await screen.findByRole('button', { name: 'Continue' });
     fireEvent.click(action);
     fireEvent.click(action);
-    expect(handleSend).toHaveBeenCalledTimes(1);
-    expect(handleSend).toHaveBeenCalledWith(PROMPT, [], {
-      clientTurnId: `continue-interrupted:${BOUNDARY}`,
-    });
+    expect(sendComposed).toHaveBeenCalledTimes(1);
+    expect(sendComposed).toHaveBeenCalledWith(
+      PROMPT,
+      `continue-interrupted:${BOUNDARY}`,
+    );
+    // Not the composer's send: the person's draft is not part of it.
+    expect(chatInput.handleSend).not.toHaveBeenCalled();
     await act(async () => finish());
   });
 
   test('is offered under the stopped row that took the notice’s place', async () => {
-    const handleSend = renderWith(
+    const sendComposed = renderWith(
       buildSession({
         messages: [
           prompt,
@@ -390,13 +399,14 @@ describe('ChatDockBody Continue after a restart', () => {
           } as any,
         ],
       }),
-    ).handleSend;
+    ).sendComposedMessage;
 
     expect(await screen.findByText('Station restarted mid-turn')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
-    expect(handleSend).toHaveBeenCalledWith(PROMPT, [], {
-      clientTurnId: `continue-interrupted:${BOUNDARY}`,
-    });
+    expect(sendComposed).toHaveBeenCalledWith(
+      PROMPT,
+      `continue-interrupted:${BOUNDARY}`,
+    );
   });
 
   test('is not offered once a newer message follows the interruption', async () => {
@@ -415,6 +425,14 @@ describe('ChatDockBody Continue after a restart', () => {
 
   test('is not offered while a turn is running', async () => {
     renderWith(buildSession({ messages: [prompt, banner], status: 'sending' }));
+    await screen.findByText(BANNER_TEXT);
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+  });
+
+  test('is not offered while a message waits to send', async () => {
+    renderWith(
+      buildSession({ messages: [prompt, banner], queuedMessages: ['next'] }),
+    );
     await screen.findByText(BANNER_TEXT);
     expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
   });

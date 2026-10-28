@@ -355,7 +355,10 @@ the row that took its place) offers **Continue** while it is the conversation's
 latest row and nothing is running or waiting to send. Continue sends a fixed
 note as an ordinary turn, keyed `continue-interrupted:<boundary id>` from the
 notice's `interruptedTurnBoundary`, so a second tap or another device names the
-same turn and the server's turn deduplication starts it once. It is never sent
+same turn and the server's turn deduplication starts it once. It is not the
+composer's send: the draft, quotes, attachments and visual skill stay in the
+composer, a refusal puts nothing there, and a turn running by the time it is
+sent makes it send nothing rather than steer or queue. It is never sent
 automatically. A row without answer text has no Basis chip. The pill's state changes animate its width with
 the shared motion token, while the clock reserves a stable text column. A running
 tool call's label carries a highlight moving through its text; settled calls
