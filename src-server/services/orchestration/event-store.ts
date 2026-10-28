@@ -10705,7 +10705,7 @@ export class EventStore {
       ) {
         const anchor = this.db
           .prepare(
-            `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence FROM orchestration_events WHERE thread_id = ? AND turn_id = ? AND ${OWN_TURN_START_SQL} AND global_sequence >= ? AND global_sequence < ? ORDER BY sequence ASC LIMIT 1`,
+            `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence FROM orchestration_events WHERE thread_id = ? AND turn_id = ? AND method = 'turn.started' AND global_sequence >= ? AND global_sequence < ? ORDER BY sequence ASC LIMIT 1`,
           )
           .get(
             oldestTurned.threadId,
