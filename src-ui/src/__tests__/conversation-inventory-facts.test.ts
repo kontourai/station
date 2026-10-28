@@ -83,6 +83,41 @@ describe('withConversationInventory (#4266)', () => {
     expect(mappedUnlisted).toBe(unlisted);
   });
 
+  it('takes the later of a cached at-rest finish and the live one', () => {
+    const earlier = '2026-10-28T09:00:00.000Z';
+    const later = Date.parse('2026-10-28T10:30:00.000Z');
+    // The cached copy read the conversation at rest after its previous turn.
+    const [stale] = withConversationInventory(
+      [item({ id: 'c1', terminalAt: later })],
+      new Map([
+        [
+          'c1',
+          conversation({
+            id: 'c1',
+            lifecycleState: 'idle',
+            lifecycleChangedAt: earlier,
+          }),
+        ],
+      ]),
+    );
+    expect(stale.terminalAt).toBe(later);
+    // A fresher inventory than the live row still wins.
+    const [fresh] = withConversationInventory(
+      [item({ id: 'c1', terminalAt: Date.parse(earlier) })],
+      new Map([
+        [
+          'c1',
+          conversation({
+            id: 'c1',
+            lifecycleState: 'completed',
+            lifecycleChangedAt: '2026-10-28T10:30:00.000Z',
+          }),
+        ],
+      ]),
+    );
+    expect(fresh.terminalAt).toBe(later);
+  });
+
   it('a copy read while the work ran keeps the live finish time, not the start it holds', () => {
     const finishedAt = Date.parse('2026-10-28T10:30:00.000Z');
     const [mapped] = withConversationInventory(

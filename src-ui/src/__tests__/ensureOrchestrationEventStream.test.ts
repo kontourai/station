@@ -449,6 +449,45 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
     expect(inventoryReads).toHaveLength(1);
   });
 
+  // #4266: the inventory read refetches every loaded page; a busy Station
+  // ends turns often, so the turn ends inside one window cost one more read.
+  it('re-reads the conversation inventory at most once a window, then once at its end', async () => {
+    const { client, invalidateQueries } = spiedClient();
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          openSseResponseWithOneFrame(
+            terminalFrame('evt-burst-1', 'turn.completed') +
+              terminalFrame('evt-burst-2', 'turn.aborted') +
+              terminalFrame('evt-burst-3', 'session.exited') +
+              terminalFrame('evt-burst-4', 'turn.completed'),
+          ),
+        ),
+    );
+    ensureOrchestrationEventStream(
+      'https://ensure-orchestration-inventory-burst.example.test',
+      client,
+    );
+    await vi.waitFor(() =>
+      expect(handleOrchestrationEvent).toHaveBeenCalledTimes(4),
+    );
+    const inventoryReads = () =>
+      invalidateQueries.mock.calls.filter(
+        ([filters]: unknown[]) =>
+          JSON.stringify(filters) ===
+          JSON.stringify({
+            queryKey: ['conversation-inventory'],
+            type: 'active',
+          }),
+      );
+    // `vi.waitFor` advances fake time, so the window may already be over:
+    // four turn ends cost the read at the first and one at the window's end.
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(inventoryReads()).toHaveLength(2);
+  });
+
   it('leaves the read-model alone for ordinary streaming frames', async () => {
     const { client, invalidateQueries } = spiedClient();
     vi.stubGlobal(

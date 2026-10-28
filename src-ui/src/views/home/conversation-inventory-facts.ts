@@ -32,15 +32,20 @@ export function withConversationInventory<T extends HomeWorkItem>(
     if (!conversation) return item;
     const acknowledgedAt = epochMs(conversation.acknowledgedAt);
     // The inventory's change time is a finish time only when the inventory
-    // itself read the conversation at rest. It is not refetched on every
-    // lifecycle event, so a copy read while the work ran holds its START
-    // time; the live row's own finish time then stands.
-    const terminalAt =
+    // itself read the conversation at rest. It is re-read on a throttle, so
+    // a copy read while the work ran holds its START time, and a cached copy
+    // read at rest can hold an EARLIER finish (the turn before this one);
+    // the later of it and the live row's own finish time stands.
+    const inventoryTerminalAt =
       isTerminalLifecycle(item.lifecycleLabel) &&
       conversation.lifecycleState !== undefined &&
       isSessionLifecycleStateAtRest(conversation.lifecycleState)
-        ? (epochMs(conversation.lifecycleChangedAt) ?? item.terminalAt)
-        : item.terminalAt;
+        ? epochMs(conversation.lifecycleChangedAt)
+        : undefined;
+    const terminalAt =
+      inventoryTerminalAt !== undefined && item.terminalAt !== undefined
+        ? Math.max(inventoryTerminalAt, item.terminalAt)
+        : (inventoryTerminalAt ?? item.terminalAt);
     const executionProviders = (conversation.executionProviders ?? [])
       .map((provider) => parseEngineId(provider))
       .filter((provider): provider is EngineId => provider !== undefined);

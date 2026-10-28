@@ -53,6 +53,9 @@ export interface SessionReadModelRefreshState {
   awaitingSettle: (() => void) | undefined;
   /** An update arrived during the in-flight read; re-read once it settles. */
   owed: boolean;
+  /** #4266: the conversation inventory's own refresh, throttled apart. */
+  inventoryLastAt: number;
+  inventoryDeferred: ReturnType<typeof setTimeout> | undefined;
 }
 const sessionReadModelRefreshes = new Map<
   string,
@@ -69,6 +72,8 @@ export function sessionReadModelRefreshState(
       deferred: undefined,
       awaitingSettle: undefined,
       owed: false,
+      inventoryLastAt: 0,
+      inventoryDeferred: undefined,
     };
     sessionReadModelRefreshes.set(apiBase, state);
   }
@@ -112,6 +117,8 @@ export function registerOrchestrationStreamQueryClient(
     if (!currentStreamQueryClient(apiBase)) {
       const state = sessionReadModelRefreshes.get(apiBase);
       if (state?.deferred !== undefined) clearTimeout(state.deferred);
+      if (state?.inventoryDeferred !== undefined)
+        clearTimeout(state.inventoryDeferred);
       state?.awaitingSettle?.();
       sessionReadModelRefreshes.delete(apiBase);
     }
@@ -122,6 +129,8 @@ export function registerOrchestrationStreamQueryClient(
 export function resetStreamQueryClientRegistryForTests(): void {
   for (const state of sessionReadModelRefreshes.values()) {
     if (state.deferred !== undefined) clearTimeout(state.deferred);
+    if (state.inventoryDeferred !== undefined)
+      clearTimeout(state.inventoryDeferred);
     state.awaitingSettle?.();
   }
   sessionReadModelRefreshes.clear();
