@@ -294,9 +294,7 @@ test('phone tool picker switches through canonical history and preserves the cha
     screen.getByRole('button', { name: 'Switch tool, current: Chat' }),
   );
   const picker = screen.getByRole('dialog', { name: 'Tools' });
-  fireEvent.click(
-    within(picker).getByRole('button', { name: 'Files', exact: true }),
-  );
+  fireEvent.click(within(picker).getByRole('button', { name: 'Files' }));
   await act(async () => undefined);
   expect(screen.queryByRole('dialog', { name: 'Tools' })).toBeNull();
   expect(new URLSearchParams(window.location.search).get('pane')).toBe(
@@ -305,7 +303,7 @@ test('phone tool picker switches through canonical history and preserves the cha
   expect(
     screen.getByRole('button', { name: 'Switch tool, current: Files' }),
   ).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Chat', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Chat' }));
   await historyBackSettled();
   expect(new URLSearchParams(window.location.search).get('pane')).toBeNull();
   expect(screen.getByRole('textbox', { name: 'Message' })).toBe(composer);
