@@ -291,7 +291,7 @@ export interface SessionPersonActivityDeps extends SessionProjectActivityDeps {
 }
 
 /** The Feature Preview that gates the person-facing Session reads. */
-export const SESSION_PERSON_READS_PREVIEW = {
+const SESSION_PERSON_READS_PREVIEW = {
   id: 'session-cli-reads',
   label: 'Session reads from the station CLI',
 } as const;
