@@ -1627,45 +1627,80 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     });
   });
 
-  test('leaves a newer invocation that reuses the dead turn id running', async () => {
-    const path = databasePath();
-    const threadId = 'thread-reused-turn-id';
-    const eventStore = bootAfterCrash({
-      path,
-      threadId,
-      provider: 'codex',
-      boundaryState: 'accepted',
-      startInvocationId: 'invocation-1',
-    });
-    stores.push(eventStore);
-    // A new owner sent again before recovery ran; the engine reused the id.
-    eventStore.appendEvent({
-      eventId: 'turn-started:reused',
-      provider: 'codex',
-      threadId,
-      turnId: 'turn-1',
-      invocationId: 'invocation-2',
-      createdAt: '2026-08-16T00:00:04.000Z',
-      method: 'turn.started',
-      prompt: 'again',
-    } as CanonicalRuntimeEvent);
-    const service = new OrchestrationService({
-      adapterRegistry: createRegistry(),
-      eventBus: new EventBus(),
-      eventStore,
-      logger,
-    });
+  test.each([
+    { shape: 'plain', earlierUse: 0, steered: false },
+    // The id's earlier use fills a per-turn page ahead of this dispatch.
+    { shape: 'a long earlier use of the id', earlierUse: 70, steered: false },
+    // Steer starts carry no invocation and land after the reused start.
+    { shape: 'a steer after the reuse', earlierUse: 0, steered: true },
+  ])(
+    'leaves a newer invocation that reuses the dead turn id running ()',
+    async ({ earlierUse, steered }) => {
+      const path = databasePath();
+      const threadId = 'thread-reused-turn-id';
+      const eventStore = bootAfterCrash({
+        path,
+        threadId,
+        provider: 'codex',
+        boundaryState: 'accepted',
+        startInvocationId: 'invocation-1',
+        beforeTurnStarted: Array.from(
+          { length: earlierUse },
+          (_, index) =>
+            ({
+              eventId: `earlier-use:${index}`,
+              provider: 'codex',
+              threadId,
+              turnId: 'turn-1',
+              invocationId: 'invocation-0',
+              createdAt: '2026-08-16T00:00:00.100Z',
+              method: 'content.text-delta',
+              itemId: 'earlier-item',
+              delta: 'x',
+            }) as CanonicalRuntimeEvent,
+        ),
+      });
+      stores.push(eventStore);
+      // A new owner sent again before recovery ran; the engine reused the id.
+      eventStore.appendEvent({
+        eventId: 'turn-started:reused',
+        provider: 'codex',
+        threadId,
+        turnId: 'turn-1',
+        invocationId: 'invocation-2',
+        createdAt: '2026-08-16T00:00:04.000Z',
+        method: 'turn.started',
+        prompt: 'again',
+      } as CanonicalRuntimeEvent);
+      if (steered)
+        eventStore.appendEvent({
+          eventId: 'turn-started:steer',
+          provider: 'codex',
+          threadId,
+          turnId: 'turn-1',
+          createdAt: '2026-08-16T00:00:04.500Z',
+          method: 'turn.started',
+          prompt: 'and this',
+          inputKind: 'steer',
+        } as CanonicalRuntimeEvent);
+      const service = new OrchestrationService({
+        adapterRegistry: createRegistry(),
+        eventBus: new EventBus(),
+        eventStore,
+        logger,
+      });
 
-    await (service as any).interruptedTurns.consume();
+      await (service as any).interruptedTurns.consume();
 
-    const events = eventStore.listEvents(threadId);
-    expect(events.filter((e) => e.payload.method === 'turn.aborted')).toEqual(
-      [],
-    );
-    expect(activeTurnIdForEvents(events.map((row) => row.payload))).toBe(
-      'turn-1',
-    );
-  });
+      const events = eventStore.listEvents(threadId);
+      expect(events.filter((e) => e.payload.method === 'turn.aborted')).toEqual(
+        [],
+      );
+      expect(activeTurnIdForEvents(events.map((row) => row.payload))).toBe(
+        'turn-1',
+      );
+    },
+  );
 
   test('a recovery abort persisted without an invocationId still closes its invocation-anchored turn', async () => {
     // The row shape boot recovery wrote before it stamped the invocation:

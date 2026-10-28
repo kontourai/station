@@ -559,35 +559,44 @@ export class InterruptedTurnRecovery {
           // a pass landing in between banners `needs_input`. It self-heals,
           // because that start then folds the session back to running. It is
           // the first pass's window, only longer.
-          const ownStarts =
+          const ownTurnStarted =
+            ownTurnId !== undefined &&
+            eventStore
+              .listEventsForTurn(record.threadId, ownTurnId, 64)
+              .some((event) => event.payload.method === 'turn.started');
+          // A native turn id can be reused by a later invocation. The
+          // recovery abort closes its turn by id alone, so a newer dispatch
+          // start of the same id under a different invocation is the thread
+          // moving on, not this boundary's turn. Read from the starts since
+          // the claim (newest first), skipping steers, which carry no
+          // invocation. Unknown own invocation or a page overflow: no evidence.
+          const startsSinceClaim =
             ownTurnId === undefined
               ? []
-              : eventStore
-                  .listEventsForTurn(record.threadId, ownTurnId, 64)
-                  .filter((event) => event.payload.method === 'turn.started');
-          const ownTurnStarted = ownStarts.length > 0;
-          // A native turn id can be reused by a later invocation. The
-          // recovery abort closes its turn by id alone, so a newer start of
-          // the same id under a different invocation is the thread moving on,
-          // not this boundary's turn. Unknown own invocation: no evidence.
+              : eventStore.listTurnStartsSince(
+                  record.threadId,
+                  record.createdAt,
+                  OWN_TURN_START_SCAN_LIMIT + 1,
+                );
+          const ownDispatchStarts =
+            startsSinceClaim.length > OWN_TURN_START_SCAN_LIMIT
+              ? []
+              : startsSinceClaim.filter(
+                  (event) =>
+                    event.turnId === ownTurnId &&
+                    event.payload.method === 'turn.started' &&
+                    event.payload.inputKind !== 'steer',
+                );
           const ownInvocationId =
             record.intent?.invocationId ??
-            (
-              derivedOwn?.start ??
-              ownStarts.find(
-                (event) =>
-                  event.createdAt >= record.createdAt &&
-                  event.payload.method === 'turn.started' &&
-                  event.payload.inputKind !== 'steer',
-              )
-            )?.payload.invocationId;
+            (derivedOwn?.start ?? ownDispatchStarts.at(-1))?.payload
+              .invocationId;
+          const newestInvocationId = ownDispatchStarts[0]?.payload.invocationId;
           const reusedByNewerInvocation =
             !providerTurn &&
             ownInvocationId !== undefined &&
-            latestTurnStarted?.turnId === ownTurnId &&
-            latestTurnStarted.createdAt > record.createdAt &&
-            latestTurnStarted.payload.invocationId !== undefined &&
-            latestTurnStarted.payload.invocationId !== ownInvocationId;
+            newestInvocationId !== undefined &&
+            newestInvocationId !== ownInvocationId;
           if (
             reusedByNewerInvocation ||
             (providerTurn &&
