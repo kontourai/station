@@ -1882,6 +1882,56 @@ describe("the dock's New chat is a draft, not a dialog", () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
+  // After Start the dock hands focus to the new chat's composer
+  // (`requestComposerFocus`); the draft must not pull it back to its opener.
+  test('a started draft does not return focus to the control that opened it', async () => {
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <AuthorityPersistenceContext.Provider
+          value={{ status: 'verified', namespace: 'ns-1', observation: null }}
+        >
+          <button type="button" onClick={() => setOpen(true)}>
+            Open draft
+          </button>
+          {open && (
+            <NewChatModal
+              projectIconBySlug={new Map()}
+              startSurface
+              agents={state.agents as AgentData[]}
+              projects={state.projects as ProjectMetadata[]}
+              onSelect={() => setOpen(false)}
+              onClose={() => setOpen(false)}
+            />
+          )}
+        </AuthorityPersistenceContext.Provider>
+      );
+    }
+    render(<Harness />);
+    const opener = screen.getByRole('button', { name: 'Open draft' });
+    opener.focus();
+    fireEvent.click(opener);
+    const draft = screen.getByRole('region', { name: 'New chat' });
+    fireEvent.change(
+      within(draft).getByRole('textbox', { name: 'What would you like done?' }),
+      { target: { value: 'Go' } },
+    );
+    const start = within(draft).getByRole('button', {
+      name: 'Start',
+      exact: true,
+    });
+    await waitFor(() =>
+      expect((start as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(start);
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'New chat' })).toBeNull(),
+    );
+    await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+    await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+    expect(document.activeElement).not.toBe(opener);
+  });
+
   test('with no project the line uses the chip’s words and names no Station before the device answers; a second Station adds the Station control', async () => {
     state.environments = [
       {
