@@ -55,11 +55,11 @@
     },
     "approvals list": {
       "exempt": "person-only",
-      "reason": "Approval commands need a bound operator (route rule approval-commands-need-bound-operator); an agent must not answer its own requests."
+      "reason": "A person answers approval prompts; an agent sees its own delegated task's pending request through get_task."
     },
     "approvals respond": {
       "exempt": "person-only",
-      "reason": "Same rule as approvals list."
+      "reason": "Answering an approval needs a bound operator (route rule approval-commands-need-bound-operator); an agent never answers approval prompts."
     },
     "auth renew": {
       "exempt": "person-only",
@@ -89,9 +89,25 @@
       "tools": ["send_message", "send_to_session"],
       "note": "`chat --session` is the person's own send (POST /api/orchestration/chat); send_to_session uses the agent-only session-control leaf."
     },
-    "checkpoints": {
+    "checkpoints history": {
       "exempt": "local-host",
-      "reason": "Git checkpoint refs in the Station home (status/prune)."
+      "reason": "Reads git checkpoint refs in this Station home on disk."
+    },
+    "checkpoints prune": {
+      "exempt": "local-host",
+      "reason": "Reads or prunes git checkpoint refs in this Station home on disk."
+    },
+    "checkpoints restore": {
+      "missing": 4281,
+      "want": "a tool that previews and restores a turn checkpoint"
+    },
+    "checkpoints retention": {
+      "exempt": "local-host",
+      "reason": "Reads git checkpoint refs in this Station home on disk."
+    },
+    "checkpoints status": {
+      "exempt": "local-host",
+      "reason": "Reads git checkpoint refs in this Station home on disk."
     },
     "cloud import-project": {
       "exempt": "local-host",
@@ -535,8 +551,8 @@
       "note": "MCP is a proposal; CLI removes directly."
     },
     "plugin update": {
-      "tools": ["update_plugin", "check_plugin_updates"],
-      "note": "MCP update is a proposal; CLI updates directly."
+      "tools": ["update_plugin"],
+      "note": "The tool proposes the update; the CLI applies it."
     },
     "projects attach": {
       "exempt": "person-only",
@@ -728,12 +744,12 @@
       "note": "Route differs: /api/orchestration/commands interruptTurn vs session-control/interrupt."
     },
     "sessions list": {
-      "tools": ["list_active_work"],
-      "note": "Weak match: CLI reads GET /api/orchestration/sessions/read-model filtered by agent; tool reads session-activity/active-work in the caller's scope."
+      "missing": 3427,
+      "want": "list_active_work lists active work in scope, not the session read model this lists"
     },
     "sessions read": {
-      "tools": ["read_conversation"],
-      "note": "Weak match: CLI reads the orchestration thread snapshot (GET /api/orchestration/sessions/:id); tool reads the conversation transcript (GET /api/conversations/:id/read)."
+      "missing": 3427,
+      "want": "read_conversation reads the transcript, not the orchestration session snapshot this reads"
     },
     "setup existing": {
       "exempt": "local-host",
@@ -984,8 +1000,8 @@
       "tools": ["get_walkthrough"]
     },
     "workload status": {
-      "tools": ["workload_status"],
-      "note": "Scope differs: Station-wide vs caller's session."
+      "missing": 4284,
+      "want": "a tool for the Station-wide workload (GET /api/system/workload)"
     }
   },
   "tools": {
@@ -1312,8 +1328,8 @@
       "reason": "Drives the person's open UI via POST /api/ui."
     },
     "notify_user": {
-      "exempt": "agent-ui",
-      "reason": "Agent-attributed notification (route authorizes the caller itself); person-side `notifications create` posts /notifications."
+      "cli": ["notifications create"],
+      "note": "The tool posts an agent-attributed notification (POST /api/notifications/agent); the CLI posts as the person (POST /notifications)."
     },
     "preview_schedule": {
       "cli": ["schedule preview"]
@@ -1472,8 +1488,8 @@
       "want": "Sessions wait"
     },
     "workload_status": {
-      "cli": ["workload status"],
-      "note": "Materially different scope: MCP GET /api/system/workload/session (caller's own session budget, refuses without a caller); CLI GET /api/system/workload (Station-wide)."
+      "exempt": "agent-self",
+      "reason": "Reads the calling Session's own workload budget (GET /api/system/workload/session), which refuses a request without a caller."
     },
     "write_pull_request_guides": {
       "missing": 4286,

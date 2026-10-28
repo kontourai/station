@@ -302,11 +302,26 @@ export async function main(argv = process.argv.slice(2)) {
     );
     return 2;
   }
-  const surfaces = await loadSurfaces();
+  let surfaces;
+  try {
+    surfaces = await loadSurfaces();
+  } catch (error) {
+    console.error(
+      `FAIL: cannot load the tool or CLI registry: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return 2;
+  }
   const errors = validateManifest(manifest, surfaces);
-  const baseRef = options.base ?? mergeBaseWith(BASE_REF) ?? BASE_REF;
+  // The merge base, never origin/main's tip: against the tip, a gap main
+  // closed after this branch was cut would read as one this branch opened.
+  const baseRef =
+    options.base ?? mergeBaseWith(BASE_REF, (args) => git(args).trim());
   let base;
   try {
+    if (!baseRef)
+      throw new Error(
+        `cannot find the merge base with ${BASE_REF}. Fetch it with full history or pass --base=<ref>.`,
+      );
     base = readBaseManifest(baseRef);
   } catch (error) {
     console.error(`FAIL: ${error.message}`);
@@ -326,7 +341,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
   const missing = missingKeys(manifest).size;
   console.log(
-    `CLI ↔ Station Control parity passed: ${surfaces.tools.length} tools and ${surfaces.cli.length} CLI actions classified; ${missing} tracked as missing${base === null ? ` (no manifest at ${baseRef}, so no ratchet base yet)` : ''}.`,
+    `CLI ↔ Station Control parity passed: ${surfaces.tools.length} tools and ${surfaces.cli.length} CLI actions classified; ${missing} tracked as missing; ratchet base ${baseRef}${base === null ? ' has no manifest yet, so nothing to ratchet against' : ''}.`,
   );
   return 0;
 }

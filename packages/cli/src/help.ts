@@ -1269,6 +1269,7 @@ const VERBS: Record<string, VerbSpec> = {
   checkpoints: {
     group: 'Setup',
     summary: 'Inspect and reclaim workspace-checkpoint disk usage',
+    actions: ['status', 'prune', 'history', 'retention', 'restore'],
     usage: [
       'station checkpoints status [--json]',
       'station checkpoints prune --thread=<threadId> [--gc]',

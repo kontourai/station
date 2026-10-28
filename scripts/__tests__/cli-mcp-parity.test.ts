@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -39,6 +39,9 @@ function runGate(manifest: Manifest | null, args: string[] = []) {
   return { status: result.status, output: `${result.stdout}${result.stderr}` };
 }
 
+const git = (...args: string[]) =>
+  execFileSync('git', args, { encoding: 'utf8', windowsHide: true }).trim();
+
 /** A tool whose entry names a CLI counterpart, to reclassify in fixtures. */
 function counterpartTool(manifest: Manifest) {
   const name = Object.keys(manifest.tools).find(
@@ -53,8 +56,59 @@ describe('cli-mcp parity entry point', () => {
     const { status, output } = runGate(null);
     expect(output).toContain('CLI ↔ Station Control parity passed');
     expect(status).toBe(0);
-    // Non-vacuous: both registries are loaded, not empty matches.
-    expect(output).toMatch(/: 1\d\d tools and 2\d\d CLI actions classified/);
+    // Unclassified and stale entries both fail, so on a pass the manifest's
+    // key counts are the registries' sizes; non-vacuous when both are loaded.
+    const manifest = realManifest();
+    const tools = Object.keys(manifest.tools).length;
+    const cli = Object.keys(manifest.cli).length;
+    expect(tools).toBeGreaterThan(0);
+    expect(cli).toBeGreaterThan(0);
+    expect(output).toContain(
+      `${tools} tools and ${cli} CLI actions classified`,
+    );
+  });
+
+  it('ratchets against the merge base with origin/main by default', () => {
+    const mergeBase = git('merge-base', 'origin/main', 'HEAD');
+    const manifest = realManifest();
+    const name = counterpartTool(manifest);
+    manifest.tools[name] = { missing: 4282 };
+    const { status, output } = runGate(manifest);
+    let baseHasManifest = true;
+    try {
+      git('cat-file', '-e', `${mergeBase}:${MANIFEST_PATH}`);
+    } catch {
+      baseHasManifest = false;
+    }
+    if (baseHasManifest) {
+      expect(output).toContain(
+        `newly classified missing (not missing at ${mergeBase})`,
+      );
+      expect(status).toBe(1);
+    } else {
+      // Only the change that introduces the manifest takes this branch.
+      expect(output).toContain(`ratchet base ${mergeBase} has no manifest yet`);
+      expect(status).toBe(0);
+    }
+  });
+
+  it('does not ratchet against a base that predates the manifest', () => {
+    const introduced = git(
+      'log',
+      '--diff-filter=A',
+      '--format=%H',
+      '--',
+      MANIFEST_PATH,
+    )
+      .split('\n')
+      .at(-1);
+    const manifest = realManifest();
+    manifest.tools[counterpartTool(manifest)] = { missing: 4282 };
+    const { status, output } = runGate(manifest, [`--base=${introduced}^`]);
+    expect(output).toContain(
+      'has no manifest yet, so nothing to ratchet against',
+    );
+    expect(status).toBe(0);
   });
 
   it('fails an unclassified tool', () => {
