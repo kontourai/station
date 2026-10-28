@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-28T01:43:30Z | nightly-android | 0.1.11-nightly.2492 | `b43bf49` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40610686604) |
 | 2026-10-28T00:56:51Z | nightly-npm | 0.11.0-nightly.2492.40610686604 | `b43bf49` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/40610686604) |
 | 2026-10-27T18:04:28Z | nightly-desktop | 0.1.11-nightly.2491.2 | `091ef3d` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40545006749) |
 | 2026-10-27T18:04:25Z | nightly-android | 0.1.11-nightly.2491.2 | `091ef3d` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/40545006749) |
@@ -365,6 +366,28 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-28T01:43:30Z · nightly-android · 0.1.11-nightly.2492
+
+- Ship SHA: `b43bf4983801c9450b11b4f27457a64107bbd6e5`
+- Artifact built at: `2026-10-28T00:55:57.596Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 40610686604)
+
+### Changelog
+
+Commits since `091ef3d` ([full sha](https://github.com/kontourai/station/commit/091ef3d8d3e895c3d7f8f321dbe856f9198be6cd)):
+
+**Features**
+
+- [#4257](https://github.com/kontourai/station/pull/4257) feat(workload): kill the command not the engine on OOM, auto-continue memory deaths, budget-aware engines
+- [#4091](https://github.com/kontourai/station/pull/4091) feat(telemetry): add companion control, private Insights and incidents
+
+**Fixes**
+
+- [#4256](https://github.com/kontourai/station/pull/4256) fix(ui): show and open a sent image in its bubble while the reply streams
+- [#4252](https://github.com/kontourai/station/pull/4252) fix(ci): bind preview policy reads and diagnose Nightly fence failures
+- [#4255](https://github.com/kontourai/station/pull/4255) fix: keep continuations in their Conversation, restage Send again attachments, bound macOS Keychain waits
 
 ## 2026-10-28T00:56:51Z · nightly-npm · 0.11.0-nightly.2492.40610686604
 
