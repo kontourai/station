@@ -24,6 +24,7 @@ import {
 const DANA = 'human:deployment:dana';
 const SCOPES: Record<string, StationControlScope> = {
   'in-viewable': { kind: 'project', id: 'p-viewable' },
+  'in-also-viewable': { kind: 'project', id: 'p-also-viewable' },
   'in-hidden': { kind: 'project', id: 'p-hidden' },
   global: { kind: 'global' },
   unreadable: { kind: 'unreadable' },
@@ -52,7 +53,7 @@ const dispatchScope = {
   ownProjectSlug: () => undefined,
 };
 const personMayView = (userId: string, projectId: string) =>
-  userId === DANA && projectId === 'p-viewable';
+  userId === DANA && ['p-viewable', 'p-also-viewable'].includes(projectId);
 const preview = {
   select: <T>(branches: { enabled: () => T; disabled: () => T }) =>
     branches.enabled(),
@@ -140,7 +141,7 @@ describe('an account principal is held to the Projects it may view', () => {
       listed.body.data.sessions
         .map((row: { sessionId: string }) => row.sessionId)
         .sort(),
-    ).toEqual(['global', 'in-viewable']);
+    ).toEqual(['global', 'in-also-viewable', 'in-viewable']);
   });
 
   test('a Project it may not view reads like one that does not exist', async () => {
@@ -159,6 +160,8 @@ describe('an account principal is held to the Projects it may view', () => {
         (row: { sessionId: string }) => row.sessionId,
       ),
     ).toEqual(['in-viewable']);
+    // The candidates named both viewable Projects: the narrowing is the
+    // row's own Project, not the candidate selection.
   });
 
   test('a digest and a wait refuse a Session in a Project it may not view, or whose Project cannot be read', async () => {
@@ -171,6 +174,7 @@ describe('an account principal is held to the Projects it may view', () => {
     }
     expect(rows).toEqual([
       ['in-viewable', 200, 200],
+      ['in-also-viewable', 200, 200],
       ['in-hidden', 404, 404],
       ['global', 200, 200],
       ['unreadable', 404, 404],
