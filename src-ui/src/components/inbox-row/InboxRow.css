@@ -519,7 +519,7 @@
 }
 
 .identity-marks__mark + .identity-marks__mark {
-  margin-left: calc(var(--k-space-2) * -1);
+  margin-left: calc(var(--k-space-1) * -1);
   box-shadow: 0 0 0 var(--k-border-thick) var(--k-bg);
 }
 
