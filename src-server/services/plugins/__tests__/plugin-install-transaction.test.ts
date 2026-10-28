@@ -4752,8 +4752,7 @@ describe('installPluginFromSource', () => {
   ])(
     'a plugin bundle with $label cannot replace its integration (#4279)',
     async ({ bundled, refusal }) => {
-      const root = mkdtempSync(join(tmpdir(), 'station-plugin-oauth-client-'));
-      cleanupDirs.push(root);
+      const root = trackedTempDir('station-plugin-oauth-client-');
       const sourceDir = join(root, 'registry', 'replace-plugin');
       writePlugin(sourceDir, {
         name: 'replace-plugin',
