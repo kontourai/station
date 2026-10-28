@@ -379,8 +379,10 @@ export class InterruptedTurnRecovery {
    * same reason an adapter publishes one on failure: it is the terminal
    * turn fact every fold already honors. Same idempotence (deterministic
    * id + `hasEventId`) and same refusal semantics as the banner. The
-   * abort accepts through the turn-identity guard any real abort for that
-   * turn would, and because the banner lands after it, the banner's
+   * abort carries no `invocationId` (recovery has no originating request to
+   * attribute it to); the turn-identity guard accepts a marked recovery
+   * abort by turn id alone, even against an invocation-anchored start
+   * (`acceptsTurnTerminalEvent`). Because the banner lands after it, the banner's
    * explicit `sessionState` stamp still decides the lifecycle: the turn
    * reads closed AND the session reads needs_input. Skipped (banner only)
    * when the boundary never accepted a turn and names none.
@@ -802,12 +804,6 @@ export class InterruptedTurnRecovery {
               provider: provider ?? 'unknown',
               threadId: record.threadId,
               turnId: providerTurnId,
-              // An invocation-anchored start accepts only a terminal naming
-              // the same invocation (`acceptsTurnTerminalEvent`).
-              ...(ownStart?.turnId === providerTurnId &&
-              ownStart.payload.invocationId !== undefined
-                ? { invocationId: ownStart.payload.invocationId }
-                : {}),
               createdAt: now,
               method: 'turn.aborted',
               reason: TURN_INTERRUPTED_MESSAGE,

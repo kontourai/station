@@ -1608,11 +1608,12 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
 
     const events = eventStore.listEvents(threadId);
     const abort = events.find((e) => e.payload.method === 'turn.aborted');
+    // Turn-scoped: recovery has no originating request to attribute it to.
     expect(abort?.payload).toMatchObject({
       turnId: 'turn-1',
-      invocationId: 'invocation-1',
       recoveryTerminal: true,
     });
+    expect(abort?.payload.invocationId).toBeUndefined();
     expect(
       activeTurnIdForEvents(events.map((row) => row.payload)),
     ).toBeUndefined();

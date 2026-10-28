@@ -2171,7 +2171,10 @@ describe('a recovery abort without an invocationId', () => {
       ),
     ).toBe('turn-1');
     const { recoveryTerminal: _marker, ...engineAbort } =
-      recoveryAbort as Extract<CanonicalRuntimeEvent, { method: 'turn.aborted' }>;
+      recoveryAbort as Extract<
+        CanonicalRuntimeEvent,
+        { method: 'turn.aborted' }
+      >;
     expect(activeTurnIdForEvents([start, engineAbort])).toBe('turn-1');
   });
 });
