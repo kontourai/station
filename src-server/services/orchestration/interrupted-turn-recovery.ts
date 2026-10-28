@@ -15,6 +15,7 @@ import { errorMessage } from '../../utils/error-message.js';
 import { sleep } from '../../utils/sleep.js';
 import type { EventStore, PersistedRuntimeEvent } from './event-store.js';
 import { TURN_ABORT_SETTLED_REQUEST_STATUS } from './open-requests.js';
+import { isInvocationlessRecoveryAbort } from './session-lifecycle-service.js';
 import {
   isProviderTurnBoundary,
   type SessionTurnBoundaryRecord,
@@ -266,6 +267,11 @@ function ownTurnEnding(
   )) {
     if (event.turnId !== own.turnId) continue;
     const terminal = event.payload;
+    // This module's own abort carries no invocation; it ends the turn by id.
+    if (isInvocationlessRecoveryAbort(terminal)) {
+      ending = 'ended';
+      continue;
+    }
     if (
       terminal.invocationId !== undefined &&
       terminal.invocationId !== own.invocationId
@@ -379,8 +385,10 @@ export class InterruptedTurnRecovery {
    * same reason an adapter publishes one on failure: it is the terminal
    * turn fact every fold already honors. Same idempotence (deterministic
    * id + `hasEventId`) and same refusal semantics as the banner. The
-   * abort accepts through the turn-identity guard any real abort for that
-   * turn would, and because the banner lands after it, the banner's
+   * abort carries no `invocationId` (recovery has no originating request to
+   * attribute it to); the turn-identity guard accepts a marked recovery
+   * abort by turn id alone, even against an invocation-anchored start
+   * (`acceptsTurnTerminalEvent`). Because the banner lands after it, the banner's
    * explicit `sessionState` stamp still decides the lifecycle: the turn
    * reads closed AND the session reads needs_input. Skipped (banner only)
    * when the boundary never accepted a turn and names none.
@@ -498,8 +506,9 @@ export class InterruptedTurnRecovery {
         // session's future. If the thread opened a NEWER turn after this
         // boundary was claimed — a new owner attached and the user kept
         // going before this boot's consume ran — both recovery events would
-        // be stale: the abort is anchor-rejected by every fold (harmless),
-        // but the banner still forces needs_input over a genuinely running
+        // be stale: the abort would close that newer turn when it reuses the
+        // dead turn's id (folds accept a recovery abort by id alone), and the
+        // banner still forces needs_input over a genuinely running
         // turn (and the live client would tear down that turn's shell and
         // grants). Resolve the row silently and publish nothing: the folds
         // moved on. Compared by turn identity AND creation time: a start
@@ -555,7 +564,40 @@ export class InterruptedTurnRecovery {
             eventStore
               .listEventsForTurn(record.threadId, ownTurnId, 64)
               .some((event) => event.payload.method === 'turn.started');
+          // A native turn id can be reused by a later invocation. The
+          // recovery abort closes its turn by id alone, so a newer dispatch
+          // start of the same id under a different invocation is the thread
+          // moving on, not this boundary's turn. Read from the starts since
+          // the claim (newest first), skipping steers, which carry no
+          // invocation. Unknown own invocation or a page overflow: no evidence.
+          const startsSinceClaim =
+            ownTurnId === undefined
+              ? []
+              : eventStore.listTurnStartsSince(
+                  record.threadId,
+                  record.createdAt,
+                  OWN_TURN_START_SCAN_LIMIT + 1,
+                );
+          const ownDispatchStarts =
+            startsSinceClaim.length > OWN_TURN_START_SCAN_LIMIT
+              ? []
+              : startsSinceClaim.filter(
+                  (event) =>
+                    event.turnId === ownTurnId &&
+                    event.payload.method === 'turn.started' &&
+                    event.payload.inputKind !== 'steer',
+                );
+          const ownInvocationId =
+            record.intent?.invocationId ??
+            ownDispatchStarts.at(-1)?.payload.invocationId;
+          const newestInvocationId = ownDispatchStarts[0]?.payload.invocationId;
+          const reusedByNewerInvocation =
+            !providerTurn &&
+            ownInvocationId !== undefined &&
+            newestInvocationId !== undefined &&
+            newestInvocationId !== ownInvocationId;
           if (
+            reusedByNewerInvocation ||
             (providerTurn &&
               latestTurnStarted?.turnId !== record.providerTurnId) ||
             (!providerTurn &&

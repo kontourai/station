@@ -2,6 +2,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { describe, expect, test } from 'vitest';
 import {
   activeTurnIdForEvents,
+  advanceOpenTurnId,
   createManualSessionTransitionEvent,
   interruptibleTurnIdForEvents,
   isDeferredRetriableTurnError,
@@ -2180,3 +2181,48 @@ test.each(['turn.completed', 'turn.aborted', 'runtime.error'] as const)(
     expect(activeTurnIdForEvents([started, terminal('B')])).toBeUndefined();
   },
 );
+
+describe('a recovery abort without an invocationId', () => {
+  const start = {
+    eventId: 'start',
+    provider: 'codex',
+    threadId: 'thread-1',
+    turnId: 'turn-1',
+    invocationId: 'invocation-1',
+    createdAt: '2026-08-16T00:00:01.000Z',
+    method: 'turn.started',
+  } as CanonicalRuntimeEvent;
+  const recoveryAbort = {
+    eventId: 'turn-interrupted-abort:boundary',
+    provider: 'codex',
+    threadId: 'thread-1',
+    turnId: 'turn-1',
+    createdAt: '2026-08-16T00:00:05.000Z',
+    method: 'turn.aborted',
+    reason: 'Turn interrupted',
+    recoveryTerminal: true,
+  } as CanonicalRuntimeEvent;
+
+  test('closes the invocation-anchored turn it names in the incremental fold too', () => {
+    expect(activeTurnIdForEvents([start, recoveryAbort])).toBeUndefined();
+    expect(
+      advanceOpenTurnId('turn-1', recoveryAbort, 'invocation-1'),
+    ).toBeUndefined();
+  });
+
+  test('does not close a different turn or stand in for an engine abort', () => {
+    expect(
+      advanceOpenTurnId(
+        'turn-1',
+        { ...recoveryAbort, turnId: 'turn-0' } as CanonicalRuntimeEvent,
+        'invocation-1',
+      ),
+    ).toBe('turn-1');
+    const { recoveryTerminal: _marker, ...engineAbort } =
+      recoveryAbort as Extract<
+        CanonicalRuntimeEvent,
+        { method: 'turn.aborted' }
+      >;
+    expect(activeTurnIdForEvents([start, engineAbort])).toBe('turn-1');
+  });
+});
