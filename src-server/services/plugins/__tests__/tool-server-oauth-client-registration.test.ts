@@ -49,6 +49,13 @@ type ServerOptions = {
   dcr: boolean;
   cimd?: boolean;
   authMethods?: string[];
+  /** RFC 9207 `authorization_response_iss_parameter_supported`. */
+  issAdvertised?: boolean;
+  /**
+   * Mix-up staging: the attacker's metadata sends people to the honest
+   * authorization endpoint but keeps its own token endpoint.
+   */
+  mixUp?: boolean;
 };
 
 type TokenRequest = {
@@ -93,7 +100,13 @@ function startAuthorizationServer(options: ServerOptions) {
         // which authorization server Station is sent to.
         return Response.json({
           issuer: url.origin,
-          authorization_endpoint: `${url.origin}/authorize`,
+          authorization_endpoint:
+            options.mixUp && url.origin === ATTACKER
+              ? `${ORIGIN}/authorize`
+              : `${url.origin}/authorize`,
+          ...(options.issAdvertised
+            ? { authorization_response_iss_parameter_supported: true }
+            : {}),
           token_endpoint: `${url.origin}/token`,
           ...(options.dcr
             ? { registration_endpoint: `${url.origin}/register` }
@@ -110,8 +123,14 @@ function startAuthorizationServer(options: ServerOptions) {
         });
       if (url.pathname === '/register') {
         const body = (await request.json()) as Record<string, unknown>;
-        registrations.push(body);
-        return Response.json({ ...body, client_id: 'dcr-registered-client' });
+        registrations.push({ ...body, origin: url.origin });
+        return Response.json({
+          ...body,
+          client_id:
+            registrations.length === 1
+              ? 'dcr-registered-client'
+              : `dcr-registered-client-${registrations.length}`,
+        });
       }
       if (url.pathname === '/token') {
         tokenRequests.push({
@@ -240,6 +259,7 @@ async function consent(
   env: ReturnType<typeof setup>,
   actor?: { principalId: string },
   requested?: { scopes?: string[] },
+  callbackIss?: string,
 ) {
   const started = await env.service.startOAuth(
     SERVER,
@@ -256,6 +276,7 @@ async function consent(
     'state',
     authorizationUrl.searchParams.get('state') ?? '',
   );
+  if (callbackIss) callback.searchParams.set('iss', callbackIss);
   await env.service.finishOAuth(SERVER, callback.href, actor);
   return authorizationUrl;
 }
@@ -366,7 +387,9 @@ describe('pre-registered OAuth client on a server without DCR', () => {
     const as = startAuthorizationServer({ dcr: false, authMethods: ['none'] });
     const env = setup();
     try {
-      await createIntegration(env, { oauthClient: { clientId: CLIENT_ID } });
+      await createIntegration(env, {
+        oauthClient: { clientId: CLIENT_ID, issuer: ORIGIN },
+      });
       await consent(env);
       const [exchange] = as.tokenRequests;
       expect(exchange!.params.get('client_id')).toBe(CLIENT_ID);
@@ -413,14 +436,20 @@ describe('pre-registered OAuth client on a server without DCR', () => {
   test('raw integration JSON cannot point the client secret at a binding', async () => {
     startAuthorizationServer({ dcr: false });
     const env = setup();
-    await createIntegration(env, { oauthClient: { clientId: CLIENT_ID } });
+    await createIntegration(env, {
+      oauthClient: { clientId: CLIENT_ID, issuer: ORIGIN },
+    });
     await expect(
       env.service.saveIntegration({
         id: SERVER,
         kind: 'mcp',
         transport: 'streamable-http',
         endpoint: `${ORIGIN}/mcp`,
-        oauthClient: { clientId: CLIENT_ID, clientSecretRef: 'other' },
+        oauthClient: {
+          clientId: CLIENT_ID,
+          issuer: ORIGIN,
+          clientSecretRef: 'other',
+        },
       }),
     ).rejects.toThrow('only through the operator binding API');
   });
@@ -442,7 +471,11 @@ describe('scopes are the signing-in person’s choice', () => {
     try {
       await createIntegration(env, {
         credentialOwnership: { owner: 'principal' },
-        oauthClient: { clientId: CLIENT_ID, scopes: ['mail.readonly'] },
+        oauthClient: {
+          clientId: CLIENT_ID,
+          issuer: ORIGIN,
+          scopes: ['mail.readonly'],
+        },
       });
       const authorizationUrl = await consent(
         env,
@@ -463,7 +496,9 @@ describe('scopes are the signing-in person’s choice', () => {
     const as = startAuthorizationServer({ dcr: false, authMethods: ['none'] });
     const env = setup();
     try {
-      await createIntegration(env, { oauthClient: { clientId: CLIENT_ID } });
+      await createIntegration(env, {
+        oauthClient: { clientId: CLIENT_ID, issuer: ORIGIN },
+      });
       const authorizationUrl = await consent(env);
       // The SDK requests what the resource advertises.
       expect(authorizationUrl.searchParams.get('scope')).toBe(
@@ -479,7 +514,11 @@ describe('scopes are the signing-in person’s choice', () => {
     const env = setup();
     try {
       await createIntegration(env, {
-        oauthClient: { clientId: CLIENT_ID, scopes: ['mail.readonly'] },
+        oauthClient: {
+          clientId: CLIENT_ID,
+          issuer: ORIGIN,
+          scopes: ['mail.readonly'],
+        },
       });
       const authorizationUrl = await consent(env, undefined, { scopes: [] });
       expect(authorizationUrl.searchParams.get('scope')).toBe(
@@ -627,7 +666,7 @@ describe('the client secret is used only with its declared authorization server 
     expect(secret).not.toHaveBeenCalled();
   });
 
-  test('a public pre-registered client without a declared issuer still works; with one, it is enforced', async () => {
+  test('a public pre-registered client is refused without a declared issuer and with a different one', async () => {
     const env = setup();
     const providerWith = (issuer?: string) =>
       new StationToolServerOAuthProvider(
@@ -639,18 +678,21 @@ describe('the client secret is used only with its declared authorization server 
         INSTANCE_CREDENTIAL_OWNER,
         { clientId: CLIENT_ID, ...(issuer ? { issuer } : {}) },
       );
-    expect(
-      await providerWith().clientInformation({ issuer: ATTACKER }),
-    ).toEqual({ client_id: CLIENT_ID, issuer: ATTACKER });
+    await expect(
+      providerWith().clientInformation({ issuer: ORIGIN }),
+    ).rejects.toBeInstanceOf(OAuthClientIssuerRequiredError);
     await expect(
       providerWith(ORIGIN).clientInformation({ issuer: ATTACKER }),
     ).rejects.toBeInstanceOf(OAuthClientIssuerMismatchError);
+    expect(
+      await providerWith(ORIGIN).clientInformation({ issuer: ORIGIN }),
+    ).toEqual({ client_id: CLIENT_ID, issuer: ORIGIN });
   });
 
   test('binding a secret needs a declared issuer, and the issuer moves only after unbinding', async () => {
     startAuthorizationServer({ dcr: false });
     const env = setup();
-    await createIntegration(env, { oauthClient: { clientId: CLIENT_ID } });
+    await createIntegration(env);
     const created = await env.bindings.create({
       id: 'byo-client-secret',
       name: 'BYO client secret',
@@ -674,7 +716,152 @@ describe('the client secret is used only with its declared authorization server 
     ).rejects.toThrow('Unbind the OAuth client secret before changing');
     await expect(
       createIntegration(env, { oauthClient: { clientId: CLIENT_ID } }),
-    ).rejects.toThrow('Unbind the OAuth client secret before changing');
+    ).rejects.toThrow("needs its authorization server's issuer");
+  });
+});
+
+describe('authorization-server mix-up (round 2)', () => {
+  test('a public pre-registered client cannot be mixed up: Bob is refused before any redirect', async () => {
+    const as = startAuthorizationServer({
+      dcr: false,
+      authMethods: ['none'],
+      mixUp: true,
+    });
+    const env = setup();
+    try {
+      await createIntegration(env, {
+        credentialOwnership: { owner: 'principal' },
+        oauthClient: { clientId: CLIENT_ID, issuer: ORIGIN },
+      });
+      await consent(env, { principalId: ALICE });
+      as.nameAuthorizationServer(ATTACKER);
+      await expect(
+        env.service.startOAuth(SERVER, 'remote', { principalId: BOB }),
+      ).rejects.toBeInstanceOf(OAuthClientIssuerMismatchError);
+      expect(
+        as.tokenRequests.filter((request) => request.origin === ATTACKER),
+      ).toEqual([]);
+    } finally {
+      await as.close();
+    }
+  });
+
+  test('RFC 9207: a callback iss from another server is refused before the code reaches any token endpoint', async () => {
+    const as = startAuthorizationServer({ dcr: true, mixUp: true });
+    const env = setup();
+    try {
+      await createIntegration(env, {
+        credentialOwnership: { owner: 'principal' },
+      });
+      as.nameAuthorizationServer(ATTACKER);
+      // A registration with no declared issuer follows the metadata; the
+      // honest server's iss in the callback is what exposes the mix-up.
+      await expect(
+        consent(env, { principalId: BOB }, undefined, ORIGIN),
+      ).rejects.toThrow('OAuth authorization failed');
+      expect(as.tokenRequests).toEqual([]);
+    } finally {
+      await as.close();
+    }
+  });
+
+  test.each([
+    { label: 'missing', iss: undefined, ok: false },
+    { label: 'from another server', iss: ATTACKER, ok: false },
+    { label: 'matching', iss: ORIGIN, ok: true },
+  ])(
+    'RFC 9207: when the server advertises iss, a $label iss is handled',
+    async ({ iss, ok }) => {
+      const as = startAuthorizationServer({ dcr: true, issAdvertised: true });
+      const env = setup();
+      try {
+        await createIntegration(env);
+        const signIn = consent(env, undefined, undefined, iss);
+        if (ok) {
+          await signIn;
+          expect(as.tokenRequests).toHaveLength(1);
+        } else {
+          await expect(signIn).rejects.toThrow('OAuth authorization failed');
+          expect(as.tokenRequests).toEqual([]);
+        }
+      } finally {
+        await as.close();
+      }
+    },
+  );
+
+  test('a declared issuer also pins dynamic registration: nothing is registered at another server', async () => {
+    const as = startAuthorizationServer({ dcr: true, mixUp: true });
+    const env = setup();
+    try {
+      await createIntegration(env, {
+        credentialOwnership: { owner: 'principal' },
+        oauthClient: { issuer: ORIGIN },
+      });
+      as.nameAuthorizationServer(ATTACKER);
+      await expect(
+        env.service.startOAuth(SERVER, 'remote', { principalId: BOB }),
+      ).rejects.toBeInstanceOf(OAuthClientIssuerMismatchError);
+      expect(as.registrations).toEqual([]);
+    } finally {
+      await as.close();
+    }
+  });
+
+  test('a callback carrying two iss values is refused', async () => {
+    const as = startAuthorizationServer({ dcr: true });
+    const env = setup();
+    try {
+      await createIntegration(env);
+      const started = await env.service.startOAuth(SERVER, 'remote');
+      const url = new URL(started.authorizationUrl);
+      const callback = new URL(url.searchParams.get('redirect_uri') ?? '');
+      callback.searchParams.set('code', 'fixture-code');
+      callback.searchParams.set('state', url.searchParams.get('state') ?? '');
+      callback.searchParams.append('iss', ORIGIN);
+      callback.searchParams.append('iss', ATTACKER);
+      await expect(
+        env.service.finishOAuth(SERVER, callback.href),
+      ).rejects.toThrow('at most one iss');
+      expect(as.tokenRequests).toEqual([]);
+    } finally {
+      await as.close();
+    }
+  });
+});
+
+describe('a registered client is registered again when scopes outgrow it (round 2)', () => {
+  test('choosing scopes the registration does not cover registers again; a covered choice does not', async () => {
+    const as = startAuthorizationServer({ dcr: true });
+    const env = setup();
+    try {
+      await createIntegration(env, {
+        oauthClient: { scopes: ['mail.readonly'] },
+      });
+      await consent(env);
+      expect(as.registrations.map((r) => r.scope)).toEqual(['mail.readonly']);
+
+      const widened = await consent(env, undefined, {
+        scopes: ['mail.readonly', 'mail.compose'],
+      });
+      expect(as.registrations.map((r) => r.scope)).toEqual([
+        'mail.readonly',
+        'mail.readonly mail.compose',
+      ]);
+      expect(widened.searchParams.get('client_id')).toBe(
+        'dcr-registered-client-2',
+      );
+
+      const narrowed = await consent(env, undefined, {
+        scopes: ['mail.compose'],
+      });
+      expect(as.registrations).toHaveLength(2);
+      expect(narrowed.searchParams.get('client_id')).toBe(
+        'dcr-registered-client-2',
+      );
+    } finally {
+      await as.close();
+    }
   });
 });
 
@@ -758,7 +945,11 @@ describe('Client ID Metadata Document', () => {
     const env = setup();
     try {
       await createIntegration(env, {
-        oauthClient: { clientId: CLIENT_ID, clientMetadataUrl: CIMD_URL },
+        oauthClient: {
+          clientId: CLIENT_ID,
+          issuer: ORIGIN,
+          clientMetadataUrl: CIMD_URL,
+        },
       });
       const authorizationUrl = await consent(env);
       expect(authorizationUrl.searchParams.get('client_id')).toBe(CLIENT_ID);

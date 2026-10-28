@@ -115,7 +115,7 @@ export function OAuthClientSection({
               }
             />
             <p className="editor-field-hint">
-              The issuer this client belongs to. Required for a client secret.
+              The issuer this client belongs to. Required with a client ID.
             </p>
           </div>
           <OAuthClientSecretBinding

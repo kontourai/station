@@ -27,6 +27,7 @@ import {
   toolServerIntegrationMutationLockPath,
 } from '../services/plugins/tool-server-credential-store.js';
 import { publishJsonFileWithOwnedLock } from './file-storage-helpers.js';
+import { assertIntegrationOAuthClientWritable } from './integration-oauth-client-invariants.js';
 import {
   assertSkillPackageDirectory,
   resolveSkillDirectory,
@@ -244,6 +245,7 @@ async function writeIntegrationConfigLocked(
   current: ToolDef | undefined,
 ): Promise<void> {
   rejectRetiredIntegrationCredentialFormat(current, id);
+  assertIntegrationOAuthClientWritable(current, def);
   const persisted = { ...def };
   delete persisted.secretEnv;
   delete persisted.removeSecretEnvKeys;

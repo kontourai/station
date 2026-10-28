@@ -44,6 +44,7 @@ import {
 import { owningProjectExists } from '../../domain/config-loader-agents.js';
 import { observeAppConfigFile } from '../../domain/config-loader-app.js';
 import { saveIntegrationConfig } from '../../domain/config-loader-storage.js';
+import { withoutBindingReferences } from '../../domain/integration-oauth-client-invariants.js';
 import {
   PLUGIN_AGENT_OWNER_FILE,
   pluginAgentInstallationBinding,
@@ -2753,7 +2754,12 @@ async function installRequiredPluginTools(
         ? await registry.getToolDef(toolId)
         : null;
       if (toolDef) {
-        await saveIntegrationConfig(projectHomeDir, toolId, toolDef);
+        // Registry metadata never authors a secret-binding reference.
+        await saveIntegrationConfig(
+          projectHomeDir,
+          toolId,
+          withoutBindingReferences(toolDef),
+        );
       }
       toolResults.push({
         id: toolId,

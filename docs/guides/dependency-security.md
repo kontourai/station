@@ -303,9 +303,13 @@ New interactive sign-in trust and direct low-level vendor calls remain
 separate from this advisory's saved-credential binding claim.
 A [configured OAuth client](connections.md#authorization-server-binding) has no
 issuer of its own, so Station uses it only with the issuer the operator
-declares. A client secret cannot be bound without one, and a mismatch is refused
-from configuration before the secret is read, independent of per-person
-credentials, disconnects and concurrent sign-ins.
+declares. Every pre-registered client needs one, and a mismatch is refused from
+configuration before a secret, code or verifier leaves Station, independent of
+per-person credentials, disconnects and concurrent sign-ins. The integration
+writer every path shares keeps a bound secret's issuer and endpoint fixed.
+Dynamic registration without a declared issuer keeps a narrower mix-up
+exposure when the honest server omits RFC 9207 `iss`; the connections guide
+states it.
 
 The earlier local audit and hosted receipts retain their observation times:
 these newly disclosed findings do not rewrite those results. Current audit,

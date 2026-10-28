@@ -1622,8 +1622,10 @@ settings:
 - **Client ID**: the ID the provider issued.
 - **Authorization server**: the `issuer` of the authorization server the client
   was registered with, exactly as its OAuth metadata states it (an HTTPS URL).
-  Station uses the client only with that issuer. It is required before a client
-  secret can be bound; see [Authorization server binding](#authorization-server-binding).
+  Station uses the client only with that issuer. It is required with a client
+  ID, public or confidential; see [Authorization server binding](#authorization-server-binding).
+  It is optional without a client ID, where it pins dynamic registration and
+  the metadata document to that server.
 - **Client secret**: a confidential client's secret, chosen from a shared secret
   binding (keychain, 1Password or environment). Create the binding under
   **Advanced: Secret bindings** first, declare the authorization server and save
@@ -1661,10 +1663,31 @@ secret is read.
 
 A client secret cannot be bound without a declared authorization server, and
 a bound secret pins both the authorization server and the endpoint: unbind the
-secret before changing either. A public pre-registered client has no secret to
-give away, so declaring its authorization server is optional; when declared it
-is enforced the same way, and Station's issuer binding still protects the
-tokens it saves.
+secret before changing either. A public pre-registered client needs a
+declared authorization server too. It has no secret to give away, but without
+an anchor a compromised resource could stage a mix-up: send a person to the
+honest authorization page while naming its own token endpoint, then redeem
+the code and PKCE verifier Station sends there.
+
+These rules are enforced where every writer saves an integration (the
+settings, the API, registry installs and imports, and binding), not only in
+the settings form. A registry or imported definition never carries a secret
+binding, and a source with a bound secret cannot be replaced from a registry;
+unbind first.
+
+Station also checks the `iss` in the authorization response (RFC 9207). A
+response whose `iss` differs from the server sign-in started at is refused
+before the code is sent anywhere, and when that server advertises
+`authorization_response_iss_parameter_supported`, a response without `iss`
+is refused.
+
+**Known limit (Dynamic Client Registration without a declared server).** With
+no client ID and no declared **Authorization server**, each person's first
+sign-in follows the authorization server the resource metadata names. If that
+resource is compromised and the honest authorization server omits `iss`, a
+mix-up can still deliver the person's code and PKCE verifier to the
+attacker's token endpoint. Declaring the **Authorization server** removes this:
+Station then refuses any other server before registering or redirecting.
 
 Changing the client ID, authorization server or metadata URL clears the
 integration's tokens, because they belong to the client that obtained them;

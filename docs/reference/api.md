@@ -1454,11 +1454,15 @@ HTTPS issuer URL), `clientMetadataUrl` (HTTPS with a path) and `scopes`. It refu
 with `{kind: "mcp-integration-oauth-client", integrationId, expectedRevision}`
 write; that body accepts no other field. The read projection omits the binding
 id; `GET /api/secret-bindings/integrations/:id` returns it as
-`oauthClientSecretBindingId`. Binding requires a declared `issuer`. Changing `clientId`, `issuer` or
-`clientMetadataUrl` clears the integration's tokens; changing the endpoint or
-`issuer` while a secret is bound is refused. A pre-registered client is
-refused for any authorization server other than its declared `issuer`, before
-its secret is read. A server without client registration records
+`oauthClientSecretBindingId`. A `clientId` requires `issuer`, and so does
+binding a secret. Changing `clientId`, `issuer` or `clientMetadataUrl` clears
+the integration's tokens. While a secret is bound, every integration writer
+(including registry installs and imports) refuses a change to the endpoint or
+`issuer`, and refuses a definition naming another binding; registry
+definitions never carry `clientSecretRef`. A declared `issuer` refuses any
+other authorization server before a secret is read, a client is registered
+or a person is redirected. The callback's `iss` is checked per RFC 9207, and a
+callback with more than one `iss` returns 400. A server without client registration records
 `probe.authorization.state: "client-id-required"`. See
 [Use your own OAuth client](../guides/connections.md#use-your-own-oauth-client).
 

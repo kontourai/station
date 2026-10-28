@@ -497,23 +497,8 @@ export class MCPService {
       existing !== undefined &&
       toolServerOAuthResourceIdentity(existing) !==
         toolServerOAuthResourceIdentity(def);
-    // The client secret goes to whichever authorization server the endpoint
-    // names, so a bound secret pins the endpoint, as bindings pin a command.
-    if (existingSecretRef && identityChanged) {
-      throw new Error(
-        'Unbind the OAuth client secret before changing the integration endpoint.',
-      );
-    }
-    // The declared issuer is what keeps the secret away from any other
-    // authorization server, so it moves only after an explicit unbind.
-    if (
-      existingSecretRef &&
-      def.oauthClient?.issuer !== existing?.oauthClient?.issuer
-    ) {
-      throw new Error(
-        "Unbind the OAuth client secret before changing the client's authorization server.",
-      );
-    }
+    // A bound secret pins the issuer and endpoint; the storage writer every
+    // path shares enforces that (integration-oauth-client-invariants.ts).
     // Tokens and a registered client belong to the client that obtained them.
     const clientChanged =
       existing !== undefined &&

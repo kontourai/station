@@ -2279,7 +2279,10 @@ instance binding; environment grants confer none. The integration records only
 the binding id at `oauthClient.clientSecretRef`, written by
 `SecretBindingIntegrationService.bindOAuthClientSecret` (grant first) and
 removed by `unbindOAuthClientSecret` (reference first). Binding requires the integration's declared
-`oauthClient.issuer`; the provider never presents the secret to another issuer. The secret is never
+`oauthClient.issuer`; the provider never presents the secret to another issuer. The
+issuer/endpoint pin and the no-foreign-reference rule are enforced in
+`writeIntegrationConfigLocked` ([invariants](../../src-server/domain/integration-oauth-client-invariants.ts)),
+which every integration writer reaches. The secret is never
 cached or written to the credential store; see
 [Use your own OAuth client](../guides/connections.md#use-your-own-oauth-client).
 

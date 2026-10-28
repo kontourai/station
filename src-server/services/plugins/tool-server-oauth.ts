@@ -363,6 +363,13 @@ export function validateOAuthCallbackUrl(
       ok: false,
       reason: 'callback URL must contain exactly one code parameter',
     };
+  // RFC 9207: the SDK compares iss with the issuer consent was started at;
+  // an ambiguous response is refused rather than letting one value win.
+  if (url.searchParams.getAll('iss').length > 1)
+    return {
+      ok: false,
+      reason: 'callback URL must contain at most one iss parameter',
+    };
   const states = url.searchParams.getAll('state');
   if (states.length !== 1)
     return {
@@ -517,12 +524,12 @@ export class OAuthClientIssuerMismatchError extends StationOwnedToolServerError 
   }
 }
 
-/** A client secret is bound but no authorization server is declared for it. */
+/** A pre-registered client has no declared authorization server. */
 export class OAuthClientIssuerRequiredError extends StationOwnedToolServerError {
   override name = 'OAuthClientIssuerRequiredError';
   constructor(readonly serverId: string) {
     super(
-      `Integration '${serverId}' has an OAuth client secret but no declared authorization server. Add the client's authorization server in the integration's settings.`,
+      `Integration '${serverId}' has a pre-registered OAuth client but no declared authorization server. Add the client's authorization server in the integration's settings.`,
     );
   }
 }
@@ -721,6 +728,8 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
       // secret stays in its binding and never reaches the credential store.
       // Without an issuer there is no server to present it to.
       if (!ctx) return { client_id: clientId };
+      if (this.client?.issuer === undefined)
+        throw new OAuthClientIssuerRequiredError(this.serverId);
       this.requireDeclaredIssuer(ctx.issuer);
       const secret = this.client?.clientSecret
         ? await this.client.clientSecret()
@@ -731,26 +740,25 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
         issuer: ctx.issuer,
       };
     }
+    if (ctx) this.requireDeclaredIssuer(ctx.issuer);
     return this.readBound<StoredOAuthClientInformation>(KEYS.client, ctx);
   }
 
   /**
    * GHSA-6qxp-vccf-f47h: resource metadata, not the operator, names the
-   * authorization server, so a compromised or changed server could otherwise
-   * collect the client's secret. A pre-registered client is used only with
-   * the issuer the operator declared, checked against configuration before the
-   * secret is read. Nothing is written, so concurrent sign-ins and account
-   * resets cannot move it. A public client without a declared issuer has no
-   * secret to give away; issuer binding still guards its saved tokens.
+   * authorization server. A compromised or changed resource could otherwise
+   * collect a client secret, or stage a mix-up: send the person to an honest
+   * authorization endpoint while naming its own token endpoint, then redeem
+   * the code and PKCE verifier Station sends it. A pre-registered client
+   * (public or confidential) therefore requires the operator's declared
+   * issuer; a declared issuer is enforced for registered and metadata-document
+   * clients too. The check reads configuration before any secret, code or
+   * verifier leaves Station, so concurrent sign-ins and account resets cannot
+   * move it.
    */
   private requireDeclaredIssuer(issuer: string): void {
     const declared = this.client?.issuer;
-    if (declared === undefined) {
-      if (this.client?.clientSecret)
-        throw new OAuthClientIssuerRequiredError(this.serverId);
-      return;
-    }
-    if (declared !== issuer)
+    if (declared !== undefined && declared !== issuer)
       throw new OAuthClientIssuerMismatchError(this.serverId);
   }
   async saveClientInformation(
@@ -767,6 +775,28 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
    * accept the configured metadata document; without discovered metadata the
    * SDK's own registration fallback decides.
    */
+  /**
+   * A dynamically registered client is registered for a scope set, and a
+   * server may refuse a request outside it (invalid_scope). When the scopes
+   * now requested are not all covered, the client is registered again. A
+   * registration with no recorded scope counts as not covering them.
+   * Pre-registered and metadata-document clients are not re-registered.
+   */
+  private registrationMissesScopes(
+    value: StoredOAuthClientInformation,
+  ): boolean {
+    const requested = this.client?.scopes;
+    if (!requested?.length || this.client?.clientId) return false;
+    if (value.client_id === this.clientMetadataUrl) return false;
+    // Full registration responses carry `scope`; the stored union type
+    // also admits client information without it.
+    const recorded = (value as { scope?: unknown }).scope;
+    const registered = new Set(
+      typeof recorded === 'string' ? recorded.split(' ') : [],
+    );
+    return !requested.every((scope) => registered.has(scope));
+  }
+
   private async requireClientRegistration(
     ctx: OAuthClientInformationContext,
   ): Promise<StoredOAuthClientInformation | undefined> {
@@ -783,14 +813,19 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
     // client's. Configured scopes (a default or the person's choice) must be
     // what the client is registered for, so Station registers it here.
     if (!this.client?.scopes || !discovery || !metadata) return undefined;
+    const scope = this.client.scopes.join(' ');
+    const response = await registerClient(discovery.authorizationServerUrl, {
+      metadata,
+      clientMetadata: this.clientMetadata,
+      scope,
+      fetchFn: (url, init) =>
+        fetch(url, { ...init, signal: AbortSignal.timeout(15_000) }),
+    });
+    // Record what the client was registered for when the server does not
+    // echo it, so a later scope change can tell whether it is covered.
     const registered = {
-      ...(await registerClient(discovery.authorizationServerUrl, {
-        metadata,
-        clientMetadata: this.clientMetadata,
-        scope: this.client.scopes.join(' '),
-        fetchFn: (url, init) =>
-          fetch(url, { ...init, signal: AbortSignal.timeout(15_000) }),
-      })),
+      ...response,
+      scope: response.scope ?? scope,
       issuer: ctx.issuer,
     };
     await this.saveClientInformation(registered, ctx);
@@ -852,7 +887,9 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
         if (key === 'clientInformation')
           return async (ctx?: OAuthClientInformationContext) => {
             const value = await target.clientInformation(ctx);
-            if (value || !ctx) return value;
+            if (!ctx) return value;
+            if (value && !target.registrationMissesScopes(value)) return value;
+            if (value) await target.invalidateCredentials('client');
             return target.requireClientRegistration(ctx);
           };
         const value = Reflect.get(target, key);
