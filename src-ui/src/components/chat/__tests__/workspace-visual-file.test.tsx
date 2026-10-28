@@ -102,6 +102,13 @@ test('a host image reference reads image bytes through the Project instead of re
   expect(
     view.container.querySelector('.workspace-file-reply__caption')?.textContent,
   ).toContain('Option A');
+  // ...under the picture, as a caption reads.
+  const caption = view.container.querySelector(
+    '.workspace-file-reply__caption',
+  );
+  expect(
+    image.compareDocumentPosition(caption!) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
   const toggle = screen.getByRole('button', { name: 'Hide Option A' });
   expect(toggle.className).not.toContain('button--link');
   fireEvent.click(toggle);
