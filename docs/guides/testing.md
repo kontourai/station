@@ -1722,8 +1722,10 @@ slot and then runs the script as the slot holder. These entry points use it:
     full-regression phase, has been admitted and is about to execute. It
     releases the slot before the next phase queues.
   - A request that reuses a receipt or joins a running lane takes no slot.
-  - The wait counts against the lane's or phase's deadline, as coordinator
-    queueing already does.
+  - The wait spends the lane's deadline, as coordinator queueing already
+    does. A full-regression phase's own execution budget starts only once its
+    slot is held. A wait cut short by the lane deadline reports a timeout, and
+    a cancel during the wait reports a cancel.
   - A refusal publishes an `infrastructure_error` receipt that names the
     holders. Only passing receipts are reused, so the next request retries.
 - Do not call the coordinator (`ci:fast`, `verify:static`, `run-verification`)
