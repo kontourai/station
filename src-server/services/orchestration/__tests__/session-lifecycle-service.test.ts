@@ -13,6 +13,54 @@ import {
 // reusable), not the terminal `completed`; the guarantees below are unchanged
 // — a finished turn stays finished across re-attach and process death.
 describe('session-lifecycle-service', () => {
+  test('#4266: lifecycleChangedAt is when the current state was entered, and a repeated report does not move it', () => {
+    const at = (second: number) =>
+      `2026-10-28T10:00:${String(second).padStart(2, '0')}.000Z`;
+    const base = { provider: 'codex' as const, threadId: 'thread-finish' };
+    const session = {
+      ...base,
+      status: 'ready' as const,
+      createdAt: at(0),
+      updatedAt: at(50),
+    };
+    const events: CanonicalRuntimeEvent[] = [
+      {
+        ...base,
+        eventId: 'e1',
+        createdAt: at(1),
+        method: 'turn.started',
+        turnId: 't1',
+        prompt: 'work',
+      },
+      {
+        ...base,
+        eventId: 'e2',
+        createdAt: at(5),
+        method: 'turn.completed',
+        turnId: 't1',
+      },
+      {
+        ...base,
+        eventId: 'e3',
+        createdAt: at(40),
+        method: 'session.state-changed',
+        sessionId: base.threadId,
+        sessionState: 'idle',
+        previousState: 'idle',
+      } as CanonicalRuntimeEvent,
+    ];
+    const finished = projectSessionLifecycle({ session, events });
+    expect(finished.lifecycleState).toBe('idle');
+    expect(finished.lifecycleChangedAt).toBe(at(5));
+
+    const running = projectSessionLifecycle({
+      session,
+      events: events.slice(0, 1),
+    });
+    expect(running.lifecycleState).toBe('running');
+    expect(running.lifecycleChangedAt).toBe(at(1));
+  });
+
   test('normalizes approval requests into review_pending lifecycle metadata', () => {
     const event = normalizeCanonicalRuntimeEventLifecycle(
       {
