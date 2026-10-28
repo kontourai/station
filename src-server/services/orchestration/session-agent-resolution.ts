@@ -171,9 +171,7 @@ function withBuiltinStationAgentCapabilities(
  * implicitly. Anything the Agent authored is kept and wins on conflict (its
  * own `autoApprove` included), so the person's configuration still governs.
  */
-function withCoordinatorCapabilities(
-  authored: AgentSpec | null,
-): AgentSpec {
+function withCoordinatorCapabilities(authored: AgentSpec | null): AgentSpec {
   const builtins = new Set<string>(BUILTIN_STATION_AGENT_MCP_SERVER_IDS);
   const authoredServers = authored?.tools?.mcpServers ?? [];
   return {
