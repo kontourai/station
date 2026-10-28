@@ -21,6 +21,7 @@ import { lookupProcessBirthFingerprint } from '@kontourai/station-shared/process
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
+import type { HostPressureReading } from '../commands/host-pressure.js';
 import type {
   CollectedChildStatus,
   InstanceStateRecord,
@@ -116,6 +117,7 @@ function instanceStatus(
 function makeSupervisor(options: {
   collect: ReturnType<typeof vi.fn>;
   clockAdvanceMs?: number;
+  hostPressure?: () => HostPressureReading | null;
   listListeningPids?: (port: number) => number[];
   needsBuildForInstance?: (instanceName: string) => boolean;
   processIsAlive?: (pid: number) => boolean;
@@ -152,6 +154,10 @@ function makeSupervisor(options: {
     // squatted, and 36 ticks of lsof spawns blew the test timeout). Empty
     // means "listener state unknown" — the conservative production branch.
     listListeningPids: options.listListeningPids ?? (() => []),
+    // Hermetic by default: the real reader measures THIS host, so a loaded
+    // test machine would defer every wedge escalation. Null is "unmeasurable",
+    // the Windows production branch, which keeps the unpressured timing.
+    hostPressure: options.hostPressure ?? (() => null),
     now: () => clock,
     onSignal: vi.fn(),
     processIsAlive: options.processIsAlive ?? (() => true),
@@ -902,6 +908,150 @@ describe('service supervisor', () => {
         String((reason as Error)?.message).includes('treating it as wedged'),
       ),
     ).toBe(true);
+  });
+
+  describe('wedge escalation under host CPU pressure', () => {
+    const pressured: HostPressureReading = {
+      pressured: true,
+      detail: 'PSI cpu some avg60=80%, load 10.20 on 4 CPUs',
+    };
+    const unpressured: HostPressureReading = {
+      pressured: false,
+      detail: 'PSI cpu some avg60=3%, load 0.40 on 4 CPUs',
+    };
+    const wedgedCollect = () =>
+      vi.fn().mockResolvedValue(instanceStatus(slowChild(10), okChild(11)));
+    const confirmationProbes = (collect: ReturnType<typeof vi.fn>) =>
+      collect.mock.calls.filter(
+        ([, options]) =>
+          (options as { probeTimeoutMs?: number })?.probeTimeoutMs === 45_000,
+      ).length;
+    const wedgedTeardown = (errorCalls: unknown[][]) =>
+      errorCalls.some(([, reason]) =>
+        String((reason as Error)?.message).includes('treating it as wedged'),
+      );
+
+    test('defers escalation past the 180s window while the host is pressured, and says why', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const collect = wedgedCollect();
+      const harness = makeSupervisor({
+        collect,
+        hostPressure: () => pressured,
+      });
+      await harness.supervision;
+
+      // 600s of continuous failure: well past 180s, short of the ceiling.
+      for (let index = 0; index < 120; index += 1) await harness.runTick();
+
+      expect(harness.exit).not.toHaveBeenCalled();
+      expect(harness.stop).not.toHaveBeenCalled();
+      expect(confirmationProbes(collect)).toBe(0);
+      expect(
+        warn.mock.calls.some(([message]) =>
+          String(message).includes(
+            'identity probe failed for 600s; process alive and port listening — tolerating (slow is not dead); host under CPU pressure (PSI cpu some avg60=80%, load 10.20 on 4 CPUs) — wedge escalation deferred until 900s of continuous failure',
+          ),
+        ),
+      ).toBe(true);
+    });
+
+    test('still confirms and tears down a wedged child at the 900s pressure ceiling', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const collect = wedgedCollect();
+      const harness = makeSupervisor({
+        clockAdvanceMs: 60_000,
+        collect,
+        hostPressure: () => pressured,
+      });
+      await harness.supervision;
+
+      // 840s: still deferred.
+      for (let index = 0; index < 14; index += 1) await harness.runTick();
+      expect(harness.exit).not.toHaveBeenCalled();
+      expect(confirmationProbes(collect)).toBe(0);
+
+      // 900s: the ceiling ends the deferral despite continuing pressure.
+      await harness.runTick();
+      await vi.waitFor(() => expect(harness.exit).toHaveBeenCalledWith(1));
+      expect(confirmationProbes(collect)).toBe(1);
+      expect(harness.stop).toHaveBeenCalled();
+      expect(wedgedTeardown(error.mock.calls)).toBe(true);
+      expect(
+        warn.mock.calls.some(([message]) =>
+          String(message).includes(
+            'host still under CPU pressure (PSI cpu some avg60=80%, load 10.20 on 4 CPUs) but the 900s pressure ceiling is reached',
+          ),
+        ),
+      ).toBe(true);
+    });
+
+    test('an unpressured reading keeps the 180s window, and pressure is not read before it', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const collect = wedgedCollect();
+      const hostPressure = vi.fn(() => unpressured);
+      const harness = makeSupervisor({ collect, hostPressure });
+      await harness.supervision;
+
+      for (let index = 0; index < 35; index += 1) await harness.runTick();
+      expect(harness.exit).not.toHaveBeenCalled();
+      expect(hostPressure).not.toHaveBeenCalled();
+
+      await harness.runTick();
+      await vi.waitFor(() => expect(harness.exit).toHaveBeenCalledWith(1));
+      expect(hostPressure).toHaveBeenCalled();
+      expect(wedgedTeardown(error.mock.calls)).toBe(true);
+    });
+
+    test('escalates on the first tick after pressure lifts', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const collect = wedgedCollect();
+      let reading = pressured;
+      const harness = makeSupervisor({
+        clockAdvanceMs: 60_000,
+        collect,
+        hostPressure: () => reading,
+      });
+      await harness.supervision;
+
+      for (let index = 0; index < 5; index += 1) await harness.runTick();
+      expect(harness.exit).not.toHaveBeenCalled();
+
+      reading = unpressured;
+      await harness.runTick();
+      await vi.waitFor(() => expect(harness.exit).toHaveBeenCalledWith(1));
+      expect(wedgedTeardown(error.mock.calls)).toBe(true);
+    });
+
+    test('pressure does not shield a deferred child whose port starts refusing connections', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const collect = vi
+        .fn()
+        .mockResolvedValue(instanceStatus(slowChild(10), okChild(11)));
+      const harness = makeSupervisor({
+        clockAdvanceMs: 60_000,
+        collect,
+        hostPressure: () => pressured,
+      });
+      await harness.supervision;
+      for (let index = 0; index < 4; index += 1) await harness.runTick();
+      expect(harness.exit).not.toHaveBeenCalled();
+
+      collect.mockResolvedValue(instanceStatus(refusedChild(10), okChild(11)));
+      for (let index = 0; index < 3; index += 1) await harness.runTick();
+      await vi.waitFor(() => expect(harness.exit).toHaveBeenCalledWith(1));
+      expect(
+        error.mock.calls.some(([, reason]) =>
+          String((reason as Error)?.message).includes(
+            'refused 3 consecutive connections',
+          ),
+        ),
+      ).toBe(true);
+    });
   });
 
   test('caps a chronic confirmation-probe recovery cycle at its fourth rescue', async () => {

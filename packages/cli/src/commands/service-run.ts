@@ -4,6 +4,7 @@ import { setTimeout as setNodeTimeout } from 'node:timers';
 import type { ClaimHostOwnerResult } from '@kontourai/station-shared/instance-registry';
 import { resolveOwnProcessIdentity } from '@kontourai/station-shared/process-identity';
 import { createDesktopCompanion } from './desktop-companion.js';
+import { type HostPressureReading, readHostPressure } from './host-pressure.js';
 import {
   type CollectedChildStatus,
   type CollectedInstanceStatus,
@@ -84,6 +85,11 @@ export interface SupervisorDependencies {
    * Windows gives a cold PowerShell its long budget and a pwsh 7 retry.
    */
   ownBirth?: () => string | null;
+  /**
+   * Host CPU pressure for the wedge watchdog; null means unmeasurable. Test
+   * seam; defaults to Linux PSI plus the load average relative to CPUs.
+   */
+  hostPressure?: () => HostPressureReading | null;
 }
 
 function defaultOwnBirth(): string | null {
@@ -133,6 +139,17 @@ const UNRESPONSIVE_ESCALATION_MS = 180_000;
  * how long a truly broken child can linger past the escalation window.
  */
 const CONFIRMATION_PROBE_TIMEOUT_MS = 45_000;
+
+/**
+ * While the host itself is CPU-starved, a child that is alive and still
+ * listening but missing its probes is more likely starved than wedged: a
+ * 4-core host at load ~10 failed both the 180s window and the 45s
+ * confirmation and restarted a working server twice in ten minutes,
+ * interrupting every in-flight turn. Under measured pressure the escalation
+ * waits, but only until this ceiling of continuous failure, so a server that
+ * is genuinely wedged on a busy host is still confirmed and restarted.
+ */
+const PRESSURED_ESCALATION_CEILING_MS = 900_000;
 
 /**
  * An HTTP 401/403 from a child's own identity endpoint is a definitive
@@ -261,6 +278,7 @@ export async function superviseService(
       handOffServiceLivenessToLauncher(livenessTarget, launcherPid));
   const processIsAlive = dependencies.processIsAlive ?? defaultProcessIsAlive;
   const now = dependencies.now ?? Date.now;
+  const hostPressure = dependencies.hostPressure ?? readHostPressure;
   const listListeningPids =
     dependencies.listListeningPids ??
     ((port: number) => findListeningPidsForPorts([port]));
@@ -624,12 +642,22 @@ export async function superviseService(
     state.authRefusalStrikes = 0;
     state.failingSinceMs ??= now();
     const failingForMs = now() - state.failingSinceMs;
+    // Host pressure is read only once the window has run out, so a healthy
+    // or briefly slow child never pays for it.
+    const pressure =
+      failingForMs >= UNRESPONSIVE_ESCALATION_MS ? hostPressure() : null;
+    const deferredForPressure =
+      pressure?.pressured === true &&
+      failingForMs < PRESSURED_ESCALATION_CEILING_MS;
     // The escalation backstop runs first so it drains EVERY sustained non-ok
     // state — including ones whose per-tick strike counters keep getting
     // reset by interleaved observations (review round 1, MED 1).
-    if (failingForMs >= UNRESPONSIVE_ESCALATION_MS) {
+    if (failingForMs >= UNRESPONSIVE_ESCALATION_MS && !deferredForPressure) {
+      const ceilingNote = pressure?.pressured
+        ? `; host still under CPU pressure (${pressure.detail}) but the ${PRESSURED_ESCALATION_CEILING_MS / 1000}s pressure ceiling is reached`
+        : '';
       console.warn(
-        `Station ${name} identity probe has failed continuously for ${Math.round(failingForMs / 1000)}s; running a ${CONFIRMATION_PROBE_TIMEOUT_MS / 1000}s confirmation probe`,
+        `Station ${name} identity probe has failed continuously for ${Math.round(failingForMs / 1000)}s${ceilingNote}; running a ${CONFIRMATION_PROBE_TIMEOUT_MS / 1000}s confirmation probe`,
       );
       const confirmation = await collect(instanceName, {
         probeTimeoutMs: CONFIRMATION_PROBE_TIMEOUT_MS,
@@ -697,8 +725,11 @@ export async function superviseService(
     // confirmation path remains the backstop until that status contract can
     // expose authenticated fingerprint evidence without new plumbing here.
     state.identityMismatchStrikes = 0;
+    const pressureNote = deferredForPressure
+      ? `; host under CPU pressure (${pressure.detail}) — wedge escalation deferred until ${PRESSURED_ESCALATION_CEILING_MS / 1000}s of continuous failure`
+      : '';
     console.warn(
-      `Station ${name} identity probe failed for ${Math.round(failingForMs / 1000)}s; process alive and port listening — tolerating (slow is not dead)`,
+      `Station ${name} identity probe failed for ${Math.round(failingForMs / 1000)}s; process alive and port listening — tolerating (slow is not dead)${pressureNote}`,
     );
   };
 
