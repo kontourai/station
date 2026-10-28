@@ -58,16 +58,19 @@ Station keeps this from getting noisy:
 
 If Station can't hand a message over (Houston's chat is full, or something
 failed), it tries again after 1 minute, then 5, then 15, then every hour. Each
-try counts toward the hourly limit.
+try counts toward the hourly limit, and a restart keeps the schedule.
 
 Houston's own turns don't wake it. Work it delegated itself doesn't wake it
 when it finishes or fails, because that result already comes back to it
 directly; if that work needs you, Houston is told. A message waits for
 Houston's current turn to finish; it never interrupts it.
 
-Station checks again that you can read each Session just before it sends a
-message, and leaves out any you no longer can. When you stop using a chat as
-Houston (or replace it), messages still waiting for that chat are withdrawn.
+Station checks that you can read each Session when it prepares a message,
+and again just before Houston's chat receives it. A message naming a Session
+you can no longer read is not delivered; the rest go out in a new message. A
+message that has waited more than 24 hours for Houston's chat is not delivered
+at all. When you stop using a chat as Houston (or replace it), all messages
+still waiting for that chat are withdrawn together.
 
 ## Limits
 

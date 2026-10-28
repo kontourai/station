@@ -1838,10 +1838,15 @@ failed turn (#3158 already delivers settled turns); a delegated child that
 needs the person does. The wake row is committed before the inbox call under a key
 derived from its id, so a restart re-submits it and the inbox accepts it once.
 When the inbox takes nothing, the items go back and the wake is tried again
-after `COORDINATOR_WAKE_RETRY_DELAYS_MS`, within the hourly cap. Replacing,
-removing (`retire`) or deleting the coordinator conversation withdraws the
-wakes still queued in its inbox. The routes' `delivery`
-(`readCoordinatorDelivery`) says whether wakes are blocked (#4051) and whether
+after `COORDINATOR_WAKE_RETRY_DELAYS_MS`, within the hourly cap; the attempt
+and due time are durable. Replacing, removing (`retire`) or deleting the
+coordinator conversation withdraws the wakes still queued in its inbox in one
+operation (`ThreadInboxDelivery.cancelQueued`) and clears the old backoff.
+The inbox's sender policy (`placementRefusal`) checks each wake at placement:
+a retired target, a wake queued over `COORDINATOR_WAKE_QUEUED_MAX_AGE_MS`, or
+an unreadable Session refuses it. The routes' `delivery`
+(`readCoordinatorDelivery` over `coordinatorDeliveryPorts`) says whether
+wakes are blocked (#4051: last turn ended, boundary still held) and whether
 the live Session still lacks the Station tools.
 The turn replays the person's dispatch actor and an internal client origin.
 

@@ -32,7 +32,11 @@ import type { IProviderAdapterRegistry } from '../../../providers/provider-inter
 import { createCoordinatorRoutes } from '../../../routes/orchestration/coordinator.js';
 import type { ACPProcess } from '../../acp/acp-process.js';
 import { NotificationService } from '../../notifications/notification-service.js';
-import { wireCoordinatorWakes } from '../coordinator-session.js';
+import {
+  coordinatorDeliveryPorts,
+  readCoordinatorDelivery,
+  wireCoordinatorWakes,
+} from '../coordinator-session.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -477,5 +481,94 @@ describe('a worker finishing wakes the coordinator once', () => {
     expect(sends.get(COORDINATOR)).toHaveLength(1);
     // The worker's terminal was turned into exactly one waiting-then-sent item.
     expect(world.store.coordinatorStore().waitingItems(OWNER)).toEqual([]);
+  });
+});
+
+describe('delivery state through the production ports', () => {
+  class RecordingAdapter extends GateTestAdapter {
+    readonly invocations: (string | undefined)[] = [];
+    override async sendTurn(
+      input: ProviderSendTurnInput,
+    ): Promise<ProviderTurnStartResult> {
+      this.invocations.push(input.invocationId);
+      return { threadId: input.threadId, turnId: 'turn-1' };
+    }
+  }
+
+  /**
+   * The coordinator chat on a Claude-provider adapter, one turn sent through
+   * the real service (which records its durable boundary), and the engine's
+   * events as given. `stamp` decides whether they name the send's invocation.
+   */
+  async function coordinatorAfter(methods: readonly string[], stamp: boolean) {
+    const adapter = new RecordingAdapter();
+    const world = boot([adapter]);
+    let sequence = 0;
+    const emit = async (method: string, fields: Record<string, unknown>) => {
+      sequence += 1;
+      adapter.events.push({
+        eventId: `delivery-${sequence}`,
+        provider: 'claude',
+        threadId: COORDINATOR,
+        createdAt: new Date().toISOString(),
+        method,
+        ...fields,
+      } as unknown as CanonicalRuntimeEvent);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    };
+    await world.service.dispatch({
+      type: 'startSession',
+      input: { threadId: COORDINATOR, provider: 'claude' },
+    });
+    await emit('session.started', {
+      sessionId: COORDINATOR,
+      metadata: { userId: OWNER },
+    });
+    await world.service.dispatchWithReceipt(
+      { type: 'sendTurn', input: { threadId: COORDINATOR, input: 'go' } },
+      { userId: OWNER },
+    );
+    const invocationId = adapter.invocations[0];
+    if (!invocationId) throw new Error('send invocation prerequisite');
+    for (const method of methods)
+      await emit(method, {
+        turnId: 'turn-1',
+        ...(stamp ? { invocationId } : {}),
+      });
+    return {
+      world,
+      delivery: () =>
+        readCoordinatorDelivery(
+          COORDINATOR,
+          coordinatorDeliveryPorts({
+            eventStore: world.store,
+            service: world.service,
+          }),
+        ),
+    };
+  }
+
+  test('a turn that ended without naming its invocation (#4051) reads blocked', async () => {
+    const { world, delivery } = await coordinatorAfter(
+      ['turn.started', 'turn.completed'],
+      false,
+    );
+    // Why `hasActiveTurn` could not tell: it reads the held boundary too.
+    expect(world.service.hasActiveTurn(COORDINATOR)).toBe(true);
+    expect(delivery().wakes).toBe('blocked');
+  });
+
+  test('a turn that ended normally reads ready', async () => {
+    const { delivery } = await coordinatorAfter(
+      ['turn.started', 'turn.completed'],
+      true,
+    );
+    expect(delivery().wakes).toBe('ready');
+  });
+
+  test('a long turn still running reads ready', async () => {
+    const { world, delivery } = await coordinatorAfter(['turn.started'], true);
+    expect(world.service.hasActiveTurn(COORDINATOR)).toBe(true);
+    expect(delivery().wakes).toBe('ready');
   });
 });

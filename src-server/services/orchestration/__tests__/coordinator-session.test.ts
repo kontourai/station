@@ -10,6 +10,7 @@ import {
   COORDINATOR_WAKE_MAX_ITEMS_PER_TURN,
   COORDINATOR_WAKE_MAX_PENDING_ITEMS,
   COORDINATOR_WAKE_MAX_PER_HOUR,
+  COORDINATOR_WAKE_QUEUED_MAX_AGE_MS,
   COORDINATOR_WAKE_RETRY_DELAYS_MS,
   COORDINATOR_WAKE_WINDOW_MS,
   coordinatorWakeClientTurnId,
@@ -68,9 +69,11 @@ function harness(
     readable?: (userId: string, sessionId: string) => boolean;
     delegatedBy?: (conversationId: string) => string | undefined;
     submitOutcome?: () => 'queued' | 'capacity' | 'throw';
+    /** Start the clock here (a restart resumes where the last one stopped). */
+    startAt?: number;
   } = {},
 ): Harness {
-  const clock = { now: Date.UTC(2026, 9, 28, 9) };
+  const clock = { now: options.startAt ?? Date.UTC(2026, 9, 28, 9) };
   const timers: { at: number; callback: () => void; live: boolean }[] = [];
   const submitted: Harness['submitted'] = [];
   const withdrawn: Harness['withdrawn'] = [];
@@ -195,7 +198,7 @@ describe('coordinator wake bounds', () => {
   const freshStore = () =>
     openStore(join(makeTempDir('coordinator-wake-'), 'orchestration.sqlite'));
 
-  test('a burst is one wake after the coalescing window, and a repeat of an item is never sent again', () => {
+  test('a burst is one wake after the coalescing window, and a repeat of an item is not sent again within the dedupe window', () => {
     const store = freshStore();
     designate(store);
     const h = harness(store);
@@ -514,7 +517,7 @@ describe('wireCoordinatorWakes', () => {
       threadInbox: {
         submit: vi.fn() as never,
         list: vi.fn(() => []),
-        cancel: vi.fn() as never,
+        cancelQueued: vi.fn(() => []),
       },
       mayRead: () => true,
       logger: { warn: vi.fn() },
@@ -605,12 +608,12 @@ describe('a restart re-send', () => {
 describe('readCoordinatorDelivery', () => {
   const ports = (input: {
     events?: { method: string; provider?: string; metadata?: unknown }[];
-    running?: boolean;
+    ended?: boolean;
     boundary?: boolean;
   }) => ({
     currentSessionId: () => 'session-current',
     lifecycleEvents: () => input.events ?? [],
-    turnRunning: () => input.running ?? false,
+    lastTurnEnded: () => input.ended ?? false,
     boundaryActive: () => input.boundary ?? false,
   });
   const started = (servers: string[], provider = 'codex') => ({
@@ -619,14 +622,18 @@ describe('readCoordinatorDelivery', () => {
     metadata: { capabilityDelivery: { toolServers: { requested: servers } } },
   });
 
-  test('wakes are blocked when the inbox would read an idle Session as busy (#4051)', () => {
-    expect(readCoordinatorDelivery('c', ports({ boundary: true })).wakes).toBe(
-      'blocked',
-    );
+  test('wakes are blocked when the last turn ended but its boundary is still held (#4051)', () => {
     expect(
-      readCoordinatorDelivery('c', ports({ boundary: true, running: true }))
+      readCoordinatorDelivery('c', ports({ boundary: true, ended: true }))
         .wakes,
-    ).toBe('ready');
+    ).toBe('blocked');
+    // A turn still open (long, or waiting on an approval) holds it too.
+    expect(readCoordinatorDelivery('c', ports({ boundary: true })).wakes).toBe(
+      'ready',
+    );
+    expect(readCoordinatorDelivery('c', ports({ ended: true })).wakes).toBe(
+      'ready',
+    );
     expect(readCoordinatorDelivery('c', ports({})).wakes).toBe('ready');
   });
 
@@ -661,5 +668,183 @@ describe('EventStore.deleteThread', () => {
     expect(designate(store, OWNER, 'conversation-next')).toMatchObject({
       outcome: 'designated',
     });
+  });
+});
+
+describe('retry state across retirement and restart', () => {
+  const MINUTE = 60_000;
+
+  /** Refuse four wakes in a row: the next try is a full hour away. */
+  function refusedFourTimes(store: EventStore) {
+    let outcome: 'queued' | 'capacity' = 'capacity';
+    const h = harness(store, { submitOutcome: () => outcome });
+    h.delivery.observe(item(1));
+    h.advance(COORDINATOR_WAKE_COALESCE_MS);
+    h.advance(1 * MINUTE);
+    h.advance(5 * MINUTE);
+    h.advance(15 * MINUTE);
+    expect(h.submitted).toHaveLength(4);
+    expect(store.coordinatorStore().retry(OWNER)).toMatchObject({
+      attempt: 4,
+    });
+    return {
+      h,
+      accept: () => {
+        outcome = 'queued';
+      },
+    };
+  }
+
+  test('retiring the target cancels its backoff: the new coordinator is woken after the coalescing window', () => {
+    const store = openStore(
+      join(makeTempDir('coordinator-retire-timer-'), 'orchestration.sqlite'),
+    );
+    designate(store);
+    const { h, accept } = refusedFourTimes(store);
+    accept();
+    store.coordinatorStore().designate({
+      conversationId: 'conversation-next',
+      actor: { userId: OWNER },
+      replace: true,
+      now: h.clock.now,
+    });
+    h.delivery.retire(OWNER, COORDINATOR);
+    expect(store.coordinatorStore().retry(OWNER)).toBeUndefined();
+    h.advance(COORDINATOR_WAKE_COALESCE_MS);
+    expect(h.submitted).toHaveLength(5);
+    expect(h.submitted[4]!.conversationId).toBe('conversation-next');
+  });
+
+  test('a restart in the middle of an hour-long backoff keeps its deadline and its step', () => {
+    const path = join(
+      makeTempDir('coordinator-retry-restart-'),
+      'orchestration.sqlite',
+    );
+    const first = openStore(path);
+    designate(first);
+    const { h } = refusedFourTimes(first);
+    const nextAt = first.coordinatorStore().retry(OWNER)!.nextAt;
+    expect(nextAt - h.clock.now).toBe(60 * MINUTE);
+    h.delivery.stop();
+    closeStore(first);
+
+    // Thirty minutes later, a new process on the same file.
+    const second = openStore(path);
+    const resumed = harness(second, {
+      startAt: h.clock.now + 30 * MINUTE,
+      submitOutcome: () => 'capacity',
+    });
+    resumed.delivery.reconcile();
+    resumed.advance(COORDINATOR_WAKE_COALESCE_MS);
+    expect(resumed.submitted).toEqual([]);
+    resumed.advance(30 * MINUTE - COORDINATOR_WAKE_COALESCE_MS);
+    expect(resumed.submitted).toHaveLength(1);
+    // The step is kept too: the next refusal waits an hour again, not a minute.
+    expect(second.coordinatorStore().retry(OWNER)).toMatchObject({
+      attempt: 5,
+      nextAt: resumed.clock.now + 60 * MINUTE,
+    });
+  });
+});
+
+describe('the placement policy for coordinator wakes', () => {
+  const freshStore = () =>
+    openStore(
+      join(makeTempDir('coordinator-placement-'), 'orchestration.sqlite'),
+    );
+  const claim = (store: EventStore, now: number) => {
+    const claimed = store.coordinatorStore().claimWake({
+      designation: store.coordinatorStore().designation(OWNER)!,
+      now,
+      compose: () => 'framed',
+    });
+    if (claimed.outcome !== 'claimed') throw new Error('not claimed');
+    return coordinatorWakeClientTurnId(claimed.wake.id);
+  };
+
+  test('places a current, fresh, readable wake and leaves other entries alone', () => {
+    const store = freshStore();
+    designate(store);
+    store.coordinatorStore().recordItem(OWNER, item(1), 1);
+    const h = harness(store);
+    const key = claim(store, h.clock.now);
+    const ask = (clientTurnId: string) =>
+      h.delivery.placementRefusal({
+        conversationId: COORDINATOR,
+        clientTurnId,
+        userId: OWNER,
+        queuedAt: h.clock.now,
+      });
+    expect(ask(key)).toBeUndefined();
+    expect(ask('chat:a-person-message')).toBeUndefined();
+  });
+
+  test('refuses a wake for a conversation that is no longer the coordinator', () => {
+    const store = freshStore();
+    designate(store);
+    store.coordinatorStore().recordItem(OWNER, item(1), 1);
+    const h = harness(store);
+    const key = claim(store, h.clock.now);
+    store.coordinatorStore().undesignate(OWNER);
+    expect(
+      h.delivery.placementRefusal({
+        conversationId: COORDINATOR,
+        clientTurnId: key,
+        userId: OWNER,
+        queuedAt: h.clock.now,
+      }),
+    ).toMatchObject({ reasonCode: 'coordinator_retired' });
+  });
+
+  test('refuses a wake queued longer than the limit, and only past it', () => {
+    const store = freshStore();
+    designate(store);
+    store.coordinatorStore().recordItem(OWNER, item(1), 1);
+    const h = harness(store);
+    const key = claim(store, h.clock.now);
+    expect(COORDINATOR_WAKE_QUEUED_MAX_AGE_MS).toBe(24 * 60 * 60 * 1000);
+    const ask = (queuedAt: number) =>
+      h.delivery.placementRefusal({
+        conversationId: COORDINATOR,
+        clientTurnId: key,
+        userId: OWNER,
+        queuedAt,
+      });
+    expect(
+      ask(h.clock.now - COORDINATOR_WAKE_QUEUED_MAX_AGE_MS),
+    ).toBeUndefined();
+    expect(
+      ask(h.clock.now - COORDINATOR_WAKE_QUEUED_MAX_AGE_MS - 1),
+    ).toMatchObject({
+      reasonCode: 'coordinator_wake_expired',
+    });
+  });
+
+  test('refuses a wake naming a Session no longer readable, and re-sends the readable items', () => {
+    const store = freshStore();
+    designate(store);
+    store.coordinatorStore().recordItem(OWNER, item(1), 1);
+    store.coordinatorStore().recordItem(OWNER, item(2), 1);
+    let revoked = false;
+    const h = harness(store, {
+      readable: (_user, sessionId) =>
+        !(revoked && sessionId === 'session-worker-2'),
+    });
+    const key = claim(store, h.clock.now);
+    revoked = true;
+    expect(
+      h.delivery.placementRefusal({
+        conversationId: COORDINATOR,
+        clientTurnId: key,
+        userId: OWNER,
+        queuedAt: h.clock.now,
+      }),
+    ).toMatchObject({ reasonCode: 'coordinator_source_unreadable' });
+    h.advance(0);
+    expect(h.submitted).toHaveLength(1);
+    expect(h.submitted[0]!.payload.message).toContain(
+      'Session session-worker-1',
+    );
+    expect(h.submitted[0]!.payload.message).not.toContain('session-worker-2');
   });
 });

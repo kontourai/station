@@ -22,10 +22,11 @@ export interface CoordinatorDesignation {
  * Whether Station can reach the coordinator now, derived from its current
  * Session when the designation is read.
  *
- * - `wakes`: `blocked` when the inbox would hold a wake indefinitely: no turn
- *   is running, yet the Session's last turn never retired its boundary row
- *   (#4051: engines whose turn terminals carry no invocation id). `ready`
- *   otherwise.
+ * - `wakes`: `blocked` when the inbox would hold a wake indefinitely: the
+ *   Session's last turn has ended (its terminal is in the log), yet its
+ *   durable turn boundary is still held (#4051: engines whose turn terminals
+ *   carry no invocation id). `ready` otherwise, including during a long turn
+ *   or an approval wait.
  * - `toolsPending`: the current Session is live and started without the
  *   built-in Station tools; they arrive when its next Session starts.
  * - `engine`: the current Session's provider, when it has started.
@@ -101,6 +102,13 @@ export const COORDINATOR_WAKE_RETRY_DELAYS_MS: readonly number[] = [
  * replay; it would be sent as a new item.
  */
 export const COORDINATOR_WAKE_DEDUPE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * The longest a wake may wait in the coordinator's inbox. One still queued
+ * after this is refused when the inbox would place it, and nothing is sent:
+ * its items were readable when it was queued, and that check is not allowed
+ * to stand for longer.
+ */
+export const COORDINATOR_WAKE_QUEUED_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /** The inbox key a coordinator wake turn is sent under. */
 export function coordinatorWakeClientTurnId(wakeId: string): string {

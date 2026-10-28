@@ -1531,3 +1531,96 @@ describe('thread inbox (#3568)', () => {
     });
   });
 });
+
+describe('withdrawing several entries, and a sender placement policy (#3628)', () => {
+  const path = () =>
+    join(makeTempDir('thread-inbox-withdraw-'), 'orchestration.sqlite');
+
+  /**
+   * Two of the owner's entries queued while the conversation read busy, then
+   * the conversation goes idle with no event to drive it: the moment a
+   * withdrawal meets.
+   */
+  async function twoQueuedOnAnIdleTarget(
+    extra: Partial<ThreadInboxDeliveryPorts> = {},
+  ) {
+    const held = { busy: true };
+    let world!: World;
+    world = boot(path(), {
+      coordinatorBusy: (threadId) =>
+        held.busy || world.service.hasActiveTurn(threadId),
+      // No re-check inside the test: only a drive can place them.
+      retryDelaysMs: [60 * 60_000],
+      maxRetries: 1,
+      ...extra,
+    });
+    await startSession(world);
+    for (const key of ['wake-1', 'wake-2'])
+      expect(
+        world.inbox.submit({
+          conversationId: THREAD,
+          clientTurnId: key,
+          payload: { message: `message ${key}`, actor: { userId: OWNER } },
+        }),
+      ).toMatchObject({ outcome: 'queued' });
+    await settle(world);
+    expect(sends).toEqual([]);
+    held.busy = false;
+    return world;
+  }
+
+  test('cancelling one at a time drives in between: the other entry is placed', async () => {
+    const world = await twoQueuedOnAnIdleTarget();
+    expect(world.inbox.cancel(THREAD, 'wake-1', OWNER)).toMatchObject({
+      kind: 'cancelled',
+    });
+    await settle(world);
+    expect(sends).toEqual(['message wake-2']);
+  });
+
+  test('cancelQueued withdraws every entry before driving: nothing is placed', async () => {
+    const world = await twoQueuedOnAnIdleTarget();
+    expect(
+      world.inbox.cancelQueued(THREAD, ['wake-1', 'wake-2'], OWNER),
+    ).toEqual(['wake-1', 'wake-2']);
+    await settle(world);
+    expect(sends).toEqual([]);
+    expect(world.inbox.list(THREAD).map((entry) => entry.state)).toEqual([
+      'cancelled',
+      'cancelled',
+    ]);
+  });
+
+  test('cancelQueued leaves another sender’s entry and an unknown key alone', async () => {
+    const world = await twoQueuedOnAnIdleTarget();
+    expect(
+      world.inbox.cancelQueued(THREAD, ['wake-1', 'missing'], 'someone-else'),
+    ).toEqual([]);
+  });
+
+  test('a placement policy refusal settles the entry refused and sends nothing', async () => {
+    const asked: string[] = [];
+    const world = await twoQueuedOnAnIdleTarget({
+      placementRefusal: ({ clientTurnId, queuedAt }) => {
+        asked.push(clientTurnId);
+        expect(typeof queuedAt).toBe('number');
+        return clientTurnId === 'wake-1'
+          ? { reasonCode: 'coordinator_retired', reason: 'Not the target.' }
+          : undefined;
+      },
+    });
+    // An event drives the idle conversation.
+    await emit(world, 'session.state-changed', { state: 'ready' });
+    await settle(world);
+    expect(sends).toEqual(['message wake-2']);
+    expect(world.inbox.list(THREAD)).toEqual([
+      expect.objectContaining({
+        clientTurnId: 'wake-1',
+        state: 'refused',
+        reasonCode: 'coordinator_retired',
+      }),
+      expect.objectContaining({ clientTurnId: 'wake-2', state: 'sent' }),
+    ]);
+    expect(asked).toEqual(['wake-1', 'wake-2']);
+  });
+});

@@ -685,8 +685,9 @@ codes (`CoordinatorRefusalCode`), `CoordinatorAttentionKind` (`needs-you`,
 `failed`, `finished`), the wake bounds (`COORDINATOR_WAKE_COALESCE_MS`,
 `COORDINATOR_WAKE_MAX_PER_HOUR` over `COORDINATOR_WAKE_WINDOW_MS`,
 `COORDINATOR_WAKE_MAX_ITEMS_PER_TURN`, `COORDINATOR_WAKE_MAX_PENDING_ITEMS`,
-the retry delays `COORDINATOR_WAKE_RETRY_DELAYS_MS` and the dedupe window
-`COORDINATOR_WAKE_DEDUPE_WINDOW_MS`), `CoordinatorDelivery` (whether wakes are
+the retry delays `COORDINATOR_WAKE_RETRY_DELAYS_MS`, the dedupe window
+`COORDINATOR_WAKE_DEDUPE_WINDOW_MS` and the queued-wake age limit
+`COORDINATOR_WAKE_QUEUED_MAX_AGE_MS`), `CoordinatorDelivery` (whether wakes are
 blocked and Station tools pending, returned with a designation), and
 `coordinatorWakeClientTurnId` with its predicate
 `isCoordinatorWakeClientTurnId`. The handshake advertises the routes as

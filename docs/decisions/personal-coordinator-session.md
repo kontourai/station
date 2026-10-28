@@ -92,22 +92,35 @@ nothing releases the items and retries after 1, 5, 15 and then every 60
 minutes (`COORDINATOR_WAKE_RETRY_DELAYS_MS`); each attempt is a wake row, so
 the hourly cap bounds retries too.
 
-Read access to each item's Session is decided at observation and again when a
-wake is composed or re-sent after a restart; an unreadable item is dropped.
-Text already handed to the inbox was readable then; it is not re-checked at
-placement.
+Read access to each item's Session is decided at observation, when a wake is
+composed or re-sent after a restart, and when the inbox is about to place it.
+The last check is the inbox's sender policy (`placementRefusal`): a wake
+naming an unreadable Session is refused there and nothing is sent; its
+readable items go back for a fresh wake. The same policy refuses a wake whose
+conversation is no longer the coordinator, and one queued longer than
+`COORDINATOR_WAKE_QUEUED_MAX_AGE_MS` (24 hours), whose items are not re-sent.
+So a wake's text reaches the engine only if, at placement, the person can
+still read every Session it names, it is still their coordinator, and it is
+at most a day old. The retry attempt and due time are stored, so a restart
+resumes the backoff.
 
 When the person replaces or removes the designation, or deletes the
 conversation, the wakes still queued in the old conversation's inbox are
-withdrawn through the inbox's own cancel (the person is their sender). A wake
-already being placed cannot be withdrawn. A designation whose conversation the
+withdrawn in one inbox operation (`cancelQueued`: every entry is cancelled
+before the conversation is driven again, so none is placed in between), and
+the old target's retry timer and backoff are cleared. A wake already being
+placed cannot be withdrawn; the placement policy also refuses a retired
+target's wake. A designation whose conversation the
 person can no longer read counts as absent: it is not shown, and a new
 designation replaces it without `replace`.
 
 The person is told what Station can do: the read and write routes return
-`delivery`, derived from the current Session. Wakes are `blocked` when no turn
-runs but the inbox still reads the Session as busy (#4051: Codex and Muse turn
-terminals carry no invocation id). `toolsPending` holds while the live Session
+`delivery`, derived from the current Session. Wakes are `blocked` when the
+Session's last turn has ended in the log but its durable turn boundary is
+still held (#4051: Codex and Muse turn terminals carry no invocation id). It
+does not use `hasActiveTurn`, which reads that same boundary and so cannot
+tell a stuck one from a running turn; a long turn or an approval wait reads
+`ready`. `toolsPending` holds while the live Session
 started without the Station tools. This is derived rather than keyed to engine
 names, so it stops reporting `blocked` once #4051 is fixed.
 

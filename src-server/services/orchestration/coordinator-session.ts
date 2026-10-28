@@ -38,13 +38,20 @@
  * takes nothing (capacity, permission, an error), the items go back and the
  * wake is tried again after `COORDINATOR_WAKE_RETRY_DELAYS_MS`.
  *
- * Read access is decided again when a wake is composed (and when a restart
- * re-sends one): an item whose Session the person can no longer read is
- * dropped, never sent. Text already in the inbox was readable when it was
- * handed over. When the person stops using a conversation as coordinator
- * (undesignated, replaced, or the conversation deleted), the wakes still
- * queued in its inbox are withdrawn (`retire`); one already being placed is
- * not.
+ * The retry attempt and its due time are durable (`coordinator_retries`),
+ * so a restart resumes the backoff where it was.
+ *
+ * Read access is decided when an item is observed, when a wake is composed
+ * (and re-sent after a restart), and once more when the inbox is about to
+ * place it (`placementRefusal`, the inbox's sender policy): a wake naming a
+ * Session the person can no longer read is refused there, nothing is sent,
+ * and its readable items go back for a fresh wake. The same policy refuses a
+ * wake whose conversation is no longer the coordinator, and one that waited
+ * longer than `COORDINATOR_WAKE_QUEUED_MAX_AGE_MS`. When the person stops
+ * using a conversation as coordinator (undesignated, replaced, or deleted),
+ * `retire` withdraws the wakes still queued in its inbox in one inbox
+ * operation, cancels the old target's backoff, and arms what still waits for
+ * the new one. A wake already being placed cannot be withdrawn.
  */
 import { randomUUID } from 'node:crypto';
 import type { Notification } from '@kontourai/station-contracts';
@@ -59,6 +66,7 @@ import {
   COORDINATOR_WAKE_MAX_ITEMS_PER_TURN,
   COORDINATOR_WAKE_MAX_PENDING_ITEMS,
   COORDINATOR_WAKE_MAX_PER_HOUR,
+  COORDINATOR_WAKE_QUEUED_MAX_AGE_MS,
   COORDINATOR_WAKE_RETRY_DELAYS_MS,
   COORDINATOR_WAKE_WINDOW_MS,
   type CoordinatorAttentionKind,
@@ -131,7 +139,12 @@ CREATE TABLE IF NOT EXISTS coordinator_wakes (
   updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS coordinator_wakes_user
-  ON coordinator_wakes (user_id, created_at)`;
+  ON coordinator_wakes (user_id, created_at);
+CREATE TABLE IF NOT EXISTS coordinator_retries (
+  user_id TEXT PRIMARY KEY,
+  attempt INTEGER NOT NULL,
+  next_at INTEGER NOT NULL
+)`;
 
 /** Who a wake turn is sent as: the person, as their designation resolved. */
 export interface CoordinatorActor {
@@ -319,6 +332,9 @@ export function createSqliteCoordinatorStore(db: TransactionalSqliteDatabase) {
         db.prepare(
           'DELETE FROM coordinator_wake_items WHERE user_id = ? AND wake_id IS NULL',
         ).run(userId);
+        db.prepare('DELETE FROM coordinator_retries WHERE user_id = ?').run(
+          userId,
+        );
         return changed(
           db
             .prepare('DELETE FROM coordinator_designations WHERE user_id = ?')
@@ -395,11 +411,46 @@ export function createSqliteCoordinatorStore(db: TransactionalSqliteDatabase) {
         db.prepare(
           'DELETE FROM coordinator_wake_items WHERE user_id = ? AND wake_id IS NULL',
         ).run(owner.actor.userId);
+        db.prepare('DELETE FROM coordinator_retries WHERE user_id = ?').run(
+          owner.actor.userId,
+        );
         db.prepare(
           'DELETE FROM coordinator_designations WHERE conversation_id = ?',
         ).run(conversationId);
         return owner.actor.userId;
       });
+    },
+    /**
+     * The person's retry after a wake the inbox took nothing of: how many
+     * attempts failed in a row, and when the next is due. Durable, so a
+     * restart keeps the backoff.
+     */
+    retry(userId: string): { attempt: number; nextAt: number } | undefined {
+      const row = db
+        .prepare(
+          'SELECT attempt, next_at FROM coordinator_retries WHERE user_id = ?',
+        )
+        .get(userId) as { attempt: number; next_at: number } | undefined;
+      return row
+        ? { attempt: Number(row.attempt), nextAt: Number(row.next_at) }
+        : undefined;
+    },
+    setRetry(userId: string, attempt: number, nextAt: number): void {
+      db.prepare(
+        `INSERT INTO coordinator_retries (user_id, attempt, next_at) VALUES (?, ?, ?)
+         ON CONFLICT (user_id) DO UPDATE SET attempt = excluded.attempt, next_at = excluded.next_at`,
+      ).run(userId, attempt, nextAt);
+    },
+    clearRetry(userId: string): void {
+      db.prepare('DELETE FROM coordinator_retries WHERE user_id = ?').run(
+        userId,
+      );
+    },
+    /** Put a wake's items back to wait (it was refused before placement). */
+    releaseWakeItems(wakeId: string): void {
+      db.prepare(
+        'UPDATE coordinator_wake_items SET wake_id = NULL WHERE wake_id = ?',
+      ).run(wakeId);
     },
     /** People with items waiting for a wake. */
     usersWithWaitingItems(): string[] {
@@ -632,8 +683,6 @@ function defaultSetTimer(callback: () => void, delayMs: number) {
 /** Gathers attention items per person and sends the coordinator one turn. */
 export class CoordinatorWakeDelivery {
   private readonly timers = new Map<string, () => void>();
-  /** Retry attempts since the person's last accepted wake. */
-  private readonly retries = new Map<string, number>();
   private stopped = false;
 
   constructor(private readonly ports: CoordinatorWakePorts) {}
@@ -687,7 +736,18 @@ export class CoordinatorWakeDelivery {
   reconcile(): void {
     for (const wake of this.ports.store.sendingWakes()) this.send(wake);
     for (const userId of this.ports.store.usersWithWaitingItems())
-      this.arm(userId, COORDINATOR_WAKE_COALESCE_MS);
+      this.arm(userId, this.resumeDelay(userId));
+  }
+
+  /**
+   * How long a person's waiting items wait now: the rest of a retry backoff a
+   * restart interrupted, else the coalescing window.
+   */
+  private resumeDelay(userId: string): number {
+    const retry = this.ports.store.retry(userId);
+    return retry
+      ? Math.max(0, retry.nextAt - this.now())
+      : COORDINATOR_WAKE_COALESCE_MS;
   }
 
   /**
@@ -697,15 +757,75 @@ export class CoordinatorWakeDelivery {
    * being the coordinator. A wake already being placed cannot be withdrawn.
    */
   retire(userId: string, conversationId: string): number {
-    this.retries.delete(userId);
+    // The old target's backoff is not the new one's: cancel its timer and
+    // retry state, then arm what still waits under the new designation.
+    this.timers.get(userId)?.();
+    this.timers.delete(userId);
+    this.ports.store.clearRetry(userId);
+    let withdrawn = 0;
     try {
-      return this.ports.withdrawQueuedWakes(conversationId, userId);
+      withdrawn = this.ports.withdrawQueuedWakes(conversationId, userId);
     } catch (error) {
       this.ports.logger.warn('coordinator wakes could not be withdrawn', {
         error: error instanceof Error ? error.message : String(error),
       });
-      return 0;
     }
+    if (
+      this.ports.store.designation(userId) &&
+      this.ports.store.waitingItems(userId).length > 0
+    )
+      this.arm(userId, COORDINATOR_WAKE_COALESCE_MS);
+    return withdrawn;
+  }
+
+  /**
+   * The inbox's placement policy for a coordinator wake (`placementRefusal`),
+   * decided when the inbox is about to place it. Refused, nothing is sent:
+   *
+   * - `coordinator_retired`: the conversation is no longer the person's
+   *   coordinator (a withdrawal raced the inbox, or a restart lost it);
+   * - `coordinator_wake_expired`: it waited longer than
+   *   `COORDINATOR_WAKE_QUEUED_MAX_AGE_MS`; its items are not re-sent;
+   * - `coordinator_source_unreadable`: the person can no longer read a
+   *   Session it names; the readable items go back for a fresh wake.
+   *
+   * Other inbox entries are not this policy's: undefined.
+   */
+  placementRefusal(input: {
+    readonly conversationId: string;
+    readonly clientTurnId: string;
+    readonly userId: string;
+    readonly queuedAt: number;
+  }): { reasonCode: string; reason: string } | undefined {
+    if (!isCoordinatorWakeClientTurnId(input.clientTurnId)) return undefined;
+    const wakeId = input.clientTurnId.slice('coordinator-wake:'.length);
+    const designation = this.ports.store.designation(input.userId);
+    if (designation?.conversationId !== input.conversationId)
+      return {
+        reasonCode: 'coordinator_retired',
+        reason: 'This chat is no longer the coordinator. Nothing was sent.',
+      };
+    if (this.now() - input.queuedAt > COORDINATOR_WAKE_QUEUED_MAX_AGE_MS)
+      return {
+        reasonCode: 'coordinator_wake_expired',
+        reason: 'This update waited too long to be sent. Nothing was sent.',
+      };
+    const items = this.ports.store.wakeItems(wakeId);
+    const unreadable = items.filter(
+      (item) => !this.readable(input.userId, item.sessionId),
+    );
+    if (unreadable.length === 0) return undefined;
+    this.ports.store.releaseWakeItems(wakeId);
+    this.ports.store.dropItems(
+      input.userId,
+      unreadable.map((item) => item.itemKey),
+    );
+    this.arm(input.userId, 0);
+    return {
+      reasonCode: 'coordinator_source_unreadable',
+      reason:
+        'This update named work the person can no longer read. Nothing was sent.',
+    };
   }
 
   stop(): void {
@@ -736,10 +856,11 @@ export class CoordinatorWakeDelivery {
    * wake row, so the hourly cap bounds retries too.
    */
   private retryLater(userId: string): void {
-    const attempt = this.retries.get(userId) ?? 0;
-    this.retries.set(userId, attempt + 1);
+    const attempt = this.ports.store.retry(userId)?.attempt ?? 0;
     const delays = COORDINATOR_WAKE_RETRY_DELAYS_MS;
-    this.arm(userId, delays[Math.min(attempt, delays.length - 1)]!);
+    const delay = delays[Math.min(attempt, delays.length - 1)]!;
+    this.ports.store.setRetry(userId, attempt + 1, this.now() + delay);
+    this.arm(userId, delay);
   }
 
   private readable(userId: string, sessionId: string): boolean {
@@ -835,7 +956,7 @@ export class CoordinatorWakeDelivery {
     }
     if (submitted.outcome === 'queued') {
       this.ports.store.settleWake(wake.id, 'sent', now);
-      this.retries.delete(wake.userId);
+      this.ports.store.clearRetry(wake.userId);
       return 'sent';
     }
     // Nothing was written to the inbox: the items wait for the next attempt.
@@ -889,7 +1010,10 @@ export function wireCoordinatorWakes(deps: {
     'conversationForSession' | 'delegationResultStore'
   >;
   readonly store: CoordinatorStore;
-  readonly threadInbox: Pick<ThreadInboxDelivery, 'submit' | 'list' | 'cancel'>;
+  readonly threadInbox: Pick<
+    ThreadInboxDelivery,
+    'submit' | 'list' | 'cancelQueued'
+  >;
   mayRead(userId: string, sessionId: string): boolean;
   readonly logger: CoordinatorWakePorts['logger'];
   readonly now?: () => number;
@@ -905,23 +1029,22 @@ export function wireCoordinatorWakes(deps: {
       deps.eventStore.delegationResultStore().owner(conversationId)
         ?.parentConversationId,
     submit: (input) => deps.threadInbox.submit(input),
-    withdrawQueuedWakes: (conversationId, userId) => {
-      let withdrawn = 0;
-      for (const entry of deps.threadInbox.list(conversationId, userId)) {
-        if (
-          entry.state !== 'queued' ||
-          !entry.clientTurnId ||
-          !isCoordinatorWakeClientTurnId(entry.clientTurnId)
-        )
-          continue;
-        if (
-          deps.threadInbox.cancel(conversationId, entry.clientTurnId, userId)
-            .kind === 'cancelled'
-        )
-          withdrawn += 1;
-      }
-      return withdrawn;
-    },
+    // One inbox operation: every matching entry is cancelled before the
+    // conversation is driven again, so none is placed in between.
+    withdrawQueuedWakes: (conversationId, userId) =>
+      deps.threadInbox.cancelQueued(
+        conversationId,
+        deps.threadInbox
+          .list(conversationId, userId)
+          .flatMap((entry) =>
+            entry.state === 'queued' &&
+            entry.clientTurnId !== undefined &&
+            isCoordinatorWakeClientTurnId(entry.clientTurnId)
+              ? [entry.clientTurnId]
+              : [],
+          ),
+        userId,
+      ).length,
     logger: deps.logger,
     ...(deps.now ? { now: deps.now } : {}),
     ...(deps.setTimer ? { setTimer: deps.setTimer } : {}),
@@ -956,9 +1079,10 @@ export interface CoordinatorSessionEvent {
  * Whether Station can reach a coordinator conversation now (the GET and PUT
  * routes' `delivery`), derived from its current Session:
  *
- * - wakes are `blocked` when no turn is running but the inbox would still
- *   read the Session as busy, because its last turn's boundary row never
- *   retired (#4051). The inbox holds a wake until that changes.
+ * - wakes are `blocked` when the Session's last turn has ended in the log
+ *   but its durable turn boundary is still held, because the terminal named
+ *   no invocation (#4051). The inbox holds a wake until that changes. A long
+ *   turn or an approval wait has no terminal yet, so it reads `ready`.
  * - tools are pending while the Session that is running now started without
  *   the built-in `station-control` server; the next Session gets it.
  */
@@ -968,7 +1092,12 @@ export function readCoordinatorDelivery(
     currentSessionId(conversationId: string): string;
     /** `session.started`, `session.configured` and `session.exited`, oldest first. */
     lifecycleEvents(threadId: string): readonly CoordinatorSessionEvent[];
-    turnRunning(threadId: string): boolean;
+    /**
+     * The Session's last turn has ended in the log: its newest `turn.started`
+     * is followed by a terminal. Not `hasActiveTurn`, which also reads the
+     * durable boundary and so cannot tell the two apart.
+     */
+    lastTurnEnded(threadId: string): boolean;
     /** The durable turn boundary still holds an unretired row. */
     boundaryActive(threadId: string): boolean;
   },
@@ -994,10 +1123,57 @@ export function readCoordinatorDelivery(
     if (Array.isArray(servers)) requested = servers;
   }
   const blocked =
-    !ports.turnRunning(threadId) && ports.boundaryActive(threadId);
+    ports.lastTurnEnded(threadId) && ports.boundaryActive(threadId);
   return {
     wakes: blocked ? 'blocked' : 'ready',
     toolsPending: live && !(requested ?? []).includes('station-control'),
     ...(engine ? { engine } : {}),
+  };
+}
+
+const TURN_TERMINAL_METHODS = [
+  'turn.completed',
+  'turn.aborted',
+  'runtime.error',
+];
+
+/**
+ * The production ports `readCoordinatorDelivery` reads, over the event store
+ * and the orchestration service. The runtime routes and the integration test
+ * both use this, so the test reads what production reads.
+ */
+export function coordinatorDeliveryPorts(deps: {
+  readonly eventStore: Pick<
+    EventStore,
+    'listEventsByMethods' | 'sessionTurnBoundaryAuthority'
+  >;
+  readonly service: { currentConversationSessionId(id: string): string };
+}): Parameters<typeof readCoordinatorDelivery>[1] {
+  return {
+    currentSessionId: (id) => deps.service.currentConversationSessionId(id),
+    lifecycleEvents: (threadId) =>
+      deps.eventStore
+        .listEventsByMethods(threadId, [
+          'session.started',
+          'session.configured',
+          'session.exited',
+        ])
+        .map((stored) => stored.payload),
+    lastTurnEnded: (threadId) => {
+      const events = deps.eventStore.listEventsByMethods(threadId, [
+        'turn.started',
+        ...TURN_TERMINAL_METHODS,
+      ]);
+      let ended = false;
+      for (const stored of events)
+        ended = TURN_TERMINAL_METHODS.includes(stored.payload.method);
+      return ended;
+    },
+    boundaryActive: (threadId) => {
+      const possible = deps.eventStore
+        .sessionTurnBoundaryAuthority()
+        .hasPossibleEffect(threadId);
+      return possible.kind === 'available' && possible.active;
+    },
   };
 }

@@ -685,6 +685,8 @@ import { AttachmentStagingService } from '../../services/orchestration/attachmen
 import { recoverCompletedTaskDispatches } from '../../services/orchestration/completed-task-dispatch-recovery.js';
 import { FileConversationAcknowledgementStore } from '../../services/orchestration/conversation-acknowledgement-store.js';
 import {
+  type CoordinatorWakeDelivery,
+  coordinatorDeliveryPorts,
   readCoordinatorDelivery,
   wireCoordinatorWakes,
 } from '../../services/orchestration/coordinator-session.js';
@@ -6012,6 +6014,11 @@ export function configureRuntimeRoutes(
   }
 
   /** #3568: follow-ups a busy conversation holds until its turn ends. */
+  /**
+   * #3628: the coordinator wake's placement policy, bound once the wake
+   * delivery exists (it is composed after the inbox it hands wakes to).
+   */
+  let coordinatorPlacement: CoordinatorWakeDelivery | undefined;
   function createThreadInboxDelivery(
     eventStore: EventStore,
   ): ThreadInboxDelivery {
@@ -6019,6 +6026,13 @@ export function configureRuntimeRoutes(
     return new ThreadInboxDelivery({
       ...conversationDeliveryPorts(eventStore),
       store: eventStore.threadInboxStore(),
+      placementRefusal: ({ conversationId, clientTurnId, payload, queuedAt }) =>
+        coordinatorPlacement?.placementRefusal({
+          conversationId,
+          clientTurnId,
+          userId: payload.actor.userId,
+          queuedAt,
+        }),
       hasPossibleEffect: (threadId) =>
         eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
       // The live continuation's own rule (`canContinueConversation`): the
@@ -6268,6 +6282,7 @@ export function configureRuntimeRoutes(
           logger: context.logger,
         })
       : undefined;
+  coordinatorPlacement = coordinatorWakes;
   const coordinatorEvents = context.orchestrationEventStore;
   context.app.route(
     '/api/orchestration',
@@ -6286,26 +6301,13 @@ export function configureRuntimeRoutes(
       ...(coordinatorEvents
         ? {
             delivery: (conversationId: string) =>
-              readCoordinatorDelivery(conversationId, {
-                currentSessionId: (id) =>
-                  context.orchestrationService.currentConversationSessionId(id),
-                lifecycleEvents: (threadId) =>
-                  coordinatorEvents
-                    .listEventsByMethods(threadId, [
-                      'session.started',
-                      'session.configured',
-                      'session.exited',
-                    ])
-                    .map((stored) => stored.payload),
-                turnRunning: (threadId) =>
-                  context.orchestrationService.hasActiveTurn(threadId),
-                boundaryActive: (threadId) => {
-                  const possible = coordinatorEvents
-                    .sessionTurnBoundaryAuthority()
-                    .hasPossibleEffect(threadId);
-                  return possible.kind === 'available' && possible.active;
-                },
-              }),
+              readCoordinatorDelivery(
+                conversationId,
+                coordinatorDeliveryPorts({
+                  eventStore: coordinatorEvents,
+                  service: context.orchestrationService,
+                }),
+              ),
           }
         : {}),
     }),

@@ -4609,7 +4609,9 @@ user id is the request principal's; a request that may be an agent's is
 refused (403 `person-approval-required`). A hosted Station answers 503
 `coordinator_unavailable` and withdraws the `coordinatorSession` capability.
 With a designation, GET and PUT also answer `delivery` (`CoordinatorDelivery`):
-`wakes` is `blocked` when the inbox would hold a wake indefinitely (#4051),
+`wakes` is `blocked` when the coordinator's last turn has ended but its
+turn boundary is still held, so the inbox would hold a wake indefinitely
+(#4051),
 `toolsPending` while the live Session started without the Station tools, and
 `engine` names its provider. A designation whose conversation the person can
 no longer read reads as none, and PUT replaces it without `replace`. Replacing
