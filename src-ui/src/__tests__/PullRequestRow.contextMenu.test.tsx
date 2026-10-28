@@ -198,6 +198,23 @@ describe('pull request row context menu', () => {
     expect(screen.getByRole('menu')).toBeTruthy();
   });
 
+  test("the hold's own contextmenu on the open menu panel is refused to the platform", () => {
+    vi.useFakeTimers();
+    const { open } = renderRow();
+    fireEvent.pointerDown(open, {
+      pointerType: 'touch',
+      button: 0,
+      clientX: 10,
+      clientY: 10,
+    });
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    // The menu opened under the finger; the platform's long-press lands on it.
+    expect(rightClick(screen.getByRole('menu'), { button: 0 })).toBe(true);
+    expect(screen.getAllByRole('menu')).toHaveLength(1);
+  });
+
   test("the hold's own contextmenu on the menu's backdrop keeps the menu open, focus inside", () => {
     vi.useFakeTimers();
     const { open } = renderRow();
