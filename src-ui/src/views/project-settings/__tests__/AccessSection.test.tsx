@@ -214,3 +214,126 @@ describe('Project access administration UI through SDK queries and mutations', (
     ).toBeTruthy();
   });
 });
+
+describe('enabling sharing with an operator passkey step-up (#4306)', () => {
+  const REVIEW = 'https://station.example.test:8443/consent/tx-1';
+  function route(enablement: Response | (() => Response), statuses: string[]) {
+    let shared = false;
+    const calls: string[] = [];
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = new URL(String(input));
+      const method = init?.method ?? 'GET';
+      calls.push(`${method} ${url.pathname}`);
+      if (url.pathname === '/api/projects/example/access/enablement')
+        return typeof enablement === 'function'
+          ? enablement()
+          : enablement.clone();
+      if (url.pathname === '/api/projects/example/access')
+        return shared
+          ? reply(view())
+          : Response.json(
+              { error: { code: 'project_access_forbidden' } },
+              { status: 403 },
+            );
+      if (url.pathname === '/api/projects/example/access/enable')
+        return Response.json(
+          {
+            status: 'step_up_required',
+            transaction: { id: 'tx-1', reviewUrl: REVIEW, expiresAt: 1 },
+          },
+          { status: 202 },
+        );
+      if (url.pathname === '/api/pairing/device-access-transactions/tx-1') {
+        const status = statuses.shift() ?? 'pending';
+        if (status === 'approved') shared = true;
+        return Response.json({ status });
+      }
+      throw new Error(`unexpected ${method} ${url.pathname}`);
+    });
+    return calls;
+  }
+
+  test('opens the consent-origin review during the click and shows People and access once approved', async () => {
+    const calls = route(reply({ enable: 'operator-passkey' }), [
+      'pending',
+      'approved',
+    ]);
+    const replace = vi.fn();
+    const close = vi.fn();
+    const open = vi.fn(() => ({ location: { replace }, close }));
+    vi.stubGlobal('open', open);
+    mount();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Enable Project sharing' }),
+    );
+    expect(open).toHaveBeenCalledWith('about:blank', '_blank');
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(REVIEW));
+    expect(close).not.toHaveBeenCalled();
+    expect(
+      await screen.findByRole('link', { name: 'Review sharing change' }),
+    ).toHaveProperty('href', REVIEW);
+    expect(
+      await screen.findByText('Collaborator', {}, { timeout: 5000 }),
+    ).toBeTruthy();
+    expect(calls).toContain('GET /api/pairing/device-access-transactions/tx-1');
+  }, 10_000);
+
+  test('a cancelled review says nothing was applied', async () => {
+    route(reply({ enable: 'operator-passkey' }), ['denied']);
+    vi.stubGlobal(
+      'open',
+      vi.fn(() => ({ location: { replace: vi.fn() }, close: vi.fn() })),
+    );
+    mount();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Enable Project sharing' }),
+    );
+    expect(
+      await screen.findByText('Cancelled. Nothing was applied.'),
+    ).toBeTruthy();
+  });
+
+  test('a caller that must sign in first gets the sign-in link, not Enable', async () => {
+    route(
+      reply({
+        enable: 'operator-sign-in',
+        signInUrl: 'https://station.example.test:8443/operator/sign-in',
+      }),
+      [],
+    );
+    mount();
+    expect(
+      await screen.findByRole('link', { name: 'Sign in as operator' }),
+    ).toHaveProperty(
+      'href',
+      'https://station.example.test:8443/operator/sign-in',
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Enable Project sharing' }),
+    ).toBeNull();
+  });
+
+  test('a caller without any enable path sees no Enable action', async () => {
+    const calls = route(reply({ enable: 'unavailable' }), []);
+    mount();
+    await waitFor(() =>
+      expect(calls).toContain('GET /api/projects/example/access/enablement'),
+    );
+    await screen.findByRole('button', { name: 'Refresh access' });
+    expect(
+      screen.queryByRole('button', { name: 'Enable Project sharing' }),
+    ).toBeNull();
+  });
+
+  test('a host without the enablement read keeps offering Enable', async () => {
+    const calls = route(
+      () => Response.json({ error: 'not_found' }, { status: 404 }),
+      [],
+    );
+    mount();
+    expect(
+      await screen.findByRole('button', { name: 'Enable Project sharing' }),
+    ).toBeTruthy();
+    expect(calls).toContain('GET /api/projects/example/access/enablement');
+  });
+});

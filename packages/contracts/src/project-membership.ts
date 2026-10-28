@@ -72,6 +72,26 @@ export interface ProjectAccessAdministrationView {
   invitations: readonly ProjectInvitationView[];
 }
 
+/**
+ * How the requesting caller may turn on sharing for a Project (#4306). It
+ * describes the caller only: it says nothing about whether the Project is
+ * already shared.
+ *
+ * - `direct`: the caller holds Station operator authority, so enabling commits.
+ * - `operator-passkey`: the caller has a current operator passkey session
+ *   bound to this Device. Enabling answers `202 step_up_required` with a
+ *   consent-origin review, and nothing changes until a fresh passkey
+ *   confirmation there.
+ * - `operator-sign-in`: the caller could sign in as operator at `signInUrl`
+ *   first. Only an enrolled passkey completes that sign-in.
+ * - `unavailable`: none of these.
+ */
+export type ProjectSharingEnablement =
+  | { readonly enable: 'direct' }
+  | { readonly enable: 'operator-passkey' }
+  | { readonly enable: 'operator-sign-in'; readonly signInUrl: string }
+  | { readonly enable: 'unavailable' };
+
 /** Minimal disclosure to a holder of a current invitation; no files, paths or member inventory. */
 export interface ProjectInvitationPreview {
   projectName: string;

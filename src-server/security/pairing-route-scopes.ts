@@ -638,6 +638,16 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     // script's to read; the person uses a device.
     personalTokens: 'refused',
   },
+  {
+    // #4306: how this caller may enable sharing; it reads no Project data.
+    id: '/api/projects/:slug/access/enablement:sharing-enablement-read',
+    method: 'GET',
+    prefix: '/api/projects/:slug/access/enablement',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+    personalTokens: 'refused',
+  },
   ...[
     '/api/projects/:slug/access/enable',
     '/api/projects/:slug/access/invitations',

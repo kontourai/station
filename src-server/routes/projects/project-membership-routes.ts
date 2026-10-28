@@ -1,4 +1,7 @@
-import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
+import type {
+  ProjectMembershipScope,
+  ProjectSharingEnablement,
+} from '@kontourai/station-contracts/project-membership';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import {
@@ -33,6 +36,23 @@ const intentSchema = z
   .strict();
 const logger = createLogger({ name: 'project-membership-routes' });
 class ProjectAccessBodyTooLarge extends Error {}
+/** Carries a step-up answer out of `perform` unchanged; nothing was committed. */
+class StepUpResponse extends Error {
+  constructor(readonly response: Response) {
+    super('step_up_required');
+  }
+}
+
+/** #4306: the operator passkey step-up for enabling sharing, supplied by the runtime. */
+export interface ProjectSharingEnableStepUp {
+  enablement(request: Request, slug: string): Promise<ProjectSharingEnablement>;
+  /** A `202 step_up_required` answer, or `undefined` for the ordinary path. */
+  enable(
+    c: Context,
+    slug: string,
+    localProjectId: string,
+  ): Promise<Response | undefined>;
+}
 
 async function membershipBody(c: Context): Promise<unknown> {
   // Runtime admission has already bounded and authenticated this Request.
@@ -80,6 +100,7 @@ export function createProjectMembershipRoutes(
   service: ProjectMembershipService | undefined,
   authority: (request: Request) => ProjectMembershipAuthority,
   invitationOrigin?: string,
+  stepUp?: ProjectSharingEnableStepUp,
 ) {
   const app = new Hono();
   async function perform<T>(
@@ -128,6 +149,7 @@ export function createProjectMembershipRoutes(
         },
       );
     } catch (error) {
+      if (error instanceof StepUpResponse) return error.response;
       if (error instanceof ProjectAccessBodyTooLarge)
         return c.json({ error: { code: 'request_body_too_large' } }, 413);
       if (error instanceof z.ZodError || error instanceof SyntaxError)
@@ -176,6 +198,14 @@ export function createProjectMembershipRoutes(
       (data) => managementRelease(data.scope, data.actingPrincipal.id),
     ),
   );
+  // Describes the caller only; it reads no Project files or membership.
+  app.get('/:slug/access/enablement', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    const data: ProjectSharingEnablement = stepUp
+      ? await stepUp.enablement(c.req.raw, c.req.param('slug'))
+      : { enable: 'unavailable' };
+    return c.json({ success: true, data });
+  });
   app.post('/:slug/access/enable', (c) =>
     perform(
       c,
@@ -184,6 +214,12 @@ export function createProjectMembershipRoutes(
           .object({ localProjectId: z.string().min(1).max(512) })
           .strict()
           .parse(await membershipBody(c));
+        const pending = await stepUp?.enable(
+          c,
+          c.req.param('slug'),
+          body.localProjectId,
+        );
+        if (pending) throw new StepUpResponse(pending);
         return {
           ...(await owner.enable(
             c.req.param('slug'),

@@ -225,6 +225,7 @@ import {
 import { createProjectRoomAccess } from './project-room-access.js';
 import { projectRoomAgentExecution } from './project-room-agent-runtime.js';
 import { createProjectRoomTaskContext } from './project-room-task-context.js';
+import { createProjectSharingStepUp } from './project-sharing-step-up.js';
 import { runtimeToolLibraryDependencies } from './tool-library-runtime.js';
 
 export {
@@ -7047,6 +7048,29 @@ export function configureRuntimeRoutes(
       context.projectMembership,
       projectMembershipAuthority,
       context.deploymentAuthentication?.publicOrigin,
+      // #4306: an operator passkey session enables sharing remotely, one
+      // fresh consent-origin passkey confirmation per enable.
+      createProjectSharingStepUp({
+        membership: context.projectMembership,
+        authority: projectMembershipAuthority,
+        consentChannel: context.consentChannel,
+        operatorSessions: context.operatorSessions,
+        isPrincipalCurrent: (request) =>
+          isRuntimeRequestPrincipalCurrent(
+            request,
+            context.environmentSecurityService,
+          ),
+        mayPostEnable: (request, slug) =>
+          runtimeRequestPrincipalMayAccessHttpRoute(
+            request,
+            context.environmentSecurityService,
+            {
+              method: 'POST',
+              path: `/api/projects/${encodeURIComponent(slug)}/access/enable`,
+            },
+          ),
+        logger: context.logger,
+      }),
     ),
   );
   // #90 Browser pane: personal hosts only (same gate as the device routes),
