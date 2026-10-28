@@ -9,11 +9,15 @@ import {
   missingGrowth,
   validateManifest,
 } from '../cli-mcp-parity.mjs';
+import { sanitizedGitEnvironment } from '../lib/git-environment.mjs';
 
 type Entry = Record<string, unknown>;
 type Manifest = Record<'app' | 'cli' | 'tools', Record<string, Entry>>;
 
 const makeTempDir = trackTempDirs();
+// Git exports GIT_DIR and friends to hooks and `rebase --exec`; inherited,
+// they would point every git call here (and `git init`) at the real repo.
+const gitEnv = sanitizedGitEnvironment();
 const realManifest = (): Manifest =>
   JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
 const sorted = (section: Record<string, Entry>) =>
@@ -27,7 +31,7 @@ const sorted = (section: Record<string, Entry>) =>
 function runGate(
   manifest: Manifest | null,
   args: string[] = [],
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = gitEnv,
 ) {
   const extra: string[] = [];
   if (manifest) {
@@ -46,6 +50,7 @@ function runGate(
 const git = (...args: string[]) =>
   execFileSync('git', args, {
     encoding: 'utf8',
+    env: gitEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   }).trim();
@@ -101,11 +106,27 @@ describe('cli-mcp parity entry point', () => {
   });
 
   it('fails without a merge base instead of comparing against the tip', () => {
-    // A repository sharing no history with origin/main (none at all here).
+    // HEAD and origin/main both exist but share no history, as in an
+    // unrelated or too-shallow fetch: the tip is there to fall back to.
     const unrelated = makeTempDir('cli-mcp-parity-git-');
+    const commit = [
+      '-c',
+      'user.name=Parity',
+      '-c',
+      'user.email=parity@example.invalid',
+      '-c',
+      'commit.gpgsign=false',
+      '-C',
+      unrelated,
+    ];
     git('init', '--quiet', unrelated);
+    git(...commit, 'commit', '--quiet', '--allow-empty', '-m', 'head');
+    const tree = git('-C', unrelated, 'rev-parse', 'HEAD^{tree}');
+    // No parent: a root commit unrelated to HEAD.
+    const orphan = git(...commit, 'commit-tree', tree, '-m', 'unrelated');
+    git('-C', unrelated, 'update-ref', 'refs/remotes/origin/main', orphan);
     const { status, output } = runGate(null, [], {
-      ...process.env,
+      ...gitEnv,
       GIT_DIR: join(unrelated, '.git'),
     });
     expect(output).toContain('cannot find the merge base with origin/main');
