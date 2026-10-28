@@ -504,6 +504,16 @@ export class OAuthClientRequiredError extends StationOwnedToolServerError {
   }
 }
 
+/** The server now names a different authorization server than this client's. */
+export class OAuthClientIssuerMismatchError extends StationOwnedToolServerError {
+  override name = 'OAuthClientIssuerMismatchError';
+  constructor(readonly serverId: string) {
+    super(
+      `Integration '${serverId}' now names a different OAuth authorization server than its client was first used with. Check the server before resetting the integration's credentials and signing in again.`,
+    );
+  }
+}
+
 /** The configured client secret's binding could not be materialized. */
 export class OAuthClientSecretUnavailableError extends StationOwnedToolServerError {
   override name = 'OAuthClientSecretUnavailableError';
@@ -693,16 +703,47 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
     if (clientId) {
       // Pre-registered: rebuilt from configuration on every use, so the
       // secret stays in its binding and never reaches the credential store.
+      // Without an issuer there is no server to present it to.
+      if (!ctx) return { client_id: clientId };
+      await this.pinPreRegisteredIssuer(clientId, ctx.issuer);
       const secret = this.client?.clientSecret
         ? await this.client.clientSecret()
         : undefined;
       return {
         client_id: clientId,
         ...(secret ? { client_secret: secret } : {}),
-        ...(ctx ? { issuer: ctx.issuer } : {}),
+        issuer: ctx.issuer,
       };
     }
     return this.readBound<StoredOAuthClientInformation>(KEYS.client, ctx);
+  }
+
+  /**
+   * A configured client has no issuer of its own, so the first authorization
+   * server it is used with in this bucket becomes its issuer. A resource that
+   * later names a different server (GHSA-6qxp-vccf-f47h) is refused before
+   * the secret is read. Changing the client, the endpoint, or disconnecting
+   * clears the pin with the other credentials.
+   */
+  private async pinPreRegisteredIssuer(
+    clientId: string,
+    issuer: string,
+  ): Promise<void> {
+    const record = readJson<BoundRecord<StoredOAuthClientInformation>>(
+      this.store,
+      this.bucket,
+      KEYS.client,
+    );
+    if (
+      record?.schemaVersion === 1 &&
+      record.resource === this.resourceIdentity &&
+      record.value?.client_id === clientId
+    ) {
+      if (record.issuer !== issuer)
+        throw new OAuthClientIssuerMismatchError(this.serverId);
+      return;
+    }
+    await this.writeBound(KEYS.client, { client_id: clientId }, issuer);
   }
   async saveClientInformation(
     value: StoredOAuthClientInformation,

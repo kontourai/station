@@ -301,6 +301,10 @@ against the new graph. These controls do not establish every transitive
 consumer's remote authorization behavior or prove an attacker reached Station.
 New interactive sign-in trust and direct low-level vendor calls remain
 separate from this advisory's saved-credential binding claim.
+A [configured OAuth client](connections.md#use-your-own-oauth-client) has no
+issuer of its own. Station pins it to the first authorization server it is used
+with in each credential bucket and refuses another issuer before reading its
+secret; resetting the integration's credentials clears that pin.
 
 The earlier local audit and hosted receipts retain their observation times:
 these newly disclosed findings do not rewrite those results. Current audit,

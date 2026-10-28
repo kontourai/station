@@ -153,6 +153,11 @@ The latter accepts `bind` or `unbind`, the exact destination grant and an
 hooks. Pass the render-captured request scope: caches partition by API base and
 authority key, and old responses cannot update a replacement authority. Existing
 MCP consumer inputs and results retain their own separate client functions.
+`bindOAuthClientSecret(apiBase, id, {integrationId, expectedRevision})` and
+`unbindOAuthClientSecret` bind a shared binding as one remote integration's
+OAuth client secret, with `useBindOAuthClientSecretMutation` and
+`useUnbindOAuthClientSecretMutation` hooks. `getIntegrationSecretBindings`
+returns the bound id as `oauthClientSecretBindingId`.
 
 ## Integration discovery
 
@@ -173,8 +178,8 @@ withhold stale provenance.
 `useIntegrationAccountQuery(id, projectSlug?, requestScope?)` reads the account
 summary. Pass the captured `ApiRequestScope` to partition account state by
 Station and principal authority and refuse a request after that authority changes.
-`useStartIntegrationOAuthMutation()` accepts `{id, projectSlug?}` and returns an
-`authorizationUrl`. `useFinishIntegrationOAuthMutation()` accepts
+`useStartIntegrationOAuthMutation()` accepts `{id, projectSlug?, scopes?}` and
+returns an `authorizationUrl`; `scopes` is the person's choice for that sign-in. `useFinishIntegrationOAuthMutation()` accepts
 `{id, projectSlug?, callbackUrl}` for remote sign-in completion, evicts settled
 mutation variables and refreshes account/integration queries. Existing endpoint
 ownership checks still apply; a successful catalog install does not sign in.

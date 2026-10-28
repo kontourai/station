@@ -15,6 +15,7 @@ import {
 import { MCPService } from '../mcp-service.js';
 import {
   INSTANCE_CREDENTIAL_OWNER,
+  OAuthClientIssuerMismatchError,
   OAuthClientRequiredError,
   principalCredentialOwner,
   StationToolServerOAuthProvider,
@@ -452,6 +453,47 @@ describe('scopes are the signing-in person’s choice', () => {
       }
     },
   );
+});
+
+describe('a configured client secret stays with its first authorization server', () => {
+  test('a different issuer is refused before the secret is read (GHSA-6qxp-vccf-f47h)', async () => {
+    const env = setup();
+    const secret = vi.fn(async () => CLIENT_SECRET);
+    const provider = new StationToolServerOAuthProvider(
+      toolServerCredentialStoreFor(env.home, INSTANCE_CREDENTIAL_OWNER),
+      SERVER,
+      `${ORIGIN}/mcp`,
+      `http://127.0.0.1:${PORT}/integrations/${SERVER}/oauth/callback`,
+      undefined,
+      INSTANCE_CREDENTIAL_OWNER,
+      { clientId: CLIENT_ID, clientSecret: secret },
+    );
+    expect(await provider.clientInformation({ issuer: ORIGIN })).toEqual({
+      client_id: CLIENT_ID,
+      client_secret: CLIENT_SECRET,
+      issuer: ORIGIN,
+    });
+    expect(await provider.clientInformation({ issuer: ORIGIN })).toMatchObject({
+      client_secret: CLIENT_SECRET,
+    });
+    expect(secret).toHaveBeenCalledTimes(2);
+
+    await expect(
+      provider.clientInformation({ issuer: 'https://other-as.example' }),
+    ).rejects.toBeInstanceOf(OAuthClientIssuerMismatchError);
+    expect(secret).toHaveBeenCalledTimes(2);
+    // No issuer context, no server to present a secret to.
+    expect(await provider.clientInformation()).toEqual({
+      client_id: CLIENT_ID,
+    });
+    expect(secret).toHaveBeenCalledTimes(2);
+
+    // Resetting the credentials (disable, endpoint or client change) re-pins.
+    await provider.clearCredentials();
+    expect(
+      await provider.clientInformation({ issuer: 'https://other-as.example' }),
+    ).toMatchObject({ issuer: 'https://other-as.example' });
+  });
 });
 
 describe('no client and no registration', () => {

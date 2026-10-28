@@ -1439,6 +1439,26 @@ removes the caller's own credential; the next call that needs it refuses.
 
 MCP Apps reads and calls are not available yet for these integrations.
 
+### Remote OAuth client
+
+`POST /integrations/:id/oauth/authorize` also accepts optional `scopes`, the
+signing-in person's choice for that sign-in: 1–32 distinct OAuth scope tokens,
+or a 400. They replace the integration's `oauthClient.scopes` default, which
+replaces the scopes the server advertises; neither is written back.
+
+`oauthClient` on `POST`/`PUT /integrations` accepts `clientId`,
+`clientMetadataUrl` (HTTPS with a path) and `scopes`. It refuses
+`clientSecretRef`, which only `POST /api/secret-bindings/:id/bind` and `unbind`
+with `{kind: "mcp-integration-oauth-client", integrationId, expectedRevision}`
+write; that body accepts no other field. The read projection omits the binding
+id; `GET /api/secret-bindings/integrations/:id` returns it as
+`oauthClientSecretBindingId`. Changing `clientId` or `clientMetadataUrl` clears
+the integration's tokens; changing the endpoint while a secret is bound is
+refused. A configured client is refused for an authorization server other
+than the one it was first used with. A server without client registration records
+`probe.authorization.state: "client-id-required"`. See
+[Use your own OAuth client](../guides/connections.md#use-your-own-oauth-client).
+
 ### Delete Integration
 
 `DELETE /integrations/:id` returns `{success: true}` after deletion.

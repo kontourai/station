@@ -1642,6 +1642,10 @@ write it back as the default. An empty field leaves the choice to the server.
 Station checks only that each scope is a well-formed OAuth scope (1–32 distinct
 values); the provider decides what each scope allows.
 
+A configured client is pinned to the first authorization server it is used
+with for each account. If the server later names a different authorization
+server, sign-in and refresh stop before the client secret is read.
+
 Changing the client ID or metadata URL clears the integration's tokens, because
 they belong to the client that obtained them; everyone signs in again. While a
 client secret is bound, the endpoint cannot change; remove the secret first.
