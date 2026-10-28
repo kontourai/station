@@ -140,6 +140,15 @@ const ENGINE_MODE_DESCRIPTIONS: Partial<
     // over, as with Claude and Codex (`resolveDefaultPick`).
     opencode:
       "Uses OpenCode's own permission settings until you pick a mode here. After that, Default means Ask first.",
+    // Station sends Codex no mode here, so the user's Codex configuration
+    // decides. With none, Codex (EXECUTED, codex-cli 0.164.0, empty
+    // CODEX_HOME) reports `on-request` with a read-only sandbox for a host
+    // session in an untrusted folder, and workspace-write without network
+    // under Station's `station-workspace` profile; both are "at most this
+    // folder, asks for network". Not "Codex Auto": that holds only for the
+    // confined case.
+    codex:
+      'Uses your Codex settings until you pick a mode here. Unset, Codex writes at most in this folder and asks for network.',
   },
   ask: {
     codex:
