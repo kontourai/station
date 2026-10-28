@@ -26,6 +26,7 @@ import {
 } from '@kontourai/station-sdk';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
+import { turnInterruptedContinueBoundaryId } from '@kontourai/station-shared/runtime-event-projection';
 import {
   skillExperienceAttachmentInputs,
   skillExperienceInputErrors,
@@ -506,7 +507,11 @@ export function useSendMessage(
         ambientContext = [ambientContext, TASK_SHAPING_INSTRUCTION]
           .filter(Boolean)
           .join('\n\n');
-      const preserveComposer = options?.preserveComposer === true;
+      // A Continue key marks the message composed on every send of it (a
+      // Retry, an outbox replay, a queue drain), not only the first.
+      const preserveComposer =
+        options?.preserveComposer === true ||
+        turnInterruptedContinueBoundaryId(turnId) !== undefined;
       // What a refusal restores to an empty composer: nothing, for a message
       // the composer never held.
       const submittedDraft = preserveComposer ? '' : content;
@@ -1387,7 +1392,7 @@ export function useSendMessage(
                       const now = activeChatsStore.getSnapshot()[sessionId];
                       // The draft the rollback restored is this message:
                       // sending it empties the composer as a send would.
-                      if (now?.input === content)
+                      if (!preserveComposer && now?.input === content)
                         updateChat(sessionId, { input: '' });
                       if (
                         rollback.attachments &&

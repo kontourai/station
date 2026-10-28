@@ -1429,6 +1429,56 @@ describe('useSendMessage: a composed message leaves the composer alone', () => {
     );
   });
 
+  it('any later send under the Continue key keeps the composer out, without the flag', async () => {
+    // What an outbox replay or a queue drain does: the key, no option.
+    sendExecutionMessageMock.mockResolvedValueOnce(receipt());
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(
+        chat,
+        'codex',
+        undefined,
+        'Continue please',
+        [],
+        undefined,
+        KEY,
+      );
+    });
+    const body = sendExecutionMessageMock.mock.calls[0]?.[1];
+    expect(body).toMatchObject({ clientTurnId: KEY });
+    expect(body).not.toHaveProperty('attachmentRefs');
+    const state = activeChatsStore.getSnapshot()[chat];
+    expect(state?.input).toBe('my unsent draft');
+    expect(state?.attachmentStages).toEqual([draftStage]);
+  });
+
+  it('a Retry of a refused Continue keeps the composer out', async () => {
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new ChatHttpError({ status: 400, message: 'Refused' } as never),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await composed(result.current);
+    });
+    const retry = activeChatsStore
+      .getSnapshot()
+      [chat]?.ephemeralMessages?.find(
+        (message) => message.action?.label === 'Retry',
+      );
+    expect(retry).toBeDefined();
+    sendExecutionMessageMock.mockResolvedValueOnce(receipt());
+    await act(async () => {
+      await retry?.action?.handler();
+    });
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2);
+    const body = sendExecutionMessageMock.mock.calls[1]?.[1];
+    expect(body).toMatchObject({ clientTurnId: KEY });
+    expect(body).not.toHaveProperty('attachmentRefs');
+    const state = activeChatsStore.getSnapshot()[chat];
+    expect(state?.input).toBe('my unsent draft');
+    expect(state?.attachmentStages).toEqual([draftStage]);
+  });
+
   it('while a turn is running it is neither sent, steered nor queued', async () => {
     activeChatsStore.updateChat(chat, {
       status: 'sending',

@@ -356,7 +356,7 @@ latest row and nothing is running or waiting to send. Continue sends a fixed
 note as an ordinary turn, keyed `continue-interrupted:<boundary id>` from the
 notice's `interruptedTurnBoundary`, so a second tap or another device names the
 same turn and the server's turn deduplication starts it once. It is not the
-composer's send: the draft, quotes, attachments and visual skill stay in the
+composer's send on any send of that key (a Retry, an outbox replay): the draft, quotes, attachments and visual skill stay in the
 composer, a refusal puts nothing there, and a turn running by the time it is
 sent makes it send nothing rather than steer or queue under a new key (an
 engine that answers busy after receiving it holds it in the queue under the

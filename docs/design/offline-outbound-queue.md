@@ -108,7 +108,7 @@ the same before-the-request row as a composer send. Sends with attachments or
 a visual skill are not written to the queue (their draft is kept until
 Station answers, as before). A message Station composes for the person (the
 chat's Continue after a restart) gets the same before-the-request row under its
-own derived key, but it is not the composer's: it carries none of the
+own derived key, but it is not the composer's on any send of that key (a Retry or a replay as much as the first): it carries none of the
 composer's files, a refusal hands nothing back to the composer, and while a
 turn is running it is not sent, steered or queued under a new key. An engine
 that answers busy after receiving it holds it in the queue under the same key,

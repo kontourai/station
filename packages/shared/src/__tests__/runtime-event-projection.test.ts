@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { frameAgentMessage } from '../agent-message-frame.js';
 import {
   projectRuntimeEventsToMessages,
+  turnInterruptedContinueBoundaryId,
   turnInterruptedContinueClientTurnId,
 } from '../runtime-event-projection.js';
 
@@ -1667,6 +1668,24 @@ describe('projectRuntimeEventsToMessages', () => {
       expect(turnInterruptedContinueClientTurnId('turn-boundary:abc')).not.toBe(
         turnInterruptedContinueClientTurnId('turn-boundary:abd'),
       );
+    });
+
+    it('reads the boundary back from a Continue key, and only from one', () => {
+      expect(
+        turnInterruptedContinueBoundaryId(
+          turnInterruptedContinueClientTurnId('turn-boundary:abc'),
+        ),
+      ).toBe('turn-boundary:abc');
+      expect(turnInterruptedContinueBoundaryId('continue-interrupted:')).toBe(
+        undefined,
+      );
+      expect(
+        turnInterruptedContinueBoundaryId(
+          'x-continue-interrupted:turn-boundary:abc',
+        ),
+      ).toBeUndefined();
+      expect(turnInterruptedContinueBoundaryId('a-random-key')).toBeUndefined();
+      expect(turnInterruptedContinueBoundaryId(undefined)).toBeUndefined();
     });
 
     it('renders NO banner for a fabricated (sessionState, transitionReason, transitionSource) triple missing interruptedTurnBoundary', () => {
