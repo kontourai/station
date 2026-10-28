@@ -102,7 +102,7 @@ describe('pull request row context menu', () => {
     expect(open).toBeTruthy();
   });
 
-  test('after a hold, a tap on the menu it opened is not swallowed', () => {
+  test('after a hold, a quick tap on the menu it opened is not swallowed', () => {
     vi.useFakeTimers();
     const { open, unlink } = renderRow();
     fireEvent.pointerDown(open, {
@@ -118,9 +118,32 @@ describe('pull request row context menu', () => {
     act(() => {
       vi.advanceTimersByTime(200);
     });
-    // The menu is a body portal, but React bubbles its events through the
-    // row: the row must not read this press as a new hold or this click as
-    // the hold's trailing one.
+    // Inside the 700ms swallow window. The menu is a body portal, but React
+    // bubbles its events through the row: this click is the menu's, not the
+    // hold's trailing one.
+    const row = screen.getByRole('menuitem', { name: 'Unlink' });
+    fireEvent.pointerDown(row, { pointerType: 'touch', button: 0 });
+    fireEvent.pointerUp(row, { pointerType: 'touch' });
+    fireEvent.click(row);
+    expect(unlink).toHaveBeenCalledTimes(1);
+  });
+
+  test('holding a row of the open menu is not a new hold on the item', () => {
+    vi.useFakeTimers();
+    const { open, unlink } = renderRow();
+    fireEvent.pointerDown(open, {
+      pointerType: 'touch',
+      button: 0,
+      clientX: 10,
+      clientY: 10,
+    });
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    fireEvent.pointerUp(open, { pointerType: 'touch' });
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
     const row = screen.getByRole('menuitem', { name: 'Unlink' });
     fireEvent.pointerDown(row, { pointerType: 'touch', button: 0 });
     act(() => {
@@ -147,6 +170,10 @@ describe('pull request row context menu', () => {
     // Android's recogniser fires after the timer, while the finger is down.
     expect(rightClick(open, { button: 0 })).toBe(true);
     expect(screen.getAllByRole('menu')).toHaveLength(1);
+    // Still the open menu's: a repeat open must not pull focus back out.
+    expect(screen.getByRole('menu').contains(document.activeElement)).toBe(
+      true,
+    );
   });
 
   test('a long-press contextmenu that closed the menu first opens it again', () => {
