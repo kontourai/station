@@ -7171,6 +7171,99 @@ describe('chat-host-images: an ACP engine that exits on its own', () => {
   });
 });
 
+describe('chat-host-images: an ACP approval relaunch and its temp folder', () => {
+  const makeHome = trackTempDirs();
+
+  async function relaunchWithOldExitMidStart(nextStart: 'succeeds' | 'fails') {
+    const home = makeHome('acp-relaunch-tmp-');
+    const previous = process.env.STATION_HOME;
+    process.env.STATION_HOME = home;
+    const uninstall = installSessionTmpDirPolicy(() => true);
+    const exits: Array<() => void> = [];
+    let releaseStart!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseStart = resolve;
+    });
+    try {
+      const { adapter } = createAdapter({
+        resumeSessionCapability: true,
+        onProcess: (proc, index) => {
+          const emitter = new EventEmitter();
+          Object.assign(proc, { once: emitter.once.bind(emitter) });
+          exits.push(() => emitter.emit('exit', 1));
+          if (index === 1) {
+            const start = proc.start.bind(proc);
+            proc.start = async () => {
+              await gate;
+              if (nextStart === 'fails')
+                throw new Error('replacement did not start');
+              return start();
+            };
+            // The real resume answers with a result (the fake answers nothing).
+            const resume = proc.resumeSession.bind(proc);
+            Object.assign(proc, {
+              resumeSession: async (...args: Parameters<typeof resume>) => {
+                await resume(...args);
+                return {};
+              },
+            });
+          }
+        },
+      });
+      await adapter.startSession({
+        provider: 'acp',
+        threadId: 'thread-relaunch',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+      });
+      const own = sessionTmpDirPath('thread-relaunch', home);
+      expect(sessionTempRoot('thread-relaunch')).toBe(own);
+      const record = (
+        adapter as unknown as { sessions: Map<string, unknown> }
+      ).sessions.get('thread-relaunch');
+      const relaunch = (
+        adapter as unknown as {
+          relaunchOnApprovalFloor: (
+            record: unknown,
+            floor: undefined,
+          ) => Promise<{ ok: boolean }>;
+        }
+      ).relaunchOnApprovalFloor(record, undefined);
+      // The old process dies while its replacement is still starting.
+      await vi.waitFor(() => expect(exits.length).toBe(2));
+      exits[0]!();
+      releaseStart();
+      const outcome = await relaunch;
+      const result = {
+        outcome,
+        own,
+        root: sessionTempRoot('thread-relaunch'),
+        exists: existsSync(own),
+      };
+      await adapter.stopAll();
+      return result;
+    } finally {
+      uninstall();
+      if (previous === undefined) delete process.env.STATION_HOME;
+      else process.env.STATION_HOME = previous;
+    }
+  }
+
+  test('the old process exiting mid-start does not take the folder the replacement now uses', async () => {
+    const result = await relaunchWithOldExitMidStart('succeeds');
+    expect(result.outcome).toEqual({ ok: true });
+    expect(result.exists).toBe(true);
+    expect(result.root).toBe(result.own);
+  });
+
+  test('if the replacement then fails to start, the launch is released, not leaked', async () => {
+    const result = await relaunchWithOldExitMidStart('fails');
+    expect(result.outcome.ok).toBe(false);
+    expect(result.root).toBeUndefined();
+    expect(result.exists).toBe(false);
+  });
+});
+
 describe('chat-host-images: which ACP engine exit ends its launch', () => {
   const engine = {};
   const other = {};

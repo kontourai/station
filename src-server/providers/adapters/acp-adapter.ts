@@ -645,6 +645,8 @@ export interface AcpSessionRecord {
    * not release it.
    */
   relaunching?: boolean;
+  /** The current process exited while a relaunch was starting its replacement. */
+  exitedDuringRelaunch?: boolean;
   /** chat-host-images: the temp-root launch this session committed. */
   hostImageLaunch?: LaunchedRoot;
   /** The MCP servers the session was established with, for a relaunch. */
@@ -1302,6 +1304,12 @@ export class AcpAdapter implements ProviderAdapterShape {
       (
         engine as { once?: (event: string, listener: () => void) => unknown }
       ).once?.('exit', () => {
+        if (
+          record.relaunching &&
+          this.sessions.get(input.threadId) === record &&
+          record.process === engine
+        )
+          record.exitedDuringRelaunch = true;
         if (
           acpEngineExitEndsLaunch({
             current: this.sessions.get(input.threadId) === record,
@@ -3168,6 +3176,11 @@ export class AcpAdapter implements ProviderAdapterShape {
           destroyError,
         );
       });
+      // chat-host-images: the old process died while its replacement was
+      // starting, and the replacement did not take over. No later exit will
+      // fire and ACP publishes no session.exited, so the launch ends here.
+      if (record.exitedDuringRelaunch)
+        removeLaunchedRoot(record.session.threadId, record.hostImageLaunch);
       return {
         ok: false,
         reason: `the new engine process did not resume the session (${errorMessage(error)})`,
@@ -3175,6 +3188,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     } finally {
       if (timer) clearTimeout(timer);
       record.relaunching = false;
+      record.exitedDuringRelaunch = false;
     }
 
     record.process = next;
