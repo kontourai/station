@@ -17,10 +17,11 @@
  *
  * ## Nesting and lock order
  *
- * A holder exports `STATION_HEAVY_CHECK_SLOT_HELD=<pid>[:<birth>]`; a
- * descendant that asks for a slot while that exact process is alive is
- * admitted under its ancestor's slot instead of waiting on it. A marker
- * naming a dead or recycled pid is ignored and the caller queues normally.
+ * A holder exports `STATION_HEAVY_CHECK_SLOT_HELD` naming its exact claim
+ * (slot directory, index and nonce); a descendant that asks for a slot while
+ * that claim is still held by a live process is admitted under it instead of
+ * waiting on it. A marker for a released, reclaimed or dead claim is ignored
+ * and the caller queues normally.
  *
  * Admission is taken in one order: verification-coordinator admission, then
  * a heavy-check slot, then typecheck or Biome slots. A coordinator owner takes
@@ -45,8 +46,7 @@ import {
 import { join } from 'node:path';
 import {
   acquireTypecheckSlot,
-  holderIsLive,
-  ownBirthFingerprint,
+  liveSlotClaim,
 } from './typecheck-host-slots.mjs';
 
 export const HEAVY_CHECK_HELD_ENV = 'STATION_HEAVY_CHECK_SLOT_HELD';
@@ -136,37 +136,49 @@ function resolveWaitMs(env) {
 }
 
 /**
- * The live holder `env`'s marker names, or null. The marker is the holder's
- * pid and, where cheap to read, its birth fingerprint, so a recycled pid does
- * not inherit an old holder's admission.
+ * The pid of the live claim `env`'s marker names, or null. The marker names
+ * one exact slot claim (directory, index, nonce), so it admits only while
+ * that claim is still held by a live process: not after the slot was
+ * released, not after its holder died, and not when the pid was recycled.
  *
  * @param {NodeJS.ProcessEnv} env
  * @param {{ pidAlive?: (pid: number) => boolean, lookupBirth?: (pid: number) => string | null }} [liveness]
  */
 function liveMarkedHolder(env, liveness = {}) {
-  const match = /^([1-9]\d*)(?::(.+))?$/.exec(env[HEAVY_CHECK_HELD_ENV] ?? '');
-  if (!match) return null;
-  const record = {
-    pid: Number(match[1]),
-    start: match[2] ?? null,
-    acquiredAt: Date.now(),
-  };
-  return holderIsLive(record, liveness) ? record.pid : null;
+  let claim;
+  try {
+    claim = JSON.parse(env[HEAVY_CHECK_HELD_ENV] ?? '');
+  } catch {
+    return null;
+  }
+  if (
+    typeof claim?.dir !== 'string' ||
+    !Number.isInteger(claim.index) ||
+    claim.index < 0 ||
+    typeof claim.nonce !== 'string'
+  )
+    return null;
+  return (
+    liveSlotClaim(claim.dir, claim.index, claim.nonce, liveness)?.pid ?? null
+  );
 }
 
 /**
- * `env` marking the process `pid` as the heavy-check holder for its
+ * `env` marking the claim `slot` as the heavy-check holder for its
  * descendants: the slot runner, or a coordinator owner, after it claims a
  * slot.
  *
  * @param {NodeJS.ProcessEnv} env
- * @param {number} [pid]
+ * @param {{ dir: string, index: number, nonce?: string }} slot
  */
-export function withHeavyCheckHeld(env, pid = process.pid) {
-  const start = ownBirthFingerprint({ pid });
+export function withHeavyCheckHeld(env, slot) {
   return {
     ...env,
-    [HEAVY_CHECK_HELD_ENV]: start ? `${pid}:${start}` : String(pid),
+    [HEAVY_CHECK_HELD_ENV]: JSON.stringify({
+      dir: slot.dir,
+      index: slot.index,
+      nonce: slot.nonce,
+    }),
   };
 }
 
@@ -223,7 +235,7 @@ export function holdHeavyCheckSlot({
           }
         : {}),
     });
-    return { env: withHeavyCheckHeld(env), release: slot.release };
+    return { env: withHeavyCheckHeld(env, slot), release: slot.release };
   })();
 }
 
@@ -304,6 +316,7 @@ function admittedWithoutSlot({
  *   pidAlive?: (pid: number) => boolean,
  *   lookupBirth?: (pid: number) => string | null,
  *   log?: (message: string) => void,
+ *   announceBypass?: boolean,
  * } & Record<string, unknown>} [options] Remaining options pass through to `acquireTypecheckSlot` (test seams).
  * @returns {Promise<{ index: number, dir: string, slots: number, reentrant: boolean, skipped: boolean, release: () => void }>}
  */
@@ -313,6 +326,9 @@ export async function acquireHeavyCheckSlot({
   pidAlive,
   lookupBirth,
   log = (message) => process.stderr.write(`${message}\n`),
+  // tsc-slot's stderr is read as compiler diagnostics, so it stays silent
+  // when no slot is needed; waiting and refusal still report.
+  announceBypass = true,
   ...seams
 } = {}) {
   const dir = resolveHeavyCheckSlotDirectory({ env });
@@ -320,7 +336,12 @@ export async function acquireHeavyCheckSlot({
     ...(pidAlive ? { pidAlive } : {}),
     ...(lookupBirth ? { lookupBirth } : {}),
   };
-  const bypass = admittedWithoutSlot({ label, env, liveness, log });
+  const bypass = admittedWithoutSlot({
+    label,
+    env,
+    liveness,
+    log: announceBypass ? log : () => {},
+  });
   if (bypass)
     return {
       index: -1,

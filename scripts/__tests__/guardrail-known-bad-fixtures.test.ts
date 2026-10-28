@@ -1260,6 +1260,7 @@ describe('typecheck:scripts refuses a scripts/ tree it does not fully account fo
       libs: [
         'module-entry.mjs',
         'typecheck-host-slots.mjs',
+        'heavy-check-slots.mjs',
         'slot-holder-exec.mjs',
         'owned-process.mjs',
         'windows-owned-guard-build.mjs',
@@ -1416,7 +1417,7 @@ describe('typecheck:scripts refuses a scripts/ tree it does not fully account fo
     // actually runs. Assert THAT catalog still names typecheck:scripts,
     // rather than grepping a field that is now just an aggregate invocation.
     expect(root.scripts.typecheck).toContain(
-      'node scripts/typecheck-aggregate.mjs',
+      'node scripts/heavy-check-slot.mjs typecheck scripts/typecheck-aggregate.mjs',
     );
     expect(TYPECHECK_LANES.map((lane) => lane.id)).toContain(
       'typecheck:scripts',

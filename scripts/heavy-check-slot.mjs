@@ -38,8 +38,9 @@ async function main([label, script, ...args] = process.argv.slice(2)) {
   }
   if (!slot.reentrant && !slot.skipped) {
     process.once('exit', slot.release);
-    // The pid and birth survive execve, so descendants see their holder.
-    process.env[HEAVY_CHECK_HELD_ENV] = withHeavyCheckHeld(process.env)[
+    // The claim's record keeps this pid through execve, so descendants
+    // still find their holder.
+    process.env[HEAVY_CHECK_HELD_ENV] = withHeavyCheckHeld(process.env, slot)[
       HEAVY_CHECK_HELD_ENV
     ];
   }

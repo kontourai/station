@@ -330,6 +330,21 @@ export function holderIsLive(
   return now - acquiredAt <= UNVERIFIED_HOLDER_STALE_MS;
 }
 
+/**
+ * The live holder of claim `nonce` on slot `index` in `dir`, or null: the
+ * record must still carry that nonce and its process must still be alive.
+ *
+ * @param {string} dir
+ * @param {number} index
+ * @param {string} nonce
+ * @param {Parameters<typeof holderIsLive>[1]} [liveness]
+ */
+export function liveSlotClaim(dir, index, nonce, liveness) {
+  const observed = readSlotRecord(slotPath(dir, index));
+  if (observed.record?.nonce !== nonce) return null;
+  return holderIsLive(observed.record, liveness) ? observed.record : null;
+}
+
 function writePrivateFile(path, text) {
   const fd = openSync(path, 'wx', 0o600);
   try {
@@ -544,7 +559,7 @@ function waitersAhead(ticket, liveness) {
  *   pool?: SlotPool,
  *   fifo?: boolean,
  * }} [options]
- * @returns {Promise<{ index: number, dir: string, slots: number, reentrant: boolean, release: () => void }>}
+ * @returns {Promise<{ index: number, dir: string, slots: number, nonce?: string, reentrant: boolean, release: () => void }>}
  */
 export async function acquireTypecheckSlot({
   label = '',
@@ -590,10 +605,14 @@ export async function acquireTypecheckSlot({
       };
       record.acquiredAt = liveness.now;
       const ahead = ticket ? waitersAhead(ticket, liveness) : 0;
+      // In arrival order, a waiter may claim only while fewer waiters are
+      // ahead of it than there are free slots: otherwise a later, faster
+      // poller could take a slot an earlier waiter is owed.
+      const observed = ticket ? observeHolders(dir, slots, liveness) : null;
       const { index, holders } =
-        ahead < slots
+        !observed || ahead < slots - observed.length
           ? scanSlots(dir, slots, record, liveness)
-          : { index: -1, holders: observeHolders(dir, slots, liveness) };
+          : { index: -1, holders: observed };
       const seconds = Math.round((now() - startedAt) / 1000);
       const queued = ahead > 0 ? `; ${ahead} earlier waiter(s) queued` : '';
       if (index >= 0) {
@@ -602,7 +621,14 @@ export async function acquireTypecheckSlot({
             `[${pool.tag}] acquired slot ${index + 1}/${slots} after ${seconds}s${forLabel(label)}.`,
           );
         const release = releaser(slotPath(dir, index), record.nonce);
-        return { index, dir, slots, reentrant: false, release };
+        return {
+          index,
+          dir,
+          slots,
+          nonce: record.nonce,
+          reentrant: false,
+          release,
+        };
       }
       if (now() - startedAt >= waitMs) {
         throw new Error(

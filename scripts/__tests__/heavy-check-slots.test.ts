@@ -255,49 +255,101 @@ describe('heavy-check slot runner (child processes)', () => {
     expect(result.stderr).not.toContain('waiting for a heavy-check slot');
   });
 
-  test('a held marker admits only while the exact process it names is alive', () => {
+  test('a held marker admits only while the exact claim it names is live', () => {
     const w = workspace();
     holdSlot(w.slotDir);
-    const leaked = runSync(
-      ['leaked-marker', w.check, w.log, 'E', '', '0'],
-      poolEnv(w.slotDir, {
-        STATION_HEAVY_CHECK_SLOT_WAIT_MS: '0',
-        [HEAVY_CHECK_HELD_ENV]: String(deadPid()),
-      }),
-    );
-    expect(leaked.status).toBe(1);
-    expect(leaked.stderr).toContain('FAIL: waited 0s for a heavy-check slot');
-    expect(w.lines()).toEqual([]);
-
-    const live = runSync(
-      ['live-marker', w.check, w.log, 'F', '', '0'],
-      poolEnv(w.slotDir, {
-        STATION_HEAVY_CHECK_SLOT_WAIT_MS: '0',
-        [HEAVY_CHECK_HELD_ENV]: String(process.pid),
-      }),
-    );
-    expect(live.status, live.stderr).toBe(0);
-    expect(live.stderr).toContain(
-      `[heavy-check-slots] live-marker runs under the heavy-check slot held by pid ${process.pid}.`,
-    );
-    expect(w.lines()).toEqual(['F start', 'F end']);
-
-    // A live pid whose birth differs from the marker's is a recycled pid.
-    if (process.platform !== 'win32') {
-      const recycled = runSync(
-        ['recycled-marker', w.check, w.log, 'R', '', '0'],
+    // Claims held elsewhere (another pool directory), as an ancestor's.
+    const claims = join(w.root, 'claims');
+    mkdirSync(claims, { mode: 0o700 });
+    const claim = (index: number, pid: number, nonce: string) =>
+      writeFileSync(
+        slotPath(claims, index),
+        JSON.stringify({ pid, start: null, nonce, acquiredAt: Date.now() }),
+      );
+    const marker = (index: number, nonce: string) =>
+      JSON.stringify({ dir: claims, index, nonce });
+    claim(0, deadPid(), 'dead-holder');
+    claim(2, process.pid, 'live-holder');
+    claim(3, process.pid, 'someone-else');
+    const run = (label: string, held: string) =>
+      runSync(
+        [label, w.check, w.log, label, '', '0'],
         poolEnv(w.slotDir, {
           STATION_HEAVY_CHECK_SLOT_WAIT_MS: '0',
-          [HEAVY_CHECK_HELD_ENV]: `${process.pid}:not-this-process-birth`,
+          [HEAVY_CHECK_HELD_ENV]: held,
         }),
       );
-      expect(recycled.status).toBe(1);
-      expect(recycled.stderr).toContain(
-        'FAIL: waited 0s for a heavy-check slot for recycled-marker',
+
+    const refused = {
+      'dead-holder': run('dead-holder', marker(0, 'dead-holder')),
+      // The slot was released: nothing is recorded there any more.
+      released: run('released', marker(1, 'released-claim')),
+      // Released, then claimed by another check: its nonce differs.
+      reclaimed: run('reclaimed', marker(3, 'released-claim')),
+      'pid-only': run('pid-only', String(process.pid)),
+    };
+    for (const [label, result] of Object.entries(refused)) {
+      expect(result.status, label).toBe(1);
+      expect(result.stderr).toContain(
+        `FAIL: waited 0s for a heavy-check slot for ${label}`,
       );
-      expect(w.lines()).toEqual(['F start', 'F end']);
     }
+    expect(w.lines()).toEqual([]);
+
+    const live = run('live-claim', marker(2, 'live-holder'));
+    expect(live.status, live.stderr).toBe(0);
+    expect(live.stderr).toContain(
+      `[heavy-check-slots] live-claim runs under the heavy-check slot held by pid ${process.pid}.`,
+    );
+    expect(w.lines()).toEqual(['live-claim start', 'live-claim end']);
   });
+
+  test('with several slots, a later waiter cannot take a slot an earlier one is owed', async () => {
+    const w = workspace();
+    mkdirSync(w.slotDir, { recursive: true, mode: 0o700 });
+    for (const index of [0, 1])
+      writeFileSync(
+        slotPath(w.slotDir, index),
+        JSON.stringify({
+          pid: process.pid,
+          start: null,
+          nonce: `busy-${index}`,
+          acquiredAt: Date.now(),
+        }),
+      );
+    const env = poolEnv(w.slotDir, { STATION_HEAVY_CHECK_SLOTS: '2' });
+    const order: string[] = [];
+    const quiet = () => {};
+    const early = acquireHeavyCheckSlot({
+      label: 'early',
+      env,
+      pollMs: 400,
+      log: quiet,
+    }).then((slot) => {
+      order.push('early');
+      return slot;
+    });
+    await new Promise((done) => setTimeout(done, 100));
+    const late = acquireHeavyCheckSlot({
+      label: 'late',
+      env,
+      pollMs: 10,
+      log: quiet,
+    }).then((slot) => {
+      order.push('late');
+      return slot;
+    });
+    await new Promise((done) => setTimeout(done, 300));
+    rmSync(slotPath(w.slotDir, 1));
+    const first = await early;
+    await new Promise((done) => setTimeout(done, 300));
+    // One slot freed: the earlier waiter took it, the later one still waits.
+    expect(order).toEqual(['early']);
+    rmSync(slotPath(w.slotDir, 0));
+    (await late).release();
+    first.release();
+    expect(order).toEqual(['early', 'late']);
+  }, 30_000);
 
   test('queued checks are admitted in arrival order, not by who polls fastest', async () => {
     const w = workspace();

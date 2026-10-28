@@ -1696,6 +1696,8 @@ slot and then runs the script as the slot holder. These entry points use it:
 | `npm run test:changed` | `test:changed` |
 | `npm run docs:truth:gate` (also a Veritas readiness evidence check) | `docs:truth:gate` |
 | `npm run docs:learn:build`, `npm run docs:learn:check` | `docs:learn:build`, `docs:learn:check` |
+| `npm run typecheck` (its lanes run under this slot) | `typecheck` |
+| Each `scripts/tsc-slot.mjs` compile run on its own (`npm run typecheck:<lane>`) | `typecheck <tsconfig>`, taken before its typecheck slot |
 | Pre-push transfer budgets, static gates, SDK barrel | `pre-push:transfer-budgets`, `pre-push:static-gates`, `pre-push:sdk-barrel` |
 | A verification-coordinator lane that executes (`ci:fast`, `verify:static`, `test-changed`, …) | `verification:<lane>` |
 | Each `full:regression` phase, requested or submitted | `verification:full-regression:<phase>` |
@@ -1713,9 +1715,9 @@ slot and then runs the script as the slot holder. These entry points use it:
   passes without running.
 - A slotted check started inside another one (for example `test:focused`
   inside `docs:truth:gate`) runs under its ancestor's slot and prints one line
-  naming it. `STATION_HEAVY_CHECK_SLOT_HELD` carries the holder's pid and, on
-  macOS and Linux, its process birth. A marker naming a dead or recycled pid is
-  ignored.
+  naming it. `STATION_HEAVY_CHECK_SLOT_HELD` names the holder's exact claim
+  (slot directory, index and nonce). A marker for a released, reclaimed or
+  dead claim is ignored.
 - Admission is always taken in one order: the verification coordinator, then
   a heavy-check slot, then typecheck or Biome.
   - A coordinator owner takes its slot only after the lane, or each
@@ -1739,6 +1741,11 @@ slot and then runs the script as the slot holder. These entry points use it:
   outlasts it.
 - If a lane is fenced because its child never settled after a timeout, the
   coordinator process keeps that lane's slot until it exits.
+- On macOS and Linux the runner becomes the check, so the slot lasts as long
+  as that process. A check that spawns children, such as Vitest under
+  `test:focused`, releases its slot if it is killed without its children.
+  An interrupt from the terminal reaches the whole process group. A targeted
+  `kill` of only the holder leaves its children running outside the cap.
 - Hosted CI (`GITHUB_ACTIONS=true`) takes no slot, because each runner is
   single-tenant, and prints one line saying so. `CI` alone does not exempt a
   run, because local tools set it too.

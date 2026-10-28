@@ -56,17 +56,32 @@ import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mj
 
 const FULL_PHASE_IDS = FULL_REGRESSION_PHASES.map((phase) => phase.id);
 
-// Lanes in this file run in-process. They execute under this worker's own
-// heavy-check marker, not the host pool or whichever runner started Vitest;
-// the heavy-check admission tests below replace it with a private pool.
+// Lanes in this file run in-process. They execute under a heavy-check claim
+// this worker holds in a private pool, not the host pool or whichever runner
+// started Vitest; the heavy-check admission tests below use their own pools.
 const inheritedHeavyCheckMarker = process.env[HEAVY_CHECK_HELD_ENV];
+const fileHeavyCheckClaim = mkdtempSync(join(tmpdir(), 'coordinator-claim-'));
 beforeAll(() => {
-  process.env[HEAVY_CHECK_HELD_ENV] = String(process.pid);
+  writeFileSync(
+    join(fileHeavyCheckClaim, 'slot-0.lock'),
+    JSON.stringify({
+      pid: process.pid,
+      start: null,
+      nonce: 'coordinator-test-file',
+      acquiredAt: Date.now(),
+    }),
+  );
+  process.env[HEAVY_CHECK_HELD_ENV] = JSON.stringify({
+    dir: fileHeavyCheckClaim,
+    index: 0,
+    nonce: 'coordinator-test-file',
+  });
 });
 afterAll(() => {
   if (inheritedHeavyCheckMarker === undefined)
     delete process.env[HEAVY_CHECK_HELD_ENV];
   else process.env[HEAVY_CHECK_HELD_ENV] = inheritedHeavyCheckMarker;
+  rmSync(fileHeavyCheckClaim, { recursive: true, force: true });
 });
 const ORDINARY_FULL_PHASE_IDS = FULL_PHASE_IDS.filter((id) =>
   id.startsWith('test-full-ordinary-'),
@@ -469,7 +484,7 @@ describe('verification coordinator', () => {
       const temp = fixture();
       const slotDir = join(temp.root, 'heavy-check-slots');
       const seen: Array<{
-        holder: { pid: number; label: string };
+        holder: { pid: number; label: string; nonce: string };
         marker?: string;
       }> = [];
       try {
@@ -494,8 +509,12 @@ describe('verification coordinator', () => {
         expect(seen).toHaveLength(1);
         expect(seen[0].holder.pid).toBe(process.pid);
         expect(seen[0].holder.label).toBe('verification:prepush');
-        // The lane's children run under this owner's slot.
-        expect(seen[0].marker).toMatch(new RegExp(`^${process.pid}(:|$)`));
+        // The lane's children run under this owner's exact claim.
+        expect(JSON.parse(seen[0].marker ?? '{}')).toEqual({
+          dir: slotDir,
+          index: 0,
+          nonce: seen[0].holder.nonce,
+        });
         // Released once the lane finished.
         expect(existsSync(join(slotDir, 'slot-0.lock'))).toBe(false);
       } finally {
@@ -508,7 +527,11 @@ describe('verification coordinator', () => {
       const worktree = join(temp.root, 'worktree');
       mkdirSync(worktree);
       const slotDir = join(temp.root, 'heavy-check-slots');
-      const seen: Array<{ phase: string; label: string; marker?: string }> = [];
+      const seen: Array<{
+        phase: string;
+        holder: { label: string; nonce: string };
+        marker?: string;
+      }> = [];
       try {
         const result = await coordinateVerification({
           laneId: 'full-regression',
@@ -527,9 +550,9 @@ describe('verification coordinator', () => {
           }) => {
             seen.push({
               phase: phase.id,
-              label: JSON.parse(
+              holder: JSON.parse(
                 readFileSync(join(slotDir, 'slot-0.lock'), 'utf8'),
-              ).label,
+              ),
               marker: env?.[HEAVY_CHECK_HELD_ENV],
             });
             return { status: 0 };
@@ -541,10 +564,14 @@ describe('verification coordinator', () => {
         // slot across the lane would carry one label and be held while each
         // later phase queued for the coordinator.
         for (const entry of seen) {
-          expect(entry.label).toBe(
+          expect(entry.holder.label).toBe(
             `verification:full-regression:${entry.phase}`,
           );
-          expect(entry.marker).toMatch(new RegExp(`^${process.pid}(:|$)`));
+          expect(JSON.parse(entry.marker ?? '{}')).toEqual({
+            dir: slotDir,
+            index: 0,
+            nonce: entry.holder.nonce,
+          });
         }
         expect(existsSync(join(slotDir, 'slot-0.lock'))).toBe(false);
       } finally {

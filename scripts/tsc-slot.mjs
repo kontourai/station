@@ -47,6 +47,11 @@ import {
 } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSyncBounded } from './lib/bounded-capture.mjs';
+import {
+  acquireHeavyCheckSlot,
+  HEAVY_CHECK_HELD_ENV,
+  withHeavyCheckHeld,
+} from './lib/heavy-check-slots.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { execAsSlotHolder } from './lib/slot-holder-exec.mjs';
 import {
@@ -383,9 +388,25 @@ async function main(argv = process.argv.slice(2)) {
     throw new Error(`Compiler not found: ${plan.compiler}`);
 
   if (needsSlot(argv)) {
+    const label = describeProject(argv, cwd);
+    let heavy;
     let slot;
     try {
-      slot = await acquireTypecheckSlot({ label: describeProject(argv, cwd) });
+      // A compile is a heavy check too: it takes a host heavy-check slot
+      // first (admitted under its ancestor's when one runs it, such as the
+      // `typecheck` aggregate), then a typecheck slot. Same order everywhere.
+      heavy = await acquireHeavyCheckSlot({
+        label: `typecheck ${label}`,
+        announceBypass: false,
+      });
+      if (heavy.index >= 0) {
+        process.once('exit', heavy.release);
+        process.env[HEAVY_CHECK_HELD_ENV] = withHeavyCheckHeld(
+          process.env,
+          heavy,
+        )[HEAVY_CHECK_HELD_ENV];
+      }
+      slot = await acquireTypecheckSlot({ label });
     } catch (error) {
       process.stderr.write(`${error?.message ?? error}\n`);
       process.exitCode = 1;
