@@ -392,6 +392,55 @@ browser/native keyboard run. The [testing guide](testing.md) explains how to
 record PASS, FAIL and NOT_VERIFIED without turning missing prerequisites into
 success.
 
+### Context menus and holds
+
+A right-click, the keyboard's context-menu key, or a touch hold on an item opens
+the menu that item already has. It adds no item actions that are not reachable
+another way. An item with a `⋯` opens that same menu through the
+`handleRef` on [`ActionOverflowMenu`](../../src-ui/src/components/ActionOverflowMenu.tsx)
+(pull request rows; chat messages through their own `⋯` menus in
+[`TurnActionsMenu`](../../src-ui/src/components/chat/TurnActionsMenu.tsx)).
+An item with no `⋯`, such as a file in the tree, opens a
+[`ContextMenu`](../../src-ui/src/components/ContextMenu.tsx) at the pointer, on
+the layer above whatever hosts the item. A phone inbox row's hold opens its
+Details sheet.
+
+Wire the gesture with
+[`useContextMenuGesture`](../../src-ui/src/hooks/useContextMenuGesture.ts).
+Only a finger or pen can hold (500ms, cancelled by 8px of movement or a scroll).
+The click the hold ends in is swallowed for up to 700ms on the item or on a
+surface the item renders, including the menu or sheet the hold opened under the
+finger. Any new press there ends that window, so a deliberate tap on the menu
+acts. A menu rendered outside the item, like the file tree's, is never
+affected. A press inside what the
+item opened never starts a hold on the item, and a right-click there is that
+surface's own. The platform's own long-press `contextmenu` for the same hold
+is refused to the platform. On the item or its `⋯` menu's backdrop it reopens
+the menu, which Chromium's long-press can close by moving focus. Opens must be
+idempotent. Set `touchHold: false` on mostly
+selectable text: chat messages open their menu only on a mouse right-click,
+because a held finger there selects text. `useLongPress` is a different
+gesture: one control whose click it owns, plus a second act behind a hold.
+
+[`wantsNativeContextMenu`](../../src-ui/src/lib/native-context-menu.ts) leaves
+four cases to the platform: Shift held on a mouse right-click (`button === 2`),
+a text-entry field, the terminal (xterm.js offers Copy and Paste through the
+native menu), and a press on selected text. Because the Shift case requires
+the right mouse button, Shift+F10 is meant to open Station's menu. That rests on
+keyboard-raised events reporting `button: 0`, which jsdom tests assume and no
+desktop WebView run has confirmed. In the Tauri apps,
+[`NativeContextMenuGuard`](../../src-ui/src/components/NativeContextMenuGuard.tsx)
+refuses every other right-click that no control claimed. Without it the
+WebView would offer Reload and, in nightly and dev builds, Inspect Element.
+Shift+right-click is the deliberate route to the inspector. A link to another
+origin gets the guard's one menu of its own: Open link (a click on the link, so
+it routes the way a left-click does) and Copy link. A browser tab keeps the
+browser's own menu. The behavior is covered in jsdom by the
+`*.contextMenu.test.tsx` suites, `NativeContextMenuGuard.test.tsx`, and the hold
+cases in `FileTreePanel.test.tsx` and `InboxRow.test.tsx`, and was rendered in
+Chromium. It has not been verified in WKWebView or WebView2, or on an iOS or
+Android device.
+
 ### Coding on a phone
 
 The built-in Coding layout keeps Chat in its workbench at phone widths, with
