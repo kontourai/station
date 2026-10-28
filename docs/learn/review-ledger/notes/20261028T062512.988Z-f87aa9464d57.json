@@ -1,0 +1,7 @@
+{
+  "revision": "c4aef0408f09b8973b9971052f23d2fb73d09b7c",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Re-reviewed after aligning copy to the glossary: the switcher paragraph now says Forget (× and Delete arm it; Forget N unreachable; the current Station cannot be forgotten here; native forgetting of other channels' local-service profiles, only the app's own refused). Checked against StationSwitcherMenu.tsx copy and stationProfileStorage.removeProfile.","inputs":["docs/guides/connections.md","src-ui/src/components/header/StationSwitcherMenu.tsx"]}
+  ]
+}
