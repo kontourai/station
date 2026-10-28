@@ -172,6 +172,76 @@ describe('projectRuntimeEventsToMessages', () => {
     ).toEqual(['Hi.']);
   });
 
+  // #4266: a newest page of a long turn holds its injected prompt and its
+  // tail. The deltas that wrote "A" are in the next page.
+  const tailOnly = (turnId: string) => [
+    ev({
+      method: 'turn.started',
+      turnId,
+      prompt: 'go',
+      eventId: `${turnId}-start`,
+    }),
+    ev({ method: 'content.text-delta', turnId, delta: 'B. ' }),
+    ev({
+      method: 'tool.started',
+      turnId,
+      toolCallId: `${turnId}-call`,
+      toolName: 'bash',
+    }),
+    ev({
+      method: 'tool.completed',
+      turnId,
+      toolCallId: `${turnId}-call`,
+      toolName: 'bash',
+      status: 'success',
+      output: 'done',
+    }),
+    ev({ method: 'content.text-delta', turnId, delta: 'C.' }),
+    ev({ method: 'turn.completed', turnId, outputText: 'A. B. C.' }),
+  ];
+  const allText = (
+    messages: ReturnType<typeof projectRuntimeEventsToMessages>,
+  ) =>
+    messages
+      .filter((message) => message.role === 'assistant')
+      .flatMap((message) =>
+        message.parts
+          .filter((part) => part.type === 'text')
+          .map((part) => part.text ?? ''),
+      )
+      .join('|');
+
+  it('#4266: a window that saw only the tail of a turn renders each streamed paragraph once and adopts none of the missing middle', () => {
+    const rendered = allText(
+      projectRuntimeEventsToMessages(tailOnly('tail-a')),
+    );
+    expect(rendered).toBe('B. |C.');
+    expect(rendered.split('B.')).toHaveLength(2);
+    expect(rendered).not.toContain('A.');
+  });
+
+  it('#4266: a turn whose prompt the window marks as a history gap adopts no outputText, even with no text before its last tool', () => {
+    const events = [
+      ev({
+        method: 'turn.started',
+        turnId: 'gap',
+        prompt: 'go',
+        eventId: 'gap-start',
+      }),
+      ev({ method: 'content.text-delta', turnId: 'gap', delta: 'C.' }),
+      ev({ method: 'turn.completed', turnId: 'gap', outputText: 'A. B. C.' }),
+    ];
+    expect(
+      allText(
+        projectRuntimeEventsToMessages(events, {
+          partialTurnStartEventIds: new Set(['gap-start']),
+        }),
+      ),
+    ).toBe('C.');
+    // Without the mark, the Claude final-answer fallback still applies.
+    expect(allText(projectRuntimeEventsToMessages(events))).toBe('A. B. C.');
+  });
+
   it('preserves simultaneous terminal results sharing one toolCallId by event identity', () => {
     const messages = projectRuntimeEventsToMessages([
       ev({
