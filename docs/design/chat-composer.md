@@ -604,7 +604,17 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   that differs from Default ("Own settings", or "Ask · kept"), and its name
   says the pick was not applied. A newly recorded decision clears that. Any other ACP engine
   shows **Approval: Set by engine**, which opens a read-only explanation and
-  offers no mode. An engine's advertised Mode (OpenCode's build or plan agent)
+  offers no mode. Codex's Default likewise names the engine's own settings
+  ("Engine default — Codex's own settings"), and its description states what
+  an unconfigured Codex does there, as a bound on which commands run unasked:
+  none that uses the network or writes outside the chat's folder and temp.
+  Hosted web search and MCP tool calls are not sandboxed commands and fall
+  outside that bound (EXECUTED against
+  codex-cli 0.164.0 with policy `on-request`: read-only for a host session in
+  a folder with no trust entry; workspace-write without network, temp
+  writable, for a trusted host folder and under Station's `station-workspace`
+  profile).
+  An engine's advertised Mode (OpenCode's build or plan agent)
   is a separate picker beside it, never a replacement for it. While Station
   governs OpenCode it offers only build and plan; on OpenCode's own settings
   it lists every agent. A refusal because Station's approval mode cannot
