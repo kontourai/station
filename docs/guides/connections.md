@@ -1493,6 +1493,51 @@ and account. Portable preparation and reproducible recipes remain owned by
 [#2875](https://github.com/kontourai/station/issues/2875) and
 [#3759](https://github.com/kontourai/station/issues/3759).
 
+## Integrations from MCP subregistries
+
+**Registry → Integrations** lists Station's curated MCP servers under
+**Station curated**. Each card shows what Station checked:
+
+- **Station qualified**: Station checked the endpoint and sign-in, and
+  **Add** works today.
+- **Checked, not available yet**: the card lists why, for example sign-in
+  that needs an OAuth client you register with the provider.
+- **Unqualified**: from a source Station has not checked.
+
+The detail shows the sign-in mode, any vendor launch stage, and under
+**Details** the server name, version, endpoint and check date. **Add** stores
+the server turned off. Turn it on and choose **Connect your account** under
+**Connections → Tools**; each person signs in with their own account. The
+[design note](../design/mcp-subregistry-curation.md) lists the curated
+servers, the bounds and the evidence.
+
+An operator can add one more subregistry with `STATION_MCP_SUBREGISTRY_URL`.
+Its entries are unqualified. When it cannot be reached, its last saved copy
+is shown as offline and cannot be added from until it is refreshed.
+
+### Tools after untrusted content
+
+Some servers return content written by others, such as email. In a turn
+that has read such content, Station asks before running a tool that its
+server does not declare read-only, even one the Agent auto-approves. You can
+change that per server and per tool in its settings:
+
+```json
+{
+  "contentTrust": "untrusted",
+  "untrustedContentPermissions": {
+    "default": "ask",
+    "tools": { "create_issue": "allow", "send_message": "deny" }
+  }
+}
+```
+
+`allow` means untrusted content adds no question and the tool's usual
+permission applies; `deny` refuses. Set `contentTrust` to `trusted` for a
+server whose content you trust. Each change is recorded with who made it.
+Station applies this on its own engine only; see the
+[coverage notes](../design/mcp-subregistry-curation.md#coverage-and-gaps).
+
 ## Connect an OAuth MCP server to an Agent
 
 Obtain the outside-agent MCP endpoint from the remote workspace's connection

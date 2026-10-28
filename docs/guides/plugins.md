@@ -1183,7 +1183,9 @@ Implements `listAvailable()`, `listInstalled()`, `install(id)`, and
 | `sync()` | `Promise<void>` |
 
 `getToolDef` returns the integration definition or `null` when this provider
-does not own the ID. `sync` reconciles that provider's definitions. The
+does not own the ID. Station's MCP subregistry sources are providers of this
+kind ([design](../design/mcp-subregistry-curation.md)); a refused entry
+answers `install` with its reasons and `getToolDef` with `null`. `sync` reconciles that provider's definitions. The
 [integration registry aggregator](../../src-server/providers/registries/integration-registry-provider.ts)
 calls both methods on its providers. `update(id)` and
 `installByCommand(command)` are optional. The
