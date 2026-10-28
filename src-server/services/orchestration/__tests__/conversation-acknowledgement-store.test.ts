@@ -130,6 +130,9 @@ describe('FileConversationAcknowledgementStore', () => {
               'session-failed:thread-c': '2026-10-20T00:00:00.000Z',
             },
             'tenant:alpha': { 'thread-t': '2026-10-02T00:00:00.000Z' },
+            'human:tailscale-serve:housemate@example.com': {
+              'thread-a': '2026-10-29T00:00:00.000Z',
+            },
             'service:scheduler': { 'thread-s': '2026-10-03T00:00:00.000Z' },
           },
         }),
@@ -151,6 +154,12 @@ describe('FileConversationAcknowledgementStore', () => {
         '2026-10-02T00:00:00.000Z',
       );
       expect(store.getMany('brian', ['thread-a']).size).toBe(0);
+      // Another person's view stays theirs: it did not move the owner's.
+      expect(
+        store
+          .getMany('human:tailscale-serve:housemate@example.com', ['thread-a'])
+          .get('thread-a'),
+      ).toBe('2026-10-29T00:00:00.000Z');
 
       store.acknowledge({
         userId: PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY,
@@ -160,6 +169,7 @@ describe('FileConversationAcknowledgementStore', () => {
       const written = JSON.parse(readFileSync(path, 'utf8'));
       expect(written.version).toBe(2);
       expect(Object.keys(written.acknowledgements).sort()).toEqual([
+        'human:tailscale-serve:housemate@example.com',
         PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY,
         'tenant:alpha',
       ]);
@@ -190,6 +200,13 @@ describe('FileConversationAcknowledgementStore', () => {
           .getMany(PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY, ['thread-1'])
           .get('thread-1'),
       ).toBe('2026-10-28T05:00:00.000Z');
+      // Compared as times, not text: 06:30+02:00 is 04:30Z, older than 05:00Z.
+      ack('2026-10-28T06:30:00.000+02:00');
+      expect(
+        store
+          .getMany(PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY, ['thread-1'])
+          .get('thread-1'),
+      ).toBe('2026-10-28T05:00:00.000Z');
       ack('2026-10-28T06:00:00.000Z');
       expect(
         store
@@ -203,17 +220,31 @@ describe('FileConversationAcknowledgementStore', () => {
 });
 
 describe('conversationAcknowledgementKey', () => {
-  test('maps every human principal on a personal Station to the one owner key', () => {
+  test('maps the owner’s principals on a personal Station to the one owner key', () => {
     for (const principal of [
       'human:local:operator',
       'human:device:2e33be60-58fd-435f-8226-cc2c07d93fab',
-      'human:tailscale-serve:brian@example.com',
+      // The OS account name an older composition passes.
+      'brian',
     ]) {
       expect(
         conversationAcknowledgementKey(
           sessionReadAuthorityFromRequest(principal, undefined, undefined),
         ),
       ).toBe(PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY);
+    }
+  });
+
+  test('keys every other person on a personal Station by their own identity', () => {
+    for (const principal of [
+      'human:tailscale-serve:housemate@example.com',
+      'human:oidc:https%3A%2F%2Fissuer.example:person-2',
+    ]) {
+      expect(
+        conversationAcknowledgementKey(
+          sessionReadAuthorityFromRequest(principal, undefined, undefined),
+        ),
+      ).toBe(principal);
     }
   });
 

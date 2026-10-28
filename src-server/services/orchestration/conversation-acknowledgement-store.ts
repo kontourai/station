@@ -3,6 +3,8 @@ import {
   isHostedSessionReadAuthority,
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
+import { DEVICE_IDENTITY_PROVIDER } from '../identity/identity-source.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 import { JsonFileStore } from '../infra/json-store.js';
 
 const STORE_VERSION = 2 as const;
@@ -20,18 +22,47 @@ export const PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY = 'personal:owner';
 /** Principal kinds that are never a person viewing a conversation. */
 const NON_PERSON_KEY_PREFIXES = ['service:', 'agent:', 'tenant:'] as const;
 
+/** A paired device tied to no person: it reads as its own device identity. */
+const OWNER_DEVICE_PRINCIPAL_PREFIX = `human:${DEVICE_IDENTITY_PROVIDER}:`;
+
+/**
+ * The key a personal Station files `principalId`'s views under: the owner's
+ * key for a principal that is the owner, the principal's own id for another
+ * person, nothing for a principal that is not a person.
+ *
+ * The owner is who Station already treats as one person for notification
+ * focus (`audience-resolver.ts` `ownerPrincipals`): the local operator, and
+ * each paired device tied to no person, which reads as `human:device:<id>`
+ * (a device tied to a person reads as that person instead). A tailnet login
+ * (`human:tailscale-serve:<login>`) or an account is its own person, even
+ * the owner's own: nothing records that a tailnet identity is the operator,
+ * so it keeps its own Just finished until accounts link identities. That
+ * errs toward a thread staying unread, never toward another person's view
+ * clearing the owner's. An id with no principal kind is the OS account name
+ * an older composition passes, which is the owner.
+ */
+function personalAcknowledgementKey(principalId: string): string | undefined {
+  if (NON_PERSON_KEY_PREFIXES.some((prefix) => principalId.startsWith(prefix)))
+    return undefined;
+  if (
+    principalId === LOCAL_OPERATOR_PRINCIPAL_ID ||
+    principalId.startsWith(OWNER_DEVICE_PRINCIPAL_PREFIX) ||
+    !principalId.includes(':')
+  )
+    return PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY;
+  return principalId.startsWith('human:') ? principalId : undefined;
+}
+
 /**
  * Whose "last viewed" a request reads and writes, or `undefined` when the
  * caller has none.
  *
  * Last-viewed is the person's, not the device's: opening a thread on the
- * desktop clears it on the phone. A personal Station has one owner, but the
- * same owner reaches it as several principals — the local operator, a paired
- * device (`human:device:<id>`) and a Tailscale Serve login
- * (`human:tailscale-serve:<login>`) for the same phone, depending on the
- * topology (see the station#4518 note in `runtime-routes.ts`). Unifying those
- * into one identity is still an open question for attribution; for read state
- * the answer is simply the owner, so every human principal maps to one key.
+ * desktop clears it on the phone. The owner reaches a personal Station as
+ * several principals (the local operator and each of their unbound paired
+ * devices), which share one key; anyone else with access (People, personal
+ * tokens, another tailnet login) keeps their own. See
+ * `personalAcknowledgementKey`.
  *
  * A hosted Station has no single owner. Its requests read under the tenant
  * principal (`tenant:<id>`), the identity hosted reads are already scoped by;
@@ -49,11 +80,7 @@ export function conversationAcknowledgementKey(
     const tenantId = authority.tenantExecutionContext?.tenantId;
     return tenantId ? `tenant:${tenantId}` : undefined;
   }
-  return NON_PERSON_KEY_PREFIXES.some((prefix) =>
-    authority.userId.startsWith(prefix),
-  )
-    ? undefined
-    : PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY;
+  return personalAcknowledgementKey(authority.userId);
 }
 
 interface AcknowledgementStoreData {
@@ -74,38 +101,46 @@ export interface ConversationAcknowledgementStore {
   }): void;
 }
 
+/**
+ * The later of two rendered versions, compared as times. An unparseable
+ * stored version loses to a parseable one.
+ */
 function laterVersion(left: string | undefined, right: string): string {
-  return left !== undefined && left.localeCompare(right) > 0 ? left : right;
+  if (left === undefined) return right;
+  const leftTime = Date.parse(left);
+  const rightTime = Date.parse(right);
+  if (!Number.isFinite(leftTime)) return right;
+  if (!Number.isFinite(rightTime)) return left;
+  return leftTime > rightTime ? left : right;
 }
 
 /**
  * Version 1 filed acknowledgements under whatever id each writer had: the OS
  * account name (the inventory POST), a request principal (the attention
- * projection), or `default`. Every one of those on a personal Station was the
- * owner, so they fold into the owner key, keeping the newest version per
- * conversation. `tenant:` keys were already the hosted key and stay as they
- * are; `service:`/`agent:` keys were never a person's view and are dropped.
+ * projection), or `default`. Each folds under today's key for it
+ * (`personalAcknowledgementKey`), keeping the newest version per
+ * conversation: the owner's ids into the owner key, another person's
+ * principal under itself. `tenant:` keys were already the hosted key and
+ * stay as they are; `service:`/`agent:` keys were never a person's view and
+ * are dropped.
  */
 function migrateLegacyAcknowledgements(
   acknowledgements: Record<string, Record<string, string>>,
 ): Record<string, Record<string, string>> {
   const migrated: Record<string, Record<string, string>> = {};
-  const owner: Record<string, string> = {};
   for (const [key, versions] of Object.entries(acknowledgements)) {
     if (key.startsWith('tenant:')) {
       migrated[key] = { ...versions };
       continue;
     }
-    if (NON_PERSON_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))) {
-      continue;
-    }
+    const target = personalAcknowledgementKey(key);
+    if (!target) continue;
+    const merged = migrated[target] ?? {};
     for (const [conversationId, version] of Object.entries(versions)) {
       if (typeof version !== 'string') continue;
-      owner[conversationId] = laterVersion(owner[conversationId], version);
+      merged[conversationId] = laterVersion(merged[conversationId], version);
     }
-  }
-  if (Object.keys(owner).length > 0) {
-    migrated[PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY] = owner;
+    if (Object.keys(merged).length > 0) migrated[target] = merged;
   }
   return migrated;
 }
@@ -186,7 +221,7 @@ export class FileConversationAcknowledgementStore
     const entries = Object.entries(forUser);
     if (entries.length > MAX_ACKNOWLEDGEMENTS_PER_USER) {
       entries
-        .sort(([, left], [, right]) => left.localeCompare(right))
+        .sort(([, left], [, right]) => Date.parse(left) - Date.parse(right))
         .slice(0, entries.length - MAX_ACKNOWLEDGEMENTS_PER_USER)
         .forEach(([id]) => delete forUser[id]);
     }

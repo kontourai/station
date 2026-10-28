@@ -3773,15 +3773,32 @@ describe('Global Conversation Routes', () => {
       });
       expect(posted.status).toBe(200);
 
-      for (const principal of [
-        'human:device:phone-1',
-        'human:tailscale-serve:brian@example.com',
-        'human:local:operator',
-      ]) {
+      for (const principal of ['human:device:phone-1', 'human:local:operator']) {
         expect((await inventoryAs(principal)).acknowledgedAt).toBe(
           '2026-10-28T04:10:00.000Z',
         );
       }
+
+      // Another person on the same personal Station keeps their own record:
+      // their view does not clear the owner's Just finished, nor theirs the
+      // owner's.
+      const housemate = 'human:tailscale-serve:housemate@example.com';
+      expect((await inventoryAs(housemate)).acknowledgedAt).toBeUndefined();
+      const theirs = await app.request('/runtime-thread/acknowledgement', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-test-principal': housemate,
+        },
+        body: JSON.stringify({ updatedAt: '2026-10-28T04:20:00.000Z' }),
+      });
+      expect(theirs.status).toBe(200);
+      expect((await inventoryAs(housemate)).acknowledgedAt).toBe(
+        '2026-10-28T04:20:00.000Z',
+      );
+      expect((await inventoryAs('human:local:operator')).acknowledgedAt).toBe(
+        '2026-10-28T04:10:00.000Z',
+      );
 
       const refused = await app.request('/runtime-thread/acknowledgement', {
         method: 'POST',
