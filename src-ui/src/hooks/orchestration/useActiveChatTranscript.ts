@@ -962,7 +962,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
   return {
     ...window,
     events: stitchedEvents,
-    historyGapTurnId,
+    ...(historyGapTurnId ? { historyGapTurnId } : {}),
     enabled,
     catchingUp: !replay && (serverWindow.catchingUp || liveGap),
     openTurnProjected,
