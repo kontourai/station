@@ -1839,17 +1839,26 @@ describe('NativeStationProfileStorage', () => {
       // A desktop that has run several channels and dev instances: each left
       // a local-service profile in the shared store, and a stale duplicate
       // can claim this app's own service identity.
-      const service = (instanceId: string, serverPort: number) => ({
+      const service = (
+        instanceId: string,
+        serverPort: number,
+        baseDir = `/home/station/${instanceId}`,
+      ) => ({
         instanceId,
-        baseDir: `/home/station/${instanceId}`,
+        baseDir,
         serverPort,
         uiPort: serverPort + 1,
       });
-      const local = (name: string, port: number, instanceId: string) => ({
+      const local = (
+        name: string,
+        port: number,
+        instanceId: string,
+        baseDir?: string,
+      ) => ({
         schemaVersion: 1 as const,
         name,
         endpoint: `http://127.0.0.1:${port}`,
-        localService: service(instanceId, port),
+        localService: service(instanceId, port, baseDir),
         setupSource: 'local' as const,
         configurationState: 'configured' as const,
         createdAt: 1,
@@ -1858,12 +1867,12 @@ describe('NativeStationProfileStorage', () => {
       const initial = forgetStore();
       initial.profiles.push(
         local('nightly-local', 38141, 'desktop-sidecar-nightly'),
-        local('local', 38141, 'desktop-sidecar-nightly'),
+        local('local', 38141, 'desktop-sidecar-nightly', '/tmp/station-proof'),
+        local('nightly-renamed', 38141, 'desktop-sidecar-nightly'),
         local('local-3', 39293, 'desktop-sidecar-dev-old'),
       );
       const { storage, currentStore } = keyring({ initialStore: initial });
       await storage.hydrate();
-      storage.selectProfileForProcess('nightly-local');
       const forget = (name: string) => {
         const profile = currentStore().profiles.find((p) => p.name === name)!;
         return storage.removeProfile({
@@ -1872,15 +1881,26 @@ describe('NativeStationProfileStorage', () => {
         });
       };
 
+      // Until boot names this app's own Station, any of them might be it.
+      await expect(forget('local-3')).rejects.toThrow("This app's own Station");
+      storage.selectProfileForProcess('nightly-local');
+
       await forget('local-3');
+      // Same service identity as nightly-local, but a different home.
       await forget('local');
       await expect(forget('nightly-local')).rejects.toThrow(
+        "This app's own Station",
+      );
+      // A copy under another name, as a CLI rename leaves, is still this
+      // app's own by its service identity.
+      await expect(forget('nightly-renamed')).rejects.toThrow(
         "This app's own Station",
       );
       expect(currentStore().profiles.map((profile) => profile.name)).toEqual([
         'kontour',
         'station.kontourai.io',
         'nightly-local',
+        'nightly-renamed',
       ]);
     });
 

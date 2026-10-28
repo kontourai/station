@@ -6,6 +6,7 @@ import {
 import {
   type KeyboardEvent,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -35,6 +36,15 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function isUnavailable(connection: SavedConnection): boolean {
+  return Boolean(
+    connection.injected &&
+      (connection.injectedStatus === 'stopped' ||
+        connection.injectedStatus === 'failed' ||
+        connection.injectedStatus === 'starting'),
+  );
+}
+
 function showError(text: string) {
   toastStore.show(text, undefined, 5000, undefined, undefined, 'error');
 }
@@ -47,6 +57,7 @@ export function StationSwitcherMenu({
   activeStatusLabel,
   onSelect,
   onForget,
+  canForget: canForgetStation,
   onClose,
   onManage,
   onPairPhone,
@@ -58,6 +69,8 @@ export function StationSwitcherMenu({
   activeStatusLabel: string;
   onSelect: (connection: SavedConnection) => Promise<void>;
   onForget: (connection: SavedConnection) => Promise<void>;
+  /** Whether this device can forget the Station here at all. */
+  canForget: (connection: SavedConnection) => boolean;
   onClose: () => void;
   onManage: () => void;
   onPairPhone?: () => void;
@@ -77,6 +90,7 @@ export function StationSwitcherMenu({
   >({});
   // Read once per opening: the order must not shuffle under the pointer.
   const [recent] = useState(readRecentStations);
+  const promptId = useId();
 
   const ordered = useMemo(
     () =>
@@ -101,9 +115,18 @@ export function StationSwitcherMenu({
       top: rect.bottom + 8,
     });
   }, [anchor]);
+  // Escape first backs out of an armed Forget, then closes the menu.
+  const disarmRef = useRef<() => boolean>(() => false);
+  disarmRef.current = () => {
+    if (armedId === null && !bulkArmed) return false;
+    setArmedId(null);
+    setBulkArmed(false);
+    return true;
+  };
   useEffect(() => {
     const dismissEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key !== 'Escape') return;
+      if (!disarmRef.current()) onClose();
     };
     document.addEventListener('keydown', dismissEscape);
     window.addEventListener('resize', onClose);
@@ -114,9 +137,11 @@ export function StationSwitcherMenu({
   }, [onClose]);
   // Declared after `useMenuFocus`, so this wins its first-item focus: the
   // filter when there is one, else the previous Station, so the switcher
-  // shortcut followed by Enter flips back.
+  // shortcut followed by Enter flips back. A touch screen gets the row, not
+  // the filter, so opening the switcher does not raise the keyboard.
   useEffect(() => {
-    if (filterRef.current) {
+    const coarse = window.matchMedia?.('(pointer: coarse)').matches === true;
+    if (filterRef.current && !coarse) {
       filterRef.current.focus();
       return;
     }
@@ -145,7 +170,7 @@ export function StationSwitcherMenu({
   }, [connections, activeConnectionId]);
 
   const select = (connection: SavedConnection) => {
-    if (switchingRef.current) return;
+    if (switchingRef.current || removing.has(connection.id)) return;
     if (connection.id === activeConnectionId) {
       onClose();
       return;
@@ -167,7 +192,9 @@ export function StationSwitcherMenu({
   };
 
   const canForget = (connection: SavedConnection) =>
-    connection.id !== activeConnectionId && !connection.injected;
+    switchingId === null &&
+    connection.id !== activeConnectionId &&
+    canForgetStation(connection);
 
   const forget = async (targets: SavedConnection[]) => {
     setArmedId(null);
@@ -216,7 +243,7 @@ export function StationSwitcherMenu({
     }
     if (
       filterRef.current &&
-      event.key.length === 1 &&
+      /^\S$/.test(event.key) &&
       !event.metaKey &&
       !event.ctrlKey &&
       !event.altKey
@@ -235,8 +262,10 @@ export function StationSwitcherMenu({
     } else if (event.key === 'Enter') {
       event.preventDefault();
       const target =
-        visible.find((connection) => connection.id !== activeConnectionId) ??
-        visible[0];
+        visible.find(
+          (connection) =>
+            connection.id !== activeConnectionId && !isUnavailable(connection),
+        ) ?? visible[0];
       if (target) select(target);
     }
   };
@@ -244,13 +273,7 @@ export function StationSwitcherMenu({
   const statusLabel = (connection: SavedConnection) => {
     if (switchingId === connection.id) return 'Switching…';
     if (connection.id === activeConnectionId) return activeStatusLabel;
-    if (
-      connection.injected &&
-      (connection.injectedStatus === 'stopped' ||
-        connection.injectedStatus === 'failed' ||
-        connection.injectedStatus === 'starting')
-    )
-      return 'Not running';
+    if (isUnavailable(connection)) return 'Not running';
     if (
       connection.credentialState === 'required' ||
       connection.lastError?.reason === 'authentication-failed'
@@ -282,6 +305,8 @@ export function StationSwitcherMenu({
       <div
         ref={menuRef}
         role="menu"
+        // Escape belongs to this menu while it is open, not to "go up a level".
+        data-escape-owner=""
         aria-label="Choose Station"
         tabIndex={-1}
         className="menu-surface app-toolbar__station-switcher"
@@ -305,11 +330,7 @@ export function StationSwitcherMenu({
         <div className="station-switcher__profiles">
           {visible.map((connection) => {
             const current = connection.id === activeConnectionId;
-            const unavailable =
-              connection.injected &&
-              (connection.injectedStatus === 'stopped' ||
-                connection.injectedStatus === 'failed' ||
-                connection.injectedStatus === 'starting');
+            const unavailable = isUnavailable(connection);
             const probed = reachability[connection.id];
             const status: ConnectionIndicatorState = current
               ? activeStatus
@@ -336,6 +357,9 @@ export function StationSwitcherMenu({
                   data-station-row=""
                   aria-checked={current}
                   aria-label={label ? `${name} — ${label}` : name}
+                  aria-describedby={
+                    armed ? `${promptId}-${connection.id}` : undefined
+                  }
                   aria-keyshortcuts={
                     canForget(connection) ? 'Delete' : undefined
                   }
@@ -348,9 +372,16 @@ export function StationSwitcherMenu({
                     <ConnectionStatusDot status={status} size={8} />
                   </span>
                   <span className="station-switcher__identity">
-                    <span className="station-switcher__name">{name}</span>
+                    <span className="station-switcher__name" title={name}>
+                      {name}
+                    </span>
                     {shown && (
-                      <span className="station-switcher__status">{shown}</span>
+                      <span
+                        id={`${promptId}-${connection.id}`}
+                        className="station-switcher__status"
+                      >
+                        {shown}
+                      </span>
                     )}
                   </span>
                   {current && <span aria-hidden="true">✓</span>}
@@ -358,16 +389,18 @@ export function StationSwitcherMenu({
                 {canForget(connection) && (
                   <button
                     type="button"
+                    role="menuitem"
                     data-roving-skip=""
                     tabIndex={-1}
                     // Armed by Delete on the row, the confirm takes focus so
-                    // Enter forgets and Tab/Escape walk away from it.
+                    // Enter forgets; Escape or leaving it backs out.
                     ref={(node) => {
                       if (armed) node?.focus();
                     }}
                     className={`station-switcher__remove${armed ? ' station-switcher__remove--armed' : ''}`}
-                    aria-label={
-                      armed ? `Confirm forgetting ${name}` : `Forget ${name}`
+                    aria-label={`Forget ${name}`}
+                    aria-describedby={
+                      armed ? `${promptId}-${connection.id}` : undefined
                     }
                     title={armed ? undefined : 'Forget'}
                     onBlur={() => {
@@ -400,7 +433,9 @@ export function StationSwitcherMenu({
             }}
           >
             {bulkArmed
-              ? `Confirm: forget ${unreachable.length} Stations`
+              ? `Forget ${unreachable
+                  .map((connection) => connection.name || connection.url)
+                  .join(', ')}?`
               : `Forget ${unreachable.length} unreachable`}
           </button>
         )}

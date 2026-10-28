@@ -98,6 +98,12 @@ interface ConnectionsContextType {
    * profile. Rejects when the host cannot forget it here.
    */
   forgetConnection: (id: string) => Promise<void>;
+  /**
+   * Whether `forgetConnection` can succeed here: not the host-supplied
+   * Station, not a native relay route, and a shared profile only with a host
+   * that can forget it.
+   */
+  canForgetConnection: (id: string) => boolean;
   setCredential: (id: string, credential: string) => void;
   markDeviceSession: (id: string) => void;
   removeCredential: (id: string) => void;
@@ -504,6 +510,12 @@ export function ConnectionsProvider({
         : {}),
       ...(sharedProfilesVisibleToCli ? { sharedProfilesVisibleToCli } : {}),
       ...(removeShared ? { removeSharedProfile: removeShared } : {}),
+      canForgetConnection: (id) => {
+        const connection = connections.find((candidate) => candidate.id === id);
+        if (!connection || connection.injected || connection.nativeBrokerRoute)
+          return false;
+        return !isSharedProfileId(id) || Boolean(removeShared);
+      },
       forgetConnection: async (id) => {
         if (!isSharedProfileId(id)) {
           removeConnection(id);

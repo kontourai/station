@@ -49,18 +49,6 @@ import type { HeaderHelpPrompt } from './utils';
  * still keeping the chunk out of the entry graph, which is where the saving
  * actually comes from.
  */
-/** Opens the switcher with the previous Station focused: the chord, then Enter, flips back. */
-function StationSwitchShortcut({ onToggle }: { onToggle: () => void }) {
-  useKeyboardShortcut(
-    'station.switch',
-    's',
-    ['cmd', 'shift'],
-    'Switch Station',
-    onToggle,
-  );
-  return null;
-}
-
 const loadStationSwitcher = () =>
   import('./StationSwitcherMenu').then((module) => ({
     default: module.StationSwitcherMenu,
@@ -161,6 +149,21 @@ function ConnectionNameHint({
   );
 }
 
+/**
+ * Toggles the Station switcher. It opens on the previous Station, or on its
+ * filter once there are enough to need one, so the chord then Enter flips back.
+ */
+function StationSwitchShortcut({ onToggle }: { onToggle: () => void }) {
+  useKeyboardShortcut(
+    'station.switch',
+    's',
+    ['cmd', 'shift'],
+    'Switch Station',
+    onToggle,
+  );
+  return null;
+}
+
 export function HeaderActions({
   helpPrompts,
   showHelp,
@@ -185,6 +188,7 @@ export function HeaderActions({
     connections,
     setActiveConnection,
     forgetConnection,
+    canForgetConnection,
   } = useConnections();
   const connectionButtonRef = useRef<HTMLButtonElement>(null);
   const [connectionMenuOpen, setConnectionMenuOpen] = useState(false);
@@ -487,6 +491,7 @@ export function HeaderActions({
               await setActiveConnection(connection.id);
             },
             onForget: (connection) => forgetConnection(connection.id),
+            canForget: (connection) => canForgetConnection(connection.id),
             onClose: () => setConnectionMenuOpen(false),
             onManage: onOpenConnections,
             onPairPhone: hasLocalStationForProfile(profile)

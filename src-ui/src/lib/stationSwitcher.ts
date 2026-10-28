@@ -62,12 +62,25 @@ export function matchesStationFilter(
 
 export type StationReachability = 'online' | 'unreachable';
 
-/** Whether a Station's address can be probed directly from this client. */
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/**
+ * Whether a Station's address can be probed directly from this client. An
+ * HTTPS page cannot reach a plain-HTTP address other than loopback (mixed
+ * content), so that failure would say nothing about the Station.
+ */
 export function isProbeable(connection: SavedConnection): boolean {
+  if (connection.brokerRoute || connection.nativeBrokerRoute) return false;
+  let target: URL;
+  try {
+    target = new URL(connection.url);
+  } catch {
+    return false;
+  }
+  if (target.protocol === 'https:') return true;
+  if (target.protocol !== 'http:') return false;
   return (
-    !connection.brokerRoute &&
-    !connection.nativeBrokerRoute &&
-    /^https?:/.test(connection.url)
+    window.location.protocol !== 'https:' || LOOPBACK_HOSTS.has(target.hostname)
   );
 }
 
@@ -79,22 +92,29 @@ const probeCache = new Map<
 /**
  * Whether anything answers at a Station's public handshake. Any HTTP response
  * counts as online; only a network failure or the deadline is unreachable.
- * Results are reused briefly so reopening the switcher shows them at once.
+ * An answer is reused briefly so reopening the switcher shows it at once; a
+ * failure is not, so a Station that just came back is never shown stale.
  */
 export function probeStation(url: string): Promise<StationReachability> {
   const cached = probeCache.get(url);
   if (cached && Date.now() - cached.at < PROBE_FRESH_MS) return cached.result;
-  const result = fetch(new URL(PUBLIC_STATION_HANDSHAKE_PATH, url), {
-    mode: 'no-cors',
-    credentials: 'omit',
-    cache: 'no-store',
-    signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-  }).then(
-    () => 'online' as const,
-    () => 'unreachable' as const,
-  );
-  probeCache.set(url, { at: Date.now(), result });
-  return result;
+  const entry = {
+    at: Date.now(),
+    result: fetch(new URL(PUBLIC_STATION_HANDSHAKE_PATH, url), {
+      mode: 'no-cors',
+      credentials: 'omit',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    }).then(
+      () => 'online' as const,
+      () => {
+        if (probeCache.get(url) === entry) probeCache.delete(url);
+        return 'unreachable' as const;
+      },
+    ),
+  };
+  probeCache.set(url, entry);
+  return entry.result;
 }
 
 export function forgetStationProbe(url: string): void {

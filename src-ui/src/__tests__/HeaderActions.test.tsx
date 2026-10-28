@@ -49,6 +49,8 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
   useConnections: () => ({
     activeConnection: savedConnections[0] ?? null,
     connections: savedConnections,
+    forgetConnection: vi.fn(async () => {}),
+    canForgetConnection: () => true,
   }),
   usePendingPairingApproval: () => pendingApprovalRecord,
 }));
@@ -89,6 +91,7 @@ import {
   consumePendingConnectionsModal,
   OPEN_CONNECTIONS_MODAL_EVENT,
 } from '../lib/connectionModalEvents';
+import { readRecentStations } from '../lib/stationSwitcher';
 
 test('Pair phone opens the existing host invitation flow directly from the Station chooser', async () => {
   const opened = vi.fn();
@@ -137,6 +140,16 @@ test('the Switch Station shortcut opens the chooser on the previous Station, onc
     expect(screen.queryByRole('menu', { name: 'Choose Station' })).toBeNull();
   } finally {
     savedConnections = [SAVED_STATION];
+    cleanup();
+  }
+});
+
+test('records the active Station as most recently used', () => {
+  window.localStorage.removeItem('station.switcher.recent');
+  try {
+    renderHeader();
+    expect(readRecentStations()[0]).toBe('c1');
+  } finally {
     cleanup();
   }
 });

@@ -118,11 +118,12 @@ const extras = [
 function openMenu(
   connections: SavedConnection[] = [station, laptop],
   forget = vi.fn(async (_connection: SavedConnection) => {}),
+  canForget: (connection: SavedConnection) => boolean = () => true,
+  select = vi.fn(async (_connection: SavedConnection) => {}),
 ) {
   const anchor = document.createElement('button');
   document.body.append(anchor);
   anchor.focus();
-  const select = vi.fn(async (_connection: SavedConnection) => {});
   const close = vi.fn();
   const manage = vi.fn();
   render(
@@ -134,6 +135,7 @@ function openMenu(
       activeStatusLabel="Connected"
       onSelect={select}
       onForget={forget}
+      canForget={canForget}
       onClose={close}
       onManage={manage}
     />,
@@ -236,14 +238,17 @@ test('filters by typing, and Enter switches to the best match', async () => {
 test('removes a Station after an inline confirmation, never the active one', async () => {
   const { forget } = openMenu();
   expect(
-    screen.queryByRole('button', { name: 'Forget Workstation' }),
+    screen.queryByRole('menuitem', { name: 'Forget Workstation' }),
   ).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Forget Laptop' }));
+  const forgetLaptop = screen.getByRole('menuitem', { name: 'Forget Laptop' });
+  fireEvent.click(forgetLaptop);
   expect(forget).not.toHaveBeenCalled();
-  expect(screen.getByText('Forget on this device?')).toBeTruthy();
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Confirm forgetting Laptop' }),
-  );
+  expect(forgetLaptop.textContent).toBe('Forget');
+  expect(
+    document.getElementById(forgetLaptop.getAttribute('aria-describedby') ?? '')
+      ?.textContent,
+  ).toBe('Forget on this device?');
+  fireEvent.click(forgetLaptop);
   await act(async () => {});
   expect(forget).toHaveBeenCalledExactlyOnceWith(laptop);
   expect(screen.queryByRole('menuitemradio', { name: /^Laptop/ })).toBeNull();
@@ -256,9 +261,8 @@ test('Delete on a row arms its removal, and a refused removal keeps the row', as
   const show = vi.spyOn(toastStore, 'show');
   openMenu([station, laptop], forget);
   fireEvent.keyDown(row(/^Laptop/), { key: 'Delete' });
-  const confirm = screen.getByRole('button', {
-    name: 'Confirm forgetting Laptop',
-  });
+  const confirm = screen.getByRole('menuitem', { name: 'Forget Laptop' });
+  expect(confirm.textContent).toBe('Forget');
   expect(document.activeElement).toBe(confirm);
   fireEvent.click(confirm);
   await act(async () => {});
@@ -277,8 +281,11 @@ test('offers to remove every unreachable Station at once', async () => {
   });
   fireEvent.click(bulk);
   expect(forget).not.toHaveBeenCalled();
+  // The confirmation names what it will forget.
   fireEvent.click(
-    screen.getByRole('menuitem', { name: 'Confirm: forget 3 Stations' }),
+    screen.getByRole('menuitem', {
+      name: 'Forget Laptop, Media server, Old dev?',
+    }),
   );
   await act(async () => {});
   expect(forget.mock.calls.map(([connection]) => connection.name)).toEqual([
@@ -289,4 +296,68 @@ test('offers to remove every unreachable Station at once', async () => {
   expect(
     screen.getAllByRole('menuitemradio').map((item) => item.textContent),
   ).toHaveLength(2);
+});
+
+test('offers Forget only where it can succeed, and never mid-switch', async () => {
+  let finishSwitch: () => void = () => {};
+  const select = vi.fn(
+    (_connection: SavedConnection) =>
+      new Promise<void>((resolve) => {
+        finishSwitch = resolve;
+      }),
+  );
+  openMenu(
+    [station, laptop, extras[0]],
+    undefined,
+    (connection) => connection.id !== 'three',
+    select,
+  );
+  expect(
+    screen.queryByRole('menuitem', { name: 'Forget Build box' }),
+  ).toBeNull();
+  expect(screen.getByRole('menuitem', { name: 'Forget Laptop' })).toBeTruthy();
+  fireEvent.click(row(/^Laptop/));
+  expect(select).toHaveBeenCalledOnce();
+  expect(screen.queryByRole('menuitem', { name: 'Forget Laptop' })).toBeNull();
+  fireEvent.keyDown(row(/^Laptop/), { key: 'Delete' });
+  expect(screen.queryByText('Forget on this device?')).toBeNull();
+  await act(async () => finishSwitch());
+});
+
+test('Escape backs out of an armed Forget before it closes the menu', () => {
+  const { close } = openMenu();
+  fireEvent.keyDown(row(/^Laptop/), { key: 'Delete' });
+  expect(screen.getByText('Forget on this device?')).toBeTruthy();
+  fireEvent.keyDown(document.activeElement ?? document.body, {
+    key: 'Escape',
+  });
+  expect(screen.queryByText('Forget on this device?')).toBeNull();
+  expect(close).not.toHaveBeenCalled();
+  fireEvent.keyDown(document.body, { key: 'Escape' });
+  expect(close).toHaveBeenCalledOnce();
+});
+
+test('Space on a row selects it rather than typing into the filter', async () => {
+  const { select } = openMenu([station, laptop, ...extras]);
+  const laptopRow = row(/^Laptop/);
+  laptopRow.focus();
+  fireEvent.keyDown(laptopRow, { key: ' ' });
+  expect(document.activeElement).toBe(laptopRow);
+  fireEvent.keyDown(laptopRow, { key: 'b' });
+  expect(document.activeElement).toBe(
+    screen.getByRole('searchbox', { name: 'Find a Station' }),
+  );
+  expect(select).not.toHaveBeenCalled();
+});
+
+test('a touch screen opens on the previous Station, not the filter keyboard', () => {
+  vi.stubGlobal(
+    'matchMedia',
+    (query: string) =>
+      ({ matches: query === '(pointer: coarse)' }) as MediaQueryList,
+  );
+  recordStationUse('two');
+  recordStationUse('one');
+  openMenu([station, laptop, ...extras]);
+  expect(document.activeElement).toBe(row(/^Laptop/));
 });

@@ -315,14 +315,16 @@ Opening the chooser checks whether each other Station answers its public
 handshake, from this device, without credentials. A green dot means it
 answered; **Unreachable** means nothing did within a few seconds. Answering
 proves only that the address responds, not that this device still has access.
-Stations reached through a broker route are not checked.
+Stations reached through a broker route are not checked, nor, from an HTTPS
+page, a plain-HTTP address other than loopback, which the browser would block.
 
 Forget a Station on this device with the × beside it (Delete on a focused
 row) and confirm. With two or more unreachable, **Forget N unreachable**
-forgets them together after one confirmation. The current Station cannot be
+forgets them together after a confirmation that names each one. The current Station cannot be
 forgotten here. On the desktop app, Stations other channels or development
 instances left in the shared profile file can be forgotten like any other;
-only the app's own local Station is refused.
+only the app's own local Station is refused, and every local-service profile
+is refused until the app has identified its own at startup.
 
 Choose **Manage Stations** to inspect saved connections. Tap a row to reveal
 **Switch to this Station** and **Edit Station**; inspecting a row does not

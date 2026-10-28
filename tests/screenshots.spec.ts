@@ -2479,9 +2479,7 @@ function stationSwitcherScreens(): Screen[] {
             .getByRole('menuitemradio', { name: /^Old dev instance/ })
             .press('Delete');
           await expect(
-            menu.getByRole('button', {
-              name: 'Confirm forgetting Old dev instance',
-            }),
+            menu.getByRole('menuitem', { name: 'Forget Old dev instance' }),
           ).toBeFocused();
         }
       },

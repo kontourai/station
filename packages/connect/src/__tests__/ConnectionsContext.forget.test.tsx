@@ -86,4 +86,18 @@ describe('forgetConnection', () => {
     ).rejects.toThrow('Forget this Station in the CLI.');
     expect(store.getAll().map((c) => c.id)).toContain('station-profile:Box');
   });
+
+  it('says where forgetting can succeed', () => {
+    const store = storeWithSharedProfile();
+    const desk = store.getAll().find((c) => c.name === 'Desk')!;
+    const withoutHost = mount(store);
+    expect(withoutHost.canForgetConnection(desk.id)).toBe(true);
+    expect(withoutHost.canForgetConnection('station-profile:Box')).toBe(false);
+    expect(withoutHost.canForgetConnection('missing')).toBe(false);
+    const withHost = mount(
+      store,
+      vi.fn(async () => {}),
+    );
+    expect(withHost.canForgetConnection('station-profile:Box')).toBe(true);
+  });
 });
