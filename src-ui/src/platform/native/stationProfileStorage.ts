@@ -428,6 +428,8 @@ export class NativeStationProfileStorage
    * own local Station, while a real in-process choice remains authoritative.
    */
   private explicitProcessSelection: string | undefined;
+  /** The profile the native owner resolver named as this app's own Station. */
+  private bundledProfileName: string | undefined;
   private selectionProvenanceHydrated = false;
   private activeRequestBinding:
     | (NativeProfileRequestBinding & {
@@ -738,6 +740,7 @@ export class NativeStationProfileStorage
       (candidate) => candidate.name.toLowerCase() === profileName.toLowerCase(),
     );
     if (!profile) return undefined;
+    this.bundledProfileName = profile.name;
     if (this.explicitProcessSelection) {
       const explicit = this.profileStore.profiles.find(
         (candidate) =>
@@ -889,6 +892,10 @@ export class NativeStationProfileStorage
    * binding, and the host deletes a credential only once nothing references
    * it. A failed write therefore changes nothing and can simply be retried.
    *
+   * Only this app's own Station and relay routes are refused: they have
+   * their own lifecycles. Profiles other channels or dev instances left
+   * behind are ordinary saved Stations here, even with a `localService`.
+   *
    * Forgetting the selected Station moves the selection to the default, or,
    * with no default left, to the first remaining Station for this session
    * only; the CLI default is never reassigned here.
@@ -904,8 +911,13 @@ export class NativeStationProfileStorage
       profile.endpoint === input.expected.url;
     const initial = await this.readProfileStore();
     const target = initial.profiles.find(matches);
-    if (target && (target.localService || target.relayRoute))
+    if (target?.relayRoute)
       throw new Error('This Station cannot be forgotten here.');
+    if (
+      target &&
+      target.name.toLowerCase() === this.bundledProfileName?.toLowerCase()
+    )
+      throw new Error("This app's own Station cannot be forgotten.");
     if (!confirmed(target))
       throw new Error(
         'This Station changed while you were confirming. Reopen it and try again.',
