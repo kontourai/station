@@ -148,8 +148,9 @@ export function useContextMenuGesture({
       event.stopPropagation();
     },
     onPointerDown: (event) => {
-      // Any new press, on the item or on what it opened: whatever click the
-      // last hold ended in is not coming now.
+      // Any new press the item sees — on it, or on a surface it renders (its
+      // portals bubble here): whatever click the last hold ended in is not
+      // coming now.
       suppressUntil.current = 0;
       if (!inItem(event)) return;
       holding.current = false;
@@ -184,10 +185,12 @@ export function useContextMenuGesture({
     onPointerCancel: (event) => {
       if (inItem(event)) end();
     },
-    // Not limited to the item: the click a hold ends in is hit-tested where
-    // the finger lifts, which can be the menu or sheet the hold just opened
-    // under it. A deliberate tap there starts with a press, which closed the
-    // window above.
+    // Not limited to the item's DOM: the click a hold ends in is hit-tested
+    // where the finger lifts, which can be the menu or sheet the hold just
+    // opened under it — reached here when the item renders that surface (a
+    // portal). A deliberate tap there starts with a press, which closed the
+    // window above. A surface the item does not render (the file tree's
+    // menu, a sibling) never reaches this handler either way.
     onClickCapture: (event) => {
       if (Date.now() >= suppressUntil.current) return;
       suppressUntil.current = 0;

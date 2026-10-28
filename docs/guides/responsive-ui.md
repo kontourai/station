@@ -408,9 +408,11 @@ Details sheet.
 Wire the gesture with
 [`useContextMenuGesture`](../../src-ui/src/hooks/useContextMenuGesture.ts).
 Only a finger or pen can hold (500ms, cancelled by 8px of movement or a scroll).
-The click the hold ends in is swallowed for up to 700ms, wherever it lands,
-including on the menu or sheet the hold opened under the finger. Any new press
-ends that window, so a deliberate tap on the menu acts. A press inside what the
+The click the hold ends in is swallowed for up to 700ms on the item or on a
+surface the item renders, including the menu or sheet the hold opened under the
+finger. Any new press there ends that window, so a deliberate tap on the menu
+acts. A menu rendered outside the item, like the file tree's, is never
+affected. A press inside what the
 item opened never starts a hold on the item, and a right-click there is that
 surface's own. The platform's own long-press `contextmenu` for the same hold
 is refused to the platform. On the item or its `⋯` menu's backdrop it reopens
