@@ -4,6 +4,7 @@ import { once } from 'node:events';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
+import { totalmem } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
@@ -200,6 +201,41 @@ describe.skipIf(!manager)('running server workload containment', () => {
     expect(
       Number(await readFile(`/sys/fs/cgroup${leaf}/memory.max`, 'utf8')),
     ).toBe(64 * 1024 * 1024);
+  });
+
+  test('boot protects the server unit and lowers the workload slice CPU weight', () => {
+    const show = (target: string, properties: string[]) => {
+      const shown = spawnSyncBounded(
+        '/usr/bin/systemctl',
+        [
+          '--user',
+          'show',
+          target,
+          ...properties.map((property) => `--property=${property}`),
+        ],
+        { encoding: 'utf8', windowsHide: true, timeout: 15_000 },
+      );
+      expect(shown.status, shown.stderr).toBe(0);
+      return Object.fromEntries(
+        shown.stdout
+          .trim()
+          .split('\n')
+          .map((line) => [
+            line.slice(0, line.indexOf('=')),
+            line.slice(line.indexOf('=') + 1),
+          ]),
+      );
+    };
+    // The fixture unit itself starts with MemorySwapMax=0, so only the
+    // values boot alone sets prove that boot applied them.
+    const MIB = 1024 * 1024;
+    expect(show(unit, ['MemoryLow', 'ManagedOOMPreference'])).toEqual({
+      MemoryLow: String(
+        Math.min(1536 * MIB, Math.floor(totalmem() / MIB / 8) * MIB),
+      ),
+      ManagedOOMPreference: 'avoid',
+    });
+    expect(show(slice, ['CPUWeight'])).toEqual({ CPUWeight: '25' });
   });
 
   test('a real workload OOM leaves the answering server and sibling engine alive and records its cause', async () => {
