@@ -4454,6 +4454,11 @@ handshake: `true` when it advertises `scheduledConversationTarget`, so a job
 may carry a `target` that runs in a conversation on any engine, `false` when
 it does not, and `null` when the handshake could not be read. Offer other
 engines only on `true`.
+Scheduler list, statistics and status results are scoped to the caller.
+Job logs and scheduled run output use each run's recorded target; a retargeted
+job does not transfer its earlier conversation's history to the new target.
+Older runs without a recorded target require the creator and current-target
+read access. An agent can read only its own conversation's runs.
 `PluginCollectionHttpError` is built the same way: it keeps the envelope's
 `code` on the error and on its `envelope`, and keeps the refusal's `details`
 and `Retry-After`.

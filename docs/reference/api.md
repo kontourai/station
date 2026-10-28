@@ -4475,7 +4475,8 @@ provider-name strings.
 
 `GET /scheduler/events` relays serialized scheduler events and sends named
 `ping` keepalives every 30 seconds. The provider/event owner determines the event
-payload; a live frame is not a durable completed-run receipt.
+payload; a live frame is not a durable completed-run receipt. Job events are
+limited to jobs the caller can read, and run events to the recorded run target.
 
 ### Scheduler Webhook Receiver
 
@@ -4490,14 +4491,17 @@ instruction to execute a job.
 [SchedulerJob contract](../../packages/contracts/src/scheduler.ts), including
 job `name`, provider-neutral schedule information, an automation's `target`
 and `createdBy.userId`, and the derived `consecutiveFailures` and
-`lastSuccessAt`. Provider read failures
+`lastSuccessAt`. An agent sees jobs targeting its own conversation; a person
+sees jobs for conversations they can read, plus untargeted jobs. Run-derived
+fields are withheld if the job has unreadable runs. Provider read failures
 propagate rather than becoming a fabricated empty schedule.
 
 ### Get Scheduler Stats
 
 `GET /scheduler/stats` returns `{success: true, data: {providers, summary}}`.
 Summary includes total jobs, total recorded runs, and a rounded success-rate
-percentage derived from provider job statistics (zero when no runs exist).
+percentage derived from the caller’s readable run records (zero when no runs
+exist). Provider status job counts are scoped to readable jobs.
 
 ### Get Scheduler Status
 
@@ -4522,7 +4526,11 @@ when previewing it.
 `GET /scheduler/jobs/:target/logs?count=20` returns `{success: true, data}` from
 the owning provider. `providerId` can select the provider explicitly; count
 defaults to 20. These are provider run-log records, not arbitrary server log
-files.
+files. Run logs and output use the target recorded when each run was claimed,
+not a job's later target. For old runs without a recorded target, only the
+creator who can read the current target can read them; agents cannot. A
+nonexistent or inaccessible job returns 404. See the
+[automation decision](../decisions/automations-unify-schedules.md#rules).
 
 ### Read Run Output
 
@@ -4603,8 +4611,8 @@ proposal (404).
 (`wakeUps`), its open job proposals, up to 20 jobs approved from it (`jobs`,
 by name), the automations whose runs land in it (`automations`, absent when
 the scheduler could not be read), and a usage-limit stop waiting for a known
-reset (`usageLimitResume`). It needs a person who may read every Session of the
-conversation.
+reset (`usageLimitResume`). A person must be able to read every Session of
+the conversation; an agent may read only its own conversation.
 `POST .../wake-ups/:wakeUpId/cancel` (or `/decline`, the same act) cancels a
 check-back, `POST .../wake-ups/:wakeUpId/approve` approves one waiting for a
 person (`needs_approval`; 409 `wake_up_settled` once it is decided or due,
@@ -4612,7 +4620,7 @@ person (`needs_approval`; 409 `wake_up_settled` once it is decided or due,
 shutdown; it stays `needs_approval`),
 and `POST .../job-proposals/:proposalId/decline` declines a proposal; each
 needs a person who may send to the conversation, and answers 404 to anyone
-else. An agent's request reaches none of them. The agent's own side is the station-control tools in
+else. An agent cannot take those person-only actions. The agent's own side is the station-control tools in
 [the self-configuring agent guide](../guides/self-configuring-agent.md#wake-an-agent-later).
 
 ### Update Job

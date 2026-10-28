@@ -842,13 +842,17 @@ for a fixed interval, or `at` for one future instant:
 }
 ```
 
-The scheduled execution is a new attributable Agent run using the stored
-prompt; it does not resume the conversation that created it. Creating
-the job also does not grant unattended tool authority. A per-job standing grant
+A proposed job targets the proposing conversation, where each scheduled run
+is a new framed turn using the stored prompt. A job without a conversation
+target uses the Station engine and writes an output file. Creating the job
+does not grant unattended tool authority. A per-job standing grant
 must target the server-issued scheduled-job principal, and a delete/recreate
 gets a new identity. An agent-wide opt-in is the agent's
 `tools.unattendedAutoApprove` list ([Unattended runs](agent-configuration.md#unattended-runs));
-`tools.autoApprove` patterns such as `station-control_*` cover attended chat. Use `get_job_logs` or the Runs surface to observe the result.
+`tools.autoApprove` patterns such as `station-control_*` cover attended chat.
+Use `get_job_logs` or the Runs surface to observe runs in your conversation.
+Runs recorded before target provenance was added are available only to the
+creator who can read the job’s current target.
 
 ### After a usage limit
 

@@ -1750,7 +1750,8 @@ Hosted Stations have no inbox and so no check-backs, and refuse proposals.
 builds the person gate, the delivery and the routes' ports; the
 [authority test](../../src-server/security/__tests__/agent-schedule-authority.routes.test.ts)
 drives that composition through the real boundary, guard and routes per
-credential channel, with a real thread inbox.
+credential channel, with a real thread inbox. A person reads a conversation
+schedule with conversation read access; an agent may read its own.
 
 ## SessionDigest
 
@@ -4187,7 +4188,11 @@ without one keeps the fence. One unreadable job record is quarantined in place:
 `claimDue` skips it and reports it once per record revision (BuiltinScheduler
 logs an error), and every other due job still claims. Settling a dead claim on
 such a record advances `last_run_ms` without rewriting the unreadable bytes. Exact revision checks let a concurrent job edit/delete win over old
-completion. Post-commit uncertainty requires exact readback; unavailable storage
+completion. Each claim snapshots its target; a dedicated start also records
+its actual conversation against that run, even if the job was retargeted.
+Run reads use that target, and pre-change records without one require the
+creator and current conversation read access. Fatigue excludes a claim still
+waiting for retry. Post-commit uncertainty requires exact readback; unavailable storage
 is a typed error, not an empty schedule or invented successful run.
 
 Automatic invocations use the published
