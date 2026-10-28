@@ -23,12 +23,13 @@
  * `request.opened`/`request.resolved` rows (method, requestType, payload
  * kind, sessionState/previousState/transitionReason/transitionSource,
  * status, acknowledgement); ids, timestamps and text are made up. The
- * summaries are hand-transcribed, not a byte capture: they carry the fields
- * the lifecycle fold and the inbox merge read for a root session that exited
- * and its successor (`conversationId` names the root), and omit optional
- * projections the server may add (`conversationActivity`, `openRequestIds`,
- * `currentSessionId`, `draft`). No chat is open: this pins the read-model
- * refresh, not the chat store's own request bookkeeping.
+ * summaries are hand-transcribed, not a byte capture: a root session that
+ * exited and its successor (`conversationId` names the root), without the
+ * optional projections the server may add (`conversationActivity`,
+ * `openRequestIds`, `currentSessionId`, `draft`), so the lifecycle fold and
+ * the inbox merge take their path for a summary that lacks them. No chat is
+ * open: this pins the read-model refresh, not the chat store's own request
+ * bookkeeping.
  */
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
