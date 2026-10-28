@@ -69,6 +69,7 @@ import {
   settingsForAnswerDelivery,
 } from '../utils/answerDelivery';
 import { AboutSection } from './settings/AboutSection';
+import { AccountSharingSection } from './settings/AccountSharingSection';
 import { AgentDefaultsSection } from './settings/AgentDefaultsSection';
 import { AnswerSharesSection } from './settings/AnswerSharesSection';
 import { DeviceHostsSection } from './settings/DeviceHostsSection';
@@ -1214,6 +1215,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   it used to sit in was dissolved. System is where this page
                   already keeps Station administration: updates, log level,
                   export and import, and the two resets. */}
+                    {/* #4305: whether this Station shares Projects with local
+                  accounts at all; the account list below manages them. */}
+                    <AccountSharingSection />
                     <LocalAccountsSection />
                   </>
                 )}
