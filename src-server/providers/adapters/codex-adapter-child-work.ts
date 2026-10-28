@@ -3,6 +3,7 @@ import {
   applyChildWorkDelta,
   CHILD_WORK_SUMMARY_MAX_CHARS,
   type ChildWorkDelta,
+  type ChildWorkEndedBy,
   type ChildWorkItem,
   type ChildWorkModel,
   type ChildWorkParent,
@@ -409,7 +410,11 @@ function settleChild(
   context: ChildWorkContext,
   childId: string,
   status: ChildWorkTerminalStatus,
-  extra: { summary?: string; durationMs?: number } = {},
+  extra: {
+    summary?: string;
+    durationMs?: number;
+    endedBy?: ChildWorkEndedBy;
+  } = {},
 ): void {
   const state = stateOf(context.record);
   if (state.closed) return;
@@ -429,6 +434,7 @@ function settleChild(
     reporterThreadId: context.record.externalThreadId,
     childId,
     status,
+    ...(extra.endedBy ? { endedBy: extra.endedBy } : {}),
     ...(result ? { result } : {}),
     ...(Object.keys(usage).length > 0 ? { usage } : {}),
     identity: {
@@ -978,19 +984,25 @@ function finalAgentMessage(items: unknown): string | undefined {
 /**
  * Session end: every child still running can no longer report. Codex runs
  * its children as threads inside the app-server, so when that process ended
- * under them (it died, or Station tore it down) they are `interrupted`: an
- * observed end. A door that cannot say the process is gone settles them
- * `unresolved` (nothing observed says how they ended). Called beside
+ * under them (it died, or Station tore it down) they settle `unresolved`
+ * with `endedBy: 'engine-exit'`, shown as interrupted: an observed end. A
+ * door that cannot say the process is gone leaves `endedBy` off (nothing
+ * observed says how they ended). Called beside
  * `settleUnresolvedCodexToolCalls`, before `session.exited`. Idempotent.
  */
 export function settleOpenCodexChildren(
   context: ChildWorkContext,
-  status: 'interrupted' | 'unresolved',
+  endedBy: ChildWorkEndedBy | undefined,
 ): void {
   const state = context.record.childWork;
   if (!state || state.closed) return;
   for (const item of runningChildren(context.record)) {
-    settleChild(context, item.childId, status);
+    settleChild(
+      context,
+      item.childId,
+      'unresolved',
+      endedBy ? { endedBy } : {},
+    );
   }
   state.closed = true;
   state.children.clear();

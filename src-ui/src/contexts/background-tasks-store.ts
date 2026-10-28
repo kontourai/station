@@ -21,9 +21,10 @@
 //   `ChatUIState.backgroundTasks` registry (`selectChatBackgroundTasks`),
 //   deduped by `toolCallId` (a provider task suppresses the raw tool card it
 //   was spawned from).
-import type {
-  ChildWorkItem,
-  ChildWorkStatus,
+import {
+  type ChildWorkDisplayStatus,
+  type ChildWorkItem,
+  childWorkDisplayStatus,
 } from '@kontourai/station-contracts/child-work';
 import type { OrchestrationDelegationContext } from '@kontourai/station-contracts/orchestration';
 import { runtimeEventContentText } from '@kontourai/station-contracts/runtime-event-content';
@@ -125,7 +126,10 @@ function firstLine(text: string | undefined, limit = 80): string | undefined {
   return line.length > limit ? `${line.slice(0, limit - 1)}…` : line;
 }
 
-const CHILD_WORK_CARD_STATE: Record<ChildWorkStatus, BackgroundTaskState> = {
+const CHILD_WORK_CARD_STATE: Record<
+  ChildWorkDisplayStatus,
+  BackgroundTaskState
+> = {
   running: 'running',
   completed: 'completed',
   failed: 'failed',
@@ -155,7 +159,7 @@ function backgroundTaskEntryFromChildWork(
     title?: string;
   },
 ): BackgroundTaskEntry {
-  const state = CHILD_WORK_CARD_STATE[item.status];
+  const state = CHILD_WORK_CARD_STATE[childWorkDisplayStatus(item)];
   if (item.producer === 'station-delegate') {
     return {
       id: item.childId,
@@ -653,7 +657,7 @@ export function reconcileBackgroundTasksSnapshot(
           // richer terminal status (completed/failed/cancelled/
           // stopped-unconfirmed) still comes through, and the two server
           // vintages agree on 'unresolved' when nothing settled it.
-          state: CHILD_WORK_CARD_STATE[child.status],
+          state: CHILD_WORK_CARD_STATE[childWorkDisplayStatus(child)],
           endedAt,
         },
       };

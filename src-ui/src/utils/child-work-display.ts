@@ -1,6 +1,6 @@
 import type {
+  ChildWorkDisplayStatus,
   ChildWorkModel,
-  ChildWorkStatus,
   ChildWorkUsage,
 } from '@kontourai/station-contracts/child-work';
 import type { OrchestrationSessionEventWindow } from '@kontourai/station-contracts/orchestration';
@@ -14,7 +14,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
  * A terminal reads as what was OBSERVED: "No result" and "Stop requested —
  * not confirmed" are not "Completed" and not "Stopped".
  */
-export const CHILD_WORK_STATUS_LABEL: Record<ChildWorkStatus, string> = {
+export const CHILD_WORK_STATUS_LABEL: Record<ChildWorkDisplayStatus, string> = {
   running: 'Running',
   completed: 'Completed',
   failed: 'Failed',
@@ -23,7 +23,8 @@ export const CHILD_WORK_STATUS_LABEL: Record<ChildWorkStatus, string> = {
   'stopped-unconfirmed': 'Stop requested — not confirmed',
   // The reporter stopped listing it without an outcome.
   unresolved: 'No result',
-  // Its engine process ended while it ran: an observed end, not a gap.
+  // `unresolved` with `endedBy: 'engine-exit'` (`childWorkDisplayStatus`):
+  // its engine process ended while it ran, an observed end, not a gap.
   interrupted: 'Interrupted',
 };
 

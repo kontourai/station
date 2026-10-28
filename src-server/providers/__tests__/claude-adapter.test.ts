@@ -12638,7 +12638,10 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
       event.method === 'child-work.updated' &&
       event.delta.kind === 'settle' &&
       event.delta.childId === capturedChildId
-        ? [event.delta.status]
+        ? [
+            // The wire status, and what a current client shows for it.
+            `${event.delta.status}${event.delta.endedBy ? `:${event.delta.endedBy}` : ''}`,
+          ]
         : [],
     );
 
@@ -12770,7 +12773,7 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
       new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000)),
     ]);
     expect(settled, 'no settle after the engine died').not.toBeNull();
-    expect(childSettles(seen)).toEqual(['interrupted']);
+    expect(childSettles(seen)).toEqual(['unresolved:engine-exit']);
   });
 
   test('the engine process ending on its own settles the running child too', async () => {

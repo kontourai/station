@@ -1,7 +1,8 @@
 /**
  * @vitest-environment jsdom
  *
- * A subagent whose engine process died under it reads as Interrupted, with a
+ * A subagent whose engine process died under it (wire status `unresolved`,
+ * `endedBy: 'engine-exit'`) reads as Interrupted, with a
  * settled mark, never as "No result" with the dashed ring an absence of an
  * outcome gets; a batch counts it as "N interrupted".
  */
@@ -37,6 +38,11 @@ function child(
   };
 }
 
+/** How the server reports it: the status every client knows, plus why it ended. */
+function interrupted(childId: string): ChildWorkItem {
+  return { ...child(childId, 'unresolved'), endedBy: 'engine-exit' };
+}
+
 const toolPart = {
   type: 'tool-invocation',
   toolCallId: TOOL_CALL,
@@ -67,7 +73,7 @@ afterEach(cleanup);
 
 describe('an interrupted subagent', () => {
   test('reads Interrupted with a settled mark, not the pending dashed ring', () => {
-    renderChildren([child('a', 'interrupted')]);
+    renderChildren([interrupted('a')]);
     const card = screen.getByTestId('subagent-card');
     expect(card.getAttribute('data-status')).toBe('interrupted');
     expect(within(card).getByText('Interrupted')).toBeTruthy();
@@ -108,10 +114,10 @@ describe('an interrupted subagent', () => {
 
   test('a batch counts interrupted children by name', () => {
     renderChildren([
-      child('a', 'interrupted'),
-      child('b', 'interrupted'),
-      child('c', 'interrupted'),
-      child('d', 'interrupted'),
+      interrupted('a'),
+      interrupted('b'),
+      interrupted('c'),
+      interrupted('d'),
       child('e', 'completed'),
     ]);
     expect(

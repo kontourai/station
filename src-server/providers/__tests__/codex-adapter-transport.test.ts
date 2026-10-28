@@ -1066,7 +1066,10 @@ describe('CodexAdapterTransport', () => {
         event.method === 'child-work.updated' &&
         event.delta.kind === 'settle' &&
         event.delta.childId === CHILD
-          ? [event.delta.status]
+          ? [
+              // The wire status, and what a current client shows for it.
+              `${event.delta.status}${event.delta.endedBy ? `:${event.delta.endedBy}` : ''}`,
+            ]
           : [],
       );
     }
@@ -1082,7 +1085,9 @@ describe('CodexAdapterTransport', () => {
       await vi.waitFor(() =>
         expect(events.map((event) => event.method)).toContain('session.exited'),
       );
-      expect(childSettles(events)).toEqual(['interrupted']);
+      // Wire status `unresolved`, which every client knows; `endedBy` makes
+      // a current client show it interrupted.
+      expect(childSettles(events)).toEqual(['unresolved:engine-exit']);
       const settleAt = events.findIndex(
         (event) => event.method === 'child-work.updated',
       );
@@ -1110,7 +1115,7 @@ describe('CodexAdapterTransport', () => {
             'session.exited',
           ),
         );
-        expect(childSettles(events)).toEqual(['interrupted']);
+        expect(childSettles(events)).toEqual(['unresolved:engine-exit']);
         expect(
           events.find((event) => event.method === 'session.exited'),
         ).toMatchObject({ reason: 'memory-exhausted' });
@@ -1124,6 +1129,7 @@ describe('CodexAdapterTransport', () => {
         recordWithRunningChild('thread-child-error');
       processHandle.emit('error', new Error('kill EPERM'));
       expect(events.map((event) => event.method)).toContain('session.exited');
+      // No `endedBy`: a bare unresolved, "No result".
       expect(childSettles(events)).toEqual(['unresolved']);
     });
   });

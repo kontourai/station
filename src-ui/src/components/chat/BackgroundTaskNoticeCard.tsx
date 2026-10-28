@@ -1,4 +1,4 @@
-import type { ChildWorkTerminalStatus } from '@kontourai/station-contracts/child-work';
+import type { ChildWorkTerminalDisplayStatus } from '@kontourai/station-contracts/child-work';
 import type { BackgroundTaskNotice } from '../../contexts/active-chats-state';
 import { STATUS_GLYPH_BY_STATE } from '../status/StatusGlyph';
 import { LazyMarkdown } from './LazyMarkdown';
@@ -17,39 +17,41 @@ interface NoticeStatusPresentation {
  * everywhere else. The two outcomes nobody confirmed share the caution tone:
  * neither may look like a success or a confirmed stop (#2459).
  */
-const NOTICE_STATUS: Record<ChildWorkTerminalStatus, NoticeStatusPresentation> =
-  {
-    completed: {
-      text: 'Task finished',
-      glyph: STATUS_GLYPH_BY_STATE.Completed.glyph,
-      tone: 'success',
-    },
-    failed: {
-      text: 'Task failed',
-      glyph: STATUS_GLYPH_BY_STATE.Failed.glyph,
-      tone: 'danger',
-    },
-    cancelled: {
-      text: 'Task stopped',
-      glyph: STATUS_GLYPH_BY_STATE.Stopped.glyph,
-      tone: 'muted',
-    },
-    'stopped-unconfirmed': {
-      text: 'Stop requested — not confirmed',
-      glyph: '?',
-      tone: 'warning',
-    },
-    unresolved: {
-      text: 'Task ended — outcome unknown',
-      glyph: '?',
-      tone: 'warning',
-    },
-    interrupted: {
-      text: 'Task interrupted',
-      glyph: STATUS_GLYPH_BY_STATE.Stopped.glyph,
-      tone: 'warning',
-    },
-  };
+const NOTICE_STATUS: Record<
+  ChildWorkTerminalDisplayStatus,
+  NoticeStatusPresentation
+> = {
+  completed: {
+    text: 'Task finished',
+    glyph: STATUS_GLYPH_BY_STATE.Completed.glyph,
+    tone: 'success',
+  },
+  failed: {
+    text: 'Task failed',
+    glyph: STATUS_GLYPH_BY_STATE.Failed.glyph,
+    tone: 'danger',
+  },
+  cancelled: {
+    text: 'Task stopped',
+    glyph: STATUS_GLYPH_BY_STATE.Stopped.glyph,
+    tone: 'muted',
+  },
+  'stopped-unconfirmed': {
+    text: 'Stop requested — not confirmed',
+    glyph: '?',
+    tone: 'warning',
+  },
+  unresolved: {
+    text: 'Task ended — outcome unknown',
+    glyph: '?',
+    tone: 'warning',
+  },
+  interrupted: {
+    text: 'Task interrupted',
+    glyph: STATUS_GLYPH_BY_STATE.Stopped.glyph,
+    tone: 'warning',
+  },
+};
 
 /**
  * A backgrounded child's settle, compact: one line of status and title, then

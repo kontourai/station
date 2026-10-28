@@ -1,4 +1,8 @@
-import { CHILD_WORK_SUMMARY_MAX_CHARS } from '@kontourai/station-contracts/child-work';
+import {
+  CHILD_WORK_SUMMARY_MAX_CHARS,
+  type ChildWorkDisplayStatus,
+  childWorkDisplayStatus,
+} from '@kontourai/station-contracts/child-work';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { useId, useState } from 'react';
 import { useElapsedClock } from '../../hooks/useElapsedClock';
@@ -50,11 +54,7 @@ function firstLine(text: string): string {
   );
 }
 
-function StatusGlyph({
-  status,
-}: {
-  status: TranscriptChild['item']['status'];
-}) {
+function StatusGlyph({ status }: { status: ChildWorkDisplayStatus }) {
   if (status === 'running')
     return <span className="subagent-card__spinner" aria-hidden="true" />;
   if (status === 'completed') return <CheckGlyph />;
@@ -101,12 +101,13 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
       ? firstLine(summary)
       : undefined;
   const usage = childWorkUsageClauses(item.usage);
-  const statusLabel = CHILD_WORK_STATUS_LABEL[item.status];
+  const status = childWorkDisplayStatus(item);
+  const statusLabel = CHILD_WORK_STATUS_LABEL[status];
 
   return (
     <div
       className="subagent-card"
-      data-status={item.status}
+      data-status={status}
       data-testid="subagent-card"
     >
       <button
@@ -123,9 +124,9 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
           <span className="subagent-card__headline">
             <strong className="subagent-card__title">{title}</strong>
             <span
-              className={`subagent-card__status subagent-card__status--${item.status}`}
+              className={`subagent-card__status subagent-card__status--${status}`}
             >
-              <StatusGlyph status={item.status} />
+              <StatusGlyph status={status} />
               {statusLabel}
             </span>
           </span>
@@ -276,9 +277,11 @@ function SubagentCallGroup({
   const groupId = useId();
   const grouped = children.length > 1;
   if (!children.length) return null;
-  const counts = new Map<TranscriptChild['item']['status'], number>();
-  for (const child of children)
-    counts.set(child.item.status, (counts.get(child.item.status) ?? 0) + 1);
+  const counts = new Map<ChildWorkDisplayStatus, number>();
+  for (const child of children) {
+    const status = childWorkDisplayStatus(child.item);
+    counts.set(status, (counts.get(status) ?? 0) + 1);
+  }
 
   return (
     <div className="subagent-group" data-grouped={grouped}>

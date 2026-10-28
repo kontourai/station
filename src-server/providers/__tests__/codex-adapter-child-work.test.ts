@@ -423,8 +423,12 @@ describe('#2458 Codex subagents as child work — real captures', () => {
     expect(child(replay.events).status).toBe('running');
     await replay.stop();
     // Codex children are threads inside the app-server Station just reaped:
-    // their end was observed, so not `unresolved`.
-    expect(child(replay.events).status).toBe('interrupted');
+    // their end was observed. The wire keeps `unresolved` (older clients
+    // know it); `endedBy` is what reads as interrupted.
+    expect(child(replay.events)).toMatchObject({
+      status: 'unresolved',
+      endedBy: 'engine-exit',
+    });
     const settleAt = replay.events.findIndex(
       (event) =>
         event.method === 'child-work.updated' && event.delta.kind === 'settle',
