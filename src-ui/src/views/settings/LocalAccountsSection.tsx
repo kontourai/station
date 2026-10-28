@@ -84,7 +84,7 @@ function AccountControls({
     <PageSection
       className="settings__section local-accounts"
       title="Accounts and sign-in"
-      description="Station operators manage account sign-in here. Project roles, device approvals and computer access remain separate."
+      description="Operators manage account sign-in here."
     >
       {query.isPending ? (
         <SkeletonList count={2} />
@@ -202,7 +202,7 @@ function AccountControls({
         message={
           pending?.action === 'create-recovery'
             ? `Anyone with this link can reset ${pending.account.name}’s password. Confirm the recipient before sharing it.`
-            : 'Project membership and device grants will remain recorded separately.'
+            : 'Project membership and device grants are kept.'
         }
         onConfirm={() => void apply()}
         onCancel={() => setPending(undefined)}
