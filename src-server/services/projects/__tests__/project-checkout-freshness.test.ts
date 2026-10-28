@@ -388,6 +388,121 @@ describe('project checkout freshness', () => {
     });
   });
 
+  test('an upstream pruned away while a ref under its name remains is no-upstream', async () => {
+    const { checkout, other } = fixture();
+    git(other, ['push', '-q', 'origin', 'main:refs/heads/gone']);
+    git(checkout, ['fetch', '-q']);
+    git(checkout, ['checkout', '-q', '-b', 'gone', '--track', 'origin/gone']);
+    // The remote replaces `gone` with `gone/x`; a pruning fetch follows.
+    git(other, ['push', '-q', 'origin', ':refs/heads/gone']);
+    git(other, ['push', '-q', 'origin', 'main:refs/heads/gone/x']);
+    git(checkout, ['fetch', '-q', '--prune']);
+    const result = await createProjectCheckoutFreshnessReader().read(
+      checkout,
+      THRESHOLDS,
+    );
+    expect(result).toMatchObject({ status: 'unknown', reason: 'no-upstream' });
+  });
+
+  test('an upstream reflog in a folder whose case differs from the ref is still read', async () => {
+    const { checkout, other, land } = fixture();
+    // On a case-insensitive file system both refs share one folder on disk,
+    // named for whichever came first.
+    git(other, ['push', '-q', 'origin', 'main:refs/heads/feature/b']);
+    git(checkout, ['fetch', '-q']);
+    land(1);
+    git(other, ['push', '-q', 'origin', 'main:refs/heads/Feature/x']);
+    git(checkout, ['fetch', '-q']);
+    git(checkout, [
+      'checkout',
+      '-q',
+      '-b',
+      'fx',
+      '--track',
+      'origin/Feature/x',
+    ]);
+    const old = new Date(Date.now() - 5 * DAY_MS);
+    utimesSync(join(checkout, '.git', 'FETCH_HEAD'), old, old);
+    utimesSync(
+      join(checkout, '.git', 'logs', 'refs', 'remotes', 'origin', 'HEAD'),
+      old,
+      old,
+    );
+    const result = await createProjectCheckoutFreshnessReader().read(
+      checkout,
+      THRESHOLDS,
+    );
+    // The upstream's own reflog, written by the last fetch, is the newest.
+    expect(result).toMatchObject({
+      upstream: 'origin/Feature/x',
+      status: 'not-stale',
+    });
+  });
+
+  test('a remote whose name has a slash takes its clone record from its own folder', async () => {
+    const { checkout, upstream } = fixture();
+    git(checkout, ['remote', 'add', 'team/mirror', upstream]);
+    git(checkout, ['fetch', '-q', 'team/mirror']);
+    git(checkout, ['remote', 'set-head', 'team/mirror', 'main']);
+    git(checkout, [
+      'checkout',
+      '-q',
+      '-b',
+      'mirrored',
+      '--track',
+      'team/mirror/main',
+    ]);
+    const old = new Date(Date.now() - 6 * DAY_MS);
+    const setHead = new Date(Date.now() - DAY_MS);
+    const logs = join(checkout, '.git', 'logs', 'refs', 'remotes');
+    utimesSync(join(checkout, '.git', 'FETCH_HEAD'), old, old);
+    utimesSync(join(logs, 'team', 'mirror', 'main'), old, old);
+    utimesSync(join(logs, 'team', 'mirror', 'HEAD'), setHead, setHead);
+    const result = await createProjectCheckoutFreshnessReader().read(
+      checkout,
+      THRESHOLDS,
+    );
+    expect(result).toMatchObject({
+      upstream: 'team/mirror/main',
+      upstreamFetchedAt: setHead.toISOString(),
+    });
+  });
+
+  test('a remote name that climbs out of the git directory reaches no file', async () => {
+    const { root, checkout } = fixture();
+    // From .git/logs/refs/remotes, five steps up is the fixture root.
+    const climbing = '../../../../../outside';
+    git(checkout, [
+      'config',
+      `remote.${climbing}.url`,
+      join(root, 'upstream.git'),
+    ]);
+    git(checkout, [
+      'config',
+      `remote.${climbing}.fetch`,
+      '+refs/heads/*:refs/remotes/evil/*',
+    ]);
+    git(checkout, ['update-ref', 'refs/remotes/evil/main', 'HEAD']);
+    git(checkout, ['config', 'branch.main.remote', climbing]);
+    mkdirSync(join(root, 'outside'));
+    writeFileSync(join(root, 'outside', 'HEAD'), 'any file\n');
+    const old = new Date(Date.now() - 6 * DAY_MS);
+    const logs = join(checkout, '.git', 'logs', 'refs', 'remotes');
+    // Every record inside the repository is old, including the upstream
+    // reflog `update-ref` just wrote; only the outside file is recent.
+    utimesSync(join(logs, 'origin', 'HEAD'), old, old);
+    utimesSync(join(logs, 'evil', 'main'), old, old);
+    const result = await createProjectCheckoutFreshnessReader().read(
+      checkout,
+      THRESHOLDS,
+    );
+    expect(result).toMatchObject({
+      upstream: 'evil/main',
+      behind: 0,
+      upstreamFetchedAt: old.toISOString(),
+    });
+  });
+
   test('a repository whose own config Station does not run git with is config-refused', async () => {
     const { checkout } = fixture();
     git(checkout, ['config', 'credential.helper', 'store']);

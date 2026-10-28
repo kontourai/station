@@ -65,7 +65,9 @@ export function ProjectCheckoutStaleCallout({
       <p>
         {behindTooFar
           ? 'Agents started here follow this checkout’s instructions.'
-          : `It may be behind ${freshness.upstream}, and agents here follow its instructions.`}
+          : freshness.behind > 0
+            ? `It was ${plural(freshness.behind, 'commit')} behind ${freshness.upstream} then, and may be further now.`
+            : `It may be behind ${freshness.upstream}, and agents here follow its instructions.`}
       </p>
       <pre className="project-checkout-stale__command">
         <code>{freshness.updateCommand}</code>

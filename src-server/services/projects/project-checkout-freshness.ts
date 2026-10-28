@@ -65,27 +65,41 @@ function exitCode(error: unknown): number | undefined {
 }
 
 /**
- * `path` when no component of it is a link, else `undefined`. The git
- * directories these paths are joined to are already symlink-resolved, so a
- * link anywhere below them (`logs`, `logs/refs/remotes`, the file itself)
- * shows up as a different resolved path. A member could otherwise point a
- * record at any file this process can read and learn or forge its time.
+ * `base` joined with `parts` when none of those parts is a link (each is
+ * checked with `lstat`), else `undefined`. `base` is a git directory and
+ * is already symlink-resolved. A member could otherwise point a record at any
+ * file this process can read and learn or forge its time. Checked part by
+ * part rather than by comparing a resolved path, which on a case-insensitive
+ * file system can differ in case alone.
  */
-async function unlinked(path: string): Promise<string | undefined> {
-  try {
-    return (await realpath(path)) === path ? path : undefined;
-  } catch {
-    return undefined;
+async function unlinked(
+  base: string,
+  parts: readonly string[],
+): Promise<string | undefined> {
+  let path = base;
+  for (const part of parts) {
+    // The parts come from ref and remote names in member-written config;
+    // none may step out of `base`.
+    if (!part || part === '.' || part === '..' || /[\\/]/.test(part))
+      return undefined;
+    path = join(path, part);
+    try {
+      if ((await lstat(path)).isSymbolicLink()) return undefined;
+    } catch {
+      return undefined;
+    }
   }
+  return path;
 }
 
 /** The latest modification time among regular files that exist. */
 async function latestModification(
-  paths: readonly string[],
+  records: ReadonlyArray<readonly [base: string, parts: readonly string[]]>,
 ): Promise<Date | undefined> {
   let latest: Date | undefined;
-  for (const path of paths) {
-    if (!(await unlinked(path))) continue;
+  for (const [base, parts] of records) {
+    const path = await unlinked(base, parts);
+    if (!path) continue;
     try {
       const stat = await lstat(path);
       if (stat.isFile() && (!latest || stat.mtime > latest))
@@ -101,8 +115,12 @@ async function latestModification(
  * The last {@link REFLOG_TAIL_BYTES} of a regular file, or `undefined` when
  * there is none (absent, a link, a FIFO, unreadable).
  */
-async function readTail(path: string): Promise<string | undefined> {
-  if (!(await unlinked(path))) return undefined;
+async function readTail(
+  base: string,
+  parts: readonly string[],
+): Promise<string | undefined> {
+  const path = await unlinked(base, parts);
+  if (!path) return undefined;
   let handle: Awaited<ReturnType<typeof open>>;
   try {
     handle = await open(
@@ -180,15 +198,27 @@ async function readFacts(repository: ReadRepository): Promise<RepositoryFacts> {
     throw error;
   }
   const branch = head.replace(/^refs\/heads\//, '');
-  // The configured upstream, whether or not its ref exists; empty for none.
-  // Ref names cannot hold glob characters, so this pattern names one ref.
-  const upstreamRef = await git(['for-each-ref', '--format=%(upstream)', head]);
+  // The configured upstream, whether or not its ref exists, and its remote
+  // as configured; empty for none. A branch cannot have a branch under it,
+  // so this pattern names one ref.
+  const [upstreamRef = '', remote = ''] = (
+    await git([
+      'for-each-ref',
+      '--format=%(upstream)%0a%(upstream:remotename)',
+      head,
+    ])
+  ).split('\n');
   if (!upstreamRef) return { kind: 'unknown', reason: 'no-upstream' };
-  // Whether the ref exists, without reading the object it names: a ref
-  // whose commit is missing is a damaged repository, which the reads below
-  // fail on (`unreadable`), not an absent upstream.
-  if (!(await git(['for-each-ref', '--format=%(objectname)', upstreamRef])))
-    return { kind: 'unknown', reason: 'no-upstream' };
+  // Whether exactly that ref exists, without reading the object it names: a
+  // ref whose commit is missing is a damaged repository, which the reads
+  // below fail on (`unreadable`), not an absent upstream.
+  try {
+    await git(['rev-parse', '--verify', '--quiet', upstreamRef]);
+  } catch (error) {
+    if (exitCode(error) === 1)
+      return { kind: 'unknown', reason: 'no-upstream' };
+    throw error;
+  }
 
   const [ahead, behind] = (
     await git(['rev-list', '--left-right', '--count', `HEAD...${upstreamRef}`])
@@ -234,15 +264,18 @@ async function readFacts(repository: ReadRepository): Promise<RepositoryFacts> {
 
   // A remote-tracking upstream only. `git clone` writes neither FETCH_HEAD
   // nor the branch's reflog, only the remote's HEAD reflog.
-  const remote = /^refs\/remotes\/([^/]+)\//.exec(upstreamRef)?.[1];
-  const fetched = remote
-    ? await latestModification([
-        join(repository.gitDir, 'FETCH_HEAD'),
-        join(repository.commonDir, 'FETCH_HEAD'),
-        join(repository.commonDir, 'logs', ...upstreamRef.split('/')),
-        join(repository.commonDir, 'logs', 'refs', 'remotes', remote, 'HEAD'),
-      ])
-    : undefined;
+  const fetched =
+    remote && upstreamRef.startsWith('refs/remotes/')
+      ? await latestModification([
+          [repository.gitDir, ['FETCH_HEAD']],
+          [repository.commonDir, ['FETCH_HEAD']],
+          [repository.commonDir, ['logs', ...upstreamRef.split('/')]],
+          [
+            repository.commonDir,
+            ['logs', 'refs', 'remotes', ...remote.split('/'), 'HEAD'],
+          ],
+        ])
+      : undefined;
 
   return {
     kind: 'known',
@@ -272,9 +305,10 @@ async function reflogMovedPastHead(
   upstreamRef: string,
   git: (args: string[]) => Promise<string>,
 ): Promise<number | undefined> {
-  const text = await readTail(
-    join(repository.commonDir, 'logs', ...upstreamRef.split('/')),
-  );
+  const text = await readTail(repository.commonDir, [
+    'logs',
+    ...upstreamRef.split('/'),
+  ]);
   const entries = text ? reflogEntries(text) : [];
   if (entries.length === 0) return undefined;
   const examined = entries.slice(-MAX_REFLOG_ENTRIES).reverse();

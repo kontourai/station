@@ -1340,7 +1340,9 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       renderProjectSettings();
       const notice = screen.getByTestId('project-checkout-stale');
       expect(notice.textContent).toContain('Checkout last fetched 5d ago');
-      expect(notice.textContent).not.toContain('2 commits behind');
+      expect(notice.textContent).toContain(
+        'It was 2 commits behind origin/main then, and may be further now.',
+      );
     });
 
     test('a checkout Station refused to read says so quietly, and an unjudgeable one says nothing', () => {

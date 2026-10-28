@@ -64,8 +64,8 @@ fetch, whose time the warning shows; Station does not fetch. A checkout whose
 git config sets options Station does not run git with (for example a
 credential helper) shows a line saying it was not compared, and one Station
 could not read says it could not compare it. A folder that is not a git
-checkout, a detached HEAD, or a branch without a local upstream shows nothing. The two thresholds are in **Settings → General
-→ Agent runs**.
+checkout, a detached HEAD, or a branch without a local upstream shows nothing.
+The two thresholds are in **Settings → General → Agent runs**.
 
 Turning a preview on affects everyone who uses this Station.
 
