@@ -891,6 +891,7 @@ interface SchedulerJob {
 interface SchedulerLogEntry {
   id: string;
   job: string;
+  runTarget?: SchedulerAutomationTarget | null; // claim target; absent on older runs
   startedAt: string;
   completedAt?: string;
   success: boolean;
