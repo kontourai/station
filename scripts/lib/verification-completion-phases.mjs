@@ -345,7 +345,9 @@ async function runCompletionPhaseSequence(input) {
         raw = {
           status: null,
           error: heavyCheckRefusal,
-          ...(context.now() >= context.absoluteDeadline
+          // A cancel still wins over a deadline, as in admission.
+          ...(heavyCheckRefusal.name !== 'AbortError' &&
+          context.now() >= context.absoluteDeadline
             ? { deadlineExpired: true }
             : {}),
         };
