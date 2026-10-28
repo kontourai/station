@@ -1965,7 +1965,7 @@ describe('ProjectLayoutRenderer', () => {
       'Coding file workspace unavailable',
     );
     expect(screen.getByRole('alert').textContent).toContain(
-      'did not fall back',
+      "The file pane couldn't load.",
     );
   });
 
