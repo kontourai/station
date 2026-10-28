@@ -1549,6 +1549,33 @@
               "owner"
             ],
             "additionalProperties": false
+          },
+          "contentTrust": {
+            "type": "string",
+            "enum": [
+              "untrusted",
+              "trusted"
+            ]
+          },
+          "untrustedContentPermissions": {
+            "type": "object",
+            "properties": {
+              "default": {
+                "type": "string",
+                "enum": [
+                  "ask",
+                  "allow",
+                  "deny"
+                ]
+              },
+              "tools": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/Integration/properties/untrustedContentPermissions/properties/default"
+                }
+              }
+            },
+            "additionalProperties": false
           }
         },
         "required": [
@@ -1679,6 +1706,33 @@
             "required": [
               "owner"
             ],
+            "additionalProperties": false
+          },
+          "contentTrust": {
+            "type": "string",
+            "enum": [
+              "untrusted",
+              "trusted"
+            ]
+          },
+          "untrustedContentPermissions": {
+            "type": "object",
+            "properties": {
+              "default": {
+                "type": "string",
+                "enum": [
+                  "ask",
+                  "allow",
+                  "deny"
+                ]
+              },
+              "tools": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/IntegrationUpdate/properties/untrustedContentPermissions/properties/default"
+                }
+              }
+            },
             "additionalProperties": false
           }
         },
