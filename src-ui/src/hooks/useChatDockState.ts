@@ -129,15 +129,13 @@ export function useChatDockState({
 
   // Idle timer: after the delay, collapse an open, non-maximized, idle dock to
   // the Collapsed bar. Skipped while the dock is already collapsed, maximized,
-  // has active sessions, or holds a New chat draft (its body is the draft;
-  // collapsing it would put away what the person is writing).
+  // or has active sessions.
   useEffect(() => {
     if (
       !autoHideEnabled ||
       !isDockOpen ||
       isDockMaximized ||
-      activeSessionCount > 0 ||
-      showNewChatModal
+      activeSessionCount > 0
     ) {
       if (autoCollapseTimerRef.current) {
         clearTimeout(autoCollapseTimerRef.current);
@@ -154,18 +152,11 @@ export function useChatDockState({
         autoCollapseTimerRef.current = null;
       }
     };
-  }, [
-    autoHideEnabled,
-    isDockOpen,
-    isDockMaximized,
-    activeSessionCount,
-    showNewChatModal,
-  ]);
+  }, [autoHideEnabled, isDockOpen, isDockMaximized, activeSessionCount]);
 
   // Resets the idle timer (call on dock interaction: hover/focus/pointer/scroll)
   const resetAutoHide = useCallback(() => {
-    if (!autoHideEnabled || !isDockOpen || isDockMaximized || showNewChatModal)
-      return;
+    if (!autoHideEnabled || !isDockOpen || isDockMaximized) return;
     if (autoCollapseTimerRef.current) {
       clearTimeout(autoCollapseTimerRef.current);
       autoCollapseTimerRef.current = null;
@@ -173,7 +164,7 @@ export function useChatDockState({
     autoCollapseTimerRef.current = setTimeout(() => {
       onAutoCollapseRef.current?.();
     }, AUTO_COLLAPSE_DELAY_MS);
-  }, [autoHideEnabled, isDockOpen, isDockMaximized, showNewChatModal]);
+  }, [autoHideEnabled, isDockOpen, isDockMaximized]);
 
   return {
     chatFontSize,

@@ -194,7 +194,6 @@ export function useChatDockOverlays({
     newChatHandoff,
     newChatSelectionInvalid,
     reportNewChatDraft,
-    newChatDraftText,
     setShowNewChatModal,
     isHistoryOpen,
     toggleHistory,
