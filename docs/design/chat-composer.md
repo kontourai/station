@@ -348,7 +348,15 @@ long" when Station's stall detection stopped it, "Station restarted mid-turn"
 after recovery, or the engine's own reason (a known one as a short line, any
 other cut to one line with the full text as its tooltip). Who stopped it comes
 from Station's `session.stop-settled` record and the recovery abort's marker,
-not from the reason text. A row without answer text has no Basis chip. The pill's state changes animate its width with
+not from the reason text. Recovery's restart notice is dropped under a row that
+already says "Station restarted mid-turn"; a partial answer keeps it as its own
+line. Behind the `continue-interrupted-turn` Feature Preview, that notice (or
+the row that took its place) offers **Continue** while it is the conversation's
+latest row and nothing is running or waiting to send. Continue sends a fixed
+note as an ordinary turn, keyed `continue-interrupted:<boundary id>` from the
+notice's `interruptedTurnBoundary`, so a second tap or another device names the
+same turn and the server's turn deduplication starts it once. It is never sent
+automatically. A row without answer text has no Basis chip. The pill's state changes animate its width with
 the shared motion token, while the clock reserves a stable text column. A running
 tool call's label carries a highlight moving through its text; settled calls
 and approval requests stay still. The streaming row's "Running <tool>" line

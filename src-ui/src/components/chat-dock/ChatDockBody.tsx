@@ -16,6 +16,10 @@ import {
   steerOrchestrationTurn,
 } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
+import {
+  TURN_INTERRUPTED_CONTINUE_PROMPT,
+  turnInterruptedContinueClientTurnId,
+} from '@kontourai/station-shared/runtime-event-projection';
 import React, {
   useCallback,
   useEffect,
@@ -53,6 +57,7 @@ import type { useChatInput } from '../../hooks/useChatInput';
 import { useFeatureSettings } from '../../hooks/useFeatureSettings';
 import { useShareReceiver } from '../../hooks/useShareReceiver';
 import { useSTT } from '../../hooks/useSTT';
+import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { useTTS } from '../../hooks/useTTS';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { isWorkspaceRefusedTurn } from '../../lib/workspaceRefusal';
@@ -127,6 +132,10 @@ import { SessionFailureAlert } from '../session-failure/SessionFailureAlert';
 import { ErrorState, SkeletonList } from '../state';
 import { AgentScheduleNotes } from './AgentScheduleNotes';
 import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
+import {
+  CONTINUE_INTERRUPTED_TURN_PREVIEW_ID,
+  continuableInterruptedBoundary,
+} from './interruptedTurnContinue';
 import {
   type RetryAttachment,
   resolveRetryAttachments,
@@ -1201,6 +1210,60 @@ export function ChatDockBody({
     surfaceRecoveryFailure,
   ]);
 
+  // Continue after a restart cut a turn off: an ordinary send of a fixed
+  // prompt, keyed on the interruption so a repeat (a double tap, another
+  // device) names the same turn and the server admits it once. The local set
+  // only covers the tap before the send's own row renders.
+  const continueInterruptedEnabled = useSurfaceVisibilityFlags().has(
+    CONTINUE_INTERRUPTED_TURN_PREVIEW_ID,
+  );
+  const continuingInterruptedRef = useRef(new Set<string>());
+  const continueInterruptedTurn = useCallback(
+    async (boundaryId: string) => {
+      const continuing = continuingInterruptedRef.current;
+      if (continuing.has(boundaryId)) return;
+      continuing.add(boundaryId);
+      try {
+        await sendRef.current(TURN_INTERRUPTED_CONTINUE_PROMPT, [], {
+          clientTurnId: turnInterruptedContinueClientTurnId(boundaryId),
+        });
+      } catch (error) {
+        surfaceRecoveryFailure(error);
+      } finally {
+        continuing.delete(boundaryId);
+      }
+    },
+    [surfaceRecoveryFailure],
+  );
+  const continueInterruptedAction = useCallback(
+    (idx: number) => {
+      if (!continueInterruptedEnabled) return undefined;
+      const boundaryId = continuableInterruptedBoundary(
+        renderedSession.messages,
+        idx,
+        {
+          replay: Boolean(activeSession.replay),
+          turnInFlight: isTurnInFlight(activeSession),
+          pendingSends:
+            (activeSession.outboundQueuedTurns?.length ?? 0) +
+            (activeSession.queuedMessages?.length ?? 0),
+        },
+      );
+      return boundaryId
+        ? {
+            label: 'Continue',
+            onClick: () => void continueInterruptedTurn(boundaryId),
+          }
+        : undefined;
+    },
+    [
+      continueInterruptedEnabled,
+      renderedSession.messages,
+      activeSession,
+      continueInterruptedTurn,
+    ],
+  );
+
   const handleDismissEphemeral = useCallback(
     (messageId: string) => {
       setRemovingMessages((prev) => new Set(prev).add(messageId));
@@ -1433,61 +1496,66 @@ export function ChatDockBody({
             action={
               activeSession.replay
                 ? undefined
-                : chatErrorCode === MCP_SIGN_IN_REQUIRED_CODE
-                  ? {
-                      label: 'Sign in to tool',
-                      onClick: () => navigate('/connections/tools'),
-                    }
-                  : chatErrorCode === ENGINE_SIGN_IN_REQUIRED_CODE &&
-                      activeSession.agentConnectionId
+                : turnInterruptedMatch
+                  ? continueInterruptedAction(idx)
+                  : chatErrorCode === MCP_SIGN_IN_REQUIRED_CODE
                     ? {
-                        label: 'Sign in',
-                        onClick: () =>
-                          navigate(
-                            `/connections/engines/${encodeURIComponent(activeSession.agentConnectionId ?? '')}`,
-                          ),
+                        label: 'Sign in to tool',
+                        onClick: () => navigate('/connections/tools'),
                       }
-                    : chatErrorCode === ENGINE_MEMORY_EXHAUSTED_CODE
-                      ? memoryContinued
-                        ? isTurnInFlight(activeSession)
-                          ? {
-                              label: 'Stop',
-                              onClick: () => void chatInput.handleCancel(),
-                            }
-                          : undefined
-                        : {
-                            // Not a resend: Station's continuation, whose
-                            // model input carries the recovery note.
-                            label: 'Continue',
-                            onClick: () => void continueAfterMemoryKill(),
-                          }
-                      : translation?.retryable === false &&
-                          chatErrorCode !== SESSION_START_INDETERMINATE_CODE &&
-                          onNewChat
-                        ? {
-                            label: 'Switch agent',
-                            onClick: () =>
-                              void Promise.resolve(onNewChat()).catch(
-                                surfaceRecoveryFailure,
-                              ),
-                          }
-                        : translation?.terminalSession && onNewChat && retryTurn
-                          ? {
-                              label: 'New chat',
-                              onClick: () =>
-                                void runRecoveredTurn(retryTurn, onNewChat),
-                            }
-                          : canRetry && retryTurn
+                    : chatErrorCode === ENGINE_SIGN_IN_REQUIRED_CODE &&
+                        activeSession.agentConnectionId
+                      ? {
+                          label: 'Sign in',
+                          onClick: () =>
+                            navigate(
+                              `/connections/engines/${encodeURIComponent(activeSession.agentConnectionId ?? '')}`,
+                            ),
+                        }
+                      : chatErrorCode === ENGINE_MEMORY_EXHAUSTED_CODE
+                        ? memoryContinued
+                          ? isTurnInFlight(activeSession)
                             ? {
-                                label: 'Send again',
-                                onClick: () =>
-                                  void runRecoveredTurn(
-                                    retryTurn,
-                                    (text, attachments) =>
-                                      sendRef.current(text, attachments),
-                                  ),
+                                label: 'Stop',
+                                onClick: () => void chatInput.handleCancel(),
                               }
                             : undefined
+                          : {
+                              // Not a resend: Station's continuation, whose
+                              // model input carries the recovery note.
+                              label: 'Continue',
+                              onClick: () => void continueAfterMemoryKill(),
+                            }
+                        : translation?.retryable === false &&
+                            chatErrorCode !==
+                              SESSION_START_INDETERMINATE_CODE &&
+                            onNewChat
+                          ? {
+                              label: 'Switch agent',
+                              onClick: () =>
+                                void Promise.resolve(onNewChat()).catch(
+                                  surfaceRecoveryFailure,
+                                ),
+                            }
+                          : translation?.terminalSession &&
+                              onNewChat &&
+                              retryTurn
+                            ? {
+                                label: 'New chat',
+                                onClick: () =>
+                                  void runRecoveredTurn(retryTurn, onNewChat),
+                              }
+                            : canRetry && retryTurn
+                              ? {
+                                  label: 'Send again',
+                                  onClick: () =>
+                                    void runRecoveredTurn(
+                                      retryTurn,
+                                      (text, attachments) =>
+                                        sendRef.current(text, attachments),
+                                    ),
+                                }
+                              : undefined
             }
           />
         );
@@ -1510,9 +1578,27 @@ export function ChatDockBody({
       runRecoveredTurn,
       surfaceRecoveryFailure,
       continueAfterMemoryKill,
+      continueInterruptedAction,
       activeSession,
       chatInput.handleCancel,
     ],
+  );
+
+  // The stopped row that says "Station restarted mid-turn" in place of the
+  // restart notice offers the notice's Continue under it.
+  const renderAfterMessage = useCallback(
+    (msg: ChatMessage, idx: number): React.ReactNode | null => {
+      if (msg.role !== 'assistant') return null;
+      const action = continueInterruptedAction(idx);
+      return action ? (
+        <div className="interrupted-turn-continue">
+          <Button size="sm" onClick={action.onClick}>
+            {action.label}
+          </Button>
+        </div>
+      ) : null;
+    },
+    [continueInterruptedAction],
   );
 
   // This browser's outbox: rows in the one pending-message list above the
@@ -1735,6 +1821,7 @@ export function ChatDockBody({
             showReasoning,
             showToolDetails,
             renderOverride,
+            renderAfterMessage,
             emptyState: historyFailureNotice,
             historyNotice: historyElisionNotice,
             hasOlderMessages: transcript.enabled && transcript.hasMore,

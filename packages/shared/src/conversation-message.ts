@@ -200,6 +200,12 @@ export interface ConversationMessage {
      * (`isStationMemoryContinuationTurn`). Shown as Station's.
      */
     stationMemoryContinuation?: true;
+    /**
+     * The interrupted-turn boundary a `[TURN_INTERRUPTED]` banner row reports
+     * (`SessionStateChangedEvent.interruptedTurnBoundary.boundaryId`). The
+     * chat's Continue keys its send on it.
+     */
+    interruptedTurnBoundaryId?: string;
     /** Durable source event for an authored user row, never an optimistic id. */
     sourceEventId?: string;
     /** The model Station requested — NOT a runtime-confirmed observation. See `reportedModel`. */

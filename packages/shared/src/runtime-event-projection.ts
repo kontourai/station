@@ -123,6 +123,24 @@ export const TURN_INTERRUPTED_MESSAGE =
   'Turn interrupted — the process restarted while this turn was in progress.';
 
 /**
+ * What the chat's Continue sends after a restart interrupted a turn: an
+ * ordinary turn from the person, in the same conversation.
+ */
+export const TURN_INTERRUPTED_CONTINUE_PROMPT =
+  'Station restarted while you were working and your last turn was cut off. Continue from where you stopped; check what already finished before redoing anything.';
+
+/**
+ * The send key of Continue for one interrupted turn, derived from its
+ * boundary so every tap, on any device, names the same turn and the
+ * server's turn deduplication admits it once.
+ */
+export function turnInterruptedContinueClientTurnId(
+  boundaryId: string,
+): string {
+  return `continue-interrupted:${boundaryId}`;
+}
+
+/**
  * The `turn.aborted` reasons a forced Stop writes (cooperative-stop.ts),
  * shared so a transcript can tell them apart from an engine's own reason
  * when the event predates `initiatedBy`.
@@ -1563,6 +1581,11 @@ export function projectRuntimeEventsToMessages(
             text: `[SYSTEM_EVENT] [TURN_INTERRUPTED] ${ev.reason ?? TURN_INTERRUPTED_MESSAGE}`,
           },
         ]);
+        const bannerRow = messages[messages.length - 1]!;
+        bannerRow.metadata = {
+          ...bannerRow.metadata,
+          interruptedTurnBoundaryId: ev.interruptedTurnBoundary.boundaryId,
+        };
         break;
       }
       default:

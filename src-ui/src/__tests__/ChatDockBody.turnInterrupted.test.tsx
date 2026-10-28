@@ -8,14 +8,22 @@
  * `ChatDockBody.terminalSessionMarker.test.tsx` — against a transcript
  * carrying the exact `[SYSTEM_EVENT] [TURN_INTERRUPTED]...` marker the
  * boot-time interrupted-turn consumer writes, and asserts the raw bracket
- * tag never reaches the user while the human-readable text does. Slice 1 is
- * needs-input-only: no resume/retry affordance is offered for this marker.
+ * tag never reaches the user while the human-readable text does. It offers
+ * no resend; Continue is offered only behind its preview (pinned below).
  */
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+
+const previews = vi.hoisted(() => ({
+  current: [] as Array<{ id: string; enabled: boolean }>,
+}));
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  useFeaturePreviewsQuery: () => ({ data: previews.current }),
+}));
 
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({
@@ -295,5 +303,133 @@ describe('ChatDockBody unacknowledged-decision notice (#2880)', () => {
   test('says nothing once every decision is acknowledged', () => {
     renderDock(buildSession({ unacknowledgedDecisions: [] }));
     expect(document.querySelector('[data-chat-decision-delivery]')).toBeNull();
+  });
+});
+
+/**
+ * Continue after a restart (`continue-interrupted-turn` preview): offered on
+ * the restart notice, or on the stopped row that says it in the notice's
+ * place, only while that interruption is the conversation's latest state.
+ */
+describe('ChatDockBody Continue after a restart', () => {
+  // Pinned literals, not the shared constants: a drift in either is a
+  // change in what the person's tap sends.
+  const PROMPT =
+    'Station restarted while you were working and your last turn was cut off. Continue from where you stopped; check what already finished before redoing anything.';
+  const BOUNDARY = 'turn-boundary:3f1c';
+  const banner = {
+    role: 'user',
+    content: `[SYSTEM_EVENT] [TURN_INTERRUPTED] ${BANNER_TEXT}`,
+    interruptedTurnBoundaryId: BOUNDARY,
+    timestamp: 2,
+  } as any;
+  const prompt = { role: 'user', content: 'do the thing', timestamp: 1 } as any;
+
+  function renderWith(
+    session: ChatSession,
+    handleSend: (...args: unknown[]) => Promise<void> = vi.fn(async () => {}),
+  ) {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const chatInput = { ...buildChatInput(), handleSend };
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ChatDockBody
+          activeSession={session}
+          chatFontSize={14}
+          dockHeight={400}
+          showStatsPanel={false}
+          showReasoning={false}
+          showToolDetails={false}
+          modelSupportsAttachments={false}
+          fileAttachmentsSupported={false}
+          availableModels={[]}
+          chatInput={chatInput as any}
+          setShowStatsPanel={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    return chatInput;
+  }
+
+  beforeEach(() => {
+    previews.current = [{ id: 'continue-interrupted-turn', enabled: true }];
+  });
+
+  test('sends the fixed prompt keyed on the interruption, once for a double tap', async () => {
+    let finish: () => void = () => {};
+    const handleSend = vi.fn(
+      () => new Promise<void>((resolve) => (finish = resolve)),
+    );
+    renderWith(buildSession({ messages: [prompt, banner] }), handleSend);
+
+    const action = await screen.findByRole('button', { name: 'Continue' });
+    fireEvent.click(action);
+    fireEvent.click(action);
+    expect(handleSend).toHaveBeenCalledTimes(1);
+    expect(handleSend).toHaveBeenCalledWith(PROMPT, [], {
+      clientTurnId: `continue-interrupted:${BOUNDARY}`,
+    });
+    await act(async () => finish());
+  });
+
+  test('is offered under the stopped row that took the notice’s place', async () => {
+    const handleSend = renderWith(
+      buildSession({
+        messages: [
+          prompt,
+          {
+            role: 'assistant',
+            content: '',
+            turnId: 'turn-1',
+            turnEnded: 'aborted',
+            turnStoppedBy: 'restart',
+            interruptedTurnBoundaryId: BOUNDARY,
+            timestamp: 2,
+          } as any,
+        ],
+      }),
+    ).handleSend;
+
+    expect(await screen.findByText('Station restarted mid-turn')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(handleSend).toHaveBeenCalledWith(PROMPT, [], {
+      clientTurnId: `continue-interrupted:${BOUNDARY}`,
+    });
+  });
+
+  test('is not offered once a newer message follows the interruption', async () => {
+    renderWith(
+      buildSession({
+        messages: [
+          prompt,
+          banner,
+          { role: 'user', content: 'what now?', timestamp: 3 } as any,
+        ],
+      }),
+    );
+    await screen.findByText(BANNER_TEXT);
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+  });
+
+  test('is not offered while a turn is running', async () => {
+    renderWith(buildSession({ messages: [prompt, banner], status: 'sending' }));
+    await screen.findByText(BANNER_TEXT);
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+  });
+
+  test('is not offered while the preview is off', async () => {
+    previews.current = [{ id: 'continue-interrupted-turn', enabled: false }];
+    renderWith(buildSession({ messages: [prompt, banner] }));
+    await screen.findByText(BANNER_TEXT);
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+  });
+
+  test('is not offered for a notice that names no interruption', async () => {
+    const { interruptedTurnBoundaryId: _id, ...unnamed } = banner;
+    renderWith(buildSession({ messages: [prompt, unnamed] }));
+    await screen.findByText(BANNER_TEXT);
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
   });
 });

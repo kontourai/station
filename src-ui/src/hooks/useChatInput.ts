@@ -494,6 +494,11 @@ export function useChatInput({
         ambientContext?: string;
         /** Hold this as a follow-up even when the engine can steer. */
         queueOnBusy?: boolean;
+        /**
+         * The send key, when the caller derives one so every repeat of this
+         * send names the same turn; a fresh one otherwise.
+         */
+        clientTurnId?: string;
       },
     ) => {
       if (!sessionId || !agentSlug) return;
@@ -645,7 +650,7 @@ export function useChatInput({
         text.trim(),
         selectedAttachments,
         options?.ambientContext,
-        undefined,
+        options?.clientTurnId,
         {
           ...(submittedExperienceDraft
             ? {

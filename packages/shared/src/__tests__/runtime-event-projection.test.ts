@@ -1,7 +1,10 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { describe, expect, it } from 'vitest';
 import { frameAgentMessage } from '../agent-message-frame.js';
-import { projectRuntimeEventsToMessages } from '../runtime-event-projection.js';
+import {
+  projectRuntimeEventsToMessages,
+  turnInterruptedContinueClientTurnId,
+} from '../runtime-event-projection.js';
 
 const base = {
   provider: 'claude',
@@ -1648,6 +1651,22 @@ describe('projectRuntimeEventsToMessages', () => {
           },
         ],
       });
+      // The chat's Continue keys its send on the interruption it reports.
+      expect(messages[0]?.metadata?.interruptedTurnBoundaryId).toBe(
+        'turn-boundary:abc',
+      );
+    });
+
+    it('keys Continue on the interruption: one key per boundary, stable across calls', () => {
+      expect(turnInterruptedContinueClientTurnId('turn-boundary:abc')).toBe(
+        'continue-interrupted:turn-boundary:abc',
+      );
+      expect(turnInterruptedContinueClientTurnId('turn-boundary:abc')).toBe(
+        turnInterruptedContinueClientTurnId('turn-boundary:abc'),
+      );
+      expect(turnInterruptedContinueClientTurnId('turn-boundary:abc')).not.toBe(
+        turnInterruptedContinueClientTurnId('turn-boundary:abd'),
+      );
     });
 
     it('renders NO banner for a fabricated (sessionState, transitionReason, transitionSource) triple missing interruptedTurnBoundary', () => {
