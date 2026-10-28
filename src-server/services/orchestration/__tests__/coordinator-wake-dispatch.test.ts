@@ -17,6 +17,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { GateTestAdapter } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -28,6 +29,7 @@ import type {
 } from '../../../providers/adapter-shape.js';
 import { AcpAdapter } from '../../../providers/adapters/acp-adapter.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
+import { createCoordinatorRoutes } from '../../../routes/orchestration/coordinator.js';
 import type { ACPProcess } from '../../acp/acp-process.js';
 import { NotificationService } from '../../notifications/notification-service.js';
 import { wireCoordinatorWakes } from '../coordinator-session.js';
@@ -70,6 +72,8 @@ interface World {
   service: OrchestrationService;
   inbox: ThreadInboxDelivery;
   notifications: NotificationService;
+  /** The real coordinator routes, as the person (owner) calls them. */
+  routes: Hono;
   dispose: () => Promise<void>;
 }
 
@@ -191,12 +195,26 @@ function boot(adapters: ProviderAdapterShape[]): World {
       return () => clearTimeout(timer);
     },
   });
+  const routes = new Hono().route(
+    '/api/orchestration',
+    createCoordinatorRoutes({
+      store: store.coordinatorStore(),
+      person: () => ({
+        userId: OWNER,
+        mayRead: () => true,
+        mayMutate: () => true,
+      }),
+      dispatchActor: () => ({ userId: OWNER }),
+      wakes,
+    }),
+  );
   const world: World = {
     store,
     bus,
     service,
     inbox,
     notifications,
+    routes,
     dispose: async () => {
       wakes.unsubscribe();
       unwireCompletions();
@@ -216,53 +234,80 @@ function boot(adapters: ProviderAdapterShape[]): World {
 const methods = (world: World, threadId: string) =>
   world.store.listEvents(threadId).map((row) => row.payload.method);
 
+/** Coordinator and worker chats on the real AcpAdapter (child faked). */
+async function acpWorld() {
+  const processes: FakeAcpProcess[] = [];
+  const acp = new AcpAdapter({
+    getConnections: async () => [
+      {
+        id: CONNECTION_ID,
+        name: 'Scripted Fake',
+        command: process.execPath,
+        args: [],
+        enabled: true,
+      },
+    ],
+    logger: { debug: () => {}, warn: () => {}, error: () => {} },
+    processFactory: (opts) => {
+      const child = new FakeAcpProcess(opts);
+      processes.push(child);
+      return child as unknown as ACPProcess;
+    },
+  });
+  const world = boot([acp]);
+  const start = async (threadId: string) => {
+    await world.service.dispatch(
+      {
+        type: 'startSession',
+        input: {
+          threadId,
+          provider: 'acp',
+          cwd: process.env.STATION_HOME!,
+          metadata: { connectionId: CONNECTION_ID, userId: OWNER },
+        },
+      },
+      { userId: OWNER },
+    );
+    await waitFor(
+      () => methods(world, threadId),
+      (seen) => seen.includes('session.started'),
+      `${threadId} session.started`,
+    );
+  };
+  await start(COORDINATOR);
+  await start(WORKER);
+  const [coordinatorProcess, workerProcess] = processes;
+  const prompts = (child: FakeAcpProcess | undefined) =>
+    (child?.promptContents ?? []).map((blocks) =>
+      blocks.map((block) => ('text' in block ? block.text : '')).join(''),
+    );
+  /** One worker turn, ended by its engine. */
+  const finishWorkerTurn = async (input: string) => {
+    const before = prompts(workerProcess).length;
+    await world.service.dispatchWithReceipt(
+      { type: 'sendTurn', input: { threadId: WORKER, input } },
+      { userId: OWNER },
+    );
+    await waitFor(
+      () => prompts(workerProcess),
+      (p) => p.length === before + 1,
+      'worker prompt',
+    );
+    workerProcess!.resolvePrompt('end_turn');
+  };
+  return {
+    world,
+    coordinatorProcess,
+    workerProcess,
+    prompts,
+    finishWorkerTurn,
+  };
+}
+
 describe('a worker finishing wakes the coordinator once', () => {
   test('ACP: the coordinator engine is prompted with one framed Station turn', async () => {
-    const processes: FakeAcpProcess[] = [];
-    const acp = new AcpAdapter({
-      getConnections: async () => [
-        {
-          id: CONNECTION_ID,
-          name: 'Scripted Fake',
-          command: process.execPath,
-          args: [],
-          enabled: true,
-        },
-      ],
-      logger: { debug: () => {}, warn: () => {}, error: () => {} },
-      processFactory: (opts) => {
-        const child = new FakeAcpProcess(opts);
-        processes.push(child);
-        return child as unknown as ACPProcess;
-      },
-    });
-    const world = boot([acp]);
-    const start = async (threadId: string) => {
-      await world.service.dispatch(
-        {
-          type: 'startSession',
-          input: {
-            threadId,
-            provider: 'acp',
-            cwd: process.env.STATION_HOME!,
-            metadata: { connectionId: CONNECTION_ID, userId: OWNER },
-          },
-        },
-        { userId: OWNER },
-      );
-      await waitFor(
-        () => methods(world, threadId),
-        (seen) => seen.includes('session.started'),
-        `${threadId} session.started`,
-      );
-    };
-    await start(COORDINATOR);
-    await start(WORKER);
-    const [coordinatorProcess, workerProcess] = processes;
-    const prompts = (child: FakeAcpProcess | undefined) =>
-      (child?.promptContents ?? []).map((blocks) =>
-        blocks.map((block) => ('text' in block ? block.text : '')).join(''),
-      );
+    const { world, coordinatorProcess, workerProcess, prompts } =
+      await acpWorld();
 
     await world.service.dispatchWithReceipt(
       { type: 'sendTurn', input: { threadId: WORKER, input: 'build it' } },
@@ -296,6 +341,48 @@ describe('a worker finishing wakes the coordinator once', () => {
       () => methods(world, COORDINATOR),
       (seen) => seen.includes('turn.completed'),
       'the wake turn to end',
+    );
+    await quiet();
+    await world.inbox.idle();
+    expect(prompts(coordinatorProcess)).toHaveLength(1);
+  });
+
+  test('ACP: undesignating withdraws a wake still queued for the old coordinator', async () => {
+    const { world, coordinatorProcess, prompts, finishWorkerTurn } =
+      await acpWorld();
+    await finishWorkerTurn('build it');
+    await waitFor(
+      () => prompts(coordinatorProcess),
+      (p) => p.length === 1,
+      'the first wake',
+    );
+    // A second worker finishes while the first wake's turn still runs: its
+    // wake waits in the coordinator's inbox.
+    await finishWorkerTurn('build another');
+    await waitFor(
+      () => world.inbox.list(COORDINATOR),
+      (rows) => rows.some((row) => row.state === 'queued'),
+      'the second wake queued',
+    );
+    const removed = await world.routes.request(
+      '/api/orchestration/coordinator',
+      {
+        method: 'DELETE',
+      },
+    );
+    expect(await removed.json()).toEqual({
+      success: true,
+      data: { undesignated: true },
+    });
+    expect(
+      world.inbox.list(COORDINATOR).filter((row) => row.state === 'queued'),
+    ).toEqual([]);
+    // The running turn ends: nothing more reaches the old coordinator.
+    coordinatorProcess!.resolvePrompt('end_turn');
+    await waitFor(
+      () => methods(world, COORDINATOR),
+      (seen) => seen.includes('turn.completed'),
+      'the first wake turn to end',
     );
     await quiet();
     await world.inbox.idle();

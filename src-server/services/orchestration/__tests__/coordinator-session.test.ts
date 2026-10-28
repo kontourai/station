@@ -6,9 +6,11 @@
 import { join } from 'node:path';
 import {
   COORDINATOR_WAKE_COALESCE_MS,
+  COORDINATOR_WAKE_DEDUPE_WINDOW_MS,
   COORDINATOR_WAKE_MAX_ITEMS_PER_TURN,
   COORDINATOR_WAKE_MAX_PENDING_ITEMS,
   COORDINATOR_WAKE_MAX_PER_HOUR,
+  COORDINATOR_WAKE_RETRY_DELAYS_MS,
   COORDINATOR_WAKE_WINDOW_MS,
   coordinatorWakeClientTurnId,
 } from '@kontourai/station-contracts/coordinator';
@@ -19,6 +21,7 @@ import {
   type CoordinatorAttentionItem,
   CoordinatorWakeDelivery,
   coordinatorAttentionOf,
+  readCoordinatorDelivery,
   wireCoordinatorWakes,
 } from '../coordinator-session.js';
 import { EventBus } from '../event-bus.js';
@@ -53,6 +56,7 @@ interface Harness {
     clientTurnId: string;
     payload: ThreadInboxPayload;
   }[];
+  withdrawn: { conversationId: string; userId: string }[];
   /** Fire every armed timer whose delay has passed by `advance`. */
   advance(ms: number): void;
   clock: { now: number };
@@ -63,12 +67,13 @@ function harness(
   options: {
     readable?: (userId: string, sessionId: string) => boolean;
     delegatedBy?: (conversationId: string) => string | undefined;
-    submitOutcome?: () => 'queued' | 'capacity';
+    submitOutcome?: () => 'queued' | 'capacity' | 'throw';
   } = {},
 ): Harness {
   const clock = { now: Date.UTC(2026, 9, 28, 9) };
   const timers: { at: number; callback: () => void; live: boolean }[] = [];
   const submitted: Harness['submitted'] = [];
+  const withdrawn: Harness['withdrawn'] = [];
   const delivery = new CoordinatorWakeDelivery({
     store: store.coordinatorStore(),
     mayRead: options.readable ?? (() => true),
@@ -76,12 +81,18 @@ function harness(
     delegatedBy: options.delegatedBy ?? (() => undefined),
     submit: (input) => {
       submitted.push(input);
-      return options.submitOutcome?.() === 'capacity'
+      const outcome = options.submitOutcome?.();
+      if (outcome === 'throw') throw new Error('inbox unavailable');
+      return outcome === 'capacity'
         ? { outcome: 'capacity', limit: 1 }
         : {
             outcome: 'queued',
             entry: {} as never,
           };
+    },
+    withdrawQueuedWakes: (conversationId, userId) => {
+      withdrawn.push({ conversationId, userId });
+      return 1;
     },
     logger: { warn: vi.fn() },
     now: () => clock.now,
@@ -96,6 +107,7 @@ function harness(
   return {
     delivery,
     submitted,
+    withdrawn,
     clock,
     advance(ms) {
       clock.now += ms;
@@ -292,19 +304,116 @@ describe('coordinator wake bounds', () => {
     expect(h.submitted).toHaveLength(0);
   });
 
-  test('a wake nothing accepted puts its items back for the next one', () => {
+  test.each(['capacity', 'throw'] as const)(
+    'a wake the inbox took nothing of (%s) is tried again on its own after the first retry delay',
+    (refusal) => {
+      const store = freshStore();
+      designate(store);
+      let outcome: 'queued' | 'capacity' | 'throw' = refusal;
+      const h = harness(store, { submitOutcome: () => outcome });
+      expect(COORDINATOR_WAKE_RETRY_DELAYS_MS[0]).toBe(60_000);
+      h.delivery.observe(item(1));
+      h.advance(COORDINATOR_WAKE_COALESCE_MS);
+      expect(h.submitted).toHaveLength(1);
+      expect(store.coordinatorStore().waitingItems(OWNER)).toHaveLength(1);
+      outcome = 'queued';
+      h.advance(60_000 - 1);
+      expect(h.submitted).toHaveLength(1);
+      h.advance(1);
+      expect(h.submitted).toHaveLength(2);
+      expect(h.submitted[1]!.clientTurnId).not.toBe(
+        h.submitted[0]!.clientTurnId,
+      );
+      expect(store.coordinatorStore().waitingItems(OWNER)).toEqual([]);
+    },
+  );
+
+  test('retries back off along the delays, the last repeating, and stay within the hourly cap', () => {
     const store = freshStore();
     designate(store);
-    let outcome: 'queued' | 'capacity' = 'capacity';
-    const h = harness(store, { submitOutcome: () => outcome });
+    const h = harness(store, { submitOutcome: () => 'capacity' });
+    expect(COORDINATOR_WAKE_RETRY_DELAYS_MS).toEqual([
+      60_000, 300_000, 900_000, 3_600_000,
+    ]);
+    h.delivery.observe(item(1));
+    const attempts: number[] = [];
+    const start = h.clock.now;
+    for (let minute = 0; minute < 6 * 60; minute += 1) {
+      h.advance(30_000);
+      h.advance(30_000);
+      while (attempts.length < h.submitted.length)
+        attempts.push(h.clock.now - start);
+    }
+    const gaps = attempts.slice(1).map((at, i) => at - attempts[i]!);
+    expect(gaps.slice(0, 5)).toEqual([
+      60_000, 300_000, 900_000, 3_600_000, 3_600_000,
+    ]);
+    const firstHour = attempts.filter((at) => at < 3_600_000);
+    expect(firstHour.length).toBeLessThanOrEqual(COORDINATOR_WAKE_MAX_PER_HOUR);
+  });
+
+  test('an item whose Session became unreadable while it waited is dropped, not sent', () => {
+    const store = freshStore();
+    designate(store);
+    let readable = true;
+    const h = harness(store, { readable: () => readable });
+    h.delivery.observe(item(1));
+    h.delivery.observe(item(2));
+    readable = false;
+    h.advance(COORDINATOR_WAKE_COALESCE_MS);
+    expect(h.submitted).toEqual([]);
+    expect(store.coordinatorStore().waitingItems(OWNER)).toEqual([]);
+    // Dropped, not forgotten: the same item stays a duplicate in the window.
+    readable = true;
+    expect(h.delivery.observe(item(1))).toEqual([
+      { userId: OWNER, outcome: 'duplicate' },
+    ]);
+  });
+
+  test('a delivered item is a duplicate for the dedupe window, and only then may recur', () => {
+    const store = freshStore();
+    designate(store);
+    const h = harness(store);
+    expect(COORDINATOR_WAKE_DEDUPE_WINDOW_MS).toBe(7 * 24 * 60 * 60 * 1000);
     h.delivery.observe(item(1));
     h.advance(COORDINATOR_WAKE_COALESCE_MS);
     expect(h.submitted).toHaveLength(1);
-    expect(store.coordinatorStore().waitingItems(OWNER)).toHaveLength(1);
-    outcome = 'queued';
-    expect(h.delivery.flush(OWNER)).toBe('sent');
-    expect(h.submitted).toHaveLength(2);
-    expect(h.submitted[1]!.clientTurnId).not.toBe(h.submitted[0]!.clientTurnId);
+    h.clock.now +=
+      COORDINATOR_WAKE_DEDUPE_WINDOW_MS - COORDINATOR_WAKE_COALESCE_MS - 1;
+    expect(h.delivery.observe(item(1))).toEqual([
+      { userId: OWNER, outcome: 'duplicate' },
+    ]);
+    h.clock.now += 2;
+    expect(h.delivery.observe(item(1))).toEqual([
+      { userId: OWNER, outcome: 'recorded' },
+    ]);
+  });
+
+  test('retiring a conversation withdraws its queued wakes for that person', () => {
+    const store = freshStore();
+    designate(store);
+    const h = harness(store);
+    expect(h.delivery.retire(OWNER, COORDINATOR)).toBe(1);
+    expect(h.withdrawn).toEqual([
+      { conversationId: COORDINATOR, userId: OWNER },
+    ]);
+  });
+
+  test('a deleted coordinator conversation is forgotten, so another chat can be designated', () => {
+    const store = freshStore();
+    designate(store);
+    store.coordinatorStore().recordItem(OWNER, item(1), 1);
+    expect(store.coordinatorStore().forgetConversation(COORDINATOR)).toBe(
+      OWNER,
+    );
+    expect(store.coordinatorStore().designation(OWNER)).toBeUndefined();
+    expect(store.coordinatorStore().waitingItems(OWNER)).toEqual([]);
+    expect(designate(store, OWNER, 'conversation-next')).toMatchObject({
+      outcome: 'designated',
+    });
+    expect(
+      store.coordinatorStore().forgetConversation('nobody'),
+    ).toBeUndefined();
   });
 
   test('a wake a restart cut short after its commit is handed over again under the same key', () => {
@@ -449,5 +558,104 @@ describe('a delegated child waiting on the person', () => {
     expect(h.submitted[0]!.payload.message).toContain(
       'Needs the person: Session session-child',
     );
+  });
+});
+
+describe('a restart re-send', () => {
+  test('re-composes a cut-short wake without items whose Session became unreadable', () => {
+    const path = join(
+      makeTempDir('coordinator-restart-read-'),
+      'orchestration.sqlite',
+    );
+    const first = openStore(path);
+    designate(first);
+    first.coordinatorStore().recordItem(OWNER, item(1), 10);
+    first.coordinatorStore().recordItem(OWNER, item(2), 10);
+    const claimed = first.coordinatorStore().claimWake({
+      designation: first.coordinatorStore().designation(OWNER)!,
+      now: 11,
+      compose: () => 'framed with both',
+    });
+    if (claimed.outcome !== 'claimed') throw new Error('not claimed');
+    closeStore(first);
+
+    const second = openStore(path);
+    const h = harness(second, {
+      readable: (_user, sessionId) => sessionId !== 'session-worker-2',
+    });
+    h.delivery.reconcile();
+    expect(h.submitted).toEqual([]);
+    expect(second.coordinatorStore().wake(claimed.wake.id)).toMatchObject({
+      state: 'failed',
+      reasonCode: 'source_unreadable',
+    });
+    h.advance(0);
+    expect(h.submitted).toHaveLength(1);
+    expect(h.submitted[0]!.payload.message).toContain(
+      'Session session-worker-1',
+    );
+    expect(h.submitted[0]!.payload.message).not.toContain('session-worker-2');
+  });
+});
+
+describe('readCoordinatorDelivery', () => {
+  const ports = (input: {
+    events?: { method: string; provider?: string; metadata?: unknown }[];
+    running?: boolean;
+    boundary?: boolean;
+  }) => ({
+    currentSessionId: () => 'session-current',
+    lifecycleEvents: () => input.events ?? [],
+    turnRunning: () => input.running ?? false,
+    boundaryActive: () => input.boundary ?? false,
+  });
+  const started = (servers: string[], provider = 'codex') => ({
+    method: 'session.started',
+    provider,
+    metadata: { capabilityDelivery: { toolServers: { requested: servers } } },
+  });
+
+  test('wakes are blocked when the inbox would read an idle Session as busy (#4051)', () => {
+    expect(readCoordinatorDelivery('c', ports({ boundary: true })).wakes).toBe(
+      'blocked',
+    );
+    expect(
+      readCoordinatorDelivery('c', ports({ boundary: true, running: true }))
+        .wakes,
+    ).toBe('ready');
+    expect(readCoordinatorDelivery('c', ports({})).wakes).toBe('ready');
+  });
+
+  test('tools are pending only while a live Session started without station-control', () => {
+    expect(
+      readCoordinatorDelivery('c', ports({ events: [started(['github'])] })),
+    ).toEqual({ wakes: 'ready', toolsPending: true, engine: 'codex' });
+    expect(
+      readCoordinatorDelivery(
+        'c',
+        ports({ events: [started(['station-control', 'github'])] }),
+      ).toolsPending,
+    ).toBe(false);
+    expect(
+      readCoordinatorDelivery(
+        'c',
+        ports({ events: [started([]), { method: 'session.exited' }] }),
+      ).toolsPending,
+    ).toBe(false);
+    expect(readCoordinatorDelivery('c', ports({})).toolsPending).toBe(false);
+  });
+});
+
+describe('EventStore.deleteThread', () => {
+  test('deleting the coordinator conversation retires its designation', () => {
+    const store = openStore(
+      join(makeTempDir('coordinator-delete-'), 'orchestration.sqlite'),
+    );
+    designate(store);
+    store.deleteThread(COORDINATOR);
+    expect(store.coordinatorStore().designation(OWNER)).toBeUndefined();
+    expect(designate(store, OWNER, 'conversation-next')).toMatchObject({
+      outcome: 'designated',
+    });
   });
 });

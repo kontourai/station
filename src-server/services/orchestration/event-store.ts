@@ -15309,9 +15309,13 @@ export class EventStore {
     // #3568: opened before the transaction, because opening it migrates the
     // inbox's tables in a transaction of its own.
     const threadInbox = this.threadInboxStore();
+    // #3628: opened here for the same reason (its schema is created on open).
+    const coordinator = this.coordinatorStore();
     this.db.exec('BEGIN IMMEDIATE');
     try {
       this.createSkillExperienceSnapshots().deleteThread(threadId);
+      // A deleted conversation is no one's coordinator any more.
+      coordinator.forgetConversation(threadId);
       this.db
         .prepare(
           'DELETE FROM orchestration_conversation_start_context WHERE session_id = ?',

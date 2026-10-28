@@ -683,7 +683,10 @@ import type { ActionOperationService } from '../../services/operations/action-op
 import { AttachmentStagingService } from '../../services/orchestration/attachment-staging-service.js';
 import { recoverCompletedTaskDispatches } from '../../services/orchestration/completed-task-dispatch-recovery.js';
 import { FileConversationAcknowledgementStore } from '../../services/orchestration/conversation-acknowledgement-store.js';
-import { wireCoordinatorWakes } from '../../services/orchestration/coordinator-session.js';
+import {
+  readCoordinatorDelivery,
+  wireCoordinatorWakes,
+} from '../../services/orchestration/coordinator-session.js';
 import {
   type DelegationAttemptClaimStore,
   delegationAttemptClaimKey,
@@ -6232,21 +6235,6 @@ export function configureRuntimeRoutes(
   })
     ? context.orchestrationEventStore?.coordinatorStore()
     : undefined;
-  context.app.route(
-    '/api/orchestration',
-    createCoordinatorRoutes({
-      store: coordinatorStore,
-      person: agentSchedule.person,
-      dispatchActor: (c) =>
-        resolveDispatchActor(
-          {
-            resolvePrincipal: resolveOrchestrationRequestPrincipal,
-            resolveAgentDispatchActor,
-          },
-          c,
-        ),
-    }),
-  );
   const coordinatorWakes =
     coordinatorStore && threadInbox && context.orchestrationEventStore
       ? wireCoordinatorWakes({
@@ -6262,6 +6250,48 @@ export function configureRuntimeRoutes(
           logger: context.logger,
         })
       : undefined;
+  const coordinatorEvents = context.orchestrationEventStore;
+  context.app.route(
+    '/api/orchestration',
+    createCoordinatorRoutes({
+      store: coordinatorStore,
+      person: agentSchedule.person,
+      dispatchActor: (c) =>
+        resolveDispatchActor(
+          {
+            resolvePrincipal: resolveOrchestrationRequestPrincipal,
+            resolveAgentDispatchActor,
+          },
+          c,
+        ),
+      ...(coordinatorWakes ? { wakes: coordinatorWakes } : {}),
+      ...(coordinatorEvents
+        ? {
+            delivery: (conversationId: string) =>
+              readCoordinatorDelivery(conversationId, {
+                currentSessionId: (id) =>
+                  context.orchestrationService.currentConversationSessionId(id),
+                lifecycleEvents: (threadId) =>
+                  coordinatorEvents
+                    .listEventsByMethods(threadId, [
+                      'session.started',
+                      'session.configured',
+                      'session.exited',
+                    ])
+                    .map((stored) => stored.payload),
+                turnRunning: (threadId) =>
+                  context.orchestrationService.hasActiveTurn(threadId),
+                boundaryActive: (threadId) => {
+                  const possible = coordinatorEvents
+                    .sessionTurnBoundaryAuthority()
+                    .hasPossibleEffect(threadId);
+                  return possible.kind === 'available' && possible.active;
+                },
+              }),
+          }
+        : {}),
+    }),
+  );
   context.app.route(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {

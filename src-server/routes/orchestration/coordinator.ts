@@ -5,9 +5,13 @@
  * request principal's, never a body field, and a request that may be an
  * agent's is refused, so an agent cannot designate itself. Designating needs
  * the same authority as sending to the conversation; a second designation is
- * refused unless the body asks to replace the first.
+ * refused unless the body asks to replace the first. A designation whose
+ * conversation the person can no longer read (deleted, or access withdrawn)
+ * counts as absent: GET shows none, and PUT replaces it. Replacing or removing
+ * a designation withdraws the wakes still queued for the old conversation.
  */
 import type {
+  CoordinatorDelivery,
   CoordinatorDesignation,
   CoordinatorDesignationRead,
 } from '@kontourai/station-contracts/coordinator';
@@ -31,6 +35,10 @@ export interface CoordinatorRoutesDeps {
   person(c: Context): AgentSchedulePerson | undefined;
   /** Who a dispatch from this request would act as (`resolveDispatchActor`). */
   dispatchActor(c: Context): AgentScheduleActor;
+  /** Withdraws queued wakes for a conversation that stopped being the coordinator. */
+  readonly wakes?: { retire(userId: string, conversationId: string): number };
+  /** Whether Station can reach the conversation as coordinator now. */
+  delivery?(conversationId: string): CoordinatorDelivery | undefined;
   now?: () => number;
 }
 
@@ -67,11 +75,12 @@ export function createCoordinatorRoutes(deps: CoordinatorRoutesDeps): Hono {
     if (!deps.store) return unavailable(c);
     const record = deps.store.designation(person.userId);
     // A designation the person can no longer read is not shown as theirs.
+    const shown =
+      record && person.mayRead(record.conversationId) ? record : undefined;
+    const delivery = shown && deps.delivery?.(shown.conversationId);
     const data: CoordinatorDesignationRead = {
-      designation:
-        record && person.mayRead(record.conversationId)
-          ? publicDesignation(record)
-          : null,
+      designation: shown ? publicDesignation(shown) : null,
+      ...(delivery ? { delivery } : {}),
     };
     return c.json({ success: true, data }, 200, NO_STORE);
   });
@@ -103,6 +112,13 @@ export function createCoordinatorRoutes(deps: CoordinatorRoutesDeps): Hono {
         403,
         NO_STORE,
       );
+    const previous = deps.store.designation(person.userId);
+    // A designation of a conversation the person can no longer read is
+    // replaced without asking: nothing can show it to them to replace.
+    const dangling =
+      previous !== undefined &&
+      previous.conversationId !== conversationId &&
+      !person.mayRead(previous.conversationId);
     const result = deps.store.designate({
       conversationId,
       actor: {
@@ -112,15 +128,21 @@ export function createCoordinatorRoutes(deps: CoordinatorRoutesDeps): Hono {
           : {}),
         ...(actor.principal ? { principal: actor.principal } : {}),
       },
-      replace: body?.replace === true,
+      replace: body?.replace === true || dangling,
       now: deps.now?.() ?? Date.now(),
     });
     if (result.outcome === 'refused')
       return c.json({ success: false, code: result.code }, 409, NO_STORE);
+    if (previous && previous.conversationId !== conversationId)
+      deps.wakes?.retire(person.userId, previous.conversationId);
+    const delivery = deps.delivery?.(conversationId);
     return c.json(
       {
         success: true,
-        data: { designation: publicDesignation(result.designation) },
+        data: {
+          designation: publicDesignation(result.designation),
+          ...(delivery ? { delivery } : {}),
+        },
       },
       200,
       NO_STORE,
@@ -131,10 +153,13 @@ export function createCoordinatorRoutes(deps: CoordinatorRoutesDeps): Hono {
     const person = personFor(c);
     if (person instanceof Response) return person;
     if (!deps.store) return unavailable(c);
+    const previous = deps.store.designation(person.userId);
+    const undesignated = deps.store.undesignate(person.userId);
+    if (previous) deps.wakes?.retire(person.userId, previous.conversationId);
     return c.json(
       {
         success: true,
-        data: { undesignated: deps.store.undesignate(person.userId) },
+        data: { undesignated },
       },
       200,
       NO_STORE,

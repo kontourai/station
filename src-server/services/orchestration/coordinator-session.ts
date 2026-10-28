@@ -14,7 +14,8 @@
  * Every one of those reaches the bus as NOTIFICATION_DELIVERED; this module
  * reads that one stream rather than a second copy of each producer's rules.
  * An item is recorded once per person (keyed by the notification's dedupe
- * tag, else its id), so the same item never wakes the coordinator twice, and
+ * tag, else its id) and remembered for `COORDINATOR_WAKE_DEDUPE_WINDOW_MS`,
+ * so the same item does not wake the coordinator twice in that window, and
  * items are gathered for `COORDINATOR_WAKE_COALESCE_MS` before one framed
  * turn names them all. At most `COORDINATOR_WAKE_MAX_PER_HOUR` wakes go out
  * per rolling hour; items past the cap wait for the next slot rather than
@@ -33,7 +34,17 @@
  * placed, and the inbox applies the live continuation's permission rule. The
  * wake row and its items are committed before the inbox is called, and the
  * inbox key is derived from the wake's id, so a restart between the two
- * submits the same turn again and the inbox accepts it once.
+ * submits the same turn again and the inbox accepts it once. When the inbox
+ * takes nothing (capacity, permission, an error), the items go back and the
+ * wake is tried again after `COORDINATOR_WAKE_RETRY_DELAYS_MS`.
+ *
+ * Read access is decided again when a wake is composed (and when a restart
+ * re-sends one): an item whose Session the person can no longer read is
+ * dropped, never sent. Text already in the inbox was readable when it was
+ * handed over. When the person stops using a conversation as coordinator
+ * (undesignated, replaced, or the conversation deleted), the wakes still
+ * queued in its inbox are withdrawn (`retire`); one already being placed is
+ * not.
  */
 import { randomUUID } from 'node:crypto';
 import type { Notification } from '@kontourai/station-contracts';
@@ -44,19 +55,24 @@ import {
 } from '@kontourai/station-contracts/client-origin';
 import {
   COORDINATOR_WAKE_COALESCE_MS,
+  COORDINATOR_WAKE_DEDUPE_WINDOW_MS,
   COORDINATOR_WAKE_MAX_ITEMS_PER_TURN,
   COORDINATOR_WAKE_MAX_PENDING_ITEMS,
   COORDINATOR_WAKE_MAX_PER_HOUR,
+  COORDINATOR_WAKE_RETRY_DELAYS_MS,
   COORDINATOR_WAKE_WINDOW_MS,
   type CoordinatorAttentionKind,
+  type CoordinatorDelivery,
   type CoordinatorDesignation,
   type CoordinatorRefusalCode,
   coordinatorWakeClientTurnId,
+  isCoordinatorWakeClientTurnId,
 } from '@kontourai/station-contracts/coordinator';
 import {
   isPrincipalRef,
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
+import { SESSION_CAPABILITY_DELIVERY_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { readNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
 import { classifyNotificationCategory } from '@kontourai/station-shared/notification-priority';
@@ -82,8 +98,6 @@ const COORDINATOR_WAKE_CLIENT_ORIGIN: ClientOrigin = Object.freeze({
   reported: UNKNOWN_CLIENT_REPORTED_ORIGIN,
 });
 
-/** Delivered items are remembered this long, so a late repeat stays quiet. */
-const DELIVERED_ITEM_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 /** The longest item title a wake quotes. */
 const ITEM_TITLE_MAX_CHARS = 160;
 
@@ -209,6 +223,15 @@ function wakeOf(row: Record<string, unknown>): CoordinatorWakeRecord {
   };
 }
 
+function itemOf(row: Record<string, unknown>): CoordinatorAttentionItem {
+  return {
+    kind: String(row.kind) as CoordinatorAttentionKind,
+    sessionId: String(row.session_id),
+    itemKey: String(row.item_key),
+    title: String(row.title),
+  };
+}
+
 function changed(result: unknown): boolean {
   return Number((result as { changes?: number | bigint }).changes ?? 0) > 0;
 }
@@ -317,7 +340,7 @@ export function createSqliteCoordinatorStore(db: TransactionalSqliteDatabase) {
         db.prepare(
           `DELETE FROM coordinator_wake_items
             WHERE wake_id IS NOT NULL AND observed_at <= ?`,
-        ).run(now - DELIVERED_ITEM_RETENTION_MS);
+        ).run(now - COORDINATOR_WAKE_DEDUPE_WINDOW_MS);
         const seen = db
           .prepare(
             'SELECT 1 FROM coordinator_wake_items WHERE user_id = ? AND item_key = ?',
@@ -339,6 +362,45 @@ export function createSqliteCoordinatorStore(db: TransactionalSqliteDatabase) {
         return 'recorded' as const;
       });
     },
+    /**
+     * Retire waiting items without sending them (their Session is no longer
+     * readable). The row stays as the item's dedupe record for the window.
+     */
+    dropItems(userId: string, itemKeys: readonly string[]): void {
+      const drop = db.prepare(
+        "UPDATE coordinator_wake_items SET wake_id = 'dropped' WHERE user_id = ? AND item_key = ? AND wake_id IS NULL",
+      );
+      writeTransaction(db, 'coordinator_item_drop', () => {
+        for (const key of itemKeys) drop.run(userId, key);
+      });
+    },
+    /** The items one wake claimed. */
+    wakeItems(wakeId: string): CoordinatorAttentionItem[] {
+      return (
+        db
+          .prepare(
+            'SELECT * FROM coordinator_wake_items WHERE wake_id = ? ORDER BY observed_at, item_key',
+          )
+          .all(wakeId) as Record<string, unknown>[]
+      ).map(itemOf);
+    },
+    /**
+     * The conversation is gone: drop any designation of it and the items
+     * waiting for it. Returns the person it was designated for, if any.
+     */
+    forgetConversation(conversationId: string): string | undefined {
+      return writeTransaction(db, 'coordinator_forget_conversation', () => {
+        const owner = this.designationForConversation(conversationId);
+        if (!owner) return undefined;
+        db.prepare(
+          'DELETE FROM coordinator_wake_items WHERE user_id = ? AND wake_id IS NULL',
+        ).run(owner.actor.userId);
+        db.prepare(
+          'DELETE FROM coordinator_designations WHERE conversation_id = ?',
+        ).run(conversationId);
+        return owner.actor.userId;
+      });
+    },
     /** People with items waiting for a wake. */
     usersWithWaitingItems(): string[] {
       return (
@@ -357,12 +419,7 @@ export function createSqliteCoordinatorStore(db: TransactionalSqliteDatabase) {
               WHERE user_id = ? AND wake_id IS NULL ORDER BY observed_at, item_key`,
           )
           .all(userId) as Record<string, unknown>[]
-      ).map((row) => ({
-        kind: String(row.kind) as CoordinatorAttentionKind,
-        sessionId: String(row.session_id),
-        itemKey: String(row.item_key),
-        title: String(row.title),
-      }));
+      ).map(itemOf);
     },
     /**
      * Claim every waiting item into one new wake, unless the person has used
@@ -548,6 +605,11 @@ export interface CoordinatorWakePorts {
     clientTurnId: string;
     payload: ThreadInboxPayload;
   }): ThreadInboxSubmission;
+  /**
+   * Withdraw the person's coordinator wakes still queued in a conversation's
+   * inbox (not yet placed); returns how many were withdrawn.
+   */
+  withdrawQueuedWakes(conversationId: string, userId: string): number;
   readonly logger: {
     warn(message: string, meta?: Record<string, unknown>): void;
   };
@@ -570,6 +632,8 @@ function defaultSetTimer(callback: () => void, delayMs: number) {
 /** Gathers attention items per person and sends the coordinator one turn. */
 export class CoordinatorWakeDelivery {
   private readonly timers = new Map<string, () => void>();
+  /** Retry attempts since the person's last accepted wake. */
+  private readonly retries = new Map<string, number>();
   private stopped = false;
 
   constructor(private readonly ports: CoordinatorWakePorts) {}
@@ -626,6 +690,24 @@ export class CoordinatorWakeDelivery {
       this.arm(userId, COORDINATOR_WAKE_COALESCE_MS);
   }
 
+  /**
+   * The person's coordinator is no longer `conversationId` (undesignated,
+   * replaced, or the conversation was deleted): withdraw the wakes still
+   * queued for it, so the old conversation is not woken after it stopped
+   * being the coordinator. A wake already being placed cannot be withdrawn.
+   */
+  retire(userId: string, conversationId: string): number {
+    this.retries.delete(userId);
+    try {
+      return this.ports.withdrawQueuedWakes(conversationId, userId);
+    } catch (error) {
+      this.ports.logger.warn('coordinator wakes could not be withdrawn', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 0;
+    }
+  }
+
   stop(): void {
     this.stopped = true;
     for (const cancel of this.timers.values()) cancel();
@@ -648,6 +730,26 @@ export class CoordinatorWakeDelivery {
     );
   }
 
+  /**
+   * The inbox took nothing: try again after the next delay in
+   * `COORDINATOR_WAKE_RETRY_DELAYS_MS` (the last repeats). Each attempt is a
+   * wake row, so the hourly cap bounds retries too.
+   */
+  private retryLater(userId: string): void {
+    const attempt = this.retries.get(userId) ?? 0;
+    this.retries.set(userId, attempt + 1);
+    const delays = COORDINATOR_WAKE_RETRY_DELAYS_MS;
+    this.arm(userId, delays[Math.min(attempt, delays.length - 1)]!);
+  }
+
+  private readable(userId: string, sessionId: string): boolean {
+    try {
+      return this.ports.mayRead(userId, sessionId);
+    } catch {
+      return false;
+    }
+  }
+
   /** Send the person's waiting items as one wake, if the hourly cap allows. */
   flush(
     userId: string,
@@ -655,6 +757,13 @@ export class CoordinatorWakeDelivery {
     if (this.stopped) return 'failed';
     const designation = this.ports.store.designation(userId);
     if (!designation) return 'undesignated';
+    // Read access is decided again now: it may have been withdrawn while the
+    // item waited. An unreadable item is dropped, never sent.
+    const unreadable = this.ports.store
+      .waitingItems(userId)
+      .filter((item) => !this.readable(userId, item.sessionId))
+      .map((item) => item.itemKey);
+    if (unreadable.length) this.ports.store.dropItems(userId, unreadable);
     const now = this.now();
     const claimed = this.ports.store.claimWake({
       designation,
@@ -677,6 +786,20 @@ export class CoordinatorWakeDelivery {
       this.ports.store.settleWake(wake.id, 'failed', now, {
         reasonCode: 'undesignated',
       });
+      return 'failed';
+    }
+    // A wake a restart cut short was composed before it; if any item it
+    // names is no longer readable, compose again from the readable ones.
+    if (
+      this.ports.store
+        .wakeItems(wake.id)
+        .some((item) => !this.readable(wake.userId, item.sessionId))
+    ) {
+      this.ports.store.settleWake(wake.id, 'failed', now, {
+        reasonCode: 'source_unreadable',
+        release: true,
+      });
+      this.arm(wake.userId, 0);
       return 'failed';
     }
     let submitted: ThreadInboxSubmission;
@@ -707,13 +830,15 @@ export class CoordinatorWakeDelivery {
         reasonCode: 'send_failed',
         release: true,
       });
+      this.retryLater(wake.userId);
       return 'failed';
     }
     if (submitted.outcome === 'queued') {
       this.ports.store.settleWake(wake.id, 'sent', now);
+      this.retries.delete(wake.userId);
       return 'sent';
     }
-    // Nothing was written to the inbox: the items wait for the next wake.
+    // Nothing was written to the inbox: the items wait for the next attempt.
     this.ports.store.settleWake(wake.id, 'failed', now, {
       reasonCode:
         submitted.outcome === 'not-permitted'
@@ -721,6 +846,7 @@ export class CoordinatorWakeDelivery {
           : submitted.outcome,
       release: true,
     });
+    this.retryLater(wake.userId);
     return 'failed';
   }
 }
@@ -763,7 +889,7 @@ export function wireCoordinatorWakes(deps: {
     'conversationForSession' | 'delegationResultStore'
   >;
   readonly store: CoordinatorStore;
-  readonly threadInbox: Pick<ThreadInboxDelivery, 'submit'>;
+  readonly threadInbox: Pick<ThreadInboxDelivery, 'submit' | 'list' | 'cancel'>;
   mayRead(userId: string, sessionId: string): boolean;
   readonly logger: CoordinatorWakePorts['logger'];
   readonly now?: () => number;
@@ -779,6 +905,23 @@ export function wireCoordinatorWakes(deps: {
       deps.eventStore.delegationResultStore().owner(conversationId)
         ?.parentConversationId,
     submit: (input) => deps.threadInbox.submit(input),
+    withdrawQueuedWakes: (conversationId, userId) => {
+      let withdrawn = 0;
+      for (const entry of deps.threadInbox.list(conversationId, userId)) {
+        if (
+          entry.state !== 'queued' ||
+          !entry.clientTurnId ||
+          !isCoordinatorWakeClientTurnId(entry.clientTurnId)
+        )
+          continue;
+        if (
+          deps.threadInbox.cancel(conversationId, entry.clientTurnId, userId)
+            .kind === 'cancelled'
+        )
+          withdrawn += 1;
+      }
+      return withdrawn;
+    },
     logger: deps.logger,
     ...(deps.now ? { now: deps.now } : {}),
     ...(deps.setTimer ? { setTimer: deps.setTimer } : {}),
@@ -800,4 +943,61 @@ export function wireCoordinatorWakes(deps: {
       delivery.stop();
     },
   });
+}
+
+/** A lifecycle event of the coordinator's current Session, as stored. */
+export interface CoordinatorSessionEvent {
+  readonly method: string;
+  readonly provider?: string;
+  readonly metadata?: unknown;
+}
+
+/**
+ * Whether Station can reach a coordinator conversation now (the GET and PUT
+ * routes' `delivery`), derived from its current Session:
+ *
+ * - wakes are `blocked` when no turn is running but the inbox would still
+ *   read the Session as busy, because its last turn's boundary row never
+ *   retired (#4051). The inbox holds a wake until that changes.
+ * - tools are pending while the Session that is running now started without
+ *   the built-in `station-control` server; the next Session gets it.
+ */
+export function readCoordinatorDelivery(
+  conversationId: string,
+  ports: {
+    currentSessionId(conversationId: string): string;
+    /** `session.started`, `session.configured` and `session.exited`, oldest first. */
+    lifecycleEvents(threadId: string): readonly CoordinatorSessionEvent[];
+    turnRunning(threadId: string): boolean;
+    /** The durable turn boundary still holds an unretired row. */
+    boundaryActive(threadId: string): boolean;
+  },
+): CoordinatorDelivery {
+  const threadId = ports.currentSessionId(conversationId);
+  let live = false;
+  let engine: string | undefined;
+  let requested: readonly unknown[] | undefined;
+  for (const event of ports.lifecycleEvents(threadId)) {
+    if (event.method === 'session.exited') {
+      live = false;
+      continue;
+    }
+    if (event.method === 'session.started') {
+      live = true;
+      requested = undefined;
+      if (typeof event.provider === 'string') engine = event.provider;
+    }
+    const report = (event.metadata as Record<string, unknown> | undefined)?.[
+      SESSION_CAPABILITY_DELIVERY_METADATA_KEY
+    ] as { toolServers?: { requested?: unknown } } | undefined;
+    const servers = report?.toolServers?.requested;
+    if (Array.isArray(servers)) requested = servers;
+  }
+  const blocked =
+    !ports.turnRunning(threadId) && ports.boundaryActive(threadId);
+  return {
+    wakes: blocked ? 'blocked' : 'ready',
+    toolsPending: live && !(requested ?? []).includes('station-control'),
+    ...(engine ? { engine } : {}),
+  };
 }

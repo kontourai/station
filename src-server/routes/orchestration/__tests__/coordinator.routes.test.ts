@@ -117,3 +117,77 @@ describe('coordinator routes', () => {
     expect((await call('PUT', { conversationId: 'chat-a' })).status).toBe(503);
   });
 });
+
+describe('coordinator routes: targets that stop being the coordinator', () => {
+  function appWith(options: { readable?: (id: string) => boolean }) {
+    const store = new EventStore(
+      join(makeTempDir('coordinator-routes-retire-'), 'orchestration.sqlite'),
+    );
+    stores.push(store);
+    const retired: string[] = [];
+    const hono = new Hono().route(
+      '/api/orchestration',
+      createCoordinatorRoutes({
+        store: store.coordinatorStore(),
+        person: () => ({
+          userId: 'human:local:owner',
+          mayRead: options.readable ?? (() => true),
+          mayMutate: () => true,
+        }),
+        dispatchActor: () => ({ userId: 'human:local:owner' }),
+        wakes: {
+          retire: (_user, conversationId) => {
+            retired.push(conversationId);
+            return 0;
+          },
+        },
+        delivery: (conversationId) => ({
+          wakes: conversationId === 'chat-codex' ? 'blocked' : 'ready',
+          toolsPending: true,
+        }),
+      }),
+    );
+    const call = (method: string, body?: unknown) =>
+      hono.request('/api/orchestration/coordinator', {
+        method,
+        headers: { 'content-type': 'application/json' },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+    return { call, retired };
+  }
+
+  test('replacing and removing withdraw the old target; reads carry delivery', async () => {
+    const { call, retired } = appWith({});
+    expect(
+      await (await call('PUT', { conversationId: 'chat-codex' })).json(),
+    ).toMatchObject({
+      data: { delivery: { wakes: 'blocked', toolsPending: true } },
+    });
+    expect(retired).toEqual([]);
+    await call('PUT', { conversationId: 'chat-b', replace: true });
+    expect(retired).toEqual(['chat-codex']);
+    expect(await (await call('GET')).json()).toMatchObject({
+      data: {
+        designation: { conversationId: 'chat-b' },
+        delivery: { wakes: 'ready' },
+      },
+    });
+    await call('DELETE');
+    expect(retired).toEqual(['chat-codex', 'chat-b']);
+  });
+
+  test('a designation the person can no longer read is replaced without asking', async () => {
+    let gone = false;
+    const { call, retired } = appWith({
+      readable: (id) => !(gone && id === 'chat-deleted'),
+    });
+    await call('PUT', { conversationId: 'chat-deleted' });
+    gone = true;
+    expect(await (await call('GET')).json()).toMatchObject({
+      data: { designation: null },
+    });
+    const next = await call('PUT', { conversationId: 'chat-new' });
+    expect(next.status).toBe(200);
+    expect(retired).toEqual(['chat-deleted']);
+  });
+});
