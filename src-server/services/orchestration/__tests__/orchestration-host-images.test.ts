@@ -30,6 +30,7 @@ import {
   installSessionTmpDirPolicy,
   sessionTempRoot,
 } from '../../infra/session-tmpdir.js';
+import { workloadBudgetEngineContext } from '../../infra/workload-budget.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { hostImageAgentInstruction } from '../host-image-turn-capture.js';
@@ -349,6 +350,31 @@ describe('chat-host-images through OrchestrationService', () => {
     await replyTurn('thread-home', 'nothing', homedir());
     expect(adapter.turns[0].ambientContext ?? '').not.toContain(
       'Station chat images',
+    );
+  });
+
+  test('a first turn carries both the workload budget and the host-image instruction', async () => {
+    await previews.setEnabled(CHAT_HOST_IMAGES_PREVIEW_ID, true);
+    const limits = {
+      memoryMaxBytes: 2 * 1024 ** 3,
+      swapMaxBytes: 0,
+      tasksMax: 512,
+    };
+    Object.assign(adapter.metadata, { workloadScope: 'engine-process' });
+    await service.shutdown();
+    service = new OrchestrationService({
+      adapterRegistry: registryOf(adapter),
+      eventBus: new EventBus(),
+      eventStore: store,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+      hostImagesPreview: selector,
+      workloadEngineLimits: () => limits,
+    });
+    await replyTurn('thread-both', 'nothing');
+    const context = adapter.turns[0].ambientContext ?? '';
+    expect(context).toContain(workloadBudgetEngineContext(limits));
+    expect(context).toContain(
+      hostImageAgentInstruction({ workingDirectory: true, tmpdir: false }),
     );
   });
 
