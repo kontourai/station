@@ -1485,6 +1485,33 @@ Work-chat listings expose only currently readable canonical IDs and revisions.
 owner. See the real-store relationship and mounted-route tests for the local
 persistence/transport boundary; these do not qualify production composition.
 
+### Finish time and engines run
+
+`OrchestrationSessionSummary.lifecycleChangedAt` is when the event that
+produced the current `lifecycleState` was recorded, so a finished session
+reports its real finish time; later bookkeeping moves `updatedAt` and
+`lastEventAt` but not this. It is absent when no event in the folded window
+changed the state, and consumers fall back to `updatedAt`. A runtime
+`ConversationListItem` carries its current execution's `lifecycleChangedAt` and
+`executionProviders`: the distinct engines of the conversation's execution
+sessions in lineage order, so a handoff between engines lists both. A reserved
+handoff whose session never started ran nothing and is not listed. Both fields
+are absent from older hosts. See the
+[lifecycle fold](../../src-server/services/orchestration/session-lifecycle-service.ts)
+and the [inventory projection](../../src-server/services/orchestration/conversation-history-read-service.ts).
+
+### Conversation titles
+
+`@kontourai/station-contracts/conversation-title` exports `isLowContentPrompt`,
+the one rule every title derivation shares (#4266): a prompt whose words are
+all conversational filler ("Continue", "ok, go ahead", "yes please"), that has
+no letters or digits, or that is Station's memory-recovery continuation never
+names a conversation while a later prompt does, and never replaces a title that
+names something. It is not a length rule: "Deploy staging" is a title. See the
+[helper](../../packages/contracts/src/conversation-title.ts). A runtime
+`ConversationListItem` now carries `titleSource` (`prompt`, `provider` or
+`generated`); rows recorded before #4266 carry none.
+
 ### Conversation measurements
 
 Per-model rows in `ConversationStatsResponse.modelStats` use optional token,

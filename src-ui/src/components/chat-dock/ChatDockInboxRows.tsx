@@ -1,4 +1,3 @@
-import { parseEngineId } from '@kontourai/station-contracts/agent-identity';
 import type { GitReadLocation } from '@kontourai/station-sdk';
 import {
   useCallback,
@@ -11,6 +10,7 @@ import {
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { useSessionWorkClaims } from '../../contexts/WorkClaimsContext';
+import { agentMark, workIdentityMarks } from '../../utils/identity-marks';
 import { relativeTime } from '../../utils/relativeTime';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import {
@@ -27,18 +27,18 @@ import { workStatusText } from '../../views/home/work-status';
 import { Button } from '../Button';
 import { DisclosureToggle } from '../DisclosureToggle';
 import { DiscardDraftButton } from '../drafts/DiscardDraftButton';
-import { AgentIcon } from '../icons/AgentIcon';
-import { hasBundledEngineMark } from '../icons/BrandIcon';
 import {
   CloseGlyph,
   DiscardGlyph,
+  EditGlyph,
   FolderGlyph,
   InfoGlyph,
   MoreGlyph,
   ReturnGlyph,
   TimeGlyph,
 } from '../icons/Glyph';
-import { ProjectIcon } from '../icons/ProjectIcon';
+import { displayableProjectIcon, ProjectIcon } from '../icons/ProjectIcon';
+import { IdentityMarks } from '../inbox-row/IdentityMarks';
 import {
   InboxRowChips,
   InboxRowStatusGlyph,
@@ -126,59 +126,34 @@ export function moveFocusBeforeRemovingInboxRow(
 }
 
 /**
- * The agent an inbox row is attributed to, drawn as its leading icon — or
- * `null`, which renders NO icon at all.
+ * The agent an inbox row is attributed to, as a mark — or `null`, which
+ * draws no agent mark at all. The row's own committed `agentSlug` looked up
+ * in the live catalog, never its display `agentLabel`, and never an engine
+ * standing in for an unresolved agent (the row names an agent in text).
  *
- * Resolution is deliberately narrow: the row's own committed `agentSlug`,
- * looked up in the live agent catalog. Two fallbacks it pointedly does not
- * have:
- *
- * - It never reads `agentLabel`. That is a display string
- *   (`home-view-model.ts`'s `safeAgentLabel`) whose fallbacks include a bare
- *   provider id and the literal "Agent not reported" — matching artwork to
- *   one would be deriving an identity from a label.
- * - It never stands an ENGINE in for an UNRESOLVED agent the way
- *   `sessionIconAgent` does for a session row. That fallback is correct
- *   there, where the engine name is also the text beside the icon; here it
- *   would put an engine mark at the head of a row whose meta line names an
- *   agent, which is exactly the misattribution
- *   `home-view-model.ts`'s `safeAgentLabel` docblock records ("a Home row
- *   therefore said 'Bedrock' beside a Station engine icon"). An unresolvable
- *   row shows no icon rather than a stand-in that implies an engine.
- *
- * One fallback it does have (#3355): the agent RESOLVED, is bound to an
- * engine connection, but the catalog could not report that engine's id. The
- * row's own recorded `provider` — the engine its execution actually ran on —
- * then supplies the mark, so a Codex agent does not degrade to "CO"
- * initials. Only an engine with a bundled mark qualifies (anything else
- * would draw the same initials anyway), never an ACP-bound agent (`'acp'`
- * keeps its initials; its provider is not an engine's identity), and never an
- * unbound agent, whose missing engine is the truth rather than a gap.
- *
- * The catalog entry is returned BY REFERENCE whenever no fallback applies,
- * so resolving it is allocation-free; the fallback returns a copy carrying
- * the provider's `engineId`. Neither suppresses `<AgentIcon>` renders:
- * reconciliation identity is determined by type/key/position, and
- * `AgentIcon` is not memoized.
+ * Kept as the inbox's name for `agentMark` (`utils/identity-marks.ts`), the
+ * one resolver every row surface shares. A row draws the engines that ran it
+ * first (`workIdentityMarks`) and falls back to this.
  */
 export function inboxRowIconAgent(
   item: HomeWorkItem,
   agents: readonly SessionIconAgent[] | undefined,
 ): SessionIconAgent | null {
-  if (!agents || !item.agentSlug) return null;
-  const agent = agents.find((candidate) => candidate.slug === item.agentSlug);
-  if (!agent) return null;
-  if (
-    agent.engineId ||
-    !agent.execution?.agentConnectionId ||
-    agent.engineConnectionType === 'acp'
-  ) {
-    return agent;
-  }
-  const provider = parseEngineId(item.provider);
-  return provider && provider !== 'acp' && hasBundledEngineMark(provider)
-    ? { ...agent, engineId: provider }
-    : agent;
+  return agentMark(item.agentSlug, item.provider, agents);
+}
+
+/** Pencil on the project line for a row with an unsent composer draft. */
+function DraftMarker() {
+  return (
+    <span
+      className="inbox-row__draft-marker"
+      data-testid="inbox-row-draft-marker"
+      title="Unsent draft"
+      aria-hidden="true"
+    >
+      <EditGlyph />
+    </span>
+  );
 }
 
 /**
@@ -512,7 +487,7 @@ export function InboxRow({
   detailsOpen: controlledDetailsOpen,
   onDetailsOpenChange,
 }: InboxRowProps) {
-  const iconAgent = inboxRowIconAgent(item, agents);
+  const identity = workIdentityMarks(item, agents);
   // #3159: a row whose conversation a message may reference is a drag source.
   const referenceable = useReferenceableConversations();
   const discardThreadId = onDraftDiscarded ? draftDiscardThreadId(item) : null;
@@ -533,7 +508,7 @@ export function InboxRow({
   // filed under come from the same function.
   const status = useObservedWorkStatus(item, now, facts);
   const claims = useSessionWorkClaims(item);
-  const chips = inboxRowChips(item, { hasUnsentDraft, isWoken, claims });
+  const chips = inboxRowChips(item, { isWoken, claims });
   // An attached transcript's meta line names the app it lives in; the
   // status word ("Elsewhere") says this Station cannot answer there.
   const agentText = item.agentLabel;
@@ -816,19 +791,11 @@ export function InboxRow({
                   `role="img"`, so the row gains a picture and not a second
                   announcement or a tab stop. An unresolved agent renders no
                   icon at all, never a stand-in. */}
-              {iconAgent && (
-                <span title={agentText}>
-                  <AgentIcon
-                    agent={iconAgent}
-                    size={actionsInDetails ? 20 : 16}
-                    accessibleLabel={actionsInDetails ? agentText : undefined}
-                    className="chat-dock-inbox__avatar"
-                  />
-                </span>
-              )}
-              <span
-                className={`inbox-row__meta-text${actionsInDetails && iconAgent ? ' sr-only' : ''}`}
-              >
+              <IdentityMarks
+                identity={identity}
+                size={actionsInDetails ? 20 : 16}
+              />
+              <span className="inbox-row__meta-text">
                 <span className="inbox-row__agent">{agentText}</span>
                 {!actionsInDetails && (
                   <>
@@ -842,6 +809,7 @@ export function InboxRow({
                     <span className="inbox-row__project">
                       {item.projectLabel}
                     </span>
+                    {hasUnsentDraft && <DraftMarker />}
                   </>
                 )}
               </span>
@@ -871,13 +839,20 @@ export function InboxRow({
             />
             {actionsInDetails && (
               <span className="inbox-row__project-context">
-                <FolderGlyph />
-                <ProjectAccentSwatch
-                  accent={projectAccent}
-                  icon={projectIcon}
-                  name={item.projectLabel}
-                />
+                {/* One project mark: its own icon when it has one, else the
+                    folder. The colour dot beside the folder read as a stray
+                    separator ("[folder] • name"). */}
+                {displayableProjectIcon(projectIcon) ? (
+                  <ProjectAccentSwatch
+                    accent={projectAccent}
+                    icon={projectIcon}
+                    name={item.projectLabel}
+                  />
+                ) : (
+                  <FolderGlyph />
+                )}
                 <span className="inbox-row__project">{item.projectLabel}</span>
+                {hasUnsentDraft && <DraftMarker />}
               </span>
             )}
             <InboxRowChips chips={chips} />

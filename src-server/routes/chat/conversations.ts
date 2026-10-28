@@ -50,7 +50,10 @@ import {
   type ActionOperationTrackingService,
   beginActionOperationTracking,
 } from '../../services/operations/action-operation-tracker.js';
-import type { ConversationAcknowledgementStore } from '../../services/orchestration/conversation-acknowledgement-store.js';
+import {
+  type ConversationAcknowledgementStore,
+  conversationAcknowledgementKey,
+} from '../../services/orchestration/conversation-acknowledgement-store.js';
 import {
   FORK_REPLAY_DISCLOSURE,
   selectForkTranscriptSlice,
@@ -2553,7 +2556,6 @@ export function createGlobalConversationRoutes(
   app.get('/', async (c) => {
     try {
       const authority = authorityFor(c.req.raw);
-      const userId = authority.userId;
       const hosted = isHostedSessionReadAuthority(authority);
       const pageQuery = conversationHistoryPageQuerySchema.safeParse({
         cursor: c.req.query('cursor'),
@@ -2604,10 +2606,13 @@ export function createGlobalConversationRoutes(
       const provenanceById = eventStore?.readConversationForkProvenanceBatch?.(
         combined.map((item) => item.id),
       );
-      const acknowledgements = acknowledgementStore?.getMany(
-        userId,
-        combined.map((item) => item.id),
-      );
+      const acknowledgementKey = conversationAcknowledgementKey(authority);
+      const acknowledgements = acknowledgementKey
+        ? acknowledgementStore?.getMany(
+            acknowledgementKey,
+            combined.map((item) => item.id),
+          )
+        : undefined;
       const data = combined.map((item) => {
         const acknowledgedAt = acknowledgements?.get(item.id);
         const forkProvenance =
@@ -2701,8 +2706,20 @@ export function createGlobalConversationRoutes(
         400,
       );
     }
+    // The same key the inventory GET reads (`conversationAcknowledgementKey`):
+    // what a person viewed on one device clears it on all of theirs.
+    const acknowledgementKey = conversationAcknowledgementKey(authority);
+    if (!acknowledgementKey) {
+      return c.json(
+        {
+          success: false,
+          error: 'Only a person can acknowledge a conversation',
+        },
+        403,
+      );
+    }
     acknowledgementStore.acknowledge({
-      userId: getUserId(),
+      userId: acknowledgementKey,
       conversationId,
       updatedAt: new Date(parsedUpdatedAt).toISOString(),
     });
