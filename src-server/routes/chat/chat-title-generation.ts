@@ -1,7 +1,8 @@
 /**
  * Auto-generates a short conversation title from the first exchange
  * (archive#1566). Follows `ApprovalGuardianService`'s cheap-side-model
- * pattern: a one-shot temp agent bound to `appConfig.structureModel`,
+ * pattern: a one-shot temp agent bound to the title model
+ * (`resolveTitleModel`: `appConfig.titleModel`, else `structureModel`),
  * `generateObject` against a tiny schema, and a fully non-fatal failure
  * mode — the caller (`finalizeChatRequest`) fires this off in the
  * background, so nothing here may ever throw or hang the turn.
@@ -11,6 +12,21 @@ import { jsonSchema } from 'ai';
 import { createRuntimeFrameworkModel } from '../../runtime/plugins/runtime-provider-resolution.js';
 import type { RuntimeContext } from '../../runtime/types.js';
 import { CHAT_TITLE_SERVICE_PRINCIPAL } from '../../services/identity/service-principals.js';
+
+/**
+ * #4266: the model that writes conversation titles, or undefined when title
+ * generation is off. `titleModel` is the override, like `reviewGuideModel`;
+ * an empty `structureModel` (the default) with no override turns it off.
+ */
+export function resolveTitleModel(
+  appConfig: Pick<RuntimeContext['appConfig'], 'titleModel' | 'structureModel'>,
+): string | undefined {
+  return (
+    appConfig.titleModel?.trim() ||
+    appConfig.structureModel?.trim() ||
+    undefined
+  );
+}
 
 // Bounds how long a slow/hung provider can delay the background title write
 // (never the turn itself — this always runs after the turn has finished).
@@ -39,10 +55,10 @@ export async function generateConversationTitle({
   firstUserText: string;
   assistantText: string;
 }): Promise<string | null> {
-  const structureModel = ctx.appConfig.structureModel;
-  if (!structureModel) {
-    // Empty/absent structureModel means title generation is disabled — the
-    // same convention `ApprovalGuardianService` and its callers rely on.
+  const titleModel = resolveTitleModel(ctx.appConfig);
+  if (!titleModel) {
+    // No title model and an empty structureModel means title generation is
+    // disabled — the convention `ApprovalGuardianService` relies on too.
     return null;
   }
 
@@ -64,7 +80,7 @@ export async function generateConversationTitle({
         {
           name: 'Chat Title Generator',
           prompt: '',
-          model: structureModel,
+          model: titleModel,
         } as AgentSpec,
         {
           framework: ctx.framework,

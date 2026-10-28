@@ -1482,6 +1482,18 @@ Work-chat listings expose only currently readable canonical IDs and revisions.
 owner. See the real-store relationship and mounted-route tests for the local
 persistence/transport boundary; these do not qualify production composition.
 
+### Conversation titles
+
+`@kontourai/station-contracts/conversation-title` exports `isLowContentPrompt`,
+the one rule every title derivation shares (#4266): a prompt whose words are
+all conversational filler ("Continue", "ok, go ahead", "yes please"), that has
+no letters or digits, or that is Station's memory-recovery continuation never
+names a conversation while a later prompt does, and never replaces a title that
+names something. It is not a length rule: "Deploy staging" is a title. See the
+[helper](../../packages/contracts/src/conversation-title.ts). A runtime
+`ConversationListItem` now carries `titleSource` (`prompt`, `provider` or
+`generated`); rows recorded before #4266 carry none.
+
 ### Conversation measurements
 
 Per-model rows in `ConversationStatsResponse.modelStats` use optional token,

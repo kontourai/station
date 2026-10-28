@@ -3,6 +3,7 @@ import {
   parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import { clientOriginSender } from '@kontourai/station-contracts/client-origin';
+import { isLowContentPrompt } from '@kontourai/station-contracts/conversation-title';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { unanswerableRequestNotice } from '@kontourai/station-contracts/orchestration';
 import {
@@ -702,8 +703,14 @@ function mergeHomeWorkItems(
       // A chat's title is the durable conversation projection. The current
       // execution can supply Agent/model/status without replacing it with a
       // child-session fallback such as "Claude Code session" after handoff.
+      // #4266: unless it is low-content ("Continue"); then the server's
+      // title for the execution, which skips such prompts, names it.
       title:
-        chat?.title && chat.title !== 'New chat' ? chat.title : display.title,
+        chat?.title &&
+        chat.title !== 'New chat' &&
+        !isLowContentPrompt(chat.title)
+          ? chat.title
+          : display.title,
       ...(existing.conversationId || item.conversationId
         ? { conversationId: existing.conversationId ?? item.conversationId }
         : {}),

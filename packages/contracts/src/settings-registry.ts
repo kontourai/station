@@ -578,6 +578,16 @@ export const APP_SETTINGS_REGISTRY = [
     defaultValue: 14,
   }),
   defineSetting({
+    key: 'titleModel',
+    scope: 'station',
+    descriptor: { kind: 'string', maxLength: 255 },
+    label: 'Chat title model',
+    help: 'Choose the model that names a chat after its first reply.',
+    // #4266: read by `resolveTitleModel` (chat-title-generation.ts).
+    description:
+      'Uses the structure model when empty. With neither set, a chat is named from its first message.',
+  }),
+  defineSetting({
     key: 'defaultWorkspaceIsolation',
     scope: 'station',
     descriptor: { kind: 'enum', values: ['shared', 'worktree'] },
