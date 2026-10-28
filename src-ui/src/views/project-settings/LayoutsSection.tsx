@@ -6,6 +6,7 @@ import {
   useProjectLayoutsQuery,
 } from '@kontourai/station-sdk';
 import { useState } from 'react';
+import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { PageSection } from '../../components/PageSection';
 import {
@@ -14,7 +15,7 @@ import {
   ResponsiveSurfaceActions,
 } from '../../components/ResponsiveDialogSurface';
 import { ProjectLayoutCatalog } from '../../components/registry/ProjectLayoutCatalog';
-import { Empty, ErrorState } from '../../components/state';
+import { Empty, ErrorState, Skeleton } from '../../components/state';
 import { trackRecentLayout } from '../../hooks/useRecentLayouts';
 import { userFacingErrorMessage } from '../../utils/errorText';
 
@@ -29,7 +30,8 @@ export function LayoutsSection({ slug }: { slug: string }) {
   const layoutCatalog = useAvailableProjectLayoutsQuery({ enabled: showAdd });
   const availableLayouts = layoutCatalog.data ?? [];
 
-  const { data: projectLayouts = [] } = useProjectLayoutsQuery(slug) as {
+  const layoutsQuery = useProjectLayoutsQuery(slug);
+  const { data: projectLayouts = [] } = layoutsQuery as {
     data?: LayoutMetadata[];
   };
 
@@ -77,19 +79,28 @@ export function LayoutsSection({ slug }: { slug: string }) {
       title="Layouts"
       description="Add focused views for the work this project needs."
       actions={
-        <button
-          type="button"
-          className="knowledge-section__action-btn"
+        <Button
+          size="sm"
           onClick={() => {
             setApplyError(null);
             setShowAdd(true);
           }}
         >
-          + Add Layout
-        </button>
+          Add Layout
+        </Button>
       }
     >
-      {projectLayouts.length > 0 ? (
+      {layoutsQuery.isLoading ? (
+        <Skeleton variant="block" />
+      ) : layoutsQuery.isError ? (
+        <ErrorState
+          variant="compact"
+          title="Could not load layouts"
+          action={
+            <Button onClick={() => void layoutsQuery.refetch()}>Retry</Button>
+          }
+        />
+      ) : projectLayouts.length > 0 ? (
         <div className="knowledge-section__doc-list">
           {projectLayouts.map((layout) => (
             <div key={layout.id} className="knowledge-section__doc">
@@ -98,15 +109,15 @@ export function LayoutsSection({ slug }: { slug: string }) {
                 {layout.name}
               </span>
               <span className="knowledge-section__badge">{layout.type}</span>
-              <button
-                type="button"
-                className="knowledge-section__doc-remove"
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setPendingRemoval(layout)}
                 title="Remove layout"
                 aria-label={`Remove ${layout.name}`}
               >
                 ×
-              </button>
+              </Button>
             </div>
           ))}
         </div>
@@ -115,15 +126,6 @@ export function LayoutsSection({ slug }: { slug: string }) {
           variant="compact"
           label="This project doesn't have any layouts yet"
           description="Add a layout to give this project its own workspace arrangement."
-          action={
-            <button
-              type="button"
-              className="knowledge-section__action-btn"
-              onClick={() => setShowAdd(true)}
-            >
-              Add Layout
-            </button>
-          }
         />
       )}
 
@@ -169,13 +171,9 @@ export function LayoutsSection({ slug }: { slug: string }) {
             onSelect={addLayout}
           />
           <ResponsiveSurfaceActions className="project-settings__actions">
-            <button
-              type="button"
-              className="knowledge-section__action-btn"
-              onClick={() => setShowAdd(false)}
-            >
+            <Button size="sm" onClick={() => setShowAdd(false)}>
               Cancel
-            </button>
+            </Button>
           </ResponsiveSurfaceActions>
         </ResponsiveDialogSurface>
       )}

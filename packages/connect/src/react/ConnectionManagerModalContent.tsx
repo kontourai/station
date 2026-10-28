@@ -102,7 +102,6 @@ export function ConnectionManagerModalContent({
     connections,
     activeConnection,
     addConnection,
-    removeConnection,
     updateConnection,
     setActiveConnection,
     setCredential,
@@ -113,6 +112,7 @@ export function ConnectionManagerModalContent({
     makeDefaultProfile,
     updateSharedProfile,
     removeSharedProfile,
+    forgetConnection,
     sharedProfilesVisibleToCli,
     getConnectionCredential,
     commitEndpointCandidate,
@@ -874,24 +874,14 @@ export function ConnectionManagerModalContent({
             onStartEdit={startEdit}
             onRemove={(id) => {
               setRemoveError(null);
-              const connection = connections.find(
-                (candidate) => candidate.id === id,
-              );
-              if (!id.startsWith('station-profile:')) {
-                removeConnection(id);
-                return;
-              }
-              if (!removeSharedProfile || !connection) return;
-              void removeSharedProfile({
-                connectionId: id,
-                expected: { name: connection.name, url: connection.url },
-              }).catch((error) => {
+              const name =
+                connections.find((candidate) => candidate.id === id)?.name ??
+                id;
+              void forgetConnection(id).catch((error) => {
                 // A failure after the Station was forgotten starts "Station
                 // forgotten, but"; any other message means nothing changed.
                 setRemoveError(
-                  `${connection.name}: ${
-                    error instanceof Error ? error.message : String(error)
-                  }`,
+                  `${name}: ${error instanceof Error ? error.message : String(error)}`,
                 );
               });
             }}

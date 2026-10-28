@@ -1,0 +1,7 @@
+{
+  "revision": "c4df5a9fc57ad7b28eca416c36d46ee6dd1be9ec",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked: no claim about newest event-window paging, the re-added turn.started, client gap filling, live-frame stitching, or the busy composer gate; unaffected by turnStartDetached.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/__tests__/event-store.test.ts","src-server/services/orchestration/event-store.ts","src-ui/src/hooks/orchestration/turnHandlers.ts"]}
+  ]
+}

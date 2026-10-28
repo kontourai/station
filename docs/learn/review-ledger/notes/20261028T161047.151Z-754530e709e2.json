@@ -1,0 +1,7 @@
+{
+  "revision": "dd1aef748e9a6134d45831e7b9d7fc782321a3b9",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"screenshots.spec.ts: the station-switcher tiles find the filter at page level, since it now sits beside the menu rather than inside it. Capture order, motion settling, gallery selection and telemetry screens are unchanged.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]}
+  ]
+}
