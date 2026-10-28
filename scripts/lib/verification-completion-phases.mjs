@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CANONICAL_COMPLETION_LANE } from '../verification-lanes.mjs';
+import { withHeavyCheckSlot } from './heavy-check-slots.mjs';
 import { writeReceiptSecurely } from './test-reliability.mjs';
 import {
   createOwnedRunner,
@@ -291,28 +292,38 @@ async function runCompletionPhaseSequence(input) {
         stage: 'execution',
       });
       const before = context.collectProvenance({ cwd: context.cwd });
-      const execute = context.phaseRunner
-        ? ({ signal: phaseSignal }) =>
-            context.phaseRunner({
-              phase,
-              signal: phaseSignal,
-              request: context.request,
-            })
-        : createOwnedRunner({
-            lane,
-            worktree: context.before.worktree,
-            outputLock,
-            owner,
-            outputOwned: admission.outputOwned,
-            now: context.now,
-            currentLease: getLease,
-            updateLease: setLease,
-            privateCommand: (phaseLane) =>
-              seams.privateCommand(phaseLane, context.toolchain),
-            processIdentity: seams.processIdentity,
-            writeOwnedLease: seams.writeOwnedLease,
-            env: context.env,
-          });
+      // This phase is admitted; it holds a heavy-check slot only while it
+      // executes, so no slot is held while the next phase queues.
+      const execute = withHeavyCheckSlot(
+        {
+          label: `verification:${context.lane.id}:${phase.id}`,
+          env: context.env,
+        },
+        (env) =>
+          context.phaseRunner
+            ? ({ signal: phaseSignal }) =>
+                context.phaseRunner({
+                  phase,
+                  signal: phaseSignal,
+                  request: context.request,
+                  env,
+                })
+            : createOwnedRunner({
+                lane,
+                worktree: context.before.worktree,
+                outputLock,
+                owner,
+                outputOwned: admission.outputOwned,
+                now: context.now,
+                currentLease: getLease,
+                updateLease: setLease,
+                privateCommand: (phaseLane) =>
+                  seams.privateCommand(phaseLane, context.toolchain),
+                processIdentity: seams.processIdentity,
+                writeOwnedLease: seams.writeOwnedLease,
+                env,
+              }),
+      );
       const phaseDeadline =
         getLease().phase?.executionDeadlineAt ?? executionDeadlineAt;
       let raw;

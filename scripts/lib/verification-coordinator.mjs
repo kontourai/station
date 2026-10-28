@@ -14,10 +14,7 @@ import {
   projectLatestE2EEvidence,
   validateLatestE2EEvidence,
 } from './e2e-latest-evidence.mjs';
-import {
-  acquireHeavyCheckSlot,
-  withHeavyCheckHeld,
-} from './heavy-check-slots.mjs';
+import { withHeavyCheckSlot } from './heavy-check-slots.mjs';
 import {
   collectVerificationProvenance,
   preflightReceiptDestination,
@@ -1161,53 +1158,6 @@ function publishOwnerResult({
   );
 }
 
-function abortableSleep(ms, signal) {
-  return new Promise((resolve, reject) => {
-    const canceled = () =>
-      reject(
-        new Error('verification canceled while waiting for a heavy-check slot'),
-      );
-    if (signal?.aborted) return canceled();
-    const timer = setTimeout(() => {
-      signal?.removeEventListener('abort', onAbort);
-      resolve();
-    }, ms);
-    const onAbort = () => {
-      clearTimeout(timer);
-      canceled();
-    };
-    signal?.addEventListener('abort', onAbort, { once: true });
-  });
-}
-
-/**
- * Host heavy-check admission for an owner executing a lane
- * (`heavy-check-slots.mjs`). Reuse and join never execute, so they take no
- * slot. Coordinator admission is already held, so the order is coordinator,
- * then heavy check; no heavy-check holder waits on the coordinator, because a
- * request made under a holder finds that holder's marker and runs under its
- * slot. The wait runs inside the lane's deadline and abort signal, and a
- * refusal is the lane's failed result, so the lease settles normally.
- */
-function withLaneHeavyCheckSlot(context, buildExecute) {
-  return async (run) => {
-    const slot = await acquireHeavyCheckSlot({
-      label: `verification:${context.lane.id}`,
-      env: context.env,
-      sleep: (ms) => abortableSleep(ms, run.signal),
-    });
-    const env =
-      slot.reentrant || slot.skipped
-        ? context.env
-        : withHeavyCheckHeld(context.env);
-    try {
-      return await buildExecute(env)({ ...run, env });
-    } finally {
-      slot.release();
-    }
-  };
-}
-
 async function runOwnerAndPublish({
   context,
   directory,
@@ -1220,10 +1170,13 @@ async function runOwnerAndPublish({
   onOwnershipLost,
   terminalHooks,
 }) {
-  const buildExecute = (env) =>
+  // Each full-regression phase takes its own heavy-check slot after its own
+  // admission (verification-completion-phases.mjs); any other executing lane
+  // takes one here, after this owner's admission.
+  const execute =
     context.lane.id === CANONICAL_COMPLETION_LANE
       ? createCompletionPhaseRunner({
-          context: { ...context, env },
+          context,
           directory,
           owner,
           outputLock,
@@ -1240,23 +1193,27 @@ async function runOwnerAndPublish({
             writeOwnedLease,
           },
         })
-      : (context.runner ??
-        createOwnedRunner({
-          lane: context.lane,
-          worktree: context.before.worktree,
-          outputLock,
-          owner,
-          outputOwned,
-          now: context.now,
-          currentLease: getLease,
-          updateLease: setLease,
-          privateCommand: (lane) => privateCommand(lane, context.toolchain),
-          processIdentity,
-          writeOwnedLease,
-          env,
-        }));
+      : withHeavyCheckSlot(
+          { label: `verification:${context.lane.id}`, env: context.env },
+          (env) =>
+            context.runner ??
+            createOwnedRunner({
+              lane: context.lane,
+              worktree: context.before.worktree,
+              outputLock,
+              owner,
+              outputOwned,
+              now: context.now,
+              currentLease: getLease,
+              updateLease: setLease,
+              privateCommand: (lane) => privateCommand(lane, context.toolchain),
+              processIdentity,
+              writeOwnedLease,
+              env,
+            }),
+        );
   const { raw, timedOut } = await runWithinDeadline({
-    execute: withLaneHeavyCheckSlot(context, buildExecute),
+    execute,
     lane: context.lane,
     request: context.request,
     signal: context.signal,

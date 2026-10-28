@@ -16,7 +16,7 @@ import {
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { describe, expect, test, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { lookupProcessBirthFingerprint } from '../../packages/shared/src/process-identity.mjs';
 import {
   latestE2EEvidenceBinding,
@@ -55,6 +55,19 @@ import { FULL_REGRESSION_PHASES } from '../verification-lanes.mjs';
 import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
 
 const FULL_PHASE_IDS = FULL_REGRESSION_PHASES.map((phase) => phase.id);
+
+// Lanes in this file run in-process. They execute under this worker's own
+// heavy-check marker, not the host pool or whichever runner started Vitest;
+// the heavy-check admission tests below replace it with a private pool.
+const inheritedHeavyCheckMarker = process.env[HEAVY_CHECK_HELD_ENV];
+beforeAll(() => {
+  process.env[HEAVY_CHECK_HELD_ENV] = String(process.pid);
+});
+afterAll(() => {
+  if (inheritedHeavyCheckMarker === undefined)
+    delete process.env[HEAVY_CHECK_HELD_ENV];
+  else process.env[HEAVY_CHECK_HELD_ENV] = inheritedHeavyCheckMarker;
+});
 const ORDINARY_FULL_PHASE_IDS = FULL_PHASE_IDS.filter((id) =>
   id.startsWith('test-full-ordinary-'),
 );
@@ -490,6 +503,55 @@ describe('verification coordinator', () => {
       }
     });
 
+    test('each full-regression phase holds its own slot only while it executes', async () => {
+      const temp = fixture();
+      const worktree = join(temp.root, 'worktree');
+      mkdirSync(worktree);
+      const slotDir = join(temp.root, 'heavy-check-slots');
+      const seen: Array<{ phase: string; label: string; marker?: string }> = [];
+      try {
+        const result = await coordinateVerification({
+          laneId: 'full-regression',
+          root: temp.root,
+          cwd: worktree,
+          heartbeatMs: 1,
+          collectProvenance: () => worktreeProvenance(worktree, 'heavy-phases'),
+          hostCpuSampler: healthySampler(),
+          env: heavyCheckEnv(slotDir, '20000'),
+          phaseRunner: async ({
+            phase,
+            env,
+          }: {
+            phase: { id: string };
+            env?: NodeJS.ProcessEnv;
+          }) => {
+            seen.push({
+              phase: phase.id,
+              label: JSON.parse(
+                readFileSync(join(slotDir, 'slot-0.lock'), 'utf8'),
+              ).label,
+              marker: env?.[HEAVY_CHECK_HELD_ENV],
+            });
+            return { status: 0 };
+          },
+        });
+        expect(result.disposition).toBe('executed');
+        expect(seen.map((entry) => entry.phase)).toEqual(FULL_PHASE_IDS);
+        // One slot per phase, taken after that phase's admission: a single
+        // slot across the lane would carry one label and be held while each
+        // later phase queued for the coordinator.
+        for (const entry of seen) {
+          expect(entry.label).toBe(
+            `verification:full-regression:${entry.phase}`,
+          );
+          expect(entry.marker).toMatch(new RegExp(`^${process.pid}(:|$)`));
+        }
+        expect(existsSync(join(slotDir, 'slot-0.lock'))).toBe(false);
+      } finally {
+        temp.remove();
+      }
+    });
+
     test('a reused receipt takes no slot, even while the pool is full', async () => {
       const temp = fixture();
       const slotDir = join(temp.root, 'heavy-check-slots');
@@ -584,13 +646,16 @@ describe('verification coordinator', () => {
           (error: Error) => ({ result: null, error }),
         );
         expect(calls).toBe(0);
-        const text = outcome.error
-          ? String(outcome.error.message)
-          : JSON.stringify(outcome.result);
-        expect(text).toContain(
+        // A refusal is the lane's failed result, published like any other.
+        expect(outcome.error).toBeNull();
+        expect(outcome.result?.disposition).toBe('executed');
+        expect(outcome.result?.receipt.terminal).toMatchObject({
+          status: 'infrastructure_error',
+          passed: false,
+        });
+        expect(outcome.result?.receipt.terminal.infrastructureCause).toContain(
           'FAIL: waited 0s for a heavy-check slot for verification:prepush',
         );
-        expect(outcome.result?.receipt?.terminal?.passed).not.toBe(true);
         // The refusal leaves no fence or capacity behind: once the other
         // check finishes, the same request executes.
         rmSync(join(slotDir, 'slot-0.lock'));

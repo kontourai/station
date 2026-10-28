@@ -1,8 +1,8 @@
 /**
  * Host-wide heavy-check slots: at most N heavy repository checks (Vitest
  * selections, `docs:truth:gate`, the learning-guide build, the pre-push
- * gates, local verification-coordinator requests) run at once on this
- * machine, across every worktree and caller.
+ * gates, executing verification-coordinator lanes and full-regression
+ * phases) run at once on this machine, across every worktree and caller.
  *
  * Why this exists: three agents on one 4-core, 15 GiB host each ran
  * pre-push hooks, readiness and docs gates at once; load reached ~10 and a
@@ -22,14 +22,15 @@
  * admitted under its ancestor's slot instead of waiting on it. A marker
  * naming a dead or recycled pid is ignored and the caller queues normally.
  *
- * Admission is taken in one order: heavy-check slot, then the verification
- * coordinator, then typecheck or Biome slots. `run-verification.mjs request`
- * takes a heavy-check slot before it asks the coordinator for admission, and
- * every lane the coordinator runs gives its children the marker of the
- * process running it (`verification-request-context.mjs`). A coordinator lane
- * therefore never waits on a heavy-check slot, so a request holding a slot
- * while it waits for coordinator capacity cannot deadlock against a running
- * lane.
+ * Admission is taken in one order: verification-coordinator admission, then
+ * a heavy-check slot, then typecheck or Biome slots. A coordinator owner takes
+ * its slot only once a lane (or one full-regression phase) has been admitted
+ * and is about to execute (`withHeavyCheckSlot`), and releases it before the
+ * next phase queues, so no slot is held while waiting on the coordinator.
+ * Reused and joined requests take none. Heavy checks run through
+ * `scripts/heavy-check-slot.mjs` never call the coordinator; a check that did,
+ * and joined another owner's lane, would wait on an owner waiting for its own
+ * slot until one bounded wait failed.
  *
  * Hosted CI (`GITHUB_ACTIONS=true`) takes no slot: each runner is a single
  * tenant, and a pool there would only serialize one job's own steps. `CI`
@@ -154,8 +155,8 @@ function liveMarkedHolder(env, liveness = {}) {
 
 /**
  * `env` marking the process `pid` as the heavy-check holder for its
- * descendants: the slot runner after it claims a slot, `run-verification`
- * after it claims one, and the coordinator for the lanes it runs.
+ * descendants: the slot runner, or a coordinator owner, after it claims a
+ * slot.
  *
  * @param {NodeJS.ProcessEnv} env
  * @param {number} [pid]
@@ -166,6 +167,84 @@ export function withHeavyCheckHeld(env, pid = process.pid) {
     ...env,
     [HEAVY_CHECK_HELD_ENV]: start ? `${pid}:${start}` : String(pid),
   };
+}
+
+function abortableSleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    const canceled = () =>
+      reject(new Error('canceled while waiting for a heavy-check slot'));
+    if (signal?.aborted) return canceled();
+    const onAbort = () => {
+      clearTimeout(timer);
+      canceled();
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+/**
+ * Wrap a verification `execute({ signal, ... })` so it runs holding a
+ * heavy-check slot. Callers wrap only work that coordinator admission has
+ * already admitted. The wait runs inside the execution's deadline and abort
+ * signal, and a refusal rejects, which the deadline runner turns into the
+ * execution's failed result. `buildExecute(env)` builds the real execute
+ * with the environment its children inherit, which carries this holder's
+ * marker. If an execution is fenced because it never settled, its slot stays
+ * held until this process exits.
+ *
+ * @param {{ label: string, env: NodeJS.ProcessEnv }} admission
+ * @param {(env: NodeJS.ProcessEnv) => (run: any) => Promise<any>} buildExecute
+ */
+export function withHeavyCheckSlot({ label, env }, buildExecute) {
+  return (run) => {
+    // Without a slot to take, start the execution synchronously, as the
+    // deadline runner's callers have always seen it start.
+    if (admittedWithoutSlot({ label, env }))
+      return buildExecute(env)({ ...run, env });
+    return (async () => {
+      const slot = await acquireHeavyCheckSlot({
+        label,
+        env,
+        sleep: (ms) => abortableSleep(ms, run?.signal),
+      });
+      const childEnv = slot.index >= 0 ? withHeavyCheckHeld(env) : env;
+      try {
+        return await buildExecute(childEnv)({ ...run, env: childEnv });
+      } finally {
+        slot.release();
+      }
+    })();
+  };
+}
+
+/**
+ * Hosted CI, or a live ancestor holding a slot: either way no slot is taken,
+ * and one line says why. Returns which, or null when the caller must queue.
+ *
+ * @returns {'skipped' | 'reentrant' | null}
+ */
+function admittedWithoutSlot({
+  label,
+  env,
+  liveness = {},
+  log = (message) => process.stderr.write(`${message}\n`),
+}) {
+  if (env.GITHUB_ACTIONS === 'true') {
+    log(
+      `[heavy-check-slots] hosted CI (GITHUB_ACTIONS=true): ${label || 'check'} runs without a host slot.`,
+    );
+    return 'skipped';
+  }
+  const ancestor = liveMarkedHolder(env, liveness);
+  if (ancestor === null) return null;
+  log(
+    `[heavy-check-slots] ${label || 'check'} runs under the heavy-check slot held by pid ${ancestor}.`,
+  );
+  return 'reentrant';
 }
 
 /**
@@ -194,29 +273,20 @@ export async function acquireHeavyCheckSlot({
   ...seams
 } = {}) {
   const dir = resolveHeavyCheckSlotDirectory({ env });
-  const unheld = {
-    index: -1,
-    dir,
-    slots: 0,
-    release: () => {},
-  };
-  if (env.GITHUB_ACTIONS === 'true') {
-    log(
-      `[heavy-check-slots] hosted CI (GITHUB_ACTIONS=true): ${label || 'check'} runs without a host slot.`,
-    );
-    return { ...unheld, reentrant: false, skipped: true };
-  }
   const liveness = {
     ...(pidAlive ? { pidAlive } : {}),
     ...(lookupBirth ? { lookupBirth } : {}),
   };
-  const ancestor = liveMarkedHolder(env, liveness);
-  if (ancestor !== null) {
-    log(
-      `[heavy-check-slots] ${label || 'check'} runs under the heavy-check slot held by pid ${ancestor}.`,
-    );
-    return { ...unheld, reentrant: true, skipped: false };
-  }
+  const bypass = admittedWithoutSlot({ label, env, liveness, log });
+  if (bypass)
+    return {
+      index: -1,
+      dir,
+      slots: 0,
+      reentrant: bypass === 'reentrant',
+      skipped: bypass === 'skipped',
+      release: () => {},
+    };
   const ownEnv = { ...env };
   delete ownEnv[HEAVY_CHECK_HELD_ENV];
   const slot = await acquireTypecheckSlot({

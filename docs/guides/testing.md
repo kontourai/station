@@ -1697,7 +1697,8 @@ slot and then runs the script as the slot holder. These entry points use it:
 | `npm run docs:truth:gate` (also a Veritas readiness evidence check) | `docs:truth:gate` |
 | `npm run docs:learn:build`, `npm run docs:learn:check` | `docs:learn:build`, `docs:learn:check` |
 | Pre-push transfer budgets, static gates, SDK barrel | `pre-push:transfer-budgets`, `pre-push:static-gates`, `pre-push:sdk-barrel` |
-| A verification-coordinator lane that executes (`ci:fast`, `verify:static`, `full:regression`, requested or submitted) | `verification:<lane>` |
+| A verification-coordinator lane that executes (`ci:fast`, `verify:static`, `test-changed`, …) | `verification:<lane>` |
+| Each `full:regression` phase, requested or submitted | `verification:full-regression:<phase>` |
 
 - N is the smaller of one slot per four logical CPUs (floored) and one per
   8 GiB of RAM (rounded), between 1 and 4. A 4-core, 15 GiB host gets 1.
@@ -1716,12 +1717,25 @@ slot and then runs the script as the slot holder. These entry points use it:
   macOS and Linux, its process birth. A marker naming a dead or recycled pid is
   ignored.
 - Admission is always taken in one order: the verification coordinator, then
-  a heavy-check slot, then typecheck or Biome. A coordinator owner takes its
-  slot only once it is about to execute the lane. A request that reuses a
-  receipt or joins a running lane takes none. The wait counts against the
-  lane's deadline, as coordinator queueing already does. No heavy-check holder
-  waits on the coordinator: a request made inside a holder's process tree runs
-  under that holder's slot.
+  a heavy-check slot, then typecheck or Biome.
+  - A coordinator owner takes its slot only after the lane, or each
+    full-regression phase, has been admitted and is about to execute. It
+    releases the slot before the next phase queues.
+  - A request that reuses a receipt or joins a running lane takes no slot.
+  - The wait counts against the lane's or phase's deadline, as coordinator
+    queueing already does.
+  - A refusal publishes an `infrastructure_error` receipt that names the
+    holders. Only passing receipts are reused, so the next request retries.
+- Do not call the coordinator (`ci:fast`, `verify:static`, `run-verification`)
+  from inside a slotted check. None of the slotted entry points do. A request
+  made there would join another owner's lane while its own ancestor held the
+  slot that owner waits for. That would hold until one of the bounded waits
+  failed.
+- With one slot, a `ci:fast` requested during a long full-regression phase
+  waits for that phase to finish. It fails at its own deadline if the phase
+  outlasts it.
+- If a lane is fenced because its child never settled after a timeout, the
+  coordinator process keeps that lane's slot until it exits.
 - Hosted CI (`GITHUB_ACTIONS=true`) takes no slot, because each runner is
   single-tenant, and prints one line saying so. `CI` alone does not exempt a
   run, because local tools set it too.
