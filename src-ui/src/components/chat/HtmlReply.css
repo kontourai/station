@@ -88,9 +88,15 @@
   position: relative;
   flex-shrink: 0;
   align-self: center;
+  margin-left: auto;
 }
 .markdown-image-unavailable__retry::after {
   content: "";
   position: absolute;
   inset: min(0px, calc((100% - 44px) / 2));
+}
+/* In a reply's own block, the card spans the column like the image would. */
+.workspace-file-reply > .markdown-image-unavailable {
+  display: flex;
+  margin-block: var(--k-space-1);
 }
