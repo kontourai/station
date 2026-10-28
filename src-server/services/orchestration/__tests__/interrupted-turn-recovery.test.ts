@@ -1694,6 +1694,14 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
         eventStore.listEvents(threadId).map((row) => row.payload),
       ),
     ).toBeUndefined();
+    // The bounded fact set the conversation-open read folds.
+    expect(
+      activeTurnIdForEvents(
+        eventStore
+          .listSessionProjectionEvents(threadId)
+          .map((row) => row.payload),
+      ),
+    ).toBeUndefined();
     const detail = await service.readSession(
       threadId,
       INTERNAL_SESSION_READ_SCOPE,
