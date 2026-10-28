@@ -44,7 +44,7 @@ const instances=[files,terminal];
 const scope={kind:'project',projectId:'demo',layoutId:'coding'};
 navigationStore.navigate('/projects/demo/layouts/coding');
 function App(){const selection=useCodingStackSelection();const wide=useCodingWide();
-return <div style={{height:'100dvh',display:'flex',flexDirection:'column'}}><CodingWorkbench projectId="demo" projectSlug="demo" stackName="Coding" drillInOrder={[]} centerChat wide={wide} location={resolveCodingStackLocation(scope,instances,selection.pane,selection.paneScope)} scope={scope} instances={instances} hostDocument={()=>null} paneLabel={i=>i===files?'Files':'Terminal'} hostOpen={null} onOpenCatalog={()=>{}}><div style={{height:'100%',overflow:'auto',padding:16}}><ToolControls><label>Find in file <input aria-label="Find in file" /></label></ToolControls><pre>{Array.from({length:100},(_,i)=>'Line '+(i+1)).join('\\n')}</pre></div></CodingWorkbench></div>;
+return <div style={{height:'100dvh',display:'flex',flexDirection:'column'}}><CodingWorkbench projectId="demo" projectSlug="demo" stackName="Coding" drillInOrder={[]} centerChat wide={wide} location={resolveCodingStackLocation(scope,instances,selection.pane,selection.paneScope)} scope={scope} instances={instances} hostDocument={()=>null} paneLabel={i=>i===files?'Files':'Terminal'} hostOpen={null} onOpenCatalog={()=>{}}><div role="region" aria-label="File contents" style={{height:'100%',overflow:'auto',padding:16}}><ToolControls><label>Find in file <input aria-label="Find in file" /></label></ToolControls><pre>{Array.from({length:100},(_,i)=>'Line '+(i+1)).join('\\n')}</pre></div></CodingWorkbench></div>;
 }
 createRoot(document.getElementById('root')).render(<NavigationProvider><DialogHistoryHostBoundary><App/></DialogHistoryHostBoundary></NavigationProvider>);
 `;
@@ -96,11 +96,13 @@ for (const theme of ['dark', 'light']) {
       expect(room!.width).toBe(390);
       const control = page.getByRole('textbox', { name: 'Find in file' });
       await control.fill('needle');
-      await page
-        .locator('.coding-workbench__page--drill-in > div')
+      const scrollTop = await page
+        .getByRole('region', { name: 'File contents' })
         .evaluate((element) => {
           element.scrollTop = 700;
+          return element.scrollTop;
         });
+      expect(scrollTop).toBeGreaterThan(0);
       const floating = await page.locator('.tool-controls').boundingBox();
       const tool = await page
         .locator('.coding-workbench__page--drill-in')
