@@ -192,9 +192,9 @@ export async function startRuntimeHealthChecks(context: {
  * GC total close to the stall points at collection. On Linux and macOS, many
  * major page faults mean the process waited on pages read from disk (swap, or
  * evicted code and mapped files); Windows reports every page fault, soft ones
- * included, in that count. Little CPU time and few faults point at a call that blocked
- * without computing (a synchronous child process, file read, or lock wait), or
- * at a host that ran other work instead.
+ * included, in that count. Little CPU time and few faults point at a call
+ * that blocked without computing (a synchronous child process, file read, or
+ * lock wait), or at a host that ran other work instead.
  */
 export function startRuntimeEventLoopLagMonitoring(context: {
   timers: NodeJS.Timeout[];
