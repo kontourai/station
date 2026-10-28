@@ -368,6 +368,7 @@ export class SessionEventReads {
         // what made the elision silent — the client receives identity fields
         // and no way to tell a withheld payload from an absent one.
         ...(event.elided ? { elided: event.elided } : {}),
+        ...(event.historyGapAfter ? { historyGapAfter: true as const } : {}),
       })),
       hasMore: window.hasMore,
       ...(window.nextCursor ? { nextCursor: window.nextCursor } : {}),
@@ -513,6 +514,7 @@ export class SessionEventReads {
         sequence: event.globalSequence,
         event: event.payload,
         ...(event.elided ? { elided: event.elided } : {}),
+        ...(event.historyGapAfter ? { historyGapAfter: true as const } : {}),
       })),
       hasMore: window.hasMore,
       ...(window.nextCursor ? { nextCursor: window.nextCursor } : {}),

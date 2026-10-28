@@ -1041,6 +1041,116 @@ describe('EventStore', () => {
     }
   });
 
+  test('a newest page that starts mid-turn marks the prompt it adds as a history gap, and the page that reaches it does not', () => {
+    const base = {
+      provider: 'codex' as const,
+      threadId: 'gap-thread',
+      turnId: 'long-turn',
+      itemId: 'gap-item',
+      createdAt: '2026-10-28T00:00:00Z',
+    };
+    store.appendEvent({
+      ...base,
+      eventId: 'gap-start',
+      method: 'turn.started',
+      prompt: 'Run the long task',
+    });
+    for (let i = 0; i < 200; i++)
+      store.appendEvent({
+        ...base,
+        eventId: `gap-delta-${i}`,
+        method: 'content.text-delta',
+        delta: 'x',
+      });
+    for (const read of [
+      (cursor?: string) =>
+        store.listEventWindowByTurn(base.threadId, {
+          turnLimit: 10,
+          direction: 'newest',
+          cursor,
+        }),
+      (cursor?: string) =>
+        store.listConversationEventWindowByTurn([base.threadId], {
+          turnLimit: 10,
+          direction: 'newest',
+          cursor,
+        }),
+    ]) {
+      const first = read();
+      expect(first.hasMore).toBe(true);
+      expect(first.events[0]).toMatchObject({
+        id: 'gap-start',
+        historyGapAfter: true,
+      });
+      expect(first.events[1].id).not.toBe('gap-delta-0');
+      expect(
+        first.events.filter((event) => event.historyGapAfter),
+      ).toHaveLength(1);
+      const second = read(first.nextCursor);
+      expect(second.events[0].id).toBe('gap-start');
+      expect(second.events[0].historyGapAfter).toBeUndefined();
+      expect(second.events[1].id).toBe('gap-delta-0');
+    }
+  });
+
+  test('a newest page whose oldest event carries no turn id still carries its turn prompt', () => {
+    const base = {
+      provider: 'codex' as const,
+      threadId: 'turnless-oldest',
+      itemId: 'turnless-item',
+      createdAt: '2026-10-28T00:00:00Z',
+    };
+    store.appendEvent({
+      ...base,
+      turnId: 'turn-x',
+      eventId: 'turnless-start',
+      method: 'turn.started',
+      prompt: 'Spawn helpers',
+    });
+    for (let i = 0; i < 100; i++)
+      store.appendEvent({
+        ...base,
+        turnId: 'turn-x',
+        eventId: `turnless-early-${i}`,
+        method: 'content.text-delta',
+        delta: 'x',
+      });
+    store.appendEvent({
+      ...base,
+      eventId: 'turnless-child',
+      method: 'child-work.updated',
+      delta: {
+        kind: 'upsert',
+        item: {
+          producer: 'engine-subagent',
+          reporterThreadId: base.threadId,
+          childId: 'helper',
+          status: 'running',
+          parent: { turnId: 'turn-x', toolCallId: 'spawn' },
+        },
+      },
+    } as CanonicalRuntimeEvent);
+    // The newest page holds 149 events, so the turnless event is its oldest.
+    for (let i = 0; i < 148; i++)
+      store.appendEvent({
+        ...base,
+        turnId: 'turn-x',
+        eventId: `turnless-late-${i}`,
+        method: 'content.text-delta',
+        delta: 'y',
+      });
+    const page = store.listEventWindowByTurn(base.threadId, {
+      turnLimit: 10,
+      direction: 'newest',
+    });
+    expect(page.events[1].id).toBe('turnless-child');
+    expect(page.events[1].turnId).toBeUndefined();
+    expect(page.events[0]).toMatchObject({
+      id: 'turnless-start',
+      historyGapAfter: true,
+    });
+  });
+
   test('appends canonical events with monotonically increasing per-thread sequence numbers', () => {
     const event1 = {
       eventId: 'evt-1',

@@ -1614,6 +1614,11 @@ export interface PersistedRuntimeEvent {
    * Its absence is therefore a fact about this read, not a default.
    */
   elided?: RuntimeEventElisionReason;
+  /**
+   * Set only by a newest-first window on the prompt it added out of range
+   * (`OrchestrationSequencedEvent.historyGapAfter`). Never persisted.
+   */
+  historyGapAfter?: true;
 }
 
 /** Exact turn.started row stripped to the only safe user-input read fields. */
@@ -10720,13 +10725,18 @@ export class EventStore {
       }
       const oldest = events.at(-1);
       const moreInRange = rows.length > events.length;
+      // The page's turn is its oldest turn-bearing event's: a turnless event
+      // (a `child-work.updated`) can be the oldest of a page that still
+      // starts mid-turn.
+      const turnBearing = [...events].reverse().find((event) => event.turnId);
       if (
-        oldest?.turnId &&
+        oldest &&
+        turnBearing?.turnId &&
         !events.some(
           (event) =>
             event.method === 'turn.started' &&
-            event.threadId === oldest.threadId &&
-            event.turnId === oldest.turnId,
+            event.threadId === turnBearing.threadId &&
+            event.turnId === turnBearing.turnId,
         )
       ) {
         const anchor = this.db
@@ -10734,12 +10744,17 @@ export class EventStore {
             `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence FROM orchestration_events WHERE thread_id = ? AND turn_id = ? AND method = 'turn.started' AND global_sequence >= ? AND global_sequence < ? ORDER BY sequence ASC LIMIT 1`,
           )
           .get(
-            oldest.threadId,
-            oldest.turnId,
+            turnBearing.threadId,
+            turnBearing.turnId,
             rangeStart,
             oldest.globalSequence,
           ) as any;
-        if (anchor) events.push(snapshotEvent(mapPersistedEventRow(anchor)));
+        // The events between this prompt and `oldest` are the next page's.
+        if (anchor)
+          events.push({
+            ...snapshotEvent(mapPersistedEventRow(anchor)),
+            historyGapAfter: true,
+          });
       }
       const hasMore = moreInRange || olderTurnsRemain;
       const nextCursorValue =

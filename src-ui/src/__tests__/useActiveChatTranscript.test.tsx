@@ -2748,6 +2748,103 @@ describe('useActiveChatTranscript', () => {
     expect(result.current.hasMore).toBe(false);
   });
 
+  test('#4266: a refresh after the middle of a turn was loaded keeps that middle', async () => {
+    const prompt = {
+      ...event('e1', 'turn.started', { turnId: 'long', prompt: 'Go' }),
+    };
+    const delta = (id: string, text: string) =>
+      event(id, 'content.text-delta', { turnId: 'long', delta: text });
+    fetchWindow
+      .mockResolvedValueOnce({
+        protocolVersion: 1,
+        watermark: 9,
+        hasMore: true,
+        nextCursor: 'middle',
+        events: [{ ...prompt, historyGapAfter: true }, delta('e8', 'tail.')],
+      })
+      .mockResolvedValueOnce({
+        protocolVersion: 1,
+        watermark: 9,
+        hasMore: false,
+        events: [prompt, delta('e2', 'middle ')],
+      })
+      .mockResolvedValueOnce({
+        protocolVersion: 1,
+        watermark: 10,
+        hasMore: true,
+        nextCursor: 'ignored-newest-cursor',
+        events: [
+          { ...prompt, historyGapAfter: true },
+          delta('e8', 'tail.'),
+          event('e10', 'turn.completed', {
+            turnId: 'long',
+            outputText: 'middle tail.',
+          }),
+        ],
+      });
+    const { result, rerender } = renderHook(
+      ({ revision }) =>
+        useActiveChatTranscript('http://station.test', {
+          ...baseSession,
+          orchestrationHistoryRevision: revision,
+        }),
+      { initialProps: { revision: 0 } },
+    );
+    await waitFor(() => expect(result.current.hasMore).toBe(true));
+    expect(result.current.historyGapTurnId).toBe('long');
+    await act(async () => result.current.loadOlder());
+    expect(result.current.historyGapTurnId).toBeUndefined();
+    expect(result.current.messages.map((message) => message.content)).toEqual([
+      'Go',
+      'middle tail.',
+    ]);
+
+    rerender({ revision: 1 });
+    await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(3));
+    await waitFor(() =>
+      expect(
+        result.current.messages.find((message) => message.role === 'assistant')
+          ?.turnEnded,
+      ).toBe('completed'),
+    );
+    expect(result.current.messages.map((message) => message.content)).toEqual([
+      'Go',
+      'middle tail.',
+    ]);
+    // The loaded middle closed the gap; the refresh's prompt copy does not
+    // reopen it.
+    expect(result.current.historyGapTurnId).toBeUndefined();
+    expect(result.current.hasMore).toBe(false);
+  });
+
+  test('#4266: a newest page holding only the tail of a completed turn adopts none of its outputText', async () => {
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 10,
+      hasMore: true,
+      nextCursor: 'middle',
+      events: [
+        {
+          ...event('e1', 'turn.started', { turnId: 'long', prompt: 'Go' }),
+          historyGapAfter: true,
+        },
+        event('e8', 'content.text-delta', { turnId: 'long', delta: 'C.' }),
+        event('e10', 'turn.completed', {
+          turnId: 'long',
+          outputText: 'A. B. C.',
+        }),
+      ],
+    });
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(result.current.messages).toHaveLength(2));
+    expect(result.current.messages.map((message) => message.content)).toEqual([
+      'Go',
+      'C.',
+    ]);
+  });
+
   test('projects same-timestamp high-fanout events in authoritative sequence order', async () => {
     const createdAt = '2026-08-09T00:00:00.000Z';
     const sequenced = [

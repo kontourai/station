@@ -32,7 +32,14 @@ function mergePages(
   newer: readonly OrchestrationSequencedEvent[],
 ): OrchestrationSequencedEvent[] {
   const events = new Map<string, OrchestrationSequencedEvent>();
-  for (const item of [...older, ...newer]) events.set(eventKey(item), item);
+  for (const item of [...older, ...newer]) {
+    const key = eventKey(item);
+    // A prompt a page added out of range marks a gap after it. A page that
+    // read it in range closed that gap, so its copy wins whichever is newer.
+    const prior = events.get(key);
+    if (item.historyGapAfter && prior && !prior.historyGapAfter) continue;
+    events.set(key, item);
+  }
   return [...events.values()].sort(
     (left, right) => left.sequence - right.sequence,
   );
@@ -291,8 +298,12 @@ export function useSessionEventWindow(
             requestGeneration === generation.current,
         ).catch(() => {});
       }
+      // The page replaces only what it read in range. Its out-of-range
+      // prompt (`historyGapAfter`) is older than the gap the loaded pages
+      // already fill; bounding by it dropped the middle of the turn.
       const replacementBoundary = next.reduce(
-        (minimum, item) => Math.min(minimum, item.sequence),
+        (minimum, item) =>
+          item.historyGapAfter ? minimum : Math.min(minimum, item.sequence),
         Number.POSITIVE_INFINITY,
       );
       setEvents((current) =>

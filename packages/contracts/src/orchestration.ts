@@ -1375,6 +1375,16 @@ export interface OrchestrationSequencedEvent {
    * statement about the event as persisted (archive#3386).
    */
   elided?: RuntimeEventElisionReason;
+  /**
+   * Set only on a `turn.started` a newest-first window added out of range:
+   * its page begins mid-turn, so the read carries that turn's prompt even
+   * though the events between the prompt and the next event in the page are
+   * absent. Those events belong to the window's `nextCursor`. A consumer
+   * renders its load-more control here, below the prompt, and treats the
+   * turn as seen only in part. A later read that covers the event in range
+   * omits the flag; prefer that copy.
+   */
+  historyGapAfter?: true;
 }
 
 /**

@@ -1733,6 +1733,9 @@ export function ChatDockBody({
             emptyState: historyFailureNotice,
             historyNotice: historyElisionNotice,
             hasOlderMessages: transcript.enabled && transcript.hasMore,
+            olderMessagesGapTurnId: transcript.enabled
+              ? transcript.historyGapTurnId
+              : undefined,
             // #2316: the pending-approvals strip derives from the window's
             // events inside the lazily loaded list.
             approvalEvents: transcript.enabled ? transcript.events : undefined,
