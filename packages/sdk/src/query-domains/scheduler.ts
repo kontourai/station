@@ -62,7 +62,7 @@ export function useSchedulerJobs() {
  * read, so support is undetermined. A host without it runs only
  * Station-engine jobs, so a client offers other engines only on `true`.
  */
-export async function fetchScheduledConversationTargetCapability(
+async function fetchScheduledConversationTargetCapability(
   apiBase: string,
 ): Promise<boolean | null> {
   const handshake = await fetchPublicStationCapabilities(apiBase);

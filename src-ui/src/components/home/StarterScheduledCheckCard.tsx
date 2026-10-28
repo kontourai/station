@@ -132,7 +132,7 @@ export function StarterScheduledCheckCard() {
           </Button>
         ) : blockedLaunch?.retrySafe === false ? (
           <Button variant="primary" onClick={() => navigate('/automations')}>
-            Open Schedule
+            Open Automations
           </Button>
         ) : (
           <Button
