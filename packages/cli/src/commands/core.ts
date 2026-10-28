@@ -1254,6 +1254,15 @@ async function runSessionsCommand(
 ): Promise<void> {
   rejectRetiredExecutionSelectors(parsed);
   const action = requirePositional(parsed, 0, 'session action');
+
+  // #3427: the person's Session reads, by Session id rather than by Agent.
+  const personRead = SESSION_PERSON_READS[action];
+  if (personRead) {
+    const reads = await import('./session-reads.js');
+    await reads[personRead](apiBase, parsed);
+    return;
+  }
+
   const agentSlug = agentId(requirePositional(parsed, 1, 'agent'));
 
   if (action === 'inspect') {
@@ -1300,9 +1309,23 @@ async function runSessionsCommand(
   }
 
   throw new Error(
-    "Unknown sessions action. Use 'list', 'read', 'inspect', or 'interrupt'.",
+    `Unknown sessions action. ${describeValidActions('sessions')}`,
   );
 }
+
+/** `station sessions <action>` → its handler in `session-reads.ts`. */
+const SESSION_PERSON_READS: Record<
+  string,
+  | 'runSessionsWait'
+  | 'runSessionsDigest'
+  | 'runSessionsTranscript'
+  | 'runSessionsSearch'
+> = {
+  wait: 'runSessionsWait',
+  digest: 'runSessionsDigest',
+  transcript: 'runSessionsTranscript',
+  search: 'runSessionsSearch',
+};
 
 export async function runCoreCommand(
   command: string,
@@ -1324,6 +1347,12 @@ export async function runCoreCommand(
 
   if (command === 'sessions') {
     await runSessionsCommand(apiBase, parsed);
+    return;
+  }
+
+  if (command === 'activity') {
+    const { runActivityCommand } = await import('./session-reads.js');
+    await runActivityCommand(apiBase, parsed);
     return;
   }
 

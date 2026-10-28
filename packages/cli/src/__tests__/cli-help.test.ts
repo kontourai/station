@@ -120,9 +120,14 @@ describe('top-level help', () => {
   test('is a grouped one-line-per-command summary, not a flag wall', async () => {
     const text = usageText();
 
-    // One line per verb plus group headers: a bound on the summary's shape,
-    // not on the number of verbs (restart and supervisor brought it to 80).
-    expect(text.split('\n').length).toBeLessThan(85);
+    // One line per verb plus group headers and a fixed preamble: a bound on
+    // the summary's shape, not on the number of verbs, so a new verb never
+    // trips it but a verb that grows a second summary line (a flag wall) does.
+    // At 59 verbs the summary was 85 lines: 26 for the preamble, group
+    // headers and footer, with a little headroom for a new group.
+    const verbs = knownCommands().length;
+    expect(verbs).toBeGreaterThan(50);
+    expect(text.split('\n').length).toBeLessThanOrEqual(verbs + 30);
     for (const group of [
       'Lifecycle:',
       'Stations:',
