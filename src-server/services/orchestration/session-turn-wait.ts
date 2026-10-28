@@ -113,11 +113,11 @@ export function evaluateSessionWait(
       typeof anchor === 'object' &&
       nextAnchor === anchor;
     if (!retainedStart) open = advanceOpenTurnId(open, event, invocationId);
-    // A restart-recovery abort closes the turn the fold above matched by id.
-    // It has no invocation to prove, so it settles the turn without
-    // acknowledging the requested work.
+    // A restart-recovery abort closes the turn the fold above matched by id,
+    // so the Session reads idle. It has no invocation to prove, so it is not
+    // a settlement: it supplies no terminal ACK for the requested work.
     const recoveryAbort = isInvocationlessRecoveryAbort(event);
-    let settledInvocation = recoveryAbort ? undefined : invocationId;
+    let settledInvocation = invocationId;
     const ordinary =
       ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
         event.method,
@@ -143,9 +143,10 @@ export function evaluateSessionWait(
       } else open = before;
     }
     const canAcknowledge =
-      settledInvocation !== undefined ||
-      !ordinary ||
-      ports.readInputlessTurnDisposition?.(threadId)?.kind === 'inputless';
+      !recoveryAbort &&
+      (settledInvocation !== undefined ||
+        !ordinary ||
+        ports.readInputlessTurnDisposition?.(threadId)?.kind === 'inputless');
     if (
       before !== undefined &&
       open === undefined &&

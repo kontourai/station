@@ -501,7 +501,7 @@ test.each([
 );
 
 describe('a restart-recovered turn', () => {
-  test('a recovery abort settles an invocation-anchored turn without durable invocation proof', () => {
+  test('a recovery abort ends an invocation-anchored turn without settling it', () => {
     const log: SessionWaitFoldEvent[] = [
       {
         sequence: 1,
@@ -539,13 +539,9 @@ describe('a restart-recovered turn', () => {
       satisfied: true,
       view: { state: 'idle' },
     });
-    expect(evaluateSessionWait(ports, 't1', 'turn-settled', 0)).toMatchObject({
-      satisfied: true,
-      view: { settledTurn: { turnId: 'turn-1', outcome: 'aborted' } },
-    });
-    // Nothing proves the requested work settled, so none is acknowledged.
-    expect(
-      evaluateSessionWait(ports, 't1', 'turn-settled', 0).view.settledTurn,
-    ).not.toHaveProperty('invocationId');
+    // Nothing proves the requested work settled: no terminal ACK.
+    const settled = evaluateSessionWait(ports, 't1', 'turn-settled', 0);
+    expect(settled.satisfied).toBe(false);
+    expect(settled.view).not.toHaveProperty('settledTurn');
   });
 });
