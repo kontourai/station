@@ -1,0 +1,27 @@
+{
+  "revision": "9ef76e37e0f01e655be1f39b3c3b0278b2512b5b",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"workload-resources.ts now delays command-kill announcements until the engine is seen alive past the kill and keeps a collected scope's last polled count; the module map's workload paragraph (oom_kill observation, ownership) stays accurate.","inputs":["docs/architecture/module-map.md","docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"The poll/announcement change is internal to the workload launcher; this proposal's current-state note (bounded scopes, no turn survival) still holds.","inputs":["docs/design/process-supervisor.md","docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"api.md changed only in the resource-posture recent fields (oomKillsSource); the terminal design makes no claim about scope OOM records.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/development.md","note":"Added the delayed command-kill announcement (engine seen alive on a later poll, up to ~2 s) and oomKillsSource close/last-poll for collected scopes, checked against pollOomKills, leaderAlive and closeScope in workload-resources.ts and the race, dead-leader and collected-terminal tests in workload-budget.test.ts.","inputs":["docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"api.md change (oomKillsSource) is unrelated to this guide's deployment sizing text.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/testing.md","note":"The resource manifest gained workload-budget.test.ts (one case starts a short-lived process); this guide routes to the manifest without listing entries, and its OOM guidance is unchanged.","inputs":["docs/guides/testing.md","docs/guides/development.md","scripts/vitest-resource-manifest.mjs","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Added oomKillsSource (close, exact; last-poll when the scope was already collected) to resource-posture recent outcomes, checked against closeScope.","inputs":["docs/reference/api.md"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"The resource manifest gained a src-server workload test entry; this package's process-evidence selection is unaffected.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"packages/shared/README.md","note":"Server-side poll and settled-record changes; the child-workload leaf this README describes is unchanged.","inputs":["packages/shared/README.md","docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"scripts/AGENTS.md","note":"The resource manifest gained one classified entry with its reason, as this scope's rules for process-starting tests require; no script behaviour changed.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"development.md gained detail on OOM announcement timing; this file routes there and states no workload behaviour.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

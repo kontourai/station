@@ -1,0 +1,9 @@
+{
+  "revision": "826f5f123619b0de26a4c27099d886faa241eb77",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Re-checked the third-round FilePartPreview change: a thumbnail that finishes after its chip moved on is now released, and its data-URL cache name retired only when the chip actually switched to other bytes (not on unmount or a StrictMode re-run); the object-URL cache counts holds per name so a shared name is never revoked under another chip. Client cache bookkeeping only: GET /api/attachments/:ref, its octet-stream/nosniff response, client-applied declared type and 404 chip behavior are unchanged. No edit needed.","inputs":["docs/reference/api.md","src-ui/src/components/chat/FilePartPreview.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Re-checked the Chat attachments sentence (the sending browser's chips skip the /api/attachments fetch because the client drops its inline copy and caches the sent bytes under the recorded reference) against the per-name reference-counted cache and the release-unless-switched late thumbnail path: still accurate. Storage, retention and variables unchanged; no edit needed.","inputs":["docs/reference/config.md","src-ui/src/components/chat/FilePartPreview.tsx"]}
+  ]
+}

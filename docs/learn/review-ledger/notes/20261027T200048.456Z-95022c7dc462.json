@@ -1,0 +1,7 @@
+{
+  "revision": "77edccefb96290e53249939c0226f24375005ba7",
+
+  "notes": [
+    {"path":"packages/shared/README.md","note":"Checked: this change only removes the export keyword from module-local workload-resources.ts declarations (WorkloadEnforcementState) flagged as unused by the code-health gate; this document names no such export and its workload/holder claims are unchanged.","inputs":["packages/shared/README.md","src-server/services/infra/workload-resources.ts"]}
+  ]
+}

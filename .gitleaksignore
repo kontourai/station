@@ -104,3 +104,6 @@ f5e4ad873375a1ffbb0123c1c56f24ffb0cd070b:src-server/routes/connections/__tests__
 # A fake base64url test credential in the macOS Keychain store test at one historical
 # location; the fixture is now a low-entropy placeholder.
 5ceb74ee2ef51157fe72b87bb34e0372f41c6ce4:packages/cli/src/__tests__/profile-keyring-macos.test.ts:generic-api-key:74
+# A fake API token in the workload recovery-note redaction test at one historical
+# location; the fixture now assembles the token at runtime.
+3279790c906a9f5d96abf325580b3fa78bf8227c:src-server/services/infra/__tests__/workload-budget.test.ts:curl-auth-header:169

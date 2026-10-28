@@ -1112,6 +1112,13 @@ export const STATION_CONTROL_TOOL_POLICY = {
     enforcedBy: 'route',
     routes: [post('/api/notifications/agent')],
   },
+  // The route answers only for the session the forwarded credential names
+  // (its own scope's counters); without one it refuses.
+  workload_status: {
+    ...READ,
+    enforcedBy: 'route',
+    routes: [get('/api/system/workload/session')],
+  },
 } as const satisfies Record<string, StationControlToolPolicy>;
 
 export type StationControlToolName = keyof typeof STATION_CONTROL_TOOL_POLICY;

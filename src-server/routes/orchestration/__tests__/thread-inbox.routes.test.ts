@@ -41,6 +41,7 @@ import {
 import { AttachmentStagingService } from '../../../services/orchestration/attachment-staging-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
+import { memoryContinuationForInbox } from '../../../services/orchestration/memory-exhaustion-continuation.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../../../services/orchestration/session-lifecycle-service.js';
@@ -262,6 +263,11 @@ describe('POST /chat whenBusy queue (#3568)', () => {
        * model continues in a new Session (`needsModelRestart`).
        */
       modelPerTurn?: false;
+      /**
+       * Continuation after a memory kill: `manual` mounts only the
+       * person's route; `automatic` also feeds Station's own trigger.
+       */
+      memoryContinuation?: 'manual' | 'automatic';
     } = {},
   ) {
     const root = options.root ?? tempDir('station-inbox-');
@@ -563,6 +569,23 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       });
     const inbox = makeInbox();
     inbox.start();
+    const memoryContinuation = options.memoryContinuation
+      ? memoryContinuationForInbox({
+          eventStore: store,
+          service,
+          inbox,
+          logger: { warn: vi.fn() },
+        })
+      : undefined;
+    if (memoryContinuation && options.memoryContinuation === 'automatic')
+      cleanup.push(
+        bus.subscribe((frame) => {
+          const event = (frame.data as { event?: CanonicalRuntimeEvent })
+            ?.event;
+          if (frame.event === 'orchestration:event' && event)
+            memoryContinuation.observe(event);
+        }),
+      );
     cleanup.push(() => {
       store.close();
     });
@@ -645,6 +668,7 @@ describe('POST /chat whenBusy queue (#3568)', () => {
           return {} as never;
         },
         ...(options.inbox === false ? {} : { threadInbox: inbox }),
+        ...(memoryContinuation ? { memoryContinuation } : {}),
       }),
     );
     const as = async <T>(who: string, run: () => T | Promise<T>) => {
@@ -737,6 +761,7 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         }),
       });
     return {
+      app,
       staging,
       sendAbortable,
       continueRefusal,
@@ -1188,6 +1213,139 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       { message: 'same message', state: 'queued' },
     ]);
     expect(world.adapter.turns).toHaveLength(1);
+  });
+
+  /** The running turn's engine is killed for memory mid-command. */
+  function killForMemory(world: ReturnType<typeof station>) {
+    const turn = world.adapter.turns.at(-1)!;
+    const turnId = `inbox-turn-${world.adapter.turns.length}`;
+    const base = {
+      provider: 'claude' as const,
+      threadId: turn.threadId,
+      createdAt: new Date().toISOString(),
+    };
+    for (const event of [
+      {
+        method: 'tool.started',
+        turnId,
+        itemId: 'build',
+        toolCallId: 'build',
+        toolName: 'shell_exec',
+        arguments: { command: 'npm run build' },
+      },
+      {
+        method: 'tool.completed',
+        turnId,
+        itemId: 'build',
+        toolCallId: 'build',
+        toolName: 'shell_exec',
+        status: 'unresolved',
+        output: 'No result was reported before the session ended.',
+      },
+      {
+        method: 'runtime.error',
+        turnId,
+        severity: 'error',
+        code: 'engine-memory-exhausted',
+        message: 'Codex ran out of memory and was stopped.',
+        details: {
+          workload: {
+            result: 'collected',
+            memoryMaxBytes: 3072 * 1024 * 1024,
+            oomKills: 1,
+            unreportedOomKills: 1,
+          },
+        },
+      },
+      {
+        method: 'session.exited',
+        sessionId: turn.threadId,
+        reason: 'memory-exhausted',
+      },
+    ])
+      world.adapter.events.push({
+        ...base,
+        eventId: `${turnId}:${event.method}`,
+        ...event,
+      } as unknown as CanonicalRuntimeEvent);
+    return turn.threadId;
+  }
+
+  test('Station continues a memory-killed turn on its own: one successor turn carrying the recovery note', async () => {
+    const world = station({ memoryContinuation: 'automatic' });
+    await world.busy();
+    const dead = killForMemory(world);
+    await eventually(() => expect(world.adapter.turns).toHaveLength(2));
+    const continued = world.adapter.turns[1]!;
+    expect(continued.threadId).not.toBe(dead);
+    expect(continued.input).toContain('## Station recovery note');
+    expect(continued.input).toContain('- `npm run build`');
+    expect(continued.input).toContain('budget of 3072 MiB');
+    expect(
+      continued.input.endsWith('Continue the task from where it stopped.'),
+    ).toBe(true);
+    expect(continued.clientTurnId).toMatch(/^memory-continue-[0-9a-f]{40}$/);
+    // And only once: a person's Continue now names the same turn.
+    const person = await world.app.request(
+      `/api/orchestration/conversations/${encodeURIComponent(CONVERSATION)}/memory-continuation`,
+      { method: 'POST' },
+    );
+    // The owner's click after Station's own continuation is the same entry:
+    // told it is already being continued, never a second turn.
+    expect(person.status).toBe(409);
+    expect(await person.json()).toMatchObject({
+      code: 'memory_continuation_already_started',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(world.adapter.turns).toHaveLength(2);
+  });
+
+  test("a person's Continue reaches the successor once, from any number of clicks; a stranger is refused", async () => {
+    const world = station({ memoryContinuation: 'manual' });
+    await world.busy();
+    killForMemory(world);
+    const post = (who: string) =>
+      world.as(who, () =>
+        world.app.request(
+          `/api/orchestration/conversations/${encodeURIComponent(CONVERSATION)}/memory-continuation`,
+          { method: 'POST' },
+        ),
+      );
+    expect((await post(STRANGER)).status).toBe(404);
+    await eventually(async () => {
+      const first = await post(OWNER);
+      expect(first.status, await first.clone().text()).toBe(202);
+    });
+    const second = await post(OWNER);
+    expect(second.status).toBe(409);
+    expect(await second.json()).toMatchObject({
+      code: 'memory_continuation_already_started',
+    });
+    await eventually(() => expect(world.adapter.turns).toHaveLength(2));
+    expect(world.adapter.turns[1]!.input).toContain('## Station recovery note');
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(world.adapter.turns).toHaveLength(2);
+  });
+
+  test("an ordinary sender cannot claim Station's continuation key", async () => {
+    const world = station({ memoryContinuation: 'manual' });
+    const reserved = `memory-continue-${'a'.repeat(40)}`;
+    const direct = await world.send(reserved, 'pre-claim');
+    expect(direct.status).toBe(400);
+    await world.busy();
+    const queued = await world.send(reserved, 'pre-claim', {
+      whenBusy: 'queue',
+    });
+    expect(queued.status).toBe(400);
+    // The inbox itself refuses the prefix from anyone but Station.
+    expect(
+      world.inbox.submit({
+        conversationId: CONVERSATION,
+        clientTurnId: reserved,
+        payload: { message: 'pre-claim', actor: { userId: OWNER } },
+      }),
+    ).toEqual({ outcome: 'not-permitted' });
+    expect(world.inbox.entry(CONVERSATION, reserved)).toBeUndefined();
   });
 
   test('a follow-up to a busy conversation is held, answered 202, and sent once when the turn ends', async () => {

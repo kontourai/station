@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { serializeActiveChats } from '../contexts/active-chats-state';
 import {
   buildOutgoingUserMessage,
   buildPostSendState,
@@ -47,6 +48,8 @@ describe('useActiveChatSessions helpers', () => {
             { type: 'text', content: 'hello' },
             {
               type: 'file',
+              // The sent bytes, so the chip previews before any reload.
+              url: 'data:image/png;base64,abc',
               mediaType: 'image/png',
               name: 'diagram.png',
             },
@@ -58,6 +61,7 @@ describe('useActiveChatSessions helpers', () => {
         { type: 'text', content: 'hello' },
         {
           type: 'file',
+          url: 'data:image/png;base64,abc',
           mediaType: 'image/png',
           name: 'diagram.png',
         },
@@ -65,7 +69,19 @@ describe('useActiveChatSessions helpers', () => {
       clientId: expect.any(String),
     });
     expect(result.clientId).toBe(result.messages[1].clientId);
-    expect(JSON.stringify(result)).not.toContain('data:image/png;base64,abc');
+    // The bubble holds the sent bytes in memory so its chip can preview before
+    // the transcript reloads; they must never reach the persisted chat shape.
+    const persisted = serializeActiveChats({
+      chat: {
+        agentSlug: 'agent',
+        conversationId: 'conversation-1',
+        messages: result.messages,
+      } as any,
+    });
+    expect(persisted).toHaveLength(1);
+    expect(JSON.stringify(persisted)).not.toContain(
+      'data:image/png;base64,abc',
+    );
 
     expect(currentMessages).toEqual([{ role: 'assistant', content: 'hi' }]);
   });
