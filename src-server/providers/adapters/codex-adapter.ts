@@ -174,7 +174,7 @@ import {
   nativeSessionIdentityKey,
 } from './native-resume-binding.js';
 
-type CodexAdapterLogger = Pick<Logger, 'warn'>;
+type CodexAdapterLogger = Pick<Logger, 'warn'> & Partial<Pick<Logger, 'debug'>>;
 type CodexExecutionKnobs = NonNullable<
   ReturnType<typeof resolveCodexExecutionKnobs>
 >;
@@ -877,6 +877,14 @@ export class CodexAdapter implements ProviderAdapterShape {
           method,
         }),
       (threadId) => this.options.revokeStationControlMcpAuth?.(threadId),
+      // Codex stderr is diagnostics: the server log at debug level, never a
+      // live event (see `codex-stderr-tail.ts`).
+      (threadId, line) =>
+        this.options.logger?.debug?.('Codex app-server stderr', {
+          provider: 'codex',
+          threadId,
+          line,
+        }),
     );
   }
 
@@ -2007,6 +2015,9 @@ export class CodexAdapter implements ProviderAdapterShape {
       nowIso: () => this.now().toISOString(),
     });
     record.preparedResumeBindingKey = resumeBindingKey;
+    // Where Codex writes this session's thread rollouts, children included:
+    // a child's transcript ref names it, never a file path.
+    if (isAbsolute(configurationHome)) record.codexHome = configurationHome;
     if (sourceAffinity) {
       this.transport.setStdoutIngressLimit(
         record,

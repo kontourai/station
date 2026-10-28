@@ -10,6 +10,10 @@ import {
   CodexAdapterTransport,
   createCodexSessionRecord,
 } from '../adapters/codex-adapter-transport.js';
+import {
+  CODEX_COLLAB_V1_CLIENT_TURN_INTERRUPT,
+  codexCaptureIds,
+} from './codex-collab-fixtures.js';
 
 class FakeWritable extends Writable {
   readonly lines: string[] = [];
@@ -151,32 +155,164 @@ describe('CodexAdapterTransport', () => {
     expect(JSON.stringify(warning)).not.toContain('{not json');
   });
 
-  test('does not persist raw Codex stderr content', async () => {
-    const transport = new CodexAdapterTransport(
-      () => new Date('2026-04-11T00:00:00Z'),
-    );
-    const processHandle = new FakeCodexProcess();
-    const record = createCodexSessionRecord({
-      externalThreadId: 'thread-stderr',
-      process: processHandle,
-      provider: 'codex',
-      threadId: 'thread-stderr',
-      model: 'gpt-5-codex',
-      nowIso: () => '2026-04-11T00:00:00Z',
-    });
-    transport.registerSession(record);
-    transport.handleProcess(record);
-    const iterator = transport.streamEvents()[Symbol.asyncIterator]();
+  /**
+   * Codex stderr is diagnostics, not events. An untrusted project folder
+   * makes Codex print one multi-line ANSI ERROR block (it also sends the
+   * `configWarning` notification on stdout), and an inherited `RUST_LOG`
+   * dozens of INFO lines; neither may become a warning per line. The tail is
+   * kept, redacted, for a failure to explain itself with.
+   */
+  describe('stderr', () => {
+    const ESC = String.fromCharCode(0x1b);
+    // The shape Codex prints for an untrusted project's config: colored
+    // level, then continuation lines.
+    const UNTRUSTED_PROJECT_STDERR = [
+      `${ESC}[2m2026-10-27T18:02:11.204Z${ESC}[0m ${ESC}[31mERROR${ESC}[0m ${ESC}[2mcodex_core::config${ESC}[0m: project config was not loaded`,
+      '  /workspace/repo/.codex/config.toml is in a folder that is not trusted.',
+      '  Mark the folder trusted to load it.',
+      '',
+      `${ESC}[2m2026-10-27T18:02:11.205Z${ESC}[0m ${ESC}[33m WARN${ESC}[0m codex_core: continuing with user config only`,
+    ].join('\n');
+    const SECRET_LINE =
+      'ERROR auth refresh failed for OPENAI_API_KEY=sk-proj-abcdefghijklmnop1234567890';
 
-    processHandle.stderr.write('token=must-not-persist\n');
+    function stderrRecord(threadId: string) {
+      const debugLines: string[] = [];
+      const transport = new CodexAdapterTransport(
+        () => new Date('2026-10-27T18:02:11Z'),
+        async () => {},
+        undefined,
+        undefined,
+        undefined,
+        (_threadId, line) => debugLines.push(line),
+      );
+      const events: any[] = [];
+      transport.publish = (event) => {
+        events.push(event);
+      };
+      const processHandle = new FakeCodexProcess();
+      const record = createCodexSessionRecord({
+        externalThreadId: threadId,
+        process: processHandle,
+        provider: 'codex',
+        threadId,
+        model: 'gpt-5-codex',
+        nowIso: () => '2026-10-27T18:02:11Z',
+      });
+      transport.registerSession(record);
+      transport.handleProcess(record);
+      return { transport, processHandle, record, events, debugLines };
+    }
 
-    const warning = await nextEvent(iterator, 'stderr warning');
-    expect(warning).toMatchObject({
-      method: 'runtime.warning',
-      code: 'codex-stderr',
-      message: 'Codex app-server emitted stderr output.',
+    /** Lets readline deliver what was written to stderr. */
+    const flushStderr = () => new Promise((resolve) => setImmediate(resolve));
+
+    test('a multi-line ANSI ERROR block publishes no warning; each line is logged plain at debug', async () => {
+      const { processHandle, events, debugLines } = stderrRecord(
+        'thread-stderr-block',
+      );
+      processHandle.stderr.write(`${UNTRUSTED_PROJECT_STDERR}\n`);
+      for (let line = 0; line < 27; line++)
+        processHandle.stderr.write(
+          `${ESC}[32m INFO${ESC}[0m codex_core::codex: rollout line ${line}\n`,
+        );
+      await flushStderr();
+      expect(events).toEqual([]);
+      expect(debugLines).toHaveLength(4 + 27);
+      expect(debugLines[0]).toBe(
+        '2026-10-27T18:02:11.204Z ERROR codex_core::config: project config was not loaded',
+      );
+      expect(debugLines.join('\n')).not.toContain(ESC);
     });
-    expect(JSON.stringify(warning)).not.toContain('must-not-persist');
+
+    test('the tail explains an unexpected exit mid-turn, ANSI stripped', async () => {
+      const { processHandle, record, events } =
+        stderrRecord('thread-stderr-exit');
+      record.activeTurnId = 'turn-1';
+      processHandle.stderr.write(`${UNTRUSTED_PROJECT_STDERR}\n`);
+      await flushStderr();
+      processHandle.exitCode = 1;
+      processHandle.emit('exit', 1, null);
+      await vi.waitFor(() =>
+        expect(events.map((event) => event.method)).toContain('session.exited'),
+      );
+      const failure = events.find((event) => event.method === 'runtime.error');
+      expect(failure.message).toContain(
+        'Codex app-server exited before the turn finished (code: 1).',
+      );
+      // Each line kept trimmed, in order.
+      expect(failure.message).toContain(
+        'not trusted.\nMark the folder trusted to load it.',
+      );
+      expect(failure.details.stderrTail).toContain(
+        'continuing with user config only',
+      );
+      expect(JSON.stringify(failure)).not.toContain(ESC);
+    });
+
+    test('the tail explains a startup that fails before Codex answers', async () => {
+      const { transport, processHandle, record } = stderrRecord(
+        'thread-stderr-startup',
+      );
+      const initialize = transport.sendRequest(record, 'initialize', {});
+      processHandle.stderr.write('Error: unknown option --frobnicate\n');
+      await flushStderr();
+      processHandle.exitCode = 2;
+      processHandle.emit('exit', 2, null);
+      await expect(initialize).rejects.toThrow(
+        'Codex app-server exited before responding (code: 2)\nstderr: Error: unknown option --frobnicate',
+      );
+    });
+
+    test('a secret-shaped line never reaches a published event or the log', async () => {
+      const { transport, processHandle, record, events, debugLines } =
+        stderrRecord('thread-stderr-secret');
+      record.activeTurnId = 'turn-1';
+      const pending = transport.sendRequest(record, 'turn/start', {});
+      const rejected = pending.catch((error: Error) => error.message);
+      processHandle.stderr.write(`${SECRET_LINE}\n`);
+      await flushStderr();
+      processHandle.exitCode = 1;
+      processHandle.emit('exit', 1, null);
+      await vi.waitFor(() =>
+        expect(events.map((event) => event.method)).toContain('session.exited'),
+      );
+      const published = JSON.stringify(events);
+      // The failure did carry the tail, so the secret had a path to leak.
+      expect(published).toContain('auth refresh failed');
+      expect(published).not.toContain('sk-proj-abcdefghijklmnop1234567890');
+      expect(await rejected).not.toContain('sk-proj-');
+      expect(debugLines.join('\n')).not.toContain('sk-proj-');
+    });
+
+    test('a configWarning on stdout is one user-facing warning carrying its message', () => {
+      const { transport, record, events } = stderrRecord(
+        'thread-config-warning',
+      );
+      transport.handleStdoutLine(
+        record,
+        JSON.stringify({
+          method: 'configWarning',
+          params: {
+            summary:
+              'Project config was not loaded: the folder is not trusted.',
+            details: 'Mark /workspace/repo trusted to load .codex/config.toml.',
+            path: '/workspace/repo/.codex/config.toml',
+          },
+        }),
+      );
+      expect(events).toEqual([
+        expect.objectContaining({
+          method: 'runtime.warning',
+          code: 'codex-config-warning',
+          message: 'Project config was not loaded: the folder is not trusted.',
+          details: {
+            details: 'Mark /workspace/repo trusted to load .codex/config.toml.',
+            path: '/workspace/repo/.codex/config.toml',
+          },
+        }),
+      ]);
+    });
   });
 
   test('confirms process-tree cleanup before publishing a natural exit', async () => {
@@ -877,6 +1013,124 @@ describe('CodexAdapterTransport', () => {
         'runtime.error',
         'session.exited',
       ]);
+    });
+  });
+
+  /**
+   * A Codex child is a thread inside the app-server process, so when that
+   * process is gone the child ended with it: `interrupted`, never the
+   * pending-looking `unresolved` ("No result"). A door that cannot say the
+   * process is gone keeps `unresolved`.
+   */
+  describe('running children when the app-server ends', () => {
+    const CHILD = '00000000-0000-7000-8000-000000000004';
+
+    function recordWithRunningChild(threadId: string) {
+      const transport = new CodexAdapterTransport(
+        () => new Date('2026-10-24T16:04:50Z'),
+        async () => {},
+      );
+      const processHandle = new FakeCodexProcess();
+      const record = createCodexSessionRecord({
+        externalThreadId: threadId,
+        process: processHandle,
+        provider: 'codex',
+        threadId,
+        model: 'gpt-5.5',
+        nowIso: () => '2026-10-24T16:04:50Z',
+      });
+      // Every published event, in order (the replay harness's own seam).
+      const events: any[] = [];
+      transport.publish = (event) => {
+        events.push(event);
+      };
+      transport.registerSession(record);
+      transport.handleProcess(record);
+      const capture = CODEX_COLLAB_V1_CLIENT_TURN_INTERRUPT;
+      const { parentThreadId, parentTurnId } = codexCaptureIds(capture);
+      transport.setCodexThreadId(record, parentThreadId);
+      record.activeTurnId = parentTurnId;
+      // The real capture, up to the child's own end: it is running.
+      for (const line of capture) {
+        const { dir, msg } = JSON.parse(line);
+        if (msg.method === 'turn/completed' && msg.params?.threadId === CHILD)
+          break;
+        if (dir === 'server->client')
+          transport.handleStdoutLine(record, JSON.stringify(msg));
+      }
+      return { transport, processHandle, record, events };
+    }
+
+    function childSettles(events: any[]): string[] {
+      return events.flatMap((event) =>
+        event.method === 'child-work.updated' &&
+        event.delta.kind === 'settle' &&
+        event.delta.childId === CHILD
+          ? [
+              // The wire status, and what a current client shows for it.
+              `${event.delta.status}${event.delta.endedBy ? `:${event.delta.endedBy}` : ''}`,
+            ]
+          : [],
+      );
+    }
+
+    test('an exit by signal settles the running child interrupted, before session.exited', async () => {
+      const { processHandle, events } = recordWithRunningChild(
+        'thread-child-sigkill',
+      );
+      expect(childSettles(events)).toEqual([]);
+
+      processHandle.emit('exit', null, 'SIGKILL');
+
+      await vi.waitFor(() =>
+        expect(events.map((event) => event.method)).toContain('session.exited'),
+      );
+      // Wire status `unresolved`, which every client knows; `endedBy` makes
+      // a current client show it interrupted.
+      expect(childSettles(events)).toEqual(['unresolved:engine-exit']);
+      const settleAt = events.findIndex(
+        (event) => event.method === 'child-work.updated',
+      );
+      expect(settleAt).toBeLessThan(
+        events.findIndex((event) => event.method === 'session.exited'),
+      );
+    });
+
+    test('a memory-exhausted exit settles the running child interrupted', async () => {
+      const observation = vi
+        .spyOn(workload, 'childWorkloadOutcome')
+        .mockReturnValue(
+          Promise.resolve({
+            result: 'oom-kill',
+            memoryMaxBytes: 3072 * 1024 * 1024,
+            oomKills: 1,
+          } as never),
+        );
+      try {
+        const { processHandle, events } =
+          recordWithRunningChild('thread-child-oom');
+        processHandle.emit('exit', null, 'SIGKILL');
+        await vi.waitFor(() =>
+          expect(events.map((event) => event.method)).toContain(
+            'session.exited',
+          ),
+        );
+        expect(childSettles(events)).toEqual(['unresolved:engine-exit']);
+        expect(
+          events.find((event) => event.method === 'session.exited'),
+        ).toMatchObject({ reason: 'memory-exhausted' });
+      } finally {
+        observation.mockRestore();
+      }
+    });
+
+    test('a process error cannot say the process is gone, so the child stays unresolved', async () => {
+      const { processHandle, events } =
+        recordWithRunningChild('thread-child-error');
+      processHandle.emit('error', new Error('kill EPERM'));
+      expect(events.map((event) => event.method)).toContain('session.exited');
+      // No `endedBy`: a bare unresolved, "No result".
+      expect(childSettles(events)).toEqual(['unresolved']);
     });
   });
 

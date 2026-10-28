@@ -1,7 +1,7 @@
 import type { ChatHostImageMap } from '@kontourai/station-contracts/chat-host-images';
 import type {
   ChildWorkModel,
-  ChildWorkTerminalStatus,
+  ChildWorkTerminalDisplayStatus,
 } from '@kontourai/station-contracts/child-work';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import type { InputRequestRecord } from '@kontourai/station-contracts/input-request';
@@ -228,7 +228,7 @@ export type ChatMessage = {
  * when the registry has none.
  */
 export interface BackgroundTaskNotice {
-  status: ChildWorkTerminalStatus;
+  status: ChildWorkTerminalDisplayStatus;
   title?: string;
   summary?: string;
 }

@@ -4,6 +4,7 @@ import type {
 } from '../adapter-shape.js';
 import type { CodexChildWorkState } from './codex-adapter-child-work.js';
 import type { CodexThreadSandbox } from './codex-approval-mode.js';
+import type { CodexStderrTail } from './codex-stderr-tail.js';
 import type { CodexUsageLimitState } from './codex-usage-limit.js';
 
 export interface CodexProcessLike {
@@ -222,6 +223,14 @@ export interface CodexSessionRecord extends CodexUsageLimitState {
    * (`codex-adapter-child-work.ts`). Created on first use.
    */
   childWork?: CodexChildWorkState;
+  /**
+   * The absolute `CODEX_HOME` this session's app-server was spawned under,
+   * where Codex writes every thread's rollout (a child's included). Absent
+   * when the home was not an absolute path, so no transcript is offered.
+   */
+  codexHome?: string;
+  /** The app-server's redacted stderr tail (`codex-stderr-tail.ts`). */
+  stderrTail?: CodexStderrTail;
   /**
    * #2486 review: single-flight guard for the parent's own `turn/interrupt`.
    * `stopProviderTask` (per-child) and `interruptTurn`'s cascade (plain

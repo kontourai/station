@@ -1,6 +1,7 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import crypto from 'node:crypto';
 import { createInterface } from 'node:readline';
+import type { ChildWorkEndedBy } from '@kontourai/station-contracts/child-work';
 import {
   ENGINE_MEMORY_EXHAUSTED_CODE,
   WORKLOAD_COMMAND_OOM_KILLED_CODE,
@@ -67,6 +68,7 @@ import {
   refuseCodexApprovalReply,
 } from './codex-approval-delivery.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
+import { CodexStderrTail, withCodexStderrTail } from './codex-stderr-tail.js';
 
 type JsonRpcRequest = {
   id?: JsonRpcId;
@@ -193,6 +195,8 @@ export class CodexAdapterTransport {
     ) => void,
     private readonly onNotificationError?: (method: string) => void,
     private readonly onSessionExit?: (threadId: string) => void,
+    /** Each cleaned, redacted stderr line, for the server log at debug level. */
+    private readonly onStderrLine?: (threadId: string, line: string) => void,
   ) {}
 
   streamEvents(options?: {
@@ -254,19 +258,15 @@ export class CodexAdapterTransport {
       this.handleStdoutLine(record, line),
     );
 
+    // Stderr is diagnostics, not events: kept as a bounded redacted tail for
+    // a failure to explain itself with, and logged at debug level. Codex's
+    // own warnings arrive on stdout (`configWarning`).
+    const stderrTail = new CodexStderrTail();
+    record.stderrTail = stderrTail;
     const stderr = createInterface({ input: record.process.stderr });
-    stderr.on('line', (line) => {
-      if (!line.trim()) return;
-      this.publish({
-        eventId: crypto.randomUUID(),
-        provider: 'codex',
-        threadId: record.externalThreadId,
-        createdAt: this.now().toISOString(),
-        method: 'runtime.warning',
-        severity: 'warning',
-        message: 'Codex app-server emitted stderr output.',
-        code: 'codex-stderr',
-      });
+    stderr.on('line', (raw) => {
+      const line = stderrTail.push(raw);
+      if (line) this.onStderrLine?.(record.externalThreadId, line);
     });
 
     const workloadOutcome = childWorkloadOutcome(record.process);
@@ -286,11 +286,16 @@ export class CodexAdapterTransport {
       if (record.stopped) return;
       this.settleAcknowledgementWatches(record);
       const nowIso = this.now().toISOString();
+      // A request still pending here is usually startup (`initialize`,
+      // `thread/start`): the stderr tail is what says why.
       const interruptedTurnId = this.rejectPendingRpcRequests(
         record,
         () =>
           new Error(
-            `Codex app-server exited before responding (${signal ? `signal: ${signal}` : `code: ${code ?? 'unknown'}`})`,
+            withCodexStderrTail(
+              `Codex app-server exited before responding (${signal ? `signal: ${signal}` : `code: ${code ?? 'unknown'}`})`,
+              stderrTail.text(),
+            ),
           ),
       );
       // archive#3451 fix round D2: only skip synthesis when the interrupt
@@ -319,7 +324,7 @@ export class CodexAdapterTransport {
         record,
         () => new Error(`Codex app-server failed to start: ${error.message}`),
       );
-      this.settleUnresolvedToolCalls(record, nowIso);
+      this.settleUnresolvedToolCalls(record, nowIso, undefined);
       this.publishOrphanedTurnFailure(
         record,
         nowIso,
@@ -370,7 +375,7 @@ export class CodexAdapterTransport {
         () =>
           new Error(`Codex app-server stdin write failed: ${error.message}`),
       );
-      this.settleUnresolvedToolCalls(record, nowIso);
+      this.settleUnresolvedToolCalls(record, nowIso, undefined);
       this.publishOrphanedTurnFailure(
         record,
         nowIso,
@@ -875,7 +880,7 @@ export class CodexAdapterTransport {
     // `publishOrphanedTurnFailure`'s `skipSynthesis` doc): that RPC's caller
     // owns the turn's terminal fate and, for the one caller that also calls
     // `stopSession` (the cooperative-stop deadline), already published it.
-    this.settleUnresolvedToolCalls(record, nowIso());
+    this.settleUnresolvedToolCalls(record, nowIso(), 'engine-exit');
     this.publishOrphanedTurnFailure(
       record,
       nowIso(),
@@ -1223,7 +1228,7 @@ export class CodexAdapterTransport {
       // ordinary path's comment for why that half is defensive rather than a
       // fix for an observed leak.
       if (!record.stopped) {
-        this.settleUnresolvedToolCalls(record, nowIso);
+        this.settleUnresolvedToolCalls(record, nowIso, 'engine-exit');
       }
       return;
     }
@@ -1275,7 +1280,7 @@ export class CodexAdapterTransport {
       // `record.terminalPublishedForTurnId` — the superseded record's own
       // bookkeeping — and the turn it would close is not the one in flight).
       if (!record.stopped) {
-        this.settleUnresolvedToolCalls(record, nowIso);
+        this.settleUnresolvedToolCalls(record, nowIso, 'engine-exit');
       }
       return;
     }
@@ -1290,17 +1295,22 @@ export class CodexAdapterTransport {
     // the turn's terminal fact before the session's, so nothing turnId-keyed
     // (the completion-notification listener, `hasActiveTurn`, the stall
     // watchdog) is left waiting on a turn that is already over.
-    this.settleUnresolvedToolCalls(record, nowIso);
+    this.settleUnresolvedToolCalls(record, nowIso, 'engine-exit');
+    const stderrTail = record.stderrTail?.text() ?? '';
     this.publishOrphanedTurnFailure(
       record,
       nowIso,
       memoryExhausted && outcome
         ? memoryExhaustedMessage(outcome)
-        : `Codex app-server exited before the turn finished (${signal ? `signal: ${signal}` : `code: ${code ?? 'unknown'}`}).`,
+        : withCodexStderrTail(
+            `Codex app-server exited before the turn finished (${signal ? `signal: ${signal}` : `code: ${code ?? 'unknown'}`}).`,
+            stderrTail,
+          ),
       {
         skipSynthesis: interruptWasInFlight,
         workloadOutcome: outcome,
         exitSignal: signal,
+        ...(stderrTail ? { stderrTail } : {}),
         ...(memoryExhausted ? { code: ENGINE_MEMORY_EXHAUSTED_CODE } : {}),
       },
     );
@@ -1339,6 +1349,16 @@ export class CodexAdapterTransport {
   private settleUnresolvedToolCalls(
     record: CodexSessionRecord,
     nowIso: string,
+    /**
+     * What ended a still-running child, when observed. `engine-exit` only
+     * where the app-server process is known to be gone (it exited, or
+     * `stopSession` reaped it): Codex runs children as threads inside that
+     * process. The process `error` and stdin EPIPE doors cannot say that.
+     * Either way the child settles `unresolved`; `engine-exit` is what makes
+     * it read as interrupted. Tool calls stay `unresolved` at every door:
+     * whether the tool ran is unknown however the process ended.
+     */
+    childEndedBy: ChildWorkEndedBy | undefined,
   ): void {
     settleUnresolvedCodexToolCalls({
       record,
@@ -1346,12 +1366,15 @@ export class CodexAdapterTransport {
       publish: (event) => this.publish(event, record),
     });
     // #2458: a subagent still running when its session ends can never
-    // report again, so it settles `unresolved` — same doors, same moment.
-    settleOpenCodexChildren({
-      record,
-      nowIso: () => nowIso,
-      publish: (event) => this.publish(event, record),
-    });
+    // report again, so it settles here — same doors, same moment.
+    settleOpenCodexChildren(
+      {
+        record,
+        nowIso: () => nowIso,
+        publish: (event) => this.publish(event, record),
+      },
+      childEndedBy,
+    );
   }
 
   /**
@@ -1459,6 +1482,8 @@ export class CodexAdapterTransport {
       skipSynthesis: boolean;
       workloadOutcome?: ChildWorkloadOutcome;
       exitSignal?: NodeJS.Signals | null;
+      /** The app-server's redacted stderr tail, when it exited on its own. */
+      stderrTail?: string;
       code?: string;
     },
   ): void {
@@ -1484,11 +1509,14 @@ export class CodexAdapterTransport {
         turnId,
         message,
         code: options.code ?? 'codex-turn-orphaned',
-        ...(options.exitSignal || options.workloadOutcome
+        ...(options.exitSignal || options.workloadOutcome || options.stderrTail
           ? {
               details: {
                 exitSignal: options.exitSignal ?? undefined,
                 workload: options.workloadOutcome,
+                ...(options.stderrTail
+                  ? { stderrTail: options.stderrTail }
+                  : {}),
               },
             }
           : {}),
