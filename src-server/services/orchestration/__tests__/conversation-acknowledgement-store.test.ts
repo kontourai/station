@@ -109,7 +109,7 @@ describe('FileConversationAcknowledgementStore', () => {
     expect(readFileSync(storePath, 'utf8')).toBe(corruptBytes);
   });
 
-  test('migrates a version 1 file: every personal writer folds into the owner key, newest version wins', () => {
+  test('migrates a version 1 file: the owner’s writers fold into the owner key, newest version wins, another person keeps theirs', () => {
     const dir = mkdtempSync(join(tmpdir(), 'station-ack-migrate-'));
     const path = join(dir, 'conversation-acknowledgements.json');
     try {
