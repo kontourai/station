@@ -297,7 +297,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/session-inventory` | Closed Session inventory rows, gaps, and current-answer Basis projection |
 | `@kontourai/station-contracts/session-work-item` | Closed immutable Session-to-work-item association observations |
 | `@kontourai/station-contracts/scheduler` | Scheduler jobs, stats, capabilities, notifications |
-| `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, update-provenance issue codes, and service and server update state |
+| `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, update-provenance issue codes, service and server update state, and engine workload memory budgets |
 | `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, explicit engine/model/options digest identity, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
 | `@kontourai/station-contracts/task-memory` | Task memory (#4003): the Task summary revision and keyed record shapes, limits, default importance, the stateless write check (`checkTaskRecordWrite`, `taskSummaryRefusal`), refusal wording, the person's views, `taskAwaitsAnswer` for the Tasks list's `openQuestionCount`, and the Learning shapes (`TaskLearningView`, candidates, promotion and dismissal input, limits) for a done Task's promotion candidates. Every bound is a refusal |
 | `@kontourai/station-contracts/task-review` | Task review thread, event, evidence and capture shapes; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Runtime integration and evidence belong to the Task review API and SDK references |
@@ -789,6 +789,7 @@ No existing diagnostic code is renamed or removed.
 | `conversation-context-unavailable` | `conflict` | `false` |
 | `engine-decision-not-sent` | `warning` | `false` |
 | `engine-decision-unacknowledged` | `warning` | `false` |
+| `engine-memory-exhausted` | `engine_crashed` | `true` |
 | `engine-session-binding-dead` | `session_gone` | `false` |
 | `engine-sign-in-required` | `auth` | `false` |
 | `engine-turn-failed` | `provider_error` | `false` |
@@ -824,6 +825,7 @@ No existing diagnostic code is renamed or removed.
 | `SESSION_START_INDETERMINATE` | `indeterminate` | `false` |
 | `session-reattach-conflict` | `conflict` | `false` |
 | `transcript-line-skipped` | `warning` | `false` |
+| `workload-command-oom-killed` | `warning` | `false` |
 
 The [source inventory guard](../../scripts/__tests__/provider-failure-inventory.test.ts)
 recursively discovers string `*_CODE` declarations and string-literal `code` class
@@ -1205,6 +1207,22 @@ required", as the ACP SDK builds it) is refused the same way, carrying
 `ENGINE_SIGN_IN_REQUIRED_CODE` (`engine-sign-in-required`, kind `auth`, from
 `provider`); the same error on a prompt is that turn's `runtime.error` with the
 same code, and chat renders both as a prompt to sign in to the engine.
+A Codex turn whose engine process was killed for exhausting its workload
+memory budget ends with a `runtime.error` carrying
+`ENGINE_MEMORY_EXHAUSTED_CODE` (`engine-memory-exhausted`, from `provider`)
+and `details.workload` (`result`, `memoryPeakBytes`, `memoryMaxBytes`,
+`oomKills`, `unreportedOomKills` when observed); the evidence is the scope's
+kernel `oom_kill` count (`childWorkloadMemoryExhausted` in
+`@kontourai/station-shared/child-workload`), not a signal alone. Only the Codex
+adapter publishes it today. The conversation is continued automatically
+(capped) with a Station recovery note; past the cap chat offers Continue rather
+than Send again. That continuation's turn carries a send key starting
+`MEMORY_CONTINUATION_CLIENT_TURN_PREFIX` and an internal origin;
+`isStationMemoryContinuationTurn` (`provider`) recognises it and
+`memoryContinuationKeyKind` tells Station's automatic key from a person's
+Continue (`-p` suffix); the prefix is reserved for Station's own origin. A kill of a
+process inside a still-running Codex scope is a `runtime.warning` with
+`WORKLOAD_COMMAND_OOM_KILLED_CODE` (`workload-command-oom-killed`).
 That type is how an adapter tells the start boundary that its start is settled:
 the boundary is released and the receipt is `rejected`, where every other
 adapter failure at start stays an indeterminate start that fences the thread. An
@@ -1617,6 +1635,15 @@ does not confirm gateway acceptance or delivery to a phone. See
 Station process's PID, uptime, RSS and JavaScript heap. The resource-posture API
 adds it optionally; its observation timestamp is independent of the cached CPU
 sample. It is display-only and carries no execution or admission authority.
+
+`WorkloadBudgetStatus` (also `system-status`) is the `GET /api/system/workload`
+read: enforcement state and reason, host memory, effective limits, each memory
+budget's source (`environment`, `settings` or `default`), saved settings and
+whether a change applies to new scopes or after a restart. Its optional
+`scopes` lists running scopes with the per-engine limit each was launched
+with, the OOM kills Station observed in it, when it first saw the latest, and
+for an engine scope whether its holder is `placed` or `unplaced` (with a
+`WorkloadHolderUnplacedReason` code).
 
 `@kontourai/station-contracts/system-status` owns `DevicePresentation`
 (the request-bound host/paired projection), `SystemRuntimeIdentity`

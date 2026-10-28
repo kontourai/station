@@ -4649,10 +4649,69 @@ returns 503; unknown CPU load is never fabricated as zero. These observations
 do not grant execution authority or influence admission.
 
 `data.workloads` reports workload enforcement state, configured budgets, active
-scopes, recent outcomes and available slice measurements. Measurement failure
+scopes, recent outcomes and available slice measurements. A recent outcome's
+`result` is `oom-kill-in-scope` when the kernel killed any process in the
+scope (the engine or a command), with `oomKills`, its `oomKillsSource`
+(`close`, exact; or `last-poll` when the scope was already collected) and
+systemd's own `systemdResult`. Measurement failure
 is separate from enforcement state; see
 [Linux service workload budgets](../guides/development.md#linux-service-workload-budgets)
 for platform scope and admission behavior.
+
+### Workload Budgets
+
+The [workload routes](../../src-server/routes/system/workload-routes.ts) answer
+under `/api/system/workload`:
+
+- `GET /api/system/workload` returns `WorkloadBudgetStatus`
+  (`@kontourai/station-contracts/system-status`): enforcement `state`
+  (`ready`, `unmanaged`, `unavailable` or `stopping`) with any reason, host
+  memory, effective `limits`, the `sources` of the two memory budgets
+  (`environment`, `settings` or `default`), saved `settings`, any
+  `settingsError`, and `applies` (`new-scopes` or `restart`).
+- `PUT /api/system/workload/settings` takes `{ memoryMiB, totalMemoryMiB }`
+  (whole MiB, or `null` for the default) and returns the new status. While the
+  `workload-budget-settings` Feature Preview is off it answers 404 with
+  `code: 'feature_preview_disabled'` and writes nothing; an out-of-range value
+  answers 400 with `code: 'workload_settings_invalid'`.
+- `GET /api/system/workload/session` answers only for the session named by the
+  forwarded station-control credential (the `workload_status` tool), with its
+  scope's cgroup counters or `scope.state` `none`, `unattributed` or
+  `unmeasured`. Without a verified caller it answers 403
+  `station_control_caller_required`.
+
+`GET /api/system/workload` also lists running `scopes`, each with the limit
+it was launched with (a saved change reaches only later launches), its OOM
+kill count and `lastOomKillAt`, and for an engine scope `holder: placed | unplaced` with a short `holderReason`
+code when unplaced (`not-in-scope` after two polls in a row miss it,
+`holder-gone` once a found holder has left the scope, `holder-unavailable`
+when the host has no `setsid`(1) or `sleep`(1))
+(an unplaced holder means that scope's OOM count will be unknown after the
+engine dies). The session read's measured scope carries
+`lastOomKillAt` too. A save refuses a total below the slice's current usage
+(400 `workload_settings_invalid`), because the total binds running engines at
+once.
+
+Hosted deployments mount only the session read; the first two answer 404 there.
+
+### Continue after a memory kill
+
+`POST /api/orchestration/conversations/:conversationId/memory-continuation`
+continues a conversation whose latest turn ended with `engine-memory-exhausted`
+([continuation module](../../src-server/services/orchestration/memory-exhaustion-continuation.ts)).
+It sends one Station-authored turn through the conversation inbox as the caller,
+under a key derived from the dead Session and turn, and answers 202 with that
+`clientTurnId`. Any later request for the same dead turn while a live entry exists, from anyone
+and including after Station's own automatic continuation, gets 409
+`memory_continuation_already_started`; after an entry the inbox proves unsent
+(refused, or cancelled before placement) a person's Continue is sent under the
+next person key, and once all are spent the answer is 409
+`memory_continuation_retries_exhausted`. A `clientTurnId` starting
+`memory-continue-` is refused (400) on `POST /chat` and continue sends. A latest turn that did not end that way
+is 409 `memory_continuation_not_applicable`; a conversation the caller cannot
+read is 404; one the inbox refuses the caller is 403
+`memory_continuation_not_permitted`. A Station without a conversation inbox
+(hosted) answers 404, as an older Station does.
 
 `GET /api/system/status` returns a plain status object. It includes prerequisites
 and `prerequisitesState`, configured/detected providers, CLI observations,

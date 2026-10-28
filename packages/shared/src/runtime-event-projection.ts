@@ -1,5 +1,6 @@
 import { isStationCheckBackTurn } from '@kontourai/station-contracts/agent-schedule';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
+import { isStationMemoryContinuationTurn } from '@kontourai/station-contracts/provider';
 import {
   hasRuntimeEventContentRefs,
   isRuntimeEventContentRef,
@@ -891,6 +892,10 @@ export function projectRuntimeEventsToMessages(
           if (isStationCheckBackTurn(ev)) {
             const row = messages[messages.length - 1]!;
             row.metadata = { ...row.metadata, stationCheckBack: true };
+          }
+          if (isStationMemoryContinuationTurn(ev)) {
+            const row = messages[messages.length - 1]!;
+            row.metadata = { ...row.metadata, stationMemoryContinuation: true };
           }
           userRowSender = undefined;
         }

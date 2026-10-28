@@ -1192,6 +1192,12 @@ const VERBS: Record<string, VerbSpec> = {
     targets: true,
     actions: ['get'],
   },
+  workload: {
+    group: 'Core Workspace',
+    summary: 'Show engine workload memory budgets and their enforcement',
+    targets: true,
+    actions: ['status'],
+  },
   feedback: {
     group: 'Core Workspace',
     summary: 'Manage message ratings and learned behavior state',

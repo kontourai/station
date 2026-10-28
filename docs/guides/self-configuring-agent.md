@@ -34,6 +34,9 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
 - `list_agents`, `get_agent`, `list_projects`, `get_project`
 - `list_skills`, `list_registry_skills`, `install_skill`, `uninstall_skill`, `update_skill`, `track_skill_run`, `record_skill_outcome`
 - `send_message` for a lightweight message to a Station agent
+- `workload_status` for the calling Session's own workload memory budget and
+  usage (limit, current, peak, swap, OOM kills), or why no budget is enforced;
+  see [Linux service workload budgets](development.md#linux-service-workload-budgets)
 - `read_conversation` to page through a conversation a person referenced in a
   message to the Agent, or to start at a `search_sessions` hit
   (`aroundMessageId`)
