@@ -122,6 +122,8 @@ text beside the Agent, Model and Permissions chips. Setup, repair and read
 errors render in the draft body. New Task keeps its **Shaping a Task** chip and
 the fork keeps its replay disclosure and **Cancel fork**. Escape, focusing a
 chat, or opening a conversation leaves the draft and reports it dismissed.
+Collapsing the dock keeps the draft and its written text, and the idle
+auto-hide waits while a draft is open.
 The Project page opens on Overview and keeps its shared Project Room separate
 from direct Agent conversations. Separate Agent and Engine & model controls sit
 inside the composer beside Start and the overflow for visual skills. The Agent list retains each Agent's repair action: a row that cannot start is
