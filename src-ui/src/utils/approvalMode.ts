@@ -144,11 +144,12 @@ const ENGINE_MODE_DESCRIPTIONS: Partial<
     // decides. With none, Codex (EXECUTED, codex-cli 0.164.0, empty
     // CODEX_HOME) reports `on-request` with a read-only sandbox for a host
     // session in an untrusted folder, and workspace-write without network
-    // under Station's `station-workspace` profile; both are "at most this
-    // folder, asks for network". Not "Codex Auto": that holds only for the
-    // confined case.
+    // under Station's `station-workspace` profile (a trusted host folder
+    // gets `:workspace`, the same). Either way it asks before network or a
+    // write outside the folder and temp, which `workspaceWrite` leaves
+    // writable. Not "Codex Auto": that holds only for workspace-write.
     codex:
-      'Uses your Codex settings until you pick a mode here. Unset, Codex writes at most in this folder and asks for network.',
+      'Your Codex settings decide. Unset, Codex asks before network use or writes outside this folder and temp.',
   },
   ask: {
     codex:

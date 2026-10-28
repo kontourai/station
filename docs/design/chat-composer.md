@@ -606,10 +606,12 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   shows **Approval: Set by engine**, which opens a read-only explanation and
   offers no mode. Codex's Default likewise names the engine's own settings
   ("Engine default — Codex's own settings"), and its description states what
-  an unconfigured Codex does there: writes at most in the chat's folder and
-  asks for network (EXECUTED against codex-cli 0.164.0: read-only for a host
-  session in an untrusted folder, workspace-write without network under
-  Station's `station-workspace` profile). An engine's advertised Mode (OpenCode's build or plan agent)
+  an unconfigured Codex does there: asks before network use or writes outside
+  the chat's folder and temp (EXECUTED against codex-cli 0.164.0, approval
+  policy `on-request` in every case: read-only for a host session in an
+  untrusted folder; workspace-write without network for a trusted host folder
+  and under Station's `station-workspace` profile, where temp is writable too).
+  An engine's advertised Mode (OpenCode's build or plan agent)
   is a separate picker beside it, never a replacement for it. While Station
   governs OpenCode it offers only build and plan; on OpenCode's own settings
   it lists every agent. A refusal because Station's approval mode cannot

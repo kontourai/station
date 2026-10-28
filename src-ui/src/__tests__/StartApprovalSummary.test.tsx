@@ -37,7 +37,7 @@ describe('StartApprovalSummary on the engine default', () => {
     const chip = screen.getByRole('button', { name: /^Permissions: / });
     expect(chip.textContent).toContain('Permissions: Engine settings');
     expect(chip.getAttribute('title')).toBe(
-      'Uses your Codex settings until you pick a mode here. Unset, Codex writes at most in this folder and asks for network.',
+      'Your Codex settings decide. Unset, Codex asks before network use or writes outside this folder and temp.',
     );
   });
 
