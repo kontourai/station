@@ -106,7 +106,10 @@ again from the composer or the queue. A send refused because the engine is
 busy joins that queue with its own key and copy, and the queue's drain writes
 the same before-the-request row as a composer send. Sends with attachments or
 a visual skill are not written to the queue (their draft is kept until
-Station answers, as before).
+Station answers, as before). A message Station composes for the person (the
+chat's Continue after a restart) gets the same before-the-request row under its
+own derived key, but it is not the composer's: a refusal hands nothing back to
+the composer, and while a turn is running it is not sent, steered or queued.
 
 Configuration edits are excluded from the outbound chat queue by default. Station has no single
 configuration-mutation protocol: agent, connection, plugin, and system edits
