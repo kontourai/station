@@ -774,7 +774,7 @@ export function ConnectStationDialog({
               </a>
               .
             </p>
-            <p>No access request was sent.</p>
+            <p>Station didn’t send an access request.</p>
           </section>
         ) : null}
       </div>
