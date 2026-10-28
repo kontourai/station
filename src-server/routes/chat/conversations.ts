@@ -39,9 +39,8 @@ import {
   loadHostedTenantRegistryFromEnvironment,
 } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import * as ConversationManager from '../../runtime/conversation/conversation-manager.js';
-import type { RuntimeContext } from '../../runtime/types.js';
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
-import { refuseOutOfScopeDispatch } from '../orchestration/dispatch-scope.js';
+import type { RuntimeContext } from '../../runtime/types.js';
 import { isPrincipalScopedAgentRequest } from '../../security/station-control-request-authority.js';
 import {
   publicAgentIdFromRuntimeKey,
@@ -82,6 +81,7 @@ import {
   conversationOps,
 } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
+import { refuseOutOfScopeDispatch } from '../orchestration/dispatch-scope.js';
 import {
   contextActionSchema,
   conversationUpdateSchema,
