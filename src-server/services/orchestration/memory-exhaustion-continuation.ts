@@ -31,7 +31,7 @@ import {
   UNKNOWN_CLIENT_REPORTED_ORIGIN,
 } from '@kontourai/station-contracts/client-origin';
 import {
-  ENGINE_MEMORY_EXHAUSTED_CODE,
+  isEngineMemoryExhaustedFailure,
   isStationMemoryContinuationTurn,
   MEMORY_CONTINUATION_CLIENT_TURN_PREFIX,
   memoryContinuationKeyKind,
@@ -260,7 +260,7 @@ export class MemoryExhaustionContinuation {
     const failure = payloads[failureIndex];
     if (
       !failure ||
-      failure.code !== ENGINE_MEMORY_EXHAUSTED_CODE ||
+      !isEngineMemoryExhaustedFailure(failure) ||
       typeof failure.turnId !== 'string'
     )
       return 'not-memory-exhausted';

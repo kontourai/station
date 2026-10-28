@@ -646,6 +646,54 @@ describe('ChatDockBody memory-exhaustion marker', () => {
     expect(chatInput.handleSend).not.toHaveBeenCalled();
   });
 
+  test('#4266: a memory kill stored before #4257 gets the same card, copy and Continue', async () => {
+    sdk.continueAfterMemoryExhaustion.mockResolvedValue('queued');
+    renderDock(
+      buildSession({
+        conversationId: 'conversation-oom',
+        messages: [
+          {
+            role: 'user',
+            content: 'Run the checks',
+            timestamp: 1,
+          } as any,
+          {
+            role: 'user',
+            content:
+              '[SYSTEM_EVENT] [CHAT_ERROR:codex-turn-orphaned] Codex was killed because memory was exhausted. Its workload budget was 3072 MiB. Commands and delegated work were interrupted. Run memory-heavy checks sequentially before continuing.',
+            timestamp: 2,
+          } as any,
+        ],
+      } as Partial<ChatSession>),
+      vi.fn(),
+      buildChatInput(),
+    );
+    expect(
+      await screen.findByText(
+        /engine ran out of memory/i,
+        {},
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Its workload budget was 3072 MiB/)).toBeTruthy();
+    expect(
+      screen.queryByText(/Run memory-heavy checks sequentially/),
+    ).toBeNull();
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: 'Continue' },
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    );
+    await waitFor(() =>
+      expect(sdk.continueAfterMemoryExhaustion).toHaveBeenCalledWith(
+        'conversation-oom',
+        'http://localhost:3242',
+      ),
+    );
+  });
+
   test('an older Station without the route gets the short continuation as a message', async () => {
     sdk.continueAfterMemoryExhaustion.mockRejectedValue(
       new sdk.MemoryContinuationUnsupportedError(),

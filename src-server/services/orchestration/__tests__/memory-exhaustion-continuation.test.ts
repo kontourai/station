@@ -597,4 +597,34 @@ describe('automatic continuation after a memory kill', () => {
       }),
     ).toEqual({ kind: 'skipped', reason: 'not-memory-exhausted' });
   });
+
+  test('#4266: a memory kill stored before #4257, under the orphaned-turn code, can be continued', () => {
+    const continuation = coordinator();
+    append('thread-legacy', {
+      method: 'session.started',
+      sessionId: 'thread-legacy',
+    });
+    append('thread-legacy', {
+      method: 'turn.started',
+      turnId: 'legacy-turn',
+      prompt: 'Build it',
+      clientOrigin: PERSON,
+    });
+    append('thread-legacy', {
+      method: 'runtime.error',
+      turnId: 'legacy-turn',
+      severity: 'error',
+      code: 'codex-turn-orphaned',
+      message:
+        'Codex was killed because memory was exhausted. Its workload budget was 3072 MiB. Commands and delegated work were interrupted. Run memory-heavy checks sequentially before continuing.',
+    });
+    append('thread-legacy', exited('thread-legacy'));
+    owners.set('thread-legacy', 'person-1');
+    expect(
+      continuation.continueOnRequest({
+        conversationId: 'thread-legacy',
+        actor: { userId: 'person-1' },
+      }).kind,
+    ).toBe('queued');
+  });
 });

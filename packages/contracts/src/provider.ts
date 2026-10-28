@@ -802,6 +802,30 @@ export const ENGINE_SESSION_BINDING_DEAD_CODE = 'engine-session-binding-dead';
 export const ENGINE_MEMORY_EXHAUSTED_CODE = 'engine-memory-exhausted';
 
 /**
+ * Before #4257 the Codex adapter published a memory kill as a
+ * `codex-turn-orphaned` `runtime.error` whose message began with this
+ * sentence. Stored failures keep that shape.
+ */
+const LEGACY_CODEX_MEMORY_KILL_PREFIX =
+  'Codex was killed because memory was exhausted.';
+
+/**
+ * Whether a `runtime.error` reports an engine memory kill: today's
+ * {@link ENGINE_MEMORY_EXHAUSTED_CODE}, or the shape stored before #4257.
+ */
+export function isEngineMemoryExhaustedFailure(failure: {
+  readonly code?: unknown;
+  readonly message?: unknown;
+}): boolean {
+  return (
+    failure.code === ENGINE_MEMORY_EXHAUSTED_CODE ||
+    (failure.code === 'codex-turn-orphaned' &&
+      typeof failure.message === 'string' &&
+      failure.message.trimStart().startsWith(LEGACY_CODEX_MEMORY_KILL_PREFIX))
+  );
+}
+
+/**
  * `runtime.warning` code: the kernel OOM killer killed a process inside an
  * engine's workload scope (normally a command the engine started) while the
  * engine kept running. `details` carries `newKills`, `oomKills` and
