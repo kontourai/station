@@ -1,10 +1,14 @@
 import {
+  appendFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  renameSync,
   rmSync,
   statSync,
+  symlinkSync,
   utimesSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -198,16 +202,19 @@ describe('project checkout freshness', () => {
     git(checkout, ['fetch', '-q']);
     const old = new Date(Date.now() - 5 * DAY_MS);
     utimesSync(join(checkout, '.git', 'FETCH_HEAD'), old, old);
-    const reflog = join(
-      checkout,
-      '.git',
-      'logs',
-      'refs',
-      'remotes',
-      'origin',
-      'main',
-    );
-    if (existsSync(reflog)) utimesSync(reflog, old, old);
+    // Every fetch record, including the one `git clone` wrote.
+    for (const name of ['main', 'HEAD']) {
+      const reflog = join(
+        checkout,
+        '.git',
+        'logs',
+        'refs',
+        'remotes',
+        'origin',
+        name,
+      );
+      if (existsSync(reflog)) utimesSync(reflog, old, old);
+    }
     const result = await createProjectCheckoutFreshnessReader().read(
       checkout,
       THRESHOLDS,
@@ -248,6 +255,136 @@ describe('project checkout freshness', () => {
     await expect(reader.read(checkout, THRESHOLDS)).resolves.toMatchObject({
       status: 'unknown',
       reason: 'no-upstream',
+    });
+  });
+
+  test('a tag named like the branch does not hide the branch’s upstream', async () => {
+    const { checkout, land } = fixture();
+    land(3);
+    git(checkout, ['fetch', '-q']);
+    git(checkout, ['tag', 'main']);
+    const result = await createProjectCheckoutFreshnessReader().read(
+      checkout,
+      THRESHOLDS,
+    );
+    expect(result).toMatchObject({
+      status: 'stale',
+      branch: 'main',
+      upstream: 'origin/main',
+      behind: 3,
+    });
+  });
+
+  test('a clone never fetched since takes its fetch time from the clone', async () => {
+    const { checkout } = fixture();
+    expect(existsSync(join(checkout, '.git', 'FETCH_HEAD'))).toBe(false);
+    const cloned = new Date(Date.now() - 5 * DAY_MS);
+    utimesSync(
+      join(checkout, '.git', 'logs', 'refs', 'remotes', 'origin', 'HEAD'),
+      cloned,
+      cloned,
+    );
+    const result = await createProjectCheckoutFreshnessReader().read(
+      checkout,
+      THRESHOLDS,
+    );
+    expect(result).toMatchObject({
+      status: 'stale',
+      staleBecause: ['fetch-age'],
+      upstreamFetchedAt: cloned.toISOString(),
+    });
+  });
+
+  test('a reflog entry naming a missing object is skipped, not a failed read', async () => {
+    const { checkout, land } = fixture();
+    land(1);
+    git(checkout, ['fetch', '-q']);
+    const reflog = join(
+      checkout,
+      '.git',
+      'logs',
+      'refs',
+      'remotes',
+      'origin',
+      'main',
+    );
+    const missing = '1'.repeat(40);
+    appendFileSync(
+      reflog,
+      `${missing} ${missing} Test <test@example.com> ${Math.floor(Date.now() / 1000)} +0000\tforged\n`,
+    );
+    const result = await createProjectCheckoutFreshnessReader().read(
+      checkout,
+      THRESHOLDS,
+    );
+    expect(result).toMatchObject({ status: 'not-stale', behind: 1 });
+  });
+
+  test('a reflog entry written without a message still dates the move past HEAD', async () => {
+    const { checkout, land } = fixture();
+    land(1, new Date(Date.now() - 6 * DAY_MS));
+    git(checkout, ['fetch', '-q']);
+    const tip = git(checkout, ['rev-parse', 'origin/main']);
+    const base = git(checkout, ['rev-parse', 'HEAD']);
+    // Move the ref back to HEAD and past it again with `update-ref`, which
+    // without -m writes no tab and no message.
+    const moved = new Date(Date.now() - 5 * DAY_MS);
+    git(checkout, ['update-ref', 'refs/remotes/origin/main', base], moved);
+    git(checkout, ['update-ref', 'refs/remotes/origin/main', tip], moved);
+    const result = await createProjectCheckoutFreshnessReader().read(checkout, {
+      commits: 50,
+      days: 3,
+    });
+    expect(result).toMatchObject({
+      status: 'stale',
+      staleBecause: ['age'],
+      behind: 1,
+      behindSince: whole(moved),
+    });
+  });
+
+  test('a fetch record reached through a link is ignored', async () => {
+    const { root, checkout } = fixture();
+    const elsewhere = join(root, 'elsewhere');
+    mkdirSync(join(elsewhere, 'origin'), { recursive: true });
+    writeFileSync(join(elsewhere, 'origin', 'HEAD'), 'not a reflog\n');
+    const old = new Date('2020-01-01T00:00:00Z');
+    utimesSync(join(elsewhere, 'origin', 'HEAD'), old, old);
+    const remotes = join(checkout, '.git', 'logs', 'refs', 'remotes');
+    rmSync(remotes, { recursive: true, force: true });
+    symlinkSync(elsewhere, remotes);
+    const result = await createProjectCheckoutFreshnessReader().read(
+      checkout,
+      THRESHOLDS,
+    );
+    expect(result).toMatchObject({ status: 'not-stale', behind: 0 });
+    expect(result).not.toHaveProperty('upstreamFetchedAt');
+  });
+
+  test('a damaged repository is unreadable, not no-upstream, and that answer is not remembered', async () => {
+    const { checkout, land } = fixture();
+    land(1);
+    git(checkout, ['fetch', '-q']);
+    const tip = git(checkout, ['rev-parse', 'origin/main']);
+    const object = join(
+      checkout,
+      '.git',
+      'objects',
+      tip.slice(0, 2),
+      tip.slice(2),
+    );
+    const aside = `${object}.aside`;
+    renameSync(object, aside);
+    const reader = createProjectCheckoutFreshnessReader({ ttlMs: 60_000 });
+    await expect(reader.read(checkout, THRESHOLDS)).resolves.toMatchObject({
+      status: 'unknown',
+      reason: 'unreadable',
+    });
+    renameSync(aside, object);
+    // Well inside the window: a remembered failure would answer again.
+    await expect(reader.read(checkout, THRESHOLDS)).resolves.toMatchObject({
+      status: 'not-stale',
+      behind: 1,
     });
   });
 
@@ -349,6 +486,11 @@ describe('project checkout freshness', () => {
     const mainFetch = new Date(Date.now() - 2 * DAY_MS);
     utimesSync(
       join(checkout, '.git', 'logs', 'refs', 'remotes', 'origin', 'main'),
+      reflogAt,
+      reflogAt,
+    );
+    utimesSync(
+      join(checkout, '.git', 'logs', 'refs', 'remotes', 'origin', 'HEAD'),
       reflogAt,
       reflogAt,
     );

@@ -1329,6 +1329,20 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       expect(notice.textContent).not.toContain('0 commits');
     });
 
+    test('a few commits behind with only an old fetch leads with the fetch, not the count', () => {
+      enablePreview();
+      sdkMocks.checkoutFreshness = {
+        ...stale,
+        staleBecause: ['fetch-age'],
+        behind: 2,
+        upstreamFetchedAt: new Date(Date.now() - 5 * 86_400_000).toISOString(),
+      };
+      renderProjectSettings();
+      const notice = screen.getByTestId('project-checkout-stale');
+      expect(notice.textContent).toContain('Checkout last fetched 5d ago');
+      expect(notice.textContent).not.toContain('2 commits behind');
+    });
+
     test('a checkout Station refused to read says so quietly, and an unjudgeable one says nothing', () => {
       enablePreview();
       sdkMocks.checkoutFreshness = {

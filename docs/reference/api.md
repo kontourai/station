@@ -222,8 +222,10 @@ first moved past HEAD (the newest 32 entries are examined). A committer date
 alone can be much older than when a commit arrived; the reflog time is never
 earlier. Without a reflog only the committer date is available.
 `upstreamFetchedAt` is the newest of the worktree's and the repository's
-`FETCH_HEAD` (a fetch of any remote) and the upstream ref's reflog, for a
-remote-tracking upstream only; it is absent when none exists.
+`FETCH_HEAD` (a fetch of any remote), the upstream ref's reflog and the remote's
+`HEAD` reflog (which `git clone` writes), for a remote-tracking upstream only;
+it is absent when none exists. A record reached through a link anywhere below
+the git directory is ignored.
 
 `staleBecause` lists `commits` when `behind` reaches `checkoutStaleAfterCommits`
 (default 50), `age` when `behindSince` is at least `checkoutStaleAfterDays`

@@ -37,12 +37,14 @@ export function ProjectCheckoutStaleCallout({
     fetchedAt !== undefined && Number.isFinite(fetchedAt)
       ? relativeTimeAgo(fetchedAt, now)
       : undefined;
-  // Only an old fetch: the local refs show nothing behind, but cannot be
-  // trusted to.
-  const title =
-    freshness.behind > 0
-      ? `Checkout is ${plural(freshness.behind, 'commit')} behind ${freshness.upstream}`
-      : `Checkout last fetched ${fetchedAgo ?? 'long ago'}`;
+  // Behind by the thresholds: say by how much. Only an old fetch: the
+  // local refs cannot be trusted to show it, so say when it was.
+  const behindTooFar = freshness.staleBecause.some(
+    (reason) => reason === 'commits' || reason === 'age',
+  );
+  const title = behindTooFar
+    ? `Checkout is ${plural(freshness.behind, 'commit')} behind ${freshness.upstream}`
+    : `Checkout last fetched ${fetchedAgo ?? 'long ago'}`;
   return (
     <PageCallout
       calloutId="stale-project-checkout"
@@ -61,7 +63,7 @@ export function ProjectCheckoutStaleCallout({
       }
     >
       <p>
-        {freshness.behind > 0
+        {behindTooFar
           ? 'Agents started here follow this checkout’s instructions.'
           : `It may be behind ${freshness.upstream}, and agents here follow its instructions.`}
       </p>

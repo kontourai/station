@@ -6,9 +6,10 @@
  * fetch", and that fetch's time is reported beside it. Every git call runs
  * through {@link readProjectRepository}, because a Project's folder is
  * member-writable and the repository git would discover there is not
- * trusted on its own. The two files read directly (the fetch records' times
- * and the tail of the upstream ref's reflog) are opened without following a
- * link, and nothing read from them reaches git unless it is a bare object id.
+ * trusted on its own. The files read directly (the fetch records' times and
+ * the tail of the upstream ref's reflog) are read only when no component of
+ * their path below the resolved git directory is a link, and nothing read
+ * from them reaches git unless it is a bare object id.
  *
  * Facts are remembered per directory for {@link FRESHNESS_TTL_MS}, and
  * callers that arrive while a read is running join it, so a settings page
@@ -63,12 +64,28 @@ function exitCode(error: unknown): number | undefined {
     : undefined;
 }
 
+/**
+ * `path` when no component of it is a link, else `undefined`. The git
+ * directories these paths are joined to are already symlink-resolved, so a
+ * link anywhere below them (`logs`, `logs/refs/remotes`, the file itself)
+ * shows up as a different resolved path. A member could otherwise point a
+ * record at any file this process can read and learn or forge its time.
+ */
+async function unlinked(path: string): Promise<string | undefined> {
+  try {
+    return (await realpath(path)) === path ? path : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The latest modification time among regular files that exist. */
 async function latestModification(
   paths: readonly string[],
 ): Promise<Date | undefined> {
   let latest: Date | undefined;
   for (const path of paths) {
+    if (!(await unlinked(path))) continue;
     try {
       const stat = await lstat(path);
       if (stat.isFile() && (!latest || stat.mtime > latest))
@@ -85,6 +102,7 @@ async function latestModification(
  * there is none (absent, a link, a FIFO, unreadable).
  */
 async function readTail(path: string): Promise<string | undefined> {
+  if (!(await unlinked(path))) return undefined;
   let handle: Awaited<ReturnType<typeof open>>;
   try {
     handle = await open(
@@ -120,12 +138,17 @@ async function readTail(path: string): Promise<string | undefined> {
   }
 }
 
-/** `<old> <new> <identity> <seconds> <zone>\t<message>`, newest last. */
+/**
+ * `<old> <new> <identity> <seconds> <zone>`, then a tab and a message when
+ * the update had one (`git update-ref` without `-m` writes none). Newest last.
+ */
 function reflogEntries(text: string): Array<{ old: string; time: number }> {
   const entries: Array<{ old: string; time: number }> = [];
   for (const line of text.split('\n')) {
     const match =
-      /^([0-9a-f]{40,64}) [0-9a-f]{40,64} .*> (\d+) [+-]\d{4}\t/.exec(line);
+      /^([0-9a-f]{40,64}) [0-9a-f]{40,64} .*> (\d+) [+-]\d{4}(?:\t|\r?$)/.exec(
+        line,
+      );
     if (match) entries.push({ old: match[1], time: Number(match[2]) * 1000 });
   }
   return entries;
@@ -145,31 +168,27 @@ async function readFacts(repository: ReadRepository): Promise<RepositoryFacts> {
       })
     ).stdout.trim();
 
-  let branch: string;
+  // The full name: `--short` would say `heads/main` when a tag `main`
+  // exists too.
+  let head: string;
   try {
-    branch = await git(['symbolic-ref', '--quiet', '--short', 'HEAD']);
+    head = await git(['symbolic-ref', '--quiet', 'HEAD']);
   } catch (error) {
     // `symbolic-ref --quiet` exits 1 exactly when HEAD is not a branch.
     if (exitCode(error) === 1)
       return { kind: 'unknown', reason: 'detached-head' };
     throw error;
   }
+  const branch = head.replace(/^refs\/heads\//, '');
   // The configured upstream, whether or not its ref exists; empty for none.
-  const upstreamRef = await git([
-    'for-each-ref',
-    '--format=%(upstream)',
-    `refs/heads/${branch}`,
-  ]);
+  // Ref names cannot hold glob characters, so this pattern names one ref.
+  const upstreamRef = await git(['for-each-ref', '--format=%(upstream)', head]);
   if (!upstreamRef) return { kind: 'unknown', reason: 'no-upstream' };
-  try {
-    await git(['rev-parse', '--verify', '--quiet', `${upstreamRef}^{commit}`]);
-  } catch (error) {
-    // `--verify --quiet` exits 1 exactly when the ref does not exist; any
-    // other failure is a failure to read, not a fact about the upstream.
-    if (exitCode(error) === 1)
-      return { kind: 'unknown', reason: 'no-upstream' };
-    throw error;
-  }
+  // Whether the ref exists, without reading the object it names: a ref
+  // whose commit is missing is a damaged repository, which the reads below
+  // fail on (`unreadable`), not an absent upstream.
+  if (!(await git(['for-each-ref', '--format=%(objectname)', upstreamRef])))
+    return { kind: 'unknown', reason: 'no-upstream' };
 
   const [ahead, behind] = (
     await git(['rev-list', '--left-right', '--count', `HEAD...${upstreamRef}`])
@@ -213,12 +232,15 @@ async function readFacts(repository: ReadRepository): Promise<RepositoryFacts> {
       behindSince = Math.max(behindSince ?? learned, learned);
   }
 
-  const remoteTracking = upstreamRef.startsWith('refs/remotes/');
-  const fetched = remoteTracking
+  // A remote-tracking upstream only. `git clone` writes neither FETCH_HEAD
+  // nor the branch's reflog, only the remote's HEAD reflog.
+  const remote = /^refs\/remotes\/([^/]+)\//.exec(upstreamRef)?.[1];
+  const fetched = remote
     ? await latestModification([
         join(repository.gitDir, 'FETCH_HEAD'),
         join(repository.commonDir, 'FETCH_HEAD'),
         join(repository.commonDir, 'logs', ...upstreamRef.split('/')),
+        join(repository.commonDir, 'logs', 'refs', 'remotes', remote, 'HEAD'),
       ])
     : undefined;
 
@@ -263,7 +285,8 @@ async function reflogMovedPastHead(
       return entry.time;
     } catch (error) {
       // Exit 1: HEAD lacks it too, so the ref was already past HEAD then.
-      if (exitCode(error) !== 1) throw error;
+      // Another exit (an id whose object is gone): this entry says nothing.
+      if (exitCode(error) === undefined) throw error;
     }
   }
   return examined[examined.length - 1].time;
