@@ -723,6 +723,7 @@ describe('ConversationHistoryReadService', () => {
       threadId: current,
       createdAt: '2026-10-28T11:00:00.000Z',
       method: 'runtime.warning',
+      severity: 'warning',
       message: 'later',
     });
 
