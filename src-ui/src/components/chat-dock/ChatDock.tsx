@@ -21,6 +21,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -61,6 +62,7 @@ import { usePublishOpenerSelection } from '../../contexts/PaneRelationsContext';
 import { useProjects } from '../../contexts/ProjectsContext';
 import { useToast } from '../../contexts/ToastContext';
 import { UnsavedGuardOwnerContext } from '../../contexts/UnsavedGuardOwnerContext';
+import { useDismissPhoneLayer } from '../../contexts/useDismissPhoneLayer';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useWorkObservation } from '../../contexts/work-observation';
 import { registerFullscreenChatSurface } from '../../hooks/orchestration/chatForeground';
@@ -129,10 +131,6 @@ import {
 } from '../../views/home/useInboxWorkItems';
 import { useOptionalObservedWorkStatus } from '../../views/home/useObservedWorkStatus';
 import { useWorkFacts } from '../../views/home/useWorkFacts';
-import {
-  openWorkItem,
-  workItemOpenFailureMessage,
-} from '../../views/home/work-item-open-policy';
 import { workStatusText } from '../../views/home/work-status';
 import { durableMentionAuthority } from '../chat/composer-mentions';
 import { publishReferenceableConversations } from '../chat/conversationReferenceDrag';
@@ -337,6 +335,10 @@ const loadMobileTaskSwitcher = () =>
     default: module.MobileTaskSwitcher,
   }));
 
+const loadDockStartComposer = () =>
+  import('./DockStartComposer').then((module) => ({
+    default: module.DockStartComposer,
+  }));
 const loadChatDockModalStack = () =>
   import('./ChatDockModalStack').then((module) => ({
     default: module.ChatDockModalStack,
@@ -577,7 +579,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     setDockState,
     setProject,
     setLayout,
+    lastDockMaximized,
   } = useNavigation();
+  const dismissPhoneLayer = useDismissPhoneLayer();
   const showSurface = useShowSurface();
   // Placement, viewport and placement-commit are shell CHROME (station#4460)
   // — read from `chrome` (the shared ambient instance when docked, this
@@ -1069,6 +1073,32 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     setContextResetSource,
     contextBoundaryLabel,
   } = conversationBoundaryDialogs;
+  // New chat is a draft in this dock's body, so asking for one shows this
+  // dock: expanded when collapsed, and over a phone layer as focusing a chat
+  // is (`useChatDockActions.focusSession`). A full-screen placement is
+  // already showing.
+  const revealNewChatDraft = useEffectEvent(() => {
+    if (!showNewChatModal || isFullscreenPlacement) return;
+    dismissPhoneLayer();
+    if (!isDockOpen) setDockState(true, isMobile ? true : lastDockMaximized);
+  });
+  useEffect(() => {
+    if (newChatRequestEpoch > 0) revealNewChatDraft();
+  }, [newChatRequestEpoch]);
+  const closeNewChatDraft = useCallback(() => {
+    setShowNewChatModal(false);
+    setNewChatProjectOverride(null);
+    setHandoffSource(null);
+    cancelFork();
+  }, [setShowNewChatModal, setHandoffSource, cancelFork]);
+  // The draft shows in place of the chat on screen, so going to a chat (a
+  // tab, an inbox row, a shortcut, an opened conversation) leaves it: the
+  // request hears 'dismissed' with its text, as closing the dialog did.
+  const newChatDraftOpen = useRef(showNewChatModal);
+  newChatDraftOpen.current = showNewChatModal;
+  const leaveNewChatDraft = useCallback(() => {
+    if (newChatDraftOpen.current) closeNewChatDraft();
+  }, [closeNewChatDraft]);
   // station#4525: the dock header's project binding is DockShell-owned state
   // (`chrome.activeProjectSlug`), not a derivation of the active session's
   // own `projectSlug` — that derivation was the actual reset mechanism (see
@@ -1663,17 +1693,26 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     });
   const focusSessionInPane = useCallback(
     (sessionId: string) => {
+      leaveNewChatDraft();
       setImportedSessionId(null);
       focusSession(sessionId, !isFullscreenPlacement);
     },
-    [focusSession, isFullscreenPlacement, setImportedSessionId],
+    [
+      focusSession,
+      isFullscreenPlacement,
+      leaveNewChatDraft,
+      setImportedSessionId,
+    ],
   );
   const conversationSurfaceRef = useRef<HTMLDivElement>(null);
   // The session context card: beside the transcript while the dock itself has
   // room for both, behind a header chip otherwise. A phone never shows it
   // inline: a row of its Chat actions sheet opens the rows as a bottom sheet.
   const sessionContextAvailable = Boolean(
-    activeSession && !importedSessionId && !conversationOpenRecovery,
+    activeSession &&
+      !importedSessionId &&
+      !conversationOpenRecovery &&
+      !showNewChatModal,
   );
   const sessionContextCardVisible = useSessionContextCardFits(
     conversationSurfaceRef,
@@ -1774,11 +1813,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   );
   const openImportedSessionInPane = useCallback(
     (threadId: string) => {
+      leaveNewChatDraft();
       onOpenInboxSession(threadId);
       if (!isFullscreenPlacement && !isDockOpen)
         setDockState(true, isDockMaximized);
     },
     [
+      leaveNewChatDraft,
       onOpenInboxSession,
       isFullscreenPlacement,
       isDockOpen,
@@ -1935,10 +1976,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const openUserSelectedConversationInScopedPane = useCallback(
     async (...args: Parameters<typeof openConversationInScopedPane>) => {
       const opened = await openConversationInScopedPane(...args);
-      if (opened) setImportedSessionId(null);
+      if (opened) {
+        leaveNewChatDraft();
+        setImportedSessionId(null);
+      }
       return opened;
     },
-    [openConversationInScopedPane, setImportedSessionId],
+    [leaveNewChatDraft, openConversationInScopedPane, setImportedSessionId],
   );
   const openConversationForDock = useCallback(
     async (
@@ -3164,7 +3208,325 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         effectiveDockSlotPlacement === 'right'),
                   }}
                 >
-                  {conversationOpenRecovery && !importedSessionId ? (
+                  {showNewChatModal ? (
+                    <LazyBoundary
+                      key={newChatRequestEpoch}
+                      load={loadDockStartComposer}
+                      componentProps={{
+                        agents: forkEligibleAgents,
+                        projects:
+                          hasImmutableProjectScope && projectSlug
+                            ? projects.filter(
+                                (project) => project.slug === projectSlug,
+                              )
+                            : projects,
+                        // Use the project shown by this dock, including explicit No project.
+                        // A fork keeps its own source project.
+                        activeProjectSlug:
+                          resolveNewChatModalDefaultProjectSlug({
+                            forkProjectSlug: forkSource?.projectSlug,
+                            hasImmutableProjectScope,
+                            immutableProjectSlug: projectSlug,
+                            dockChromeProjectSlug,
+                            routeActiveProjectSlug,
+                          }),
+                        newChatProjectOverride,
+                        startWithDefault: newChatStartWithDefault,
+                        taskShaping: newChatTaskShaping,
+                        initialPrompt: newChatInitialPrompt,
+                        initialFiles: newChatInitialFiles,
+                        startSelection: newChatSelection,
+                        handoff: newChatHandoff,
+                        selectionInvalid: newChatSelectionInvalid,
+                        onDraftChange: reportNewChatDraft,
+                        projectBindable:
+                          !hasImmutableProjectScope && !forkSource,
+                        // A confirmed list only: an errored read must not resolve the
+                        // bound project to a guessed No project.
+                        projectsLoaded: projectsConfirmed,
+                        projectAccentBySlug,
+                        projectIconBySlug,
+                        onSelect: (
+                          agent,
+                          projectSlug,
+                          projectName,
+                          initialMessage,
+                          modelOverride,
+                          modelSource,
+                          defaultModel,
+                          defaultModelSource,
+                          providerOptions,
+                          providerId,
+                          providerType,
+                          experienceDraft,
+                          sendInitialMessage,
+                          executionAgentId,
+                          expectedDefinitionFingerprint,
+                          executionOnCurrentStation,
+                          initialFiles,
+                          ambientContext,
+                          approvalMode,
+                        ) => {
+                          // station#4525: an explicit project choice inside the New Chat
+                          // modal is exactly as deliberate as a picker pick (#4524's
+                          // acceptance names an explicit picker change or deletion as the
+                          // only things that may move the binding) — sync it so the
+                          // header agrees with the chat that's about to open instead of
+                          // the new session immediately diverging from a stale badge.
+                          if (
+                            executionAgentId &&
+                            !agents.some(
+                              (entry) =>
+                                entry.slug === executionAgentId &&
+                                entry.executionDefault,
+                            )
+                          )
+                            throw new Error(
+                              'The selected engine binding is unavailable. Choose an engine again.',
+                            );
+                          // Never CLEARS the binding: a modal chat started with no project
+                          // chosen leaves it exactly where it was.
+                          const sessionId = openChatForAgentInScopedPane(
+                            agent,
+                            projectSlug,
+                            projectName,
+                            initialMessage,
+                            modelOverride,
+                            modelSource,
+                            defaultModel,
+                            defaultModelSource,
+                            providerOptions,
+                            undefined,
+                            providerId,
+                            providerType,
+                            executionAgentId
+                              ? agents.find(
+                                  (entry) => entry.slug === executionAgentId,
+                                )
+                              : undefined,
+                            expectedDefinitionFingerprint,
+                            executionOnCurrentStation,
+                          );
+                          if (
+                            sessionId &&
+                            ambientContext?.includes(TASK_SHAPING_INSTRUCTION)
+                          )
+                            updateChat(sessionId, { taskShaping: true });
+                          // Before the first send is scheduled: that send carries a queued
+                          // pick to the server, which records it before the engine starts.
+                          if (sessionId && approvalMode)
+                            updateChat(sessionId, {
+                              queuedApprovalMode: approvalMode,
+                            });
+                          if (sessionId && experienceDraft)
+                            updateChat(sessionId, {
+                              skillExperienceDraft: experienceDraft,
+                              skillExperienceDraftInvalid: undefined,
+                              skillExperienceMode:
+                                experienceDraft.definition.presentation
+                                  .defaultMode,
+                            });
+                          const files = initialFiles?.length
+                            ? initialFiles
+                            : undefined;
+                          if (
+                            sessionId &&
+                            ((newChatStartWithDefault &&
+                              newChatInitialPrompt?.trim()) ||
+                              (sendInitialMessage && initialMessage?.trim()))
+                          ) {
+                            setPendingGoalSend({
+                              sessionId,
+                              prompt: (sendInitialMessage
+                                ? initialMessage
+                                : newChatInitialPrompt)!,
+                              authority: requestAuthority,
+                              ambientContext,
+                              files,
+                            });
+                          } else if (sessionId && files) {
+                            // Nothing to send yet (context or a visual skill): the files
+                            // still land in the new chat's composer, beside its draft.
+                            setPendingGoalSend({
+                              sessionId,
+                              authority: requestAuthority,
+                              ambientContext,
+                              files,
+                            });
+                          }
+                          if (!sessionId)
+                            throw new Error(
+                              'The chat could not be opened. Check the selected Agent and try again.',
+                            );
+                          navigate(pathname, { chat: sessionId });
+                          setShowNewChatModal(false, undefined, 'started');
+                          setNewChatProjectOverride(null);
+                          setHandoffSource(null);
+                        },
+                        forkMode: forkSource
+                          ? {
+                              kind: 'fork',
+                              preferredAgentSlug: forkSource.agentSlug,
+                              sourceModel: forkSource.model,
+                              pending: forkOperation.pending,
+                              error: forkOperation.error,
+                            }
+                          : undefined,
+                        onForkAgentSelect: async (
+                          agent,
+                          projectSlug,
+                          projectName,
+                          _initialMessage,
+                          modelOverride,
+                          modelSource,
+                          defaultModel,
+                          defaultModelSource,
+                          providerOptions,
+                          providerId,
+                          providerType,
+                        ) => {
+                          if (!forkSource || forkOperation.pending) return;
+                          const generation = ++forkGenerationRef.current;
+                          const controller = new AbortController();
+                          forkAbortRef.current = controller;
+                          setForkOperation({ pending: true, error: null });
+                          try {
+                            const sameAgent =
+                              agent.slug === forkSource.agentSlug;
+                            const { forkConversation } = await import(
+                              '@kontourai/station-sdk'
+                            );
+                            if (generation !== forkGenerationRef.current)
+                              return;
+                            const result = await forkConversation(
+                              forkSource.agentSlug,
+                              forkSource.id,
+                              agent.slug,
+                              {
+                                branchPointTurnId: forkSource.turnId,
+                                targetProjectSlug: projectSlug,
+                                idempotencyKey: forkSource.idempotencyKey,
+                                signal: controller.signal,
+                              },
+                            );
+                            if (generation !== forkGenerationRef.current)
+                              return;
+                            const { completeForkAttempt } = await import(
+                              './forkAttemptKey'
+                            );
+                            completeForkAttempt(
+                              forkSource.id,
+                              forkSource.turnId,
+                              forkSource.idempotencyKey,
+                            );
+                            const opened = await openConversation(
+                              result.conversationId,
+                              agent.slug,
+                              {
+                                projectSlug,
+                                projectName,
+                                model:
+                                  modelOverride ??
+                                  (sameAgent ? forkSource.model : undefined),
+                                requestedModel:
+                                  modelOverride ??
+                                  (sameAgent ? forkSource.model : undefined),
+                                modelSource:
+                                  modelSource ??
+                                  (sameAgent
+                                    ? forkSource.modelSource
+                                    : undefined),
+                                defaultModel:
+                                  defaultModel ??
+                                  (sameAgent
+                                    ? forkSource.defaultModel
+                                    : undefined),
+                                defaultModelSource:
+                                  defaultModelSource ??
+                                  (sameAgent
+                                    ? forkSource.defaultModelSource
+                                    : undefined),
+                                providerOptions:
+                                  providerOptions ??
+                                  (sameAgent
+                                    ? forkSource.providerOptions
+                                    : undefined),
+                                requestedProviderOptions:
+                                  providerOptions ??
+                                  (sameAgent
+                                    ? forkSource.providerOptions
+                                    : undefined),
+                                providerId:
+                                  providerId ??
+                                  (sameAgent
+                                    ? forkSource.providerId
+                                    : undefined),
+                                providerType:
+                                  providerType ??
+                                  (sameAgent
+                                    ? forkSource.providerType
+                                    : undefined),
+                                hydrateMessages: true,
+                                signal: controller.signal,
+                                revealDock: !isFullscreenPlacement,
+                                beforeFocus: () =>
+                                  commitForkOpenBoundary({
+                                    signal: controller.signal,
+                                    generation,
+                                    currentGeneration: () =>
+                                      forkGenerationRef.current,
+                                    route: () =>
+                                      routeToScopedChatProject(projectSlug),
+                                  }),
+                              },
+                            );
+                            if (generation !== forkGenerationRef.current)
+                              return;
+                            if (!opened)
+                              throw new Error(
+                                'The fork was created but could not be opened.',
+                              );
+                            invalidate(
+                              conversationQueries.inventory().queryKey,
+                            );
+                            invalidate(
+                              orchestrationQueries.sessions().queryKey,
+                            );
+                            cancelFork();
+                            setShowNewChatModal(false);
+                          } catch (error) {
+                            if (
+                              generation !== forkGenerationRef.current ||
+                              controller.signal.aborted
+                            )
+                              return;
+                            setForkOperation({
+                              pending: false,
+                              error:
+                                error instanceof Error
+                                  ? userFacingErrorMessage(error)
+                                  : 'Could not create the fork. Try again.',
+                            });
+                          } finally {
+                            if (forkAbortRef.current === controller)
+                              forkAbortRef.current = null;
+                          }
+                        },
+                        onTaskStarted: () => {
+                          setShowNewChatModal(false, undefined, 'started');
+                          setNewChatProjectOverride(null);
+                          setHandoffSource(null);
+                        },
+                        onClose: closeNewChatDraft,
+                      }}
+                      pending={
+                        <SkeletonBlock count={1} label="Opening New chat" />
+                      }
+                    />
+                  ) : null}
+                  {!showNewChatModal &&
+                  conversationOpenRecovery &&
+                  !importedSessionId ? (
                     <LazyBoundary
                       load={loadConversationOpenRecoveryNotice}
                       componentProps={{
@@ -3182,7 +3544,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       }
                     />
                   ) : null}
-                  {importedSessionId ? (
+                  {!showNewChatModal && importedSessionId ? (
                     <LazyBoundary
                       key={importedSessionId}
                       load={loadImportedConversationPane}
@@ -3206,7 +3568,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       pending={<SkeletonBlock count={1} label="Opening chat" />}
                     />
                   ) : null}
-                  {!conversationOpenRecovery && !importedSessionId ? (
+                  {!showNewChatModal &&
+                  !conversationOpenRecovery &&
+                  !importedSessionId ? (
                     <ChatDockContentArea
                       onNewChat={handleStartNewChatWithMessage}
                       onRetryConversationOpen={retryActiveConversationOpen}
@@ -3566,66 +3930,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             hasImmutableProjectScope && projectSlug
               ? projects.filter((project) => project.slug === projectSlug)
               : projects,
-          // Use the project shown by this dock, including explicit No project.
-          // A fork keeps its own source project.
-          activeProjectSlug: resolveNewChatModalDefaultProjectSlug({
-            forkProjectSlug: forkSource?.projectSlug,
-            hasImmutableProjectScope,
-            immutableProjectSlug: projectSlug,
-            dockChromeProjectSlug,
-            routeActiveProjectSlug,
-          }),
-          newChatProjectOverride,
           sessions,
-          showNewChatModal,
-          newChatRequestEpoch,
-          newChatStartWithDefault,
-          newChatTaskShaping,
-          newChatInitialPrompt,
-          newChatInitialFiles,
-          newChatSelection,
-          newChatHandoff,
-          newChatSelectionInvalid,
-          onNewChatDraftChange: reportNewChatDraft,
-          projectBindable: !hasImmutableProjectScope && !forkSource,
-          // A confirmed list only: an errored read must not resolve the
-          // bound project to a guessed No project.
-          projectsLoaded: projectsConfirmed,
-          projectAccentBySlug,
-          projectIconBySlug,
-          recentChats: {
-            items: taskItems,
-            pending: taskItemsPending,
-            error: taskItemsFailed,
-            workFacts,
-            onRetry: () => {
-              void refetchOrchestrationSessions();
-              void inventory.refetch();
-            },
-            onViewAll: () => {
-              setShowNewChatModal(false);
-              openInboxHistory();
-            },
-            onOpen: async (item) => {
-              try {
-                const outcome = await openWorkItem(item, {
-                  onFocusChat: focusSessionInPane,
-                  onOpenConversation: openUserSelectedConversationInScopedPane,
-                  onOpenSession: openImportedSessionInPane,
-                  agentsLoaded,
-                });
-                if (outcome === 'opened' || outcome === 'fallback') {
-                  acknowledgeTaskConversation(item);
-                  setShowNewChatModal(false);
-                } else
-                  showInboxOpenFailure(
-                    workItemOpenFailureMessage(item, outcome),
-                  );
-              } catch {
-                showInboxOpenFailure('Could not open this chat. Try again.');
-              }
-            },
-          },
           showChatSettings,
           showSessionPicker,
           chatFontSize,
@@ -3651,244 +3956,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   },
                 }
               : undefined,
-          onSelectNewChat: (
-            agent,
-            projectSlug,
-            projectName,
-            initialMessage,
-            modelOverride,
-            modelSource,
-            defaultModel,
-            defaultModelSource,
-            providerOptions,
-            providerId,
-            providerType,
-            experienceDraft,
-            sendInitialMessage,
-            executionAgentId,
-            expectedDefinitionFingerprint,
-            executionOnCurrentStation,
-            initialFiles,
-            ambientContext,
-            approvalMode,
-          ) => {
-            // station#4525: an explicit project choice inside the New Chat
-            // modal is exactly as deliberate as a picker pick (#4524's
-            // acceptance names an explicit picker change or deletion as the
-            // only things that may move the binding) — sync it so the
-            // header agrees with the chat that's about to open instead of
-            // the new session immediately diverging from a stale badge.
-            if (
-              executionAgentId &&
-              !agents.some(
-                (entry) =>
-                  entry.slug === executionAgentId && entry.executionDefault,
-              )
-            )
-              throw new Error(
-                'The selected engine binding is unavailable. Choose an engine again.',
-              );
-            // Never CLEARS the binding: a modal chat started with no project
-            // chosen leaves it exactly where it was.
-            const sessionId = openChatForAgentInScopedPane(
-              agent,
-              projectSlug,
-              projectName,
-              initialMessage,
-              modelOverride,
-              modelSource,
-              defaultModel,
-              defaultModelSource,
-              providerOptions,
-              undefined,
-              providerId,
-              providerType,
-              executionAgentId
-                ? agents.find((entry) => entry.slug === executionAgentId)
-                : undefined,
-              expectedDefinitionFingerprint,
-              executionOnCurrentStation,
-            );
-            if (sessionId && ambientContext?.includes(TASK_SHAPING_INSTRUCTION))
-              updateChat(sessionId, { taskShaping: true });
-            // Before the first send is scheduled: that send carries a queued
-            // pick to the server, which records it before the engine starts.
-            if (sessionId && approvalMode)
-              updateChat(sessionId, { queuedApprovalMode: approvalMode });
-            if (sessionId && experienceDraft)
-              updateChat(sessionId, {
-                skillExperienceDraft: experienceDraft,
-                skillExperienceDraftInvalid: undefined,
-                skillExperienceMode:
-                  experienceDraft.definition.presentation.defaultMode,
-              });
-            const files = initialFiles?.length ? initialFiles : undefined;
-            if (
-              sessionId &&
-              ((newChatStartWithDefault && newChatInitialPrompt?.trim()) ||
-                (sendInitialMessage && initialMessage?.trim()))
-            ) {
-              setPendingGoalSend({
-                sessionId,
-                prompt: (sendInitialMessage
-                  ? initialMessage
-                  : newChatInitialPrompt)!,
-                authority: requestAuthority,
-                ambientContext,
-                files,
-              });
-            } else if (sessionId && files) {
-              // Nothing to send yet (context or a visual skill): the files
-              // still land in the new chat's composer, beside its draft.
-              setPendingGoalSend({
-                sessionId,
-                authority: requestAuthority,
-                ambientContext,
-                files,
-              });
-            }
-            if (!sessionId)
-              throw new Error(
-                'The chat could not be opened. Check the selected Agent and try again.',
-              );
-            navigate(pathname, { chat: sessionId });
-            setShowNewChatModal(false, undefined, 'started');
-            setNewChatProjectOverride(null);
-            setHandoffSource(null);
-          },
-          forkSource,
-          forkMode: forkSource
-            ? {
-                kind: 'fork',
-                preferredAgentSlug: forkSource.agentSlug,
-                sourceModel: forkSource.model,
-                pending: forkOperation.pending,
-                error: forkOperation.error,
-              }
-            : undefined,
-          onForkAgentSelect: async (
-            agent,
-            projectSlug,
-            projectName,
-            _initialMessage,
-            modelOverride,
-            modelSource,
-            defaultModel,
-            defaultModelSource,
-            providerOptions,
-            providerId,
-            providerType,
-          ) => {
-            if (!forkSource || forkOperation.pending) return;
-            const generation = ++forkGenerationRef.current;
-            const controller = new AbortController();
-            forkAbortRef.current = controller;
-            setForkOperation({ pending: true, error: null });
-            try {
-              const sameAgent = agent.slug === forkSource.agentSlug;
-              const { forkConversation } = await import(
-                '@kontourai/station-sdk'
-              );
-              if (generation !== forkGenerationRef.current) return;
-              const result = await forkConversation(
-                forkSource.agentSlug,
-                forkSource.id,
-                agent.slug,
-                {
-                  branchPointTurnId: forkSource.turnId,
-                  targetProjectSlug: projectSlug,
-                  idempotencyKey: forkSource.idempotencyKey,
-                  signal: controller.signal,
-                },
-              );
-              if (generation !== forkGenerationRef.current) return;
-              const { completeForkAttempt } = await import('./forkAttemptKey');
-              completeForkAttempt(
-                forkSource.id,
-                forkSource.turnId,
-                forkSource.idempotencyKey,
-              );
-              const opened = await openConversation(
-                result.conversationId,
-                agent.slug,
-                {
-                  projectSlug,
-                  projectName,
-                  model:
-                    modelOverride ?? (sameAgent ? forkSource.model : undefined),
-                  requestedModel:
-                    modelOverride ?? (sameAgent ? forkSource.model : undefined),
-                  modelSource:
-                    modelSource ??
-                    (sameAgent ? forkSource.modelSource : undefined),
-                  defaultModel:
-                    defaultModel ??
-                    (sameAgent ? forkSource.defaultModel : undefined),
-                  defaultModelSource:
-                    defaultModelSource ??
-                    (sameAgent ? forkSource.defaultModelSource : undefined),
-                  providerOptions:
-                    providerOptions ??
-                    (sameAgent ? forkSource.providerOptions : undefined),
-                  requestedProviderOptions:
-                    providerOptions ??
-                    (sameAgent ? forkSource.providerOptions : undefined),
-                  providerId:
-                    providerId ??
-                    (sameAgent ? forkSource.providerId : undefined),
-                  providerType:
-                    providerType ??
-                    (sameAgent ? forkSource.providerType : undefined),
-                  hydrateMessages: true,
-                  signal: controller.signal,
-                  revealDock: !isFullscreenPlacement,
-                  beforeFocus: () =>
-                    commitForkOpenBoundary({
-                      signal: controller.signal,
-                      generation,
-                      currentGeneration: () => forkGenerationRef.current,
-                      route: () => routeToScopedChatProject(projectSlug),
-                    }),
-                },
-              );
-              if (generation !== forkGenerationRef.current) return;
-              if (!opened)
-                throw new Error(
-                  'The fork was created but could not be opened.',
-                );
-              invalidate(conversationQueries.inventory().queryKey);
-              invalidate(orchestrationQueries.sessions().queryKey);
-              cancelFork();
-              setShowNewChatModal(false);
-            } catch (error) {
-              if (
-                generation !== forkGenerationRef.current ||
-                controller.signal.aborted
-              )
-                return;
-              setForkOperation({
-                pending: false,
-                error:
-                  error instanceof Error
-                    ? userFacingErrorMessage(error)
-                    : 'Could not create the fork. Try again.',
-              });
-            } finally {
-              if (forkAbortRef.current === controller)
-                forkAbortRef.current = null;
-            }
-          },
-          onNewTaskStarted: () => {
-            setShowNewChatModal(false, undefined, 'started');
-            setNewChatProjectOverride(null);
-            setHandoffSource(null);
-          },
-          onCloseNewChat: () => {
-            setShowNewChatModal(false);
-            setNewChatProjectOverride(null);
-            setHandoffSource(null);
-            cancelFork();
-          },
           onCloseSettings: () => setShowChatSettings(() => false),
           // #3310: "Summarize chat" demoted out of the transcript — this
           // gear panel is the entry point; the card renders only once a

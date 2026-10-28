@@ -30,7 +30,6 @@ export function StartApprovalSummary({
   projectDefaultUnavailable = false,
   pick,
   onPick,
-  sheetLayer,
 }: {
   agent: AgentData;
   executionAgentId?: string;
@@ -41,8 +40,6 @@ export function StartApprovalSummary({
   /** This start's own pick, if one was made. */
   pick?: ApprovalMode;
   onPick?: (mode: ApprovalMode) => void;
-  /** The picker's layer; `dialog` inside a dialog. */
-  sheetLayer?: 'dialog' | 'popover';
 }) {
   const account = useAccountPreferences();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
@@ -146,7 +143,6 @@ export function StartApprovalSummary({
                 ? 'Only this chat'
                 : `From ${resolved.source === 'account default' ? 'your saved default' : resolved.source}`,
             isNewSession: true,
-            layer: sheetLayer,
           }}
           pending={null}
         />

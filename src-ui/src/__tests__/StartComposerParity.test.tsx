@@ -75,6 +75,10 @@ const state = vi.hoisted(() => ({
   runLocations: undefined as Record<string, unknown> | undefined,
   /** `GET /api/projects/:slug/chat-defaults`, by slug. */
   chatDefaults: {} as Record<string, unknown>,
+  /** What the device reports about this Station (its host name). */
+  device: undefined as { hostName?: string } | undefined,
+  /** `GET /api/environments/ssh`: saved Stations besides this one. */
+  environments: [] as unknown[],
 }));
 
 vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
@@ -86,11 +90,11 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   }),
 }));
 vi.mock('../hooks/useDevicePresentation', () => ({
-  useDevicePresentation: () => undefined,
+  useDevicePresentation: () => state.device,
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   useSshEnvironmentsQuery: () => ({
-    data: [],
+    data: state.environments,
     isSuccess: true,
     isError: false,
   }),
@@ -265,6 +269,8 @@ beforeEach(() => {
   state.agentConnections = [];
   state.runLocations = undefined;
   state.chatDefaults = {};
+  state.device = undefined;
+  state.environments = [];
   resetHeldHomeDraftsForTests();
 });
 // Every dock listener a test adds, removed even when the test fails, so a
@@ -330,7 +336,7 @@ function renderBoth(projectSlug?: string) {
     dockSelect,
     starts,
     home: () => within(screen.getByTestId('home')),
-    dock: () => screen.getByRole('dialog', { name: 'New chat' }),
+    dock: () => screen.getByRole('region', { name: 'New chat' }),
     cleanupListener: () =>
       window.removeEventListener('station:open-new-chat', listener),
   };
@@ -1706,7 +1712,7 @@ test("the dock's draft reports its text as it changes, so a dismissal can return
       />
     </AuthorityPersistenceContext.Provider>,
   );
-  const dock = screen.getByRole('dialog', { name: 'New chat' });
+  const dock = screen.getByRole('region', { name: 'New chat' });
   fireEvent.change(
     within(dock).getByRole('textbox', { name: 'What would you like done?' }),
     { target: { value: 'From Home, edited in the dock' } },
@@ -1714,6 +1720,85 @@ test("the dock's draft reports its text as it changes, so a dismissal can return
   expect(onDraftChange).toHaveBeenLastCalledWith(
     'From Home, edited in the dock',
   );
+});
+
+// The dock's New chat is a draft in the dock body, not a dialog over the
+// page: no title bar or hero, no recent chats, one quiet line naming where
+// Start runs, and the Project and Station controls in the chip row under the
+// text. Home keeps its start box with the hero above it.
+describe("the dock's New chat is a draft, not a dialog", () => {
+  test('the draft names its Project and Station; Home keeps its hero', async () => {
+    deviceSettingsStore.set('chatDockProjectSlug', 'station');
+    state.device = { hostName: 'Kontour' };
+    const ui = renderBoth();
+    const dock = ui.dock();
+    // A region the screen reader can find by name, and no dialog anywhere.
+    expect(dock.tagName).toBe('SECTION');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    // Derived: the bound Project's name, the device's own Station name.
+    expect(
+      await within(dock).findByText('Start a chat in Station on Kontour'),
+    ).toBeTruthy();
+    expect(
+      within(dock).queryByRole('heading', {
+        name: 'What would you like to do?',
+      }),
+    ).toBeNull();
+    expect(within(dock).queryByText('Continue working')).toBeNull();
+    expect(
+      within(dock).queryByRole('button', { name: 'Close new chat' }),
+    ).toBeNull();
+    // The Project control sits in the chip row with Agent, not above the box.
+    const chips = within(formOf(dock)).getByRole('group', {
+      name: 'Chat setup',
+    });
+    expect(within(chips).getByRole('button', { name: /^Project:/ })).toBe(
+      projectChip(dock),
+    );
+    // One Station: nothing to choose, so no Station control.
+    expect(
+      within(dock).queryByRole('button', { name: /^Run a task on a Station/ }),
+    ).toBeNull();
+
+    const home = screen.getByTestId('home');
+    expect(
+      within(home).getByRole('heading', { name: 'What would you like to do?' }),
+    ).toBeTruthy();
+    expect(
+      within(formOf(home))
+        .getByRole('group', { name: 'Chat setup' })
+        .contains(projectChip(home)),
+    ).toBe(false);
+  });
+
+  test('with no project the line uses the chip’s words; a second Station adds the Station control', async () => {
+    state.environments = [
+      {
+        profile: {
+          id: 'ssh-1',
+          environmentId: 'env-lab',
+          name: 'Lab box',
+          verifiedProjectPath: true,
+        },
+        state: { phase: 'connected' },
+      },
+    ];
+    const ui = renderBoth();
+    const dock = ui.dock();
+    expect(
+      await within(dock).findByText(
+        'Start a chat without a project on This Station',
+      ),
+    ).toBeTruthy();
+    const chips = within(formOf(dock)).getByRole('group', {
+      name: 'Chat setup',
+    });
+    expect(
+      within(chips).getByRole('button', {
+        name: 'Run a task on a Station; current Station: This Station',
+      }),
+    ).toBeTruthy();
+  });
 });
 
 // #3366 follow-up: the composer draws a project with `ProjectIcon` — the

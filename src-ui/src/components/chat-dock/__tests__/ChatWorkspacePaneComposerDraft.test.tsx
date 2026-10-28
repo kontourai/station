@@ -34,12 +34,17 @@ import { ConversationsProvider } from '../../../contexts/ConversationsContext';
 import { KeyboardShortcutsProvider } from '../../../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../../../contexts/NavigationContext';
 import { navigationStore } from '../../../contexts/navigation-store';
+import { openChatsStore } from '../../../contexts/open-chats-store';
 import {
   PaneRelationsProvider,
   type PaneRelationsValue,
   usePaneRelations,
 } from '../../../contexts/PaneRelationsContext';
-import { RegionModelProvider } from '../../../contexts/RegionModelContext';
+import {
+  RegionModelProvider,
+  type RegionModelValue,
+  useRegionModel,
+} from '../../../contexts/RegionModelContext';
 import { ToastProvider } from '../../../contexts/ToastContext';
 import { useShowSurface } from '../../../contexts/useShowSurface';
 import { deviceSettingsStore } from '../../../lib/device-settings-store';
@@ -121,7 +126,7 @@ vi.mock('../ChatDockMobileHeader', () => ({
 vi.mock('../../modals/NewChatModal', () => ({
   NewChatModal: (props: Record<string, any>) => {
     pickerProps.push(props);
-    return <div role="dialog" aria-label="New chat picker" />;
+    return <section aria-label="New chat picker" />;
   },
 }));
 vi.mock('../../../hooks/useActiveChatSessions', async (importOriginal) => ({
@@ -265,6 +270,12 @@ function renderDockedPane() {
   );
 }
 
+let regionModel: RegionModelValue | undefined;
+function CaptureRegionModel() {
+  regionModel = useRegionModel();
+  return null;
+}
+
 let relations: PaneRelationsValue | undefined;
 function CaptureRelations() {
   relations = usePaneRelations();
@@ -286,6 +297,7 @@ function renderInProviders(pane: ReactNode) {
                   <PaneRelationsProvider>
                     <CaptureShowSurface />
                     <CaptureRelations />
+                    <CaptureRegionModel />
                     {pane}
                   </PaneRelationsProvider>
                 </RegionModelProvider>
@@ -312,7 +324,7 @@ test('a fullscreen pane for the requested Project opens its picker with the draf
   });
   expect(claimed).toBe(true);
 
-  await screen.findByRole('dialog', { name: 'New chat picker' });
+  await screen.findByRole('region', { name: 'New chat picker' });
   const props = pickerProps.at(-1)!;
   expect(props.activeProjectSlug).toBe('pulse');
   expect(props.draftContext?.items[0].messageLine).toBe(draft.message);
@@ -355,7 +367,7 @@ test('a fullscreen pane bound to another Project leaves the draft alone', async 
       composerDraft: { ...draft, detail: 'own project' },
     });
   });
-  await screen.findByRole('dialog', { name: 'New chat picker' });
+  await screen.findByRole('region', { name: 'New chat picker' });
   const before = pickerProps.length;
 
   let claimed = true;
@@ -371,7 +383,7 @@ test('a fullscreen pane bound to another Project leaves the draft alone', async 
   // Every picker open bumps its request epoch and remounts it, so a pane
   // that wrongly took this request would have unmounted the open picker by
   // now. It is still the same mounted picker.
-  expect(screen.getByRole('dialog', { name: 'New chat picker' })).toBeTruthy();
+  expect(screen.getByRole('region', { name: 'New chat picker' })).toBeTruthy();
   // Whatever re-rendered, the picker still offers this pane's own Project
   // and draft; the request for `pulse` was left for another pane.
   for (const props of pickerProps.slice(before)) {
@@ -556,7 +568,7 @@ test('switching Project rebinds the dock and opens no New Chat picker (archive#4
 
   expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('other');
   expect(screen.getByRole('button', { name: 'New chats: Other' })).toBeTruthy();
-  expect(screen.queryByRole('dialog', { name: 'New chat picker' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'New chat picker' })).toBeNull();
   expect(pickerProps).toHaveLength(0);
   expect(createChatSession).not.toHaveBeenCalled();
 });
@@ -568,7 +580,7 @@ test('the docked New chat button opens a draft in the bound Project with one rea
   await act(async () => {});
 
   fireEvent.click(screen.getByTitle('New chat (Ctrl+T)'));
-  await screen.findByRole('dialog', { name: 'New chat picker' });
+  await screen.findByRole('region', { name: 'New chat picker' });
   expect(pickerProps.at(-1)!.activeProjectSlug).toBe('pulse');
   expect(pickerProps.at(-1)!.startSurface).toBe(true);
   expect(createChatSession).not.toHaveBeenCalled();
@@ -583,7 +595,7 @@ test('the dock reads run locations only while the start composer is open, and ha
   expect(runLocationReads).toEqual([]);
 
   fireEvent.click(screen.getByTitle('New chat (Ctrl+T)'));
-  await screen.findByRole('dialog', { name: 'New chat picker' });
+  await screen.findByRole('region', { name: 'New chat picker' });
 
   expect(runLocationReads.length).toBeGreaterThan(0);
   expect(pickerProps.at(-1)!.projectRunLocations).toEqual(RUN_LOCATIONS);
@@ -596,7 +608,7 @@ test('the dock hands the start composer the sidebar’s project icons', async ()
   await act(async () => {});
 
   fireEvent.click(screen.getByTitle('New chat (Ctrl+T)'));
-  await screen.findByRole('dialog', { name: 'New chat picker' });
+  await screen.findByRole('region', { name: 'New chat picker' });
   const icons = pickerProps.at(-1)!.projectIconBySlug as ReadonlyMap<
     string,
     string
@@ -618,7 +630,7 @@ test('the docked New Chat picker defaults to the dock’s bound Project', async 
 
   // New chat retains the bound Project with multiple Agents too.
   fireEvent.click(screen.getByTitle('New chat (Ctrl+T)'));
-  await screen.findByRole('dialog', { name: 'New chat picker' });
+  await screen.findByRole('region', { name: 'New chat picker' });
   expect(pickerProps.at(-1)!.activeProjectSlug).toBe('pulse');
   expect(createChatSession).not.toHaveBeenCalled();
 });
@@ -665,14 +677,14 @@ test('a project-scoped pane leaves Home intents to the ambient dock and says it 
     });
     expect(accepted).toBe(false);
   }
-  expect(screen.queryByRole('dialog', { name: 'New chat picker' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'New chat picker' })).toBeNull();
   // An ordinary open is still its own.
   let accepted = false;
   act(() => {
     accepted = dispatchNewChatIntent({});
   });
   expect(accepted).toBe(true);
-  await screen.findByRole('dialog', { name: 'New chat picker' });
+  await screen.findByRole('region', { name: 'New chat picker' });
 });
 
 test("the ambient dock takes Home's hand-off and reports how it ended", async () => {
@@ -688,7 +700,7 @@ test("the ambient dock takes Home's hand-off and reports how it ended", async ()
     });
   });
   expect(accepted).toBe(true);
-  await screen.findByRole('dialog', { name: 'New chat picker' });
+  await screen.findByRole('region', { name: 'New chat picker' });
   const props = pickerProps.at(-1)!;
   expect(props.initialPrompt).toBe('Keep me');
   expect(props.handoff).toEqual({
@@ -762,7 +774,7 @@ test("a dismissed hand-off returns the dock's edited draft", async () => {
       onClosed,
     });
   });
-  await screen.findByRole('dialog', { name: 'New chat picker' });
+  await screen.findByRole('region', { name: 'New chat picker' });
   act(() => pickerProps.at(-1)!.onDraftChange('First words, then more'));
   act(() => pickerProps.at(-1)!.onClose());
   expect(onClosed).toHaveBeenCalledExactlyOnceWith(
@@ -785,7 +797,7 @@ test('a Personal Board draft opens one projectless chat picker and stays unsent 
     });
   });
   expect(claimed).toBe(true);
-  await screen.findByRole('dialog', { name: 'New chat picker' });
+  await screen.findByRole('region', { name: 'New chat picker' });
   const props = pickerProps.at(-1)!;
   expect(props.activeProjectSlug).toBeNull();
   expect(props.draftContext.items[0].messageLine).toBe(
@@ -836,4 +848,40 @@ test('the docked pane publishes the conversation it shows, and follows the selec
       'conversation:conversation-b',
     ),
   );
+});
+
+// New chat is a draft in the dock's own body, in place of the chat on
+// screen, not a dialog stacked over the page: a collapsed dock opens to show
+// it, and going to a chat leaves it (the request hears 'dismissed').
+test('New chat opens as a draft in the dock body, expanding a collapsed dock; focusing a chat leaves it', async () => {
+  dockProbe.sessions = [chatSession('chat-a')];
+  navigationStore.navigate('/', { chat: 'chat-a' });
+  renderDockedPane();
+  await act(async () => {});
+  expect(screen.getByTestId('active-chat-body')).toBeTruthy();
+  // Collapse it. The region model owns visibility; navigation mirrors it.
+  act(() => regionModel!.setRegion('bottom', { visible: false }));
+  expect(regionModel!.regions.bottom.visible).toBe(false);
+
+  const onClosed = vi.fn();
+  act(() => {
+    dispatchNewChatIntent({ initialPrompt: 'Draft words', onClosed });
+  });
+  const draft = await screen.findByRole('region', { name: 'New chat picker' });
+  // In the dock's conversation surface, where the transcript was.
+  await waitFor(() => expect(regionModel!.regions.bottom.visible).toBe(true));
+  expect(draft.closest('.chat-dock__conversation-surface')).not.toBeNull();
+  expect(screen.queryByTestId('active-chat-body')).toBeNull();
+  expect(pickerProps.at(-1)!.initialPrompt).toBe('Draft words');
+
+  act(() => {
+    openChatsStore.focus({ sessionId: 'chat-a' });
+  });
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('region', { name: 'New chat picker' }),
+    ).toBeNull(),
+  );
+  expect(onClosed).toHaveBeenCalledExactlyOnceWith('dismissed', undefined);
+  expect(screen.getByTestId('active-chat-body')).toBeTruthy();
 });

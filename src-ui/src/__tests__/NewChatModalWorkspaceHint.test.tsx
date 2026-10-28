@@ -44,6 +44,10 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  // The Station list behind the draft's "on <Station>" line: no saved or
+  // paired Stations, so only this one.
+  useSshEnvironmentsQuery: () => ({ isSuccess: false, isError: false }),
+  usePeerCredentialsQuery: () => ({ isSuccess: false, isError: false }),
   useSkillExperienceInventoryQuery: () => ({
     data: { experiences: [], diagnostics: [] },
     refetch: vi.fn(),

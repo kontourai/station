@@ -105,11 +105,26 @@ chat now stays in Home/the dock; Project Room speech is shared discussion and
 only an explicit Agent request starts Agent work. Files & connections contains
 source and workspace controls, with specialist management still in Settings.
 
-New chat opens the shared start composer in Home or the chat dock. The Project
-page opens on Overview and keeps its shared Project Room separate from direct
-Agent conversations. Project and Station controls sit above the text box;
-separate Agent and Engine & model controls sit inside it beside Start and the overflow
-for visual skills. The Agent list retains each Agent's repair action: a row that cannot start is
+Home and the chat dock share one start composer (`StartComposer`, driven in
+the dock by `NewChatModal`). On Home it sits under **What would you like to
+do?** with the Project and Station controls above the text box. **New chat** is
+not a dialog: it opens a draft in the chat dock's body, in place of the chat on
+screen, and expands a collapsed dock. The draft reads like an empty chat in any
+dock region or placement (full screen on a phone): one quiet line, **Start a
+chat in <Project> on <Station>**, then the composer where a reply composer
+sits. The line uses the Project chip's own words (**without a project** for No
+project) and the name of the Station the Agent chip runs on, from the same
+Station list as the Model picker (`useStationChoices`; this Station is its
+device host name, else **This Station**). The draft has no title bar, close
+button, hero or recent-chats list. Its Project control and, only when there is
+more than one Station, its **Run a task…** control join the chip row under the
+text beside the Agent, Model and Permissions chips. Setup, repair and read
+errors render in the draft body. New Task keeps its **Shaping a Task** chip and
+the fork keeps its replay disclosure and **Cancel fork**. Escape, focusing a
+chat, or opening a conversation leaves the draft and reports it dismissed.
+The Project page opens on Overview and keeps its shared Project Room separate
+from direct Agent conversations. Separate Agent and Engine & model controls sit
+inside the composer beside Start and the overflow for visual skills. The Agent list retains each Agent's repair action: a row that cannot start is
 dimmed and disabled with its one fixing button, and shows a state badge only
 when it has no fix of its own; a ready row shows none. Custom Agents keep a
 short purpose. The engine that runs an Agent
@@ -583,7 +598,8 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 - Startup permissions show the requested mode and source before Start, and the
   chip opens the same approval picker as a running chat (full access still
   takes its confirmation); the pick is the new chat's own and rides its first
-  send. Inside the dock's New chat dialog the picker opens on the dialog layer.
+  send. In the dock's New chat draft the picker opens on the popover layer, as
+  on Home.
   The running chip shows engine-confirmed values or a pending/restart state. Personal defaults
   apply to new interactive chats; saving a future default is explicit.
 - Agent, Model, and approval mode share control geometry and chevrons. Values size

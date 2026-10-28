@@ -259,7 +259,7 @@ function seedRoutes(
 /** The dock's start composer (the New chat dialog's one form). */
 function startComposer(page: import('@playwright/test').Page) {
   return page
-    .getByRole('dialog', { name: 'New chat', exact: true })
+    .getByRole('region', { name: 'New chat', exact: true })
     .getByRole('form', { name: 'Start work' });
 }
 
@@ -303,7 +303,7 @@ async function openNewChatForViewport(page: Page) {
     .first()
     .click();
   await expect(
-    page.getByRole('dialog', { name: 'New chat', exact: true }),
+    page.getByRole('region', { name: 'New chat', exact: true }),
   ).toBeVisible({
     timeout: 15_000,
   });
@@ -378,7 +378,7 @@ test('provider-managed project ignores a stale unsupported project model even wh
   ).toBeVisible();
   // The stale unsupported project Model is ignored: no "not reported" and no
   // "runtime chooses" fallbacks anywhere in the draft.
-  const dialog = page.getByRole('dialog', { name: 'New chat', exact: true });
+  const dialog = page.getByRole('region', { name: 'New chat', exact: true });
   for (const surface of [dialog, agents]) {
     await expect(surface).not.toContainText('Model not reported');
     await expect(surface).not.toContainText('Runtime chooses model');
@@ -664,16 +664,11 @@ test('new chat preserves context, search, keyboard, pointer, and close interacti
     startComposer(page).getByRole('button', { name: /^Agent: Station/ }),
   ).toBeVisible();
 
-  // Close: Escape in the draft, and a click outside it.
+  // Close: Escape in the draft. It sits in the dock body, so there is no
+  // outside overlay to click.
   await startComposer(page)
     .getByRole('textbox', { name: 'What would you like done?' })
     .press('Escape');
-  await expect(page.locator('.new-chat-modal')).toHaveCount(0);
-
-  await openModal();
-  await page
-    .locator('.new-chat-modal__overlay')
-    .click({ position: { x: 4, y: 4 } });
   await expect(page.locator('.new-chat-modal')).toHaveCount(0);
 });
 
@@ -848,25 +843,16 @@ test('new chat remains touch-usable and scrollable at 390x844', async ({
       }
     ).__setTestVisualViewport(480, 12),
   );
-  await expect
-    .poll(() =>
-      page.locator('.new-chat-modal__overlay').evaluate((element) => ({
-        height: element.getBoundingClientRect().height,
-        top: element.getBoundingClientRect().top,
-      })),
-    )
-    .toEqual({ height: 480, top: 12 });
-
-  const modal = page.locator('.new-chat-modal');
-  // The draft's own targets: both chips and Close (#3362: the start
-  // composer replaced the inline list).
+  // The draft's own targets: both chips and Start, the composer pinned at
+  // the bottom of the dock body (#3362: the start composer replaced the
+  // inline list).
   const projectChip = startComposer(page).getByRole('button', {
     name: /^Project: /,
   });
   const agentChip = startComposer(page).getByRole('button', {
     name: /^Agent:/,
   });
-  const close = modal.getByRole('button', { name: 'Close new chat' });
+  const start = startComposer(page).getByRole('button', { name: 'Start' });
   // No keyboard is summoned on a phone before the person asks to type.
   await expect(
     startComposer(page).getByRole('textbox', {
@@ -874,16 +860,16 @@ test('new chat remains touch-usable and scrollable at 390x844', async ({
     }),
   ).not.toBeFocused();
   const dimensions = await Promise.all(
-    [projectChip, agentChip, close].map((locator) => locator.boundingBox()),
+    [projectChip, agentChip, start].map((locator) => locator.boundingBox()),
   );
   for (const box of dimensions) {
     expect(box).not.toBeNull();
     expect(box!.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     expect(box!.width).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
   }
-  const closeBox = dimensions[2]!;
-  expect(closeBox.y).toBeGreaterThanOrEqual(12);
-  expect(closeBox.y + closeBox.height).toBeLessThanOrEqual(492);
+  const startBox = dimensions[2]!;
+  expect(startBox.y).toBeGreaterThanOrEqual(12);
+  expect(startBox.y + startBox.height).toBeLessThanOrEqual(492);
 
   // The draft stays inside the visual viewport and the page does not
   // overflow, before and after the Agent list opens.
@@ -935,8 +921,11 @@ test('new chat remains touch-usable and scrollable at 390x844', async ({
   await agents.getByRole('button', { name: 'Close agent list' }).click();
   await expect(agents).toHaveCount(0);
 
-  await close.click();
-  await expect(modal).toHaveCount(0);
+  // Escape dismisses the draft (a phone leaves it for a chat instead).
+  await startComposer(page)
+    .getByRole('textbox', { name: 'What would you like done?' })
+    .press('Escape');
+  await expect(page.locator('.new-chat-modal')).toHaveCount(0);
 });
 
 test('OpenCode chooses its model where the chat starts, and says it is fixed after, at 390x844', async ({

@@ -16,13 +16,22 @@ import {
 } from '../utils/peerEnvironmentOptions';
 import { useDevicePresentation } from './useDevicePresentation';
 
-export function useExecutionStationCatalog(
-  profile: AgentData,
-  environmentId: string,
-) {
+/** This Station's name as the start controls show it. */
+export function currentStationName(
+  device: ReturnType<typeof useDevicePresentation>,
+): string {
+  return device?.hostName ?? 'This Station';
+}
+
+/**
+ * The Stations a start can run on: this one first, then saved environments
+ * and paired peers. The Model picker's Station list and the dock draft's
+ * "on <Station>" line and Station control read this one list.
+ */
+export function useStationChoices({ enabled: wanted = true } = {}) {
   const scope = useHostRequestAuthorityScope();
   const device = useDevicePresentation();
-  const enabled = Boolean(scope?.isCurrent());
+  const enabled = wanted && Boolean(scope?.isCurrent());
   const environments = useSshEnvironmentsQuery({ enabled });
   const peers = usePeerCredentialsQuery({ enabled });
   const saved = environments.isSuccess ? (environments.data ?? []) : [];
@@ -30,7 +39,7 @@ export function useExecutionStationCatalog(
     ? selectablePeerStations(peers.data, saved)
     : [];
   const stations = [
-    { id: 'current', name: device?.hostName ?? 'This Station' },
+    { id: 'current', name: currentStationName(device) },
     ...saved.flatMap((entry) =>
       entry.profile.environmentId
         ? [{ id: entry.profile.environmentId, name: entry.profile.name }]
@@ -41,6 +50,22 @@ export function useExecutionStationCatalog(
       name: peerStationLabel(entry),
     })),
   ];
+  return {
+    stations,
+    nameFor: (environmentId: string) =>
+      stations.find((entry) => entry.id === environmentId)?.name ??
+      'Selected Station',
+    stationsUnavailable: environments.isError || peers.isError,
+  };
+}
+
+export function useExecutionStationCatalog(
+  profile: AgentData,
+  environmentId: string,
+) {
+  const scope = useHostRequestAuthorityScope();
+  const enabled = Boolean(scope?.isCurrent());
+  const { stations, nameFor, stationsUnavailable } = useStationChoices();
   const query = useQuery({
     queryKey: [
       'execution-station-catalog',
@@ -75,9 +100,7 @@ export function useExecutionStationCatalog(
           entry.definitionFingerprint === profile.definitionFingerprint,
       )
     : undefined;
-  const stationName =
-    stations.find((entry) => entry.id === environmentId)?.name ??
-    'Selected Station';
+  const stationName = nameFor(environmentId);
   const models: SelectableModel[] = counterpart
     ? catalog!.targets.flatMap((binding) => {
         if (!binding.executionDefault) return [];
@@ -119,6 +142,6 @@ export function useExecutionStationCatalog(
     error: query.error,
     unmatched: environmentId !== 'current' && sameEnvironment && !counterpart,
     stationName,
-    stationsUnavailable: environments.isError || peers.isError,
+    stationsUnavailable,
   };
 }

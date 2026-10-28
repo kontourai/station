@@ -451,9 +451,13 @@ Choose the simplest path for what you want to do:
 
 ## Start Your First Chat
 
-Home and the chat dock use the same start composer. Write
-what you want done and choose **Start**. You do not need to choose anything
-first; the controls show what **Start** will use:
+Home and the chat dock use the same start composer. On Home it sits under
+**What would you like to do?**. **New chat** opens it in the chat dock as a
+draft, like an empty chat: the dock opens if it was collapsed, a quiet line
+names where the chat will start (for example **Start a chat in Pulse on
+Kontour**), and the composer sits where a reply would. Write what you want done
+and choose **Start**. You do not need to choose anything first; the controls
+show what **Start** will use:
 
 - The **Agent** chip shows the Agent's icon and name. Open it to
   list **Station**, **Coding apps**, and **My agents**, with readiness and setup
@@ -468,7 +472,8 @@ first; the controls show what **Start** will use:
   returns to, such as **Use project default** for a model-only choice or
   **Use Agent defaults** for an engine override. In an existing conversation,
   changing or resetting the engine opens a handoff confirmation that keeps your draft.
-- The **project** control above the message shows the Project's icon (or
+- The **project** control (above the message on Home, beside the Agent chip
+  in the dock) shows the Project's icon (or
   its colour when none is displayable) and name, or **Without a project**.
   Open it to choose a project. The list shows each project's folder and the
   folder this chat will run in. For a linked checkout, that is its resolved
@@ -480,7 +485,8 @@ first; the controls show what **Start** will use:
   Station makes for the chat; the chip and list say which.
 - **⋯** holds **Use a visual skill**.
 
-**Run a task…** opens **Run on a Station** with your message, Project and any explicit
+In the dock, **Run a task…** appears only when there is more than one Station
+to choose from. **Run a task…** opens **Run on a Station** with your message, Project and any explicit
 Station/engine/model/options choice kept. Its tooltip names the current Station
 or saved Project default; this action starts a task rather than moving your chat.
 Choose a Station, worker and model there, then choose **Run task** to start a
@@ -598,11 +604,11 @@ current layout default or Station’s runnable suggestion. A remembered Agent
 needing repair stays visible with its setup action; a removed choice asks you
 to choose another.
 
-**Continue working** shows up to five recent chats from the selected workspace,
-using the inbox’s status and details. Choose one to resume it, or **View all**
-to open the chat inventory. Loading and failed reads are shown separately from
-an empty list. **Take the tour** and **Connect another device** are optional alternatives.
-Both save the same selected answers before opening their next step.
+Leaving the draft for another chat, or pressing Escape in it, discards it. To
+resume earlier work, choose it in the dock’s chat list.
+
+At the end of first-run setup, **Take the tour** and **Connect another device**
+are optional alternatives to **Start your first chat**. Both save the same selected answers before opening their next step.
 
 On a phone, use the compose button at the right of the chat bar, or tap the
 current chat title to open **Chats and tasks** and choose **New chat** at the

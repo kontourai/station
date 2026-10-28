@@ -181,6 +181,22 @@ vi.mock('@kontourai/station-sdk', () => ({
   useConnectAndMaterializeEngineMutation: () => ({ mutateAsync: connectMock }),
 }));
 
+// The Station list is the SDK's environment and peer reads, which this file
+// stands in for wholesale: this Station and one paired peer, so the Station
+// control (shown only with a choice of Stations) is offered.
+vi.mock('../hooks/useExecutionStationCatalog', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useStationChoices: () => ({
+    stations: [
+      { id: 'current', name: 'This Station' },
+      { id: 'peer-kontour', name: 'Kontour' },
+    ],
+    nameFor: (id: string) =>
+      id === 'peer-kontour' ? 'Kontour' : 'This Station',
+    stationsUnavailable: false,
+  }),
+}));
+
 vi.mock('../hooks/useNewChatSelectionModel', () => ({
   useNewChatSelectionModel: () => ({
     viewModel: {
@@ -238,7 +254,7 @@ const { buildCodingChatInitialMessage } = await import(
   '../components/coding-layout/chatContextDraft'
 );
 const { composerDraftContext } = await import(
-  '../components/chat-dock/ChatDockModalStack'
+  '../components/chat-dock/DockStartComposer'
 );
 const { pluginAuthoringComposerDraft } = await import(
   '../views/plugin-management/plugin-authoring-primer'
@@ -376,7 +392,7 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
     selectionModelState.agents = [AUTHORED_CODEX, AGENT];
     renderForkModal();
 
-    expect(screen.getByRole('dialog', { name: 'Fork from here' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Fork from here' })).toBeTruthy();
     expect(screen.getByRole('note').textContent).toMatch(
       /new independent conversation.*engine cursor.*tool state.*approval state do not carry/i,
     );
@@ -1114,7 +1130,10 @@ describe('intent-first preparation', () => {
       />,
     );
     await waitFor(() => expect(materializeMock).toHaveBeenCalledOnce());
-    fireEvent.click(screen.getByRole('button', { name: 'Close new chat' }));
+    // The draft has no close button: Escape (or leaving for a chat) dismisses.
+    fireEvent.keyDown(screen.getByRole('region', { name: 'New chat' }), {
+      key: 'Escape',
+    });
     await act(async () => complete?.({ data: AUTHORED_CODEX }));
     expect(onClose).toHaveBeenCalledOnce();
     expect(onSelect).not.toHaveBeenCalled();
@@ -1915,7 +1934,8 @@ test('New Task start surface retains its label and Escape closes it', () => {
     />,
   );
   expect(screen.getByRole('region', { name: 'New Task' })).toBeTruthy();
-  expect(screen.getByRole('heading', { name: 'Shape a Task' })).toBeTruthy();
+  // No title bar: the draft's own line names what Start will do.
+  expect(screen.getByText(/^Shape a Task without a project on /)).toBeTruthy();
   fireEvent.keyDown(screen.getByPlaceholderText('Describe the idea…'), {
     key: 'Escape',
   });

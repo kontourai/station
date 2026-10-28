@@ -35,11 +35,6 @@
   align-items: center;
   gap: var(--k-space-2);
 }
-.chat-start__recent ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
 .chat-start__recent-heading h4 {
   margin-block: var(--k-space-3);
 }
@@ -48,4 +43,33 @@
 }
 .chat-start__body p {
   color: var(--k-text-muted);
+}
+
+/* The dock's New chat draft reads like an empty chat: a quiet line centred
+   in the body, setup and errors under it, and the start composer pinned
+   where a reply composer sits. */
+.new-chat-draft__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--k-space-3);
+}
+.new-chat-draft__lead {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--k-space-2);
+  /* Centred while the body has room; scrolls with it when setup fills it. */
+  margin-block: auto;
+  text-align: center;
+}
+.chat-start__body .new-chat-draft__lead p {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.new-chat-modal > .start-composer {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  padding: 0 var(--k-space-3) max(var(--k-space-3), var(--safe-bottom, 0px));
 }

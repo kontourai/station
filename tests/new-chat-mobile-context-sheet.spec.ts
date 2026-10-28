@@ -347,7 +347,7 @@ test.describe('New chat start sheet scroll regions (390x560)', () => {
     const header = modal.locator('.new-chat-modal__header');
     const body = modal.locator('.chat-start__body');
     await expect(body).toBeVisible();
-    await settleSheetEntrance(page.getByRole('dialog', { name: 'New chat' }));
+    await settleSheetEntrance(page.getByRole('region', { name: 'New chat' }));
 
     const metrics = (locator: Locator) =>
       locator.evaluate((el) => ({

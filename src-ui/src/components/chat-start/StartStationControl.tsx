@@ -3,6 +3,7 @@ import type { DelegatedTaskHandle } from '@kontourai/station-sdk';
 import { lazy, Suspense, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
+import { currentStationName } from '../../hooks/useExecutionStationCatalog';
 import { ArrowDownGlyph } from '../icons/Glyph';
 import { SkeletonList } from '../state';
 
@@ -53,7 +54,7 @@ export function StartStationControl({
       ? 'Selected Station'
       : !environmentId && defaultEnvironment?.kind === 'saved'
         ? 'Project default'
-        : (device?.hostName ?? 'This Station');
+        : currentStationName(device);
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const close = () => {

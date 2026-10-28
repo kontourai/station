@@ -51,6 +51,10 @@ vi.mock('../contexts/AuthorityPersistenceContext', () => ({
   }),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  // The Station list behind the draft's "on <Station>" line: no saved or
+  // paired Stations, so only this one.
+  useSshEnvironmentsQuery: () => ({ isSuccess: false, isError: false }),
+  usePeerCredentialsQuery: () => ({ isSuccess: false, isError: false }),
   useAgentsQuery: () => ({ data: [] }),
   useConfigQuery: () => ({ data: {}, dataUpdatedAt: 1, refetch: vi.fn() }),
   useSkillExperienceInventoryQuery: () => ({

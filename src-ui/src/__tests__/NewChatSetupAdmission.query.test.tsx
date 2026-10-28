@@ -215,7 +215,7 @@ test('real SDK observers cannot admit stale ready rows when notifications lag fa
   vi.useFakeTimers();
   stage = 'offline';
   fireEvent.click(screen.getByRole('button', { name: 'Return to New Chat' }));
-  expect(screen.queryByRole('dialog', { name: 'New Chat' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'New Chat' })).toBeNull();
   await act(async () => {
     await vi.advanceTimersByTimeAsync(15_000);
   });
