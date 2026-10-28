@@ -829,7 +829,11 @@ export function isEngineMemoryExhaustedFailure(failure: {
 export function lastRuntimeError<T extends { readonly method?: unknown }>(
   events: readonly T[],
 ): T | undefined {
-  return events.findLast((event) => event.method === 'runtime.error');
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event?.method === 'runtime.error') return event;
+  }
+  return undefined;
 }
 
 /**
