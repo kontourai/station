@@ -54,7 +54,7 @@ export function buildProjectSavePayload(
     defaultApprovalMode:
       defaultApprovalMode === 'inherit' ? null : defaultApprovalMode,
     defaultEnvironment: defaultEnvironment ?? { kind: 'current' as const },
-    workingDirectory: workingDirectory || undefined,
+    workingDirectory: workingDirectory ?? form.workingDirectory ?? '',
     agents: form.agents ?? null,
     defaultAgent: form.defaultAgent ?? null,
   };
