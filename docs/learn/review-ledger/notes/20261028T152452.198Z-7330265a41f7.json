@@ -1,0 +1,7 @@
+{
+  "revision": "30473c42aa6f1907bb8c997804719a21276b3536",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Wrote 'Integrations from MCP subregistries' and 'Tools after untrusted content' against mcp-subregistry-provider.ts, registryCatalogModel/RegistryMcpServerFacts UI copy, curated snapshot and agent-hooks/pre-tool-policy; live check on an isolated instance: Add then Connect your account reached Linear/Notion/Atlassian authorization pages via DCR. Existing OAuth MCP section unchanged.","inputs":["docs/guides/connections.md","src-server/runtime/agents/pre-tool-policy.ts"]}
+  ]
+}
