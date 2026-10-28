@@ -1,4 +1,7 @@
-import type { ChildWorkItem } from '@kontourai/station-contracts/child-work';
+import {
+  CHILD_WORK_ITEMS_MAX_PER_REPORTER,
+  type ChildWorkItem,
+} from '@kontourai/station-contracts/child-work';
 import type {
   ConversationTurnActivity,
   OrchestrationConversationStreamBinding,
@@ -104,6 +107,15 @@ interface ThreadActivity {
   asOfSequence: number;
 }
 
+interface WarmActivityScope {
+  children: Map<string, string[]>;
+  threads: Map<
+    string,
+    { conversationId: string; state: ThreadActivity; sequence: number }
+  >;
+  failed: boolean;
+}
+
 export interface ConversationTurnActivityProjectionDeps {
   eventStore: ActivityStore;
   readTurnProgress: (
@@ -149,6 +161,7 @@ function later(left: string | undefined, right: string): string {
 }
 
 export class ConversationTurnActivityProjection {
+  private warmReadScope: WarmActivityScope | undefined;
   private readonly threads = new Map<string, ThreadActivity>();
   /** `null` caches "no lineage"; a lineage change for the session clears it. */
   private readonly conversationOfThread = new Map<string, string | null>();
@@ -314,6 +327,16 @@ export class ConversationTurnActivityProjection {
 
   /** The conversation `threadId` belongs to, or `undefined` without lineage. */
   conversationIdForThread(threadId: string): string | undefined {
+    if (this.warmReadScope) {
+      const scope = this.warmReadScope;
+      const pin = scope.threads.get(threadId);
+      if (!pin) {
+        scope.failed = true;
+        throw new Error('warm-thread-out-of-scope');
+      }
+      this.assertWarmActivityScope(scope);
+      return pin.conversationId;
+    }
     let conversationId = this.conversationOfThread.get(threadId);
     if (conversationId === undefined) {
       conversationId =
@@ -347,6 +370,98 @@ export class ConversationTurnActivityProjection {
     return conversationId ? this.readConversation(conversationId) : undefined;
   }
 
+  /** No lineage/seed fallback: only the caller's already-verified singleton lineages. */
+  readWarmConversations(
+    expected: ReadonlyMap<string, readonly string[]>,
+  ):
+    | { kind: 'warm-current'; conversations: ConversationTurnActivity[] }
+    | { kind: 'unavailable'; reason: string } {
+    const previous = this.warmReadScope;
+    const scope: WarmActivityScope = {
+      children: new Map(),
+      threads: new Map(),
+      failed: false,
+    };
+    try {
+      if (expected.size < 1 || expected.size > 256)
+        throw new Error('warm-scope-unbounded');
+      for (const [conversationId, members] of expected) {
+        if (
+          !conversationId ||
+          conversationId.length > 512 ||
+          members.length !== 1
+        )
+          throw new Error('warm-lineage-proof-unavailable');
+        const cached = this.childrenOfConversation.get(conversationId);
+        if (!cached || cached.length !== 1 || cached[0] !== members[0])
+          throw new Error('warm-lineage-cache-unavailable');
+        const threadId = members[0]!;
+        const state = this.threads.get(threadId);
+        if (
+          !threadId ||
+          threadId.length > 512 ||
+          !state ||
+          state.runningTools.size > 2_000 ||
+          this.conversationOfThread.get(threadId) !== conversationId ||
+          scope.threads.has(threadId)
+        )
+          throw new Error('warm-thread-cache-unavailable');
+        if (
+          previous &&
+          (previous.failed ||
+            previous.children.get(conversationId) !== cached ||
+            previous.threads.get(threadId)?.state !== state)
+        )
+          throw new Error('warm-scope-widening');
+        scope.children.set(conversationId, cached);
+        scope.threads.set(threadId, {
+          conversationId,
+          state,
+          sequence: state.asOfSequence,
+        });
+      }
+      this.warmReadScope = scope;
+      const conversations = [...scope.children.keys()].map((id) =>
+        this.readConversation(id),
+      );
+      this.assertWarmActivityScope(scope);
+      return { kind: 'warm-current', conversations };
+    } catch (error) {
+      scope.failed = true;
+      if (previous) previous.failed = true;
+      return {
+        kind: 'unavailable',
+        reason:
+          error instanceof Error ? error.message : 'warm-cache-unavailable',
+      };
+    } finally {
+      this.warmReadScope = previous;
+    }
+  }
+
+  private assertWarmActivityScope(scope: WarmActivityScope): void {
+    if (scope.failed) throw new Error('warm-scope-refused');
+    for (const [conversationId, children] of scope.children) {
+      if (
+        this.childrenOfConversation.get(conversationId) !== children ||
+        children.length !== 1
+      )
+        throw new Error('warm-lineage-drift');
+      const pin = scope.threads.get(children[0]!);
+      if (!pin || pin.conversationId !== conversationId)
+        throw new Error('warm-lineage-drift');
+    }
+    for (const [threadId, pin] of scope.threads) {
+      if (
+        this.threads.get(threadId) !== pin.state ||
+        pin.state.asOfSequence !== pin.sequence ||
+        pin.state.runningTools.size > 2_000 ||
+        this.conversationOfThread.get(threadId) !== pin.conversationId
+      )
+        throw new Error('warm-thread-drift');
+    }
+  }
+
   readConversation(conversationId: string): ConversationTurnActivity {
     const children = this.children(conversationId);
     const currentThreadId = children.at(-1) ?? conversationId;
@@ -358,7 +473,17 @@ export class ConversationTurnActivityProjection {
     let followUpPending = false;
     for (const threadId of children) {
       const state = this.thread(threadId);
-      runningChildren.push(...this.deps.readRunningChildWork(threadId));
+      const childWork = this.deps.readRunningChildWork(threadId);
+      if (
+        this.warmReadScope &&
+        (!Array.isArray(childWork) ||
+          childWork.length > CHILD_WORK_ITEMS_MAX_PER_REPORTER ||
+          childWork.some((item) => item.reporterThreadId !== threadId))
+      ) {
+        this.warmReadScope.failed = true;
+        throw new Error('warm-async-child-work-unavailable');
+      }
+      runningChildren.push(...childWork);
       const pending = this.pendingFollowUps.get(threadId);
       if (pending && pending.expiresAt > this.now()) followUpPending = true;
       if (threadId === currentThreadId) current = state;
@@ -481,6 +606,16 @@ export class ConversationTurnActivityProjection {
   }
 
   private children(conversationId: string): string[] {
+    if (this.warmReadScope) {
+      const scope = this.warmReadScope;
+      const cached = scope.children.get(conversationId);
+      if (!cached) {
+        scope.failed = true;
+        throw new Error('warm-conversation-out-of-scope');
+      }
+      this.assertWarmActivityScope(scope);
+      return cached;
+    }
     let children = this.childrenOfConversation.get(conversationId);
     if (!children) {
       const lineage = this.deps.eventStore
@@ -493,6 +628,16 @@ export class ConversationTurnActivityProjection {
   }
 
   private thread(threadId: string): ThreadActivity {
+    if (this.warmReadScope) {
+      const scope = this.warmReadScope;
+      const pin = scope.threads.get(threadId);
+      if (!pin) {
+        scope.failed = true;
+        throw new Error('warm-thread-out-of-scope');
+      }
+      this.assertWarmActivityScope(scope);
+      return pin.state;
+    }
     return this.threads.get(threadId) ?? this.seedThread(threadId);
   }
 

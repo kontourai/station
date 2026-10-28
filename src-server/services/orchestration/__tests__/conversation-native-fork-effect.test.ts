@@ -16,6 +16,7 @@ import { EnvironmentSecurityService } from '../../ssh/environment-security-servi
 import { createLogger } from '../../../utils/logger.js';
 import { EventBus } from '../event-bus.js';
 import { OrchestrationService } from '../orchestration-service.js';
+import { ChildWorkProjection } from '../child-work-projection.js';
 import { Hono } from 'hono';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import { createConversationRoutes } from '../../../routes/chat/conversations.js';
@@ -363,6 +364,24 @@ describe('native fork SQLite effect and publication ownership', () => {
     // entry must not initialize, recover, start providers or warm cold history.
     service.initialize();
     await service.whenSessionAttachmentSettled();
+    if (!options.replay) {
+      // Genuine fixture report facts, before ordinary warming and outside
+      // every measured read. An empty history seed alone is not a report.
+      for (const threadId of ['source', 'child'])
+        f.store.appendEvent({
+          eventId: `reported-${threadId}`,
+          provider: 'codex',
+          threadId,
+          method: 'child-work.updated',
+          createdAt: '2030-01-01T00:00:01.000Z',
+          delta: {
+            kind: 'snapshot',
+            producer: 'engine-subagent',
+            reporterThreadId: threadId,
+            running: [],
+          },
+        });
+    }
     return {
       f,
       service,
@@ -419,6 +438,10 @@ describe('native fork SQLite effect and publication ownership', () => {
         updatedAt: '2030-01-01T00:02:00.000Z',
       };
       f.store.upsertSession(later);
+      for (const threadId of ['source', 'child'])
+        await service.readSession(threadId, authority, {
+          eventMethods: ['session.started', 'session.configured'],
+        });
       const history = vi.spyOn(f.store, 'listChildWorkHistoryForThreads');
       const writes = vi.spyOn(f.store, 'upsertSession');
       const append = vi.spyOn(f.store, 'appendEvent');
@@ -437,6 +460,7 @@ describe('native fork SQLite effect and publication ownership', () => {
       );
       expect(result.observation.canonicalProjection).toBe('not-supplied');
       expect(result.observation.activation).toBe('unwired');
+      expect(result.warmCurrent.kind).toBe('warm-current');
       expect(history).not.toHaveBeenCalled();
       expect(writes).not.toHaveBeenCalled();
       expect(append).not.toHaveBeenCalled();
@@ -451,6 +475,148 @@ describe('native fork SQLite effect and publication ownership', () => {
       ).toEqual({ kind: 'unavailable', reason: 'request-not-current' });
     },
   );
+
+  test('warm current activity follows real commits without any cold fallback or stored model reset', async () => {
+    const { f, service, authority, handle, bus } = await storedReadFixture();
+    for (const id of ['source', 'child'])
+      await service.readSession(id, authority, {
+        eventMethods: ['session.started', 'session.configured'],
+      });
+    const stored = f.store.readSessionByThread('child');
+    f.store.appendEvent({
+      eventId: 'warm-live-start',
+      provider: 'codex',
+      threadId: 'child',
+      method: 'turn.started',
+      turnId: 'warm-live',
+      createdAt: '2030-01-01T00:00:02.000Z',
+    });
+    const history = vi.spyOn(f.store, 'listChildWorkHistoryForThreads');
+    const lineage = vi.spyOn(f.store, 'conversationSessions');
+    const seed = vi.spyOn(f.store, 'listSessionProjectionEvents');
+    const turnSeed = vi.spyOn(f.store, 'readTurnActivitySeed');
+    const writes = vi.spyOn(f.store, 'upsertSession');
+    const live = vi.spyOn(bus, 'emit');
+    const running = service.readNativeForkStoredCreation(
+      'child',
+      f.snapshot.digest,
+      handle,
+    );
+    expect(running.kind).toBe('stored-creation');
+    if (running.kind !== 'stored-creation')
+      throw new Error('Expected warm read');
+    expect(
+      running.warmCurrent.conversations.find(
+        (row) => row.conversationId === 'child',
+      )?.openTurn?.turnId,
+    ).toBe('warm-live');
+    expect(running.observation.currentSession).toEqual(stored);
+    expect(running.observation.canonicalProjection).toBe('not-supplied');
+    expect(running.observation.activation).toBe('unwired');
+    expect(history).not.toHaveBeenCalled();
+    expect(lineage).not.toHaveBeenCalled();
+    expect(seed).not.toHaveBeenCalled();
+    expect(turnSeed).not.toHaveBeenCalled();
+    expect(writes).not.toHaveBeenCalled();
+    expect(live).not.toHaveBeenCalled();
+    f.store.appendEvent({
+      eventId: 'warm-live-done',
+      provider: 'codex',
+      threadId: 'child',
+      method: 'turn.completed',
+      turnId: 'warm-live',
+      finishReason: 'stop',
+      createdAt: '2030-01-01T00:00:03.000Z',
+    });
+    const done = service.readNativeForkStoredCreation(
+      'child',
+      f.snapshot.digest,
+      handle,
+    );
+    expect(done.kind).toBe('stored-creation');
+    if (done.kind !== 'stored-creation')
+      throw new Error('Expected updated warm read');
+    const current = done.warmCurrent.conversations.find(
+      (row) => row.conversationId === 'child',
+    );
+    expect(current?.openTurn).toBeUndefined();
+    expect(current!.asOfSequence).toBeGreaterThan(
+      running.warmCurrent.conversations.find(
+        (row) => row.conversationId === 'child',
+      )!.asOfSequence,
+    );
+  });
+
+  test('warm service reentry stays in the same scope and restores its guard on revoked return', async () => {
+    const { f, service, authority, handle, mount } = await storedReadFixture();
+    for (const id of ['source', 'child'])
+      await service.readSession(id, authority, {
+        eventMethods: ['session.started', 'session.configured'],
+      });
+    const original = ChildWorkProjection.prototype.readWarmReporter;
+    let nested:
+      | ReturnType<OrchestrationService['readNativeForkStoredCreation']>
+      | undefined;
+    let entered = false;
+    const read = vi
+      .spyOn(ChildWorkProjection.prototype, 'readWarmReporter')
+      .mockImplementation(function (this: ChildWorkProjection, ...args) {
+        if (!entered) {
+          entered = true;
+          nested = service.readNativeForkStoredCreation(
+            'child',
+            f.snapshot.digest,
+            handle,
+          );
+        }
+        return original.apply(this, args);
+      });
+    expect(
+      service.readNativeForkStoredCreation('child', f.snapshot.digest, handle)
+        .kind,
+    ).toBe('stored-creation');
+    expect(nested?.kind).toBe('stored-creation');
+    const observation = vi.spyOn(f.store, 'observeCommittedNativeFork');
+    entered = false;
+    read.mockImplementation(function (this: ChildWorkProjection, ...args) {
+      if (!entered) {
+        entered = true;
+        nested = service.readNativeForkStoredCreation(
+          'outside',
+          f.snapshot.digest,
+          handle,
+        );
+      }
+      return original.apply(this, args);
+    });
+    expect(
+      service.readNativeForkStoredCreation('child', f.snapshot.digest, handle)
+        .kind,
+    ).toBe('unavailable');
+    expect(nested).toEqual({
+      kind: 'unavailable',
+      reason: 'warm-scope-widening-or-stale',
+    });
+    expect(observation.mock.calls.every((args) => args[0] === 'child')).toBe(
+      true,
+    );
+    read.mockImplementation(function (this: ChildWorkProjection, ...args) {
+      const result = original.apply(this, args);
+      mount.release(handle);
+      return result;
+    });
+    expect(
+      service.readNativeForkStoredCreation('child', f.snapshot.digest, handle)
+        .kind,
+    ).toBe('unavailable');
+    read.mockRestore();
+    // Ordinary reads must not inherit the now-revoked private warm scope.
+    expect(
+      await service.readSession('source', authority, {
+        eventMethods: ['session.configured'],
+      }),
+    ).not.toBeNull();
+  });
 
   test('service rejects an unknown handle before bounded creation read', async () => {
     const { f, service } = await storedReadFixture();

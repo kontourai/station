@@ -2085,6 +2085,15 @@ export class OrchestrationService {
   private readonly conversationActivity:
     | ConversationTurnActivityProjection
     | undefined;
+  private nativeForkWarmReadScope:
+    | {
+        authority: SessionReadAuthority;
+        threadIds: ReadonlySet<string>;
+        conversationIds: ReadonlySet<string>;
+        current: () => boolean;
+        refused: boolean;
+      }
+    | undefined;
   /** Transcript read/search/usage projections (epic archive#4024, archive#4144). */
   private readonly transcriptReads: SessionTranscriptReads;
   private readonly transcriptReadEventStore: EventStore | undefined;
@@ -2476,6 +2485,23 @@ export class OrchestrationService {
           readTurnProgress: (threadId) => this.turnProgress.read(threadId),
           readRunningChildWork: (threadId) => {
             const provider = this.sessionAdapters.get(threadId)?.provider;
+            const scope = this.nativeForkWarmReadScope;
+            if (scope) {
+              if (
+                scope.refused ||
+                !scope.threadIds.has(threadId) ||
+                !scope.current()
+              )
+                throw new Error('warm-child-work-out-of-scope');
+              const cached = this.childWork.readWarmReporter(
+                threadId,
+                provider,
+              );
+              if (cached.kind !== 'warm') throw new Error(cached.reason);
+              return cached.view.observability === 'reported'
+                ? cached.view.running
+                : [];
+            }
             const view = this.childWork.read(threadId, provider);
             return view?.observability === 'reported' ? view.running : [];
           },
@@ -6483,6 +6509,12 @@ export class OrchestrationService {
           NativeForkCreationObservation,
           { kind: 'verified-creation' }
         >;
+        warmCurrent: Extract<
+          ReturnType<
+            ConversationTurnActivityProjection['readWarmConversations']
+          >,
+          { kind: 'warm-current' }
+        >;
       }
     | { kind: 'unavailable'; reason: string } {
     const verify = this.nativeForkStoredReadVerifier;
@@ -6494,6 +6526,17 @@ export class OrchestrationService {
       const current = verify(admission);
       if (current.kind !== 'current')
         return { kind: 'unavailable', reason: 'request-not-current' };
+      const enclosing = this.nativeForkWarmReadScope;
+      if (
+        enclosing &&
+        (enclosing.refused ||
+          enclosing.authority !== current.authority ||
+          !enclosing.threadIds.has(targetId) ||
+          !enclosing.current())
+      ) {
+        enclosing.refused = true;
+        return { kind: 'unavailable', reason: 'warm-scope-widening-or-stale' };
+      }
       // The bounded observation supplies only the current CHILD row, not
       // current tenant bindings for every source/lineage member. Do not
       // substitute cached tenant contexts or scan all Sessions to fill that gap.
@@ -6525,8 +6568,7 @@ export class OrchestrationService {
         )
           return { kind: 'unavailable', reason: 'affected-owner-unavailable' };
       }
-      // readConversation -> readChildWork can load unbounded cold history.
-      // This cut returns STORED facts only and never enters that path, even warm.
+      // Historical eligibility alone does not make an activity cache warm.
       if (
         this.childWork.threadsNeedingHistoricalSeed(
           observation.affected.threadIds,
@@ -6536,6 +6578,26 @@ export class OrchestrationService {
           kind: 'unavailable',
           reason: 'cold-settled-evidence-budget-missing',
         };
+      const isCurrent = () => {
+        const value = verify(admission);
+        return (
+          value.kind === 'current' &&
+          value.authority === current.authority &&
+          sameAuthorization() &&
+          this.started &&
+          !this.transcriptSearchStopped
+        );
+      };
+      const warmCurrent = this.readWarmNativeForkActivity(
+        observation,
+        current.authority,
+        isCurrent,
+      );
+      if (warmCurrent.kind === 'unavailable') return warmCurrent;
+      for (const threadId of observation.affected.threadIds) {
+        if (!this.sessionAuthz.canReadSession(threadId, current.authority))
+          return { kind: 'unavailable', reason: 'affected-owner-unavailable' };
+      }
       const latest = verify(admission);
       if (
         latest.kind !== 'current' ||
@@ -6545,12 +6607,76 @@ export class OrchestrationService {
         this.transcriptSearchStopped
       )
         return { kind: 'unavailable', reason: 'request-not-current' };
-      return { kind: 'stored-creation', observation };
+      return { kind: 'stored-creation', observation, warmCurrent };
     } catch {
       return {
         kind: 'unavailable',
         reason: 'authoritative-stored-read-unavailable',
       };
+    }
+  }
+
+  private readWarmNativeForkActivity(
+    observation: Extract<
+      NativeForkCreationObservation,
+      { kind: 'verified-creation' }
+    >,
+    authority: SessionReadAuthority,
+    current: () => boolean,
+  ): ReturnType<ConversationTurnActivityProjection['readWarmConversations']> {
+    const projection = this.conversationActivity;
+    const fork = observation.creation.fork;
+    const source = fork.sourceSessionId;
+    const child = observation.currentSession.threadId;
+    const threads = new Set(observation.affected.threadIds);
+    const conversations = new Set(observation.affected.conversationIds);
+    // The observation does not carry a general lineage map. Its verified
+    // two-conversation/two-thread shape proves only these singleton lineages.
+    if (
+      !projection ||
+      source !== fork.sourceConversationId ||
+      source === child ||
+      threads.size !== 2 ||
+      conversations.size !== 2 ||
+      !threads.has(source) ||
+      !threads.has(child) ||
+      !conversations.has(source) ||
+      !conversations.has(child)
+    )
+      return { kind: 'unavailable', reason: 'warm-lineage-proof-unavailable' };
+    const previous = this.nativeForkWarmReadScope;
+    if (
+      !current() ||
+      (previous &&
+        (previous.refused ||
+          previous.authority !== authority ||
+          !previous.current() ||
+          [...threads].some((id) => !previous.threadIds.has(id)) ||
+          [...conversations].some((id) => !previous.conversationIds.has(id))))
+    ) {
+      if (previous) previous.refused = true;
+      return { kind: 'unavailable', reason: 'warm-scope-widening-or-stale' };
+    }
+    const active = {
+      authority,
+      threadIds: threads,
+      conversationIds: conversations,
+      current,
+      refused: false,
+    };
+    this.nativeForkWarmReadScope = active;
+    try {
+      const result = projection.readWarmConversations(
+        new Map([
+          [source, [source]],
+          [child, [child]],
+        ]),
+      );
+      return !active.refused && current()
+        ? result
+        : { kind: 'unavailable', reason: 'request-not-current' };
+    } finally {
+      this.nativeForkWarmReadScope = previous;
     }
   }
 

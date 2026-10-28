@@ -234,6 +234,130 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
     return { childId, snapshot, commit, oldSource, oldChild };
   }
 
+  test('warm-only cache read refuses cold and changed lineage before every durable fallback', () => {
+    const expected = new Map([[ROOT, [ROOT]]]);
+    const lineage = vi.spyOn(store, 'conversationSessions');
+    const member = vi.spyOn(store, 'conversationForSession');
+    const events = vi.spyOn(store, 'listSessionProjectionEvents');
+    const seed = vi.spyOn(store, 'readTurnActivitySeed');
+    expect(projection.readWarmConversations(expected).kind).toBe('unavailable');
+    expect(lineage).not.toHaveBeenCalled();
+    expect(member).not.toHaveBeenCalled();
+    expect(events).not.toHaveBeenCalled();
+    expect(seed).not.toHaveBeenCalled();
+    projection.readForThread(ROOT);
+    append(ROOT, { method: 'turn.started', turnId: 'warm-cached' });
+    lineage.mockClear();
+    member.mockClear();
+    events.mockClear();
+    seed.mockClear();
+    const warm = projection.readWarmConversations(expected);
+    expect(warm.kind).toBe('warm-current');
+    if (warm.kind !== 'warm-current')
+      throw new Error('Expected actual warm fold');
+    expect(warm.conversations[0]?.openTurn?.turnId).toBe('warm-cached');
+    expect(lineage).not.toHaveBeenCalled();
+    expect(member).not.toHaveBeenCalled();
+    expect(events).not.toHaveBeenCalled();
+    expect(seed).not.toHaveBeenCalled();
+    store.reserveNextConversationSession({
+      conversationId: ROOT,
+      predecessorSessionId: ROOT,
+      proposedSessionId: CHILD_1,
+      createdAt: at(),
+    });
+    lineage.mockClear();
+    member.mockClear();
+    events.mockClear();
+    seed.mockClear();
+    expect(projection.readWarmConversations(expected).kind).toBe('unavailable');
+    expect(lineage).not.toHaveBeenCalled();
+    expect(member).not.toHaveBeenCalled();
+    expect(events).not.toHaveBeenCalled();
+    expect(seed).not.toHaveBeenCalled();
+    // The ordinary reader still owns its existing fallback after guard exit.
+    expect(projection.readForThread(ROOT)?.currentThreadId).toBe(CHILD_1);
+  });
+
+  test('cached child-work requires a real retained report, not only historical eligibility', () => {
+    const work = new ChildWorkProjection();
+    expect(work.readWarmReporter(ROOT, 'claude').kind).toBe('unavailable');
+    work.seedHistoricalSettled(
+      ROOT,
+      store
+        .listChildWorkHistoryForThreads([ROOT])
+        .get(ROOT)
+        ?.map((row) => row.payload) ?? [],
+    );
+    expect(work.readWarmReporter(ROOT, 'claude')).toEqual({
+      kind: 'unavailable',
+      reason: 'warm-child-work-report-unavailable',
+    });
+    const reported = new ChildWorkProjection();
+    append(ROOT, {
+      method: 'child-work.updated',
+      delta: {
+        kind: 'snapshot',
+        producer: 'engine-subagent',
+        reporterThreadId: ROOT,
+        running: [],
+      },
+    });
+    reported.seedHistoricalSettled(
+      ROOT,
+      store
+        .listChildWorkHistoryForThreads([ROOT])
+        .get(ROOT)!
+        .map((row) => row.payload),
+    );
+    const warm = reported.readWarmReporter(ROOT, 'claude');
+    expect(warm.kind).toBe('warm');
+    if (warm.kind !== 'warm') throw new Error('Expected retained report');
+    expect(warm.view.observability).toBe('reported');
+  });
+
+  test('warm read permits same-scope reentry but refuses widening and restores ordinary access', () => {
+    const foreign = 'warm-foreign';
+    session(foreign);
+    const expected = new Map([[ROOT, [ROOT]]]);
+    let mode: 'none' | 'same' | 'foreign' = 'none';
+    let entered = false;
+    let nested:
+      | ReturnType<ConversationTurnActivityProjection['readWarmConversations']>
+      | undefined;
+    const warm = new ConversationTurnActivityProjection({
+      eventStore: store,
+      readTurnProgress: () => undefined,
+      logger,
+      readRunningChildWork: () => {
+        if (!entered && mode !== 'none') {
+          entered = true;
+          nested = warm.readWarmConversations(
+            mode === 'same' ? expected : new Map([[foreign, [foreign]]]),
+          );
+          entered = false;
+        }
+        return [];
+      },
+    });
+    extraProjections.push(warm);
+    warm.readForThread(ROOT);
+    warm.readForThread(foreign);
+    mode = 'same';
+    expect(warm.readWarmConversations(expected).kind).toBe('warm-current');
+    expect(nested?.kind).toBe('warm-current');
+    const lineage = vi.spyOn(store, 'conversationSessions');
+    const events = vi.spyOn(store, 'listSessionProjectionEvents');
+    mode = 'foreign';
+    expect(warm.readWarmConversations(expected).kind).toBe('unavailable');
+    expect(nested?.kind).toBe('unavailable');
+    expect(lineage).not.toHaveBeenCalled();
+    expect(events).not.toHaveBeenCalled();
+    mode = 'none';
+    expect(warm.readForThread(foreign)?.conversationId).toBe(foreign);
+    expect(warm.readWarmConversations(expected).kind).toBe('warm-current');
+  });
+
   test('verified source and child fold invalidation reseeds actual prewarmed activity after uncertain commit', () => {
     const f = unknownCommittedNativeFork();
     const peer = new DatabaseSync(join(directory, 'orchestration.sqlite'), {
@@ -320,7 +444,9 @@ describe('ConversationTurnActivityProjection (#2309)', () => {
       expect(projection.readConversation('unrelated')).toEqual(unrelatedBefore);
       expect(store.hasEventId(unrelatedPending.eventId)).toBe(true);
       vi.advanceTimersByTime(5_001);
-      expect(projection.readConversation('unrelated').runningChildWork).toBeUndefined();
+      expect(
+        projection.readConversation('unrelated').runningChildWork,
+      ).toBeUndefined();
       expect(store.readSessionByThread(f.childId)?.status).toBe('closed');
     } finally {
       vi.useRealTimers();
