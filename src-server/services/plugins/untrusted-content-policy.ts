@@ -54,6 +54,14 @@ export class UntrustedContentLedger {
     // A failed classification read counts as untrusted: fail toward asking.
     const settled = untrusted.catch(() => true);
     this.turns.set(key, [...(this.turns.get(key) ?? []), settled]);
+    // Only untrusted reads are kept, so ordinary calls never grow the map
+    // even when a framework does not end the turn.
+    void settled.then((read) => {
+      if (read) return;
+      const remaining = this.turns.get(key)?.filter((mark) => mark !== settled);
+      if (remaining?.length) this.turns.set(key, remaining);
+      else this.turns.delete(key);
+    });
   }
 
   async hasRead(invocation: InvocationContext): Promise<boolean> {

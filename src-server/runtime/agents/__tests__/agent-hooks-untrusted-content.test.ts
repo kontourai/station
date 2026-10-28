@@ -231,3 +231,22 @@ describe('outbound tools after untrusted content', () => {
     expect(requester).not.toHaveBeenCalled();
   });
 });
+
+describe('untrusted-content ledger', () => {
+  test('keeps only untrusted reads', async () => {
+    const { UntrustedContentLedger } = await import(
+      '../../../services/plugins/untrusted-content-policy.js'
+    );
+    const ledger = new UntrustedContentLedger();
+    const turn = { agentSlug: 'a', conversationId: 'c' };
+    ledger.mark(turn, Promise.resolve(false));
+    expect(await ledger.hasRead(turn)).toBe(false);
+    expect((ledger as any).turns.size).toBe(0);
+    ledger.mark(turn, Promise.resolve(true));
+    ledger.mark(turn, Promise.reject(new Error('unreadable')));
+    expect(await ledger.hasRead(turn)).toBe(true);
+    expect(
+      (ledger as any).turns.get(JSON.stringify(['a', 'c', null])),
+    ).toHaveLength(2);
+  });
+});
