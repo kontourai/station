@@ -8,11 +8,9 @@
  * scheduler does with each outcome, not how a turn is placed (that is
  * `scheduled-conversation-run-dispatch.test.ts`).
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { AUTOMATION_RUN_POLICY } from '@kontourai/station-contracts/scheduler';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { BuiltinScheduler } from '../builtin-scheduler.js';
 import type {
   ScheduledConversationRunInput,
@@ -23,20 +21,17 @@ import {
   createSchedulerLedger,
 } from '../scheduler-ledger.js';
 
-const roots: string[] = [];
+const makeTempDir = trackTempDirs();
 const schedulers: BuiltinScheduler[] = [];
 afterEach(async () => {
   for (const scheduler of schedulers.splice(0)) await scheduler.stop();
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
 });
 
 const TARGET = { kind: 'conversation', conversationId: 'chat-1' } as const;
 const CREATOR = { userId: 'human:local:operator' };
 
 function harness() {
-  const root = mkdtempSync(join(tmpdir(), 'station-automation-'));
-  roots.push(root);
+  const root = makeTempDir('station-automation-');
   const outcomes: ScheduledConversationRunOutcome['kind'][] = [];
   const runs: ScheduledConversationRunInput[] = [];
   const schedule = vi.fn().mockResolvedValue(undefined);
@@ -148,8 +143,7 @@ describe('fatigue', () => {
 
 describe('lateness cutoff', () => {
   test('a targeted occurrence older than the cutoff is recorded missed, never run or announced', () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-automation-late-'));
-    roots.push(root);
+    const root = makeTempDir('station-automation-late-');
     const ledger = createSchedulerLedger({ directory: root });
     const created = Date.parse('2026-10-20T00:00:00.000Z');
     // Daily at 09:00 UTC; Station comes back at 20:00, eleven hours late.
@@ -199,8 +193,7 @@ describe('lateness cutoff', () => {
   });
 
   test('an occurrence within the cutoff still runs', () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-automation-ontime-'));
-    roots.push(root);
+    const root = makeTempDir('station-automation-ontime-');
     const ledger = createSchedulerLedger({ directory: root });
     expect(
       ledger.create({
@@ -295,8 +288,7 @@ describe('targets the scheduler refuses', () => {
   });
 
   test('without a runner, a targeted job fails without invoking anything', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-automation-hosted-'));
-    roots.push(root);
+    const root = makeTempDir('station-automation-hosted-');
     const invoke = vi.fn();
     const scheduler = new BuiltinScheduler({
       ledger: createSchedulerLedger({ directory: root }),
