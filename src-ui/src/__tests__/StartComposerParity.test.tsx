@@ -1837,6 +1837,51 @@ describe("the dock's New chat is a draft, not a dialog", () => {
     await waitFor(() => expect(document.activeElement).toBe(opener));
   });
 
+  // Out of view (a collapsed dock keeps it hidden) the draft gives up its Back
+  // entry without travelling back, so nothing in flight is cancelled, and a
+  // Back then does not discard it. Back in view, it takes an entry again.
+  test('a draft out of view holds no Back entry and releases it without travelling back', async () => {
+    const onClose = vi.fn();
+    // One mounted draft whose visibility the test flips, as the dock does.
+    let setInView: (inView: boolean) => void = () => undefined;
+    function Harness() {
+      const [historyActive, setHistoryActive] = useState(true);
+      setInView = setHistoryActive;
+      return (
+        <AuthorityPersistenceContext.Provider
+          value={{ status: 'verified', namespace: 'ns-1', observation: null }}
+        >
+          <NewChatModal
+            projectIconBySlug={new Map()}
+            startSurface
+            agents={state.agents as AgentData[]}
+            projects={state.projects as ProjectMetadata[]}
+            onSelect={vi.fn()}
+            onClose={onClose}
+            historyActive={historyActive}
+          />
+        </AuthorityPersistenceContext.Provider>
+      );
+    }
+    render(<Harness />);
+    await flushHistory();
+    const back = vi.spyOn(window.history, 'back');
+    act(() => setInView(false));
+    await flushHistory();
+    expect(back).not.toHaveBeenCalled();
+    back.mockRestore();
+
+    act(() => window.history.back());
+    await flushHistory();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('region', { name: 'New chat' })).toBeTruthy();
+
+    act(() => setInView(true));
+    await flushHistory();
+    act(() => window.history.back());
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
   test('with no project the line uses the chip’s words and names no Station before the device answers; a second Station adds the Station control', async () => {
     state.environments = [
       {

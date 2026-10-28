@@ -1020,7 +1020,8 @@ async function flushHistory() {
 }
 
 // A collapsed dock keeps its draft hidden, so the draft holds no Back entry
-// then: Back cannot discard what nobody can see.
+// then (`historyActive`, exercised on the real draft in StartComposerParity):
+// Back cannot discard what nobody can see.
 test('Back while the dock is collapsed does not dismiss the hidden draft', async () => {
   navigationStore.navigate('/', { dock: 'open' });
   renderDockedPane();
@@ -1030,10 +1031,12 @@ test('Back while the dock is collapsed does not dismiss the hidden draft', async
     dispatchNewChatIntent({ initialPrompt: 'Keep me', onClosed });
   });
   await screen.findByRole('region', { name: 'New chat picker' });
+  expect(pickerProps.at(-1)!.historyActive).toBe(true);
   await flushHistory();
 
   act(() => regionModel!.setRegion('bottom', { visible: false }));
   await flushHistory();
+  expect(pickerProps.at(-1)!.historyActive).toBe(false);
   act(() => window.history.back());
   await flushHistory();
 
@@ -1047,6 +1050,16 @@ test('Back while the dock is collapsed does not dismiss the hidden draft', async
 // the same chat, not the person going somewhere: the draft stays.
 test('a cold ?chat= hydrating under an open draft does not dismiss it', async () => {
   dockProbe.sessions = [];
+  // The cold lookup for the pointer is still in flight when the tab lands.
+  const realFetch = globalThis.fetch;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+      String(input instanceof Request ? input.url : input).includes('conv-a')
+        ? new Promise<Response>(() => {})
+        : realFetch(input, init),
+    ),
+  );
   navigationStore.navigate('/', { dock: 'open', chat: 'conv-a' });
   renderDockedPane();
   await act(async () => {});
@@ -1058,12 +1071,17 @@ test('a cold ?chat= hydrating under an open draft does not dismiss it', async ()
 
   // The tab for `?chat=conv-a` arrives: its id differs from the pointer.
   dockProbe.sessions = [{ ...chatSession('chat-a'), conversationId: 'conv-a' }];
+  // Re-render the dock so it reads the hydrated tab list.
   act(() => regionModel!.setRegion('bottom', { maximized: true }));
+  act(() => navigationStore.updateParams({ probe: '1' }));
   await act(async () => {});
   await act(async () => {});
+  // It did hydrate: the chat is mounted under the draft.
+  expect(screen.queryByTestId('active-chat-body')).not.toBeNull();
 
   expect(onClosed).not.toHaveBeenCalled();
   expect(screen.getByRole('region', { name: 'New chat picker' })).toBeTruthy();
+  vi.stubGlobal('fetch', realFetch);
 });
 
 // The dock's own cover registration, end to end: the chat under a draft is
