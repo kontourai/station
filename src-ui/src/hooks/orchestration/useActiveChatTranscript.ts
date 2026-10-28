@@ -1,4 +1,5 @@
 import type { OrchestrationSequencedEvent } from '@kontourai/station-contracts/orchestration';
+import { isEngineMemoryExhaustedFailure } from '@kontourai/station-contracts/provider';
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
@@ -71,6 +72,10 @@ function isLiveFailureMarker(message: ChatMessage): boolean {
 interface ProjectedTurnFailure {
   turnId: string;
   startedAt: number;
+  /** The turn's newest projected moment. */
+  endedAt: number;
+  /** Whether the turn is a continuation Station sent after a memory kill. */
+  memoryContinuation: boolean;
   /** The turn's projected `runtime.error`, when it shows one. */
   failure?: { code?: string; message: string };
 }
@@ -95,16 +100,21 @@ function projectedTurnFailures(
           message: projectedRuntimeErrorRaw(part.content ?? ''),
         }
       : undefined;
+    const memoryContinuation = message.stationMemoryContinuation === true;
     const turn = turns.get(message.turnId);
     if (!turn) {
       turns.set(message.turnId, {
         turnId: message.turnId,
         startedAt: message.timestamp,
+        endedAt: message.timestamp,
+        memoryContinuation,
         failure,
       });
       continue;
     }
     turn.startedAt = Math.min(turn.startedAt, message.timestamp);
+    turn.endedAt = Math.max(turn.endedAt, message.timestamp);
+    turn.memoryContinuation ||= memoryContinuation;
     turn.failure ??= failure;
   }
   return [...turns.values()].sort((a, b) => a.startedAt - b.startedAt);
@@ -162,6 +172,44 @@ function adoptStoredFailureMarkers(
       },
     ];
   });
+}
+
+/**
+ * #4266: the card a memory kill read back from stored events gets. Live, the
+ * kill appends a `[CHAT_ERROR:code]` marker that `ChatDockBody` renders with
+ * Continue; a reopened chat holds only the projected `runtime.error` part,
+ * which offers nothing. The marker is recreated for the one kill Continue
+ * still applies to, as the server's `continueOnRequest` decides it: the
+ * newest turn in the window, or the turn whose only successors are Station's
+ * own continuations (the card then says Station continued). A kill a person
+ * has moved on from keeps its projected part, read in today's words by
+ * `translateProjectedRuntimeError`, with no action. Recognition is the
+ * server's own `isEngineMemoryExhaustedFailure`, so a kill stored before
+ * #4257 qualifies too; `ChatDockBody` reads it in today's copy.
+ */
+function storedMemoryKillMarkers(
+  turns: readonly ProjectedTurnFailure[],
+  markedTurnIds: ReadonlySet<string>,
+): ChatMessage[] {
+  let index = turns.length - 1;
+  while (index > 0 && turns[index]?.memoryContinuation) index -= 1;
+  const turn = turns[index];
+  if (
+    !turn?.failure ||
+    markedTurnIds.has(turn.turnId) ||
+    !isEngineMemoryExhaustedFailure(turn.failure)
+  )
+    return [];
+  const { code, message } = turn.failure;
+  return [
+    {
+      id: `stored-memory-kill:${turn.turnId}`,
+      role: 'user',
+      turnId: turn.turnId,
+      timestamp: turn.endedAt,
+      content: `${CHAT_ERROR_MARKER_PREFIX}${code ? `:${code}` : ''}] ${message}`,
+    },
+  ];
 }
 
 function isLiveSupplementalMessage(message: ChatMessage): boolean {
@@ -810,10 +858,23 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     // Matched on turn identity, not on text: two turns can fail the same
     // way, and a global text match would collapse them. A marker with no
     // turn identity keeps the text-comparison fallback it had before.
-    const markerMessages = adoptStoredFailureMarkers(
+    const projectedFailures = projectedTurnFailures(visibleProjected);
+    const adoptedMarkers = adoptStoredFailureMarkers(
       session.messages,
-      projectedTurnFailures(visibleProjected),
+      projectedFailures,
     );
+    const markerMessages = [
+      ...adoptedMarkers,
+      ...storedMemoryKillMarkers(
+        projectedFailures,
+        new Set(
+          adoptedMarkers
+            .filter((message) => isLiveFailureMarker(message))
+            .map((message) => message.turnId)
+            .filter((turnId): turnId is string => typeof turnId === 'string'),
+        ),
+      ),
+    ];
     const markerFailureTurnIds = new Set(
       markerMessages
         .filter((message) => isLiveFailureMarker(message))

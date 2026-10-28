@@ -34,11 +34,18 @@ vi.mock('../contexts/AgentsContext', () => ({
 const sdk = vi.hoisted(() => ({
   continueAfterMemoryExhaustion: vi.fn(),
   MemoryContinuationUnsupportedError: class extends Error {},
+  // #4266: the stored events a reopened orchestration chat reads.
+  fetchWindow: vi.fn(),
 }));
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   continueAfterMemoryExhaustion: sdk.continueAfterMemoryExhaustion,
   MemoryContinuationUnsupportedError: sdk.MemoryContinuationUnsupportedError,
+  fetchSessionEventWindowCapability: async () => true,
+  fetchOrchestrationSessionEventWindow: (...args: unknown[]) =>
+    sdk.fetchWindow(...args),
+  fetchOrchestrationConversationEventWindow: (...args: unknown[]) =>
+    sdk.fetchWindow(...args),
 }));
 
 vi.mock('../contexts/ApiBaseContext', () => ({
@@ -692,6 +699,107 @@ describe('ChatDockBody memory-exhaustion marker', () => {
         'http://localhost:3242',
       ),
     );
+  });
+
+  // #4266: a reopened chat holds no live marker, only the stored events.
+  describe('read back from stored events', () => {
+    const LEGACY =
+      'Codex was killed because memory was exhausted. Its workload budget was 3072 MiB. Commands and delegated work were interrupted. Run memory-heavy checks sequentially before continuing.';
+    const at = (second: number) =>
+      `2026-10-28T10:00:${String(second).padStart(2, '0')}.000Z`;
+    const stored = (
+      code: string,
+      reason: string,
+      after: Record<string, unknown>[] = [],
+    ) => ({
+      protocolVersion: 1,
+      watermark: 10,
+      hasMore: false,
+      events: [
+        {
+          method: 'turn.started',
+          turnId: 'turn-1',
+          prompt: 'Run the integration suite.',
+        },
+        {
+          method: 'runtime.error',
+          turnId: 'turn-1',
+          severity: 'error',
+          code,
+          message: reason,
+        },
+        ...after,
+      ].map((fields, index) => ({
+        sequence: index + 1,
+        event: {
+          eventId: `e${index + 1}`,
+          provider: 'codex',
+          threadId: 'thread-oom',
+          createdAt: at(index + 1),
+          ...fields,
+        },
+      })),
+    });
+    const reopened = () =>
+      buildSession({
+        id: 'thread-oom',
+        conversationId: 'conversation-oom',
+        status: 'idle',
+        orchestrationSessionStarted: true,
+        messages: [],
+      } as Partial<ChatSession>);
+
+    test.each([
+      ['today’s code', 'engine-memory-exhausted', message],
+      ['the code stored before #4257', 'codex-turn-orphaned', LEGACY],
+    ])(
+      'the newest turn’s kill (%s) gets the card, current copy and Continue',
+      async (_label, code, reason) => {
+        sdk.fetchWindow.mockResolvedValue(stored(code, reason));
+        sdk.continueAfterMemoryExhaustion.mockResolvedValue('queued');
+        renderDock(reopened(), vi.fn());
+        expect(
+          await screen.findByText(
+            /engine ran out of memory/i,
+            {},
+            { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+          ),
+        ).toBeTruthy();
+        expect(screen.queryByText(/⚠️/)).toBeNull();
+        expect(
+          screen.queryByText(/Run memory-heavy checks sequentially/),
+        ).toBeNull();
+        fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+        await waitFor(() =>
+          expect(sdk.continueAfterMemoryExhaustion).toHaveBeenCalledWith(
+            'conversation-oom',
+            'http://localhost:3242',
+          ),
+        );
+      },
+    );
+
+    test('a kill a person has moved on from reads in current copy, with no Continue', async () => {
+      sdk.fetchWindow.mockResolvedValue(
+        stored('codex-turn-orphaned', LEGACY, [
+          { method: 'turn.started', turnId: 'turn-2', prompt: 'Something else.' },
+          { method: 'turn.completed', turnId: 'turn-2' },
+        ]),
+      );
+      renderDock(reopened(), vi.fn());
+      expect(
+        await screen.findByText(
+          /engine ran out of memory/i,
+          {},
+          { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+        ),
+      ).toBeTruthy();
+      expect(
+        screen.queryByText(/Run memory-heavy checks sequentially/),
+      ).toBeNull();
+      expect(screen.queryByText(/Continue picks the task up/)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+    });
   });
 
   test('an older Station without the route gets the short continuation as a message', async () => {

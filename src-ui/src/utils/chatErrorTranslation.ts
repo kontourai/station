@@ -766,6 +766,19 @@ export function translateProjectedRuntimeError(
   text: string,
   code: string,
 ): string | null {
+  // #4266: a memory kill the dock no longer offers Continue for (a later
+  // turn moved on) reads in today's words, stored before #4257 or not, and
+  // without the hint that points at a Continue it does not show.
+  const current = currentChatError({
+    code,
+    message: projectedRuntimeErrorRaw(text),
+  });
+  if (current.code === ENGINE_MEMORY_EXHAUSTED_CODE) {
+    const card = { ...translateChatError(current), hint: undefined };
+    const repeat = /( \(repeated \d+×\))$/.exec(text)?.[1]?.trim();
+    const display = formatChatErrorDisplay(card);
+    return repeat ? `${display}\n${repeat}` : display;
+  }
   if (
     code !== ENGINE_SESSION_BINDING_DEAD_CODE &&
     code !== ENGINE_TURN_FAILED_CODE &&

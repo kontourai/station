@@ -3668,3 +3668,91 @@ describe('useActiveChatTranscript — calls of the open turn', () => {
     }
   });
 });
+
+// #4266: a reopened chat holds only the stored `runtime.error` of a memory
+// kill; the marker that carries Continue is recreated for the kill Continue
+// still applies to.
+describe('useActiveChatTranscript stored memory kill', () => {
+  beforeEach(() => {
+    resetSequencedLiveEventsForTests();
+    vi.clearAllMocks();
+    fetchWindow.mockReset();
+    recoveryBudget.clear();
+    fetchCapability.mockResolvedValue(true);
+  });
+
+  const CURRENT =
+    'Codex ran out of memory and was stopped, along with the commands it was running. Its workload budget is 3072 MiB.';
+  const LEGACY =
+    'Codex was killed because memory was exhausted. Its workload budget was 3072 MiB. Commands and delegated work were interrupted. Run memory-heavy checks sequentially before continuing.';
+  const killed = (turnId: string, code: string, message: string, at = 2) => [
+    event(`e${at}`, 'turn.started', { turnId, prompt: `run ${turnId}` }),
+    event(`e${at + 1}`, 'runtime.error', {
+      turnId,
+      severity: 'error',
+      code,
+      message,
+    }),
+  ];
+  const carriers = (messages: ChatSession['messages']) =>
+    messages.filter(
+      (message) =>
+        (message.content ?? '').startsWith('[SYSTEM_EVENT] [CHAT_ERROR') ||
+        (message.contentParts ?? []).some((part) => part.runtimeError === true),
+    );
+  async function read(events: ReturnType<typeof event>[]) {
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 20,
+      hasMore: false,
+      events,
+    });
+    const view = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(view.result.current.settled).toBe(true));
+    await waitFor(() =>
+      expect(carriers(view.result.current.messages).length).toBeGreaterThan(0),
+    );
+    const result = carriers(view.result.current.messages);
+    view.unmount();
+    return result;
+  }
+
+  test.each([
+    ['today’s code', 'engine-memory-exhausted', CURRENT],
+    ['the code stored before #4257', 'codex-turn-orphaned', LEGACY],
+  ])(
+    'the newest turn’s kill (%s) becomes the one marker card',
+    async (_label, code, message) => {
+      const found = await read(killed('turn-1', code, message));
+      expect(found).toHaveLength(1);
+      expect(found[0]).toMatchObject({
+        role: 'user',
+        turnId: 'turn-1',
+        content: `[SYSTEM_EVENT] [CHAT_ERROR:${code}] ${message}`,
+      });
+    },
+  );
+
+  test('a kill a person has moved on from keeps its projected part, with no card', async () => {
+    const found = await read([
+      ...killed('turn-1', 'engine-memory-exhausted', CURRENT, 2),
+      event('e10', 'turn.started', { turnId: 'turn-2', prompt: 'next' }),
+      event('e11', 'turn.completed', { turnId: 'turn-2' }),
+    ]);
+    expect(found).toHaveLength(1);
+    expect(found[0]?.contentParts?.some((part) => part.runtimeError)).toBe(
+      true,
+    );
+    expect(found[0]?.content ?? '').not.toContain('[CHAT_ERROR');
+  });
+
+  test('another failure in the newest turn gets no recreated card', async () => {
+    const found = await read(
+      killed('turn-1', 'codex-turn-orphaned', 'The Codex turn was orphaned.'),
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0]?.content ?? '').not.toContain('[CHAT_ERROR');
+  });
+});
