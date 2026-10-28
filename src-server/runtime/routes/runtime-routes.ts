@@ -269,6 +269,7 @@ import {
   isDeviceRequestableScope,
   PAIRING_SCOPE_DESCRIPTIONS,
   PAIRING_SCOPE_PRESETS,
+  PAIRING_SCOPE_TERMINAL_OPERATE,
   PAIRING_SCOPES,
   type PairedDevice,
   type PairingScope,
@@ -308,6 +309,10 @@ import {
   INTERNAL_SESSION_READ_SCOPE,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
+import {
+  TERMINAL_SOCKET_PATH,
+  terminalScopeAllows,
+} from '@kontourai/station-contracts/terminal-transport';
 import { workItemRefKey } from '@kontourai/station-contracts/work-item-provider';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { isStationNativeShellOrigin } from '@kontourai/station-shared/native-shell-origin';
@@ -536,6 +541,7 @@ import {
   type PairingFailureState,
 } from '../../security/pairing-failure-limiter.js';
 import {
+  credentialAuthorizedForScope,
   grantedPairingScope,
   type PairingScopeContextStore,
 } from '../../security/pairing-route-scopes.js';
@@ -812,6 +818,10 @@ import {
   TelemetryProducerStore,
 } from '../../services/telemetry-producers/telemetry-producer-store.js';
 import { InProcessShellHost } from '../../services/terminal/shell-host.js';
+import {
+  registerTerminalGateway,
+  TerminalGateway,
+} from '../../services/terminal/terminal-gateway.js';
 import type { TerminalService } from '../../services/terminal/terminal-service.js';
 import {
   TerminalSessionRefusal,
@@ -7934,7 +7944,19 @@ export function configureRuntimeRoutes(
         async () => (await context.configLoader.loadAppConfig()).terminalShell,
       ),
       {
-        authorize: (request) => authorizeTerminalRequest(request),
+        authorize: (request, _scope, operation) => {
+          const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+          return (
+            authorizeTerminalRequest(request) &&
+            !!principal &&
+            terminalScopeAllows(
+              context.environmentSecurityService.resolveGrantedScope(
+                principal.credential,
+              ) ?? '',
+              operation,
+            )
+          );
+        },
         resolveRoot: async (request, scope) => {
           const project = context.storageAdapter
             .listProjects()
@@ -7959,6 +7981,45 @@ export function configureRuntimeRoutes(
       },
     );
     context.terminalService.scopedSessions = terminalSessions;
+    context.app.get('/api/terminal/socket', (c) =>
+      authorizeTerminalRequest(c.req.raw)
+        ? c.body(null, 204)
+        : c.json({ success: false, error: 'Terminal access refused' }, 403),
+    );
+    registerTerminalGateway(
+      context.app,
+      new TerminalGateway({
+        sessions: terminalSessions,
+        allowedOrigins: resolveConfiguredRuntimeOrigins(context),
+        authenticate: async (credential, incoming) => {
+          if (
+            !(await credentialAuthorizedForScope(
+              context.environmentSecurityService,
+              PAIRING_SCOPE_TERMINAL_OPERATE,
+              credential,
+            ))
+          )
+            return undefined;
+          const request = new Request(
+            `http://localhost:${context.port}${TERMINAL_SOCKET_PATH}`,
+            {
+              headers: {
+                authorization: `Bearer ${credential}`,
+                ...(incoming.headers.origin && {
+                  origin: incoming.headers.origin,
+                }),
+              },
+            },
+          );
+          // Run the real HTTP admission pipeline; never synthesize a principal
+          // from a token or forward caller-controlled internal proxy headers.
+          const response = await context.app.fetch(request, { incoming });
+          return response.status === 204 && authorizeTerminalRequest(request)
+            ? request
+            : undefined;
+        },
+      }),
+    );
     context.app.route(
       '/api/projects',
       createTerminalSessionRoutes(

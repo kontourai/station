@@ -214,6 +214,12 @@ bytes, publication references, byte/height limits and theme variable names for
 [visual replies](../user/html-replies.md). It grants no publication or
 conversation access. Filesystem preparation stays in the server.
 
+The `@kontourai/station-contracts/terminal-transport` subpath exports the
+terminal binary frame codec, limits and observe/operate scope predicate. The
+[API reference](api.md#terminal-socket-personal-operator-transport) owns the
+wire controls and the current personal-operator admission limit. The predicate
+is not Project membership or a credential verifier.
+
 The `@kontourai/station-contracts/runtime-event-content` subpath defines the
 reference a stored runtime event keeps in place of a large value
 (`RuntimeEventContentRef`: digest, kind, byte size and a preview whose JSON

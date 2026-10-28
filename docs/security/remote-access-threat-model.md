@@ -918,6 +918,28 @@ Ordinary GET/HEAD routes require `orchestration:read` and ordinary mutating
 methods require `orchestration:operate`; explicit family and leaf rules can
 require a different tier. All `/api/registry/sources` methods require
 `access:manage` plus a separate Station operator principal check in the handlers.
+The additive #3994 b1 socket at `/api/terminal/socket` uses the main API
+listener with first-frame credentials and the HTTP admission pipeline. It
+requires the personal operator in person even on loopback. Project/binding
+session checks, replay acknowledgement, strict input sequencing and bounded
+credit apply before terminal effects/output. The new `terminal:observe` token
+is explicit operator promotion only and changes no preset or default grant.
+Paired devices, account principals, agents and plugins remain refused on this
+socket; remote relay/broker egress is not enabled by this tranche. The
+[transport boundary](../design/terminal.md#transport-implementation-boundary-3994-part-b1)
+separates real-socket fixture evidence from future live remote qualification.
+The socket additionally admits only HTTP/HTTPS OSC 8 link metadata and
+discards a current observer's complete mouse/focus input reports. Core retention
+reserves configured journal/tail limits against global budgets; request-triggered
+eviction requires operate authority on the victim's stored Project/binding and
+never chooses a live session. POSIX scoped-session cleanup freezes and kills
+discovered owned descendant groups. The retained legacy listener and raw history
+remain separately owned during migration; these changes do not qualify native,
+Windows, account, broker or relay terminal admission. Personal
+access tokens and account-bound Devices are refused before HTTP forwarding.
+Pending auth has its own 32-socket budget (eight per peer), separate from 64
+authenticated connections; five-second timeouts count toward failure limiting.
+
 The terminal WebSocket requires `terminal:operate`, and the voice WebSocket
 requires `orchestration:operate`; both refuse an account-bound device and any
 personal access token whatever its scope (#3586). Pairing-family routes
