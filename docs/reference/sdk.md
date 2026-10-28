@@ -2657,6 +2657,15 @@ ownership. Capture the returned scope and member revision for writes; do not
 reconstruct authority from a slug or email. Enabling requires the expected local
 Project ID and current Station operator authority.
 
+When the read is refused with 403 `project_access_forbidden`,
+`projectAccessRefusal(error)` returns the server's
+`ProjectAccessRefusalDetails` (from
+`@kontourai/station-contracts/project-membership`): `off` (sharing is not on
+and this caller can enable it), `on` (shared, but this caller does not manage
+people) or `undisclosed` (this caller cannot enable sharing and is not told
+whether the Project is shared). It returns `undefined` for any other error,
+including an older Station that sends no details.
+
 `@kontourai/station-sdk/project-access` also exports `useProjectAccess(slug,
 requestScope)`. Its query keys include the selected Station and authority, and
 its mutations capture that scope before asynchronous work. Do not persist

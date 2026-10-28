@@ -1,5 +1,6 @@
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type {
+  ProjectAccessRefusalDetails,
   ProjectInvitationPreview,
   ProjectMemberAction,
   ProjectMemberRole,
@@ -112,6 +113,30 @@ export class ProjectMembershipService {
       this.members.require(scope, current.principal, 'manage-members');
       return operation(scope);
     });
+  }
+
+  /**
+   * What a forbidden `administration` read may tell its caller. The caller
+   * must first pass the checks `enable` makes before its transaction
+   * (operator authority and a human principal). Only then is the sharing
+   * state read. Anyone else gets `undisclosed`.
+   */
+  async accessRefusal(
+    slug: string,
+    authority: ProjectMembershipAuthority,
+  ): Promise<ProjectAccessRefusalDetails> {
+    const undisclosed = { sharing: 'undisclosed', canEnable: false } as const;
+    try {
+      await authority.operator();
+      if ((await authority.current()).principal.kind !== 'human')
+        return undisclosed;
+    } catch (error) {
+      if (error instanceof ProjectMembershipRefusal) return undisclosed;
+      throw error;
+    }
+    return this.members.isSharedSlug(slug)
+      ? { sharing: 'on', canEnable: false }
+      : { sharing: 'off', canEnable: true };
   }
 
   async administration(slug: string, authority: ProjectMembershipAuthority) {
