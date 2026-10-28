@@ -1871,8 +1871,10 @@ export interface ConversationListItem {
   /** False when the transcript is owned by an external runtime event store. */
   mutable: boolean;
   /**
-   * Durable title provenance for mutable store conversations. A UI must ask
-   * before replacing a human-owned title; runtime conversations have none.
+   * Durable title provenance. A UI must ask before replacing a human-owned
+   * title on a mutable store conversation. A runtime conversation carries
+   * `prompt`, `provider` (supplied with its start) or `generated` (the title
+   * model's, #4266), and none for a title recorded before #4266.
    * `agent` is a title a station-control agent set with `rename_session`: it
    * is not a person's, so any later rename replaces it without asking.
    */

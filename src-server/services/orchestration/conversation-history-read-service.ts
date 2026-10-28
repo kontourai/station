@@ -146,14 +146,23 @@ export class ConversationHistoryReadService {
             observedAt,
           ),
         });
+        const delegationTitle = derivedConversationTitle(
+          summary.delegation?.title,
+        );
         const item: ConversationListItem = {
           id: record.conversationId,
           source: 'runtime',
           // A personal pre-agent record is authorized before it reaches this
           // projection; Station is its explicit compatibility presentation.
           agentSlug: publicAgentIdFromRuntimeKey(record.agentSlug ?? 'station'),
-          title:
-            derivedConversationTitle(summary.delegation?.title) ?? record.title,
+          title: delegationTitle ?? record.title,
+          // #4266: where the title came from, so a client can tell a
+          // generated or start-supplied title from a prompt-derived one.
+          ...(delegationTitle
+            ? { titleSource: 'provider' as const }
+            : record.titleSource
+              ? { titleSource: record.titleSource }
+              : {}),
           createdAt: record.createdAt,
           updatedAt: record.updatedAt,
           messageCount: record.messageCount,

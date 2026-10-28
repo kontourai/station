@@ -269,3 +269,228 @@ describe('a continuation child never renames its conversation (#1536 B4)', () =>
     expect(store.conversationTitle([ROOT])).toBe(title);
   });
 });
+
+/**
+ * #4266: a thread showed the title "Continue". A low-content prompt never
+ * names a conversation while a later prompt says something, and it never
+ * replaces a real title.
+ */
+describe('low-content prompts keep the previous title (#4266)', () => {
+  let dir: string;
+  let store: EventStore;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'low-content-title-'));
+    store = new EventStore(join(dir, 'orchestration.sqlite'));
+  });
+
+  afterEach(() => {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function startThread(threadId: string, createdAt = ROOT_CREATED): void {
+    store.upsertSession({
+      provider: 'claude',
+      threadId,
+      status: 'ready',
+      createdAt,
+      updatedAt: LAST_UPDATED,
+    } as never);
+    store.appendEvent({
+      eventId: `${threadId}-started`,
+      provider: 'claude',
+      threadId,
+      createdAt,
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: OWNER, agentSlug: 'claude' },
+    } as never);
+  }
+
+  let turn = 0;
+  function prompt(threadId: string, text: string): void {
+    turn += 1;
+    store.appendEvent({
+      eventId: `${threadId}-turn-${turn}`,
+      provider: 'claude',
+      threadId,
+      createdAt: `2026-09-05T17:15:${String(turn).padStart(2, '0')}.000Z`,
+      method: 'turn.started',
+      turnId: `turn-${turn}`,
+      prompt: text,
+    } as never);
+  }
+
+  function storedRow(threadId: string) {
+    const database = new DatabaseSync(join(dir, 'orchestration.sqlite'), {
+      readOnly: true,
+    });
+    try {
+      return database
+        .prepare(
+          `SELECT title, title_source FROM orchestration_conversation_history
+           WHERE thread_id = ?`,
+        )
+        .get(threadId);
+    } finally {
+      database.close();
+    }
+  }
+
+  function displayTitle(threadId: string): string | undefined {
+    const conversationFirstPromptedTurn =
+      store.conversationRootFirstPromptedTurn(threadId)?.payload;
+    return buildOrchestrationSessionSummary({
+      persisted: {
+        provider: 'claude',
+        threadId,
+        status: 'ready',
+        createdAt: ROOT_CREATED,
+        updatedAt: LAST_UPDATED,
+      } as never,
+      events: store
+        .listSessionProjectionEvents(threadId)
+        .map((event) => event.payload),
+      ...(conversationFirstPromptedTurn
+        ? { conversationFirstPromptedTurn }
+        : {}),
+      answerability: { answerable: false } as never,
+    }).displayTitle;
+  }
+
+  test('["Continue", "Fix the dock header"] is titled "Fix the dock header" in the summary and the history row', () => {
+    startThread(ROOT);
+    prompt(ROOT, 'Continue');
+    expect(storedRow(ROOT)).toEqual({
+      title: 'Continue',
+      title_source: 'prompt',
+    });
+    prompt(ROOT, 'Fix the dock header');
+
+    expect(displayTitle(ROOT)).toBe('Fix the dock header');
+    expect(storedRow(ROOT)).toEqual({
+      title: 'Fix the dock header',
+      title_source: 'prompt',
+    });
+    expect(
+      store.listConversationHistoryPage({ ownerUserId: OWNER, limit: 20 })
+        .records[0],
+    ).toMatchObject({ title: 'Fix the dock header', titleSource: 'prompt' });
+  });
+
+  test('a meaningful first prompt is kept when a later prompt is "Continue"', () => {
+    startThread(ROOT);
+    prompt(ROOT, 'Fix the dock header');
+    prompt(ROOT, 'Continue');
+    prompt(ROOT, 'Refactor the composer');
+
+    expect(displayTitle(ROOT)).toBe('Fix the dock header');
+    expect(storedRow(ROOT)).toEqual({
+      title: 'Fix the dock header',
+      title_source: 'prompt',
+    });
+  });
+
+  test('a lone low-content prompt still titles the thread when nothing better exists', () => {
+    startThread(ROOT);
+    prompt(ROOT, 'Continue');
+    expect(displayTitle(ROOT)).toBe('Continue');
+  });
+
+  test('a continuation child opening with "Continue" keeps the conversation title', () => {
+    startThread(ROOT);
+    prompt(ROOT, 'Fix the dock header');
+    store.reserveNextConversationSession({
+      conversationId: ROOT,
+      predecessorSessionId: ROOT,
+      proposedSessionId: CHILD,
+      createdAt: CHILD_CREATED,
+    });
+    startThread(CHILD, CHILD_CREATED);
+    prompt(CHILD, 'Continue the task from where it stopped.');
+
+    expect(displayTitle(CHILD)).toBe('Fix the dock header');
+    expect(storedRow(CHILD)).toEqual({
+      title: 'Fix the dock header',
+      title_source: 'prompt',
+    });
+  });
+
+  test('a stored "Continue" root title yields to a later Session\'s real title at read time', () => {
+    // The root said only "Continue"; the conversation said what it was about
+    // in its continuation child, whose row the root's title cannot reach.
+    startThread(ROOT);
+    prompt(ROOT, 'Continue');
+    store.reserveNextConversationSession({
+      conversationId: ROOT,
+      predecessorSessionId: ROOT,
+      proposedSessionId: CHILD,
+      createdAt: CHILD_CREATED,
+    });
+    startThread(CHILD, CHILD_CREATED);
+    prompt(CHILD, 'Fix the dock header');
+
+    expect(storedRow(ROOT)).toEqual({
+      title: 'Continue',
+      title_source: 'prompt',
+    });
+    const page = store.listConversationHistoryPage({
+      ownerUserId: OWNER,
+      limit: 20,
+    });
+    expect(page.records).toHaveLength(1);
+    expect(page.records[0]).toMatchObject({
+      conversationId: ROOT,
+      title: 'Fix the dock header',
+    });
+    expect(store.conversationTitle([ROOT, CHILD])).toBe('Fix the dock header');
+  });
+
+  test('a generated title replaces only a prompt-derived title, and a later prompt never replaces it', () => {
+    startThread(ROOT);
+    prompt(ROOT, 'Continue');
+    expect(
+      store.recordGeneratedConversationTitle(ROOT, 'Dock header fix'),
+    ).toBe(true);
+    prompt(ROOT, 'Fix the dock header');
+    expect(storedRow(ROOT)).toEqual({
+      title: 'Dock header fix',
+      title_source: 'generated',
+    });
+    // A second generation is refused by the row's own guard.
+    expect(store.recordGeneratedConversationTitle(ROOT, 'Other')).toBe(false);
+  });
+
+  test('a start-supplied title is never replaced by a generated one', () => {
+    store.upsertSession({
+      provider: 'claude',
+      threadId: ROOT,
+      status: 'ready',
+      createdAt: ROOT_CREATED,
+      updatedAt: LAST_UPDATED,
+    } as never);
+    store.appendEvent({
+      eventId: 'delegated-start',
+      provider: 'claude',
+      threadId: ROOT,
+      createdAt: ROOT_CREATED,
+      method: 'session.started',
+      sessionId: ROOT,
+      metadata: {
+        userId: OWNER,
+        agentSlug: 'claude',
+        delegationTitle: 'Review the release notes',
+      },
+    } as never);
+    prompt(ROOT, 'Review the release notes\n\n---\nbrief');
+    expect(storedRow(ROOT)).toEqual({
+      title: 'Review the release notes',
+      title_source: 'provider',
+    });
+    expect(store.recordGeneratedConversationTitle(ROOT, 'Generated')).toBe(
+      false,
+    );
+    expect(store.conversationTitleGenerationCandidate(ROOT)).toBeUndefined();
+  });
+});
