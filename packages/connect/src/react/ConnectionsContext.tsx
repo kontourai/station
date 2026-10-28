@@ -509,9 +509,7 @@ export function ConnectionsProvider({
           removeConnection(id);
           return;
         }
-        const connection = connections.find(
-          (candidate) => candidate.id === id,
-        );
+        const connection = connections.find((candidate) => candidate.id === id);
         if (!connection) return;
         if (!removeShared) throw new Error('Forget this Station in the CLI.');
         await removeShared({

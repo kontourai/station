@@ -121,7 +121,9 @@ export function StationSwitcherMenu({
       return;
     }
     menuRef.current
-      ?.querySelector<HTMLElement>('[data-station-row]:not([aria-checked="true"])')
+      ?.querySelector<HTMLElement>(
+        '[data-station-row]:not([aria-checked="true"])',
+      )
       ?.focus();
   }, [menuRef]);
   useEffect(() => {
@@ -225,9 +227,8 @@ export function StationSwitcherMenu({
   };
 
   const onFilterKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    const rows = menuRef.current?.querySelectorAll<HTMLElement>(
-      '[data-station-row]',
-    );
+    const rows =
+      menuRef.current?.querySelectorAll<HTMLElement>('[data-station-row]');
     if (event.key === 'ArrowDown') {
       event.preventDefault();
       rows?.[0]?.focus();
@@ -328,7 +329,9 @@ export function StationSwitcherMenu({
                   data-station-row=""
                   aria-checked={current}
                   aria-label={label ? `${name} — ${label}` : name}
-                  aria-keyshortcuts={canForget(connection) ? 'Delete' : undefined}
+                  aria-keyshortcuts={
+                    canForget(connection) ? 'Delete' : undefined
+                  }
                   disabled={switchingId !== null || unavailable}
                   className="menu-row station-switcher__row"
                   onClick={() => select(connection)}
@@ -358,7 +361,9 @@ export function StationSwitcherMenu({
                       if (armed) node?.focus();
                     }}
                     className={`station-switcher__remove${armed ? ' station-switcher__remove--armed' : ''}`}
-                    aria-label={armed ? `Confirm removing ${name}` : `Remove ${name}`}
+                    aria-label={
+                      armed ? `Confirm removing ${name}` : `Remove ${name}`
+                    }
                     title={armed ? undefined : 'Remove'}
                     onBlur={() => {
                       if (armed) setArmedId(null);

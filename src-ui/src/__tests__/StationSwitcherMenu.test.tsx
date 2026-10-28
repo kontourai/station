@@ -154,8 +154,9 @@ test('marks the current Station, reports peer reachability, and exposes manageme
   );
   expect(row('Laptop — Checking…')).toBeTruthy();
   expect(
-    (await screen.findByRole('menuitemradio', { name: 'Laptop — Online' }))
-      .getAttribute('aria-checked'),
+    (
+      await screen.findByRole('menuitemradio', { name: 'Laptop — Online' })
+    ).getAttribute('aria-checked'),
   ).toBe('false');
   // The active Station is not probed: its own status is already live.
   expect(fetchMock).toHaveBeenCalledOnce();
@@ -230,11 +231,15 @@ test('filters by typing, and Enter switches to the best match', async () => {
 
 test('removes a Station after an inline confirmation, never the active one', async () => {
   const { forget } = openMenu();
-  expect(screen.queryByRole('button', { name: 'Remove Workstation' })).toBeNull();
+  expect(
+    screen.queryByRole('button', { name: 'Remove Workstation' }),
+  ).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Remove Laptop' }));
   expect(forget).not.toHaveBeenCalled();
   expect(screen.getByText('Remove from this device?')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Confirm removing Laptop' }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Confirm removing Laptop' }),
+  );
   await act(async () => {});
   expect(forget).toHaveBeenCalledExactlyOnceWith(laptop);
   expect(screen.queryByRole('menuitemradio', { name: /^Laptop/ })).toBeNull();
@@ -277,5 +282,7 @@ test('offers to remove every unreachable Station at once', async () => {
     'Media server',
     'Old dev',
   ]);
-  expect(screen.getAllByRole('menuitemradio').map((item) => item.textContent)).toHaveLength(2);
+  expect(
+    screen.getAllByRole('menuitemradio').map((item) => item.textContent),
+  ).toHaveLength(2);
 });

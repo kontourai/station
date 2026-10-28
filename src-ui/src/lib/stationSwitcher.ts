@@ -45,7 +45,9 @@ export function orderStations(
   };
   return connections
     .map((connection, index) => ({ connection, index }))
-    .sort((a, b) => rank(a.connection) - rank(b.connection) || a.index - b.index)
+    .sort(
+      (a, b) => rank(a.connection) - rank(b.connection) || a.index - b.index,
+    )
     .map(({ connection }) => connection);
 }
 

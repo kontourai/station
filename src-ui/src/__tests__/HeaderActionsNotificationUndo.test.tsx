@@ -35,7 +35,10 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-connect')>()),
   ConnectionStatusDot: () => <span data-testid="connection-status" />,
   useConnectionStatus: () => ({ status: 'connected', reason: null }),
-  useConnections: () => ({ activeConnection: { name: 'Default' } }),
+  useConnections: () => ({
+    activeConnection: { name: 'Default' },
+    connections: [],
+  }),
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({

@@ -84,6 +84,7 @@ vi.mock('../components/header/OverflowMenu', () => ({
 }));
 
 import { HeaderActions } from '../components/header/HeaderActions';
+import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import {
   consumePendingConnectionsModal,
   OPEN_CONNECTIONS_MODAL_EVENT,
@@ -110,6 +111,36 @@ test('Pair phone opens the existing host invitation flow directly from the Stati
   }
 });
 
+test('the Switch Station shortcut opens the chooser on the previous Station, once there are two', async () => {
+  const laptop = {
+    ...SAVED_STATION,
+    id: 'c2',
+    name: 'Laptop',
+    url: 'https://laptop.example.test',
+  };
+  try {
+    renderHeader();
+    // jsdom is not a Mac, so the primary modifier is Control.
+    const chord = { key: 'S', code: 'KeyS', shiftKey: true, ctrlKey: true };
+    fireEvent.keyDown(window, chord);
+    expect(screen.queryByRole('menu', { name: 'Choose Station' })).toBeNull();
+    cleanup();
+
+    savedConnections = [SAVED_STATION, laptop];
+    renderHeader();
+    fireEvent.keyDown(window, chord);
+    await screen.findByRole('menu', { name: 'Choose Station' });
+    expect(document.activeElement).toBe(
+      screen.getByRole('menuitemradio', { name: /^Laptop/ }),
+    );
+    fireEvent.keyDown(window, chord);
+    expect(screen.queryByRole('menu', { name: 'Choose Station' })).toBeNull();
+  } finally {
+    savedConnections = [SAVED_STATION];
+    cleanup();
+  }
+});
+
 function renderHeader(
   onOpenNotifications = vi.fn(),
   onOpenConnections = vi.fn(),
@@ -132,6 +163,7 @@ function renderHeader(
       onToggleOverflow={vi.fn()}
       onViewAllNotifications={vi.fn()}
     />,
+    { wrapper: KeyboardShortcutsProvider },
   );
   return onOpenNotifications;
 }

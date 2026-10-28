@@ -13,16 +13,16 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { APP_DESTINATION_REGISTRY } from '../../app-shell/destination-registry';
 import { useApiBase } from '../../contexts/ApiBaseContext';
+import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { useLongPress } from '../../hooks/useLongPress';
 import { useMenuTriggerToggle } from '../../hooks/useMenuTriggerToggle';
-import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { hasRealSavedConnection } from '../../lib/saved-connections';
-import { recordStationUse } from '../../lib/stationSwitcher';
 import {
   checkServerHealth,
   probeServerConnection,
 } from '../../lib/serverHealth';
+import { recordStationUse } from '../../lib/stationSwitcher';
 import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { BellGlyph } from '../icons/Glyph';
@@ -49,6 +49,18 @@ import type { HeaderHelpPrompt } from './utils';
  * still keeping the chunk out of the entry graph, which is where the saving
  * actually comes from.
  */
+/** Opens the switcher with the previous Station focused: the chord, then Enter, flips back. */
+function StationSwitchShortcut({ onToggle }: { onToggle: () => void }) {
+  useKeyboardShortcut(
+    'station.switch',
+    's',
+    ['cmd', 'shift'],
+    'Switch Station',
+    onToggle,
+  );
+  return null;
+}
+
 const loadStationSwitcher = () =>
   import('./StationSwitcherMenu').then((module) => ({
     default: module.StationSwitcherMenu,
@@ -176,9 +188,10 @@ export function HeaderActions({
   } = useConnections();
   const connectionButtonRef = useRef<HTMLButtonElement>(null);
   const [connectionMenuOpen, setConnectionMenuOpen] = useState(false);
+  const activeConnectionId = activeConnection?.id;
   useEffect(() => {
-    if (activeConnection) recordStationUse(activeConnection.id);
-  }, [activeConnection?.id]);
+    if (activeConnectionId) recordStationUse(activeConnectionId);
+  }, [activeConnectionId]);
   const { apiBase } = useApiBase();
   const {
     status: connStatus,
@@ -367,17 +380,6 @@ export function HeaderActions({
     openConnectionMenu,
     () => setConnectionMenuOpen(false),
   );
-  useKeyboardShortcut(
-    'station.switch',
-    's',
-    ['cmd', 'shift'],
-    'Switch Station',
-    () => {
-      if (connectionMenuOpen) setConnectionMenuOpen(false);
-      else openConnectionMenu();
-    },
-    connections.length > 1,
-  );
   const connectionGesture = useLongPress({
     onLongPress: setConnectionNameAnchor,
     onClick: (event) => {
@@ -464,6 +466,14 @@ export function HeaderActions({
           </>
         )}
       </button>
+      {connections.length > 1 && (
+        <StationSwitchShortcut
+          onToggle={() => {
+            if (connectionMenuOpen) setConnectionMenuOpen(false);
+            else openConnectionMenu();
+          }}
+        />
+      )}
       {connectionMenuOpen && connectionButtonRef.current && (
         <LazyBoundary
           load={loadStationSwitcher}
