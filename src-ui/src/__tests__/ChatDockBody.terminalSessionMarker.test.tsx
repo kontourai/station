@@ -17,7 +17,7 @@ import {
 } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeAll, describe, expect, test, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({
@@ -29,6 +29,16 @@ vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [],
   // archive#3764: the empty-transcript filler renders `ChatEmptyState`.
   useAgentsLoaded: () => true,
+}));
+
+const sdk = vi.hoisted(() => ({
+  continueAfterMemoryExhaustion: vi.fn(),
+  MemoryContinuationUnsupportedError: class extends Error {},
+}));
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  continueAfterMemoryExhaustion: sdk.continueAfterMemoryExhaustion,
+  MemoryContinuationUnsupportedError: sdk.MemoryContinuationUnsupportedError,
 }));
 
 vi.mock('../contexts/ApiBaseContext', () => ({
@@ -580,5 +590,116 @@ describe('ChatDockBody station-agent failure marker', () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/invalid or have expired/i)).toBeNull();
+  });
+});
+
+describe('ChatDockBody memory-exhaustion marker', () => {
+  const message =
+    'Codex ran out of memory and was stopped, along with the commands it was running. Its workload budget is 3072 MiB (peak 3072 MiB), shared by Codex and every command it runs.';
+  const killed = (extra: unknown[] = []) =>
+    buildSession({
+      conversationId: 'conversation-oom',
+      messages: [
+        {
+          role: 'user',
+          content: 'Regenerate the icons, lint, and run the browser check',
+          timestamp: 1,
+        } as any,
+        {
+          role: 'user',
+          content: `[SYSTEM_EVENT] [CHAT_ERROR:engine-memory-exhausted] ${message}`,
+          timestamp: 2,
+        } as any,
+        ...extra,
+      ],
+    } as Partial<ChatSession>);
+
+  beforeEach(() => {
+    sdk.continueAfterMemoryExhaustion.mockReset();
+  });
+
+  test('offers Continue, not Send again, and continues through Station rather than resending', async () => {
+    sdk.continueAfterMemoryExhaustion.mockResolvedValue('queued');
+    const chatInput = buildChatInput();
+    renderDock(killed(), vi.fn(), chatInput);
+    expect(
+      await screen.findByText(
+        /engine ran out of memory/i,
+        {},
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    ).toBeTruthy();
+    const action = await screen.findByRole(
+      'button',
+      { name: 'Continue' },
+      { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+    );
+    expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Switch agent' })).toBeNull();
+    fireEvent.click(action);
+    await waitFor(() =>
+      expect(sdk.continueAfterMemoryExhaustion).toHaveBeenCalledWith(
+        'conversation-oom',
+        'http://localhost:3242',
+      ),
+    );
+    expect(chatInput.handleSend).not.toHaveBeenCalled();
+  });
+
+  test('an older Station without the route gets the short continuation as a message', async () => {
+    sdk.continueAfterMemoryExhaustion.mockRejectedValue(
+      new sdk.MemoryContinuationUnsupportedError(),
+    );
+    const chatInput = buildChatInput();
+    renderDock(killed(), vi.fn(), chatInput);
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: 'Continue' },
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    );
+    await waitFor(() =>
+      expect(chatInput.handleSend).toHaveBeenCalledWith(
+        'Continue the task from where it stopped.',
+        [],
+      ),
+    );
+    expect(chatInput.handleSend).not.toHaveBeenCalledWith(
+      'Regenerate the icons, lint, and run the browser check',
+      expect.anything(),
+    );
+  });
+
+  test('once Station continued on its own, the card says so and offers Stop while it runs', async () => {
+    const chatInput = buildChatInput();
+    renderDock(
+      {
+        ...killed([
+          {
+            role: 'user',
+            content: 'Continue the task from where it stopped.',
+            stationMemoryContinuation: true,
+            timestamp: 3,
+          },
+        ]),
+        status: 'running',
+        orchestrationTurnOpen: true,
+      } as unknown as ChatSession,
+      vi.fn(),
+      chatInput,
+    );
+    expect(
+      await screen.findByText(
+        /restarted — continuing/i,
+        {},
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+    const stop = await screen.findByRole('button', { name: 'Stop' });
+    fireEvent.click(stop);
+    expect(chatInput.handleCancel).toHaveBeenCalled();
+    expect(sdk.continueAfterMemoryExhaustion).not.toHaveBeenCalled();
   });
 });

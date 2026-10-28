@@ -5647,7 +5647,10 @@ describe('CodexAdapter', () => {
       // toolServers config args (undefined here — this session authors no
       // toolServers, so the spawn argv stays byte-identical to before).
       expect(processFactory).toHaveBeenCalledWith(
-        { CODEX_HOME: '/station/app-homes/codex' },
+        {
+          CODEX_HOME: '/station/app-homes/codex',
+          STATION_WORKLOAD_SESSION_ID: 'thread-app-home',
+        },
         undefined,
       );
       await adapter.stopAll();
@@ -5703,10 +5706,16 @@ describe('CodexAdapter', () => {
       });
       await withTimeout(started, 'startSession');
 
-      expect(processFactory).toHaveBeenCalledWith({ CODEX_HOME: profileHome }, [
-        '-c',
-        `mcp_servers.station-control.url="http://127.0.0.1:3141/mcp/station-control?token=${token}"`,
-      ]);
+      expect(processFactory).toHaveBeenCalledWith(
+        {
+          CODEX_HOME: profileHome,
+          STATION_WORKLOAD_SESSION_ID: 'thread-profile-with-tools',
+        },
+        [
+          '-c',
+          `mcp_servers.station-control.url="http://127.0.0.1:3141/mcp/station-control?token=${token}"`,
+        ],
+      );
       const events = [
         await nextEvent(iterator, 'session.started'),
         await nextEvent(iterator, 'session.configured'),
@@ -5950,6 +5959,7 @@ describe('CodexAdapter', () => {
         {
           ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
           CODEX_HOME: '/station/app-homes/codex',
+          STATION_WORKLOAD_SESSION_ID: 'thread-connection-env',
         },
         undefined,
       );
@@ -5989,7 +5999,10 @@ describe('CodexAdapter', () => {
       await withTimeout(startSessionPromise, 'startSession');
 
       expect(processFactory).toHaveBeenCalledWith(
-        { CODEX_HOME: '/Users/me/.codex_vibe' },
+        {
+          CODEX_HOME: '/Users/me/.codex_vibe',
+          STATION_WORKLOAD_SESSION_ID: 'thread-connection-env-only',
+        },
         undefined,
       );
       await adapter.stopAll();
@@ -6094,6 +6107,7 @@ describe('CodexAdapter', () => {
             OPENAI_API_KEY: '',
             CONNECTION_ONLY: 'kept',
             CODEX_HOME: credentialProfileAppHomeDir('codex', 'proxy', homeDir),
+            STATION_WORKLOAD_SESSION_ID: 'thread-profile-overlay',
           },
           undefined,
         );

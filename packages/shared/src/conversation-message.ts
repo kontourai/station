@@ -194,6 +194,11 @@ export interface ConversationMessage {
      * person, written by nobody. Shown as Station's, not the person's.
      */
     stationCheckBack?: true;
+    /**
+     * Station's continuation after the engine was killed for memory
+     * (`isStationMemoryContinuationTurn`). Shown as Station's.
+     */
+    stationMemoryContinuation?: true;
     /** Durable source event for an authored user row, never an optimistic id. */
     sourceEventId?: string;
     /** The model Station requested — NOT a runtime-confirmed observation. See `reportedModel`. */

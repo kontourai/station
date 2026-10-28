@@ -300,6 +300,8 @@
 
     "src-server/services/ssh/device-pairing-service.ts",
 
+    "packages/contracts/src/terminal-transport.ts",
+
     "packages/contracts/src/walkthrough.ts",
 
     "packages/contracts/src/action-operation.ts",

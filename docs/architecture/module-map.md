@@ -4007,6 +4007,24 @@ owns budgets, failure behavior and platform limits; the
 [process fixture](../../src-server/services/infra/__tests__/workload-resources.process.test.ts)
 exercises OOM containment, descriptor/PTY behavior and lifecycle cleanup.
 
+Memory budgets resolve in [workload-budget.ts](../../src-server/services/infra/workload-budget.ts)
+(environment, then [saved settings](../../src-server/services/infra/workload-budget-settings.ts),
+then a host-sized default). The launcher attributes a scope to the Session an
+engine launch names, which the [workload routes](../../src-server/routes/system/workload-routes.ts)
+and the [workload_status tool](../../src-server/tools/station-control-workload-tools.ts)
+read from cgroup v2 files, including each scope's kernel `oom_kill` count
+(scopes launch with `OOMPolicy=continue`, so a command, not the engine, is
+normally killed). Orchestration's first-turn composition adds the
+budget statement for adapters declaring `workloadScope: 'engine-process'` and
+the [memory-exhaustion recovery note](../../src-server/services/orchestration/memory-exhaustion-recovery.ts)
+for a successor of a memory-killed Session; the
+[continuation module](../../src-server/services/orchestration/memory-exhaustion-continuation.ts)
+sends that successor's turn through the conversation inbox, automatically
+(capped) or on a person's Continue, once per dead turn. The
+[budget tests](../../src-server/services/infra/__tests__/workload-budget.test.ts)
+drive the real launcher against a fake systemd manager; they are not Linux
+enforcement evidence.
+
 
 ## OutboundDispatchModule
 
@@ -5798,7 +5816,24 @@ socket and process projections retain their current owner during migration.
 
 The [design boundary](../design/terminal.md#first-implementation-boundary-3994-part-a)
 separates this foundation from supervisor survival, retention Settings, the
-public observe grant, same-origin transport, SDK runtime and Ghostty. The
+live paired-device admission, SDK runtime and Ghostty. The
+[same-origin gateway](../../src-server/services/terminal/terminal-gateway.ts)
+mounts on the API listener through the Station Hono provider; its
+[channel runtime](../../src-server/services/terminal/terminal-channel-connection.ts)
+owns per-channel byte credit, replay acknowledgement and a bounded command
+queue. It uses the same personal-operator admission limit as the HTTP seam.
+Global reservations bound retained record/journal instances, disk storage and raw
+tail payload. Ended/failed records can expire; request-triggered eviction checks
+operate authority on the victim's stored Project/binding, while live sessions
+remain pinned. The [POSIX backend](../../src-server/adapters/pty-process-groups.ts)
+freezes and terminates discovered owned job-control groups. The
+[production route test](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts)
+opens real PTYs through HTTP admission, checks both configured Project roots and
+refuses cross-Project/binding access. Its credential fixture is not live pairing
+or account admission qualification.
+The [socket suite](../../src-server/services/terminal/__tests__/terminal-gateway.process.test.ts)
+qualifies real PTY/socket resume, credit, scope refusals and resize ordering;
+its injected identity seam does not qualify live pairing or remote egress. The
 [real PTY suite](../../src-server/services/terminal/__tests__/terminal-sessions.process.test.ts)
 checks durable replay, scope/cwd refusals, service-level observer refusal,
 journal bounds and history migration. It does not qualify Windows, native
