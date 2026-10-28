@@ -2717,6 +2717,14 @@ one-time recovery link. Capture the selected Station request scope, require
 explicit confirmation and keep recovery links out of persisted caches. External
 providers return a guidance projection instead of local account controls.
 
+The same subpath exports `getAccountSharingSetting(apiBase, options)` and
+`applyAccountSharingSetting(apiBase, choice, options)` for the operator-only
+[Project sharing setting](../guides/deployment-authentication.md#turn-it-on-from-settings).
+The read reports who decides (the stored setting or the deployment), what is
+active, and the sign-in origins the operator may choose. A `changed` apply
+result means the Station is restarting into the change; read the setting again
+for its outcome.
+
 `@kontourai/station-sdk/authority-observation` exports
 `getAuthorityObservation(apiBase, options)` for the closed, credential-bound
 answer to "what authority is this request acting as": the current public home

@@ -3,7 +3,10 @@
 An operator can supply Station's account authentication through the public
 `@kontourai/station-contracts/deployment-authentication` contract. The adapter
 is trusted server code selected at process startup. Project plugins and HTTP
-requests cannot register an authentication authority.
+requests cannot register an authentication authority. The built-in local
+account provider can also be turned on from Settings; see
+[Turn it on from Settings](#turn-it-on-from-settings) for why that does not
+weaken this rule.
 
 This interface supplies account login operations and a verified person. Device
 grants, Project membership, private Session access and execution offers remain
@@ -46,6 +49,63 @@ Leave `STATION_AUTHENTICATION_MODULE` unset. HTTP loopback origins are supported
 for local development. This configuration does not provision public reachability
 or TLS. Solo local operation still requires neither accounts nor a provider when
 these opt-ins are absent.
+
+### Turn it on from Settings
+
+Without these variables, the Station operator can turn the same configuration
+on in **Settings → System → Project sharing with local accounts**
+([#4305](https://github.com/kontourai/station/issues/4305)).
+
+- **Who.** Only the Station operator: the route uses the same operator check as
+  **Accounts and sign-in** (`projectMembershipAuthority(request).operator()`,
+  an operator credential or a home-possession Device). A paired Device with
+  `access:manage`, a Project administrator, or an agent cannot read or change
+  it. Any operator step-up added to that check applies here too.
+- **Sign-in address.** You choose the public origin from addresses this Station
+  already knows: `ALLOWED_ORIGINS`, its own loopback origins, its bound host,
+  `STATION_TRUSTED_TAILSCALE_SERVE_ORIGIN` and Tailscale Serve origins reported
+  by the local daemon. An address is selectable only when it is HTTPS (or HTTP
+  loopback) and the API already admits it as a browser origin. The server
+  accepts only a selectable address, so `127.0.0.1` cannot be confused with
+  `localhost`. To offer another address, add it to `ALLOWED_ORIGINS`.
+- **Applying.** Station saves the change in
+  `<STATION_HOME>/config/account-sharing.json` and asks the
+  [process supervisor](../design/process-supervisor.md) to hand off to a new
+  generation. Open requests drain and clients reconnect. A Station started
+  without the supervisor (`STATION_DIRECT_LAUNCH=1`, `--watch`, the desktop
+  sidecar) refuses the change instead of applying half of it.
+- **Rollback.** The new generation marks the change as attempted before it uses
+  it, and commits it only after it starts. If the change fails to load (for
+  example, an account store whose authority secret is missing), Station starts
+  with sharing off and records why. If the generation dies before committing,
+  the next start discards the change and uses the previous one. A refused or
+  unanswered restart withdraws the change. Settings shows the outcome.
+- **Precedence.** If any of `STATION_PROJECT_SHARING`, `STATION_LOCAL_ACCOUNTS`,
+  `STATION_AUTHENTICATION_MODULE`, `STATION_AUTHENTICATION_ORIGIN`,
+  `STATION_AUTHENTICATION_BROWSER_ORIGINS`, `STATION_LOCAL_ACCOUNT_OIDC_FILE` or
+  `STATION_HOSTED_TENANT_REGISTRY_FILE` is set, even to `0`, the deployment
+  decides. Startup ignores the stored setting, and Settings shows it as **Set
+  by the deployment** with no control. Optional OIDC choices remain
+  environment-only.
+- **Turning it off.** Station restarts without Project membership or the
+  account provider. The account store, its authority secret and Project
+  membership records stay in the Station home. While it is off nobody can sign
+  in, account sessions are not recognized, and account-tied personal access
+  tokens are refused. Project sharing controls and invitations are
+  unavailable. Turning it on again with the same Station home restores accounts,
+  memberships and unexpired sessions, as an ordinary restart does. To end
+  sessions for good, use **Sign out all sessions** for each account before
+  turning it off.
+
+Why the built-in provider may be chosen from Settings when a module may not:
+the rule that HTTP requests cannot register an authentication authority is
+about code. A module is arbitrary JavaScript that Station imports and trusts
+with the account store, so only process configuration chosen by whoever runs
+the process may name one. The built-in provider is code that already ships in
+Station. The setting chooses only whether it runs and which already-admitted
+origin it uses. It can name no module, path or secret, and the stored shape has
+no field for one. Only the operator, who already controls the Station home
+and its credentials, can change it.
 
 The operator enables sharing in a Project's **People and access** section,
 chooses a role and creates a single-use invitation link. Share the link manually;
