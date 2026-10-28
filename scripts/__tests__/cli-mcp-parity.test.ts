@@ -24,7 +24,11 @@ const sorted = (section: Record<string, Entry>) =>
   );
 
 /** The real entry point, as the gate lanes run it, on a fixture manifest. */
-function runGate(manifest: Manifest | null, args: string[] = []) {
+function runGate(
+  manifest: Manifest | null,
+  args: string[] = [],
+  env: NodeJS.ProcessEnv = process.env,
+) {
   const extra: string[] = [];
   if (manifest) {
     const path = join(makeTempDir('cli-mcp-parity-'), 'manifest.json');
@@ -34,13 +38,17 @@ function runGate(manifest: Manifest | null, args: string[] = []) {
   const result = spawnSync(
     process.execPath,
     ['scripts/cli-mcp-parity.mjs', ...extra, ...args],
-    { encoding: 'utf8', timeout: 60_000, windowsHide: true },
+    { encoding: 'utf8', env, timeout: 60_000, windowsHide: true },
   );
   return { status: result.status, output: `${result.stdout}${result.stderr}` };
 }
 
 const git = (...args: string[]) =>
-  execFileSync('git', args, { encoding: 'utf8', windowsHide: true }).trim();
+  execFileSync('git', args, {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  }).trim();
 
 /** A tool whose entry names a CLI counterpart, to reclassify in fixtures. */
 function counterpartTool(manifest: Manifest) {
@@ -90,6 +98,18 @@ describe('cli-mcp parity entry point', () => {
       expect(output).toContain(`ratchet base ${mergeBase} has no manifest yet`);
       expect(status).toBe(0);
     }
+  });
+
+  it('fails without a merge base instead of comparing against the tip', () => {
+    // A repository sharing no history with origin/main (none at all here).
+    const unrelated = makeTempDir('cli-mcp-parity-git-');
+    git('init', '--quiet', unrelated);
+    const { status, output } = runGate(null, [], {
+      ...process.env,
+      GIT_DIR: join(unrelated, '.git'),
+    });
+    expect(output).toContain('cannot find the merge base with origin/main');
+    expect(status).toBe(1);
   });
 
   it('does not ratchet against a base that predates the manifest', () => {

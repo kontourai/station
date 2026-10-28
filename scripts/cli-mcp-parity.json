@@ -90,8 +90,8 @@
       "note": "`chat --session` is the person's own send (POST /api/orchestration/chat); send_to_session uses the agent-only session-control leaf."
     },
     "checkpoints history": {
-      "exempt": "local-host",
-      "reason": "Reads git checkpoint refs in this Station home on disk."
+      "missing": 4281,
+      "want": "a tool for the restore history the server serves at GET /api/orchestration/sessions/:threadId/checkpoint-restores"
     },
     "checkpoints prune": {
       "exempt": "local-host",
@@ -103,7 +103,7 @@
     },
     "checkpoints retention": {
       "exempt": "local-host",
-      "reason": "Reads git checkpoint refs in this Station home on disk."
+      "reason": "Reads the checkpoint retention record (checkpoint-retention.json) in this Station home on disk."
     },
     "checkpoints status": {
       "exempt": "local-host",
