@@ -10,6 +10,7 @@ import {
   TERMINAL_INPUT,
   terminalScopeAllows,
 } from '@kontourai/station-contracts/terminal-transport';
+import { TerminalOutputSession } from '@kontourai/station-sdk/client';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { WebSocket } from 'ws';
 import { z } from 'zod/v3';
@@ -130,6 +131,7 @@ describe.skipIf(process.platform === 'win32')(
     let sessions: TerminalSessions<string>;
     let url: string;
     const clients: Client[] = [];
+    const outputReaders: TerminalOutputSession[] = [];
     const grants = new Map<string, string>();
 
     beforeEach(async () => {
@@ -151,9 +153,13 @@ describe.skipIf(process.platform === 'win32')(
           resolveRoot: async () => root,
         },
       );
-      server = createServer((_req, res) =>
-        res.end('ordinary HTTP on the same listener'),
-      );
+      server = createServer((req, res) => {
+        if (req.url === '/api/terminal/socket') {
+          const credential = req.headers.authorization?.replace(/^Bearer /, '');
+          res.writeHead(credential && grants.has(credential) ? 204 : 403);
+          res.end();
+        } else res.end('ordinary HTTP on the same listener');
+      });
       gateway = new TerminalGateway({
         sessions,
         allowedOrigins: ['http://station.test'],
@@ -169,6 +175,7 @@ describe.skipIf(process.platform === 'win32')(
       url = `ws://127.0.0.1:${address.port}/api/terminal/socket`;
     });
     afterEach(async () => {
+      for (const reader of outputReaders.splice(0)) reader.dispose();
       for (const client of clients.splice(0)) client.ws.terminate();
       gateway.stop();
       vi.restoreAllMocks();
@@ -190,6 +197,63 @@ describe.skipIf(process.platform === 'win32')(
     async function open() {
       return sessions.open('operator', scope, dimensions);
     }
+
+    test('the public SDK authenticates a loopback output session against the real gateway', async () => {
+      const record = await open();
+      const apiBase = url
+        .replace(/^ws:/, 'http:')
+        .replace('/api/terminal/socket', '');
+      const output: string[] = [];
+      const reader = new TerminalOutputSession({
+        apiBase,
+        ...scope,
+        terminalId: record.terminalId,
+        resolveCredential: () => ({ origin: apiBase, credential: 'observer' }),
+        onOutput: (bytes) => {
+          output.push(new TextDecoder().decode(bytes));
+        },
+        onReset: () => {
+          output.length = 0;
+        },
+      });
+      outputReaders.push(reader);
+      await reader.connect();
+      await sessions.write(
+        'operator',
+        scope,
+        record.terminalId,
+        "printf 'sdk-replayed\\n'\r",
+      );
+      await expect.poll(() => output.join('')).toContain('sdk-replayed');
+      expect(reader.appliedThrough).toBeGreaterThan(0);
+      const after = await sessions.read('operator', scope, record.terminalId);
+      expect(after.terminalId).toBe(record.terminalId);
+      expect(after.status).toBe('running');
+    });
+
+    test('the public SDK reports refused loopback credentials without receiving terminal output', async () => {
+      const record = await open();
+      const apiBase = url
+        .replace(/^ws:/, 'http:')
+        .replace('/api/terminal/socket', '');
+      const output = vi.fn();
+      const reader = new TerminalOutputSession({
+        apiBase,
+        ...scope,
+        terminalId: record.terminalId,
+        resolveCredential: () => ({
+          origin: apiBase,
+          credential: 'not-a-grant',
+        }),
+        onOutput: output,
+        onReset: () => undefined,
+      });
+      outputReaders.push(reader);
+      await expect(reader.connect()).rejects.toMatchObject({
+        code: 'terminal-refused',
+      });
+      expect(output).not.toHaveBeenCalled();
+    });
     async function journal(id: string, text: string) {
       await expect
         .poll(
@@ -417,7 +481,9 @@ describe.skipIf(process.platform === 'win32')(
 
     test('shares HTTP listener and requires a valid first auth frame even on loopback', async () => {
       const response = await fetch(url.replace('ws:', 'http:'));
-      expect(await response.text()).toBe('ordinary HTTP on the same listener');
+      expect(response.status).toBe(403);
+      const ordinary = await fetch(new URL('/', url.replace('ws:', 'http:')));
+      expect(await ordinary.text()).toBe('ordinary HTTP on the same listener');
       const ws = new WebSocket(url, { origin: 'http://station.test' });
       clients.push(new Client(ws));
       await once(ws, 'open');
