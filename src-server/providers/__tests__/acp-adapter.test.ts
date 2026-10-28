@@ -7234,7 +7234,14 @@ describe('chat-host-images: an ACP approval relaunch and its temp folder', () =>
       exits[0]!();
       releaseStart();
       const outcome = await relaunch;
+      const afterRelaunch = {
+        root: sessionTempRoot('thread-relaunch'),
+        exists: existsSync(own),
+      };
+      // The replacement, now current, dies on its own: that ends the launch.
+      exits[1]!();
       const result = {
+        afterRelaunch,
         outcome,
         own,
         root: sessionTempRoot('thread-relaunch'),
@@ -7249,18 +7256,19 @@ describe('chat-host-images: an ACP approval relaunch and its temp folder', () =>
     }
   }
 
-  test('the old process exiting mid-start does not take the folder the replacement now uses', async () => {
+  test('the old process exiting mid-start keeps the folder for the replacement, whose own exit then releases it', async () => {
     const result = await relaunchWithOldExitMidStart('succeeds');
     expect(result.outcome).toEqual({ ok: true });
-    expect(result.exists).toBe(true);
-    expect(result.root).toBe(result.own);
+    expect(result.afterRelaunch).toEqual({ root: result.own, exists: true });
+    // ... and the replacement's own later exit still releases it.
+    expect(result.root).toBeUndefined();
+    expect(result.exists).toBe(false);
   });
 
   test('if the replacement then fails to start, the launch is released, not leaked', async () => {
     const result = await relaunchWithOldExitMidStart('fails');
     expect(result.outcome.ok).toBe(false);
-    expect(result.root).toBeUndefined();
-    expect(result.exists).toBe(false);
+    expect(result.afterRelaunch).toEqual({ root: undefined, exists: false });
   });
 });
 
