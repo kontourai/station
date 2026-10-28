@@ -145,6 +145,24 @@ test.each([
   },
 );
 
+test('an image naming a file no reader shows says so, with no broken image (#4266)', async () => {
+  mount('![x](README.md)');
+  const card = await screen.findByRole('note');
+  expect(card.textContent).toBe('xOnly PNG images and HTML pages show here.');
+  expect(screen.queryByRole('img')).toBeNull();
+  expect(document.querySelector('img')).toBeNull();
+  expect(readVisual).not.toHaveBeenCalled();
+});
+
+test.each(['/assets/logo.svg', '/api/attachments/abc'])(
+  'an image of another type, or with no extension, stays an image: %s',
+  (src) => {
+    mount(`![logo](${src})`);
+    expect(screen.getByAltText('logo').getAttribute('src')).toBe(src);
+    expect(screen.queryByRole('note')).toBeNull();
+  },
+);
+
 test('a request that never got an answer is not reported as a missing file', async () => {
   readVisual.mockRejectedValue(new TypeError('Failed to fetch'));
   mount(`[Interactive mockup](${path})`);

@@ -13,7 +13,9 @@ import { type HostImagesView, useHostImages } from './HostImagesContext';
 import { useMarkdownLinkContext } from './MarkdownLinkContext';
 import {
   VisualUnavailableCard,
+  visualFileFailureText,
   WorkspaceFileReply,
+  workspaceFilePath,
   workspaceVisualPath,
 } from './WorkspaceFileReply';
 
@@ -73,6 +75,10 @@ function mediaTypeOf(src: string): string {
 
 type ImageProps = ComponentPropsWithoutRef<'img'> & { node?: unknown };
 
+/** A file name with an extension that names no image or page type. */
+const NOT_AN_IMAGE_FILE =
+  /\.(?!(?:html?|png|jpe?g|gif|webp|svg|avif|bmp|ico)$)[a-z0-9]+$/i;
+
 /**
  * A markdown image that opens the shared previewer (zoom, pinch) on click, so
  * an image in a reply is as inspectable as one the user attached. Outside the
@@ -111,6 +117,24 @@ function LegacyMarkdownImage({ src, alt, node: _node, ...props }: ImageProps) {
       <WorkspaceFileReply path={localPath} variant="image">
         {alt || 'Image'}
       </WorkspaceFileReply>
+    );
+  }
+  // #4266: in a Project chat, an image naming a file that is no image
+  // (`README.md`) says so, rather than leaving a broken image for a URL
+  // nothing serves. A path with no extension (an API route) or another image
+  // type keeps the plain image.
+  const filePath = workspaceFilePath(source);
+  if (
+    link?.projectSlug &&
+    !localPath &&
+    filePath &&
+    NOT_AN_IMAGE_FILE.test(filePath)
+  ) {
+    return (
+      <VisualUnavailableCard
+        label={alt || null}
+        reason={visualFileFailureText('unsupported-type')}
+      />
     );
   }
   const image = (

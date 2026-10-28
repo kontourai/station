@@ -17,11 +17,16 @@ import { SkeletonBlock } from '../state';
 import { HtmlReply } from './HtmlReply';
 import { useMarkdownLinkContext } from './MarkdownLinkContext';
 
-export function workspaceVisualPath(href: string | undefined): string | null {
+/** A file path a reply named (no URL scheme, not protocol-relative). */
+export function workspaceFilePath(href: string | undefined): string | null {
   if (!href || /^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('//'))
     return null;
-  const path = href.split('#')[0];
-  return /\.(?:html?|png|jpe?g|gif|webp)$/i.test(path) ? path : null;
+  return href.split('#')[0] || null;
+}
+
+export function workspaceVisualPath(href: string | undefined): string | null {
+  const path = workspaceFilePath(href);
+  return path && /\.(?:html?|png|jpe?g|gif|webp)$/i.test(path) ? path : null;
 }
 
 /** Why a visual file could not be shown, for a reader. */
