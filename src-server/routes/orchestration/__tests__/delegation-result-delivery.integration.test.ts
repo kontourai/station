@@ -440,6 +440,69 @@ describe('delegated task result delivery (#3158)', () => {
     ]);
   });
 
+  test.each([
+    { shape: 'invocation-anchored', invocationId: 'invocation-1' },
+    { shape: 'unanchored', invocationId: undefined },
+  ])(
+    'a child turn a restart interrupted tells its parent once ($shape)',
+    async ({ invocationId }) => {
+      const h = setup();
+      await routes(h, PARENT, () => 'running').delegate();
+      emit(h, CHILD, 'turn.started', {
+        turnId: 'child-turn-1',
+        ...(invocationId ? { invocationId } : {}),
+        prompt: 'do the work',
+      });
+      emit(h, CHILD, 'content.text-delta', {
+        turnId: 'child-turn-1',
+        itemId: 'child-turn-1-text',
+        delta: 'half done',
+      });
+      // Boot recovery's abort: turn-scoped, no invocation.
+      emit(h, CHILD, 'turn.aborted', {
+        eventId: 'turn-interrupted-abort:boundary-1',
+        turnId: 'child-turn-1',
+        recoveryTerminal: true,
+      });
+      await h.delivery.idle();
+      emit(h, CHILD, 'session.exited');
+      await h.delivery.idle();
+      await h.delivery.reconcile();
+
+      expect(h.starts).toHaveLength(1);
+      expect(h.starts[0]!.parentConversationId).toBe(PARENT);
+      expect(h.starts[0]!.text).toContain(
+        'was interrupted when Station restarted, before it finished',
+      );
+      // Its text cannot be attributed to this run, so none is quoted.
+      expect(h.starts[0]!.text).not.toContain('half done');
+      expect(h.store.delegationResultStore().listForChild(CHILD)).toEqual([
+        expect.objectContaining({ state: 'delivered', outcome: 'interrupted' }),
+      ]);
+
+      // The next turn, run after the restart, is delivered as usual (an
+      // invocation-anchored one needs a real invocation record to prove).
+      if (invocationId) return;
+      runChildTurn(h, CHILD, 'child-turn-2', 'done now');
+      await h.delivery.idle();
+      expect(h.starts).toHaveLength(2);
+      expect(h.starts[1]!.text).toContain('> done now');
+    },
+  );
+
+  test('an engine abort without an invocation is not read as a restart', async () => {
+    const h = setup();
+    await routes(h, PARENT, () => 'running').delegate();
+    emit(h, CHILD, 'turn.started', {
+      turnId: 'child-turn-1',
+      invocationId: 'invocation-1',
+      prompt: 'do the work',
+    });
+    emit(h, CHILD, 'turn.aborted', { turnId: 'child-turn-1' });
+    await h.delivery.idle();
+    expect(h.starts).toHaveLength(0);
+  });
+
   test("the child's own text is quoted and cannot forge Station's frame", async () => {
     const h = setup();
     await routes(h, PARENT, () => 'running').delegate();

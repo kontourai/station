@@ -1602,7 +1602,11 @@ and principal, which is no more than `send_to_session` allows the same caller.
 A child transition (today `settled`) is read from the persisted lifecycle fold
 after the event bus publishes it, and again at startup. Each transition is one
 durable row in `EventStore`, holding the text composed from the child's stored
-output. That row is the consumption record shared with `get_task`: the recorded
+output. A child turn that a Station restart interrupted settles nothing, so
+it gets its own row instead, keyed by the recovery abort's event id: it tells
+the parent the task was cut off and quotes no output, since that turn's text
+cannot be attributed to the run without inferring an invocation from a turn
+id. That row is the consumption record shared with `get_task`: the recorded
 parent's read of its own child at rest consumes it. `interrupt_task` from the
 recorded parent, or from the delegating owner in person, cancels it and
 suppresses the one turn it stops. An interrupt that names a turn suppresses only

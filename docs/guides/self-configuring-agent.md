@@ -394,7 +394,9 @@ Session by its `sessionId`, without creating a task.
   captured-input audit. A thread with capture history can therefore be idle
   while a requested settlement remains unverified. A turn that a Station
   restart interrupted leaves the Session idle but settles nothing: no
-  `settledTurn` reports it, and nothing acknowledges the requested work. Active requested work whose
+  `settledTurn` reports it, and nothing acknowledges the requested work. A
+  delegated task cut off that way tells its parent it was interrupted, quoting
+  no output. Active requested work whose
   producer emits only untagged observations remains running and unacknowledged.
   A positively scoped terminal uses the actual current boundary or validated
   retirement witness and complete canonical scope; its invocation is never

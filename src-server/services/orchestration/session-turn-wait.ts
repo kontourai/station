@@ -75,6 +75,17 @@ const SETTLE_OUTCOME: Record<string, SessionSettledTurn['outcome']> = {
 };
 
 /**
+ * The newest turn a restart-recovery abort closed. Not a settlement (it
+ * acknowledges no work) and not part of `SessionWaitState`; delegation reads
+ * it to tell a parent its task was cut off.
+ */
+export interface SessionInterruptedTurn {
+  readonly turnId: string;
+  readonly sequence: number;
+  readonly eventId: string;
+}
+
+/**
  * Evaluate a wait against the log: whether it is satisfied, and what the
  * Session looks like.
  *
@@ -95,7 +106,11 @@ export function evaluateSessionWait(
   threadId: string,
   until: SessionWaitUntil,
   cursor: number,
-): { readonly satisfied: boolean; readonly view: SessionWaitState } {
+): {
+  readonly satisfied: boolean;
+  readonly view: SessionWaitState;
+  readonly interrupted?: SessionInterruptedTurn;
+} {
   const events = ports.foldEvents(threadId);
   const head = Math.max(
     ports.headSequence(threadId),
@@ -105,6 +120,7 @@ export function evaluateSessionWait(
   let invocationId: string | undefined;
   let anchor: TurnIdentityAnchor | undefined;
   let settled: SessionSettledTurn | undefined;
+  let interrupted: SessionInterruptedTurn | undefined;
   for (const { sequence, event } of events) {
     const before = open;
     const nextAnchor = nextTurnIdentityAnchor(anchor, event);
@@ -117,6 +133,8 @@ export function evaluateSessionWait(
     // so the Session reads idle. It has no invocation to prove, so it is not
     // a settlement: it supplies no terminal ACK for the requested work.
     const recoveryAbort = isInvocationlessRecoveryAbort(event);
+    if (recoveryAbort && before !== undefined && open === undefined)
+      interrupted = { turnId: before, sequence, eventId: event.eventId };
     let settledInvocation = invocationId;
     const ordinary =
       ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
@@ -177,6 +195,7 @@ export function evaluateSessionWait(
   return {
     satisfied: until === 'idle' ? !busy : settled !== undefined,
     view,
+    ...(interrupted ? { interrupted } : {}),
   };
 }
 
