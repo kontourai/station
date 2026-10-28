@@ -605,7 +605,8 @@ needing repair stays visible with its setup action; a removed choice asks you
 to choose another.
 
 Leaving the draft for another chat, pressing Escape in it, or Back discards it.
-Collapsing the dock keeps it as you left it. Choosing **New chat** again while a
+Collapsing the dock keeps it as you left it, and Back while it is hidden does
+not discard it. On a phone the draft opens full screen. Choosing **New chat** again while a
 draft is open returns you to that draft. To resume earlier work, choose it in
 the dock’s chat list.
 
