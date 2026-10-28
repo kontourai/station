@@ -100,6 +100,11 @@ interface SendTransaction {
   attachments?: FileAttachment[];
   /** Byte-free selected-stage snapshot, restored only after a definitive rejection. */
   attachmentStages?: ComposerAttachmentStageSnapshot[];
+  /**
+   * A message Station composed, not the composer's (`preserveComposer`): it
+   * took nothing from the composer, so a rejection gives nothing back to it.
+   */
+  composed?: true;
 }
 
 type UserCancelableAbortController = AbortController & {
@@ -127,8 +132,14 @@ function prepareSendTransaction(options: {
   attachments?: FileAttachment[];
   /** The send's idempotency key: the bubble's identity too. */
   clientTurnId: string;
+  composed?: boolean;
 }): SendTransaction {
   const originalMessages = options.state?.messages ?? [];
+  // A composed message holds none of the composer's files.
+  const attachmentStages = options.composed
+    ? undefined
+    : options.state?.attachmentStages;
+  const composed = options.composed ? ({ composed: true } as const) : {};
   // A resend of the same key (a replay of a kept row, a Retry) is the same
   // message: it keeps its one bubble instead of gaining a second.
   if (
@@ -143,7 +154,8 @@ function prepareSendTransaction(options: {
       optimisticMessages: originalMessages,
       optimisticMessageClientId: options.clientTurnId,
       attachments: options.attachments,
-      attachmentStages: options.state?.attachmentStages,
+      attachmentStages,
+      ...composed,
     };
   const outgoing = buildOutgoingUserMessage(
     originalMessages,
@@ -157,7 +169,8 @@ function prepareSendTransaction(options: {
     optimisticMessages: outgoing.messages,
     optimisticMessageClientId: outgoing.clientId,
     attachments: options.attachments,
-    attachmentStages: options.state?.attachmentStages,
+    attachmentStages,
+    ...composed,
   };
 }
 
@@ -183,6 +196,9 @@ function rejectedSendRollback(
     return next;
   })();
 
+  // Only its own bubble goes: the composer was never part of it.
+  if (transaction.composed)
+    return rollbackMessages ? { messages: rollbackMessages } : {};
   return {
     ...(latestState?.input === '' ? { input: transaction.submittedDraft } : {}),
     ...((latestState?.attachments?.length ?? 0) === 0 &&
@@ -284,12 +300,15 @@ async function observeSendAdmission<T>(
 function discardedMessageNotice(
   restored: boolean,
   text: string,
+  composed = false,
 ): { role: 'system'; content: string } {
   return {
     role: 'system',
-    content: restored
-      ? 'This message was discarded, so it was not sent. Its text is back in the composer.'
-      : `This message was discarded, so it was not sent. Its text was:\n\n${text}`,
+    content: composed
+      ? 'This message was discarded, so it was not sent.'
+      : restored
+        ? 'This message was discarded, so it was not sent. Its text is back in the composer.'
+        : `This message was discarded, so it was not sent. Its text was:\n\n${text}`,
   };
 }
 
@@ -825,6 +844,7 @@ export function useSendMessage(
         modelInput: content,
         attachments,
         clientTurnId: resolvedTurnId,
+        composed: preserveComposer,
       });
       // The conversation this send names; the delivery lookup asks by it.
       // A replay sends (and is looked up) under the conversation its row
@@ -956,7 +976,11 @@ export function useSendMessage(
               if (restored) updateChat(sessionId, { input: submittedDraft });
               addEphemeralMessage(
                 sessionId,
-                discardedMessageNotice(restored, submittedDraft),
+                discardedMessageNotice(
+                  restored,
+                  submittedDraft,
+                  preserveComposer,
+                ),
               );
               options?.onAdmission?.('not-invoked');
               return false;
@@ -1090,7 +1114,10 @@ export function useSendMessage(
           message: content,
           conversationId: sentConversationId,
           attachments,
-          attachmentStages: currentState?.attachmentStages,
+          // A composed message carries none of the composer's staged files.
+          attachmentStages: preserveComposer
+            ? undefined
+            : currentState?.attachmentStages,
           ambientContext,
           clientTurnId: resolvedTurnId,
           automaticBackground: Boolean(options?.dispatch),
@@ -1388,6 +1415,9 @@ export function useSendMessage(
                               onAdmission,
                               claimRetry: options?.claimRetry,
                               skipPersonalApprovalDefault: true,
+                              ...(preserveComposer
+                                ? { preserveComposer: true }
+                                : {}),
                             },
                           ),
                         options?.onAdmission,
@@ -1514,7 +1544,11 @@ export function useSendMessage(
               addEphemeralMessage(
                 sessionId,
                 retiredAs === 'discarded'
-                  ? discardedMessageNotice(restored, submittedDraft)
+                  ? discardedMessageNotice(
+                      restored,
+                      submittedDraft,
+                      preserveComposer,
+                    )
                   : {
                       role: 'system',
                       content:

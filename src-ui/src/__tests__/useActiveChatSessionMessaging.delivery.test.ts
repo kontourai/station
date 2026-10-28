@@ -1279,6 +1279,29 @@ describe('useSendMessage: a composed message leaves the composer alone', () => {
     size: 5,
     data: 'data:text/plain;base64,aGVsbG8=',
   };
+  // A completed upload the composer holds: an ordinary send would carry it
+  // as a staged reference.
+  const draftStage = {
+    clientAttachmentId: 'draft-file',
+    name: 'notes.txt',
+    mimeType: 'text/plain',
+    size: 5,
+    state: 'complete' as const,
+    progress: 1,
+    stageId: 'stage-1',
+    delivery: 'staged' as const,
+    reference: {
+      stageId: 'stage-1',
+      clientAttachmentId: 'draft-file',
+      source: 'current-composer' as const,
+      kind: 'file' as const,
+      name: 'notes.txt',
+      mimeType: 'text/plain' as const,
+      size: 5,
+      digest: `sha256-${'a'.repeat(64)}` as const,
+      expiresAt: '2099-01-01T00:00:00.000Z',
+    },
+  };
   const composed = (send: ReturnType<typeof useSendMessage>) =>
     send(chat, 'codex', undefined, 'Continue please', [], undefined, KEY, {
       preserveComposer: true,
@@ -1296,6 +1319,7 @@ describe('useSendMessage: a composed message leaves the composer alone', () => {
     activeChatsStore.updateChat(chat, {
       input: 'my unsent draft',
       attachments: [draftFile],
+      attachmentStages: [draftStage as never],
     });
   });
   afterEach(() => {
@@ -1315,10 +1339,32 @@ describe('useSendMessage: a composed message leaves the composer alone', () => {
       message: 'Continue please',
       clientTurnId: KEY,
     });
+    // The composer's staged file is not part of it.
     expect(body.attachments ?? []).toEqual([]);
+    expect(body).not.toHaveProperty('attachmentRefs');
     const state = activeChatsStore.getSnapshot()[chat];
     expect(state?.input).toBe('my unsent draft');
     expect(state?.attachments).toEqual([draftFile]);
+    expect(state?.attachmentStages).toEqual([draftStage]);
+  });
+
+  it('a refusal gives back nothing the person removed while it was in flight', async () => {
+    sendExecutionMessageMock.mockImplementationOnce(async () => {
+      activeChatsStore.updateChat(chat, {
+        input: '',
+        attachments: [],
+        attachmentStages: [],
+      });
+      throw new ChatHttpError({ status: 400, message: 'Refused' } as never);
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await composed(result.current);
+    });
+    const state = activeChatsStore.getSnapshot()[chat];
+    expect(state?.input).toBe('');
+    expect(state?.attachments).toEqual([]);
+    expect(state?.attachmentStages).toEqual([]);
   });
 
   it('control: an ordinary send of the same text takes the composer with it', async () => {

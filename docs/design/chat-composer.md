@@ -358,8 +358,9 @@ notice's `interruptedTurnBoundary`, so a second tap or another device names the
 same turn and the server's turn deduplication starts it once. It is not the
 composer's send: the draft, quotes, attachments and visual skill stay in the
 composer, a refusal puts nothing there, and a turn running by the time it is
-sent makes it send nothing rather than steer or queue. It is never sent
-automatically. A row without answer text has no Basis chip. The pill's state changes animate its width with
+sent makes it send nothing rather than steer or queue under a new key (an
+engine that answers busy after receiving it holds it in the queue under the
+same key). It is never sent automatically. A row without answer text has no Basis chip. The pill's state changes animate its width with
 the shared motion token, while the clock reserves a stable text column. A running
 tool call's label carries a highlight moving through its text; settled calls
 and approval requests stay still. The streaming row's "Running <tool>" line

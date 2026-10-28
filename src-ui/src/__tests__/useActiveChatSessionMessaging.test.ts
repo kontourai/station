@@ -1692,6 +1692,63 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(activeChatsStore.getSnapshot()[sessionId]?.input).toBe('');
   });
 
+  // A message Station composed (Continue after a restart) took nothing from
+  // the composer: the refusal says nothing came back, and the resend keeps
+  // its key and leaves what the person has typed since.
+  it('a refused full access on a composed message neither claims nor clears a draft', async () => {
+    accountPreferenceFixture.data.values.interactiveApprovalModes = {
+      codex: 'never',
+    };
+    cachedAgentCatalog = {
+      agents: [{ slug: 'codex', execution: { agentConnectionId: 'codex' } }],
+    };
+    activeChatsStore.updateChat(sessionId, { queuedApprovalMode: 'never' });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new CodedOrchestrationError(
+        403,
+        'Full access was not applied.',
+        'approval-full-access-not-granted',
+      ),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(
+        sessionId,
+        'codex',
+        undefined,
+        'Continue please',
+        [],
+        undefined,
+        'continue-interrupted:turn-boundary:1',
+        { preserveComposer: true },
+      );
+    });
+
+    const notice =
+      activeChatsStore.getSnapshot()[sessionId]?.ephemeralMessages?.[0];
+    expect(notice?.fullAccessRefusal).toMatchObject({
+      outcome: 'message-not-sent',
+      draftRestored: false,
+    });
+    expect(activeChatsStore.getSnapshot()[sessionId]?.input).toBe('');
+
+    activeChatsStore.updateChat(sessionId, { input: 'my new draft' });
+    await act(async () => {
+      notice?.action?.handler();
+    });
+    await vi.waitFor(() =>
+      expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2),
+    );
+    expect(sendExecutionMessageMock.mock.calls[1]?.[1]).toMatchObject({
+      message: 'Continue please',
+      clientTurnId: 'continue-interrupted:turn-boundary:1',
+    });
+    expect(activeChatsStore.getSnapshot()[sessionId]?.input).toBe(
+      'my new draft',
+    );
+  });
+
   // The discriminating counter-case: an ordinary send failure is NOT a
   // Station-side refusal and must still read as an error, or the fix above
   // would have silently swallowed real failures.
