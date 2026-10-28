@@ -25,6 +25,7 @@ import { ConfinementRefusedError } from '../../security/confinement/confinement-
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
   installSessionTmpDirPolicy,
+  sessionTempRoot,
   sessionTmpDirPath,
 } from '../../services/infra/session-tmpdir.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
@@ -519,6 +520,8 @@ describe('#2494: Codex confinement posture is read back from its response', () =
           reported: workspaceWrite([own]),
         });
         expect(run.spawnTmpDir).toBe(own);
+        // The started session committed that folder as its image root.
+        expect(sessionTempRoot('session-tmp')).toBe(own);
         expect(run.outcome).toEqual({ ok: true });
         await run.cleanup();
         const other = await start({
