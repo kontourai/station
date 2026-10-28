@@ -1,3 +1,4 @@
+import type { ChatHostImageMap } from '@kontourai/station-contracts/chat-host-images';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import type { InputRequestRecord } from '@kontourai/station-contracts/input-request';
 import type { RuntimeEventContentRef } from '@kontourai/station-contracts/runtime-event-content';
@@ -248,5 +249,11 @@ export interface ConversationMessage {
      * second store — see `packages/contracts/src/turn-provenance.ts`.
      */
     provenance?: TurnProvenanceEnvelope;
+    /**
+     * chat-host-images: images this turn's reply named by host path, each
+     * mapped to the attachment Station stored, or to why it did not. A
+     * projection of the turn's `content.host-images` events.
+     */
+    hostImages?: ChatHostImageMap;
   };
 }

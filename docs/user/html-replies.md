@@ -22,6 +22,57 @@ or out-of-scope files show an unavailable message rather than navigating away
 from the conversation. These file previews follow the current file bytes and
 are not retained published pages.
 
+## Images saved on the host
+
+With the **Chat images from the host** Feature Preview on (**Settings →
+Advanced → Feature previews**), a Markdown image in a reply whose address is an
+absolute path on the Station host, or a `file:` URL, is shown on every device,
+including the phone app, without a Project. When the reply finishes, Station
+reads each named image once and keeps a copy as a chat attachment, so it is
+served like an image you attached: only to people who can read that chat.
+
+Station reads an image only when, after following every symbolic link, it is
+inside the chat's working folder, a verified Git worktree of it, or the chat's
+own temporary folder, not inside a folder every user can write to, and it has
+no second hard link. Packages that pnpm installs are hard links into its
+shared store, so images inside them are refused; copy one out first. Agents started while the
+preview is on get that temporary folder as `$TMPDIR` (Claude under macOS
+confinement keeps its confinement's own temporary folder, and that exact folder
+is the one read). It is removed when the session ends, including when its
+engine dies on its own (Claude, Codex and ACP engines); a confined Claude's
+folder is removed when the session is stopped, and a `muse serve` host that
+dies keeps its folder until the session is stopped or Station next restarts
+and sweeps it. Station's built-in agent runs inside Station and has no temporary folder of
+its own.
+
+A working folder is not read at all when it is or contains your home folder or
+Station's data (a chat with no Project uses the home folder), or when it is or
+contains a shared temporary directory such as the system temporary folder, is
+writable by every user, or when its path, as written and through any link it
+follows, passes a folder another user owns or that others can write to without
+the sticky bit (they could swap the working folder for a link elsewhere). The
+Station log says which of these applies ("Host images: working folder is not
+read", with the folder and reason). Such a chat reads only its own temporary folder; a
+Project folder inside the system temporary folder is still read. Paths
+elsewhere are not read. The file must really be a PNG, JPEG, GIF or WebP image
+(checked by content, not name), at most 512 KiB and 4,194,304 pixels, and a
+reply keeps at most 5. A file a path names is read when the reply finishes; a
+later change to the file does not change the copy.
+
+An image Station did not keep shows **Image not available on this device** and
+the reason: outside the working and temporary folders, missing, not an image,
+too large, too many pixels, too many images, in a folder every user can write
+to, a file with more than one hard link, unreadable, or the chat's attachment storage is full. While a reply is still streaming the image shows "Image appears
+when the reply finishes". For a path Station has no record of (a reply from
+before the preview was on), a Project conversation falls back to the Project
+file reader described above.
+
+While the preview is on, the agent's first turn includes one line asking it to
+save images where they can render and reference them by absolute path. The line
+names `$TMPDIR` only when that session's agent was started with a temporary
+folder Station reads; a chat with neither a working-folder root nor such a
+folder gets no line, since none of its images could render.
+
 Publishing writes to the conversation and may require engine tool approval.
 For example, Codex configured with approval policy `never` can refuse the write;
 select a session mode that permits approval. Station does not mislabel the
