@@ -93,6 +93,11 @@ interface ConnectionsContextType {
   removeSharedProfile?: (input: SavedStationRemoval) => Promise<void>;
   /** Whether the station CLI on this device reads the same saved Stations. */
   sharedProfilesVisibleToCli?: boolean;
+  /**
+   * Forgets a saved Station on this device, through the host for a shared
+   * profile. Rejects when the host cannot forget it here.
+   */
+  forgetConnection: (id: string) => Promise<void>;
   setCredential: (id: string, credential: string) => void;
   markDeviceSession: (id: string) => void;
   removeCredential: (id: string) => void;
@@ -447,6 +452,21 @@ export function ConnectionsProvider({
       else resolvedStore.setActive(id);
       return true;
     };
+    const removeConnection = (id: string) => {
+      selectionEpoch.current += 1;
+      retirePreparedConnection?.(id);
+      resolvedStore.remove(id);
+    };
+    const removeShared =
+      removeSharedProfile &&
+      (async (input: SavedStationRemoval) => {
+        selectionEpoch.current += 1;
+        try {
+          await removeSharedProfile(input);
+        } finally {
+          resolvedStore.reload();
+        }
+      });
     return {
       connections,
       activeConnection,
@@ -454,11 +474,7 @@ export function ConnectionsProvider({
       nativeShell: nativeShell ?? detectNativeShell(),
       addConnection: (name, url) => resolvedStore.add(name, url),
       addBrokerRoute: (input) => resolvedStore.addBrokerRoute(input),
-      removeConnection: (id) => {
-        selectionEpoch.current += 1;
-        retirePreparedConnection?.(id);
-        resolvedStore.remove(id);
-      },
+      removeConnection,
       updateConnection: (id, changes) => {
         selectionEpoch.current += 1;
         resolvedStore.update(id, changes);
@@ -487,18 +503,22 @@ export function ConnectionsProvider({
           }
         : {}),
       ...(sharedProfilesVisibleToCli ? { sharedProfilesVisibleToCli } : {}),
-      ...(removeSharedProfile
-        ? {
-            removeSharedProfile: async (input: SavedStationRemoval) => {
-              selectionEpoch.current += 1;
-              try {
-                await removeSharedProfile(input);
-              } finally {
-                resolvedStore.reload();
-              }
-            },
-          }
-        : {}),
+      ...(removeShared ? { removeSharedProfile: removeShared } : {}),
+      forgetConnection: async (id) => {
+        if (!isSharedProfileId(id)) {
+          removeConnection(id);
+          return;
+        }
+        const connection = connections.find(
+          (candidate) => candidate.id === id,
+        );
+        if (!connection) return;
+        if (!removeShared) throw new Error('Forget this Station in the CLI.');
+        await removeShared({
+          connectionId: id,
+          expected: { name: connection.name, url: connection.url },
+        });
+      },
       setCredential: (id, credential) =>
         resolvedStore.setCredential(id, credential),
       markDeviceSession: (id) => resolvedStore.markDeviceSession(id),
@@ -665,6 +685,11 @@ export function ConnectionsProvider({
       {children}
     </ConnectionsContext.Provider>
   );
+}
+
+/** A saved Station from the profile file the station CLI also reads. */
+function isSharedProfileId(id: string): boolean {
+  return id.startsWith('station-profile:');
 }
 
 export function useConnections(): ConnectionsContextType {

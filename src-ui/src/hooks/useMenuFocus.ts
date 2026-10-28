@@ -149,7 +149,11 @@ export function useMenuFocus<T extends HTMLElement>(
           /^(input|textarea|select)$/i.test(target.tagName))
       )
         return;
-      const items = [...container.querySelectorAll<HTMLElement>(FOCUSABLE)];
+      // `data-roving-skip` marks a secondary control beside a row (a remove
+      // button) that the row's own keys reach, so arrows step row to row.
+      const items = [
+        ...container.querySelectorAll<HTMLElement>(FOCUSABLE),
+      ].filter((item) => !item.hasAttribute('data-roving-skip'));
       if (items.length === 0) return;
       event.preventDefault();
       event.stopPropagation();

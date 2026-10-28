@@ -3,14 +3,41 @@ import {
   ConnectionStatusDot,
   type SavedConnection,
 } from '@kontourai/station-connect';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  type KeyboardEvent,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { navigationStore } from '../../contexts/navigation-store';
 import { toastStore } from '../../contexts/ToastContext';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
+import {
+  forgetStationProbe,
+  isProbeable,
+  matchesStationFilter,
+  orderStations,
+  probeStation,
+  readRecentStations,
+  type StationReachability,
+} from '../../lib/stationSwitcher';
 import { useStationConditions } from '../notifications/StationConditions';
 import { openStationDetails } from '../notifications/stationDetailsEvents';
 import './HeaderMenu.css';
+
+/** Below this many Stations a filter field is more clutter than help. */
+const FILTER_THRESHOLD = 5;
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function showError(text: string) {
+  toastStore.show(text, undefined, 5000, undefined, undefined, 'error');
+}
 
 export function StationSwitcherMenu({
   anchor,
@@ -19,6 +46,7 @@ export function StationSwitcherMenu({
   activeStatus,
   activeStatusLabel,
   onSelect,
+  onForget,
   onClose,
   onManage,
   onPairPhone,
@@ -29,18 +57,42 @@ export function StationSwitcherMenu({
   activeStatus: ConnectionIndicatorState;
   activeStatusLabel: string;
   onSelect: (connection: SavedConnection) => Promise<void>;
+  onForget: (connection: SavedConnection) => Promise<void>;
   onClose: () => void;
   onManage: () => void;
   onPairPhone?: () => void;
 }) {
   const conditions = useStationConditions();
   const menuRef = useMenuFocus<HTMLDivElement>(true, onClose);
+  const filterRef = useRef<HTMLInputElement>(null);
   const [position, setPosition] = useState({ right: 12, top: 0 });
   const [switchingId, setSwitchingId] = useState<string | null>(null);
   const switchingRef = useRef(false);
+  const [filter, setFilter] = useState('');
+  const [armedId, setArmedId] = useState<string | null>(null);
+  const [bulkArmed, setBulkArmed] = useState(false);
+  const [removing, setRemoving] = useState<ReadonlySet<string>>(new Set());
+  const [reachability, setReachability] = useState<
+    Record<string, StationReachability>
+  >({});
+  // Read once per opening: the order must not shuffle under the pointer.
+  const [recent] = useState(readRecentStations);
+
+  const ordered = useMemo(
+    () =>
+      orderStations(connections, activeConnectionId, recent).filter(
+        (connection) => !removing.has(connection.id),
+      ),
+    [connections, activeConnectionId, recent, removing],
+  );
+  const showFilter = connections.length >= FILTER_THRESHOLD;
+  const visible = ordered.filter((connection) =>
+    matchesStationFilter(connection, filter),
+  );
+
   useLayoutEffect(() => {
     const rect = anchor.getBoundingClientRect();
-    const width = Math.min(280, window.innerWidth - 24);
+    const width = Math.min(300, window.innerWidth - 24);
     setPosition({
       right: Math.min(
         Math.max(12, window.innerWidth - rect.right),
@@ -50,7 +102,7 @@ export function StationSwitcherMenu({
     });
   }, [anchor]);
   useEffect(() => {
-    const dismissEscape = (event: KeyboardEvent) => {
+    const dismissEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', dismissEscape);
@@ -60,6 +112,36 @@ export function StationSwitcherMenu({
       window.removeEventListener('resize', onClose);
     };
   }, [onClose]);
+  // Declared after `useMenuFocus`, so this wins its first-item focus: the
+  // filter when there is one, else the previous Station, so the switcher
+  // shortcut followed by Enter flips back.
+  useEffect(() => {
+    if (filterRef.current) {
+      filterRef.current.focus();
+      return;
+    }
+    menuRef.current
+      ?.querySelector<HTMLElement>('[data-station-row]:not([aria-checked="true"])')
+      ?.focus();
+  }, [menuRef]);
+  useEffect(() => {
+    let live = true;
+    for (const connection of connections) {
+      if (connection.id === activeConnectionId || !isProbeable(connection))
+        continue;
+      void probeStation(connection.url).then((result) => {
+        if (live)
+          setReachability((current) => ({
+            ...current,
+            [connection.id]: result,
+          }));
+      });
+    }
+    return () => {
+      live = false;
+    };
+  }, [connections, activeConnectionId]);
+
   const select = (connection: SavedConnection) => {
     if (switchingRef.current) return;
     if (connection.id === activeConnectionId) {
@@ -77,17 +159,109 @@ export function StationSwitcherMenu({
         .then(onClose)
         .catch((error) => {
           release();
-          toastStore.show(
-            `Could not switch Stations: ${error instanceof Error ? error.message : String(error)}`,
-            undefined,
-            5000,
-            undefined,
-            undefined,
-            'error',
-          );
+          showError(`Could not switch Stations: ${errorText(error)}`);
         });
     }, release);
   };
+
+  const canForget = (connection: SavedConnection) =>
+    connection.id !== activeConnectionId && !connection.injected;
+
+  const forget = async (targets: SavedConnection[]) => {
+    setArmedId(null);
+    setBulkArmed(false);
+    // Keep focus inside the menu: a focused row that unmounts would leave it
+    // on <body>, and the menu dismisses itself when focus leaves.
+    (filterRef.current ?? menuRef.current)?.focus();
+    setRemoving((current) => {
+      const next = new Set(current);
+      for (const target of targets) next.add(target.id);
+      return next;
+    });
+    const failed: string[] = [];
+    for (const target of targets) {
+      try {
+        await onForget(target);
+        forgetStationProbe(target.url);
+      } catch (error) {
+        failed.push(`${target.name || target.url}: ${errorText(error)}`);
+        setRemoving((current) => {
+          const next = new Set(current);
+          next.delete(target.id);
+          return next;
+        });
+      }
+    }
+    if (failed.length) showError(`Could not remove ${failed.join('; ')}`);
+  };
+
+  const unreachable = ordered.filter(
+    (connection) =>
+      canForget(connection) && reachability[connection.id] === 'unreachable',
+  );
+
+  const onRowKeyDown = (
+    event: KeyboardEvent<HTMLButtonElement>,
+    connection: SavedConnection,
+  ) => {
+    if (
+      (event.key === 'Delete' || event.key === 'Backspace') &&
+      canForget(connection)
+    ) {
+      event.preventDefault();
+      setArmedId(connection.id);
+      return;
+    }
+    if (
+      filterRef.current &&
+      event.key.length === 1 &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey
+    ) {
+      // Type-to-filter from anywhere in the list.
+      filterRef.current.focus();
+    }
+  };
+
+  const onFilterKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    const rows = menuRef.current?.querySelectorAll<HTMLElement>(
+      '[data-station-row]',
+    );
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      rows?.[0]?.focus();
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      const target =
+        visible.find((connection) => connection.id !== activeConnectionId) ??
+        visible[0];
+      if (target) select(target);
+    }
+  };
+
+  const statusLabel = (connection: SavedConnection) => {
+    if (switchingId === connection.id) return 'Switching…';
+    if (connection.id === activeConnectionId) return activeStatusLabel;
+    if (
+      connection.injected &&
+      (connection.injectedStatus === 'stopped' ||
+        connection.injectedStatus === 'failed' ||
+        connection.injectedStatus === 'starting')
+    )
+      return 'Not running';
+    if (
+      connection.credentialState === 'required' ||
+      connection.lastError?.reason === 'authentication-failed'
+    )
+      return 'Needs access';
+    const probed = reachability[connection.id];
+    if (probed === 'online') return 'Online';
+    if (probed === 'unreachable') return 'Unreachable';
+    if (isProbeable(connection)) return 'Checking…';
+    return connection.lastError ? "Can't connect" : '';
+  };
+
   return createPortal(
     <>
       <button
@@ -112,91 +286,153 @@ export function StationSwitcherMenu({
         className="menu-surface app-toolbar__station-switcher"
         style={position}
       >
-        <button
-          type="button"
-          role="menuitem"
-          className="menu-row"
-          onClick={() => {
-            onClose();
-            openStationDetails();
-          }}
-        >
-          Station details
-          {conditions.length ? ` · ${conditions.length} notices` : ''}
-        </button>
+        {showFilter && (
+          <input
+            ref={filterRef}
+            type="search"
+            className="station-switcher__filter"
+            placeholder="Find a Station"
+            aria-label="Find a Station"
+            value={filter}
+            onChange={(event) => {
+              setFilter(event.target.value);
+              setArmedId(null);
+            }}
+            onKeyDown={onFilterKeyDown}
+          />
+        )}
         <div className="station-switcher__profiles">
-          {connections.map((connection) => {
+          {visible.map((connection) => {
             const current = connection.id === activeConnectionId;
             const unavailable =
               connection.injected &&
               (connection.injectedStatus === 'stopped' ||
                 connection.injectedStatus === 'failed' ||
                 connection.injectedStatus === 'starting');
-            const status = current
+            const probed = reachability[connection.id];
+            const status: ConnectionIndicatorState = current
               ? activeStatus
-              : connection.lastError
+              : probed === 'unreachable' || connection.lastError
                 ? 'error'
-                : 'idle';
-            const label = current
-              ? activeStatusLabel
-              : unavailable
-                ? 'Not running'
-                : connection.credentialState === 'required' ||
-                    connection.lastError?.reason === 'authentication-failed'
-                  ? 'Needs access'
-                  : connection.lastError
-                    ? "Can't connect"
-                    : 'Not checked';
+                : probed === 'online'
+                  ? 'connected'
+                  : 'idle';
             const name = connection.name || connection.url;
+            const label = statusLabel(connection);
+            const armed = armedId === connection.id;
             return (
-              <button
-                key={connection.id}
-                type="button"
-                role="menuitemradio"
-                aria-checked={current}
-                aria-label={`${name} — ${label}`}
-                disabled={switchingId !== null || unavailable}
-                className="menu-row station-switcher__row"
-                onClick={() => select(connection)}
-              >
-                <span aria-hidden="true">
-                  <ConnectionStatusDot status={status} size={8} />
-                </span>
-                <span className="station-switcher__identity">
-                  <span>{name}</span>
-                  <span className="station-switcher__status">
-                    {switchingId === connection.id ? 'Switching…' : label}
+              <div key={connection.id} className="station-switcher__item">
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  data-station-row=""
+                  aria-checked={current}
+                  aria-label={label ? `${name} — ${label}` : name}
+                  aria-keyshortcuts={canForget(connection) ? 'Delete' : undefined}
+                  disabled={switchingId !== null || unavailable}
+                  className="menu-row station-switcher__row"
+                  onClick={() => select(connection)}
+                  onKeyDown={(event) => onRowKeyDown(event, connection)}
+                >
+                  <span aria-hidden="true">
+                    <ConnectionStatusDot status={status} size={8} />
                   </span>
-                </span>
-                {current && <span aria-hidden="true">✓</span>}
-              </button>
+                  <span className="station-switcher__identity">
+                    <span className="station-switcher__name">{name}</span>
+                    {(armed || label) && (
+                      <span className="station-switcher__status">
+                        {armed ? 'Remove from this device?' : label}
+                      </span>
+                    )}
+                  </span>
+                  {current && <span aria-hidden="true">✓</span>}
+                </button>
+                {canForget(connection) && (
+                  <button
+                    type="button"
+                    data-roving-skip=""
+                    tabIndex={-1}
+                    // Armed by Delete on the row, the confirm takes focus so
+                    // Enter removes and Tab/Escape walk away from it.
+                    ref={(node) => {
+                      if (armed) node?.focus();
+                    }}
+                    className={`station-switcher__remove${armed ? ' station-switcher__remove--armed' : ''}`}
+                    aria-label={armed ? `Confirm removing ${name}` : `Remove ${name}`}
+                    title={armed ? undefined : 'Remove'}
+                    onBlur={() => {
+                      if (armed) setArmedId(null);
+                    }}
+                    onClick={() => {
+                      if (armed) void forget([connection]);
+                      else setArmedId(connection.id);
+                    }}
+                  >
+                    {armed ? 'Remove' : '×'}
+                  </button>
+                )}
+              </div>
             );
           })}
+          {visible.length === 0 && (
+            <p className="station-switcher__empty">No matching Stations</p>
+          )}
         </div>
-        {onPairPhone && (
+        {unreachable.length >= 2 && !filter && (
+          <button
+            type="button"
+            role="menuitem"
+            className={`menu-row station-switcher__bulk${bulkArmed ? ' station-switcher__bulk--armed' : ''}`}
+            onBlur={() => setBulkArmed(false)}
+            onClick={() => {
+              if (bulkArmed) void forget(unreachable);
+              else setBulkArmed(true);
+            }}
+          >
+            {bulkArmed
+              ? `Confirm: remove ${unreachable.length} Stations`
+              : `Remove ${unreachable.length} unreachable`}
+          </button>
+        )}
+        <div className="station-switcher__footer">
           <button
             type="button"
             role="menuitem"
             className="menu-row"
+            aria-label={`Station details${conditions.length ? ` · ${conditions.length} notices` : ''}`}
             onClick={() => {
               onClose();
-              onPairPhone();
+              openStationDetails();
             }}
           >
-            Pair phone
+            Details{conditions.length ? ` · ${conditions.length}` : ''}
           </button>
-        )}
-        <button
-          type="button"
-          role="menuitem"
-          className="menu-row"
-          onClick={() => {
-            onClose();
-            onManage();
-          }}
-        >
-          Manage Stations
-        </button>
+          {onPairPhone && (
+            <button
+              type="button"
+              role="menuitem"
+              className="menu-row"
+              onClick={() => {
+                onClose();
+                onPairPhone();
+              }}
+            >
+              Pair phone
+            </button>
+          )}
+          <button
+            type="button"
+            role="menuitem"
+            className="menu-row"
+            aria-label="Manage Stations"
+            onClick={() => {
+              onClose();
+              onManage();
+            }}
+          >
+            Manage
+          </button>
+        </div>
       </div>
     </>,
     document.body,

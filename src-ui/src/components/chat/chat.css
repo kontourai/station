@@ -2876,11 +2876,28 @@
 .app-toolbar__station-switcher {
   position: fixed;
   z-index: var(--layer-navigation);
-  width: min(280px, calc(100vw - 24px));
+  width: min(300px, calc(100vw - 24px));
+}
+.station-switcher__filter {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 36px;
+  margin-bottom: var(--k-space-1);
+  padding: 0 var(--k-space-3);
+  border: var(--k-border-thin) solid var(--border-primary);
+  border-radius: var(--k-radius-control);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
 }
 .station-switcher__profiles {
   max-height: min(52vh, calc(100dvh - 180px));
   overflow-y: auto;
+}
+.station-switcher__item {
+  position: relative;
+  display: flex;
+  align-items: center;
 }
 .station-switcher__row {
   min-height: 44px;
@@ -2889,11 +2906,83 @@
   display: grid;
   flex: 1;
   min-width: 0;
-  overflow-wrap: anywhere;
+}
+.station-switcher__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .station-switcher__status {
   font-size: var(--k-text-xs);
   color: var(--k-text-muted);
+}
+/* Over the row's trailing edge, so the row keeps its full hit area. */
+.station-switcher__remove {
+  position: absolute;
+  right: var(--k-space-1);
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0 var(--k-space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--k-text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+.station-switcher__remove:hover {
+  background: var(--bg-hover);
+  color: var(--status-error);
+}
+.station-switcher__remove--armed,
+.station-switcher__remove--armed:hover {
+  background: var(--error-fill);
+  color: #fff;
+}
+.station-switcher__item:has(.station-switcher__remove) .station-switcher__row {
+  padding-right: 44px;
+}
+/* With a pointer that hovers, the remove control appears with its row; on
+   touch it stays visible, and 44px tall, because there is no hover to find it. */
+@media (hover: hover) {
+  .station-switcher__remove:not(.station-switcher__remove--armed) {
+    opacity: 0;
+  }
+  .station-switcher__item:hover .station-switcher__remove,
+  .station-switcher__item:focus-within .station-switcher__remove {
+    opacity: 1;
+  }
+}
+@media (pointer: coarse) {
+  .station-switcher__remove {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+.station-switcher__empty {
+  margin: 0;
+  padding: var(--k-space-3);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.station-switcher__bulk {
+  color: var(--status-error);
+}
+.station-switcher__bulk--armed,
+.station-switcher__bulk--armed:hover,
+.station-switcher__bulk--armed:focus-visible {
+  background: var(--error-fill);
+  color: #fff;
+}
+.station-switcher__footer {
+  display: flex;
+  margin-top: var(--k-space-2);
+}
+.station-switcher__footer > .menu-row {
+  flex: 1;
+  justify-content: center;
+  padding: 0 var(--k-space-2);
+  color: var(--text-secondary);
 }
 
 /* The Agent/Model/Mode rail has no fill of its own and sits flush on the

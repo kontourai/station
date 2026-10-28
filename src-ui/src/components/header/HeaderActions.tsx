@@ -15,8 +15,10 @@ import { APP_DESTINATION_REGISTRY } from '../../app-shell/destination-registry';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useLongPress } from '../../hooks/useLongPress';
 import { useMenuTriggerToggle } from '../../hooks/useMenuTriggerToggle';
+import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { hasRealSavedConnection } from '../../lib/saved-connections';
+import { recordStationUse } from '../../lib/stationSwitcher';
 import {
   checkServerHealth,
   probeServerConnection,
@@ -166,10 +168,17 @@ export function HeaderActions({
 }: HeaderActionsProps) {
   const profile = usePlatformProfile();
   const stationConditions = useStationConditions();
-  const { activeConnection, connections, setActiveConnection } =
-    useConnections();
+  const {
+    activeConnection,
+    connections,
+    setActiveConnection,
+    forgetConnection,
+  } = useConnections();
   const connectionButtonRef = useRef<HTMLButtonElement>(null);
   const [connectionMenuOpen, setConnectionMenuOpen] = useState(false);
+  useEffect(() => {
+    if (activeConnection) recordStationUse(activeConnection.id);
+  }, [activeConnection?.id]);
   const { apiBase } = useApiBase();
   const {
     status: connStatus,
@@ -345,17 +354,29 @@ export function HeaderActions({
   const [connectionNameAnchor, setConnectionNameAnchor] =
     useState<HTMLElement | null>(null);
   const connectionHintId = useId();
+  const openConnectionMenu = () => {
+    setConnectionNameAnchor(null);
+    onCloseHelp();
+    onCloseNotifications();
+    onCloseOverflow();
+    if (connections.length === 0) onOpenConnections();
+    else setConnectionMenuOpen(true);
+  };
   const connectionToggle = useMenuTriggerToggle(
     connectionMenuOpen,
-    () => {
-      setConnectionNameAnchor(null);
-      onCloseHelp();
-      onCloseNotifications();
-      onCloseOverflow();
-      if (connections.length === 0) onOpenConnections();
-      else setConnectionMenuOpen(true);
-    },
+    openConnectionMenu,
     () => setConnectionMenuOpen(false),
+  );
+  useKeyboardShortcut(
+    'station.switch',
+    's',
+    ['cmd', 'shift'],
+    'Switch Station',
+    () => {
+      if (connectionMenuOpen) setConnectionMenuOpen(false);
+      else openConnectionMenu();
+    },
+    connections.length > 1,
   );
   const connectionGesture = useLongPress({
     onLongPress: setConnectionNameAnchor,
@@ -455,6 +476,7 @@ export function HeaderActions({
             onSelect: async (connection) => {
               await setActiveConnection(connection.id);
             },
+            onForget: (connection) => forgetConnection(connection.id),
             onClose: () => setConnectionMenuOpen(false),
             onManage: onOpenConnections,
             onPairPhone: hasLocalStationForProfile(profile)
