@@ -802,6 +802,12 @@ export class InterruptedTurnRecovery {
               provider: provider ?? 'unknown',
               threadId: record.threadId,
               turnId: providerTurnId,
+              // An invocation-anchored start accepts only a terminal naming
+              // the same invocation (`acceptsTurnTerminalEvent`).
+              ...(ownStart?.turnId === providerTurnId &&
+              ownStart.payload.invocationId !== undefined
+                ? { invocationId: ownStart.payload.invocationId }
+                : {}),
               createdAt: now,
               method: 'turn.aborted',
               reason: TURN_INTERRUPTED_MESSAGE,

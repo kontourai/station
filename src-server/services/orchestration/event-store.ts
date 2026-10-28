@@ -8576,7 +8576,16 @@ export class EventStore {
          FROM orchestration_events
          WHERE thread_id = ? AND turn_id = ?
            AND ${completionOnly ? "method = 'turn.completed'" : "method IN ('turn.completed', 'turn.aborted')"}
-           ${invocationId === undefined ? '' : "AND json_extract(payload, '$.invocationId') = ?"}
+           ${
+             invocationId === undefined
+               ? ''
+               : // An invocationless recovery abort closes the turn too
+                 // (session-lifecycle-service.ts's acceptsTurnTerminalEvent).
+                 `AND (json_extract(payload, '$.invocationId') = ?
+                   OR (method = 'turn.aborted'
+                     AND json_extract(payload, '$.invocationId') IS NULL
+                     AND json_extract(payload, '$.recoveryTerminal') = 1))`
+           }
          ORDER BY sequence DESC
          LIMIT 1`,
       )

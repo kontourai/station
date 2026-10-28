@@ -219,6 +219,11 @@ function bootAfterCrash(options: {
    * published anything.
    */
   turnStarted?: boolean;
+  /**
+   * The invocation the service stamps on a dispatched turn's start (codex and
+   * claude starts carry one), which anchors that turn's terminal identity.
+   */
+  startInvocationId?: string;
   /** #3071: events the dying process wrote before `turn-1` started. */
   beforeTurnStarted?: CanonicalRuntimeEvent[];
   /** #3071: events the dying process wrote while `turn-1` was running. */
@@ -262,6 +267,9 @@ function bootAfterCrash(options: {
       provider: options.provider,
       threadId: options.threadId,
       turnId: 'turn-1',
+      ...(options.startInvocationId
+        ? { invocationId: options.startInvocationId }
+        : {}),
       createdAt: '2026-08-16T00:00:01.000Z',
       method: 'turn.started',
       prompt: 'do the thing',
@@ -1576,6 +1584,96 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     expect(
       activeTurnIdForEvents(events.map((row) => row.payload)),
     ).toBeUndefined();
+  });
+
+  test('closes an invocation-anchored turn, so the conversation is not left waiting on it', async () => {
+    const path = databasePath();
+    const threadId = 'thread-invocation-abort';
+    const eventStore = bootAfterCrash({
+      path,
+      threadId,
+      provider: 'codex',
+      boundaryState: 'accepted',
+      startInvocationId: 'invocation-1',
+    });
+    stores.push(eventStore);
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore,
+      logger,
+    });
+
+    await (service as any).interruptedTurns.consume();
+
+    const events = eventStore.listEvents(threadId);
+    const abort = events.find((e) => e.payload.method === 'turn.aborted');
+    expect(abort?.payload).toMatchObject({
+      turnId: 'turn-1',
+      invocationId: 'invocation-1',
+      recoveryTerminal: true,
+    });
+    expect(
+      activeTurnIdForEvents(events.map((row) => row.payload)),
+    ).toBeUndefined();
+    const detail = await service.readSession(
+      threadId,
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    expect(detail?.session).toMatchObject({
+      lifecycleState: 'needs_input',
+      hasActiveTurn: false,
+    });
+  });
+
+  test('a recovery abort persisted without an invocationId still closes its invocation-anchored turn', async () => {
+    // The row shape boot recovery wrote before it stamped the invocation:
+    // those conversations read an active turn forever, so every send waited.
+    const path = databasePath();
+    const threadId = 'thread-legacy-recovery-abort';
+    const eventStore = bootAfterCrash({
+      path,
+      threadId,
+      provider: 'codex',
+      boundaryState: 'accepted',
+      startInvocationId: 'invocation-1',
+    });
+    stores.push(eventStore);
+    eventStore.takeInterruptedTurnBoundaries();
+    eventStore.upsertSession({
+      provider: 'codex',
+      threadId,
+      status: 'running',
+      createdAt: '2026-08-16T00:00:00.000Z',
+      updatedAt: '2026-08-16T00:00:02.000Z',
+    });
+    eventStore.appendEvent({
+      eventId: 'turn-interrupted-abort:legacy',
+      provider: 'codex',
+      threadId,
+      turnId: 'turn-1',
+      createdAt: '2026-08-16T00:00:05.000Z',
+      method: 'turn.aborted',
+      reason: TURN_INTERRUPTED_MESSAGE,
+      recoveryTerminal: true,
+    });
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore,
+      logger,
+    });
+
+    expect(
+      activeTurnIdForEvents(
+        eventStore.listEvents(threadId).map((row) => row.payload),
+      ),
+    ).toBeUndefined();
+    const detail = await service.readSession(
+      threadId,
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    expect(detail?.session.hasActiveTurn).toBe(false);
   });
 
   describe('#2324: a turn the engine opened on its own', () => {

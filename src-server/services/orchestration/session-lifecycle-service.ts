@@ -571,7 +571,8 @@ export function advanceOpenTurnId(
       event.method,
     ) &&
     (event.turnId !== undefined || event.invocationId !== undefined) &&
-    (event.invocationId !== invocationId ||
+    ((event.invocationId !== invocationId &&
+      !isInvocationlessRecoveryAbort(event)) ||
       (openTurnId !== undefined && event.turnId !== openTurnId))
   )
     return openTurnId;
@@ -653,6 +654,26 @@ export const ACTIVE_TURN_FOLD_METHODS = [
   'runtime.error',
   'session.exited',
 ] as const;
+
+/**
+ * A boot-recovery `turn.aborted` (`recoveryTerminal`) with no `invocationId`.
+ * Recovery closes the boundary's dead turn by turn id, and rows written before
+ * it stamped the turn's invocation carry none. Rejecting them against an
+ * invocation-anchored start left that turn open forever, so after a restart
+ * every send read as an active-turn wait. Callers still require the turn id
+ * to match.
+ */
+function isInvocationlessRecoveryAbort(event: {
+  method?: string;
+  invocationId?: string;
+  recoveryTerminal?: unknown;
+}): boolean {
+  return (
+    event.method === 'turn.aborted' &&
+    event.recoveryTerminal === true &&
+    event.invocationId === undefined
+  );
+}
 
 // archive#3558 exported this alongside `acceptsTurnTerminalEvent` so
 // `deriveAgentRunStatus` could track the SAME `activeTurnId` this module's
@@ -785,13 +806,17 @@ function nextActiveTurnId(
 //   session's life — see that function's doc for the discriminating case
 //   and why the Stop double-terminal case still accepts correctly.
 export function acceptsTurnTerminalEvent(
-  event: Pick<CanonicalRuntimeEvent, 'turnId' | 'invocationId'>,
+  event: Pick<CanonicalRuntimeEvent, 'turnId' | 'invocationId'> & {
+    method?: string;
+    recoveryTerminal?: unknown;
+  },
   activeTurnId?: TurnIdentityAnchor,
 ): boolean {
   if (typeof activeTurnId === 'object')
     return (
-      event.invocationId === activeTurnId.invocationId &&
-      event.turnId === activeTurnId.turnId
+      event.turnId === activeTurnId.turnId &&
+      (event.invocationId === activeTurnId.invocationId ||
+        isInvocationlessRecoveryAbort(event))
     );
   return (
     Boolean(event.turnId) && (!activeTurnId || event.turnId === activeTurnId)
