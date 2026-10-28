@@ -877,6 +877,7 @@ const {
   apiBase,            // string — active URL (backward-compat alias)
   addConnection,      // (name, url) => SavedConnection
   removeConnection,   // (id) => void
+  forgetConnection,   // (id) => Promise<void>; a shared profile goes through the host, and rejects when none can forget it
   updateConnection,   // (id, changes) => void
   setActiveConnection,// (id) => Promise<void>; host transport preparation can reject
   setApiBase,         // (url) => void — upsert by URL and activate

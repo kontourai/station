@@ -304,10 +304,25 @@ request does not revoke an already approved receiver grant. A saved peer
 credential establishes permission, not observed reachability or Project readiness.
 
 Tap the connection dot on a phone, or the connection name on desktop, to
-choose a Station. A checkmark identifies the current Station, whose status is
-live. The chooser does not probe inactive Stations; they say **Not checked**
-unless a saved access or connection error needs attention. Holding the phone's
-dot shows its saved name without switching or opening the chooser.
+choose a Station, or press **Switch Station** (⌘⇧S, Ctrl+Shift+S elsewhere)
+once two are saved. The current Station comes first with a checkmark and its
+live status; the rest follow most recently used first, and focus starts on the
+previous one, so the shortcut and Enter flip back. With five or more Stations,
+type to filter; Enter switches to the first match. Holding the phone's dot
+shows its saved name without switching or opening the chooser.
+
+Opening the chooser checks whether each other Station answers its public
+handshake, from this device, without credentials. A green dot means it
+answered; **Unreachable** means nothing did within a few seconds. Answering
+proves only that the address responds, not that this device still has access.
+Stations reached through a broker route are not checked.
+
+Remove a Station from this device with the × beside it (Delete on a focused
+row) and confirm. With two or more unreachable, **Remove N unreachable**
+removes them together after one confirmation. The current Station is not
+removable here. On the desktop app, Stations other channels or development
+instances left in the shared profile file can be removed like any other; only
+the app's own local Station is refused.
 
 Choose **Manage Stations** to inspect saved connections. Tap a row to reveal
 **Switch to this Station** and **Edit Station**; inspecting a row does not
