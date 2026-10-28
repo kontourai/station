@@ -48,6 +48,7 @@ import {
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { execAsSlotHolder } from './lib/slot-holder-exec.mjs';
 import {
   acquireTypecheckSlot,
   resolveSlotCount,
@@ -371,61 +372,6 @@ function bunCompiler(argv, cwd) {
   };
 }
 
-async function runWindowsCompiler(compiler, args, cwd) {
-  const {
-    executeOwnedCommand,
-    terminateSuiteExecution,
-    waitForSuiteSettlement,
-  } = await import('./lib/owned-process.mjs');
-  // Windows has no execve. The owned-command Job kills the compiler if this
-  // slot holder dies, and completion waits for the entire Job to settle.
-  const execution = executeOwnedCommand(
-    compiler,
-    args,
-    undefined,
-    'typecheck',
-    {
-      cwd,
-      env: process.env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    },
-  );
-  execution.child.stdout?.pipe(process.stdout, { end: false });
-  execution.child.stderr?.pipe(process.stderr, { end: false });
-  let interrupted = false;
-  let cleanup;
-  const stop = () => {
-    cleanup ??= terminateSuiteExecution(execution, {
-      processLabel: 'typecheck',
-      waitForSuiteSettlement,
-      terminationGraceMs: 2000,
-      terminationForceMs: 2000,
-    });
-    return cleanup;
-  };
-  const onSignal = () => {
-    interrupted = true;
-    void stop();
-  };
-  process.once('SIGINT', onSignal);
-  process.once('SIGTERM', onSignal);
-  try {
-    const result = await execution.completion;
-    if (execution.isAlive()) await stop();
-    if (cleanup) {
-      const settled = await cleanup;
-      if (!settled.settled || settled.errors.length)
-        throw new Error('Compiler process tree did not settle');
-    }
-    if (result.error) throw result.error;
-    process.exitCode = interrupted || result.signal ? 1 : (result.status ?? 1);
-  } finally {
-    process.removeListener('SIGINT', onSignal);
-    process.removeListener('SIGTERM', onSignal);
-  }
-}
-
 async function main(argv = process.argv.slice(2)) {
   const cwd = process.cwd();
   const selected = await planCompiler(argv, cwd);
@@ -448,13 +394,13 @@ async function main(argv = process.argv.slice(2)) {
     process.once('exit', slot.release);
     process.env[SLOT_HELD_ENV] = `${slot.dir}#${slot.index}`;
   }
-  if (process.platform !== 'win32') {
-    // Keep the slot holder's PID: killing it must also kill the compiler.
-    // execve bypasses Node's exit hook; the next waiter reclaims its record.
-    process.execve(plan.compiler, [plan.compiler, ...plan.args], process.env);
-    return;
-  }
-  await runWindowsCompiler(plan.compiler, plan.args, cwd);
+  // Keep the slot holder's PID: killing it must also kill the compiler.
+  await execAsSlotHolder({
+    file: plan.compiler,
+    args: plan.args,
+    cwd,
+    label: 'typecheck',
+  });
 }
 
 if (invokedDirectly(import.meta.url)) {

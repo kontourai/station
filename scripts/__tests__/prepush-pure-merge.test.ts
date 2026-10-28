@@ -302,11 +302,30 @@ describe.skipIf(process.platform === 'win32')(
         join(f.repo, 'scripts', 'prepush-pure-merge.mjs'),
         readFileSync('scripts/prepush-pure-merge.mjs'),
       );
+      // The expensive lanes run through the real heavy-check slot runner, so
+      // their stand-ins are scripts it executes, not intercepted commands.
+      writeFileSync(
+        join(f.repo, 'scripts', 'heavy-check-slot.mjs'),
+        readFileSync('scripts/heavy-check-slot.mjs'),
+      );
+      for (const shared of [
+        'packages/shared/src/process-identity.mjs',
+        'packages/shared/src/windows-system-utility.mjs',
+      ]) {
+        mkdirSync(join(f.repo, shared, '..'), { recursive: true });
+        writeFileSync(join(f.repo, shared), readFileSync(shared));
+      }
+      for (const gate of EXPENSIVE)
+        writeFileSync(
+          join(f.repo, gate),
+        `import { appendFileSync } from 'node:fs';\nappendFileSync(${JSON.stringify(report)}, ${JSON.stringify(`${gate}\n`)});\n`,
+        );
+      const slotDir = join(f.root, 'heavy-check-slots');
       // Hook files are untracked in the fixture so they never affect the merge.
       mkdirSync(join(f.repo, '.git', 'info'), { recursive: true });
       writeFileSync(
         join(f.repo, '.git', 'info', 'exclude'),
-        '.githooks/\nscripts/\n',
+        '.githooks/\nscripts/\npackages/\n',
       );
       const record = `require('node:fs').appendFileSync(${JSON.stringify(report)}, gate + '\\n');`;
       writeFileSync(
@@ -319,7 +338,7 @@ describe.skipIf(process.platform === 'win32')(
         `#!${process.execPath}
 const { spawnSync } = require('node:child_process');
 const args = process.argv.slice(2);
-if (/^scripts\\/(check-prepush-|commit-message-gate)/.test(args[0] ?? '')) {
+if (/^scripts\\/commit-message-gate/.test(args[0] ?? '')) {
   const gate = args[0];
   ${record}
   if (gate === 'scripts/commit-message-gate.mjs') require('node:fs').readFileSync(0);
@@ -330,20 +349,36 @@ if (/^scripts\\/(check-prepush-|commit-message-gate)/.test(args[0] ?? '')) {
 `,
         { mode: 0o755 },
       );
-      const push = (refs = ['feat']) => {
+      const push = (
+        refs = ['feat'],
+        { expectStatus = 0, slotEnv = {} as Record<string, string> } = {},
+      ) => {
         writeFileSync(report, '');
+        const env: NodeJS.ProcessEnv = {
+          ...f.env,
+          PATH: `${bin}:${process.env.PATH ?? ''}`,
+          STATION_HEAVY_CHECK_SLOT_DIR: slotDir,
+          ...slotEnv,
+        };
+        // A host-local pool: neither hosted CI's exemption nor the marker of
+        // the Vitest run executing this test may admit the hook's lanes.
+        delete env.CI;
+        delete env.GITHUB_ACTIONS;
+        delete env.STATION_HEAVY_CHECK_SLOT_HELD;
         const result = spawnSync(
           'git',
           ['-c', 'core.hooksPath=.githooks', 'push', '-q', 'origin', ...refs],
           {
             cwd: f.repo,
-            env: { ...f.env, PATH: `${bin}:${process.env.PATH ?? ''}` },
+            env,
             encoding: 'utf8',
             windowsHide: true,
             timeout: 30_000,
           },
         );
-        expect(result.status, result.stdout + result.stderr).toBe(0);
+        expect(result.status, result.stdout + result.stderr).toBe(
+          expectStatus,
+        );
         return {
           output: result.stdout + result.stderr,
           gates: readFileSync(report, 'utf8')
@@ -352,7 +387,7 @@ if (/^scripts\\/(check-prepush-|commit-message-gate)/.test(args[0] ?? '')) {
             .filter(Boolean),
         };
       };
-      return { ...f, push };
+      return { ...f, push, slotDir };
     }
 
     it('runs no gates for a deletion-only push', () => {
@@ -393,6 +428,38 @@ if (/^scripts\\/(check-prepush-|commit-message-gate)/.test(args[0] ?? '')) {
       const { output, gates } = f.push();
       expect(output).toContain('Pure merge of main: no');
       for (const gate of EXPENSIVE) expect(gates).toContain(gate);
+    });
+
+    it('fails the push, naming the holder, when no heavy-check slot frees up', () => {
+      const f = hookFixture();
+      f.commit('feat.txt', 'changed feature\n', 'fix: update feature');
+      mkdirSync(f.slotDir, { recursive: true, mode: 0o700 });
+      // A live holder: this test process, recorded without a birth
+      // fingerprint so liveness rests on the pid alone.
+      writeFileSync(
+        join(f.slotDir, 'slot-0.lock'),
+        JSON.stringify({
+          pid: process.pid,
+          start: null,
+          nonce: 'held-by-the-test',
+          acquiredAt: Date.now(),
+          label: 'docs:truth:gate',
+        }),
+      );
+      const { output, gates } = f.push(['feat'], {
+        expectStatus: 1,
+        slotEnv: {
+          STATION_HEAVY_CHECK_SLOTS: '1',
+          STATION_HEAVY_CHECK_SLOT_WAIT_MS: '0',
+        },
+      });
+      expect(output).toMatch(
+        new RegExp(
+          `FAIL: waited 0s for a heavy-check slot for pre-push:transfer-budgets; all 1 are held: pid ${process.pid} \\(docs:truth:gate\\)`,
+        ),
+      );
+      // The first heavy lane refused, so the hook stopped before any ran.
+      for (const gate of EXPENSIVE) expect(gates).not.toContain(gate);
     });
 
     it('runs every lane for a hand-edited merge resolution', () => {

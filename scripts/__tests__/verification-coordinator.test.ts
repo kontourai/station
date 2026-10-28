@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   chmodSync,
@@ -23,6 +23,7 @@ import {
   projectLatestE2EEvidence,
   validateLatestE2EEvidence,
 } from '../lib/e2e-latest-evidence.mjs';
+import { HEAVY_CHECK_HELD_ENV } from '../lib/heavy-check-slots.mjs';
 import { resolveVerificationToolchain } from '../lib/test-reliability.mjs';
 import {
   releaseVerificationArtifactMutation,
@@ -418,6 +419,76 @@ describe('verification coordinator', () => {
         context.request.headSha,
       );
       expect(context.request.headSha).toBe('b'.repeat(40));
+    } finally {
+      temp.remove();
+    }
+  });
+
+  test('a lane admitted by the coordinator runs its heavy checks under that admission', () => {
+    const temp = fixture();
+    try {
+      // Another worktree holds the only heavy-check slot.
+      const slotDir = join(temp.root, 'heavy-check-slots');
+      mkdirSync(slotDir, { mode: 0o700 });
+      writeFileSync(
+        join(slotDir, 'slot-0.lock'),
+        JSON.stringify({
+          pid: process.pid,
+          start: null,
+          nonce: 'another-worktree',
+          acquiredAt: Date.now(),
+          label: 'docs:truth:gate',
+        }),
+      );
+      const inherited: NodeJS.ProcessEnv = { ...process.env };
+      delete inherited.CI;
+      delete inherited.GITHUB_ACTIONS;
+      delete inherited[HEAVY_CHECK_HELD_ENV];
+      const context = prepareCoordinatorContext({
+        laneId: 'test-changed',
+        root: temp.root,
+        cwd: process.cwd(),
+        collectProvenance: () =>
+          boundCoordinatorProvenance(process.cwd(), 'heavy-check-admission'),
+        env: inherited,
+      });
+      const ran = join(temp.root, 'ran');
+      const check = join(temp.root, 'check.mjs');
+      writeFileSync(
+        check,
+        `import { writeFileSync } from 'node:fs';\nwriteFileSync(${JSON.stringify(ran)}, 'ran');\n`,
+      );
+      const runCheck = (env: NodeJS.ProcessEnv) =>
+        spawnSync(
+          process.execPath,
+          [join(process.cwd(), 'scripts', 'heavy-check-slot.mjs'), 'lane-check', check],
+          {
+            env: {
+              ...env,
+              STATION_HEAVY_CHECK_SLOT_DIR: slotDir,
+              STATION_HEAVY_CHECK_SLOTS: '1',
+              STATION_HEAVY_CHECK_SLOT_WAIT_MS: '0',
+            },
+            encoding: 'utf8',
+            windowsHide: true,
+            timeout: 30_000,
+          },
+        );
+
+      // Outside the coordinator the same check queues, and with no wait fails.
+      const outside = runCheck(inherited);
+      expect(outside.status, outside.stderr).toBe(1);
+      expect(outside.stderr).toContain(
+        'FAIL: waited 0s for a heavy-check slot for lane-check',
+      );
+      expect(existsSync(ran)).toBe(false);
+
+      // Inside, the coordinator's admission covers it: no second queue, so a
+      // heavy-check holder can never wait on a coordinator lane that waits
+      // on it.
+      const inside = runCheck(context.env);
+      expect(inside.status, inside.stderr).toBe(0);
+      expect(readFileSync(ran, 'utf8')).toBe('ran');
     } finally {
       temp.remove();
     }

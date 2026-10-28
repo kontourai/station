@@ -71,6 +71,23 @@ const SLOT_WAIT_ENV = 'STATION_TYPECHECK_SLOT_WAIT_MS';
  */
 export const SLOT_HELD_ENV = 'STATION_TYPECHECK_SLOT_HELD';
 
+/**
+ * How a pool names itself in messages, and which variables mark a held slot
+ * and override it. `heavy-check-slots.mjs` reuses this protocol as a second
+ * pool with its own directory, count and descriptor.
+ *
+ * @typedef {{ tag: string, noun: string, heldEnv: string, countEnv: string, waitEnv: string, dirEnv: string }} SlotPool
+ */
+/** @type {SlotPool} */
+const TYPECHECK_POOL = Object.freeze({
+  tag: 'typecheck-slots',
+  noun: 'host typecheck slot',
+  heldEnv: SLOT_HELD_ENV,
+  countEnv: SLOT_COUNT_ENV,
+  waitEnv: SLOT_WAIT_ENV,
+  dirEnv: SLOT_DIR_ENV,
+});
+
 const GIB = 1024 ** 3;
 /**
  * One slot per 8 GiB of RAM, ROUNDED, between 1 and 4. The largest project
@@ -161,6 +178,7 @@ export function prepareSlotDirectory(
   {
     platform = process.platform,
     uid = typeof process.getuid === 'function' ? process.getuid() : -1,
+    pool = TYPECHECK_POOL,
   } = {},
 ) {
   mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -168,11 +186,11 @@ export function prepareSlotDirectory(
   const stat = lstatSync(dir);
   if (!stat.isDirectory() || stat.isSymbolicLink())
     throw new Error(
-      `FAIL: typecheck slot directory ${dir} is not a real directory; remove it or set ${SLOT_DIR_ENV}.`,
+      `FAIL: ${pool.noun} directory ${dir} is not a real directory; remove it or set ${pool.dirEnv}.`,
     );
   if (stat.uid !== uid)
     throw new Error(
-      `FAIL: typecheck slot directory ${dir} is owned by uid ${stat.uid}, not ${uid}; remove it or set ${SLOT_DIR_ENV}.`,
+      `FAIL: ${pool.noun} directory ${dir} is owned by uid ${stat.uid}, not ${uid}; remove it or set ${pool.dirEnv}.`,
     );
   if ((stat.mode & 0o077) !== 0) chmodSync(dir, 0o700);
 }
@@ -460,7 +478,7 @@ function forLabel(label) {
 }
 
 /**
- * Wait (bounded) for a host-wide typecheck slot.
+ * Wait (bounded) for a host-wide slot in `pool` (typecheck by default).
  *
  * @param {{
  *   label?: string,
@@ -476,6 +494,7 @@ function forLabel(label) {
  *   now?: () => number,
  *   sleep?: (ms: number) => Promise<void>,
  *   log?: (message: string) => void,
+ *   pool?: SlotPool,
  * }} [options]
  * @returns {Promise<{ index: number, dir: string, slots: number, reentrant: boolean, release: () => void }>}
  */
@@ -493,11 +512,12 @@ export async function acquireTypecheckSlot({
   now = Date.now,
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   log = (message) => process.stderr.write(`${message}\n`),
+  pool = TYPECHECK_POOL,
 } = {}) {
-  if (env[SLOT_HELD_ENV]) {
+  if (env[pool.heldEnv]) {
     return { index: -1, dir, slots, reentrant: true, release: () => {} };
   }
-  prepareSlotDirectory(dir);
+  prepareSlotDirectory(dir, { pool });
   const record = {
     pid,
     start: start === undefined ? ownBirthFingerprint({ pid }) : start,
@@ -523,22 +543,22 @@ export async function acquireTypecheckSlot({
     if (index >= 0) {
       if (lastLogAt !== null)
         log(
-          `[typecheck-slots] acquired slot ${index + 1}/${slots} after ${seconds}s${forLabel(label)}.`,
+          `[${pool.tag}] acquired slot ${index + 1}/${slots} after ${seconds}s${forLabel(label)}.`,
         );
       const release = releaser(slotPath(dir, index), record.nonce);
       return { index, dir, slots, reentrant: false, release };
     }
     if (now() - startedAt >= waitMs) {
       throw new Error(
-        `FAIL: waited ${seconds}s for a host typecheck slot${forLabel(label)}; all ${slots} are held: ${describeHolders(holders)}. ` +
-          `Slots live in ${dir} (${SLOT_DIR_ENV}); raise ${SLOT_WAIT_ENV} to wait longer, or ${SLOT_COUNT_ENV} if the host has memory to spare.`,
+        `FAIL: waited ${seconds}s for a ${pool.noun}${forLabel(label)}; all ${slots} are held: ${describeHolders(holders)}. ` +
+          `Slots live in ${dir} (${pool.dirEnv}); raise ${pool.waitEnv} to wait longer, or ${pool.countEnv} if the host has capacity to spare.`,
       );
     }
     if (lastLogAt === null || now() - lastLogAt >= PROGRESS_LOG_MS) {
       lastLogAt = now();
       log(
-        `[typecheck-slots] waiting for a host typecheck slot${forLabel(label)}: ${holders.length}/${slots} held (${describeHolders(holders)}). ` +
-          `Bounded by ${SLOT_COUNT_ENV}=${slots} across every worktree on this host.`,
+        `[${pool.tag}] waiting for a ${pool.noun}${forLabel(label)}: ${holders.length}/${slots} held by ${describeHolders(holders)}. ` +
+          `Bounded by ${pool.countEnv}=${slots} across every worktree on this host.`,
       );
     }
     await sleep(pollMs / 2 + Math.random() * pollMs);

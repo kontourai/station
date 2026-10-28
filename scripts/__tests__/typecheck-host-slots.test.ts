@@ -910,6 +910,7 @@ describe('tsc-slot runner', () => {
         'scripts/lib/bounded-capture.mjs',
         'scripts/lib/module-entry.mjs',
         'scripts/lib/typecheck-host-slots.mjs',
+        'scripts/lib/slot-holder-exec.mjs',
         'packages/shared/src/process-identity.mjs',
         'packages/shared/src/windows-system-utility.mjs',
       ]) {
