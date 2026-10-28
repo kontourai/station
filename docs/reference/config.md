@@ -64,6 +64,8 @@ additional first-run, workspace, approval, contribution, and preview settings.
 | field | type | default | description |
 |---|---|---|---|
 | `defaultMaxTurns` | positive integer | `200` | VoltAgent step cap after `guardrails.maxSteps` and top-level Agent `maxSteps`. Missing/zero values fall through in the resolver, but the settings write interface requires a positive integer. This is a finite cap, not unlimited execution; the Strands adapter does not apply this setting. |
+| `checkoutStaleAfterCommits` | positive integer | `50` | Commits behind its upstream branch at which a Project's checkout reads as stale for the `stale-project-checkout` preview ([Project checkout freshness](api.md#project-checkout-freshness)). |
+| `checkoutStaleAfterDays` | positive integer | `3` | Days a Project's checkout may lack a commit that landed on its upstream branch before it reads as stale for the same preview. |
 | `defaultMaxOutputTokens` | positive integer | no Station-applied cap | Output-token cap passed by Station's framework adapters when an Agent has no `guardrails.maxTokens`. Provider/model limits still apply. |
 | `systemPrompt` | string | [seeded Station prompt](../../src-server/domain/app-config-seed.ts) | Prepended to Agent instructions by Station's engine. An absent or empty value is reseeded on load. |
 | `templateVariables` | array | seeded `AGENT_NAME=Station` on a new home | Named replacements used by Station's prompt processing; built-in date/time and user variables are separate. |

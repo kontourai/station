@@ -189,6 +189,42 @@ not read today.
 
 See [project chat defaults](contracts.md).
 
+## Project checkout freshness
+
+`GET /api/projects/:slug/checkout-freshness` says how far the Project's
+working directory checkout is behind its upstream branch, behind the
+`stale-project-checkout` Feature Preview. While the preview is off it answers
+404 with `code: 'feature_preview_disabled'`, `previewId` and `settingsPath`, and
+reads nothing. A shared member, like an unknown Project, gets 404
+`Project not found`: the answer names a host path.
+
+The [reader](../../src-server/services/projects/project-checkout-freshness.ts)
+uses local refs only and never fetches, so `behind` counts what the last fetch
+brought in. Every git call goes through `readProjectRepository`, the same
+confined read the coding routes use. The answer (`ProjectCheckoutFreshness`,
+[contracts](contracts.md)) is one of:
+
+- `unknown` with a `reason`: `no-working-directory`, `missing-directory`,
+  `not-a-repository`, `detached-head`, `no-upstream` (none configured, or its
+  ref is not present locally) or `unreadable` (refused, timed out or changing).
+  None of these is an error response.
+- `stale` or `not-stale`, with `branch`, `upstream` (`origin/main`),
+  `behind`, `ahead`, `oldestMissingCommitAt` (when the oldest commit HEAD lacks
+  landed on the upstream's first-parent line), `upstreamFetchedAt` (the newest
+  of the worktree's and the repository's `FETCH_HEAD` and the upstream ref's
+  reflog; absent when none exists), `thresholds`, `staleBecause` (`commits`,
+  `age` or both) and `updateCommand` (`git -C <directory> pull --ff-only`,
+  shell-quoted). Station never runs that command; with `ahead` above 0 it
+  refuses.
+
+Stale means `behind` reaches `checkoutStaleAfterCommits` (default 50), or the
+oldest missing commit landed at least `checkoutStaleAfterDays` (default 3) ago
+([config](config.md)). Facts are remembered per directory for one minute and
+concurrent reads join one read; thresholds apply on every request. The
+station-control `get_project` tool adds this answer as `checkoutFreshness`
+when the route returns one; it leaves the field out otherwise and never fails
+the Project read for it.
+
 ## Durable Project creation
 
 `POST /api/projects` optionally accepts a UUID `creationRequestId` alongside an

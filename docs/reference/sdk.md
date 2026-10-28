@@ -1607,6 +1607,20 @@ prefix. Station reads it through `ProjectsContext`'s
 `useScopedProjectChatDefaultsQuery` (`staleTime: 0`, `refetchOnMount: true`)
 in the start composers, a chat that has not started, and Project settings.
 
+### `useProjectCheckoutFreshnessQuery(slug, config?)`
+
+Fetches `GET /api/projects/:slug/checkout-freshness` through
+`getProjectCheckoutFreshness`: how far the Project's checkout is behind its
+upstream ([Project checkout freshness](api.md#project-checkout-freshness)), or
+`null` when the route answers 404 or 501 (the Stale checkout warning preview is
+off, an older Station, a shared member, or no such Project); other failures
+throw. Scoped like `useProjectChatDefaultsQuery`, under
+`[PROJECT_CHECKOUT_FRESHNESS_QUERY_KEY_PREFIX, apiBase, identity, slug]`
+(`'project-checkout-freshness'`), outside the persisted `'projects'` prefix.
+Disabled without a slug. Station reads it through `ProjectsContext`'s
+`useScopedProjectCheckoutFreshnessQuery` (`staleTime: 60_000`) in Project
+settings, enabled only while the preview is on.
+
 ### `useProjectRunLocationsQuery(config?)`
 
 Fetches `GET /api/projects/run-locations` through `listProjectRunLocations`:
