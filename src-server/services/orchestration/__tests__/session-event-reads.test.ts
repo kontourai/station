@@ -410,6 +410,57 @@ describe('SessionEventReads session window sequence space', () => {
   );
 });
 
+describe('SessionEventReads mid-turn newest window', () => {
+  test('session and conversation windows carry the history-gap mark on the prompt they add', async () => {
+    const store = createStore();
+    const threadId = 'gap-window';
+    try {
+      seedRoot(store, threadId);
+      const base = {
+        provider: 'claude' as const,
+        threadId,
+        turnId: 'long',
+        createdAt: '2026-10-28T00:00:00.000Z',
+      };
+      store.appendEvent({
+        ...base,
+        eventId: 'gap-start',
+        method: 'turn.started',
+        prompt: 'Long task',
+      });
+      for (let index = 0; index < 200; index++)
+        store.appendEvent({
+          ...base,
+          eventId: `gap-delta-${index}`,
+          method: 'content.text-delta',
+          itemId: 'text',
+          delta: 'x',
+        });
+      const reads = readsFor(store, threadId);
+      const options = {
+        authority: INTERNAL_SESSION_READ_SCOPE,
+        turnLimit: 10,
+        direction: 'newest' as const,
+      };
+      for (const window of [
+        await reads.readSessionEventWindow(threadId, options),
+        await reads.readConversationEventWindow(threadId, options),
+      ]) {
+        expect(window?.hasMore).toBe(true);
+        expect(window?.events[0]).toMatchObject({
+          event: { eventId: 'gap-start' },
+          historyGapAfter: true,
+        });
+        expect(
+          window?.events.filter((item) => item.historyGapAfter),
+        ).toHaveLength(1);
+      }
+    } finally {
+      store.close();
+    }
+  });
+});
+
 describe('SessionEventReads current-turn tool activity', () => {
   test('fresh capped windows retain the own latest tool start and reset at the next turn', async () => {
     const store = createStore();
