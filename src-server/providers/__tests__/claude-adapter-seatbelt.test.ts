@@ -45,6 +45,15 @@ vi.mock('../adapters/claude-code-spawn.js', async (importOriginal) => {
   );
 });
 
+// chat-host-images: observe how often a start records its launch.
+vi.mock('../../services/infra/session-tmpdir.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../../services/infra/session-tmpdir.js')
+    >();
+  return { ...actual, commitEngineLaunch: vi.fn(actual.commitEngineLaunch) };
+});
+
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   deleteSession: vi.fn(),
   forkSession: mockForkSession,
@@ -69,6 +78,7 @@ import {
   type SeatbeltEvidence,
 } from '../../security/confinement/seatbelt.js';
 import {
+  commitEngineLaunch,
   installSessionTmpDirPolicy,
   sessionTempRoot,
   sessionTmpRoot,
@@ -631,7 +641,10 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
     try {
       createAdapter();
       startingQuery(Promise.resolve({}));
+      vi.mocked(commitEngineLaunch).mockClear();
       await startConfined('confined-images');
+      // Recorded once for this start, not again when it is announced.
+      expect(vi.mocked(commitEngineLaunch)).toHaveBeenCalledTimes(1);
       const tmpdir = spawnedEnv().TMPDIR;
       expect(tmpdir).toContain(
         join(stationHome, 'tmp', 'confined-sessions', 'session-'),

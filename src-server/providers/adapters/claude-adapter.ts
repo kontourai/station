@@ -2173,7 +2173,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // thread's session, never before, so a start that fails leaves the
     // previous launch's record and folder alone. A confined engine's real
     // TMPDIR is Seatbelt's per-launch directory: exactly that one.
+    let hostImageCommitted = false;
     const commitHostImageLaunch = () => {
+      if (hostImageCommitted) return;
+      hostImageCommitted = true;
       commitEngineLaunch(
         input.threadId,
         seatbelt
@@ -2190,7 +2193,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       confinementRecord?: ReturnType<typeof observedConfinementRecord>,
     ): ProviderSession => {
       this.sessions.set(input.threadId, record);
-      if (!record.confinementPending) commitHostImageLaunch();
+      // Once per start: a confined start committed when it registered.
+      commitHostImageLaunch();
       record.streamTask = this.consumeMessages(record);
 
       this.publish({
