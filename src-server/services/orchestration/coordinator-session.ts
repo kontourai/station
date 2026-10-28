@@ -514,7 +514,7 @@ const KIND_LABEL: Record<CoordinatorAttentionKind, string> = {
  * it says plainly that Station wrote it. The only outside text is each
  * notification's title, one line, cut, and quoted as data.
  */
-export function coordinatorWakeMessage(
+function coordinatorWakeMessage(
   items: readonly CoordinatorAttentionItem[],
 ): string {
   const shown = items.slice(0, COORDINATOR_WAKE_MAX_ITEMS_PER_TURN);
