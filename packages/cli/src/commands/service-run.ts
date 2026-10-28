@@ -147,7 +147,10 @@ const CONFIRMATION_PROBE_TIMEOUT_MS = 45_000;
  * confirmation and restarted a working server twice in ten minutes,
  * interrupting every in-flight turn. Under measured pressure the escalation
  * waits, but only until this ceiling of continuous failure, so a server that
- * is genuinely wedged on a busy host is still confirmed and restarted.
+ * is genuinely wedged on a busy host is still confirmed and restarted. A
+ * window in which a foreign identity answered is never deferred. While
+ * deferred, confirmation probes run at most once per ceiling, so the
+ * recovery-cycle cap below cannot trip on a continuously pressured host.
  */
 const PRESSURED_ESCALATION_CEILING_MS = 900_000;
 
@@ -177,8 +180,16 @@ interface ChildProbeState {
   authRefusalSinceMs?: number;
   authRefusalStrikes: number;
   failingSinceMs?: number;
+  /**
+   * A different identity answered, or a foreign pid held the port, during the
+   * current failure window: positive evidence against starvation, so host
+   * pressure must not defer this window's escalation.
+   */
+  foreignIdentitySinceFailing: boolean;
   identityMismatchStrikes: number;
   listenerGoneStrikes: number;
+  /** Host pressure deferred this failure window's escalation at least once. */
+  pressureDeferred: boolean;
   recoveryTimestamps: number[];
 }
 
@@ -304,14 +315,18 @@ export async function superviseService(
   const childState: Record<'server' | 'ui', ChildProbeState> = {
     server: {
       authRefusalStrikes: 0,
+      foreignIdentitySinceFailing: false,
       identityMismatchStrikes: 0,
       listenerGoneStrikes: 0,
+      pressureDeferred: false,
       recoveryTimestamps: [],
     },
     ui: {
       authRefusalStrikes: 0,
+      foreignIdentitySinceFailing: false,
       identityMismatchStrikes: 0,
       listenerGoneStrikes: 0,
+      pressureDeferred: false,
       recoveryTimestamps: [],
     },
   };
@@ -320,8 +335,10 @@ export async function superviseService(
     state.failingSinceMs = undefined;
     state.authRefusalSinceMs = undefined;
     state.authRefusalStrikes = 0;
+    state.foreignIdentitySinceFailing = false;
     state.identityMismatchStrikes = 0;
     state.listenerGoneStrikes = 0;
+    state.pressureDeferred = false;
   };
 
   const shutdown = (code: number): Promise<void> => {
@@ -588,6 +605,7 @@ export async function superviseService(
       state.authRefusalSinceMs = undefined;
       state.authRefusalStrikes = 0;
       state.identityMismatchStrikes += 1;
+      state.foreignIdentitySinceFailing = true;
       // A mismatch answer is ALSO positive evidence our child did not answer,
       // so the continuous-failure window keeps accumulating: an intermittent
       // foreign responder (mismatch and unreachable alternating) must drain
@@ -648,16 +666,23 @@ export async function superviseService(
       failingForMs >= UNRESPONSIVE_ESCALATION_MS ? hostPressure() : null;
     const deferredForPressure =
       pressure?.pressured === true &&
+      !state.foreignIdentitySinceFailing &&
       failingForMs < PRESSURED_ESCALATION_CEILING_MS;
+    if (deferredForPressure) state.pressureDeferred = true;
     // The escalation backstop runs first so it drains EVERY sustained non-ok
     // state — including ones whose per-tick strike counters keep getting
     // reset by interleaved observations (review round 1, MED 1).
     if (failingForMs >= UNRESPONSIVE_ESCALATION_MS && !deferredForPressure) {
-      const ceilingNote = pressure?.pressured
-        ? `; host still under CPU pressure (${pressure.detail}) but the ${PRESSURED_ESCALATION_CEILING_MS / 1000}s pressure ceiling is reached`
-        : '';
+      let pressureNote = '';
+      if (pressure?.pressured && state.foreignIdentitySinceFailing) {
+        pressureNote = `; host under CPU pressure (${pressure.detail}) but a foreign identity answered during this window, so escalation is not deferred`;
+      } else if (pressure?.pressured) {
+        pressureNote = `; host still under CPU pressure (${pressure.detail}) but the ${PRESSURED_ESCALATION_CEILING_MS / 1000}s pressure ceiling is reached`;
+      } else if (state.pressureDeferred) {
+        pressureNote = `; escalation was deferred for host CPU pressure, which has eased${pressure ? ` (${pressure.detail})` : ''}`;
+      }
       console.warn(
-        `Station ${name} identity probe has failed continuously for ${Math.round(failingForMs / 1000)}s${ceilingNote}; running a ${CONFIRMATION_PROBE_TIMEOUT_MS / 1000}s confirmation probe`,
+        `Station ${name} identity probe has failed continuously for ${Math.round(failingForMs / 1000)}s${pressureNote}; running a ${CONFIRMATION_PROBE_TIMEOUT_MS / 1000}s confirmation probe`,
       );
       const confirmation = await collect(instanceName, {
         probeTimeoutMs: CONFIRMATION_PROBE_TIMEOUT_MS,
@@ -710,6 +735,7 @@ export async function superviseService(
       (child.pid === null || !listeningPids.includes(child.pid))
     ) {
       state.identityMismatchStrikes += 1;
+      state.foreignIdentitySinceFailing = true;
       if (state.identityMismatchStrikes >= IDENTITY_MISMATCH_TEARDOWN_STRIKES) {
         throw new Error(
           `Station ${name} port is owned by a foreign listener instead of its recorded child`,

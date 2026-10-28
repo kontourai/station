@@ -25,15 +25,41 @@ export const PSI_CPU_SOME_AVG60_THRESHOLD = 25;
  */
 export const LOAD_PER_CPU_THRESHOLD = 1.5;
 
+/**
+ * PSI files in preference order. Under cgroup v2 a container's root cgroup is
+ * its own, so its cpu.pressure measures the container rather than the host;
+ * on a host whose root cgroup has no pressure file, the system-wide file
+ * applies.
+ */
+export const PSI_CPU_PATHS = [
+  '/sys/fs/cgroup/cpu.pressure',
+  '/proc/pressure/cpu',
+] as const;
+
 export interface HostPressureSources {
-  /** Contents of /proc/pressure/cpu; throws where PSI is absent (macOS, Windows, older kernels). */
-  readPsiCpu?: () => string;
+  /**
+   * The first readable PSI cpu file and its path; throws where PSI is absent
+   * (macOS, Windows, kernels without PSI).
+   */
+  readPsiCpu?: () => { path: string; text: string };
   /** os.loadavg(); Windows reports zeros. */
   loadAverage?: () => number[];
   cpuCount?: () => number;
 }
 
-/** Parses the `some avg60=` field of /proc/pressure/cpu, or null when absent or malformed. */
+function readFirstPsiCpu(): { path: string; text: string } {
+  let lastError: unknown;
+  for (const path of PSI_CPU_PATHS) {
+    try {
+      return { path, text: readFileSync(path, 'utf8') };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
+/** Parses the `some avg60=` field of a PSI cpu file, or null when absent or malformed. */
 export function parsePsiCpuSomeAvg60(text: string): number | null {
   const someLine = text.split('\n').find((line) => line.startsWith('some '));
   const match = someLine?.match(/(?:^|\s)avg60=(\d+(?:\.\d+)?)(?:\s|$)/);
@@ -43,34 +69,31 @@ export function parsePsiCpuSomeAvg60(text: string): number | null {
 }
 
 /**
- * Reads host CPU pressure from PSI (Linux) and the load average relative to
- * CPUs (Linux, macOS). Either source reporting pressure is enough. Returns
- * null when neither source yields a reading — Windows, whose load average is
- * always zero, and any host where both reads fail — so callers keep their
- * unpressured timing rather than guessing.
+ * Reads CPU pressure from PSI where Linux provides it, and otherwise from the
+ * one-minute load average relative to CPUs (macOS). PSI alone decides when it
+ * is readable: Linux load averages also count tasks blocked on I/O, which is
+ * not CPU starvation. Returns null when neither source yields a reading —
+ * Windows, whose load average is always zero, and any host where both reads
+ * fail — so callers keep their unpressured timing rather than guessing.
  */
 export function readHostPressure(
   sources: HostPressureSources = {},
 ): HostPressureReading | null {
-  const readPsiCpu =
-    sources.readPsiCpu ?? (() => readFileSync('/proc/pressure/cpu', 'utf8'));
+  const readPsiCpu = sources.readPsiCpu ?? readFirstPsiCpu;
   const loadAverage = sources.loadAverage ?? loadavg;
   const cpuCount = sources.cpuCount ?? availableParallelism;
 
-  const findings: string[] = [];
-  let pressured = false;
-  let measured = false;
-
-  let psiAvg60: number | null = null;
   try {
-    psiAvg60 = parsePsiCpuSomeAvg60(readPsiCpu());
+    const psi = readPsiCpu();
+    const avg60 = parsePsiCpuSomeAvg60(psi.text);
+    if (avg60 !== null) {
+      return {
+        pressured: avg60 >= PSI_CPU_SOME_AVG60_THRESHOLD,
+        detail: `${psi.path} some avg60=${avg60}%`,
+      };
+    }
   } catch {
-    // PSI is Linux-only and can be disabled; the load average still applies.
-  }
-  if (psiAvg60 !== null) {
-    measured = true;
-    findings.push(`PSI cpu some avg60=${psiAvg60}%`);
-    if (psiAvg60 >= PSI_CPU_SOME_AVG60_THRESHOLD) pressured = true;
+    // No PSI here; fall back to the load average.
   }
 
   let load1: number | undefined;
@@ -79,19 +102,19 @@ export function readHostPressure(
     load1 = loadAverage()[0];
     cpus = cpuCount();
   } catch {
-    load1 = undefined;
+    return null;
   }
   // A zero load average is Windows' placeholder, not a measurement.
   if (
-    typeof load1 === 'number' &&
-    Number.isFinite(load1) &&
-    load1 > 0 &&
-    cpus > 0
+    typeof load1 !== 'number' ||
+    !Number.isFinite(load1) ||
+    load1 <= 0 ||
+    cpus <= 0
   ) {
-    measured = true;
-    findings.push(`load ${load1.toFixed(2)} on ${cpus} CPUs`);
-    if (load1 / cpus >= LOAD_PER_CPU_THRESHOLD) pressured = true;
+    return null;
   }
-
-  return measured ? { pressured, detail: findings.join(', ') } : null;
+  return {
+    pressured: load1 / cpus >= LOAD_PER_CPU_THRESHOLD,
+    detail: `load ${load1.toFixed(2)} on ${cpus} CPUs`,
+  };
 }

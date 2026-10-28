@@ -21,13 +21,24 @@ import { lookupProcessBirthFingerprint } from '@kontourai/station-shared/process
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
-import type { HostPressureReading } from '../commands/host-pressure.js';
+import {
+  type HostPressureReading,
+  readHostPressure,
+} from '../commands/host-pressure.js';
 import type {
   CollectedChildStatus,
   InstanceStateRecord,
   StartOptions,
 } from '../commands/lifecycle.js';
 import { superviseService } from '../commands/service-run.js';
+
+// The real reader, observable: one test leaves `hostPressure` uninjected to
+// prove the supervisor's production default is this module's reader.
+vi.mock('../commands/host-pressure.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../commands/host-pressure.js')>();
+  return { ...actual, readHostPressure: vi.fn(actual.readHostPressure) };
+});
 
 // The supervisor base was the fixed path `/tmp/station-service`. The
 // escalation-ledger test below really `mkdirSync`s `<base>/logs` and writes a
@@ -118,6 +129,8 @@ function makeSupervisor(options: {
   collect: ReturnType<typeof vi.fn>;
   clockAdvanceMs?: number;
   hostPressure?: () => HostPressureReading | null;
+  /** Leave hostPressure uninjected so the production default runs. */
+  defaultHostPressure?: boolean;
   listListeningPids?: (port: number) => number[];
   needsBuildForInstance?: (instanceName: string) => boolean;
   processIsAlive?: (pid: number) => boolean;
@@ -157,7 +170,9 @@ function makeSupervisor(options: {
     // Hermetic by default: the real reader measures THIS host, so a loaded
     // test machine would defer every wedge escalation. Null is "unmeasurable",
     // the Windows production branch, which keeps the unpressured timing.
-    hostPressure: options.hostPressure ?? (() => null),
+    hostPressure: options.defaultHostPressure
+      ? undefined
+      : (options.hostPressure ?? (() => null)),
     now: () => clock,
     onSignal: vi.fn(),
     processIsAlive: options.processIsAlive ?? (() => true),
@@ -956,6 +971,33 @@ describe('service supervisor', () => {
       ).toBe(true);
     });
 
+    test('the production default reads host pressure through readHostPressure', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const reader = vi.mocked(readHostPressure);
+      reader.mockReturnValue({ pressured: true, detail: 'default reader' });
+      try {
+        const harness = makeSupervisor({
+          collect: wedgedCollect(),
+          defaultHostPressure: true,
+        });
+        await harness.supervision;
+        for (let index = 0; index < 40; index += 1) await harness.runTick();
+
+        expect(reader).toHaveBeenCalled();
+        expect(harness.exit).not.toHaveBeenCalled();
+        expect(
+          warn.mock.calls.some(([message]) =>
+            String(message).includes(
+              'host under CPU pressure (default reader) — wedge escalation deferred',
+            ),
+          ),
+        ).toBe(true);
+      } finally {
+        reader.mockReset();
+      }
+    });
+
     test('still confirms and tears down a wedged child at the 900s pressure ceiling', async () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const error = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -1006,7 +1048,7 @@ describe('service supervisor', () => {
     });
 
     test('escalates on the first tick after pressure lifts', async () => {
-      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const error = vi.spyOn(console, 'error').mockImplementation(() => {});
       const collect = wedgedCollect();
       let reading = pressured;
@@ -1024,6 +1066,50 @@ describe('service supervisor', () => {
       await harness.runTick();
       await vi.waitFor(() => expect(harness.exit).toHaveBeenCalledWith(1));
       expect(wedgedTeardown(error.mock.calls)).toBe(true);
+      expect(
+        warn.mock.calls.some(([message]) =>
+          String(message).includes(
+            'identity probe has failed continuously for 360s; escalation was deferred for host CPU pressure, which has eased (PSI cpu some avg60=3%, load 0.40 on 4 CPUs)',
+          ),
+        ),
+      ).toBe(true);
+    });
+
+    // Review of this change, finding 2: an intermittent foreign responder
+    // only ever drains through the 180s backstop, and a different identity
+    // answering is positive evidence against starvation.
+    test('pressure does not defer an intermittent foreign responder past the 180s window', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      let steadyCalls = 0;
+      const collect = vi.fn(
+        async (_name: string, options?: { probeTimeoutMs?: number }) => {
+          if (options?.probeTimeoutMs === 45_000) {
+            return instanceStatus(mismatchChild(10), okChild(11));
+          }
+          steadyCalls += 1;
+          return steadyCalls % 2 === 0
+            ? instanceStatus(mismatchChild(10), okChild(11))
+            : instanceStatus(slowChild(10), okChild(11));
+        },
+      );
+      const harness = makeSupervisor({
+        collect,
+        hostPressure: () => pressured,
+      });
+      await harness.supervision;
+
+      for (let index = 0; index < 38; index += 1) await harness.runTick();
+
+      await vi.waitFor(() => expect(harness.exit).toHaveBeenCalledWith(1));
+      expect(wedgedTeardown(error.mock.calls)).toBe(true);
+      expect(
+        warn.mock.calls.some(([message]) =>
+          String(message).includes(
+            'but a foreign identity answered during this window, so escalation is not deferred',
+          ),
+        ),
+      ).toBe(true);
     });
 
     test('pressure does not shield a deferred child whose port starts refusing connections', async () => {
