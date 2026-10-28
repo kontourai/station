@@ -19,8 +19,8 @@ import { redactSecrets } from '@kontourai/station-shared/redaction';
  * PEM block (`-----BEGIN …-----` to `-----END …-----`) is found on the
  * whole line, before any cut, and kept as one marker; its body lines are
  * never kept or logged. A block ends at its END, or at the first line that
- * is not a body line (base64, a `Name: value` header, blank) or after
- * {@link PEM_BODY_LINES_MAX} lines, so a lost END cannot silence the rest of
+ * is not a body line (base64, an encapsulated header, blank), so a lost
+ * END withholds only lines that look like key material, never the rest of
  * stderr. An END whose BEGIN was never seen takes the base64 lines just
  * above it, including a short last line, out of the tail with it, though
  * they were already logged at debug level.
@@ -47,8 +47,6 @@ const PEM_LAST_BODY_LINE = /^[A-Za-z0-9+/]+={0,2}$/;
  * encapsulated header (`Proc-Type:`, `DEK-Info:`, `Comment:`). */
 const PEM_INNER_LINE =
   /^(?:[A-Za-z0-9+/=]+|(?:Proc-Type|DEK-Info|Comment|[A-Z][A-Za-z]*-[A-Za-z-]+):.*)$/;
-/** A block longer than this has lost its END; stderr is read again after it. */
-const PEM_BODY_LINES_MAX = 256;
 const PEM_REDACTED = '[REDACTED PEM BLOCK]';
 
 /**
@@ -108,8 +106,8 @@ function normalized(text: string): string {
 export class CodexStderrTail {
   private lines: string[] = [];
   private chars = 0;
-  /** Body lines read since the open block's BEGIN; undefined outside one. */
-  private pemLines: number | undefined;
+  /** Whether a PEM block's BEGIN was read and its END not yet. */
+  private inPem = false;
   private readonly reported: string[] = [];
 
   /** Keeps a cleaned line; returns it, or '' for a blank or withheld one. */
@@ -128,18 +126,16 @@ export class CodexStderrTail {
 
   /** `line` with any PEM block in it, or a body line, withheld. */
   private withoutPem(line: string): string {
-    if (this.pemLines !== undefined) {
+    if (this.inPem) {
       if (!line) return '';
       const end = PEM_END.exec(line);
       if (end) {
-        this.pemLines = undefined;
+        this.inPem = false;
         return line.slice(end.index + end[0].length).trim();
       }
-      this.pemLines += 1;
-      if (PEM_INNER_LINE.test(line) && this.pemLines <= PEM_BODY_LINES_MAX)
-        return '';
-      // Not a block line, or a block that never ends: its END was lost.
-      this.pemLines = undefined;
+      if (PEM_INNER_LINE.test(line)) return '';
+      // Not a block line: the block's END was lost.
+      this.inPem = false;
     }
     if (!line) return '';
     const begin = PEM_BEGIN.exec(line);
@@ -148,7 +144,7 @@ export class CodexStderrTail {
       const rest = line.slice(begin.index + begin[0].length);
       const end = PEM_END.exec(rest);
       if (!end) {
-        this.pemLines = 0;
+        this.inPem = true;
         return joinParts(before, PEM_REDACTED);
       }
       return joinParts(
