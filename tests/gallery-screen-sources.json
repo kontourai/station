@@ -187,6 +187,11 @@
     "inventory-drilldown-older-host-light-mobile": [
       "src-ui/src/views/HomeView.tsx",
       "src-ui/src/components/chat-dock/ChatDock.tsx"
-    ]
+    ],
+    "station-switcher-dark-desktop": ["src-ui/src/components/header/StationSwitcherMenu.tsx"],
+    "station-switcher-light-desktop": ["src-ui/src/components/header/StationSwitcherMenu.tsx"],
+    "station-switcher-dark-mobile": ["src-ui/src/components/header/StationSwitcherMenu.tsx"],
+    "station-switcher-light-mobile": ["src-ui/src/components/header/StationSwitcherMenu.tsx"],
+    "station-switcher-remove-dark-desktop": ["src-ui/src/components/header/StationSwitcherMenu.tsx"]
   }
 }

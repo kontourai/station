@@ -158,6 +158,9 @@ test('marks the current Station, reports peer reachability, and exposes manageme
       await screen.findByRole('menuitemradio', { name: 'Laptop — Online' })
     ).getAttribute('aria-checked'),
   ).toBe('false');
+  // Healthy peers carry the status in their name and dot, not visible text.
+  expect(screen.queryByText('Online')).toBeNull();
+  expect(screen.getByText('Connected')).toBeTruthy();
   // The active Station is not probed: its own status is already live.
   expect(fetchMock).toHaveBeenCalledOnce();
   fireEvent.click(screen.getByRole('menuitem', { name: 'Manage Stations' }));
@@ -206,7 +209,7 @@ test('lists the active Station first, then by recent use, and focuses the previo
   const names = screen
     .getAllByRole('menuitemradio')
     .map((item) => item.textContent);
-  expect(names.map((name) => name?.split(/Connected|Checking/)[0])).toEqual([
+  expect(names.map((name) => name?.replace(/Connected|✓/g, ''))).toEqual([
     'Workstation',
     'Laptop',
     'Build box',

@@ -321,6 +321,13 @@ export function StationSwitcherMenu({
             const name = connection.name || connection.url;
             const label = statusLabel(connection);
             const armed = armedId === connection.id;
+            // A healthy peer says so with its dot alone; text is for the
+            // active Station and for anything that needs attention.
+            const shown = armed
+              ? 'Remove from this device?'
+              : label === 'Online' || label === 'Checking…'
+                ? ''
+                : label;
             return (
               <div key={connection.id} className="station-switcher__item">
                 <button
@@ -342,10 +349,8 @@ export function StationSwitcherMenu({
                   </span>
                   <span className="station-switcher__identity">
                     <span className="station-switcher__name">{name}</span>
-                    {(armed || label) && (
-                      <span className="station-switcher__status">
-                        {armed ? 'Remove from this device?' : label}
-                      </span>
+                    {shown && (
+                      <span className="station-switcher__status">{shown}</span>
                     )}
                   </span>
                   {current && <span aria-hidden="true">✓</span>}

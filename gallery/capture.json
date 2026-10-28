@@ -1,0 +1,962 @@
+{
+  "schemaVersion": 1,
+  "runId": null,
+  "capturedAt": "2026-10-28T05:51:27.184Z",
+  "expected": 91,
+  "selection": [
+    "station-switcher-dark-desktop",
+    "station-switcher-light-desktop",
+    "station-switcher-dark-mobile",
+    "station-switcher-light-mobile",
+    "station-switcher-remove-dark-desktop"
+  ],
+  "screens": [
+    {
+      "file": "station-switcher-dark-desktop.png",
+      "ok": true,
+      "name": "station-switcher-dark-desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "error": null,
+      "sha256": "cad268bc0b3e89ff315f8ce89616456923c2e140f24ade84a9ebb64f9f8fcdee",
+      "controls": [
+        {
+          "label": "Station home",
+          "disabled": false
+        },
+        {
+          "label": "Home",
+          "disabled": false
+        },
+        {
+          "label": "Activity",
+          "disabled": false
+        },
+        {
+          "label": "New Project",
+          "disabled": false
+        },
+        {
+          "label": "New Board",
+          "disabled": false
+        },
+        {
+          "label": "Schedule",
+          "disabled": false
+        },
+        {
+          "label": "Customize",
+          "disabled": false
+        },
+        {
+          "label": "Updates",
+          "disabled": false
+        },
+        {
+          "label": "Profile and settings: BR",
+          "disabled": false
+        },
+        {
+          "label": "Collapse workspace map",
+          "disabled": false
+        },
+        {
+          "label": "Choose Station — Connected · Station E2E",
+          "disabled": false
+        },
+        {
+          "label": "Notifications, 1 need attention",
+          "disabled": false
+        },
+        {
+          "label": "Bottom region",
+          "disabled": false
+        },
+        {
+          "label": "Right region",
+          "disabled": false
+        },
+        {
+          "label": "Project: No project",
+          "disabled": false
+        },
+        {
+          "label": "Run a task on a Station; current Station: Gallery host",
+          "disabled": false
+        },
+        {
+          "label": "Agent: Choose an agent",
+          "disabled": false
+        },
+        {
+          "label": "Model: Model not reported",
+          "disabled": true
+        },
+        {
+          "label": "Attach files",
+          "disabled": false
+        },
+        {
+          "label": "Speak message",
+          "disabled": false
+        },
+        {
+          "label": "More start options",
+          "disabled": false
+        },
+        {
+          "label": "Start",
+          "disabled": true
+        },
+        {
+          "label": "1 · Choose your AISet up an agent engineConnect an AI app or configure a model in Connections.",
+          "disabled": false
+        },
+        {
+          "label": "2 · Add a Project, if you need oneNew ProjectOptional: ordinary chats can start without a Project. Repository, folder, documents or tools",
+          "disabled": false
+        },
+        {
+          "label": "Move the dock",
+          "disabled": false
+        },
+        {
+          "label": "New chat",
+          "disabled": false
+        },
+        {
+          "label": "More dock actions",
+          "disabled": false
+        },
+        {
+          "label": "Show Chat",
+          "disabled": false
+        },
+        {
+          "label": "Close Station switcher",
+          "disabled": false
+        },
+        {
+          "label": "Station E2E — Connected",
+          "disabled": false
+        },
+        {
+          "label": "Media server — Online",
+          "disabled": false
+        },
+        {
+          "label": "Remove Media server",
+          "disabled": false
+        },
+        {
+          "label": "Build box — Online",
+          "disabled": false
+        },
+        {
+          "label": "Remove Build box",
+          "disabled": false
+        },
+        {
+          "label": "Laptop — Unreachable",
+          "disabled": false
+        },
+        {
+          "label": "Remove Laptop",
+          "disabled": false
+        },
+        {
+          "label": "Old dev instance — Unreachable",
+          "disabled": false
+        },
+        {
+          "label": "Remove Old dev instance",
+          "disabled": false
+        },
+        {
+          "label": "Remove 2 unreachable",
+          "disabled": false
+        },
+        {
+          "label": "Station details",
+          "disabled": false
+        },
+        {
+          "label": "Pair phone",
+          "disabled": false
+        },
+        {
+          "label": "Manage Stations",
+          "disabled": false
+        }
+      ],
+      "uiAudit": {
+        "findings": [
+          {
+            "identity": "axe:aria-required-children:div.menu-surface[Choose Station]",
+            "detail": "critical: Certain ARIA roles must contain particular children (.menu-surface)"
+          },
+          {
+            "identity": "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+            "detail": "serious: Elements must have their visible text as part of their accessible name (.start-composer__project)"
+          }
+        ],
+        "measured": {
+          "controls": 30,
+          "smallTargets": 19,
+          "viewport": 1440,
+          "auditMs": 371
+        }
+      }
+    },
+    {
+      "file": "station-switcher-light-desktop.png",
+      "ok": true,
+      "name": "station-switcher-light-desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "error": null,
+      "sha256": "e18648aa8d0529b9ab28f84830349bd2e1eba802aec3498ddeba20c2ee4ce010",
+      "controls": [
+        {
+          "label": "Station home",
+          "disabled": false
+        },
+        {
+          "label": "Home",
+          "disabled": false
+        },
+        {
+          "label": "Activity",
+          "disabled": false
+        },
+        {
+          "label": "New Project",
+          "disabled": false
+        },
+        {
+          "label": "New Board",
+          "disabled": false
+        },
+        {
+          "label": "Schedule",
+          "disabled": false
+        },
+        {
+          "label": "Customize",
+          "disabled": false
+        },
+        {
+          "label": "Updates",
+          "disabled": false
+        },
+        {
+          "label": "Profile and settings: BR",
+          "disabled": false
+        },
+        {
+          "label": "Collapse workspace map",
+          "disabled": false
+        },
+        {
+          "label": "Choose Station — Connected · Station E2E",
+          "disabled": false
+        },
+        {
+          "label": "Notifications, 1 need attention",
+          "disabled": false
+        },
+        {
+          "label": "Bottom region",
+          "disabled": false
+        },
+        {
+          "label": "Right region",
+          "disabled": false
+        },
+        {
+          "label": "Project: No project",
+          "disabled": false
+        },
+        {
+          "label": "Run a task on a Station; current Station: Gallery host",
+          "disabled": false
+        },
+        {
+          "label": "Agent: Choose an agent",
+          "disabled": false
+        },
+        {
+          "label": "Model: Model not reported",
+          "disabled": true
+        },
+        {
+          "label": "Attach files",
+          "disabled": false
+        },
+        {
+          "label": "Speak message",
+          "disabled": false
+        },
+        {
+          "label": "More start options",
+          "disabled": false
+        },
+        {
+          "label": "Start",
+          "disabled": true
+        },
+        {
+          "label": "1 · Choose your AISet up an agent engineConnect an AI app or configure a model in Connections.",
+          "disabled": false
+        },
+        {
+          "label": "2 · Add a Project, if you need oneNew ProjectOptional: ordinary chats can start without a Project. Repository, folder, documents or tools",
+          "disabled": false
+        },
+        {
+          "label": "Move the dock",
+          "disabled": false
+        },
+        {
+          "label": "New chat",
+          "disabled": false
+        },
+        {
+          "label": "More dock actions",
+          "disabled": false
+        },
+        {
+          "label": "Show Chat",
+          "disabled": false
+        },
+        {
+          "label": "Close Station switcher",
+          "disabled": false
+        },
+        {
+          "label": "Station E2E — Connected",
+          "disabled": false
+        },
+        {
+          "label": "Media server — Online",
+          "disabled": false
+        },
+        {
+          "label": "Remove Media server",
+          "disabled": false
+        },
+        {
+          "label": "Build box — Online",
+          "disabled": false
+        },
+        {
+          "label": "Remove Build box",
+          "disabled": false
+        },
+        {
+          "label": "Laptop — Unreachable",
+          "disabled": false
+        },
+        {
+          "label": "Remove Laptop",
+          "disabled": false
+        },
+        {
+          "label": "Old dev instance — Unreachable",
+          "disabled": false
+        },
+        {
+          "label": "Remove Old dev instance",
+          "disabled": false
+        },
+        {
+          "label": "Remove 2 unreachable",
+          "disabled": false
+        },
+        {
+          "label": "Station details",
+          "disabled": false
+        },
+        {
+          "label": "Pair phone",
+          "disabled": false
+        },
+        {
+          "label": "Manage Stations",
+          "disabled": false
+        }
+      ],
+      "uiAudit": {
+        "findings": [
+          {
+            "identity": "axe:aria-required-children:div.menu-surface[Choose Station]",
+            "detail": "critical: Certain ARIA roles must contain particular children (.menu-surface)"
+          },
+          {
+            "identity": "axe:color-contrast:span.sidebar__project-name",
+            "detail": "serious: Elements must meet minimum color contrast ratio thresholds (.sidebar__project-name)"
+          },
+          {
+            "identity": "axe:color-contrast:span.station-switcher__name",
+            "detail": "serious: Elements must meet minimum color contrast ratio thresholds (button[aria-label=\"Station E2E — Connected\"] > .station-switcher__identity > .station-switcher__name)"
+          },
+          {
+            "identity": "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+            "detail": "serious: Elements must have their visible text as part of their accessible name (.start-composer__project)"
+          }
+        ],
+        "measured": {
+          "controls": 30,
+          "smallTargets": 19,
+          "viewport": 1440,
+          "auditMs": 330
+        }
+      }
+    },
+    {
+      "file": "station-switcher-dark-mobile.png",
+      "ok": true,
+      "name": "station-switcher-dark-mobile",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "error": null,
+      "sha256": "179e519b69360a79a06dd763fe063b2e0ce2af71a603e8dfdda4aec1e6d2405d",
+      "controls": [
+        {
+          "label": "Toggle menu",
+          "disabled": false
+        },
+        {
+          "label": "Choose Station — Connected · Station E2E",
+          "disabled": false
+        },
+        {
+          "label": "Notifications, 1 need attention",
+          "disabled": false
+        },
+        {
+          "label": "More actions",
+          "disabled": false
+        },
+        {
+          "label": "Project: No project",
+          "disabled": false
+        },
+        {
+          "label": "Run a task on a Station; current Station: Gallery host",
+          "disabled": false
+        },
+        {
+          "label": "Agent: Choose an agent",
+          "disabled": false
+        },
+        {
+          "label": "Model: Model not reported",
+          "disabled": true
+        },
+        {
+          "label": "Attach files",
+          "disabled": false
+        },
+        {
+          "label": "Speak message",
+          "disabled": false
+        },
+        {
+          "label": "More start options",
+          "disabled": false
+        },
+        {
+          "label": "Start",
+          "disabled": true
+        },
+        {
+          "label": "1 · Choose your AISet up an agent engineConnect an AI app or configure a model in Connections.",
+          "disabled": false
+        },
+        {
+          "label": "2 · Add a Project, if you need oneNew ProjectOptional: ordinary chats can start without a Project. Repository, folder, documents or tools",
+          "disabled": false
+        },
+        {
+          "label": "Expand chat",
+          "disabled": false
+        },
+        {
+          "label": "Switch project — New chats, No project",
+          "disabled": false
+        },
+        {
+          "label": "Chats and tasks — Chat",
+          "disabled": false
+        },
+        {
+          "label": "Chat actions",
+          "disabled": false
+        },
+        {
+          "label": "New chat",
+          "disabled": false
+        },
+        {
+          "label": "Close Station switcher",
+          "disabled": false
+        },
+        {
+          "label": "Station E2E — Connected",
+          "disabled": false
+        },
+        {
+          "label": "Media server — Online",
+          "disabled": false
+        },
+        {
+          "label": "Remove Media server",
+          "disabled": false
+        },
+        {
+          "label": "Build box — Online",
+          "disabled": false
+        },
+        {
+          "label": "Remove Build box",
+          "disabled": false
+        },
+        {
+          "label": "Laptop — Unreachable",
+          "disabled": false
+        },
+        {
+          "label": "Remove Laptop",
+          "disabled": false
+        },
+        {
+          "label": "Old dev instance — Unreachable",
+          "disabled": false
+        },
+        {
+          "label": "Remove Old dev instance",
+          "disabled": false
+        },
+        {
+          "label": "Remove 2 unreachable",
+          "disabled": false
+        },
+        {
+          "label": "Station details",
+          "disabled": false
+        },
+        {
+          "label": "Pair phone",
+          "disabled": false
+        },
+        {
+          "label": "Manage Stations",
+          "disabled": false
+        }
+      ],
+      "uiAudit": {
+        "findings": [
+          {
+            "identity": "axe:aria-required-children:div.menu-surface[Choose Station]",
+            "detail": "critical: Certain ARIA roles must contain particular children (.menu-surface)"
+          },
+          {
+            "identity": "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+            "detail": "serious: Elements must have their visible text as part of their accessible name (.start-composer__project)"
+          },
+          {
+            "identity": "hit-target:small:input.attachment-input[type=file]",
+            "detail": "1x1px target, under 44px"
+          }
+        ],
+        "measured": {
+          "controls": 21,
+          "smallTargets": 1,
+          "viewport": 390,
+          "auditMs": 320
+        }
+      }
+    },
+    {
+      "file": "station-switcher-light-mobile.png",
+      "ok": true,
+      "name": "station-switcher-light-mobile",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "error": null,
+      "sha256": "11447e4e2ff116b8a12dfb5b232433fccde4c3ff07a201735f14a4b319410bd2",
+      "controls": [
+        {
+          "label": "Toggle menu",
+          "disabled": false
+        },
+        {
+          "label": "Choose Station — Connected · Station E2E",
+          "disabled": false
+        },
+        {
+          "label": "Notifications, 1 need attention",
+          "disabled": false
+        },
+        {
+          "label": "More actions",
+          "disabled": false
+        },
+        {
+          "label": "Project: No project",
+          "disabled": false
+        },
+        {
+          "label": "Run a task on a Station; current Station: Gallery host",
+          "disabled": false
+        },
+        {
+          "label": "Agent: Choose an agent",
+          "disabled": false
+        },
+        {
+          "label": "Model: Model not reported",
+          "disabled": true
+        },
+        {
+          "label": "Attach files",
+          "disabled": false
+        },
+        {
+          "label": "Speak message",
+          "disabled": false
+        },
+        {
+          "label": "More start options",
+          "disabled": false
+        },
+        {
+          "label": "Start",
+          "disabled": true
+        },
+        {
+          "label": "1 · Choose your AISet up an agent engineConnect an AI app or configure a model in Connections.",
+          "disabled": false
+        },
+        {
+          "label": "2 · Add a Project, if you need oneNew ProjectOptional: ordinary chats can start without a Project. Repository, folder, documents or tools",
+          "disabled": false
+        },
+        {
+          "label": "Expand chat",
+          "disabled": false
+        },
+        {
+          "label": "Switch project — New chats, No project",
+          "disabled": false
+        },
+        {
+          "label": "Chats and tasks — Chat",
+          "disabled": false
+        },
+        {
+          "label": "Chat actions",
+          "disabled": false
+        },
+        {
+          "label": "New chat",
+          "disabled": false
+        },
+        {
+          "label": "Close Station switcher",
+          "disabled": false
+        },
+        {
+          "label": "Station E2E — Connected",
+          "disabled": false
+        },
+        {
+          "label": "Media server — Online",
+          "disabled": false
+        },
+        {
+          "label": "Remove Media server",
+          "disabled": false
+        },
+        {
+          "label": "Build box — Online",
+          "disabled": false
+        },
+        {
+          "label": "Remove Build box",
+          "disabled": false
+        },
+        {
+          "label": "Laptop — Unreachable",
+          "disabled": false
+        },
+        {
+          "label": "Remove Laptop",
+          "disabled": false
+        },
+        {
+          "label": "Old dev instance — Unreachable",
+          "disabled": false
+        },
+        {
+          "label": "Remove Old dev instance",
+          "disabled": false
+        },
+        {
+          "label": "Remove 2 unreachable",
+          "disabled": false
+        },
+        {
+          "label": "Station details",
+          "disabled": false
+        },
+        {
+          "label": "Pair phone",
+          "disabled": false
+        },
+        {
+          "label": "Manage Stations",
+          "disabled": false
+        }
+      ],
+      "uiAudit": {
+        "findings": [
+          {
+            "identity": "axe:aria-required-children:div.menu-surface[Choose Station]",
+            "detail": "critical: Certain ARIA roles must contain particular children (.menu-surface)"
+          },
+          {
+            "identity": "axe:color-contrast:span.station-switcher__name",
+            "detail": "serious: Elements must meet minimum color contrast ratio thresholds (button[aria-label=\"Station E2E — Connected\"] > .station-switcher__identity > .station-switcher__name)"
+          },
+          {
+            "identity": "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+            "detail": "serious: Elements must have their visible text as part of their accessible name (.start-composer__project)"
+          },
+          {
+            "identity": "hit-target:small:input.attachment-input[type=file]",
+            "detail": "1x1px target, under 44px"
+          }
+        ],
+        "measured": {
+          "controls": 21,
+          "smallTargets": 1,
+          "viewport": 390,
+          "auditMs": 290
+        }
+      }
+    },
+    {
+      "file": "station-switcher-remove-dark-desktop.png",
+      "ok": true,
+      "name": "station-switcher-remove-dark-desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "error": null,
+      "sha256": "5176f787bb1a3f1b5c8b1b969b6d42355e95091b9f4b32d46e2feadc22682bb2",
+      "controls": [
+        {
+          "label": "Station home",
+          "disabled": false
+        },
+        {
+          "label": "Home",
+          "disabled": false
+        },
+        {
+          "label": "Activity",
+          "disabled": false
+        },
+        {
+          "label": "New Project",
+          "disabled": false
+        },
+        {
+          "label": "New Board",
+          "disabled": false
+        },
+        {
+          "label": "Schedule",
+          "disabled": false
+        },
+        {
+          "label": "Customize",
+          "disabled": false
+        },
+        {
+          "label": "Updates",
+          "disabled": false
+        },
+        {
+          "label": "Profile and settings: BR",
+          "disabled": false
+        },
+        {
+          "label": "Collapse workspace map",
+          "disabled": false
+        },
+        {
+          "label": "Choose Station — Connected · Station E2E",
+          "disabled": false
+        },
+        {
+          "label": "Notifications, 1 need attention",
+          "disabled": false
+        },
+        {
+          "label": "Bottom region",
+          "disabled": false
+        },
+        {
+          "label": "Right region",
+          "disabled": false
+        },
+        {
+          "label": "Project: No project",
+          "disabled": false
+        },
+        {
+          "label": "Run a task on a Station; current Station: Gallery host",
+          "disabled": false
+        },
+        {
+          "label": "Agent: Choose an agent",
+          "disabled": false
+        },
+        {
+          "label": "Model: Model not reported",
+          "disabled": true
+        },
+        {
+          "label": "Attach files",
+          "disabled": false
+        },
+        {
+          "label": "Speak message",
+          "disabled": false
+        },
+        {
+          "label": "More start options",
+          "disabled": false
+        },
+        {
+          "label": "Start",
+          "disabled": true
+        },
+        {
+          "label": "1 · Choose your AISet up an agent engineConnect an AI app or configure a model in Connections.",
+          "disabled": false
+        },
+        {
+          "label": "2 · Add a Project, if you need oneNew ProjectOptional: ordinary chats can start without a Project. Repository, folder, documents or tools",
+          "disabled": false
+        },
+        {
+          "label": "Move the dock",
+          "disabled": false
+        },
+        {
+          "label": "New chat",
+          "disabled": false
+        },
+        {
+          "label": "More dock actions",
+          "disabled": false
+        },
+        {
+          "label": "Show Chat",
+          "disabled": false
+        },
+        {
+          "label": "Close Station switcher",
+          "disabled": false
+        },
+        {
+          "label": "Station E2E — Connected",
+          "disabled": false
+        },
+        {
+          "label": "Media server — Online",
+          "disabled": false
+        },
+        {
+          "label": "Remove Media server",
+          "disabled": false
+        },
+        {
+          "label": "Build box — Online",
+          "disabled": false
+        },
+        {
+          "label": "Remove Build box",
+          "disabled": false
+        },
+        {
+          "label": "Laptop — Unreachable",
+          "disabled": false
+        },
+        {
+          "label": "Remove Laptop",
+          "disabled": false
+        },
+        {
+          "label": "Old dev instance — Unreachable",
+          "disabled": false
+        },
+        {
+          "label": "Confirm removing Old dev instance",
+          "disabled": false
+        },
+        {
+          "label": "Remove 2 unreachable",
+          "disabled": false
+        },
+        {
+          "label": "Station details",
+          "disabled": false
+        },
+        {
+          "label": "Pair phone",
+          "disabled": false
+        },
+        {
+          "label": "Manage Stations",
+          "disabled": false
+        }
+      ],
+      "uiAudit": {
+        "findings": [
+          {
+            "identity": "axe:aria-required-children:div.menu-surface[Choose Station]",
+            "detail": "critical: Certain ARIA roles must contain particular children (.menu-surface)"
+          },
+          {
+            "identity": "axe:label-content-name-mismatch:button.choice-trigger[Project: No project]",
+            "detail": "serious: Elements must have their visible text as part of their accessible name (.start-composer__project)"
+          },
+          {
+            "identity": "axe:label-content-name-mismatch:button.station-switcher__remove[Confirm removing Old dev instance]",
+            "detail": "serious: Elements must have their visible text as part of their accessible name (.station-switcher__remove--armed)"
+          }
+        ],
+        "measured": {
+          "controls": 30,
+          "smallTargets": 19,
+          "viewport": 1440,
+          "auditMs": 311
+        }
+      }
+    }
+  ]
+}

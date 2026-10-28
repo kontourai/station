@@ -2965,9 +2965,6 @@
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
 }
-.station-switcher__bulk {
-  color: var(--status-error);
-}
 .station-switcher__bulk--armed,
 .station-switcher__bulk--armed:hover,
 .station-switcher__bulk--armed:focus-visible {
