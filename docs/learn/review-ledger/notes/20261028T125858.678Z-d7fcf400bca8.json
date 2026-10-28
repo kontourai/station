@@ -1,0 +1,7 @@
+{
+  "revision": "c4df5a9fc57ad7b28eca416c36d46ee6dd1be9ec",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Busy-wait paragraph still accurate (reopened running turn steers or queues; stale wait behind Check again). Turn-map and older-history text unaffected: the reader now fills a cut newest turn itself.","inputs":["docs/design/chat-composer.md","packages/contracts/src/orchestration.ts","src-server/services/orchestration/event-store.ts"]}
+  ]
+}

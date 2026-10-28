@@ -883,6 +883,12 @@ function spilledTypeSql(path: string, payload = 'payload') {
 }
 
 /**
+ * A turn's own `turn.started`. A steer re-announces its turn with another
+ * `turn.started` of the same id; it neither starts a turn nor marks one.
+ */
+const OWN_TURN_START_SQL = `method = 'turn.started' AND (CASE WHEN json_valid(payload) THEN json_extract(payload, '$.inputKind') END) IS NOT 'steer'`;
+
+/**
  * A turn start with a typed prompt: non-blank inline text, or a prompt
  * stored out of line (which ingress only does for a long one).
  */
@@ -1643,6 +1649,8 @@ export interface PersistedRuntimeEventWindow {
   events: PersistedRuntimeEvent[];
   hasMore: boolean;
   nextCursor?: string;
+  /** See `OrchestrationSessionEventWindow.turnStartDetached`. */
+  turnStartDetached?: true;
   /** Highest stream sequence for this thread at the same read boundary. */
   watermark: number;
 }
@@ -10706,7 +10714,7 @@ export class EventStore {
           ? []
           : (this.db
               .prepare(
-                `SELECT global_sequence FROM orchestration_events WHERE thread_id IN (${placeholders}) AND method = 'turn.started' AND turn_id IS NOT NULL AND global_sequence < ? ORDER BY global_sequence DESC LIMIT ?`,
+                `SELECT global_sequence FROM orchestration_events WHERE thread_id IN (${placeholders}) AND ${OWN_TURN_START_SQL} AND turn_id IS NOT NULL AND global_sequence < ? ORDER BY global_sequence DESC LIMIT ?`,
               )
               .all(
                 ...ids,
@@ -10763,26 +10771,42 @@ export class EventStore {
       }
       const oldest = events.at(-1);
       const moreInRange = rows.length > events.length;
+      // The newest row this page's budget left out, if any.
+      const newestOmitted = moreInRange ? rows[events.length] : undefined;
+      let turnStartDetached = false;
+      // The turn to anchor is the oldest one the page shows: a turnless row
+      // (a `session.state-changed`) can be the oldest that fit. Its start is
+      // on the page only as the turn's own `turn.started`; a steer
+      // re-announces the same turn later and does not stand in for it.
+      const oldestTurned = [...events].reverse().find((event) => event.turnId);
       if (
-        oldest?.turnId &&
+        oldestTurned?.turnId &&
         !events.some(
           (event) =>
-            event.method === 'turn.started' &&
-            event.threadId === oldest.threadId &&
-            event.turnId === oldest.turnId,
+            event.payload.method === 'turn.started' &&
+            event.payload.inputKind !== 'steer' &&
+            event.threadId === oldestTurned.threadId &&
+            event.turnId === oldestTurned.turnId,
         )
       ) {
         const anchor = this.db
           .prepare(
-            `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence FROM orchestration_events WHERE thread_id = ? AND turn_id = ? AND method = 'turn.started' AND global_sequence >= ? AND global_sequence < ? ORDER BY sequence ASC LIMIT 1`,
+            `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence FROM orchestration_events WHERE thread_id = ? AND turn_id = ? AND ${OWN_TURN_START_SQL} AND global_sequence >= ? AND global_sequence < ? ORDER BY sequence ASC LIMIT 1`,
           )
           .get(
-            oldest.threadId,
-            oldest.turnId,
+            oldestTurned.threadId,
+            oldestTurned.turnId,
             rangeStart,
-            oldest.globalSequence,
+            oldestTurned.globalSequence,
           ) as any;
-        if (anchor) events.push(snapshotEvent(mapPersistedEventRow(anchor)));
+        if (anchor) {
+          events.push(snapshotEvent(mapPersistedEventRow(anchor)));
+          // Rows between the re-added `turn.started` and the tail were left
+          // out: the page is not contiguous, and `nextCursor` pages that gap.
+          turnStartDetached =
+            newestOmitted !== undefined &&
+            newestOmitted.global_sequence > anchor.global_sequence;
+        }
       }
       const hasMore = moreInRange || olderTurnsRemain;
       const nextCursorValue =
@@ -10805,6 +10829,7 @@ export class EventStore {
               ),
             }
           : {}),
+        ...(turnStartDetached ? { turnStartDetached: true as const } : {}),
         watermark,
       };
       this.db.exec('COMMIT');
