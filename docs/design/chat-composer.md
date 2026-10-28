@@ -128,9 +128,9 @@ open the dock's title slot (and the phone header) names it **New chat**, **New
 Task** or **Fork from here**, and the header's own project controls (the
 desktop **New chats** chip, the phone project switcher) stand down: the draft's
 project chip is its one destination. On a phone the draft opens the dock full
-height, from collapsed or from a half sheet; dismissing it gives the earlier
-size back (and the maximize memory with it), while a started chat keeps full
-height. The body above the composer takes the room the composer leaves and
+height, from collapsed or from a half sheet; dismissing it (Escape, Back,
+Cancel) gives the earlier size back (and the maximize memory with it), while a
+started chat, or a chat the person leaves the draft for, keeps the dock open. The body above the composer takes the room the composer leaves and
 scrolls itself; in a short dock a plain New chat's text box shrinks toward one
 line (New Task's compact text box keeps its own sizing), and the composer stays
 pinned so Start is never pushed off screen. While a setup panel shows, Start
@@ -141,9 +141,10 @@ it is on screen), or the dock moving to another chat (a tab, the inbox, a
 toast's Open, `?chat=`, browser history) dismisses the draft and hands back its
 text. "Another chat" is by identity, so a cold `?chat=` hydrating into its tab
 or a send admission is not a move. Focus returns to the control that opened the
-draft, else the chat composer; after Start the new chat's composer takes it, and
-gets it back if it is briefly disabled while the chat opens, unless the person
-has put focus elsewhere. A
+draft, else the chat composer; after Start the new chat's composer takes it (also
+while its first turn runs, when it takes a draft) and gets it back each time it
+is disabled and enabled again while the chat opens, until the chat is writable
+or the person moves focus or clicks away. A
 plain New chat while a draft is open keeps that draft and focuses it; a request
 carrying a prompt, files, choices, a hand-off or a Task replaces it. Collapsing
 the dock, including a phone's setup journey, keeps the draft mounted but hidden,

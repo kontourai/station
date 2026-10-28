@@ -1951,6 +1951,39 @@ describe("the dock's New chat is a draft, not a dialog", () => {
     expect(within(list).getByText('notes.txt')).toBeTruthy();
   });
 
+  // A draft that takes no files (the fork's Agent list) still swallows the
+  // drop and says why; the next drag clears that, so it never goes stale.
+  test('a refused drop says why, and the next drag clears it', async () => {
+    render(
+      <AuthorityPersistenceContext.Provider
+        value={{ status: 'verified', namespace: 'ns-1', observation: null }}
+      >
+        <NewChatModal
+          projectIconBySlug={new Map()}
+          agents={state.agents as AgentData[]}
+          projects={state.projects as ProjectMetadata[]}
+          onSelect={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </AuthorityPersistenceContext.Provider>,
+    );
+    const draft = screen.getByRole('region', { name: 'New Chat' });
+    const file = new File(['x'], 'notes.txt', { type: 'text/plain' });
+    const dataTransfer = {
+      types: ['Files'],
+      files: [file],
+      items: [{ kind: 'file', type: 'text/plain', getAsFile: () => file }],
+    } as unknown as DataTransfer;
+    expect(fireEvent.drop(draft, { dataTransfer })).toBe(false);
+    expect((await within(draft).findByRole('alert')).textContent).toBe(
+      'This draft cannot take files.',
+    );
+    fireEvent.dragEnter(draft, { dataTransfer, relatedTarget: null });
+    expect(
+      within(draft).queryByText('This draft cannot take files.'),
+    ).toBeNull();
+  });
+
   test('with no project the line uses the chip’s words and names no Station before the device answers; a second Station adds the Station control', async () => {
     state.environments = [
       {

@@ -1127,27 +1127,27 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     : newChatTaskShaping
       ? 'New Task'
       : 'New chat';
+  // Closes the draft without touching the dock's size: leaving it for a chat
+  // (a tab, the inbox, a toast's Open, `?chat=`, Back/Forward to a chat) is
+  // going to that chat, which must stay on screen.
   const closeNewChatDraft = useCallback(() => {
-    // Dismissed: the dock goes back to the size it had before the draft
-    // forced it, and the maximize memory with it.
-    const before = dockBeforeDraft.current;
     dockBeforeDraft.current = null;
+    setShowNewChatModal(false);
+    setNewChatProjectOverride(null);
+    setHandoffSource(null);
+    cancelFork();
+  }, [setShowNewChatModal, setHandoffSource, cancelFork]);
+  // The draft's own dismissal (Escape, Back, Cancel fork): the dock goes back
+  // to the size it had before the draft forced it, maximize memory included.
+  const dismissNewChatDraft = useCallback(() => {
+    const before = dockBeforeDraft.current;
     if (before) {
       if (!before.open) setDockState(false, before.remembered);
       else if (before.remembered) collapseMaximizedDock();
       else setDockState(true, false);
     }
-    setShowNewChatModal(false);
-    setNewChatProjectOverride(null);
-    setHandoffSource(null);
-    cancelFork();
-  }, [
-    setShowNewChatModal,
-    setHandoffSource,
-    cancelFork,
-    setDockState,
-    collapseMaximizedDock,
-  ]);
+    closeNewChatDraft();
+  }, [closeNewChatDraft, setDockState, collapseMaximizedDock]);
   // A started draft is a chat now: it keeps the full height it was given.
   useEffect(() => {
     if (!showNewChatModal) dockBeforeDraft.current = null;
@@ -1959,17 +1959,15 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const composerFocusPhase = activeSession
     ? conversationOpenPhase(activeSession)
     : null;
+  const composerCanTakeFocus =
+    !!executionProfile && isPaneOpen && !importedSessionId;
   const { requestComposerFocus, onComposerEnabledChange } = useWorkingChatFocus(
     {
       activeSessionId,
-      // A busy chat's composer still takes a draft ("Draft a follow-up…"), so it
-      // is usable: focus may land there too.
-      ready:
-        (composerFocusPhase === 'writable' || composerFocusPhase === 'busy') &&
-        !!executionProfile &&
-        isPaneOpen &&
-        !importedSessionId,
-      settled: composerFocusPhase === 'writable',
+      ready: composerFocusPhase === 'writable' && composerCanTakeFocus,
+      // A busy chat's composer still takes a draft ("Draft a follow-up…"):
+      // a chat just started from the draft focuses it then.
+      draftable: composerFocusPhase === 'busy' && composerCanTakeFocus,
       terminal:
         !activeSession ||
         !!activeSession.replay ||
@@ -3578,7 +3576,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           // The new chat's composer takes focus once it can, as
                           // choosing a working chat does; the draft hands it over
                           // rather than returning focus to its opener.
-                          requestComposerFocus(sessionId);
+                          requestComposerFocus(sessionId, { whileBusy: true });
                           setShowNewChatModal(false, undefined, 'started');
                           setNewChatProjectOverride(null);
                           setHandoffSource(null);
@@ -3737,7 +3735,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           setNewChatProjectOverride(null);
                           setHandoffSource(null);
                         },
-                        onClose: closeNewChatDraft,
+                        onClose: dismissNewChatDraft,
                         historyActive: workspaceShown,
                         onReturnFromSetup: revealDockForDraft,
                       }}

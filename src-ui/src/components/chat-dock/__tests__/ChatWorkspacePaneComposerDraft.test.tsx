@@ -124,14 +124,19 @@ vi.mock('../ChatDockMobileHeader', () => ({
   ChatDockMobileHeader: ({
     activeCount,
     projectSwitcher,
+    sessionProjectMismatchLabel,
   }: {
     activeCount: number;
-    projectSwitcher?: { projectName: string };
+    projectSwitcher?: { projectName: string } | null;
+    sessionProjectMismatchLabel?: string;
   }) => (
     <>
       <div data-testid="mobile-dock-work-badge">{activeCount}</div>
       <div data-testid="mobile-dock-project-name">
         {projectSwitcher?.projectName}
+      </div>
+      <div data-testid="mobile-dock-mismatch">
+        {sessionProjectMismatchLabel}
       </div>
     </>
   ),
@@ -210,9 +215,28 @@ vi.mock('../../../contexts/AgentsContext', async (importOriginal) => ({
 // The active chat's transcript and composer are stood in for: the file-drop
 // test asks only which pane owns attachments, and the marker shows a chat is
 // active.
-vi.mock('../ChatDockBody', () => ({
-  ChatDockBody: () => <div data-testid="active-chat-body" />,
-}));
+vi.mock('../ChatDockBody', async () => {
+  const { useEffect, useRef } = await import('react');
+  return {
+    // Reports its composer as the real body does, so focus requests reach it.
+    ChatDockBody: ({
+      onComposerEnabledChange,
+    }: {
+      onComposerEnabledChange?: (el: HTMLTextAreaElement | null) => void;
+    }) => {
+      const composer = useRef<HTMLTextAreaElement>(null);
+      useEffect(() => {
+        onComposerEnabledChange?.(composer.current);
+        return () => onComposerEnabledChange?.(null);
+      }, [onComposerEnabledChange]);
+      return (
+        <div data-testid="active-chat-body">
+          <textarea aria-label="Chat composer" ref={composer} />
+        </div>
+      );
+    },
+  };
+});
 
 // A chat's own Project facts: its layouts and the git state of its directory.
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
@@ -1239,4 +1263,90 @@ test('a phone draft dismissed from a half sheet restores the half sheet', async 
   // No restore ran: the full-height memory the draft set is kept.
   expect(createChatSession).toHaveBeenCalledTimes(1);
   expect(navigationStore.lastDockMaximized).toBe(true);
+});
+
+// On a phone the header's project switcher comes back with the draft gone,
+// and the covered chat's project-mismatch note stands down while it is open.
+test('the phone header hides the chat’s project facts only while a draft is open', async () => {
+  dockProbe.mobile = true;
+  openForeignChatInPulseBoundDock();
+  await act(async () => {});
+  const mismatch = () =>
+    screen.getByTestId('mobile-dock-mismatch').textContent ?? '';
+  expect(mismatch()).not.toBe('');
+  expect(screen.getByTestId('mobile-dock-project-name').textContent).toBe(
+    'Pulse',
+  );
+  act(() => {
+    dispatchNewChatIntent({});
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  expect(mismatch()).toBe('');
+  expect(screen.getByTestId('mobile-dock-project-name').textContent).toBe('');
+  act(() => pickerProps.at(-1)!.onClose());
+  await waitFor(() =>
+    expect(screen.getByTestId('mobile-dock-project-name').textContent).toBe(
+      'Pulse',
+    ),
+  );
+  expect(mismatch()).not.toBe('');
+});
+
+// Leaving a phone draft for a chat is going to that chat: the dock that the
+// draft opened full height must stay open, not fold back to how it was.
+test('a phone draft left for another chat keeps the dock open on that chat', async () => {
+  dockProbe.mobile = true;
+  dockProbe.sessions = [chatSession('chat-a')];
+  navigationStore.navigate('/', { dock: null });
+  renderDockedPane();
+  await act(async () => {});
+  act(() => regionModel!.setRegion('bottom', { visible: false }));
+  expect(regionModel!.regions.bottom.visible).toBe(false);
+
+  act(() => {
+    dispatchNewChatIntent({});
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  expect(regionModel!.regions.bottom.visible).toBe(true);
+
+  // A toast's Open: the URL names the chat and an open dock.
+  act(() => navigationStore.updateParams({ dock: 'open', chat: 'chat-a' }));
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('region', { name: 'New chat picker' }),
+    ).toBeNull(),
+  );
+  await act(async () => {});
+  expect(regionModel!.regions.bottom.visible).toBe(true);
+  expect(screen.getByTestId('active-chat-body')).toBeTruthy();
+  expect(screen.getByTestId('active-chat-body').closest('[hidden]')).toBeNull();
+});
+
+// Start hands focus to the new chat's composer (`requestComposerFocus`),
+// not back to whatever opened the draft.
+test('Start focuses the new chat’s composer', async () => {
+  dockProbe.sessions = [chatSession('new-session')];
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+  act(() => {
+    dispatchNewChatIntent({});
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  act(() => (document.activeElement as HTMLElement | null)?.blur());
+  act(() => {
+    pickerProps
+      .at(-1)!
+      .onSelect(
+        { slug: 'assistant', name: 'Assistant' },
+        undefined,
+        undefined,
+        'Go',
+      );
+  });
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole('textbox', { name: 'Chat composer' }),
+    ),
+  );
 });

@@ -1564,6 +1564,9 @@ export function NewChatModal({
           ? (files) => setStartFiles((current) => [...current, ...files])
           : undefined
       }
+      dropRefusal={
+        submitting ? 'The chat is starting; add files there.' : undefined
+      }
       onClose={closeChatRequest}
     >
       <div className="new-chat-modal__header">
@@ -2395,6 +2398,7 @@ function NewChatDraftSurface({
   historyActive = true,
   startedRef,
   onDropFiles,
+  dropRefusal = 'This draft cannot take files.',
   onClose,
 }: {
   children: React.ReactNode;
@@ -2406,6 +2410,8 @@ function NewChatDraftSurface({
   startedRef?: React.RefObject<boolean>;
   /** Where a dropped file goes; absent where the draft takes no files. */
   onDropFiles?: (files: File[]) => void;
+  /** Why a drop is refused while `onDropFiles` is absent. */
+  dropRefusal?: string;
   onClose: () => void;
 }) {
   const sectionRef = useRef<HTMLElement>(null);
@@ -2416,13 +2422,21 @@ function NewChatDraftSurface({
     reportError: setDropError,
     selectFiles: async (files) => {
       if (!onDropFiles) {
-        setDropError('This draft cannot take files.');
+        setDropError(dropRefusal);
         return;
       }
       setDropError(null);
       onDropFiles(files);
     },
   });
+  // An error belongs to the drop that caused it: a new drag, or the draft
+  // starting or stopping to take files, clears it.
+  const acceptsFiles = Boolean(onDropFiles);
+  useEffect(() => {
+    void acceptsFiles;
+    void dropRefusal;
+    setDropError(null);
+  }, [acceptsFiles, dropRefusal]);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const historyId = useId();
@@ -2485,7 +2499,10 @@ function NewChatDraftSurface({
       className={`new-chat-modal${className ? ` ${className}` : ''}`}
       aria-label={ariaLabel}
       data-file-drag={drop.isDraggingFiles || undefined}
-      onDragEnter={drop.onDragEnter}
+      onDragEnter={(event) => {
+        setDropError(null);
+        drop.onDragEnter(event);
+      }}
       onDragOver={drop.onDragOver}
       onDragLeave={drop.onDragLeave}
       onDragEnd={drop.onDragEnd}

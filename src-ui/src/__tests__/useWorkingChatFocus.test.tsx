@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { useRef } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { useWorkingChatFocus } from '../hooks/useWorkingChatFocus';
@@ -12,37 +12,49 @@ afterEach(() => {
 let api: ReturnType<typeof useWorkingChatFocus> | undefined;
 function Harness({
   ready,
-  settled = true,
+  draftable = false,
 }: {
   ready: boolean;
-  settled?: boolean;
+  draftable?: boolean;
 }) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   api = useWorkingChatFocus({
     activeSessionId: 'chat-1',
     ready,
-    settled,
+    draftable,
     terminal: false,
     surfaceRef,
   });
   return (
     <div ref={surfaceRef}>
       <textarea aria-label="Composer" />
+      <p>Transcript text</p>
       <button type="button">Elsewhere</button>
     </div>
   );
 }
 
-const composer = () => document.querySelector<HTMLTextAreaElement>('textarea')!;
+const composer = () =>
+  document.querySelector<HTMLTextAreaElement>('textarea')!;
 
-/** The composer as a chat that has just opened reports it: off, then on. */
+/**
+ * The composer as a chat that has just opened reports it: off, then on. A
+ * browser blurs a control it disables, with `disabled` already set; jsdom
+ * neither blurs a disabled control nor lets it be blurred, so the test fires
+ * that `focusout` itself and then drops focus by re-inserting the node.
+ */
 function setComposerEnabled(enabled: boolean) {
   act(() => {
-    // A disabled control loses focus in a browser; jsdom keeps it, so blur
-    // it first, as the browser's focus fixup would.
-    if (!enabled) composer().blur();
-    composer().disabled = !enabled;
-    api!.onComposerEnabledChange(enabled ? composer() : null);
+    const el = composer();
+    el.disabled = !enabled;
+    if (!enabled && document.activeElement === el) {
+      fireEvent.focusOut(el);
+      const parent = el.parentNode!;
+      const next = el.nextSibling;
+      parent.removeChild(el);
+      parent.insertBefore(el, next);
+    }
+    api!.onComposerEnabledChange(enabled ? el : null);
   });
 }
 
@@ -74,6 +86,21 @@ test('focus moved elsewhere during the loading phase is left alone', () => {
   expect(document.activeElement).toBe(elsewhere);
 });
 
+// Clicking transcript text moves focus to the page with no `focusin`: that
+// is the person leaving the composer, so a later re-enable leaves it alone.
+test('blurring the composer to the page ends the request', () => {
+  vi.useFakeTimers();
+  render(<Harness ready={false} draftable />);
+  act(() => api!.requestComposerFocus('chat-1', { whileBusy: true }));
+  setComposerEnabled(true);
+  expect(document.activeElement).toBe(composer());
+  act(() => composer().blur());
+  expect(document.activeElement).toBe(document.body);
+  setComposerEnabled(false);
+  setComposerEnabled(true);
+  expect(document.activeElement).not.toBe(composer());
+});
+
 // Once the composer has stayed usable for a moment the request is done: a
 // later disable and enable is not a start, and focus is not moved.
 test('the request ends once the composer stays usable', () => {
@@ -87,17 +114,30 @@ test('the request ends once the composer stays usable', () => {
   expect(document.activeElement).toBe(document.body);
 });
 
-// A busy chat (its turn still running) takes a draft but disables its
-// composer again when the turn ends: the request outlives that, however long
-// the turn takes.
-test('a busy chat keeps the request through the end-of-turn disable', () => {
+// A chat started from the draft is busy while its first turn runs, and its
+// composer takes a draft: focus lands there and the request outlives the
+// end-of-turn disable, however long the turn takes.
+test('a started busy chat keeps the request through a turn longer than a minute', () => {
   vi.useFakeTimers();
-  render(<Harness ready settled={false} />);
-  act(() => api!.requestComposerFocus('chat-1'));
+  const view = render(<Harness ready={false} draftable />);
+  act(() => api!.requestComposerFocus('chat-1', { whileBusy: true }));
   setComposerEnabled(true);
   expect(document.activeElement).toBe(composer());
-  act(() => vi.advanceTimersByTime(5_000));
+  act(() => vi.advanceTimersByTime(90_000));
   setComposerEnabled(false);
+  view.rerender(<Harness ready />);
   setComposerEnabled(true);
+  expect(document.activeElement).toBe(composer());
+});
+
+// Choosing a working chat waits for it to be writable: a busy chat's
+// composer is not focused for it (a phone keyboard would cover the turn).
+test('choosing a busy chat does not focus its composer until it is writable', () => {
+  vi.useFakeTimers();
+  const view = render(<Harness ready={false} draftable />);
+  act(() => api!.requestComposerFocus('chat-1'));
+  setComposerEnabled(true);
+  expect(document.activeElement).toBe(document.body);
+  view.rerender(<Harness ready />);
   expect(document.activeElement).toBe(composer());
 });
