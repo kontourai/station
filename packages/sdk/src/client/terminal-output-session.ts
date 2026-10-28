@@ -128,7 +128,7 @@ export function terminalOutputSocketURL(apiBase: string): string {
 
 /**
  * Observe one existing terminal; no open, input, resize or lifecycle command.
- * UNWIRED(#3994): the Coding view and native socket transport remain separate.
+ * UNWIRED(#3994): renderer cutover and native socket transport remain separate.
  */
 export class TerminalOutputSession {
   private readonly options: TerminalOutputSessionOptions;
