@@ -663,7 +663,12 @@ export async function runSessionsSearch(
     console.log(`More: --continuation=${projected.continuation}`);
 }
 
-/** One activity row as this command documents it. */
+/**
+ * One activity row as this command documents it. `workingDirectory` is the
+ * folder the targeted Station recorded, possibly on another machine: it is
+ * printed and passed on as recorded, never read here, so it is not expanded
+ * against this machine's home.
+ */
 function projectRow(row: SessionActivityRow) {
   return {
     sessionId: row.sessionId,

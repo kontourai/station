@@ -18,7 +18,7 @@ import {
   PUBLIC_STATION_HANDSHAKE_PATH,
   parsePublicStationHandshake,
 } from '@kontourai/station-contracts/environment-security';
-import { envelopeError, StationHttpError } from './api-error-message';
+import { envelopeError } from './api-error-message';
 import { hasCapability } from './capability';
 import { type ClientRequestOptions, getJson } from './http';
 import {
@@ -212,12 +212,19 @@ async function probeHandshake(
     response.status === 429
   ) {
     await response.body?.cancel().catch(() => undefined);
-    throw new StationHttpError(
-      response.status,
-      `The Station's handshake answered HTTP ${response.status}.`,
-      TRY_LATER_STATUSES.has(response.status)
-        ? { code: STATION_NOT_ANSWERING }
-        : {},
+    // The answer here is a proxy's or edge's page, not a Station envelope:
+    // name the status, and mark the ones that mean "try later".
+    const message = `The Station's handshake answered HTTP ${response.status}.`;
+    throw envelopeError(
+      response,
+      {
+        success: false,
+        error: message,
+        ...(TRY_LATER_STATUSES.has(response.status)
+          ? { code: STATION_NOT_ANSWERING }
+          : {}),
+      },
+      message,
     );
   }
   if (!response.ok) {
