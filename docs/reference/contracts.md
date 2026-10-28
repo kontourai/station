@@ -676,7 +676,13 @@ and the hourly create limits `AGENT_WAKE_UP_MAX_CREATED_PER_WINDOW` and
 scheduler's approval uses, and `isStationCheckBackTurn`, which tells a
 transcript that a turn is a check-back Station sent (its internal origin and
 a send key `parseWakeUpClientTurnId` accepts). A wake-up waiting for a
-person's approval is in state `needs_approval`.
+person's approval is in state `needs_approval`. A proposal's job carries the
+proposing chat as its `target`, and `ConversationAgentSchedule.automations`
+(`ConversationAutomation`) lists the automations whose runs land in the
+conversation. The scheduler contract owns automation targets:
+`SchedulerAutomationTarget`, `SchedulerAutomationCreator`,
+`AUTOMATION_RUN_POLICY` (fatigue threshold, lateness cutoff, turn deadline) and
+`automationRunClientTurnId`.
 
 `@kontourai/station-contracts/station-control-refusal` owns the refusal view
 a transcript shows for a station-control tool (`StationControlRefusalView`:

@@ -228,7 +228,7 @@ route's answer as it was sent:
 | `unreadable-caller` | Station cannot confirm the calling Session's own Project. |
 | `host` | The target, or a Session of its conversation, runs unconfined (`host`). |
 | `remote` | The target is on another Station; only a bound operator reaches one. |
-| `other-conversation` | A check-back names, or belongs to, a conversation that is not the caller's own. |
+| `other-conversation` | A check-back or an automation's `target` names, or belongs to, a conversation that is not the caller's own. |
 
 The copy names no Project. `target-unavailable` also refuses a bound caller
 that is not acting for the operator. `remote` is given only to a caller acting
@@ -748,7 +748,7 @@ A caller that is not bound, in a Session that runs unconfined (`host`), is
 not refused: the check-back is recorded `needs_approval` and the result says
 so. The person sees a card above the composer ("Check back at 4:12 PM?", with
 the agent's whole note) and approves or declines it with one click; the
-chat's Scheduled section lists it as "Needs your approval". Only a person may
+chat's Automations section lists it as "Needs your approval". Only a person may
 answer it, under the same gate as a job proposal: a request that may be an
 agent's is refused, and one from a person who may not send to the
 conversation reads as not found. One not approved before it is due is never
@@ -765,7 +765,7 @@ any that came due while Station was down, unless it is more than a day late.
 `list_wake_ups` lists the conversation's waiting check-backs and
 `cancel_wake_up` cancels one by id. The person sees each one above the
 composer ("Checking back at 4:12 PM", with Cancel) and in the chat's
-Scheduled section.
+Automations section, beside the automations that run in the chat.
 
 Check-backs need the conversation inbox, so a hosted Station answers
 `wake_up_unavailable`.
@@ -788,6 +788,9 @@ propose the job instead:
 `propose_job` takes the scheduler's own create fields for an ordinary job:
 `name`, `schedule` (cron, every, or at), `prompt` and an optional `agent`. A
 job that trusts every tool is never proposable (`station_control_person_only`).
+Station records the proposing chat as the job's `target`: once approved, each
+run is a turn in this chat, on its own engine, so a Claude Code or Codex chat
+can propose work for itself.
 The agent learns only the proposal's id and `open`. A conversation holds at
 most 3 open proposals (`job_proposal_limit_reached`).
 
@@ -814,7 +817,10 @@ The refusal an agent gets from `add_job` names both tools.
 ### Scheduled jobs
 
 An agent acting for the operator on a bound credential can create a job
-directly with `add_job`. Use a cron schedule for calendar recurrence, `every`
+directly with `add_job`. Its `target` may name only the agent's own
+conversation (`{"kind": "conversation", "conversationId": "<own>"}`), so each
+run is a turn in this chat; any other conversation is refused
+`other-conversation`, and a targeted job takes no `retryCount`. Use a cron schedule for calendar recurrence, `every`
 for a fixed interval, or `at` for one future instant:
 
 ```json

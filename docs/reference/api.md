@@ -4483,7 +4483,9 @@ instruction to execute a job.
 
 `GET /scheduler/jobs` returns `{success: true, data: jobs}`. Rows use the
 [SchedulerJob contract](../../packages/contracts/src/scheduler.ts), including
-job `name` and provider-neutral schedule information. Provider read failures
+job `name`, provider-neutral schedule information, an automation's `target`
+and `createdBy.userId`, and the derived `consecutiveFailures` and
+`lastSuccessAt`. Provider read failures
 propagate rather than becoming a fabricated empty schedule.
 
 ### Get Scheduler Stats
@@ -4558,14 +4560,32 @@ apply prompt limits and schedule validation. The response is
 `{success: true, data: {output}}`, where output is the provider's result text;
 it is not proof that a future run completed.
 
+An optional `target` (`SchedulerAutomationTarget`) makes the job an
+automation that runs in a conversation: `{kind: "conversation",
+conversationId}` or `{kind: "dedicated", agent, workspace?}`. Each run is
+then a framed Station turn on that conversation's inbox, on its engine, and
+settles from the turn's terminal (see
+[the decision](../decisions/automations-unify-schedules.md)). The route records
+the admitted creator as `createdBy`; a body cannot set it. A person must be
+able to send to the conversation (404 `automation_target_not_found`); an
+agent's request may name only its own conversation and no dedicated one (403,
+`other-conversation` from the guard, or `automation_target_out_of_scope`).
+A target with a `monitor` or a `retryCount` above 0 is refused (400). A
+Station that cannot run a turn in a conversation answers 503
+`automation_target_unavailable`; hosted Stations answer 404 like every
+scheduler route. Clients gate offering it on the `scheduledConversationTarget`
+capability flag. `notifyStart` is accepted and ignored.
+
 A person approves an agent's job proposal (`propose_job`) by sending this
 route the proposed job with its `proposalId`. The route then creates the job
 only when the request is a person's own (a request that may be an agent's
 answers 403 `person-approval-required`), the person may send to the
 proposal's conversation (404 `job_proposal_not_found` otherwise), the
 proposal is still open (409 `job_proposal_settled`), and the body is exactly
-the proposed `name`, `schedule`, `prompt` and `agent` with nothing more (409
-`job_proposal_mismatch`). Admission claims the proposal (a Decline after it
+the proposed `name`, `schedule`, `prompt`, `agent` and `target` with nothing
+more (409 `job_proposal_mismatch`). A proposal recorded since automations
+could target a conversation carries the proposing chat as its `target`, so
+the approved job runs there, acting as the approving person. Admission claims the proposal (a Decline after it
 changes nothing); the route then creates the job and records the proposal
 approved, or gives it back to `open` if creating it failed. The
 `proposalId` is never passed to the scheduler. A hosted Station approves no
@@ -4576,8 +4596,9 @@ proposal (404).
 `GET /api/orchestration/agent-schedule/:conversationId` answers a
 `ConversationAgentSchedule`: the conversation's waiting check-backs
 (`wakeUps`), its open job proposals, up to 20 jobs approved from it (`jobs`,
-by name), and a usage-limit stop waiting for a known reset
-(`usageLimitResume`). It needs a person who may read every Session of the
+by name), the automations whose runs land in it (`automations`, absent when
+the scheduler could not be read), and a usage-limit stop waiting for a known
+reset (`usageLimitResume`). It needs a person who may read every Session of the
 conversation.
 `POST .../wake-ups/:wakeUpId/cancel` (or `/decline`, the same act) cancels a
 check-back, `POST .../wake-ups/:wakeUpId/approve` approves one waiting for a
@@ -4592,7 +4613,8 @@ else. An agent's request reaches none of them. The agent's own side is the stati
 ### Update Job
 
 `PUT /scheduler/jobs/:target` accepts supported partial job options, including
-that schedule union, and returns `{success: true, data: {output}}`.
+that schedule union and `target` (`null` removes it, under the same admission
+as create), and returns `{success: true, data: {output}}`.
 
 ### Run Job Now
 

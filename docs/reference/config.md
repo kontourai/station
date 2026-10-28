@@ -342,8 +342,9 @@ retain it.
 bind `station.scheduler.job_name` and `station.scheduler.job_run_id`. These are
 scheduler-local keys: a run ID is not a conversation ID. The
 [execution owner](../../src-server/services/scheduling/builtin-scheduler-execution.ts)
-invokes the scheduled-turn adapter after durable admission; monitor actions
-have their own Task dispatch path. Use the job's receipts when following an
+invokes the scheduled-turn adapter after durable admission; a job with a
+`target` uses the conversation runner instead, whose turn carries the key
+`scheduler:<runId>`; monitor actions have their own Task dispatch path. Use the job's receipts when following an
 attempt into any resulting session, rather than assuming the IDs match.
 
 ---

@@ -877,6 +877,10 @@ interface SchedulerJob {
   cron?: string;
   schedule?: SchedulerSchedule;
   agent?: string;
+  target?: SchedulerAutomationTarget; // runs in a conversation, any engine
+  createdBy?: { userId: string };      // read-only
+  consecutiveFailures?: number;        // read-only, derived from runs
+  lastSuccessAt?: string;              // read-only
   enabled: boolean;
   retryCount?: number;
   retryDelaySecs?: number;
@@ -894,6 +898,7 @@ interface SchedulerLogEntry {
   output?: string;
   error?: string;
   state?: 'running' | 'completed' | 'failed' | 'indeterminate';
+  skipped?: 'late'; // a targeted occurrence recorded missed, not a failure
 }
 
 interface SchedulerEvent {

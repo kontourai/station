@@ -2024,7 +2024,11 @@ station schedule delete <job> [--api-base=<url>]
 
 `create` and `update` accept either the compatible `cron` field or a canonical
 schedule object: `{kind:"cron",expr,timezone?}`,
-`{kind:"every",everyMs}`, or `{kind:"at",timeMs,deleteAfterRun?}`. The same
+`{kind:"every",everyMs}`, or `{kind:"at",timeMs,deleteAfterRun?}`, and an
+optional `target` that runs each time in a conversation (see
+[Automations](../user/automations.md)). There is no `station automations`
+alias for these verbs: that name's `enable`, `disable` and `delete` are
+reserved for automation rules (`AUTOMATION_OPERATOR_SURFACE`). The same
 operator lifecycle is exposed by the HTTP API, React-free SDK client, and
 station-control MCP; only scheduler SSE/webhook transport plumbing is
 intentionally API-only.

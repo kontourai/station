@@ -231,9 +231,12 @@ An agent on any engine can declare a pull request it opened with the Station Con
 ## Scheduled jobs and notifications
 
 A scheduled job can use a cron expression, a fixed interval (`every`), or a
-one-time timestamp (`at`); manual runs are also supported. The built-in
-scheduler invokes an Agent with unattended-deny approval policy and records
-its scheduler outcome.
+one-time timestamp (`at`); manual runs are also supported. The product calls
+these Automations. A job with a `target` runs each time as a turn in its
+conversation, on that conversation's engine and approval mode, and its result
+is in the chat; a job without one invokes a Station-engine Agent with
+unattended-deny approval policy and writes its output to a file. Either way
+the scheduler records its outcome. See [Automations](../user/automations.md).
 See the [scheduler API](api.md#scheduler) for exact inputs and outcomes.
 
 Scheduler receipts describe the observed execution outcome. They do not attach
