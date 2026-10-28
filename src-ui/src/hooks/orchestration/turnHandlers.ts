@@ -19,7 +19,6 @@ import {
   type ActiveChatsStore,
   activeChatsStore,
 } from '../../contexts/active-chats-store';
-import { conversationOpenAwaitsTurnEnd } from '../../contexts/conversation-open-policy';
 import { toastStore } from '../../contexts/ToastContext';
 import {
   formatChatErrorDisplay,
@@ -427,7 +426,8 @@ export function handleTurnCompletedEvent(
     ...(closesOpenTurn &&
     currentChat?.conversationId &&
     currentChat.currentSessionId === event.threadId &&
-    conversationOpenAwaitsTurnEnd(currentChat)
+    currentChat.conversationOpenState?.status === 'resolved' &&
+    !currentChat.conversationOpenState.canContinue
       ? { conversationOpenPending: true, conversationOpenFailed: false }
       : {}),
   });
@@ -541,7 +541,8 @@ export function handleTurnAbortedEvent(
     ...(chat?.conversationId &&
     chat.currentSessionId === event.threadId &&
     (!chat.openTurnId || chat.openTurnId === event.turnId) &&
-    conversationOpenAwaitsTurnEnd(chat)
+    chat.conversationOpenState?.status === 'resolved' &&
+    !chat.conversationOpenState.canContinue
       ? { conversationOpenPending: true, conversationOpenFailed: false }
       : {}),
   });
@@ -723,7 +724,8 @@ export function handleRuntimeErrorEvent(
     (!chat.openTurnId ||
       !terminalTurnId ||
       chat.openTurnId === terminalTurnId) &&
-    conversationOpenAwaitsTurnEnd(chat)
+    chat.conversationOpenState?.status === 'resolved' &&
+    !chat.conversationOpenState.canContinue
       ? { conversationOpenPending: true, conversationOpenFailed: false }
       : {}),
     activityHint: undefined,

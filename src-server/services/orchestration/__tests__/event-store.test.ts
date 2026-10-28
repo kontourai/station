@@ -970,12 +970,22 @@ describe('EventStore', () => {
   test.each([
     { deltas: 180, detached: true },
     { deltas: 10, detached: false },
+    // The byte budget, not the count, cuts this page.
+    { deltas: 40, detached: true, size: 2_000 },
     // Only the `turn.started` itself was left out: re-adding it closes the page.
     { deltas: 149, detached: false },
   ])(
     'a newest page reports a detached turn start only across omitted rows ($deltas deltas)',
-    ({ deltas, detached }) => {
-      const threadId = `detached-${deltas}`;
+    ({
+      deltas,
+      detached,
+      size = 1,
+    }: {
+      deltas: number;
+      detached: boolean;
+      size?: number;
+    }) => {
+      const threadId = `detached-${deltas}-${size}`;
       const fields = {
         provider: 'codex' as const,
         threadId,
@@ -994,7 +1004,7 @@ describe('EventStore', () => {
           ...fields,
           eventId: `${threadId}-delta-${i}`,
           method: 'content.text-delta',
-          delta: 'x',
+          delta: 'x'.repeat(size),
         });
       const read = (cursor?: string) =>
         store.listConversationEventWindowByTurn([threadId], {
@@ -1005,6 +1015,8 @@ describe('EventStore', () => {
       const first = read();
       expect(first.events[0].method).toBe('turn.started');
       expect(first.turnStartDetached === true).toBe(detached);
+      // Far under the count limit: only the byte budget can have cut it.
+      if (size > 1) expect(first.events.length).toBeLessThan(deltas);
       if (!detached) return;
       // The cursor reads the gap: its page holds the rest of the turn and is
       // contiguous, so together the two pages are the whole turn.

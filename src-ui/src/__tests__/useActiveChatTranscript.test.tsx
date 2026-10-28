@@ -2861,6 +2861,85 @@ describe('useActiveChatTranscript', () => {
       expect(result.current.hasMore).toBe(false);
     });
 
+    test('a reload that lands above what is held on a turn boundary reads down to it', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: true,
+          nextCursor: 'older',
+          events: turnEvents(3, 5),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: false,
+          events: turnEvents(1, 2),
+        })
+        // Contiguous and not detached: it simply starts at turn 9's start,
+        // above the newest event this reader holds.
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'below-9',
+          events: [
+            event('e9', 'turn.started', { turnId: 'turn-9', prompt: 'Q9' }),
+            ...turnEvents(10, 12),
+          ],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: false,
+          events: turnEvents(1, 8),
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://boundary-reload.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.hasMore).toBe(true));
+      await act(async () => result.current.loadOlder());
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual(
+          Array.from({ length: 12 }, (_, index) => index + 1),
+        ),
+      );
+      expect(cursorOf(3)).toBe('below-9');
+    });
+
+    test('a page that cuts only an older turn reads nothing more', async () => {
+      // Turn 1 is cut (its start re-added), turn 6 is whole: nothing the
+      // reader is looking at is missing, so the gap waits for Load older.
+      fetchWindow.mockResolvedValueOnce({
+        protocolVersion: 1,
+        watermark: 8,
+        hasMore: true,
+        nextCursor: 'gap-in-turn-1',
+        turnStartDetached: true,
+        events: [
+          event('e1', 'turn.started', { turnId: 'turn-1', prompt: 'Q1' }),
+          ...turnEvents(5, 8),
+        ],
+      });
+      const { result } = renderHook(() =>
+        useActiveChatTranscript('http://older-cut.test', baseSession),
+      );
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([1, 5, 6, 7, 8]),
+      );
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      expect(fetchWindow).toHaveBeenCalledTimes(1);
+      expect(result.current.hasMore).toBe(true);
+    });
+
     test('Load older still pages after a reload moved the head', async () => {
       fetchWindow
         .mockResolvedValueOnce({
@@ -2882,7 +2961,8 @@ describe('useActiveChatTranscript', () => {
           watermark: 7,
           hasMore: true,
           nextCursor: 'newest-only',
-          events: turnEvents(6, 7),
+          // A real newest page overlaps what was already newest.
+          events: turnEvents(4, 7),
         })
         .mockResolvedValueOnce({
           protocolVersion: 1,
