@@ -583,8 +583,9 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 - Compact value pickers use the shared `.choice-trigger` / `.choice-caret` styles
   and `ArrowDownGlyph`, also used by the layout switcher and scheduler agent picker.
   Standard actions continue to use `Button`.
-- Startup permissions show the requested mode and source before Start, and the
-  chip opens the same approval picker as a running chat (full access still
+- Startup permissions show only the requested mode before Start; the picker
+  explains its source. Engine default uses the engine’s saved permissions,
+  confirmed after startup. The chip opens the same approval picker as a running chat (full access still
   takes its confirmation); the pick is the new chat's own and rides its first
   send. Inside the dock's New chat dialog the picker opens on the dialog layer.
   The running chip shows engine-confirmed values or a pending/restart state. Personal defaults
