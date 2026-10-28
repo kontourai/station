@@ -11,7 +11,11 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { StationSwitcherMenu } from '../components/header/StationSwitcherMenu';
 import { navigationStore } from '../contexts/navigation-store';
 import { toastStore } from '../contexts/ToastContext';
-import { forgetStationProbe, recordStationUse } from '../lib/stationSwitcher';
+import {
+  forgetStationProbe,
+  probeStation,
+  recordStationUse,
+} from '../lib/stationSwitcher';
 
 const station: SavedConnection = {
   profileVersion: 4,
@@ -360,4 +364,15 @@ test('a touch screen opens on the previous Station, not the filter keyboard', ()
   recordStationUse('one');
   openMenu([station, laptop, ...extras]);
   expect(document.activeElement).toBe(row(/^Laptop/));
+});
+
+test('reuses an answer, but re-checks a Station that did not answer', async () => {
+  reachable.add('https://two.example.test');
+  expect(await probeStation(laptop.url)).toBe('online');
+  expect(await probeStation(laptop.url)).toBe('online');
+  expect(fetchMock).toHaveBeenCalledOnce();
+  expect(await probeStation(extras[0].url)).toBe('unreachable');
+  reachable.add('https://three.example.test');
+  expect(await probeStation(extras[0].url)).toBe('online');
+  expect(fetchMock).toHaveBeenCalledTimes(3);
 });
