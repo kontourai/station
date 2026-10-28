@@ -1,5 +1,6 @@
 import {
   chmod,
+  mkdir,
   mkdtemp,
   readFile,
   rm,
@@ -345,7 +346,17 @@ const GMAIL_GRANT = {
   integrationId: 'gmail',
   issuer: 'https://accounts.google.com',
   resource: 'https://gmailmcp.googleapis.com/mcp/v1',
+  instanceId: '0f6c2d8e-6a51-4b7e-9d1c-2f3a4b5c6d7e',
 };
+
+/** The integration's current instance, as the storage writer records it. */
+async function writeInstance(root: string, instanceId: string) {
+  await mkdir(join(root, 'integrations', 'gmail'), { recursive: true });
+  await writeFile(
+    join(root, 'integrations', 'gmail', '.station-instance'),
+    instanceId,
+  );
+}
 
 describe('MCP OAuth client secret resolution', () => {
   test('materializes only for the exactly granted integration, survives reopen, and stops after ungrant', async () => {
@@ -357,6 +368,7 @@ describe('MCP OAuth client secret resolution', () => {
       logger: { info: audit },
     };
     const service = new FileSecretBindingAdministration(root, options);
+    await writeInstance(root, GMAIL_GRANT.instanceId);
     await service.create({
       id: 'gmail-client',
       name: 'Gmail client secret',
@@ -408,8 +420,7 @@ describe('MCP OAuth client secret resolution', () => {
       GMAIL_GRANT,
     ]);
     // A definition for the same integration id that names another issuer or
-    // endpoint (a rewrite, or a deleted-and-recreated integration) is not the
-    // authority this grant records.
+    // endpoint is not the authority this grant records.
     for (const elsewhere of [
       { issuer: 'https://attacker-as.example', resource: GMAIL_GRANT.resource },
       {
@@ -424,6 +435,19 @@ describe('MCP OAuth client secret resolution', () => {
           ...elsewhere,
         }),
       ).rejects.toMatchObject({ reason: 'grant_missing' });
+
+    // Deleted and recreated with the exact same id, issuer and endpoint: a
+    // new instance, which the old grant does not authorize.
+    await writeInstance(root, '7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d');
+    await expect(
+      reopened.resolveOAuthClientSecret({
+        integrationId: 'gmail',
+        bindingId: 'gmail-client',
+        issuer: GMAIL_GRANT.issuer,
+        resource: GMAIL_GRANT.resource,
+      }),
+    ).rejects.toMatchObject({ reason: 'grant_missing' });
+    await writeInstance(root, GMAIL_GRANT.instanceId);
 
     await reopened.ungrant({
       id: 'gmail-client',

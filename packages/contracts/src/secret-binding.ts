@@ -13,8 +13,8 @@ export interface McpIntegrationEnvGrant {
  * Exact authority for spending one binding as one MCP integration's OAuth
  * client secret, at the authorization server and resource it was bound for.
  * A definition that later names another issuer or endpoint, however it was
- * written, cannot materialize the secret; nor can a new definition reusing
- * the integration id with a different issuer or endpoint.
+ * written, cannot materialize the secret; nor can an integration recreated
+ * under the same id, which is a new instance.
  */
 export interface McpIntegrationOAuthClientGrant {
   kind: 'mcp-integration-oauth-client';
@@ -23,6 +23,12 @@ export interface McpIntegrationOAuthClientGrant {
   issuer: string;
   /** The integration's OAuth resource identity when the secret was bound. */
   resource: string;
+  /**
+   * The integration's server-created instance id when the secret was bound.
+   * Deleting the integration retires it, so a recreated integration with the
+   * same id, issuer and endpoint does not inherit the grant.
+   */
+  instanceId: string;
 }
 
 /** Exact authority for spending one binding as one ACP provider header. */

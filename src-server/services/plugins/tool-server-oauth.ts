@@ -150,6 +150,8 @@ type BoundRecord<T> = {
   expiresAt?: number;
   accessTokenExpiresAt?: number;
   needsSignIn?: boolean;
+  /** Tokens only: the client that obtained them. */
+  clientId?: string;
   value: T;
 };
 
@@ -519,6 +521,16 @@ export class OAuthClientIssuerRequiredError extends StationOwnedToolServerError 
   }
 }
 
+/** Another sign-in replaced this integration's OAuth client first. */
+class OAuthConsentSupersededError extends StationOwnedToolServerError {
+  override name = 'OAuthConsentSupersededError';
+  constructor(readonly serverId: string) {
+    super(
+      `Another sign-in changed integration '${serverId}''s OAuth client first. Sign in again.`,
+    );
+  }
+}
+
 /** The configured client secret's binding could not be materialized. */
 class OAuthClientSecretUnavailableError extends StationOwnedToolServerError {
   override name = 'OAuthClientSecretUnavailableError';
@@ -799,14 +811,12 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
   }
 
   /**
-   * Registers a client for this consent when the server needs one. A first
-   * registration is saved at once; one that replaces an existing client is
-   * returned without saving (`persist: false`), so the old client and its
-   * tokens keep working until the new consent completes.
+   * Registers a client for this consent when the server needs one. It is
+   * not saved here: the consent publishes it with the tokens it obtains, so
+   * an abandoned consent leaves any existing client and tokens working.
    */
   private async requireClientRegistration(
     ctx: OAuthClientInformationContext,
-    persist: boolean,
   ): Promise<StoredOAuthClientInformation | undefined> {
     const discovery = await this.discoveryState();
     const metadata = discovery?.authorizationServerMetadata;
@@ -838,11 +848,21 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
       [REQUESTED_SCOPE_FIELD]: scope,
       issuer: ctx.issuer,
     } as StoredOAuthClientInformation;
-    if (persist) await this.saveClientInformation(registered, ctx);
     return registered;
   }
   async tokens(ctx?: OAuthClientInformationContext) {
-    return this.readBound<StoredOAuthTokens>(KEYS.tokens, ctx);
+    const tokens = await this.readBound<StoredOAuthTokens>(KEYS.tokens, ctx);
+    if (!tokens) return undefined;
+    // Tokens are usable only with the client that obtained them. Records
+    // written before this pairing carry no client id and are trusted as-is.
+    const pairedWith = readJson<BoundRecord<StoredOAuthTokens>>(
+      this.store,
+      this.bucket,
+      KEYS.tokens,
+    )?.clientId;
+    if (pairedWith !== undefined && pairedWith !== this.currentClientId())
+      return undefined;
+    return tokens;
   }
 
   /** A repeated 401 retires only the exact credential the remote rejected. */
@@ -892,44 +912,65 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
   /** Explicit consent never lets the SDK start a second refresh flight. */
   /**
    * The provider one consent flow uses, from redirect to code exchange (the
-   * transport holds this one proxy for both). Its client is decided once,
-   * before the redirect: the exchange presents the same client the
-   * authorization was granted to. A replacement registration is kept here,
-   * not saved, until the exchange succeeds; then it is published together
-   * with its tokens, so an abandoned consent leaves the old client and
-   * tokens working.
+   * transport holds this one proxy for both).
+   *
+   * - A pre-registered client's identity comes from configuration, and its
+   *   secret is never held here: every read, the code exchange included,
+   *   goes back to the binding authority (grant, issuer, MCP URL, instance),
+   *   so a secret revoked or unbound mid-consent is not spent.
+   * - Any other client is decided once, before the redirect, so the exchange
+   *   presents the client the authorization was granted to. A registration
+   *   made for this flow is not saved on its own.
+   * - On success the tokens are published with the client that obtained
+   *   them, in one compare-and-swap against the stored client this flow
+   *   started from. A flow superseded by another sign-in is refused rather
+   *   than pairing its tokens with someone else's client.
    */
   forAuthorization(): OAuthClientProvider {
     let flowClient: StoredOAuthClientInformation | undefined;
-    let replacesClient = false;
+    let flowRegistered = false;
+    let startedFrom: string | null = null;
     return new Proxy(this, {
       get(target, key) {
         if (key === 'tokens') return async () => undefined;
         if (key === 'clientInformation')
           return async (ctx?: OAuthClientInformationContext) => {
+            if (target.client?.clientId) return target.clientInformation(ctx);
             if (flowClient) return flowClient;
+            startedFrom = target.storedRecord(KEYS.client);
             const value = await target.clientInformation(ctx);
             if (!ctx) return value;
             if (value && !target.registrationMissesScopes(value))
               return (flowClient = value);
-            const registered = await target.requireClientRegistration(
-              ctx,
-              !value,
-            );
-            replacesClient = Boolean(value && registered);
+            const registered = await target.requireClientRegistration(ctx);
+            flowRegistered = Boolean(registered);
             flowClient = registered;
             return registered;
+          };
+        if (key === 'saveClientInformation')
+          // The SDK's own registration or metadata-document client: kept for
+          // this flow and published with its tokens.
+          return async (
+            value: StoredOAuthClientInformation,
+            ctx?: OAuthClientInformationContext,
+          ) => {
+            if (target.client?.clientId) return;
+            flowClient = {
+              ...value,
+              issuer: target.resolveIssuer(value, ctx),
+            } as StoredOAuthClientInformation;
+            flowRegistered = true;
           };
         if (key === 'saveTokens')
           return async (
             value: StoredOAuthTokens,
             ctx?: OAuthClientInformationContext,
-          ) => {
-            if (replacesClient && flowClient)
-              await target.saveTokensWithClient(value, flowClient, ctx);
-            else await target.saveTokens(value, ctx);
-            replacesClient = false;
-          };
+          ) =>
+            target.publishConsent(value, ctx, {
+              client: flowClient,
+              registered: flowRegistered,
+              startedFrom,
+            });
         const value = Reflect.get(target, key);
         return typeof value === 'function' ? value.bind(target) : value;
       },
@@ -1090,42 +1131,84 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
     ctx?: OAuthClientInformationContext,
   ): Promise<void> {
     const refresh = Boolean((await this.tokens())?.refresh_token);
-    const accessTokenExpiresAt =
-      value.expires_in === undefined
-        ? undefined
-        : Date.now() + value.expires_in * 1000;
-    await this.writeBound(
+    await this.store.upsert(
+      this.bucket,
       KEYS.tokens,
-      value,
-      this.resolveIssuer(value, ctx),
-      undefined,
-      accessTokenExpiresAt,
+      JSON.stringify(
+        this.tokenRecord(
+          value,
+          this.resolveIssuer(value, ctx),
+          this.currentClientId(),
+        ),
+      ),
     );
     this.events?.tokensSaved?.(refresh);
   }
-  /** A consent that re-registered: the new client and its tokens in one write. */
-  private async saveTokensWithClient(
+  /** The raw stored record for one key, or null when absent. */
+  private storedRecord(key: string): string | null {
+    try {
+      return this.store.get(this.bucket, key);
+    } catch {
+      return null;
+    }
+  }
+
+  /** The client tokens must have been obtained by to be usable now. */
+  private currentClientId(): string | undefined {
+    if (this.client?.clientId) return this.client.clientId;
+    return readJson<BoundRecord<StoredOAuthClientInformation>>(
+      this.store,
+      this.bucket,
+      KEYS.client,
+    )?.value?.client_id;
+  }
+
+  private tokenRecord(
     value: StoredOAuthTokens,
-    client: StoredOAuthClientInformation,
-    ctx?: OAuthClientInformationContext,
+    issuer: string | undefined,
+    clientId: string | undefined,
+  ): BoundRecord<StoredOAuthTokens> {
+    return {
+      ...this.boundRecord(
+        value,
+        issuer,
+        undefined,
+        value.expires_in === undefined
+          ? undefined
+          : Date.now() + value.expires_in * 1000,
+      ),
+      ...(clientId ? { clientId } : {}),
+    };
+  }
+
+  /** A consent's tokens, published with the client that obtained them. */
+  private async publishConsent(
+    value: StoredOAuthTokens,
+    ctx: OAuthClientInformationContext | undefined,
+    flow: {
+      client?: StoredOAuthClientInformation;
+      registered: boolean;
+      startedFrom: string | null;
+    },
   ): Promise<void> {
     const refresh = Boolean((await this.tokens())?.refresh_token);
     const issuer = this.resolveIssuer(value, ctx);
-    await this.store.upsertMany(this.bucket, {
-      [KEYS.client]: JSON.stringify(
-        this.boundRecord(client, this.resolveIssuer(client, ctx)),
-      ),
-      [KEYS.tokens]: JSON.stringify(
-        this.boundRecord(
-          value,
-          issuer,
-          undefined,
-          value.expires_in === undefined
-            ? undefined
-            : Date.now() + value.expires_in * 1000,
-        ),
-      ),
-    });
+    const clientId = this.client?.clientId ?? flow.client?.client_id;
+    const entries: Record<string, string> = {
+      [KEYS.tokens]: JSON.stringify(this.tokenRecord(value, issuer, clientId)),
+    };
+    if (!this.client?.clientId && flow.client && flow.registered)
+      entries[KEYS.client] = JSON.stringify(
+        this.boundRecord(flow.client, this.resolveIssuer(flow.client, ctx)),
+      );
+    // A pre-registered client is configuration, not stored state; any other
+    // consent must still find the stored client it started from.
+    const published = await this.store.compareAndUpsertMany(
+      this.bucket,
+      entries,
+      this.client?.clientId ? {} : { [KEYS.client]: flow.startedFrom },
+    );
+    if (!published) throw new OAuthConsentSupersededError(this.serverId);
     this.events?.tokensSaved?.(refresh);
   }
   /** A refresh cannot resurrect an account removed while its publication was waiting. */
@@ -1151,6 +1234,8 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
       schemaVersion: 1,
       resource: this.resourceIdentity,
       issuer: ctx.issuer,
+      // A refresh keeps the tokens paired with the client that refreshed them.
+      ...(record.clientId !== undefined ? { clientId: record.clientId } : {}),
       value,
       ...(value.expires_in === undefined
         ? {}

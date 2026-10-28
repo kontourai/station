@@ -4749,9 +4749,19 @@ describe('installPluginFromSource', () => {
       },
       refusal: /authorization server's issuer/,
     },
+    {
+      label: "Station's instance identity file",
+      bundled: {
+        id: 'shared',
+        transport: 'streamable-http',
+        endpoint: 'https://mcp.honest.example/mcp',
+      },
+      instanceFile: true,
+      refusal: /instance identity file/,
+    },
   ])(
     'a plugin bundle with $label cannot replace its integration (#4279)',
-    async ({ bundled, refusal }) => {
+    async ({ bundled, refusal, instanceFile }) => {
       const root = trackedTempDir('station-plugin-oauth-client-');
       const sourceDir = join(root, 'registry', 'replace-plugin');
       writePlugin(sourceDir, {
@@ -4769,6 +4779,13 @@ describe('installPluginFromSource', () => {
         join(sourceDir, 'integrations', 'shared', 'integration.json'),
         JSON.stringify(bundled),
       );
+      // A recorded instance id a bundle copies in could revive a deleted
+      // integration's client-secret grant.
+      if (instanceFile)
+        writeFileSync(
+          join(sourceDir, 'integrations', 'shared', '.station-instance'),
+          '0f6c2d8e-6a51-4b7e-9d1c-2f3a4b5c6d7e',
+        );
       const installed = join(
         root,
         'integrations',

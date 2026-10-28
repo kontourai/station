@@ -1698,12 +1698,24 @@ Two independent layers enforce this:
   checks them before writing. Registry, plugin and imported definitions never
   carry a secret binding, and a source with a bound secret cannot be replaced
   from a registry; unbind first.
-- **The secret's own grant.** Binding records the authorization server and
-  endpoint it was made for. Station releases the client secret only to an
-  integration that still names both. A definition written by any path, a
-  restored backup or a hand edit included, that names another server or
-  endpoint cannot use the secret. Neither can a deleted integration recreated
-  under the same id.
+- **The secret's own grant.** Binding records three things: the authorization
+  server, the MCP server URL, and the integration's instance identity. Station
+  creates the instance identity when the integration is first saved, keeps it
+  beside the definition where no definition, registry, plugin or import can
+  set it, and deletes it with the integration. Station releases the client
+  secret only to an integration that still matches all three, and checks this
+  at every token request, the code exchange and each refresh included. A
+  definition naming another server or URL, written by any path (a restored
+  backup or a hand edit included), cannot use the secret. Neither can an
+  integration deleted and recreated with the exact same id, server and URL: it
+  is a new instance, so the old grant no longer applies and the secret must be
+  bound again. A secret revoked or unbound during a sign-in stops that sign-in
+  at its code exchange.
+
+When two sign-ins overlap on one account, each saves its tokens together with
+the client that obtained them, and only if the stored client is still the one
+it started from. The later one is refused with a request to sign in again, so
+an account never holds tokens from one client next to another client.
 
 Station also checks the `iss` in the authorization response (RFC 9207). A
 response whose `iss` differs from the server sign-in started at is refused

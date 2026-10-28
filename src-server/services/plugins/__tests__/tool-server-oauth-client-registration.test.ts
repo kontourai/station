@@ -13,6 +13,7 @@ import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
+import { INTEGRATION_INSTANCE_FILE } from '../../../domain/config-loader-storage.js';
 import { OAUTH_CLIENT_ID_REQUIRED_REASON } from '../../../security/tool-server-reason.js';
 import {
   FileSecretBindingAdministration,
@@ -80,6 +81,7 @@ function startAuthorizationServer(options: ServerOptions) {
   const contacted = new Set<string>();
   let authorizationServer = ORIGIN;
   let issued = 0;
+  let hold: Promise<void> | undefined;
   const mcpHandler = createMcpHandler(
     () => {
       const server = new McpServer({ name: 'byo-proof', version: '1.0.0' });
@@ -144,6 +146,9 @@ function startAuthorizationServer(options: ServerOptions) {
         });
       }
       if (url.pathname === '/token') {
+        const held = hold;
+        hold = undefined;
+        if (held) await held;
         tokenRequests.push({
           origin: url.origin,
           params: new URLSearchParams(await request.text()),
@@ -176,6 +181,14 @@ function startAuthorizationServer(options: ServerOptions) {
     registrations,
     tokenRequests,
     contacted,
+    /** Pause the next token request until the returned release is called. */
+    holdNextTokenRequest: () => {
+      let release!: () => void;
+      hold = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return release;
+    },
     /** RFC 9728 metadata names a different authorization server from now on. */
     nameAuthorizationServer: (origin: string) => {
       authorizationServer = origin;
@@ -1023,6 +1036,186 @@ describe('a client secret survives no rewrite of its integration (round 3)', () 
       expect(
         as.tokenRequests.filter((request) => request.origin === ATTACKER),
       ).toEqual([]);
+    } finally {
+      await as.close();
+    }
+  });
+});
+
+describe('round 4: the secret is authorized at each token request', () => {
+  async function startedConsent(env: ReturnType<typeof setup>) {
+    const started = await env.service.startOAuth(SERVER, 'remote');
+    const url = new URL(started.authorizationUrl);
+    const callback = new URL(url.searchParams.get('redirect_uri') ?? '');
+    callback.searchParams.set('code', 'fixture-code');
+    callback.searchParams.set('state', url.searchParams.get('state') ?? '');
+    return callback.href;
+  }
+  const materialized = (env: ReturnType<typeof setup>) =>
+    env.auditLogger.info.mock.calls.filter(
+      ([, attributes]) =>
+        (attributes as { operation?: string }).operation === 'materialize',
+    ).length;
+
+  test.each([
+    {
+      label: 'revoked',
+      change: async (env: ReturnType<typeof setup>) => {
+        const binding = await env.bindings.get('byo-client-secret');
+        await env.bindings.revoke({
+          id: 'byo-client-secret',
+          expectedRevision: binding!.revision,
+        });
+      },
+    },
+    {
+      label: 'unbound',
+      change: async (env: ReturnType<typeof setup>) => {
+        const binding = await env.bindings.get('byo-client-secret');
+        await env.consumers.unbindOAuthClientSecret({
+          id: 'byo-client-secret',
+          integrationId: SERVER,
+          expectedRevision: binding!.revision,
+        });
+      },
+    },
+  ])(
+    'a secret $label mid-consent is not spent at the code exchange',
+    async ({ change }) => {
+      const as = startAuthorizationServer({
+        dcr: false,
+        authMethods: ['client_secret_basic'],
+      });
+      const env = setup();
+      try {
+        await createIntegration(env, {
+          oauthClient: { clientId: CLIENT_ID, issuer: ORIGIN },
+        });
+        await bindClientSecret(env);
+        const callback = await startedConsent(env);
+        await change(env);
+        const before = materialized(env);
+        await expect(env.service.finishOAuth(SERVER, callback)).rejects.toThrow(
+          'OAuth authorization failed',
+        );
+        expect(as.tokenRequests).toEqual([]);
+        expect(materialized(env)).toBe(before);
+      } finally {
+        await as.close();
+      }
+    },
+  );
+});
+
+describe('round 4: overlapping consents never pair tokens with another client', () => {
+  test('A registers C2 and pauses at the exchange; B (on C1) finishes after A and is refused', async () => {
+    const as = startAuthorizationServer({ dcr: true });
+    const env = setup();
+    try {
+      await createIntegration(env, {
+        credentialOwnership: { owner: 'principal' },
+        oauthClient: { scopes: ['mail.readonly'] },
+      });
+      const alice = { principalId: ALICE };
+      await consent(env, alice);
+      const registered = (n: number) =>
+        n === 1 ? 'dcr-registered-client' : `dcr-registered-client-${n}`;
+
+      // A: wider scopes, so it registers C2 for this flow only.
+      const startA = await env.service.startOAuth(SERVER, 'remote', alice, {
+        scopes: ['mail.readonly', 'mail.compose'],
+      });
+      const urlA = new URL(startA.authorizationUrl);
+      expect(urlA.searchParams.get('client_id')).toBe(registered(2));
+      const callbackA = new URL(urlA.searchParams.get('redirect_uri') ?? '');
+      callbackA.searchParams.set('code', 'code-a');
+      callbackA.searchParams.set('state', urlA.searchParams.get('state') ?? '');
+      const releaseA = as.holdNextTokenRequest();
+      const finishA = env.service.finishOAuth(SERVER, callbackA.href, alice);
+      // A cannot publish until released, so B below starts from C1.
+
+      // B: the original scopes, so it keeps C1.
+      const startB = await env.service.startOAuth(SERVER, 'remote', alice);
+      const urlB = new URL(startB.authorizationUrl);
+      expect(urlB.searchParams.get('client_id')).toBe(registered(1));
+      const callbackB = new URL(urlB.searchParams.get('redirect_uri') ?? '');
+      callbackB.searchParams.set('code', 'code-b');
+      callbackB.searchParams.set('state', urlB.searchParams.get('state') ?? '');
+
+      releaseA();
+      await finishA;
+      await expect(
+        env.service.finishOAuth(SERVER, callbackB.href, alice),
+      ).rejects.toThrow('OAuth authorization failed');
+
+      // Stored: C2 with the tokens C2 obtained, paired by client id.
+      const def = await env.loader.loadIntegration(SERVER);
+      const provider = new StationToolServerOAuthProvider(
+        toolServerCredentialStoreFor(env.home, principalCredentialOwner(ALICE)),
+        SERVER,
+        `${ORIGIN}/mcp`,
+        `http://127.0.0.1:${PORT}/integrations/${SERVER}/oauth/callback`,
+        undefined,
+        principalCredentialOwner(ALICE),
+        toolServerOAuthClientConfig(def, env.bindings),
+      );
+      expect((await provider.clientInformation())?.client_id).toBe(
+        registered(2),
+      );
+      const exchangeA = as.tokenRequests.find(
+        (request) => request.params.get('code') === 'code-a',
+      )!;
+      expect(exchangeA.params.get('client_id')).toBe(registered(2));
+      const refreshBefore = as.tokenRequests.length;
+      await provider.accessToken();
+      expect(as.tokenRequests[refreshBefore]!.params.get('client_id')).toBe(
+        registered(2),
+      );
+    } finally {
+      await as.close();
+    }
+  });
+});
+
+describe('round 4: a recreated integration is a new instance', () => {
+  test('delete, then recreate the exact id, issuer and MCP URL: the old grant does not authorize it', async () => {
+    const as = startAuthorizationServer({
+      dcr: false,
+      authMethods: ['client_secret_basic'],
+    });
+    const env = setup();
+    try {
+      const definition = {
+        oauthClient: { clientId: CLIENT_ID, issuer: ORIGIN },
+      };
+      await createIntegration(env, definition);
+      await bindClientSecret(env);
+      await consent(env);
+      const instanceFile = join(
+        env.home,
+        'integrations',
+        SERVER,
+        INTEGRATION_INSTANCE_FILE,
+      );
+      const firstInstance = readFileSync(instanceFile, 'utf8');
+      await env.service.deleteIntegration(SERVER);
+
+      // Recreated by the server writer with the same tuple and different
+      // scopes, then given the old reference by a path that bypasses it.
+      await createIntegration(env, {
+        oauthClient: { ...definition.oauthClient, scopes: ['mail.compose'] },
+      });
+      expect(readFileSync(instanceFile, 'utf8')).not.toBe(firstInstance);
+      const path = join(env.home, 'integrations', SERVER, 'integration.json');
+      const recreated = JSON.parse(readFileSync(path, 'utf8'));
+      recreated.oauthClient.clientSecretRef = 'byo-client-secret';
+      writeFileSync(path, JSON.stringify(recreated));
+
+      const before = as.tokenRequests.length;
+      await expect(env.service.startOAuth(SERVER, 'remote')).rejects.toThrow(
+        'The OAuth client secret is unavailable',
+      );
+      expect(as.tokenRequests.length).toBe(before);
     } finally {
       await as.close();
     }

@@ -289,20 +289,24 @@ export class ToolServerCredentialStore {
     return applied;
   }
   /**
-   * Publish several credentials of one server in a single document write, so
-   * values that only make sense together (an OAuth client and the tokens it
-   * obtained) are never observed half-replaced.
+   * Publish several credentials of one server in a single document write,
+   * only if each `expected` credential is still exactly the observed value
+   * (`null`: still absent). Values that only make sense together (an OAuth
+   * client and the tokens it obtained) are never observed half-replaced, and
+   * a publication based on a superseded observation is refused.
    */
-  async upsertMany(
+  async compareAndUpsertMany(
     serverId: string,
     entries: Readonly<Record<string, string>>,
-  ): Promise<void> {
+    expected: Readonly<Record<string, string | null>>,
+  ): Promise<boolean> {
     assertCredentialKey(serverId, 'server id');
     const names = Object.keys(entries);
     if (serverId.length === 0 || names.length === 0)
       throw new Error('Invalid tool-server credential');
-    for (const name of names) {
+    for (const name of [...names, ...Object.keys(expected)])
       assertCredentialKey(name, 'env name');
+    for (const name of names) {
       const secret = entries[name];
       if (
         name.length === 0 ||
@@ -312,18 +316,24 @@ export class ToolServerCredentialStore {
       )
         throw new Error('Invalid tool-server credential');
     }
+    let applied = false;
     await this.#mutate((document) => {
+      const current = document.credentials[serverId];
+      for (const [name, value] of Object.entries(expected))
+        if ((current?.[name] ?? null) !== value) return document;
+      applied = true;
       const credentials = Object.assign(
         dictionary<Record<string, string>>(),
         document.credentials,
       );
       credentials[serverId] = Object.assign(
         dictionary<string>(),
-        document.credentials[serverId],
+        current,
         entries,
       );
       return { ...document, credentials };
     });
+    return applied;
   }
   async remove(serverId: string, name: string): Promise<void> {
     await this.removeMany(serverId, [name]);

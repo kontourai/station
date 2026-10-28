@@ -1462,8 +1462,10 @@ change to the endpoint or `issuer`, and refuses a definition naming another
 binding. Plugin bundles are checked before copying, and the CLI import before
 writing. Registry, plugin and imported definitions never carry
 `clientSecretRef`. Independently, the client-secret grant records the
-`issuer` and resource it was bound at, and the secret is released only for a
-definition naming both. A declared `issuer` refuses any
+`issuer`, the resource and the integration's server-created instance id at
+binding. At every token request the secret is released only for a definition
+matching all three, so a deleted and recreated integration needs a new
+binding. A declared `issuer` refuses any
 other authorization server before a secret is read, a client is registered
 or a person is redirected. The callback's `iss` is checked per RFC 9207, and a
 callback with more than one `iss` returns 400. A server without client registration records

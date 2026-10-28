@@ -1,9 +1,11 @@
+import { randomUUID } from 'node:crypto';
 import {
   existsSync,
   lstatSync,
   readdirSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from 'node:fs';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -300,10 +302,74 @@ async function writeIntegrationConfigLocked(
   )[integrationEnabledSynthesized];
   if (synthesized && def.enabled === true) delete persisted.enabled;
   await publishJsonFileWithOwnedLock(integrationPath, persisted);
+  ensureIntegrationInstanceIdLocked(projectHomeDir, id);
   // One credential-store publication retains the referenced set while
   // removing a migrated set. Splitting this into removeMany then reconcile
   // admitted a partial delete if the second write failed after the first.
   if (store) await store.reconcileServer(id, [...refs], [...removals]);
+}
+
+/**
+ * #4279: a server-created identity for one integration's existence, kept
+ * beside `integration.json` so no definition, writer, registry, plugin or
+ * import can set it. The locked writer creates it on first write and never
+ * replaces it; deleting the integration removes it with the directory, so an
+ * integration recreated under the same id is a new instance. OAuth
+ * client-secret grants record it, so a deleted integration's grants cannot
+ * authorize its replacement.
+ */
+export const INTEGRATION_INSTANCE_FILE = '.station-instance';
+const INTEGRATION_INSTANCE_ID = /^[0-9a-f-]{36}$/;
+
+function integrationInstancePath(projectHomeDir: string, id: string): string {
+  assertSafeIntegrationId(id);
+  return join(projectHomeDir, 'integrations', id, INTEGRATION_INSTANCE_FILE);
+}
+
+/** The integration's instance id, or undefined when absent or malformed. */
+export function readIntegrationInstanceId(
+  projectHomeDir: string,
+  id: string,
+): string | undefined {
+  const path = integrationInstancePath(projectHomeDir, id);
+  if (!existsSync(path) || lstatSync(path).isSymbolicLink()) return undefined;
+  const value = readFileSync(path, 'utf8').trim();
+  return INTEGRATION_INSTANCE_ID.test(value) ? value : undefined;
+}
+
+function ensureIntegrationInstanceIdLocked(
+  projectHomeDir: string,
+  id: string,
+): string {
+  const existing = readIntegrationInstanceId(projectHomeDir, id);
+  if (existing) return existing;
+  const minted = randomUUID();
+  writeFileSync(integrationInstancePath(projectHomeDir, id), minted, {
+    mode: 0o600,
+  });
+  return minted;
+}
+
+/**
+ * The instance id of an existing integration, created under the
+ * integration's mutation lock if an older or externally written definition
+ * has none yet.
+ */
+export async function ensureIntegrationInstanceId(
+  projectHomeDir: string,
+  id: string,
+): Promise<string> {
+  assertSafeIntegrationId(id);
+  const release = await acquireFileMutationLockAsync(
+    toolServerIntegrationMutationLockPath(projectHomeDir, id),
+  );
+  try {
+    if (!existsSync(integrationConfigPath(projectHomeDir, id)))
+      throw new Error(`Tool '${id}' not found`);
+    return ensureIntegrationInstanceIdLocked(projectHomeDir, id);
+  } finally {
+    await release();
+  }
 }
 
 export async function deleteIntegrationConfig(
@@ -619,6 +685,15 @@ export function assertPluginIntegrationsWritable(
   for (const entry of readdirSync(bundled, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     assertSafeIntegrationId(entry.name);
+    // A bundle cannot bring an instance identity; the copy would carry it.
+    if (
+      readdirSync(join(bundled, entry.name)).some(
+        (name) => String(name) === INTEGRATION_INSTANCE_FILE,
+      )
+    )
+      throw new Error(
+        `Plugin integration '${entry.name}' contains Station's instance identity file.`,
+      );
     const next = readDefinition(join(bundled, entry.name, 'integration.json'));
     if (!next) continue;
     if (

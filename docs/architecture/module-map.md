@@ -2280,10 +2280,16 @@ the binding id at `oauthClient.clientSecretRef`, written by
 `SecretBindingIntegrationService.bindOAuthClientSecret` (grant first) and
 removed by `unbindOAuthClientSecret` (reference first). Binding requires the integration's declared
 `oauthClient.issuer`; the provider never presents the secret to another issuer. The grant
-records the `issuer` and resource identity it was bound at, and
-`resolveOAuthClientSecret` releases the secret only for that pair. A
-definition rewritten by any path cannot redirect the secret, and neither can
-an id reused after deletion, so grants are not tied to delete paths. Unbind
+records the `issuer`, the resource identity and the integration's instance id
+(`.station-instance`, created by `writeIntegrationConfigLocked` on first write
+and removed with the integration directory) at binding.
+`resolveOAuthClientSecret` reads the current instance id itself and releases
+the secret only for that triple. The provider resolves it at every token
+request and never caches it in a consent flow. A definition rewritten by any
+path cannot redirect the secret, and an integration deleted and recreated
+under the same tuple cannot reuse its grant, so grants are not tied to the
+delete paths. A leftover grant stays visible as binding metadata until
+unbound. Unbind
 removes every client-secret grant the binding holds for the integration. The
 issuer/endpoint pin and the no-foreign-reference rule
 (`assertToolOAuthClientWritable` in [the tool contract](../../packages/contracts/src/tool.ts))

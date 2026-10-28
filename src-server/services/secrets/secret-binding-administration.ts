@@ -27,6 +27,7 @@ import {
 } from '@kontourai/station-contracts/tool';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import type { ConfigLoader } from '../../domain/config-loader.js';
+import { readIntegrationInstanceId } from '../../domain/config-loader-storage.js';
 import {
   publishJsonFileWithOwnedLock,
   readTextFileBounded,
@@ -312,7 +313,10 @@ export class SecretBindingIntegrationService
     private readonly bindings: SecretBindingAdministration,
     private readonly configLoader: Pick<
       ConfigLoader,
-      'loadIntegration' | 'updateIntegration' | 'isBuiltinIntegration'
+      | 'loadIntegration'
+      | 'updateIntegration'
+      | 'isBuiltinIntegration'
+      | 'integrationInstanceId'
     >,
     private readonly logger?: {
       info(message: string, attributes?: Record<string, unknown>): void;
@@ -370,6 +374,11 @@ export class SecretBindingIntegrationService
       integrationId: input.integrationId,
       issuer,
       resource,
+      // This integration's existence: a delete retires it, so the grant does
+      // not outlive the integration it was made for.
+      instanceId: await this.configLoader.integrationInstanceId(
+        input.integrationId,
+      ),
     };
     const configured = def.oauthClient?.clientSecretRef;
     if (configured && configured !== input.id)
@@ -844,6 +853,7 @@ export class FileSecretBindingAdministration
     TelemetrySecretResolver
 {
   readonly #store: SecretBindingFileStore;
+  readonly #homeDir: string;
   readonly #now: () => Date;
   readonly #runner: SecretRunner;
   readonly #environment: Record<string, string | undefined>;
@@ -851,6 +861,7 @@ export class FileSecretBindingAdministration
 
   constructor(homeDir: string, options: SecretBindingServiceOptions = {}) {
     this.#store = new SecretBindingFileStore(homeDir);
+    this.#homeDir = homeDir;
     this.#now = options.now ?? (() => new Date());
     this.#runner = options.secretRunner ?? defaultSecretRunner;
     this.#environment = options.environment ?? process.env;
@@ -1282,13 +1293,22 @@ export class FileSecretBindingAdministration
     issuer: string;
     resource: string;
   }): Promise<string> {
-    const expected: McpIntegrationOAuthClientGrant = {
-      kind: 'mcp-integration-oauth-client',
-      integrationId: input.integrationId,
-      issuer: input.issuer,
-      resource: input.resource,
-    };
     try {
+      assertIntegrationId(input.integrationId);
+      // The authority reads the integration's current instance itself; a
+      // caller cannot vouch for it.
+      const instanceId = readIntegrationInstanceId(
+        this.#homeDir,
+        input.integrationId,
+      );
+      if (!instanceId) throw new SecretBindingResolutionError('grant_missing');
+      const expected: McpIntegrationOAuthClientGrant = {
+        kind: 'mcp-integration-oauth-client',
+        integrationId: input.integrationId,
+        issuer: input.issuer,
+        resource: input.resource,
+        instanceId,
+      };
       assertBindingId(input.bindingId);
       assertGrant(expected);
       const binding = this.#store.read().bindings[input.bindingId];
@@ -1330,7 +1350,8 @@ export class FileSecretBindingAdministration
           : 'invalid_binding';
       this.#audit('auth-refusal', {
         bindingId: input.bindingId,
-        ...grantAuditIdentifiers(expected),
+        integrationId: input.integrationId,
+        consumer: 'oauth-client',
         outcome: 'refused',
         reason,
       });
@@ -1984,6 +2005,11 @@ function assertGrant(grant: SecretBindingGrant): void {
     assertIntegrationId(grant.integrationId);
     assertOAuthGrantUrl(grant.issuer, 'https:');
     assertOAuthGrantUrl(grant.resource);
+    if (
+      typeof grant.instanceId !== 'string' ||
+      !/^[0-9a-f-]{36}$/.test(grant.instanceId)
+    )
+      throw new Error('Invalid OAuth client secret grant.');
     return;
   }
   if (grant?.kind === 'acp-provider-header') {
@@ -2006,7 +2032,13 @@ function assertExactGrant(grant: unknown): asserts grant is SecretBindingGrant {
   } else if (
     (grant as { kind?: unknown }).kind === 'mcp-integration-oauth-client'
   ) {
-    assertOnlyKeys(grant, ['kind', 'integrationId', 'issuer', 'resource']);
+    assertOnlyKeys(grant, [
+      'kind',
+      'integrationId',
+      'issuer',
+      'resource',
+      'instanceId',
+    ]);
   } else if ((grant as { kind?: unknown }).kind === 'acp-provider-header') {
     assertOnlyKeys(grant, ['kind', 'connectionId', 'providerId', 'headerName']);
   } else if (
@@ -2030,7 +2062,7 @@ function grantKey(grant: SecretBindingGrant): string {
   return grant.kind === 'mcp-integration-env'
     ? `${grant.kind}\u0000${grant.integrationId}\u0000${grant.envName}`
     : grant.kind === 'mcp-integration-oauth-client'
-      ? `${grant.kind}\u0000${grant.integrationId}\u0000${grant.issuer}\u0000${grant.resource}`
+      ? `${grant.kind}\u0000${grant.integrationId}\u0000${grant.issuer}\u0000${grant.resource}\u0000${grant.instanceId}`
       : grant.kind === 'acp-provider-header'
         ? `${grant.kind}\u0000${grant.connectionId}\u0000${grant.providerId}\u0000${grant.headerName.toLowerCase()}`
         : `${grant.kind}\u0000${telemetryDestinationKey(grant)}`;
@@ -2092,6 +2124,7 @@ function grantAuditIdentifiers(
           consumer: 'oauth-client',
           issuerDigest: auditDigest(grant.issuer),
           resourceDigest: auditDigest(grant.resource),
+          instanceId: grant.instanceId,
         }
       : grant.kind === 'acp-provider-header'
         ? {
