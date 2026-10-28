@@ -257,6 +257,8 @@ export interface NativeStationProfileRepository {
   removeProfile(
     input: import('@kontourai/station-connect').SavedStationRemoval,
   ): Promise<void>;
+  /** Whether `removeProfile` would accept this Station, from the last read. */
+  canRemoveProfile(connectionId: string): boolean;
   getRelayRouteProfiles(): readonly StationProfile[];
   subscribeRelayRouteProfiles(listener: () => void): () => void;
   saveRelayRouteProfile(input: SaveRelayRouteProfileInput): Promise<string>;
@@ -428,6 +430,14 @@ export class NativeStationProfileStorage
    * own local Station, while a real in-process choice remains authoritative.
    */
   private explicitProcessSelection: string | undefined;
+  /**
+   * The profile the native owner resolver named as this app's own Station at
+   * boot, by name and by its local service, which a CLI rename keeps.
+   * Undefined until boot has named one.
+   */
+  private ownStation:
+    | { name: string; instanceId?: string; baseDir?: string }
+    | undefined;
   private selectionProvenanceHydrated = false;
   private activeRequestBinding:
     | (NativeProfileRequestBinding & {
@@ -738,6 +748,11 @@ export class NativeStationProfileStorage
       (candidate) => candidate.name.toLowerCase() === profileName.toLowerCase(),
     );
     if (!profile) return undefined;
+    this.ownStation = {
+      name: profile.name,
+      instanceId: profile.localService?.instanceId,
+      baseDir: profile.localService?.baseDir,
+    };
     if (this.explicitProcessSelection) {
       const explicit = this.profileStore.profiles.find(
         (candidate) =>
@@ -889,6 +904,12 @@ export class NativeStationProfileStorage
    * binding, and the host deletes a credential only once nothing references
    * it. A failed write therefore changes nothing and can simply be retried.
    *
+   * Only this app's own Station and relay routes are refused: they have
+   * their own lifecycles. Profiles other channels or dev instances left
+   * behind are ordinary saved Stations here, even with a `localService`.
+   * Before boot names the app's own Station, every local-service profile is
+   * refused.
+   *
    * Forgetting the selected Station moves the selection to the default, or,
    * with no default left, to the first remaining Station for this session
    * only; the CLI default is never reassigned here.
@@ -904,8 +925,10 @@ export class NativeStationProfileStorage
       profile.endpoint === input.expected.url;
     const initial = await this.readProfileStore();
     const target = initial.profiles.find(matches);
-    if (target && (target.localService || target.relayRoute))
+    if (target?.relayRoute)
       throw new Error('This Station cannot be forgotten here.');
+    if (target && this.isOwnStation(target))
+      throw new Error("This app's own Station cannot be forgotten.");
     if (!confirmed(target))
       throw new Error(
         'This Station changed while you were confirming. Reopen it and try again.',
@@ -997,6 +1020,30 @@ export class NativeStationProfileStorage
       return;
     }
     throw new Error('saved Stations changed concurrently; retry.');
+  }
+
+  canRemoveProfile(connectionId: string): boolean {
+    const profile = this.profileStore.profiles.find(
+      (candidate) => profileConnectionId(candidate) === connectionId,
+    );
+    return Boolean(
+      profile && !profile.relayRoute && !this.isOwnStation(profile),
+    );
+  }
+
+  /**
+   * Fails closed: until boot has named this app's own Station, every
+   * local-service profile might be it.
+   */
+  private isOwnStation(profile: StationProfile): boolean {
+    const own = this.ownStation;
+    if (!own) return profile.localService !== undefined;
+    if (profile.name.toLowerCase() === own.name.toLowerCase()) return true;
+    return (
+      own.instanceId !== undefined &&
+      profile.localService?.instanceId === own.instanceId &&
+      profile.localService.baseDir === own.baseDir
+    );
   }
 
   getRelayRouteProfiles(): readonly StationProfile[] {
