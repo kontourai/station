@@ -19,6 +19,7 @@ import { copyPluginIntegrations } from '@kontourai/station-shared/parsers';
 import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
 import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
+import { publishPluginIntegrations } from '../../domain/config-loader-storage.js';
 import {
   capturePluginProviderGeneration,
   preparePluginProviderGeneration,
@@ -53,7 +54,6 @@ import {
   capturePersistedAgentOwnership,
   ensureCanonicalRegistryInstallAliases,
   installPluginFromSource,
-  removePluginOwnedIntegrations,
   resolvePluginRegistryInstall,
   synchronizePluginAgentDefinitions,
   uninstallInstalledPlugin,
@@ -925,16 +925,16 @@ export function registerPluginLifecycleRoutes(
                   });
 
                   await buildPlugin(pluginDir, originalIdentity);
-                  removePluginOwnedIntegrations(
-                    join(projectHomeDir, 'integrations'),
-                    originalIdentity,
-                  );
-                  if (manifestFormat !== 'agent-plugin-1.0') {
-                    copyPluginIntegrations(
-                      pluginDir,
-                      join(projectHomeDir, 'integrations'),
-                    );
-                  }
+                  await publishPluginIntegrations({
+                    projectHomeDir,
+                    pluginName: originalIdentity,
+                    ...(manifestFormat !== 'agent-plugin-1.0'
+                      ? {
+                          stage: (stagingDir: string) =>
+                            copyPluginIntegrations(pluginDir, stagingDir),
+                        }
+                      : {}),
+                  });
                   // archive#4288 — the fix. Consent was given to the bytes
                   // this update just replaced, so it is re-bound HERE: after
                   // the build and the integration copy (the tree is final,
@@ -1034,16 +1034,16 @@ export function registerPluginLifecycleRoutes(
                     // would compare them, derive `changed`, and reload the
                     // restored plugin with no providers at all.
                     forgetPluginContentDigest(pluginsDir, originalIdentity);
-                    removePluginOwnedIntegrations(
-                      join(projectHomeDir, 'integrations'),
-                      originalIdentity,
-                    );
-                    if (originalManifestFormat !== 'agent-plugin-1.0') {
-                      copyPluginIntegrations(
-                        pluginDir,
-                        join(projectHomeDir, 'integrations'),
-                      );
-                    }
+                    await publishPluginIntegrations({
+                      projectHomeDir,
+                      pluginName: originalIdentity,
+                      ...(originalManifestFormat !== 'agent-plugin-1.0'
+                        ? {
+                            stage: (stagingDir: string) =>
+                              copyPluginIntegrations(pluginDir, stagingDir),
+                          }
+                        : {}),
+                    });
                     // The tree is back to the reviewed bytes, so the consent
                     // recorded against them comes back with it — digest
                     // included, so the restored entry is `bound` again and

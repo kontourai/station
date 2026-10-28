@@ -27,6 +27,16 @@ import type { InvocationContext } from '../../runtime/types.js';
 /** Conversations remembered per lineage set; the oldest is forgotten first. */
 const CONVERSATION_MEMORY_LIMIT = 10_000;
 
+/**
+ * Turns held at once. Past it, the turn idle longest is forgotten, but only
+ * one idle for at least TURN_ACTIVITY_WINDOW_MS: a turn that saw a tool call
+ * within the window is active and is never forgotten, so the map can exceed
+ * the bound rather than drop an active turn's mark. Ended turns are removed
+ * by `clear`; this bound only catches turns a framework never ended.
+ */
+const TURN_LIMIT = 10_000;
+const TURN_ACTIVITY_WINDOW_MS = 60 * 60 * 1000;
+
 function turnKey(invocation: InvocationContext): string {
   // A turn without a conversation shares its Agent's key, so concurrent
   // unscoped runs can only make each other ask, never skip a question.
@@ -64,6 +74,9 @@ class BoundedSet {
 }
 
 interface TurnState {
+  agentSlug: string;
+  conversationId?: string;
+  lastActivity: number;
   marks: Promise<boolean>[];
   /** Conversations this turn depends on: its own, its parent and root. */
   references: Set<string>;
@@ -97,23 +110,50 @@ export class UntrustedContentLedger {
   private readonly conversationsRead = new BoundedSet(this.pinned);
   private readonly descendantsRead = new BoundedSet(this.pinned);
 
+  constructor(private readonly now: () => number = Date.now) {}
+
+  /** Number of turns held; for bounds checks. */
+  get turnCount(): number {
+    return this.turns.size;
+  }
+
+  private evictIdleTurn(): void {
+    const cutoff = this.now() - TURN_ACTIVITY_WINDOW_MS;
+    let oldest: [string, TurnState] | undefined;
+    for (const entry of this.turns)
+      if (
+        entry[1].lastActivity <= cutoff &&
+        (!oldest || entry[1].lastActivity < oldest[1].lastActivity)
+      )
+        oldest = entry;
+    if (oldest) this.turns.delete(oldest[0]);
+  }
+
   private turn(invocation: InvocationContext): TurnState {
     const key = turnKey(invocation);
     let state = this.turns.get(key);
-    if (!state) {
-      state = {
-        marks: [],
-        references: new Set(
-          [
-            invocation.conversationId,
-            invocation.delegation?.parentConversationId,
-            invocation.delegation?.rootConversationId,
-          ].filter((id): id is string => !!id),
-        ),
-        latched: false,
-      };
-      this.turns.set(key, state);
+    if (state) {
+      state.lastActivity = this.now();
+      return state;
     }
+    if (this.turns.size >= TURN_LIMIT) this.evictIdleTurn();
+    state = {
+      agentSlug: invocation.agentSlug,
+      ...(invocation.conversationId
+        ? { conversationId: invocation.conversationId }
+        : {}),
+      lastActivity: this.now(),
+      marks: [],
+      references: new Set(
+        [
+          invocation.conversationId,
+          invocation.delegation?.parentConversationId,
+          invocation.delegation?.rootConversationId,
+        ].filter((id): id is string => !!id),
+      ),
+      latched: false,
+    };
+    this.turns.set(key, state);
     return state;
   }
 
@@ -160,6 +200,7 @@ export class UntrustedContentLedger {
     this.latchInherited(invocation);
     const state = this.turns.get(turnKey(invocation));
     if (!state) return false;
+    state.lastActivity = this.now();
     return (await Promise.all(state.marks)).some(Boolean);
   }
 
@@ -168,9 +209,20 @@ export class UntrustedContentLedger {
     return this.descendantsRead.has(conversationId);
   }
 
-  /** The turn ended; its content no longer counts for the next one. */
+  /**
+   * The turn ended; its content no longer counts for the next one. An end
+   * reported without a turn id (a framework's end callback can run outside
+   * the request that knew it) ends every turn of that Agent's conversation.
+   */
   clear(invocation: InvocationContext): void {
     this.turns.delete(turnKey(invocation));
+    if (invocation.turnId) return;
+    for (const [key, state] of this.turns)
+      if (
+        state.agentSlug === invocation.agentSlug &&
+        state.conversationId === invocation.conversationId
+      )
+        this.turns.delete(key);
   }
 }
 

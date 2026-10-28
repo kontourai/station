@@ -583,3 +583,56 @@ describe('an inherited mark survives the memory bound', () => {
     expect(c.requester).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('ended turns leave nothing behind', () => {
+  test('120 aborted or errored VoltAgent invocations clear their turns', async () => {
+    const { createVoltAgentLifecycleHooks } = await import(
+      '../../frameworks/voltagent-adapter.js'
+    );
+    const ledger = new UntrustedContentLedger();
+    const { hooks, call } = setup({}, { ledger });
+    const lifecycle = createVoltAgentLifecycleHooks('assistant', hooks);
+    for (let index = 0; index < 120; index += 1) {
+      const conversationId = `ended-${index}`;
+      const invocation = { agentSlug: 'assistant', conversationId };
+      hooks.afterToolCall!(
+        call('mail', 'read_message'),
+        { output: 'mail' },
+        invocation,
+      );
+      expect(await ledger.hasRead(invocation)).toBe(true);
+      // Abort and error both reach onEnd with no output.
+      await lifecycle.onEnd!({
+        context: { conversationId, userId: 'u', context: new Map() },
+        output: undefined,
+        ...(index % 2 ? { error: new Error('provider failed') } : {}),
+      } as never);
+    }
+    expect(ledger.turnCount).toBe(0);
+  });
+
+  test('the turn bound forgets only idle turns, never an active one', async () => {
+    let now = 0;
+    const ledger = new UntrustedContentLedger(() => now);
+    const mark = (conversationId: string) =>
+      ledger.mark({ agentSlug: 'a', conversationId }, Promise.resolve(true));
+    for (let index = 0; index < 10_000; index += 1) mark(`active-${index}`);
+    await new Promise((resolve) => setImmediate(resolve));
+    // Everything is active: the bound is exceeded rather than a mark dropped.
+    mark('one-more');
+    expect(ledger.turnCount).toBe(10_001);
+    expect(
+      await ledger.hasRead({ agentSlug: 'a', conversationId: 'active-0' }),
+    ).toBe(true);
+    // An hour later they are idle except one that just saw a call.
+    now = 60 * 60 * 1000 + 1;
+    expect(
+      await ledger.hasRead({ agentSlug: 'a', conversationId: 'active-5' }),
+    ).toBe(true);
+    mark('newest');
+    expect(ledger.turnCount).toBe(10_001);
+    expect(
+      await ledger.hasRead({ agentSlug: 'a', conversationId: 'active-5' }),
+    ).toBe(true);
+  });
+});

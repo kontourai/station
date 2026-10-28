@@ -1027,6 +1027,17 @@ export function createVoltAgentLifecycleHooks(
     },
     onEnd: async ({ context, output }) => {
       try {
+        // Abort and error arrive here with no output; the turn still ends.
+        try {
+          sharedHooks?.endInvocation?.(
+            voltAgentInvocationContext(
+              slug,
+              context as typeof context & { traceId?: string },
+            ),
+          );
+        } catch {
+          /* Releasing turn state never fails the invocation. */
+        }
         if (!context.conversationId || !output) return;
         const usage = 'usage' in output ? output.usage : undefined;
         const toolCallCount =

@@ -335,6 +335,14 @@ export interface IAgentHooks {
   ): void;
 
   /**
+   * Called exactly once when an invocation ends, however it ends: success,
+   * error or abort. Adapters call it from a `finally` path, unlike
+   * `afterInvocation`, which a failed invocation may skip. Used for:
+   * releasing per-turn state (#3483).
+   */
+  endInvocation?(invocation: InvocationContext): void;
+
+  /**
    * Called after the full agent invocation completes.
    * Used for: usage tracking, cost calculation, message enrichment,
    * conversation stats update.

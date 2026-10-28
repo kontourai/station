@@ -220,23 +220,31 @@ export function wireStrandsAgentHooks(options: {
     const agentMessages = (event as any).agent?.messages || [];
     const ctx: InvocationContext = { ...resolved };
 
-    await syncStrandsMessagesToMemory({
-      agentMessages,
-      agent: (event as { agent?: object }).agent,
-      invocation: ctx,
-      logger,
-      memoryAdapter,
-      resolvedModel,
-    });
-
-    if (hooks?.afterInvocation) {
-      await hooks.afterInvocation({
+    try {
+      await syncStrandsMessagesToMemory({
+        agentMessages,
+        agent: (event as { agent?: object }).agent,
         invocation: ctx,
-        usage: getLastStreamUsage() || (event as any).metrics?.usage,
-        toolCallCount,
+        logger,
+        memoryAdapter,
+        resolvedModel,
       });
-    }
 
-    toolCallCount = 0;
+      if (hooks?.afterInvocation) {
+        await hooks.afterInvocation({
+          invocation: ctx,
+          usage: getLastStreamUsage() || (event as any).metrics?.usage,
+          toolCallCount,
+        });
+      }
+    } finally {
+      toolCallCount = 0;
+      // The turn ends whether or not memory sync or stats succeeded.
+      try {
+        hooks?.endInvocation?.(ctx);
+      } catch {
+        /* Releasing turn state never fails the invocation. */
+      }
+    }
   });
 }

@@ -1,5 +1,13 @@
 import { existsSync, readFileSync, rmSync } from 'node:fs';
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   type ACPConfig,
@@ -225,64 +233,167 @@ export async function updateIntegrationConfig(
 }
 
 /**
- * #3483: the stored definitions a whole-directory copy (a plugin install) is
- * about to replace, read before the copy removes them. Unreadable or absent
- * definitions are left out and count as new.
+ * A rule a plugin's integration definition must satisfy before it is
+ * published, checked under the integration's mutation lock with the stored
+ * definition it replaces. Throwing refuses the whole publication and changes
+ * nothing. Other owners (for example tool-server OAuth client rules) add
+ * theirs here rather than checking before the copy.
  */
-export function readStoredIntegrations(
-  projectHomeDir: string,
-  ids: readonly string[],
-): Map<string, ToolDef> {
-  const stored = new Map<string, ToolDef>();
-  for (const id of ids) {
-    if (!isSafeToolServerId(id)) continue;
-    try {
-      stored.set(
-        id,
-        JSON.parse(
-          readFileSync(integrationConfigPath(projectHomeDir, id), 'utf8'),
-        ) as ToolDef,
-      );
-    } catch {
-      /* Absent or unreadable: treated as a first write. */
-    }
+export type PluginIntegrationValidator = (input: {
+  id: string;
+  next: ToolDef;
+  current: ToolDef | undefined;
+}) => void;
+
+/**
+ * The person-facing untrusted-content settings a stored definition holds win
+ * over a plugin's: a plugin update cannot downgrade a classification or
+ * reopen a tool the person closed.
+ */
+function carryPersonIntegrationFields(stored: ToolDef, next: ToolDef): void {
+  if (Object.hasOwn(stored, 'contentTrust'))
+    next.contentTrust = stored.contentTrust;
+  if (Object.hasOwn(stored, 'untrustedContentPermissions'))
+    next.untrustedContentPermissions = stored.untrustedContentPermissions;
+  if (Object.hasOwn(stored, 'trustReadOnlyHints'))
+    next.trustReadOnlyHints = stored.trustReadOnlyHints;
+}
+
+function storedIntegration(path: string): ToolDef | undefined {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8')) as ToolDef;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw error;
   }
-  return stored;
 }
 
 /**
- * #3483: pass definitions a whole-directory copy wrote through the same
- * receipt rule as every other write, against what they replaced: stored
- * history is kept, receipts in the copied files are dropped, and a changed
- * classification or permission is recorded. Each rewrite holds the
- * integration's mutation lock.
+ * Publish a plugin's integrations, and retire the ones it no longer ships,
+ * as one locked operation (#3483). The only path a plugin's install, update
+ * and rollback write integration definitions through.
+ *
+ * `stage` copies the plugin's integration trees into a private directory no
+ * reader looks at, with its own source checks. Then every affected
+ * integration's mutation lock is held, in a fixed order, from reading the
+ * stored definitions through publishing:
+ * - a target another owner holds is refused;
+ * - plugin-authored binding references are dropped;
+ * - the person's untrusted-content settings and receipts come from the stored
+ *   copy, never from the plugin's bytes, and a new receipt is added only for
+ *   a setting the plugin introduces;
+ * - each `validators` rule runs against the result.
+ * Each tree then replaces its target by directory rename, so a reader sees
+ * the old definition, briefly none, or the sanitized one, never the plugin's
+ * raw bytes. A failure restores every replaced tree. Returns the published
+ * integration ids.
  */
-export async function recordCopiedIntegrations(
-  projectHomeDir: string,
-  ids: readonly string[],
-  replaced: ReadonlyMap<string, ToolDef>,
-): Promise<void> {
-  for (const id of ids) {
-    assertSafeIntegrationId(id);
-    const integrationPath = integrationConfigPath(projectHomeDir, id);
-    const release = await acquireFileMutationLockAsync(
-      toolServerIntegrationMutationLockPath(projectHomeDir, id),
-    );
-    try {
-      const copied = JSON.parse(
-        readFileSync(integrationPath, 'utf8'),
-      ) as ToolDef;
-      const recorded = withUntrustedContentChange(
-        replaced.get(id),
-        copied,
-        undefined,
-        new Date(),
-      );
-      if (JSON.stringify(recorded) !== JSON.stringify(copied))
-        await publishJsonFileWithOwnedLock(integrationPath, recorded);
-    } finally {
-      await release();
+export async function publishPluginIntegrations(options: {
+  projectHomeDir: string;
+  pluginName: string;
+  /** Copies the plugin's integration trees into `stagingDir`; absent retires only. */
+  stage?: (stagingDir: string) => string[];
+  validators?: readonly PluginIntegrationValidator[];
+  now?: () => Date;
+}): Promise<string[]> {
+  const { projectHomeDir, pluginName } = options;
+  const integrationsDir = join(projectHomeDir, 'integrations');
+  // Nothing to publish and nothing stored: create nothing.
+  if (!options.stage && !existsSync(integrationsDir)) return [];
+  if (options.stage)
+    await mkdir(join(projectHomeDir, 'tmp'), { recursive: true });
+  // Under the Station home, so the renames below stay on one filesystem.
+  const stagingDir = options.stage
+    ? await mkdtemp(join(projectHomeDir, 'tmp', 'integration-publish-'))
+    : undefined;
+  try {
+    const staged = options.stage && stagingDir ? options.stage(stagingDir) : [];
+    for (const id of staged) assertSafeIntegrationId(id);
+    if (staged.length === 0 && !existsSync(integrationsDir)) return [];
+    await mkdir(integrationsDir, { recursive: true });
+    const owned: string[] = [];
+    for (const entry of await readdir(integrationsDir, {
+      withFileTypes: true,
+    })) {
+      if (!entry.isDirectory() || !isSafeToolServerId(entry.name)) continue;
+      const def = storedIntegration(
+        integrationConfigPath(projectHomeDir, entry.name),
+      ) as (ToolDef & { plugin?: unknown }) | undefined;
+      if (def?.plugin === pluginName) owned.push(entry.name);
     }
+    const ids = [...new Set([...staged, ...owned])].sort();
+    const releases: (() => Promise<void>)[] = [];
+    try {
+      for (const id of ids)
+        releases.push(
+          await acquireFileMutationLockAsync(
+            toolServerIntegrationMutationLockPath(projectHomeDir, id),
+          ),
+        );
+      const now = (options.now ?? (() => new Date()))();
+      for (const id of staged) {
+        const current = storedIntegration(
+          integrationConfigPath(projectHomeDir, id),
+        ) as (ToolDef & { plugin?: unknown }) | undefined;
+        if (current && current.plugin !== pluginName)
+          throw new Error(
+            `Integration '${id}' already exists and is not owned by this plugin`,
+          );
+        // Staged ids exist only when a staging directory does.
+        const stagedPath = join(stagingDir!, id, 'integration.json');
+        const incoming = JSON.parse(
+          readFileSync(stagedPath, 'utf8'),
+        ) as ToolDef;
+        // A plugin cannot author secret bindings.
+        delete incoming.secretEnvRefs;
+        if (current) carryPersonIntegrationFields(current, incoming);
+        const next = withUntrustedContentChange(
+          current,
+          incoming,
+          undefined,
+          now,
+        );
+        for (const validate of options.validators ?? [])
+          validate({ id, next, current });
+        await writeFile(stagedPath, JSON.stringify(next, null, 2));
+      }
+      const replaced: { id: string; backup?: string; published: boolean }[] =
+        [];
+      try {
+        for (const id of ids) {
+          const target = join(integrationsDir, id);
+          const step: (typeof replaced)[number] = { id, published: false };
+          replaced.push(step);
+          if (existsSync(target)) {
+            if (!stagingDir) {
+              // Retiring only: nothing is published, so nothing to restore.
+              await rm(target, { recursive: true, force: true });
+              continue;
+            }
+            step.backup = join(stagingDir, `.replaced-${id}`);
+            await rename(target, step.backup);
+          }
+          if (staged.includes(id)) {
+            await rename(join(stagingDir!, id), target);
+            step.published = true;
+          }
+        }
+      } catch (error) {
+        for (const step of replaced.reverse()) {
+          const target = join(integrationsDir, step.id);
+          if (step.published)
+            await rm(target, { recursive: true, force: true });
+          if (step.backup && existsSync(step.backup))
+            await rename(step.backup, target);
+        }
+        throw error;
+      }
+      return staged;
+    } finally {
+      for (const release of releases.reverse()) await release();
+    }
+  } finally {
+    if (stagingDir) await rm(stagingDir, { recursive: true, force: true });
   }
 }
 

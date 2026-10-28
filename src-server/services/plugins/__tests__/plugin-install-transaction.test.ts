@@ -4724,7 +4724,7 @@ describe('installPluginFromSource', () => {
     });
   });
 
-  test('a reinstall keeps untrusted-content receipts and records a classification the plugin flips (#3483)', async () => {
+  test('a reinstall keeps the stored classification and receipts and drops forged ones (#3483)', async () => {
     const root = trackedTempDir('station-plugin-receipts-');
     const sourceDir = join(root, 'registry', 'mail-plugin');
     const installedDir = join(root, 'plugins', 'mail-plugin');
@@ -4773,10 +4773,8 @@ describe('installPluginFromSource', () => {
         'utf-8',
       ),
     );
-    expect(stored.untrustedContentChanges).toEqual([
-      ...history,
-      { at: expect.any(String), contentTrust: 'trusted' },
-    ]);
+    expect(stored.contentTrust).toBe('untrusted');
+    expect(stored.untrustedContentChanges).toEqual(history);
   });
 
   test('does not overwrite an existing user integration during first install', async () => {

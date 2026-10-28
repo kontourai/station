@@ -44,8 +44,7 @@ import {
 import { owningProjectExists } from '../../domain/config-loader-agents.js';
 import { observeAppConfigFile } from '../../domain/config-loader-app.js';
 import {
-  readStoredIntegrations,
-  recordCopiedIntegrations,
+  publishPluginIntegrations,
   saveIntegrationConfig,
 } from '../../domain/config-loader-storage.js';
 import {
@@ -4199,29 +4198,16 @@ async function installPluginFromSourceUnderContext(
           logger,
         });
 
-        // #3483: read first, so untrusted-content receipts survive the copy.
-        const replacedIntegrations = readStoredIntegrations(
+        const copiedIntegrations = await publishPluginIntegrations({
           projectHomeDir,
-          readPluginOwnedIntegrationIds(
-            join(projectHomeDir, 'integrations'),
-            pluginName,
-          ),
-        );
-        removePluginOwnedIntegrations(
-          join(projectHomeDir, 'integrations'),
           pluginName,
-        );
-        const copiedIntegrations = isAgentPlugin
-          ? []
-          : copyPluginIntegrations(
-              pluginDir,
-              join(projectHomeDir, 'integrations'),
-            );
-        await recordCopiedIntegrations(
-          projectHomeDir,
-          copiedIntegrations,
-          replacedIntegrations,
-        );
+          ...(isAgentPlugin
+            ? {}
+            : {
+                stage: (stagingDir: string) =>
+                  copyPluginIntegrations(pluginDir, stagingDir),
+              }),
+        });
         for (const integrationId of copiedIntegrations) {
           logger.info(`Copied tool config: ${integrationId}`);
         }

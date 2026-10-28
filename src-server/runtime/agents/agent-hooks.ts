@@ -308,6 +308,10 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
       }
     },
 
+    endInvocation: (invocation) => {
+      untrustedContent.clear(invocation);
+    },
+
     afterInvocation: async (ctx) => {
       const { invocation, usage, toolCallCount } = ctx;
       untrustedContent.clear(invocation);
