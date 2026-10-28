@@ -1782,7 +1782,13 @@ own reader hides: a branch abandoned by a retry or an edit, and a compaction
 summary. A Codex transcript shows the parent's task, the child's own input,
 its replies, and its tool calls and their text output; the context Codex
 injects as user messages, developer instructions, reasoning and encrypted
-content are left out. A single record of any type larger than 4 MiB is
+content are left out. A task whose payload Codex encrypted shows its header
+alone. A forked child's rollout (`forked_from_id` in its `session_meta`)
+begins with a copy of its parent's conversation; only the child's own part
+is shown, from the meta's `subagent_history_start_ordinal`, or after the
+message saying the preceding conversation is inherited parent context when
+no start ordinal is written. A forked rollout with neither shows nothing
+rather than the parent's history. A single record of any type larger than 4 MiB is
 skipped and shown as one `too-large` entry.
 
 ### Live SSE feed (`GET /events`)
