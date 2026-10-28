@@ -58,8 +58,6 @@ const WAIT_CALL_SLACK_MS = 15_000;
 const RECONNECT_WINDOW_MS = 60_000;
 /** The pause before calling again after a capacity refusal or a lost call. */
 const RETRY_DELAY_MS = 2_000;
-/** The route's per-person wait limit, for the notice only. */
-const WAIT_SLOTS_PER_PERSON = 4;
 export const SESSION_WAIT_DEFAULT_TIMEOUT_SECONDS = 3600;
 export const SESSION_WAIT_MAX_TIMEOUT_SECONDS = 86_400;
 
@@ -274,8 +272,9 @@ export async function waitOnSession(input: {
       if (isCapacityRefusal(error)) {
         if (!toldCapacity) {
           toldCapacity = true;
+          // The route says which limit it is (this person's, or Station's).
           input.onNotice?.(
-            `Every wait slot is taken (at most ${WAIT_SLOTS_PER_PERSON} per person); waiting for one to free up.`,
+            `${(error as StationHttpError).message} Waiting for a free slot.`,
           );
         }
         await sleep(Math.min(RETRY_DELAY_MS, remaining), input.signal);

@@ -2061,6 +2061,10 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
       const listed = await personRequest(`${PERSON}/activity?limit=50`);
       expect(ids(listed.body)).toContain('a-gone');
       expect((await personRequest(`${PERSON}/a-gone/digest`)).status).toBe(200);
+      // The wait leaf is composed with its own copy of the rule.
+      expect(
+        (await personRequest(`${PERSON}/a-gone/wait?until=idle`)).status,
+      ).toBe(200);
       const agent = await tool(bearer('g-caller'), 'list_project_activity', {
         limit: 50,
       });

@@ -59,6 +59,10 @@ const handshake = (capabilities: Record<string, boolean>) => ({
 
 type WaitQuery = { timeoutMs: number; afterEventCursor?: number };
 
+/** The route's refusal when Station as a whole is at its wait limit. */
+const STATION_FULL =
+  'Station is serving the most waits it allows at once. Wait again shortly.';
+
 /** A wait answer in the route's shape. */
 const answer = (fields: Record<string, unknown>) => ({
   sessionId: 'session-1',
@@ -293,15 +297,46 @@ describe('waitOnSession (the wait loop)', () => {
     expect(result.calls).toBeGreaterThan(20);
   });
 
+  test('a proxy answering 503 for a restarting Station is waited for, not called too old', async () => {
+    const proxy = createServer((_req, res) => {
+      res.writeHead(503, { 'Content-Type': 'text/html' });
+      res.end('<html>Service Unavailable</html>');
+    });
+    await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve));
+    const port = (proxy.address() as AddressInfo).port;
+    try {
+      const time = fakeTime();
+      const result = await waitOnSession({
+        apiBase: `http://127.0.0.1:${port}`,
+        sessionId: 'session-1',
+        until: 'idle',
+        timeoutMs: 600_000,
+        deps: time,
+      });
+      expect(result).toMatchObject({
+        outcome: 'observation-lost',
+        exitCode: 2,
+        lastError: 'wait call failed with HTTP 503',
+      });
+      expect(result.calls).toBeGreaterThan(20);
+    } finally {
+      await new Promise<void>((resolve) => proxy.close(() => resolve()));
+    }
+  });
+
   test('a capacity refusal waits for a slot within the budget; nothing was lost', async () => {
     const time = fakeTime();
     const notices: string[] = [];
     const replies: Array<() => unknown> = [
       () => {
-        throw new StationHttpError(429, 'full', { code: 'wait_capacity' });
+        throw new StationHttpError(429, STATION_FULL, {
+          code: 'wait_capacity',
+        });
       },
       () => {
-        throw new StationHttpError(429, 'full', { code: 'wait_capacity' });
+        throw new StationHttpError(429, STATION_FULL, {
+          code: 'wait_capacity',
+        });
       },
       () =>
         answer({
@@ -323,10 +358,8 @@ describe('waitOnSession (the wait loop)', () => {
       0,
       3,
     ]);
-    // Told once, not on every retry.
-    expect(notices).toEqual([
-      'Every wait slot is taken (at most 4 per person); waiting for one to free up.',
-    ]);
+    // Told once, not on every retry, in the route's own words for its limit.
+    expect(notices).toEqual([`${STATION_FULL} Waiting for a free slot.`]);
   });
 
   test.each(['idle', 'turn-settled'] as const)(

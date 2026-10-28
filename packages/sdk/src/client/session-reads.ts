@@ -13,8 +13,12 @@
  * `wait_capacity`, …) is a `StationHttpError` carrying its status and code.
  */
 
-import { PUBLIC_STATION_HANDSHAKE_PATH } from '@kontourai/station-contracts/environment-security';
-import { envelopeError } from './api-error-message';
+import type { PublicStationHandshake } from '@kontourai/station-contracts';
+import {
+  PUBLIC_STATION_HANDSHAKE_PATH,
+  parsePublicStationHandshake,
+} from '@kontourai/station-contracts/environment-security';
+import { envelopeError, StationHttpError } from './api-error-message';
 import { hasCapability } from './capability';
 import { type ClientRequestOptions, getJson } from './http';
 import {
@@ -146,21 +150,16 @@ async function read<T>(
   fallback: string,
   opts?: ClientRequestOptions,
 ): Promise<T> {
-  const handshake = await fetchPublicStationCapabilities(apiBase);
-  if (!hasCapability(handshake, 'sessionPersonReads')) {
-    // No handshake at all also means the Station did not answer (it is down
-    // or restarting), which is not "too old". Forget that answer and ask once
-    // more, so a transport failure surfaces as one and the caller can retry.
-    if (handshake === undefined) {
-      invalidatePublicStationCapabilities(apiBase);
-      await getJson(`${apiBase}${PUBLIC_STATION_HANDSHAKE_PATH}`, {
-        authentication: 'omit',
-        timeoutMs: 5000,
-        ...(opts?.signal ? { signal: opts.signal } : {}),
-      });
-    }
-    throw new SessionReadsUnsupportedError();
+  let handshake = await fetchPublicStationCapabilities(apiBase);
+  // No handshake at all also means the Station did not answer (it is down,
+  // restarting, or behind a proxy that says so), which is not "too old".
+  // Forget that answer and ask once more, reading what comes back.
+  if (handshake === undefined) {
+    invalidatePublicStationCapabilities(apiBase);
+    handshake = await probeHandshake(apiBase, opts?.signal);
   }
+  if (!hasCapability(handshake, 'sessionPersonReads'))
+    throw new SessionReadsUnsupportedError();
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query))
     if (value !== undefined) params.set(key, String(value));
@@ -179,6 +178,40 @@ async function read<T>(
   if (!response.ok || body?.success !== true || body.data === undefined)
     throw envelopeError(response, body, fallback);
   return body.data;
+}
+
+/**
+ * One uncached handshake read. A transport failure or timeout throws as
+ * itself, and a gateway status (502/503/504) throws a `StationHttpError`
+ * with that status: the caller may retry both. Any other answer is the
+ * host's: its handshake, or `undefined` when it has none.
+ */
+async function probeHandshake(
+  apiBase: string,
+  signal: AbortSignal | undefined,
+): Promise<PublicStationHandshake | undefined> {
+  const response = await getJson(`${apiBase}${PUBLIC_STATION_HANDSHAKE_PATH}`, {
+    authentication: 'omit',
+    timeoutMs: 5000,
+    ...(signal ? { signal } : {}),
+  });
+  if ([502, 503, 504].includes(response.status)) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new StationHttpError(
+      response.status,
+      'The Station is not answering yet.',
+    );
+  }
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => undefined);
+    return undefined;
+  }
+  try {
+    return parsePublicStationHandshake(await response.json()) ?? undefined;
+  } catch (error) {
+    rethrowDeadline(error);
+    return undefined;
+  }
 }
 
 /**
