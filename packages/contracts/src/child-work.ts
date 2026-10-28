@@ -149,19 +149,35 @@ export interface ChildWorkModel {
  * `claude-subagent`: Claude Code keeps every subagent's transcript under the
  * parent Claude session (`session_id` on `task_started`) by agent id (the
  * `local_agent` task's `task_id`).
+ *
+ * `codex-thread`: Codex writes every thread it runs, a spawned child
+ * included, to its own rollout file under `<CODEX_HOME>/sessions/`, named by
+ * the thread id and opened by a `session_meta` record carrying that id.
  */
-export type ChildWorkTranscriptRef = {
-  kind: 'claude-subagent';
-  sessionId: string;
-  agentId: string;
-  /**
-   * The Claude config home the session ran under (its app-home or
-   * credential profile, a connection's config home, or the global one), as
-   * the adapter applied it at spawn. Absent means the server's own global
-   * config home. Written by the server; no request supplies it.
-   */
-  configHome?: string;
-};
+export type ChildWorkTranscriptRef =
+  | {
+      kind: 'claude-subagent';
+      sessionId: string;
+      agentId: string;
+      /**
+       * The Claude config home the session ran under (its app-home or
+       * credential profile, a connection's config home, or the global one),
+       * as the adapter applied it at spawn. Absent means the server's own
+       * global config home. Written by the server; no request supplies it.
+       */
+      configHome?: string;
+    }
+  | {
+      kind: 'codex-thread';
+      /** The child's own Codex thread id. */
+      threadId: string;
+      /**
+       * The `CODEX_HOME` the parent session's app-server ran under, as the
+       * adapter resolved it at spawn. Absent means the server's own global
+       * Codex home. Written by the server; no request supplies it.
+       */
+      configHome?: string;
+    };
 
 /** Bound on a recorded config home path. */
 const CHILD_WORK_CONFIG_HOME_MAX_CHARS = 4_096;
@@ -216,6 +232,12 @@ const CLAUDE_SESSION_ID_PATTERN =
 /** A Claude agent id: one path-safe segment (`agent-<id>.jsonl`). */
 const CLAUDE_AGENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
+/**
+ * A Codex thread id: a UUID, as Codex names threads and their rollout files
+ * (`rollout-<time>-<thread id>.jsonl`).
+ */
+const CODEX_THREAD_ID_PATTERN = CLAUDE_SESSION_ID_PATTERN;
+
 /** The ref when it is well-formed, else undefined. Never trusts a path. */
 export function parseChildWorkTranscriptRef(
   value: unknown,
@@ -223,6 +245,26 @@ export function parseChildWorkTranscriptRef(
   if (!value || typeof value !== 'object' || Array.isArray(value))
     return undefined;
   const raw = value as Record<string, unknown>;
+  const configHome =
+    typeof raw.configHome === 'string' && isAbsoluteConfigHome(raw.configHome)
+      ? raw.configHome
+      : undefined;
+  // A config home that is present but not an absolute path is not a ref.
+  if (raw.configHome !== undefined && configHome === undefined)
+    return undefined;
+  if (raw.kind === 'codex-thread') {
+    if (
+      typeof raw.threadId !== 'string' ||
+      !CODEX_THREAD_ID_PATTERN.test(raw.threadId)
+    ) {
+      return undefined;
+    }
+    return {
+      kind: 'codex-thread',
+      threadId: raw.threadId,
+      ...(configHome ? { configHome } : {}),
+    };
+  }
   if (
     raw.kind !== 'claude-subagent' ||
     typeof raw.sessionId !== 'string' ||
@@ -232,13 +274,6 @@ export function parseChildWorkTranscriptRef(
   ) {
     return undefined;
   }
-  const configHome =
-    typeof raw.configHome === 'string' && isAbsoluteConfigHome(raw.configHome)
-      ? raw.configHome
-      : undefined;
-  // A config home that is present but not an absolute path is not a ref.
-  if (raw.configHome !== undefined && configHome === undefined)
-    return undefined;
   return {
     kind: 'claude-subagent',
     sessionId: raw.sessionId,

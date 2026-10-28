@@ -12,6 +12,8 @@ import {
   childWorkSettleFromItem,
   createEmptyChildWorkRegistry,
   forgetChildWorkReporter,
+  isChildWorkTerminalStatus,
+  parseChildWorkTranscriptRef,
   projectDelegateChildWork,
 } from '../child-work.js';
 
@@ -767,5 +769,126 @@ describe('#3163 a child’s own model and transcript identity', () => {
     expect(fold(snapshot(item('a', { transcript })))[0].transcript).toEqual(
       transcript,
     );
+  });
+
+  const CODEX_THREAD = '01a15c8b-3a97-7700-ab44-0d4e19ca09dd';
+
+  test.each([
+    [
+      'a bare thread ref',
+      { kind: 'codex-thread', threadId: CODEX_THREAD },
+      { kind: 'codex-thread', threadId: CODEX_THREAD },
+    ],
+    [
+      'a POSIX config home',
+      { kind: 'codex-thread', threadId: CODEX_THREAD, configHome: '/h/.codex' },
+      { kind: 'codex-thread', threadId: CODEX_THREAD, configHome: '/h/.codex' },
+    ],
+    [
+      'a Windows config home',
+      {
+        kind: 'codex-thread',
+        threadId: CODEX_THREAD,
+        configHome: 'C:\\Users\\b\\.codex',
+      },
+      {
+        kind: 'codex-thread',
+        threadId: CODEX_THREAD,
+        configHome: 'C:\\Users\\b\\.codex',
+      },
+    ],
+    [
+      'a ref carrying members of another kind',
+      {
+        kind: 'codex-thread',
+        threadId: CODEX_THREAD,
+        sessionId: SESSION,
+        path: '/etc/passwd',
+      },
+      { kind: 'codex-thread', threadId: CODEX_THREAD },
+    ],
+  ])(
+    'a Codex thread ref: %s is kept, and only its own members',
+    (_label, raw, kept) => {
+      expect(parseChildWorkTranscriptRef(raw)).toEqual(kept);
+      expect(
+        fold(
+          snapshot(
+            item('a', { transcript: raw as ChildWorkItem['transcript'] }),
+          ),
+        )[0].transcript,
+      ).toEqual(kept);
+    },
+  );
+
+  test.each([
+    ['a path-like thread id', { threadId: '../../sessions/x' }],
+    ['a rollout file name', { threadId: `rollout-${CODEX_THREAD}.jsonl` }],
+    ['a missing thread id', {}],
+    ['a numeric thread id', { threadId: 7 }],
+    [
+      'a relative config home',
+      { threadId: CODEX_THREAD, configHome: '.codex' },
+    ],
+    [
+      'a config home with NUL',
+      { threadId: CODEX_THREAD, configHome: '/h/\0/.codex' },
+    ],
+    ['a non-string config home', { threadId: CODEX_THREAD, configHome: 1 }],
+  ])('a Codex thread ref with %s is not a ref', (_label, ref) => {
+    const raw = { kind: 'codex-thread', ...ref };
+    expect(parseChildWorkTranscriptRef(raw)).toBeUndefined();
+    expect(
+      fold(
+        snapshot(item('a', { transcript: raw as ChildWorkItem['transcript'] })),
+      )[0].transcript,
+    ).toBeUndefined();
+  });
+
+  test('a Claude ref is not read as a Codex one, or the reverse', () => {
+    expect(
+      parseChildWorkTranscriptRef({
+        kind: 'codex-thread',
+        sessionId: SESSION,
+        agentId: 'a1',
+      }),
+    ).toBeUndefined();
+    expect(
+      parseChildWorkTranscriptRef({
+        kind: 'claude-subagent',
+        threadId: CODEX_THREAD,
+      }),
+    ).toBeUndefined();
+  });
+});
+
+describe('interrupted: the engine process ended under a running child', () => {
+  test('is terminal and sticky, unlike the correctable unresolved', () => {
+    expect(isChildWorkTerminalStatus('interrupted')).toBe(true);
+    // A later outcome cannot overwrite an observed process death...
+    const interrupted = fold(
+      snapshot(item('a')),
+      settle('a', 'interrupted'),
+      settle('a', 'completed', { result: { summary: 'late' } }),
+    );
+    expect(get(interrupted, 'a')).toMatchObject({ status: 'interrupted' });
+    // ...where it does correct an unresolved one.
+    const unresolved = fold(
+      snapshot(item('a')),
+      settle('a', 'unresolved'),
+      settle('a', 'completed'),
+    );
+    expect(get(unresolved, 'a')).toMatchObject({ status: 'completed' });
+  });
+
+  test('replays from a stored item as the same settle', () => {
+    const stored = get(
+      fold(snapshot(item('a')), settle('a', 'interrupted')),
+      'a',
+    );
+    expect(childWorkSettleFromItem(stored)).toMatchObject({
+      kind: 'settle',
+      status: 'interrupted',
+    });
   });
 });

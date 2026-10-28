@@ -9,9 +9,11 @@ import {
   type ChildWorkRegistryState,
   type ChildWorkResult,
   type ChildWorkTerminalStatus,
+  type ChildWorkTranscriptRef,
   type ChildWorkUsage,
   childWorkForReporter,
   createEmptyChildWorkRegistry,
+  parseChildWorkTranscriptRef,
 } from '@kontourai/station-contracts/child-work';
 import type { ProviderRuntimeEvent as CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
@@ -294,6 +296,23 @@ interface ChildIdentity {
 }
 
 /**
+ * The child's own rollout, named by its thread id under the session's Codex
+ * home. Absent when the id is not a Codex thread id or the home is unknown:
+ * no ref is better than one that reads the wrong home.
+ */
+function codexChildTranscriptRef(
+  record: CodexSessionRecord,
+  childId: string,
+): ChildWorkTranscriptRef | undefined {
+  if (!record.codexHome) return undefined;
+  return parseChildWorkTranscriptRef({
+    kind: 'codex-thread',
+    threadId: childId,
+    configHome: record.codexHome,
+  });
+}
+
+/**
  * Registers `childId` as running (a snapshot listing it), then replays any
  * notifications its thread sent before this claim. A child already known is
  * only enriched with identity it lacked; a settled one is never revived.
@@ -316,6 +335,8 @@ function registerChild(
     facts.depth = identity.depth;
   }
   state.children.set(childId, facts);
+  // Readable while the child runs: Codex appends to the rollout as it goes.
+  const transcript = codexChildTranscriptRef(context.record, childId);
   if (!existing) {
     const item: ChildWorkItem = {
       producer: 'engine-subagent',
@@ -327,6 +348,7 @@ function registerChild(
       ...(identity.title ? { title: identity.title } : {}),
       ...(identity.kindLabel ? { kindLabel: identity.kindLabel } : {}),
       ...(identity.model ? { model: identity.model } : {}),
+      ...(transcript ? { transcript } : {}),
       // #2486 review: `stopProviderTask` needs the child's own active turn
       // id to target a `turn/interrupt` at — a control offered before that
       // arrives is a button `stopProviderTask` can only answer
@@ -358,6 +380,7 @@ function registerChild(
       missing.kindLabel = identity.kindLabel;
     }
     if (!existing.model && identity.model) missing.model = identity.model;
+    if (!existing.transcript && transcript) missing.transcript = transcript;
     if (Object.keys(missing).length > 0) {
       emit(context, { kind: 'upsert', item: { ...existing, ...missing } });
     }

@@ -2007,6 +2007,9 @@ export class CodexAdapter implements ProviderAdapterShape {
       nowIso: () => this.now().toISOString(),
     });
     record.preparedResumeBindingKey = resumeBindingKey;
+    // Where Codex writes this session's thread rollouts, children included:
+    // a child's transcript ref names it, never a file path.
+    if (isAbsolute(configurationHome)) record.codexHome = configurationHome;
     if (sourceAffinity) {
       this.transport.setStdoutIngressLimit(
         record,

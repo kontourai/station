@@ -2604,6 +2604,54 @@ describe('CodexAdapter', () => {
       }
     }
 
+    test('a spawned child names its own rollout under the CODEX_HOME the session was spawned with', async () => {
+      processHandle = new FakeCodexProcess();
+      const processFactory = vi.fn(() => processHandle!);
+      const adapter = new CodexAdapter({
+        processFactory,
+        getAppHomeEnv: async () => ({
+          env: { CODEX_HOME: '/profiles/child-home' },
+          profileRef: 'child-home',
+        }),
+      });
+      const transport = (adapter as any).transport;
+      const published: any[] = [];
+      const publish = transport.publish.bind(transport);
+      transport.publish = (event: any, record?: unknown) => {
+        published.push(event);
+        return publish(event, record);
+      };
+      const threadId = 'thread-child-transcript-ref';
+      try {
+        await replayCodexCollabPrefix(
+          adapter,
+          threadId,
+          CODEX_COLLAB_V1_CLIENT_INTERRUPT_UNBLOCKS_PARENT,
+        );
+        // The home the process was actually spawned with...
+        expect(processFactory.mock.calls[0][0]).toMatchObject({
+          CODEX_HOME: '/profiles/child-home',
+        });
+        // ...is the one the running child's published ref names.
+        const refs = published.flatMap((event) =>
+          event.method === 'child-work.updated' &&
+          event.delta.kind === 'snapshot'
+            ? event.delta.running
+                .filter((item: any) => item.childId === CHILD_ID)
+                .map((item: any) => item.transcript)
+            : [],
+        );
+        expect(refs.length).toBeGreaterThan(0);
+        expect(refs.at(-1)).toEqual({
+          kind: 'codex-thread',
+          threadId: CHILD_ID,
+          configHome: '/profiles/child-home',
+        });
+      } finally {
+        await adapter.stopAll();
+      }
+    });
+
     test('per-child stop sends exactly two interrupts — the child, then the parent — and both settle cancelled', async () => {
       processHandle = new FakeCodexProcess();
       const adapter = new CodexAdapter({
