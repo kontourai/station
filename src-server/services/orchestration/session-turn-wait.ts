@@ -113,15 +113,17 @@ export function evaluateSessionWait(
       typeof anchor === 'object' &&
       nextAnchor === anchor;
     if (!retainedStart) open = advanceOpenTurnId(open, event, invocationId);
-    let settledInvocation = invocationId;
-    // A recovery abort has no invocation to prove; the fold above already
-    // matched it to the open turn by id.
+    // A restart-recovery abort closes the turn the fold above matched by id.
+    // It has no invocation to prove, so it settles the turn without
+    // acknowledging the requested work.
+    const recoveryAbort = isInvocationlessRecoveryAbort(event);
+    let settledInvocation = recoveryAbort ? undefined : invocationId;
     const ordinary =
       ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
         event.method,
       ) &&
       (event.turnId !== undefined || event.invocationId !== undefined) &&
-      !isInvocationlessRecoveryAbort(event);
+      !recoveryAbort;
     if (
       before !== undefined &&
       ordinary &&

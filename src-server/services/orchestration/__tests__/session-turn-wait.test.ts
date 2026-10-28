@@ -543,5 +543,9 @@ describe('a restart-recovered turn', () => {
       satisfied: true,
       view: { settledTurn: { turnId: 'turn-1', outcome: 'aborted' } },
     });
+    // Nothing proves the requested work settled, so none is acknowledged.
+    expect(
+      evaluateSessionWait(ports, 't1', 'turn-settled', 0).view.settledTurn,
+    ).not.toHaveProperty('invocationId');
   });
 });
