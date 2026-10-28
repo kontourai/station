@@ -32,7 +32,13 @@
  * regression and nothing below asserts on it, so the watcher is faked and
  * `ConfigLoader` itself stays real.
  */
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
@@ -50,10 +56,18 @@ import { ConfigLoader } from '../../domain/config-loader.js';
 import { ensureStationHomeSchema } from '../../domain/home-schema-gate.js';
 import { getOrchestrationDatabasePath } from '../../domain/migrations/003-orchestration-events.js';
 import { listProviders } from '../../providers/registries/registry.js';
+import type { AccountSharingRuntimeState } from '../../routes/system/account-sharing-routes.js';
 import {
   principalKey,
   UnattendedGrantStore,
 } from '../../services/agents/unattended-grant-store.js';
+import {
+  type AccountSharingRecord,
+  accountSharingSettingPath,
+  resolveAccountSharingAtBoot,
+  stageAccountSharingChange,
+} from '../../services/identity/account-sharing-setting.js';
+import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import { openRelayEnrollmentJournal } from '../../services/relay/relay-enrollment-journal.js';
@@ -1501,6 +1515,210 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     await runtime.shutdown();
     runtime = undefined;
     expect(pairing.canHoldPersonalToken(accountBinding)).toBe(false);
+  });
+
+  describe('Project sharing from Settings (#4305)', () => {
+    const publicOrigin = `http://localhost:${TEST_PORT}`;
+    type Internals = {
+      localAccounts?: LoadedLocalAccounts;
+      deploymentAuthentication?: unknown;
+      projectMembership?: { service: { mayRegister: unknown } };
+      environmentSecurityService: EnvironmentSecurityService;
+    };
+    const internals = () => runtime as unknown as Internals;
+    const routeContext = () =>
+      routeMocks.configureRuntimeRoutes.mock.calls.at(-1)?.[0] as {
+        localAccounts?: unknown;
+        deploymentAuthentication?: unknown;
+        projectMembership?: unknown;
+        accountSharing: () => AccountSharingRuntimeState;
+      };
+    const record = () =>
+      JSON.parse(
+        readFileSync(accountSharingSettingPath(home), 'utf8'),
+      ) as AccountSharingRecord;
+    const boot = async () => {
+      routeMocks.armRoutesConfigured();
+      runtime = new StationRuntime({
+        projectHomeDir: home,
+        port: TEST_PORT,
+        host: '127.0.0.1',
+      });
+      replaceTerminalListener(runtime);
+      await expect(runtime.initialize()).resolves.toBeUndefined();
+    };
+    const stop = async () => {
+      await runtime!.shutdown();
+      runtime = undefined;
+    };
+
+    it('a staged choice is adopted at boot, reaches the routes, and is committed', async () => {
+      home = await createSchemaHome('station-sharing-setting-apply-');
+      stageAccountSharingChange(home, { enabled: true, publicOrigin });
+      await boot();
+      expect(internals().localAccounts).toBeDefined();
+      const context = routeContext();
+      expect(context.localAccounts).toBe(internals().localAccounts);
+      expect(context.projectMembership).toBeDefined();
+      expect(context.accountSharing()).toEqual({
+        lockedBy: [],
+        active: {
+          projectSharing: true,
+          localAccounts: true,
+          externalProvider: false,
+          publicOrigin,
+        },
+      });
+      expect(record()).toMatchObject({
+        committed: { enabled: true, publicOrigin },
+        lastApply: { outcome: 'applied' },
+      });
+      expect(record().pending).toBeUndefined();
+    });
+
+    it('a staged choice that fails to load starts the Station with sharing off and rolls back', async () => {
+      home = await createSchemaHome('station-sharing-setting-failure-');
+      // An account store whose authority secret is gone: loading refuses.
+      mkdirSync(join(home, 'authentication'), { mode: 0o700 });
+      writeFileSync(join(home, 'authentication', 'local-accounts.sqlite'), '');
+      stageAccountSharingChange(home, { enabled: true, publicOrigin });
+      await boot();
+      expect(internals().localAccounts).toBeUndefined();
+      expect(internals().projectMembership).toBeUndefined();
+      const state = routeContext().accountSharing();
+      expect(state.active).toEqual({
+        projectSharing: false,
+        localAccounts: false,
+        externalProvider: false,
+      });
+      expect(state.startupFailure).toMatch(/authority is missing/);
+      expect(record().pending).toBeUndefined();
+      expect(record().committed).toEqual({ enabled: false });
+      expect(record().lastApply).toMatchObject({
+        outcome: 'rolled-back',
+        reason: expect.stringMatching(/authority is missing/),
+      });
+    });
+
+    it('a change a previous boot tried and never committed is rolled back before use', async () => {
+      home = await createSchemaHome('station-sharing-setting-crash-');
+      stageAccountSharingChange(home, { enabled: true, publicOrigin });
+      // The generation that tried it died before committing.
+      resolveAccountSharingAtBoot(home);
+      await boot();
+      expect(internals().localAccounts).toBeUndefined();
+      expect(record()).toMatchObject({
+        committed: { enabled: false },
+        lastApply: { outcome: 'rolled-back' },
+      });
+    });
+
+    it('deployment variables win: the stored choice is neither used nor touched', async () => {
+      home = await createSchemaHome('station-sharing-setting-locked-');
+      stageAccountSharingChange(home, { enabled: true, publicOrigin });
+      const previous = process.env.STATION_PROJECT_SHARING;
+      process.env.STATION_PROJECT_SHARING = '0';
+      try {
+        await boot();
+      } finally {
+        if (previous === undefined) delete process.env.STATION_PROJECT_SHARING;
+        else process.env.STATION_PROJECT_SHARING = previous;
+      }
+      expect(internals().localAccounts).toBeUndefined();
+      expect(routeContext().accountSharing().lockedBy).toEqual([
+        'STATION_PROJECT_SHARING',
+      ]);
+      expect(record().pending).toMatchObject({ attempted: false });
+    });
+
+    it('turning it off keeps the account store and stops sign-in; turning it on again restores the same sessions', {
+      timeout: 120_000,
+    }, async () => {
+      home = await createSchemaHome('station-sharing-setting-off-');
+      stageAccountSharingChange(home, { enabled: true, publicOrigin });
+      await boot();
+      const membership = internals().projectMembership!;
+      vi.spyOn(membership.service as never, 'mayRegister').mockResolvedValue(
+        true as never,
+      );
+      const accounts = internals().localAccounts!;
+      const post = (path: string, body: unknown, invitation = false) =>
+        accounts.service.handle(
+          new Request(`${publicOrigin}/api/account-auth${path}`, {
+            method: 'POST',
+            headers: {
+              Origin: publicOrigin,
+              'Content-Type': 'application/json',
+              ...(invitation
+                ? { 'x-station-invitation': 'owned-test-invitation' }
+                : {}),
+            },
+            body: JSON.stringify(body),
+          }),
+          path,
+        );
+      const credentials = {
+        username: 'shared.person',
+        password: 'Sharing setting password 12345',
+      };
+      expect((await post('/sign-up/username', credentials, true)).status).toBe(
+        200,
+      );
+      const login = await post('/sign-in/username', credentials);
+      expect(login.status).toBe(200);
+      const Cookie = login.headers
+        .getSetCookie()
+        .map((value) => value.split(';')[0])
+        .join('; ');
+      const sessionRequest = () =>
+        new Request(`${publicOrigin}/api/account-auth/session`, {
+          headers: { Cookie },
+        });
+      const before = await accounts.service.authenticate(sessionRequest());
+      expect(before.kind).toBe('authenticated');
+      const issuer = accounts.accountDirectory.issuer;
+      await stop();
+
+      stageAccountSharingChange(home, { enabled: false });
+      await boot();
+      expect(record().committed).toEqual({ enabled: false });
+      // Nothing can authenticate an account: no provider reaches the routes.
+      expect(internals().localAccounts).toBeUndefined();
+      expect(internals().deploymentAuthentication).toBeUndefined();
+      expect(routeContext().deploymentAuthentication).toBeUndefined();
+      expect(routeContext().projectMembership).toBeUndefined();
+      // Account-tied tokens and Devices are refused while it is off.
+      expect(
+        internals().environmentSecurityService.devicePairing.canHoldPersonalToken(
+          {
+            kind: 'account',
+            issuer,
+            subject: 'anyone',
+            displayName: 'Anyone',
+            approvedAt: 1,
+            approvalId: 'approval-1',
+            approvedBy: 'human:local:operator',
+          },
+        ),
+      ).toBe(false);
+      // The stores are kept.
+      expect(
+        existsSync(join(home, 'authentication', 'local-accounts.sqlite')),
+      ).toBe(true);
+      expect(
+        existsSync(
+          join(home, 'authentication', 'local-account-authority.sqlite'),
+        ),
+      ).toBe(true);
+      await stop();
+
+      stageAccountSharingChange(home, { enabled: true, publicOrigin });
+      await boot();
+      const after = await internals().localAccounts!.service.authenticate(
+        sessionRequest(),
+      );
+      expect(after).toEqual(before);
+    });
   });
 
   it('hosted tenant isolation never binds the unauthorised terminal port', async () => {

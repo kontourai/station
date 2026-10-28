@@ -10,6 +10,7 @@ import {
 } from '@kontourai/station-contracts/task-graph';
 import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-room-work';
 import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge-root-identity';
+import { HANDOFF_DEFAULTS } from '@kontourai/station-supervisor/protocol';
 import { zodSchema } from 'ai';
 import packageJson from '../../../package.json' with { type: 'json' };
 import { captureAnalyticsHomeActivation } from '../../analytics/analytics-activation.js';
@@ -44,6 +45,7 @@ import { createTaskReviewCaptureRoutes } from '../../routes/orchestration/task-r
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
 import { createProjectRoomRoutes } from '../../routes/projects/project-room-routes.js';
 import { createProjectSharedTaskRoutes } from '../../routes/projects/project-shared-tasks.js';
+import { createAccountSharingRoutes } from '../../routes/system/account-sharing-routes.js';
 import { createApplicationSessionRoutes } from '../../routes/system/application-session-routes.js';
 import { createDeploymentAuthenticationRoutes } from '../../routes/system/deployment-authentication-routes.js';
 import { createLocalAccountAdministrationRoutes } from '../../routes/system/local-account-administration-routes.js';
@@ -143,6 +145,7 @@ import { createSshDeviceHostActions } from '../../services/devices/hosts/ssh-dev
 import { DeviceToolchainService } from '../../services/devices/toolchain/device-toolchain-service.js';
 import { HtmlReplyPreview } from '../../services/html-reply-preview.js';
 import { AccountPreferencesStore } from '../../services/identity/account-preferences.js';
+import { accountSharingOriginOptions } from '../../services/identity/account-sharing-origins.js';
 import type { ApplicationSessionService } from '../../services/identity/application-session-service.js';
 import type { AuthorityObservationRequestContext } from '../../services/identity/authority-observation.js';
 import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
@@ -214,6 +217,10 @@ import { WalkthroughService } from '../../services/walkthroughs/walkthrough-serv
 import { errorMessage } from '../../utils/error-message.js';
 import { canonicalPath } from '../../utils/path-containment.js';
 import { bindLocalMediaPreviews } from '../bootstrap/local-media-runtime.js';
+import {
+  isSupervisedEnvironment,
+  requestSupervisorHandoff,
+} from '../bootstrap/supervisor-link.js';
 import { STATION_KNOWLEDGE_MCP_PATH } from '../mcp/station-control-mcp-token.js';
 import { createRuntimeFrameworkModel } from '../plugins/runtime-provider-resolution.js';
 import {
@@ -1019,6 +1026,8 @@ export interface ConfigureRuntimeRoutesContext {
   projectSharedTasks?: ProjectSharedTaskStore;
   deploymentAuthentication?: LoadedDeploymentAuthentication;
   localAccounts?: LoadedLocalAccounts;
+  /** #4305: Settings-controlled Project sharing; absent in embedders that do not offer it. */
+  accountSharing?: () => import('../../routes/system/account-sharing-routes.js').AccountSharingRuntimeState;
   applicationSessions?: ApplicationSessionService;
   nativeRelayEnrollment?: NativeRelayEnrollmentService;
   nativeSurfaceRegistry?: NativeSurfaceRegistry;
@@ -6832,6 +6841,45 @@ export function configureRuntimeRoutes(
       (request) => projectMembershipAuthority(request).operator(),
     ),
   );
+  // #4305: the same operator authority as account administration above, so
+  // any operator step-up added to that check applies here too.
+  if (context.accountSharing) {
+    const accountSharingState = context.accountSharing;
+    context.app.route(
+      '/api/operator/account-sharing',
+      createAccountSharingRoutes({
+        homeDirectory: context.configLoader.getProjectHomeDir(),
+        requireOperator: (request) =>
+          projectMembershipAuthority(request).operator(),
+        state: accountSharingState,
+        origins: async () => {
+          const configured = process.env.STATION_TRUSTED_TAILSCALE_SERVE_ORIGIN;
+          const detected = await publicIngressOriginResolver(
+            context.port,
+          ).resolve();
+          return accountSharingOriginOptions({
+            allowedOrigins: (process.env.ALLOWED_ORIGINS ?? '')
+              .split(',')
+              .map((origin) => origin.trim())
+              .filter(Boolean),
+            browserOrigins: resolveConfiguredRuntimeOrigins(context),
+            port: context.port,
+            host: context.host,
+            tailscaleServeOrigins: [
+              ...(configured ? [configured] : []),
+              ...(detected ?? []),
+            ],
+          });
+        },
+        supervised: () => isSupervisedEnvironment(),
+        requestHandoff: () =>
+          requestSupervisorHandoff({
+            timeoutMs: HANDOFF_DEFAULTS.parkTimeoutMs + 15_000,
+          }),
+        logger: context.logger,
+      }),
+    );
+  }
   const telemetryOperatorAccounts = new WeakMap<Request, () => boolean>();
   const telemetryOperatorDevices = new WeakMap<Request, () => boolean>();
   const assertTelemetryCompanionOperatorLocalCurrent = (request: Request) => {

@@ -11,6 +11,12 @@ import { engineSignIn } from '../../services/acp/engine-sign-in.js';
 import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 import { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
 import type { RelayInvitationOwner } from '../../services/connections/relay-invitation-owner.js';
+import {
+  commitAccountSharingAtBoot,
+  deploymentAccountSharingVariables,
+  resolveAccountSharingAtBoot,
+  rollBackAccountSharingAtBoot,
+} from '../../services/identity/account-sharing-setting.js';
 import { createApplicationSessionRuntime } from '../../services/identity/application-session-runtime.js';
 import { connectedAccountOwnerIdForTurnAccount } from '../../services/identity/connected-account-owner.js';
 import {
@@ -422,6 +428,7 @@ interface AgentConfigurationGeneration {
   activationEpoch?: number;
 }
 
+import type { AccountSharingRuntimeState } from '../../routes/system/account-sharing-routes.js';
 import { getCachedUser } from '../../routes/system/auth.js';
 import { runAsStationServer } from '../../security/station-server-scope.js';
 import type { BrowserService } from '../../services/browser/browser-service.js';
@@ -588,11 +595,18 @@ export class StationRuntime {
   };
   private selfHostedBrokerShutdown?: Promise<void>;
 
-  private readonly projectSharingEnabled: boolean;
+  /** Not readonly: a stored Settings choice that fails to load turns it off (#4305). */
+  private projectSharingEnabled: boolean;
   private projectMembership?: ReturnType<typeof createProjectMembershipRuntime>;
   private readonly authenticationConfiguration?: DeploymentAuthenticationConfiguration;
   private deploymentAuthentication?: LoadedDeploymentAuthentication;
-  private readonly localAccountConfiguration?: LocalAccountConfiguration;
+  private localAccountConfiguration?: LocalAccountConfiguration;
+  /** #4305: process configuration that decides sharing; empty when Settings does. */
+  private readonly accountSharingLockedBy: readonly string[];
+  /** #4305: this boot is trying a staged Settings change. */
+  private accountSharingApplying = false;
+  /** #4305: why the stored Settings choice is not in effect this boot. */
+  private accountSharingStartupFailure?: string;
   private localAccounts?: LoadedLocalAccounts;
   private applicationSessions?: ReturnType<
     typeof createApplicationSessionRuntime
@@ -1291,6 +1305,16 @@ export class StationRuntime {
           ? undefined
           : readDeploymentAuthenticationConfiguration(process.env)),
     );
+    // #4305: the deployment decides whenever it says anything; the stored
+    // Settings choice is read only below, once the home is known good.
+    this.accountSharingLockedBy = [
+      ...deploymentAccountSharingVariables(process.env),
+      ...(options.projectSharing !== undefined ||
+      options.localAccounts ||
+      options.authentication
+        ? ['runtime options']
+        : []),
+    ];
     const projectHomeDir = options.projectHomeDir || resolveHomeDir();
     // archive#3217, and it has to be HERE rather than in `index.ts`: the
     // pre-boot hooks `index.ts` runs are not on every entry point's path, so
@@ -1334,6 +1358,21 @@ export class StationRuntime {
         `${projectHomeDir}/data`,
         orchestrationDatabasePath,
       );
+      if (this.accountSharingLockedBy.length === 0) {
+        // Never throws for stored state: a staged change a previous boot
+        // never committed is rolled back here, before anything uses it.
+        const stored = resolveAccountSharingAtBoot(projectHomeDir);
+        this.accountSharingApplying = stored.applying;
+        if (stored.unreadable)
+          this.accountSharingStartupFailure =
+            'The stored setting could not be read, so Project sharing is off.';
+        if (stored.choice.enabled) {
+          this.projectSharingEnabled = true;
+          this.localAccountConfiguration = {
+            publicOrigin: stored.choice.publicOrigin,
+          };
+        }
+      }
       this.port = options.port ?? DEFAULT_SERVER_PORT;
       this.buildProvenanceSnapshot = options.buildProvenanceSnapshot;
       setRuntimeControlApiBase(this.port);
@@ -3623,6 +3662,17 @@ export class StationRuntime {
         }
       }
       this.virtualApplicationLifetime.signal.throwIfAborted();
+      if (this.accountSharingApplying) {
+        // #4305: this boot started with the staged Settings change; keep it.
+        this.accountSharingApplying = false;
+        try {
+          commitAccountSharingAtBoot(this.configLoader.getProjectHomeDir());
+        } catch {
+          this.logger?.warn?.(
+            'Project sharing setting started but could not be committed; the next restart rolls it back',
+          );
+        }
+      }
       this.recordRuntimeLifecycle('ready');
       // #3851: the server listens, but orchestration's session recovery
       // (which re-registers the turns it finds) runs unawaited from its
@@ -3714,6 +3764,54 @@ export class StationRuntime {
     }
   }
 
+  /** Project membership, then the built-in account provider when configured. */
+  private async loadProjectSharing(stationId: string): Promise<void> {
+    if (this.projectSharingEnabled && !this.projectMembership) {
+      this.projectMembership = createProjectMembershipRuntime(
+        this.configLoader.getProjectHomeDir(),
+        stationId,
+        this.storageAdapter,
+      );
+    }
+    if (!this.localAccountConfiguration || this.deploymentAuthentication)
+      return;
+    if (!this.projectMembership)
+      throw new Error('Local account enrollment requires Project membership.');
+    this.localAccounts = await loadLocalAccounts(
+      this.localAccountConfiguration,
+      {
+        stationId,
+        homeDirectory: this.configLoader.getProjectHomeDir(),
+      },
+      this.projectMembership.service,
+    );
+    this.deploymentAuthentication = this.localAccounts;
+    // #3586: account-tied personal access tokens are checked against
+    // this Station's own account standing; no other provider has one.
+    this.environmentSecurityService.devicePairing.setAccountDirectory(
+      this.localAccounts.accountDirectory,
+    );
+  }
+
+  /** #4305: what the account-sharing settings route reports. */
+  private accountSharingState(): AccountSharingRuntimeState {
+    return {
+      lockedBy: this.accountSharingLockedBy,
+      active: {
+        projectSharing: !!this.projectMembership,
+        localAccounts: !!this.localAccounts,
+        externalProvider:
+          !!this.deploymentAuthentication && !this.localAccounts,
+        ...(this.deploymentAuthentication
+          ? { publicOrigin: this.deploymentAuthentication.publicOrigin }
+          : {}),
+      },
+      ...(this.accountSharingStartupFailure
+        ? { startupFailure: this.accountSharingStartupFailure }
+        : {}),
+    };
+  }
+
   private async runInitialize(
     nativeProofFlag: string | undefined,
   ): Promise<void> {
@@ -3729,33 +3827,37 @@ export class StationRuntime {
     // state prevents any listener from being configured.
     const identity = await this.environmentSecurityService.initialize();
     this.stationEnvironmentId = identity.environmentId;
-    if (this.projectSharingEnabled && !this.projectMembership) {
-      this.projectMembership = createProjectMembershipRuntime(
-        this.configLoader.getProjectHomeDir(),
-        identity.environmentId,
-        this.storageAdapter,
-      );
+    try {
+      await this.loadProjectSharing(identity.environmentId);
+    } catch (error) {
+      // Deployment configuration still fails startup closed. A stored
+      // Settings choice instead turns sharing off for this boot, so a choice
+      // that cannot load never makes the Station unbootable (#4305).
+      if (this.accountSharingLockedBy.length > 0) throw error;
+      this.projectMembership?.close();
+      this.projectMembership = undefined;
+      this.projectSharingEnabled = false;
+      this.localAccountConfiguration = undefined;
+      const reason = `Project sharing could not start: ${errorMessage(error).slice(0, 400)}`;
+      this.accountSharingStartupFailure = reason;
+      this.logger?.warn?.('Project sharing from Settings did not start', {
+        applying: this.accountSharingApplying,
+      });
+      if (this.accountSharingApplying) {
+        this.accountSharingApplying = false;
+        try {
+          rollBackAccountSharingAtBoot(
+            this.configLoader.getProjectHomeDir(),
+            reason,
+          );
+        } catch {
+          // The attempt mark stays; the next boot rolls it back instead.
+        }
+      }
     }
-    if (this.localAccountConfiguration && !this.deploymentAuthentication) {
-      if (!this.projectMembership)
-        throw new Error(
-          'Local account enrollment requires Project membership.',
-        );
-      this.localAccounts = await loadLocalAccounts(
-        this.localAccountConfiguration,
-        {
-          stationId: identity.environmentId,
-          homeDirectory: this.configLoader.getProjectHomeDir(),
-        },
-        this.projectMembership.service,
-      );
-      this.deploymentAuthentication = this.localAccounts;
-      // #3586: account-tied personal access tokens are checked against
-      // this Station's own account standing; no other provider has one.
-      this.environmentSecurityService.devicePairing.setAccountDirectory(
-        this.localAccounts.accountDirectory,
-      );
-    } else if (
+    // Local accounts and a module are exclusive (checked in the constructor).
+    if (
+      !this.localAccountConfiguration &&
       this.authenticationConfiguration &&
       !this.deploymentAuthentication
     ) {
@@ -4640,6 +4742,7 @@ export class StationRuntime {
         : {}),
       deploymentAuthentication: this.deploymentAuthentication,
       localAccounts: this.localAccounts,
+      accountSharing: () => this.accountSharingState(),
       applicationSessions: this.applicationSessions,
       nativeRelayEnrollment: this.nativeRelayEnrollment,
       nativeSurfaceRegistry: this.nativeSurfaceRegistry,
