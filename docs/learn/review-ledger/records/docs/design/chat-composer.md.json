@@ -190,7 +190,11 @@
 
     "src-ui/src/__tests__/execution.test.ts",
 
-    "src-ui/src/__tests__/ChatDockBody.offlineSettling.test.tsx"
+    "src-ui/src/__tests__/ChatDockBody.offlineSettling.test.tsx",
+
+    "src-ui/src/components/chat-dock/interruptedTurnContinue.ts",
+
+    "src-ui/src/components/chat/message-bubble/visibleContent.ts"
   ],
 
   "checks": [
