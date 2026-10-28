@@ -16,6 +16,7 @@ import {
   isSafeToolServerId,
   type ToolDef,
   type ToolMetadata,
+  withUntrustedContentChange,
 } from '@kontourai/station-contracts/tool';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { normalizePersistedToolServerReason } from '../security/tool-server-reason.js';
@@ -158,6 +159,8 @@ export async function saveIntegrationConfig(
   projectHomeDir: string,
   id: string,
   def: ToolDef,
+  /** #3483: who an untrusted-content permission change is attributed to. */
+  options: { changedBy?: string } = {},
 ): Promise<void> {
   assertSafeIntegrationId(id);
   await mkdir(join(projectHomeDir, 'integrations'), { recursive: true });
@@ -176,6 +179,7 @@ export async function saveIntegrationConfig(
       integrationPath,
       def,
       current,
+      options.changedBy,
     );
   } finally {
     await release();
@@ -207,17 +211,78 @@ export async function updateIntegrationConfig(
       readFileSync(integrationPath, 'utf8'),
     ) as ToolDef;
     rejectRetiredIntegrationCredentialFormat(current, id);
-    const next = update(current);
-    await writeIntegrationConfigLocked(
+    return await writeIntegrationConfigLocked(
       projectHomeDir,
       id,
       integrationPath,
-      next,
+      update(current),
       current,
+      undefined,
     );
-    return next;
   } finally {
     await release();
+  }
+}
+
+/**
+ * #3483: the stored definitions a whole-directory copy (a plugin install) is
+ * about to replace, read before the copy removes them. Unreadable or absent
+ * definitions are left out and count as new.
+ */
+export function readStoredIntegrations(
+  projectHomeDir: string,
+  ids: readonly string[],
+): Map<string, ToolDef> {
+  const stored = new Map<string, ToolDef>();
+  for (const id of ids) {
+    if (!isSafeToolServerId(id)) continue;
+    try {
+      stored.set(
+        id,
+        JSON.parse(
+          readFileSync(integrationConfigPath(projectHomeDir, id), 'utf8'),
+        ) as ToolDef,
+      );
+    } catch {
+      /* Absent or unreadable: treated as a first write. */
+    }
+  }
+  return stored;
+}
+
+/**
+ * #3483: pass definitions a whole-directory copy wrote through the same
+ * receipt rule as every other write, against what they replaced: stored
+ * history is kept, receipts in the copied files are dropped, and a changed
+ * classification or permission is recorded. Each rewrite holds the
+ * integration's mutation lock.
+ */
+export async function recordCopiedIntegrations(
+  projectHomeDir: string,
+  ids: readonly string[],
+  replaced: ReadonlyMap<string, ToolDef>,
+): Promise<void> {
+  for (const id of ids) {
+    assertSafeIntegrationId(id);
+    const integrationPath = integrationConfigPath(projectHomeDir, id);
+    const release = await acquireFileMutationLockAsync(
+      toolServerIntegrationMutationLockPath(projectHomeDir, id),
+    );
+    try {
+      const copied = JSON.parse(
+        readFileSync(integrationPath, 'utf8'),
+      ) as ToolDef;
+      const recorded = withUntrustedContentChange(
+        replaced.get(id),
+        copied,
+        undefined,
+        new Date(),
+      );
+      if (JSON.stringify(recorded) !== JSON.stringify(copied))
+        await publishJsonFileWithOwnedLock(integrationPath, recorded);
+    } finally {
+      await release();
+    }
   }
 }
 
@@ -236,14 +301,29 @@ function rejectRetiredIntegrationCredentialFormat(
   }
 }
 
+/**
+ * The one locked integration write. It owns the untrusted-content receipts
+ * (#3483): they come from the stored copy read under this lock, never from
+ * `def`, so concurrent writers and whole-definition replacements cannot
+ * drop or forge one. Returns the definition it wrote the receipts into.
+ */
 async function writeIntegrationConfigLocked(
   projectHomeDir: string,
   id: string,
   integrationPath: string,
-  def: ToolDef,
+  incoming: ToolDef,
   current: ToolDef | undefined,
-): Promise<void> {
+  changedBy: string | undefined,
+): Promise<ToolDef> {
   rejectRetiredIntegrationCredentialFormat(current, id);
+  // The spread inside keeps the enumerable in-memory enabled marker read
+  // below.
+  const def = withUntrustedContentChange(
+    current,
+    incoming,
+    changedBy,
+    new Date(),
+  );
   const persisted = { ...def };
   delete persisted.secretEnv;
   delete persisted.removeSecretEnvKeys;
@@ -296,6 +376,7 @@ async function writeIntegrationConfigLocked(
   // removing a migrated set. Splitting this into removeMany then reconcile
   // admitted a partial delete if the second write failed after the first.
   if (store) await store.reconcileServer(id, [...refs], [...removals]);
+  return def;
 }
 
 export async function deleteIntegrationConfig(

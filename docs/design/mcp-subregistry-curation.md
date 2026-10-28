@@ -95,7 +95,10 @@ entry.
 Pre-registered OAuth clients are a separate lane. The listing reads one host
 capability, `pre-registered-clients`
 ([source](../../src-server/services/plugins/tool-server-oauth-capabilities.ts)),
-at listing time. Nothing registers it yet; the change that adds
+at listing time. Registration is not a security boundary: code in the
+server process, including a trusted in-process plugin, already has the
+host's authority, and a false registration only lists an entry as addable
+whose sign-in then fails. Nothing registers it yet; the change that adds
 pre-registered client support registers it with one
 `registerToolServerOAuthCapability('pre-registered-clients')` call, and
 GitHub and Gmail then list as **setup-required** with nothing changed in
@@ -111,8 +114,8 @@ origin.
 
 A catalog cannot add an endpoint on this host or its network: loopback,
 private, link-local, shared, reserved and multicast addresses (IPv4, IPv6,
-IPv4-mapped IPv6, and `localhost`, `*.localhost`, `*.local` names) are
-listed with that reason. An operator can allow them with
+IPv4-mapped IPv6, and `localhost`, `*.localhost`, `*.local` names, with
+repeated or terminal root dots removed first) are listed with that reason. An operator can allow them with
 `STATION_MCP_SUBREGISTRY_ALLOW_PRIVATE_ADDRESSES=1`. A public name that
 resolves to a private address is not caught at listing time. Tool servers
 added by hand under **Connections → Tools** are unaffected.
@@ -132,7 +135,10 @@ can change, not a fixed gate.
   default when added; the person can set `trusted` for a server they trust.
 - **Permission.** `ToolDef.untrustedContentPermissions` holds a `default`
   and per-tool entries, each `ask`, `allow` or `deny`. Absent means `ask`.
-- **Order.** The called tool's own entry, then its integration's `default`.
+- **Order.** The called tool's own entry, then its integration's `default`,
+  both read as own properties (a tool named `toString` or `constructor`
+  never reads an inherited member); a stored value that is not a permission
+  asks.
   Only when neither is set can a server's read-only hint (MCP
   `readOnlyHint`, recorded by the probe) exempt the tool, and only when that
   server's hints are trusted: its `contentTrust` is not `untrusted`, or
@@ -149,7 +155,10 @@ can change, not a fixed gate.
   parent and root conversations, and the parent's next result read from a
   delegation tool (`delegate_task`, `get_task`, `get_task_events`,
   `continue_task`, `respond_to_task_request`, `list_delegated_tasks`) marks
-  that parent turn.
+  that parent turn. A child fixes the inherited mark into its own turn the
+  first time the ledger sees it, and a record an active turn depends on is
+  never forgotten, so neither later activity nor the memory bound clears a
+  question mid-turn.
 
 The [staged pre-tool evaluator](../../src-server/runtime/agents/pre-tool-policy.ts)
 answers the permission before tool grants:
@@ -163,12 +172,16 @@ answers the permission before tool grants:
 
 Changes go through the existing integration save
 (`PUT /api/integrations/:id`, operator-gated) or any other definition write.
-The config writer, `ConfigLoader.saveIntegration` and `updateIntegration`,
-keeps the stored receipts (`untrustedContentChanges`), ignores receipts in
-the request, and appends one (time, the authenticated request principal when
-known, new value) whenever the classification, a permission or
-`trustReadOnlyHints` changes, so a whole-definition replacement cannot erase
-the history. The last 50 are kept.
+The locked storage writer (`saveIntegrationConfig` and
+`updateIntegrationConfig`, which `ConfigLoader` and a plugin's required-tool
+install use) keeps the stored receipts (`untrustedContentChanges`) read
+under its mutation lock, ignores receipts in the incoming definition, and
+appends one (time, the authenticated request principal when known, new
+value) whenever the classification, a permission or `trustReadOnlyHints`
+changes. A plugin install's copied integrations pass through the same rule
+against the definitions they replaced. A whole-definition replacement or a
+concurrent save cannot erase or drop a receipt. The last 50 are kept. The
+rule itself is `withUntrustedContentChange` in the tool contract.
 
 ### Coverage and gaps
 
@@ -185,8 +198,10 @@ the history. The last 50 are kept.
   is not marked. Marking it needs the prompt's origin carried with the
   message into the turn, which this change does not add.
 - **Delegation memory.** The delegation records live in the server's memory
-  (the most recent 10,000 conversations per record) and do not survive a
-  restart. A delegated child on an external engine does not report its
+  (the most recent 10,000 conversations per record, never forgetting one an
+  active turn depends on) and do not survive a restart. A child that starts
+  after its parent's turn ended and after 10,000 newer records, before its
+  own first tool call, is not marked. A delegated child on an external engine does not report its
   reads.
 - **Tools without integration settings.** A tool not loaded from an
   integration (Station's built-in bash, file editor, HTTP request) takes the

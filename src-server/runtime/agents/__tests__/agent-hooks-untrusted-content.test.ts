@@ -30,6 +30,7 @@ function setup(
     invocation?: Record<string, unknown>;
     /** Integration ids whose stored definition read fails (EIO). */
     unreadable?: string[];
+    extraTrackerTools?: string[];
   } = {},
 ) {
   const generation = new MCPToolProvenanceGeneration();
@@ -49,7 +50,11 @@ function setup(
       { debug: vi.fn() },
     );
   load('mail', ['read_message', 'send_reply']);
-  load('tracker', ['search', 'create_issue']);
+  load('tracker', [
+    'search',
+    'create_issue',
+    ...(options.extraTrackerTools ?? []),
+  ]);
   load('station-control', ['get_task_events']);
   const runtimeName = (integrationId: string, tool: string) =>
     [...mapping.entries()].find(
@@ -274,7 +279,7 @@ describe('untrusted-content ledger', () => {
     ledger.mark(turn, Promise.reject(new Error('unreadable')));
     expect(await ledger.hasRead(turn)).toBe(true);
     expect(
-      (ledger as any).turns.get(JSON.stringify(['a', 'c', null])),
+      (ledger as any).turns.get(JSON.stringify(['a', 'c', null])).marks,
     ).toHaveLength(2);
   });
 });
@@ -450,5 +455,131 @@ describe('delegation carries untrusted content both ways', () => {
     );
     expect(await parent.createIssue()).toBe(true);
     expect(parent.requester).not.toHaveBeenCalled();
+  });
+});
+
+describe('permission maps are read by own property only', () => {
+  const PROTOTYPE_NAMES = [
+    'toString',
+    'constructor',
+    '__proto__',
+    'hasOwnProperty',
+    'valueOf',
+    'isPrototypeOf',
+  ];
+
+  test.each(PROTOTYPE_NAMES)(
+    'a tool named %s takes the integration default, not an inherited member',
+    async (name) => {
+      const { untrustedContentDecision } = await import(
+        '../../../services/plugins/untrusted-content-policy.js'
+      );
+      // As stored and read back: JSON, so `__proto__` would be an own key.
+      const def = JSON.parse(
+        '{"untrustedContentPermissions":{"default":"deny","tools":{"other":"allow"}}}',
+      );
+      expect(untrustedContentDecision(def, name)).toBe('deny');
+      const own = JSON.parse(
+        `{"untrustedContentPermissions":{"default":"deny","tools":{${JSON.stringify(name)}:"allow"}}}`,
+      );
+      expect(untrustedContentDecision(own, name)).toBe('allow');
+    },
+  );
+
+  test('a stored value that is not a permission asks', async () => {
+    const { untrustedContentDecision } = await import(
+      '../../../services/plugins/untrusted-content-policy.js'
+    );
+    expect(
+      untrustedContentDecision(
+        { untrustedContentPermissions: { tools: { x: 'sometimes' as any } } },
+        'x',
+      ),
+    ).toBe('ask');
+    expect(
+      untrustedContentDecision(
+        { untrustedContentPermissions: { default: 1 as any } },
+        'x',
+      ),
+    ).toBe('ask');
+  });
+
+  test('through the hooks, an auto-approved tool named toString is refused by a deny default', async () => {
+    const { hooks, invocation, call, readMail, requester } = setup(
+      {
+        tracker: {
+          untrustedContentPermissions: { default: 'deny' },
+          probe: {
+            ok: true,
+            toolCount: 1,
+            checkedAt: '2026-10-28T00:00:00Z',
+            tools: [{ name: 'toString' }],
+          },
+        },
+      },
+      { extraTrackerTools: ['toString'] },
+    );
+    await readMail();
+    expect(
+      await hooks.beforeToolCall!(call('tracker', 'toString'), invocation),
+    ).toMatchObject({ allowed: false, policyDenied: true });
+    expect(requester).not.toHaveBeenCalled();
+  });
+});
+
+describe('an inherited mark survives the memory bound', () => {
+  const child = {
+    conversationId: 'child-conversation',
+    delegation: {
+      mode: 'isolated-child',
+      depth: 1,
+      maxDepth: 2,
+      parentAgentSlug: 'assistant',
+      parentConversationId: 'conversation-1',
+      rootAgentSlug: 'assistant',
+      rootConversationId: 'conversation-1',
+    },
+  };
+  const flood = async (ledger: UntrustedContentLedger) => {
+    for (let index = 0; index <= 10_000; index += 1)
+      ledger.mark(
+        { agentSlug: 'other', conversationId: `flood-${index}` },
+        Promise.resolve(true),
+      );
+    await new Promise((resolve) => setImmediate(resolve));
+  };
+
+  test('10,001 later records during an active child turn do not clear its question', async () => {
+    const ledger = new UntrustedContentLedger();
+    const parent = setup({}, { ledger });
+    await parent.readMail();
+    await new Promise((resolve) => setImmediate(resolve));
+    // The parent's turn ends; only the child's turn now depends on it.
+    await parent.hooks.afterInvocation!({
+      invocation: parent.invocation,
+      toolCallCount: 1,
+    } as any);
+    const c = setup({}, { ledger, invocation: child });
+    c.hooks.registerApprovalRequester('child-conversation', c.requester);
+    // The child's first call latches the inherited mark into its turn.
+    c.requester.mockResolvedValueOnce(true);
+    expect(await c.createIssue()).toBe(true);
+    await flood(ledger);
+    c.requester.mockResolvedValueOnce(false);
+    expect(await c.createIssue()).toMatchObject({ allowed: false });
+    expect(c.requester).toHaveBeenCalledTimes(2);
+  });
+
+  test('an active parent turn keeps its record for a child that starts during the flood', async () => {
+    const ledger = new UntrustedContentLedger();
+    const parent = setup({}, { ledger });
+    await parent.readMail();
+    await new Promise((resolve) => setImmediate(resolve));
+    await flood(ledger);
+    const c = setup({}, { ledger, invocation: child });
+    c.hooks.registerApprovalRequester('child-conversation', c.requester);
+    c.requester.mockResolvedValueOnce(false);
+    expect(await c.createIssue()).toMatchObject({ allowed: false });
+    expect(c.requester).toHaveBeenCalledTimes(1);
   });
 });

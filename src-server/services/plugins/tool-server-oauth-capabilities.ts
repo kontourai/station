@@ -11,6 +11,12 @@
  * Metadata Document) when its authorization server has no dynamic client
  * registration. Nothing in this module delivers it; the tool-server OAuth
  * owner registers it in the change that adds that support.
+ *
+ * Registration is not a security boundary. Any code running in the server
+ * process, including a trusted in-process plugin, already holds the host's
+ * authority and could register an ability. A false registration only lists
+ * a catalog entry as addable; its sign-in still fails without the real
+ * support, and nothing is granted.
  */
 export type ToolServerOAuthCapability = 'pre-registered-clients';
 

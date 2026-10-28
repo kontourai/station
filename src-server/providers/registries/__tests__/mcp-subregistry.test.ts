@@ -599,6 +599,10 @@ describe('subregistry endpoint address policy', () => {
     localhost: 'https://localhost:8443/mcp',
     mdns: 'https://printer.local/mcp',
     decimal: 'https://2130706433/mcp',
+    localhostRootDot: 'https://localhost./mcp',
+    mdnsRootDot: 'https://printer.local./mcp',
+    ipRootDot: 'https://127.0.0.1./mcp',
+    subLocalhostDots: 'https://app.localhost../mcp',
     public: 'https://mcp.example.com/mcp',
   };
   const listing = async (allowPrivateAddresses: boolean) => {

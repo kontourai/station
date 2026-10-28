@@ -20,12 +20,9 @@
 
 import type {
   ToolDef,
-  UntrustedContentChange,
   UntrustedContentPermission,
 } from '@kontourai/station-contracts/tool';
 import type { InvocationContext } from '../../runtime/types.js';
-
-const UNTRUSTED_CONTENT_CHANGE_LIMIT = 50;
 
 /** Conversations remembered per lineage set; the oldest is forgotten first. */
 const CONVERSATION_MEMORY_LIMIT = 10_000;
@@ -40,21 +37,38 @@ function turnKey(invocation: InvocationContext): string {
   ]);
 }
 
-/** Insertion-ordered set that forgets its oldest member past a bound. */
+/**
+ * Insertion-ordered set that forgets its oldest member past a bound, except
+ * members an active turn still depends on, which are never forgotten.
+ */
 class BoundedSet {
   private readonly members = new Set<string>();
+
+  constructor(private readonly pinned: (value: string) => boolean) {}
 
   add(value: string | undefined): void {
     if (!value) return;
     this.members.delete(value);
     this.members.add(value);
-    if (this.members.size > CONVERSATION_MEMORY_LIMIT)
-      this.members.delete(this.members.values().next().value!);
+    if (this.members.size <= CONVERSATION_MEMORY_LIMIT) return;
+    for (const member of this.members) {
+      if (this.pinned(member)) continue;
+      this.members.delete(member);
+      return;
+    }
   }
 
   has(value: string | undefined): boolean {
     return value !== undefined && this.members.has(value);
   }
+}
+
+interface TurnState {
+  marks: Promise<boolean>[];
+  /** Conversations this turn depends on: its own, its parent and root. */
+  references: Set<string>;
+  /** Inherited from a delegation and fixed for the rest of the turn. */
+  latched: boolean;
 }
 
 /**
@@ -67,18 +81,65 @@ class BoundedSet {
  * follow a delegation: a conversation that has read untrusted content makes
  * every child it delegates to start marked, and a child that reads it marks
  * its parent and root conversations, so a parent turn that reads a delegated
- * result is marked too. Both are memory only and do not survive a restart.
+ * result is marked too. A child latches the inherited mark into its own turn
+ * the first time the ledger sees it, and a record an active turn depends on
+ * is never forgotten, so neither a later change nor the memory bound can
+ * clear the question mid-turn. Both records are memory only and do not
+ * survive a restart.
  */
 export class UntrustedContentLedger {
-  private readonly turns = new Map<string, Promise<boolean>[]>();
-  private readonly conversationsRead = new BoundedSet();
-  private readonly descendantsRead = new BoundedSet();
+  private readonly turns = new Map<string, TurnState>();
+  private readonly pinned = (conversationId: string) => {
+    for (const turn of this.turns.values())
+      if (turn.references.has(conversationId)) return true;
+    return false;
+  };
+  private readonly conversationsRead = new BoundedSet(this.pinned);
+  private readonly descendantsRead = new BoundedSet(this.pinned);
+
+  private turn(invocation: InvocationContext): TurnState {
+    const key = turnKey(invocation);
+    let state = this.turns.get(key);
+    if (!state) {
+      state = {
+        marks: [],
+        references: new Set(
+          [
+            invocation.conversationId,
+            invocation.delegation?.parentConversationId,
+            invocation.delegation?.rootConversationId,
+          ].filter((id): id is string => !!id),
+        ),
+        latched: false,
+      };
+      this.turns.set(key, state);
+    }
+    return state;
+  }
+
+  /** Fixes a mark inherited through delegation into this turn. */
+  private latchInherited(invocation: InvocationContext): void {
+    const delegation = invocation.delegation;
+    if (
+      !delegation ||
+      !(
+        this.conversationsRead.has(delegation.parentConversationId) ||
+        this.conversationsRead.has(delegation.rootConversationId)
+      )
+    )
+      return;
+    const state = this.turn(invocation);
+    if (state.latched) return;
+    state.latched = true;
+    state.marks.push(Promise.resolve(true));
+  }
 
   mark(invocation: InvocationContext, untrusted: Promise<boolean>): void {
-    const key = turnKey(invocation);
+    this.latchInherited(invocation);
+    const state = this.turn(invocation);
     // A failed classification read counts as untrusted: fail toward asking.
     const settled = untrusted.catch(() => true);
-    this.turns.set(key, [...(this.turns.get(key) ?? []), settled]);
+    state.marks.push(settled);
     void settled.then((read) => {
       if (read) {
         this.conversationsRead.add(invocation.conversationId);
@@ -88,23 +149,18 @@ export class UntrustedContentLedger {
       }
       // Only untrusted reads are kept, so ordinary calls never grow the map
       // even when a framework does not end the turn.
-      const remaining = this.turns.get(key)?.filter((mark) => mark !== settled);
-      if (remaining?.length) this.turns.set(key, remaining);
-      else this.turns.delete(key);
+      state.marks = state.marks.filter((mark) => mark !== settled);
+      const key = turnKey(invocation);
+      if (state.marks.length === 0 && this.turns.get(key) === state)
+        this.turns.delete(key);
     });
   }
 
   async hasRead(invocation: InvocationContext): Promise<boolean> {
-    const delegation = invocation.delegation;
-    if (
-      delegation &&
-      (this.conversationsRead.has(delegation.parentConversationId) ||
-        this.conversationsRead.has(delegation.rootConversationId))
-    )
-      return true;
-    const pending = this.turns.get(turnKey(invocation));
-    if (!pending) return false;
-    return (await Promise.all(pending)).some(Boolean);
+    this.latchInherited(invocation);
+    const state = this.turns.get(turnKey(invocation));
+    if (!state) return false;
+    return (await Promise.all(state.marks)).some(Boolean);
   }
 
   /** Whether a child this conversation delegated to has read it. */
@@ -142,8 +198,13 @@ export function untrustedContentDecision(
   toolName: string,
 ): UntrustedContentPermission | undefined {
   const permissions = def?.untrustedContentPermissions;
-  const chosen = permissions?.tools?.[toolName] ?? permissions?.default;
-  if (chosen) return chosen;
+  // Own properties only: a tool named `toString` or `constructor` must not
+  // read an inherited member. A stored value that is not a permission asks.
+  const tools = permissions?.tools;
+  if (tools && Object.hasOwn(tools, toolName))
+    return permissionOrAsk(tools[toolName]);
+  if (permissions && Object.hasOwn(permissions, 'default'))
+    return permissionOrAsk(permissions.default);
   // MCP annotations are the server's own claim; an untrusted server's claim
   // counts only when a catalog or the person said to trust it.
   const hintsTrusted =
@@ -154,50 +215,6 @@ export function untrustedContentDecision(
   return 'ask';
 }
 
-function same(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
-}
-
-/**
- * The definition to store, with receipts taken from the stored copy (never
- * from the caller) and one appended when the classification, a permission or
- * the hint setting changed. Receipts are bounded to the most recent 50.
- */
-export function withUntrustedContentChange(
-  existing: ToolDef | undefined,
-  next: ToolDef,
-  by: string | undefined,
-  now: Date,
-): ToolDef {
-  const result: ToolDef = { ...next };
-  delete result.untrustedContentChanges;
-  if (existing?.untrustedContentChanges?.length)
-    result.untrustedContentChanges = existing.untrustedContentChanges;
-  const trustChanged =
-    (existing?.contentTrust ?? 'trusted') !== (next.contentTrust ?? 'trusted');
-  const permissionsChanged = !same(
-    existing?.untrustedContentPermissions,
-    next.untrustedContentPermissions,
-  );
-  const hintsChanged =
-    (existing?.trustReadOnlyHints ?? false) !==
-    (next.trustReadOnlyHints ?? false);
-  if (!trustChanged && !permissionsChanged && !hintsChanged) return result;
-  const change: UntrustedContentChange = {
-    at: now.toISOString(),
-    ...(by ? { by } : {}),
-    // Absent classification means trusted, so a removal records `trusted`.
-    ...(trustChanged ? { contentTrust: next.contentTrust ?? 'trusted' } : {}),
-    ...(permissionsChanged
-      ? { permissions: next.untrustedContentPermissions ?? {} }
-      : {}),
-    ...(hintsChanged
-      ? { trustReadOnlyHints: next.trustReadOnlyHints ?? false }
-      : {}),
-  };
-  result.untrustedContentChanges = [
-    ...(result.untrustedContentChanges ?? []),
-    change,
-  ].slice(-UNTRUSTED_CONTENT_CHANGE_LIMIT);
-  return result;
+function permissionOrAsk(value: unknown): UntrustedContentPermission {
+  return value === 'allow' || value === 'deny' ? value : 'ask';
 }

@@ -169,6 +169,58 @@ export interface UntrustedContentChange {
   trustReadOnlyHints?: boolean;
 }
 
+const UNTRUSTED_CONTENT_CHANGE_LIMIT = 50;
+
+function sameValue(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+}
+
+/**
+ * #3483: the definition to store, with untrusted-content receipts taken from
+ * the stored copy (never from the incoming definition) and one appended when
+ * the classification, a permission or the hint setting changed. Receipts are
+ * bounded to the most recent 50. Every integration writer applies this
+ * against the stored copy it read under its write lock.
+ */
+export function withUntrustedContentChange(
+  stored: ToolDef | undefined,
+  next: ToolDef,
+  by: string | undefined,
+  now: Date,
+): ToolDef {
+  const result: ToolDef = { ...next };
+  delete result.untrustedContentChanges;
+  if (stored?.untrustedContentChanges?.length)
+    result.untrustedContentChanges = stored.untrustedContentChanges;
+  const trustChanged =
+    (stored?.contentTrust ?? 'trusted') !== (next.contentTrust ?? 'trusted');
+  const permissionsChanged = !sameValue(
+    stored?.untrustedContentPermissions,
+    next.untrustedContentPermissions,
+  );
+  const hintsChanged =
+    (stored?.trustReadOnlyHints ?? false) !==
+    (next.trustReadOnlyHints ?? false);
+  if (!trustChanged && !permissionsChanged && !hintsChanged) return result;
+  const change: UntrustedContentChange = {
+    at: now.toISOString(),
+    ...(by ? { by } : {}),
+    // Absent classification means trusted, so a removal records `trusted`.
+    ...(trustChanged ? { contentTrust: next.contentTrust ?? 'trusted' } : {}),
+    ...(permissionsChanged
+      ? { permissions: next.untrustedContentPermissions ?? {} }
+      : {}),
+    ...(hintsChanged
+      ? { trustReadOnlyHints: next.trustReadOnlyHints ?? false }
+      : {}),
+  };
+  result.untrustedContentChanges = [
+    ...(result.untrustedContentChanges ?? []),
+    change,
+  ].slice(-UNTRUSTED_CONTENT_CHANGE_LIMIT);
+  return result;
+}
+
 export interface ToolCredentialOwnership {
   owner: 'principal';
   allowInstanceFallback?: boolean;

@@ -90,7 +90,13 @@ const PRIVATE_RANGES = (() => {
 
 /** Whether a URL's host is a local or private network address. */
 function isPrivateNetworkHost(url: string): boolean {
-  const host = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  // `localhost.` and `printer.local.` name the same hosts as without the
+  // root dot, so repeated and terminal dots are dropped before any rule.
+  const host = new URL(url).hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '')
+    .replace(/\.{2,}/g, '.')
+    .replace(/\.$/, '');
   if (
     host === 'localhost' ||
     host.endsWith('.localhost') ||

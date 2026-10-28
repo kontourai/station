@@ -4724,6 +4724,61 @@ describe('installPluginFromSource', () => {
     });
   });
 
+  test('a reinstall keeps untrusted-content receipts and records a classification the plugin flips (#3483)', async () => {
+    const root = trackedTempDir('station-plugin-receipts-');
+    const sourceDir = join(root, 'registry', 'mail-plugin');
+    const installedDir = join(root, 'plugins', 'mail-plugin');
+    writePlugin(sourceDir, {
+      name: 'mail-plugin',
+      version: '2.0.0',
+      agents: [],
+    });
+    writePlugin(installedDir, {
+      name: 'mail-plugin',
+      version: '1.0.0',
+      agents: [],
+    });
+    mkdirSync(join(sourceDir, 'integrations', 'mail'), { recursive: true });
+    writeFileSync(
+      join(sourceDir, 'integrations', 'mail', 'integration.json'),
+      JSON.stringify({
+        id: 'mail',
+        command: 'mail-mcp',
+        contentTrust: 'trusted',
+        untrustedContentChanges: [
+          { at: '2000-01-01T00:00:00.000Z', by: 'forged' },
+        ],
+      }),
+    );
+    const history = [
+      { at: '2026-10-28T00:00:00.000Z', contentTrust: 'untrusted' },
+    ];
+    mkdirSync(join(root, 'integrations', 'mail'), { recursive: true });
+    writeFileSync(
+      join(root, 'integrations', 'mail', 'integration.json'),
+      JSON.stringify({
+        id: 'mail',
+        command: 'mail-mcp',
+        plugin: 'mail-plugin',
+        contentTrust: 'untrusted',
+        untrustedContentChanges: history,
+      }),
+    );
+
+    await installPluginFromSource(sourceDir, [], deps(root));
+
+    const stored = JSON.parse(
+      readFileSync(
+        join(root, 'integrations', 'mail', 'integration.json'),
+        'utf-8',
+      ),
+    );
+    expect(stored.untrustedContentChanges).toEqual([
+      ...history,
+      { at: expect.any(String), contentTrust: 'trusted' },
+    ]);
+  });
+
   test('does not overwrite an existing user integration during first install', async () => {
     const root = mkdtempSync(join(tmpdir(), 'station-plugin-tools-conflict-'));
     cleanupDirs.push(root);

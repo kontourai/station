@@ -29,13 +29,13 @@ import {
   isSafeToolServerId,
   type ToolDef,
   type ToolMetadata,
+  withUntrustedContentChange,
 } from '@kontourai/station-contracts/tool';
 import { type FSWatcher, watch } from 'chokidar';
 import {
   type AppConfigLaunchabilitySnapshot,
   LaunchabilityRevision,
 } from '../services/connections/launchability-revision.js';
-import { withUntrustedContentChange } from '../services/plugins/untrusted-content-policy.js';
 import {
   configWatcherCloseDuration,
   configWatchRecovered,
@@ -981,8 +981,9 @@ export class ConfigLoader {
     options: { changedBy?: string } = {},
   ): Promise<void> {
     this.assertIntegrationDefinitionWritable(id);
-    // #3483: every writer keeps the stored untrusted-content receipts and
-    // adds one for a permission change; a caller cannot write receipts.
+    // #3483: the storage writer owns untrusted-content receipts under its
+    // lock. Applying them here too, against an unlocked read, only lets the
+    // byte comparison below see what that writer would produce.
     let stored: ToolDef | undefined;
     try {
       stored = await loadIntegrationConfig(this.projectHomeDir, id);
@@ -1019,7 +1020,7 @@ export class ConfigLoader {
     ) {
       return;
     }
-    await saveIntegrationConfig(this.projectHomeDir, id, persisted);
+    await saveIntegrationConfig(this.projectHomeDir, id, persisted, options);
   }
 
   /**
@@ -1035,11 +1036,9 @@ export class ConfigLoader {
     return updateIntegrationConfig(this.projectHomeDir, id, (current) => {
       // Compare-and-update callers must see the same effective built-in
       // identity as readers; the persisted projection below removes it again.
-      const updated = withUntrustedContentChange(
-        current,
-        update(this.withBuiltinIntegrationRuntimeIdentity(id, current)),
-        undefined,
-        new Date(),
+      // The storage writer adds untrusted-content receipts under the lock.
+      const updated = update(
+        this.withBuiltinIntegrationRuntimeIdentity(id, current),
       );
       this.assertBuiltinIntegrationCredentialFree(id, updated);
       const next = this.builtinIntegrationPersistedProjection(id, updated);
