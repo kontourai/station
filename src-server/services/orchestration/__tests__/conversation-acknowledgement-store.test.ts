@@ -39,6 +39,16 @@ const DEVICES: PairedDevice[] = [
     } as PairedDevice['principalBinding'],
   }),
   device('revoked-phone', { revokedAt: 1 }),
+  // Tied to a tailnet person: theirs, not the owner's.
+  device('tailnet-phone', {
+    principalBinding: {
+      provider: 'tailscale-serve',
+      subject: 'housemate@example.com',
+      approvedAt: 0,
+      approvalId: 'approval-1',
+      approvedBy: 'owner',
+    },
+  }),
 ];
 const isOwnerDevice = ownerDevicePredicate(() => DEVICES);
 
@@ -320,6 +330,7 @@ describe('conversationAcknowledgementKey', () => {
       // Bound to another person's account, reading as its device identity.
       'human:device:account-phone',
       'human:device:revoked-phone',
+      'human:device:tailnet-phone',
       'human:device:unknown-phone',
     ]) {
       expect(
