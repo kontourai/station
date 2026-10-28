@@ -382,6 +382,31 @@ describe('useChatDockState', () => {
       expect(onAutoCollapse).not.toHaveBeenCalled();
     });
 
+    // The New chat draft is the dock's body; collapsing it while someone is
+    // writing would put the draft away.
+    test('does not fire while a New chat draft is open', async () => {
+      const useChatDockState = await freshUseChatDockState();
+      const onAutoCollapse = vi.fn();
+      const { result } = renderHook(() =>
+        useChatDockState({ ...defaultOptions, onAutoCollapse }),
+      );
+      act(() => {
+        result.current.setAutoHideEnabled(true);
+        result.current.setShowNewChatModal(true);
+      });
+      act(() => {
+        vi.advanceTimersByTime(5000);
+      });
+      expect(onAutoCollapse).not.toHaveBeenCalled();
+      act(() => {
+        result.current.setShowNewChatModal(false);
+      });
+      act(() => {
+        vi.advanceTimersByTime(5000);
+      });
+      expect(onAutoCollapse).toHaveBeenCalledTimes(1);
+    });
+
     test('does not fire when isDockMaximized', async () => {
       const useChatDockState = await freshUseChatDockState();
       const onAutoCollapse = vi.fn();

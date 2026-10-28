@@ -922,6 +922,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     newChatHandoff,
     newChatSelectionInvalid,
     reportNewChatDraft,
+    newChatDraftText,
     setShowNewChatModal,
     isHistoryOpen,
     toggleHistory,
@@ -3233,7 +3234,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         newChatProjectOverride,
                         startWithDefault: newChatStartWithDefault,
                         taskShaping: newChatTaskShaping,
-                        initialPrompt: newChatInitialPrompt,
+                        // A collapsed dock unmounts its body, draft included;
+                        // reopening it remounts the draft with the text it
+                        // last reported rather than the text it opened with.
+                        initialPrompt:
+                          newChatDraftText.current ?? newChatInitialPrompt,
                         initialFiles: newChatInitialFiles,
                         startSelection: newChatSelection,
                         handoff: newChatHandoff,

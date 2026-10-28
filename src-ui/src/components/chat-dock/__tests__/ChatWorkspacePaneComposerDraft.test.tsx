@@ -885,3 +885,24 @@ test('New chat opens as a draft in the dock body, expanding a collapsed dock; fo
   expect(onClosed).toHaveBeenCalledExactlyOnceWith('dismissed', undefined);
   expect(screen.getByTestId('active-chat-body')).toBeTruthy();
 });
+
+// A collapsed dock unmounts its body, draft included: reopening it brings the
+// draft back with what the person had written, not the text it opened with.
+test('collapsing and reopening the dock keeps the draft’s written text', async () => {
+  renderDockedPane();
+  await act(async () => {});
+  act(() => {
+    dispatchNewChatIntent({ initialPrompt: 'Opened with' });
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  act(() => pickerProps.at(-1)!.onDraftChange('Opened with, then written'));
+  act(() => regionModel!.setRegion('bottom', { visible: false }));
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('region', { name: 'New chat picker' }),
+    ).toBeNull(),
+  );
+  act(() => regionModel!.setRegion('bottom', { visible: true }));
+  await screen.findByRole('region', { name: 'New chat picker' });
+  expect(pickerProps.at(-1)!.initialPrompt).toBe('Opened with, then written');
+});
