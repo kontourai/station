@@ -208,8 +208,8 @@ function installRecoveryListeners(): void {
  * failure. The chip and the reason were reading two different sources.
  *
  * The fix is to keep the one derivation current, not to add a second local
- * fold. Only a turn-boundary event triggers it, at most once a second, so a
- * chatty stream cannot turn this into a refetch loop.
+ * fold. Only an event in the list below triggers it, at most once a second,
+ * so a chatty stream cannot turn this into a refetch loop.
  *
  * #2310: `turn.started` is a boundary too. A session nothing has been sent to
  * reads as a Draft (the server's lineage fold), outside the live lanes, and its

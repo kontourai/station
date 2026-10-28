@@ -6,8 +6,8 @@
  * Observed on a phone: a Codex conversation continued into a successor
  * session, the successor asked for approval, the person approved it, and the
  * server recorded `request.resolved` (`sessionState: 'running'`). The inbox
- * still listed the conversation under "Needs you" with "Needs approval" for
- * over a minute. The log after the answer holds only tool, token and content
+ * still listed the conversation under "Needs you" with "Needs approval"
+ * afterwards. The log after the answer holds only tool, token and content
  * frames until a later `child-work.updated`: no `session.state-changed`, no
  * turn boundary. The inbox's rows come from the session read-model, which the
  * stream re-reads only on listed facts, and the request events were not
@@ -22,10 +22,13 @@
  * FIXTURE PROVENANCE: the event frames copy the field shape of the recorded
  * `request.opened`/`request.resolved` rows (method, requestType, payload
  * kind, sessionState/previousState/transitionReason/transitionSource,
- * status, acknowledgement); ids, timestamps and text are made up. The two
- * summaries copy the fields the server's summary builder sets for a root
- * session that exited and its successor (`conversationId` names the root);
- * they are hand-transcribed, not a byte capture.
+ * status, acknowledgement); ids, timestamps and text are made up. The
+ * summaries are hand-transcribed, not a byte capture: they carry the fields
+ * the lifecycle fold and the inbox merge read for a root session that exited
+ * and its successor (`conversationId` names the root), and omit optional
+ * projections the server may add (`conversationActivity`, `openRequestIds`,
+ * `currentSessionId`, `draft`). No chat is open: this pins the read-model
+ * refresh, not the chat store's own request bookkeeping.
  */
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
