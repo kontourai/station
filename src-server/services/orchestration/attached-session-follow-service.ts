@@ -1310,6 +1310,17 @@ export class AttachedSessionFollowService {
     event: CanonicalRuntimeEvent,
     guard?: () => boolean,
   ): Promise<boolean | 'stale'> {
+    // chat-host-images: Station derives this event from files it read
+    // itself; one arriving from an imported transcript would map paths to
+    // images Station never admitted. Skipped like an ingress refusal.
+    if (event.method === 'content.host-images') {
+      this.options.logger?.warn('Ignored imported host images', {
+        threadId: event.threadId,
+        eventId: event.eventId,
+      });
+      rememberEvent(state.seen, event.eventId, this.maxSeenEventIds);
+      return false;
+    }
     const committed = await this.appendAndPublish(
       event,
       (error) => {

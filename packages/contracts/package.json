@@ -81,6 +81,7 @@
     "./channel-log": "./src/channel-log.ts",
     "./client-origin": "./src/client-origin.ts",
     "./chat-attachment": "./src/chat-attachment.ts",
+    "./chat-host-images": "./src/chat-host-images.ts",
     "./connection-recovery": "./src/connection-recovery.ts",
     "./connection-quota": "./src/connection-quota.ts",
     "./engine-accounts": "./src/engine-accounts.ts",

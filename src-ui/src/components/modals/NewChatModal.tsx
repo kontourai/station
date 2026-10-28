@@ -2124,7 +2124,7 @@ export function NewChatModal({
               <Empty
                 variant="compact"
                 label="Nothing to chat with yet"
-                description="Connect an engine (Claude Code, Codex, OpenCode…) or add a Model connection, and new chats appear here automatically."
+                description="Connect an engine (Claude Code, Codex, OpenCode…) or add a Model connection."
                 action={
                   <button
                     type="button"

@@ -35,6 +35,7 @@ import {
 import { ConversationContextBoundary } from './ConversationContextBoundary';
 import { ConversationHandoffBoundary } from './ConversationHandoffBoundary';
 import { type ForkTurnSource, forkTurnSource } from './fork-turn-source';
+import { HostImagesContext, settledHostImages } from './HostImagesContext';
 import { MessageDetails } from './MessageDetails';
 import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { MessageContent } from './message-bubble/MessageContent';
@@ -1159,40 +1160,42 @@ function MessageBubbleComponent({
               {hasTurnFooter && !isMobile ? turnFooterBar : null}
             </div>
           ) : null}
-          <MessageContent
-            contentParts={
-              taskProposal
-                ? msg.contentParts?.map((part) =>
-                    part.type === 'text'
-                      ? {
-                          ...part,
-                          content: part.content?.replace(
-                            /```station-task-proposal\s*\n[\s\S]*?\n```/g,
-                            '',
-                          ),
-                        }
-                      : part,
-                  )
-                : msg.contentParts
-            }
-            messageKey={anchorKey}
-            textContent={
-              taskProposal
-                ? textContent.replace(
-                    /```station-task-proposal\s*\n[\s\S]*?\n```/g,
-                    '',
-                  )
-                : textContent
-            }
-            chatFontSize={chatFontSize}
-            showReasoning={showReasoning}
-            showToolDetails={showToolDetails}
-            isStreamingMessage={isStreamingMessage}
-            foldWork={foldWork}
-            onToolApproval={
-              onToolApproval ? handleContentToolApproval : undefined
-            }
-          />
+          <HostImagesContext.Provider value={settledHostImages(msg.hostImages)}>
+            <MessageContent
+              contentParts={
+                taskProposal
+                  ? msg.contentParts?.map((part) =>
+                      part.type === 'text'
+                        ? {
+                            ...part,
+                            content: part.content?.replace(
+                              /```station-task-proposal\s*\n[\s\S]*?\n```/g,
+                              '',
+                            ),
+                          }
+                        : part,
+                    )
+                  : msg.contentParts
+              }
+              messageKey={anchorKey}
+              textContent={
+                taskProposal
+                  ? textContent.replace(
+                      /```station-task-proposal\s*\n[\s\S]*?\n```/g,
+                      '',
+                    )
+                  : textContent
+              }
+              chatFontSize={chatFontSize}
+              showReasoning={showReasoning}
+              showToolDetails={showToolDetails}
+              isStreamingMessage={isStreamingMessage}
+              foldWork={foldWork}
+              onToolApproval={
+                onToolApproval ? handleContentToolApproval : undefined
+              }
+            />
+          </HostImagesContext.Provider>
           {taskProposal && msg.turnId && answerSessionId && (
             <TaskProposalCard
               proposal={taskProposal}

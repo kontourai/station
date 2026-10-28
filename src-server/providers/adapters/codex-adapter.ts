@@ -45,6 +45,10 @@ import {
 } from '../../security/confinement/confinement-provider.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
+import {
+  commitEngineLaunch,
+  engineSessionTmpDir,
+} from '../../services/infra/session-tmpdir.js';
 import { WORKLOAD_SESSION_ENV } from '../../services/infra/workload-budget.js';
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
 import { SESSION_CONFINEMENT_ROOT_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
@@ -180,6 +184,7 @@ interface CodexAdapterOptions {
   processFactory?: (
     appHomeEnv?: Record<string, string>,
     extraArgs?: string[],
+    tmpDir?: string,
   ) => ReturnType<typeof createCodexProcess>;
   now?: () => Date;
   /**
@@ -836,6 +841,7 @@ export class CodexAdapter implements ProviderAdapterShape {
   private readonly processFactory: (
     appHomeEnv?: Record<string, string>,
     extraArgs?: string[],
+    tmpDir?: string,
   ) => ReturnType<typeof createCodexProcess>;
   private readonly now: () => Date;
   private modelCatalogCache: {
@@ -858,7 +864,8 @@ export class CodexAdapter implements ProviderAdapterShape {
       this.continuity.nativeReturn = 'same-binding';
     this.processFactory =
       options.processFactory ??
-      ((env, extraArgs) => createCodexProcess(undefined, env, extraArgs));
+      ((env, extraArgs, tmpDir) =>
+        createCodexProcess(undefined, env, extraArgs, tmpDir));
     this.now = options.now ?? (() => new Date());
     this.transport = new CodexAdapterTransport(
       this.now,
@@ -1970,11 +1977,26 @@ export class CodexAdapter implements ProviderAdapterShape {
       ...(toolServers.configArgs ?? []),
       ...codexConfinementConfigArgs(input.confinement),
     ];
+    // Only a session start gets the per-session TMPDIR; quota, model and
+    // maintenance probes keep the shared engine-spawn directory.
+    const sessionTmpDir = engineSessionTmpDir(input.threadId);
     // The workload launcher attributes this engine's scope to the session.
-    const processHandle = this.processFactory(
-      { ...spawnEnv, [WORKLOAD_SESSION_ENV]: input.threadId },
-      spawnArgs.length ? spawnArgs : undefined,
-    );
+    const sessionSpawnEnv = {
+      ...spawnEnv,
+      [WORKLOAD_SESSION_ENV]: input.threadId,
+    };
+    // Without a session folder the call is exactly the two-argument one
+    // the workload change made.
+    const processHandle = sessionTmpDir
+      ? this.processFactory(
+          sessionSpawnEnv,
+          spawnArgs.length ? spawnArgs : undefined,
+          sessionTmpDir,
+        )
+      : this.processFactory(
+          sessionSpawnEnv,
+          spawnArgs.length ? spawnArgs : undefined,
+        );
     const record = createCodexSessionRecord({
       externalThreadId: input.threadId,
       process: processHandle,
@@ -2011,6 +2033,12 @@ export class CodexAdapter implements ProviderAdapterShape {
     }
 
     this.transport.registerSession(record);
+    // chat-host-images: recorded only once this record is the thread's
+    // session, so a start that throws before here keeps the old launch.
+    commitEngineLaunch(
+      input.threadId,
+      sessionTmpDir ? { own: sessionTmpDir } : undefined,
+    );
     this.transport.handleProcess(record);
 
     try {
@@ -2146,7 +2174,10 @@ export class CodexAdapter implements ProviderAdapterShape {
         requested: sandboxRequest,
         reported: reportedSandbox,
         workspace: input.cwd,
-        permittedRoots: [engineSpawnTmpDirPath()],
+        permittedRoots: [
+          ...(sessionTmpDir ? [sessionTmpDir] : []),
+          engineSpawnTmpDirPath(),
+        ],
         // #3800: Station relies on its profile wherever it sent no mode.
         ...(sandboxRequest && !sandboxWire
           ? { requestedProfile: STATION_CODEX_PERMISSION_PROFILE }

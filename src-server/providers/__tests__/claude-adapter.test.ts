@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -133,6 +134,11 @@ import {
 } from '../../runtime/mcp/station-control-mcp-token.js';
 import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
+import {
+  installSessionTmpDirPolicy,
+  sessionTempRoot,
+  sessionTmpDirPath,
+} from '../../services/infra/session-tmpdir.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
 import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';
@@ -10754,6 +10760,145 @@ echo '{"loggedIn":true}'
           );
         }
       } finally {
+        if (previousStationHome === undefined) delete process.env.STATION_HOME;
+        else process.env.STATION_HOME = previousStationHome;
+        rmSync(stationHome, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('chat-host-images: per-session engine TMPDIR', () => {
+    test('a session the preview admits gets its own Station-owned TMPDIR; the catalog probe keeps the shared one', async () => {
+      const stationHome = join(
+        tmpdir(),
+        `station-claude-session-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      );
+      const previousStationHome = process.env.STATION_HOME;
+      process.env.STATION_HOME = stationHome;
+      const uninstall = installSessionTmpDirPolicy(
+        (threadId) => threadId === 'thread-session-tmp-on',
+      );
+      try {
+        mockQuery.mockClear();
+        mockAugmentedSpawnEnv.mockReset();
+        mockQuery.mockReturnValue(createMockQuery([]));
+        // A live engine: its stream stays open (a stream that ends means the
+        // engine is gone, which releases the folder).
+        mockQuery.mockReturnValueOnce(createControlledMockQuery());
+        const adapter = new ClaudeAdapter();
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-session-tmp-on',
+        });
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-session-tmp-off',
+        });
+        await adapter.listModelCatalog?.();
+        const [onCall, offCall, catalogCall] = mockQuery.mock.calls.map(
+          ([call]) => call,
+        );
+        const own = sessionTmpDirPath('thread-session-tmp-on', stationHome);
+        expect(onCall.options.env.TMPDIR).toBe(own);
+        expect(statSync(own).isDirectory()).toBe(true);
+        expect(statSync(own).mode & 0o777).toBe(0o700);
+        expect(offCall.options.env.TMPDIR).toBe(
+          engineSpawnTmpDirPath(stationHome),
+        );
+        expect(catalogCall.options.env.TMPDIR).toBe(
+          engineSpawnTmpDirPath(stationHome),
+        );
+      } finally {
+        uninstall();
+        if (previousStationHome === undefined) delete process.env.STATION_HOME;
+        else process.env.STATION_HOME = previousStationHome;
+        rmSync(stationHome, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('chat-host-images: an engine that dies on its own', () => {
+    test('releases its launch temp folder though no session.exited follows', async () => {
+      const stationHome = join(
+        tmpdir(),
+        `station-claude-crash-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      );
+      const previousStationHome = process.env.STATION_HOME;
+      process.env.STATION_HOME = stationHome;
+      const uninstall = installSessionTmpDirPolicy(() => true);
+      try {
+        mockQuery.mockClear();
+        mockAugmentedSpawnEnv.mockReset();
+        let fail: (error: Error) => void = () => undefined;
+        const failed = new Promise<never>((_resolve, reject) => {
+          fail = reject;
+        });
+        failed.catch(() => undefined);
+        mockQuery.mockReturnValue({
+          ...createMockQuery([]),
+          [Symbol.asyncIterator]: () => ({ next: () => failed }),
+        } as never);
+        const adapter = new ClaudeAdapter();
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-crash',
+        });
+        const own = sessionTmpDirPath('thread-crash', stationHome);
+        expect(sessionTempRoot('thread-crash')).toBe(own);
+        fail(new Error('Claude Code process exited with code 1'));
+        await vi.waitFor(() =>
+          expect(sessionTempRoot('thread-crash')).toBeUndefined(),
+        );
+        expect(existsSync(own)).toBe(false);
+        await adapter.stopAll();
+      } finally {
+        uninstall();
+        if (previousStationHome === undefined) delete process.env.STATION_HOME;
+        else process.env.STATION_HOME = previousStationHome;
+        rmSync(stationHome, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('chat-host-images: an engine stream that simply ends', () => {
+    test('releases its launch temp folder on a clean end too', async () => {
+      const stationHome = join(
+        tmpdir(),
+        `station-claude-end-tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      );
+      const previousStationHome = process.env.STATION_HOME;
+      process.env.STATION_HOME = stationHome;
+      const uninstall = installSessionTmpDirPolicy(() => true);
+      try {
+        mockQuery.mockClear();
+        mockAugmentedSpawnEnv.mockReset();
+        let end: () => void = () => undefined;
+        const ended = new Promise<void>((resolve) => {
+          end = resolve;
+        });
+        mockQuery.mockReturnValue({
+          ...createMockQuery([]),
+          async *[Symbol.asyncIterator]() {
+            await ended;
+            // Ends without a message: a clean end of the engine stream.
+            yield* [];
+          },
+        } as never);
+        const adapter = new ClaudeAdapter();
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-clean-end',
+        });
+        const own = sessionTmpDirPath('thread-clean-end', stationHome);
+        expect(sessionTempRoot('thread-clean-end')).toBe(own);
+        end();
+        await vi.waitFor(() =>
+          expect(sessionTempRoot('thread-clean-end')).toBeUndefined(),
+        );
+        expect(existsSync(own)).toBe(false);
+        await adapter.stopAll();
+      } finally {
+        uninstall();
         if (previousStationHome === undefined) delete process.env.STATION_HOME;
         else process.env.STATION_HOME = previousStationHome;
         rmSync(stationHome, { recursive: true, force: true });

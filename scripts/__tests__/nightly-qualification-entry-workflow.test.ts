@@ -3,7 +3,13 @@ import { join, resolve } from 'node:path';
 import { load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
 
-type Step = { id?: string; name?: string; run?: string; uses?: string };
+type Step = {
+  id?: string;
+  name?: string;
+  run?: string;
+  uses?: string;
+  with?: Record<string, unknown>;
+};
 type Job = {
   name?: string;
   needs?: string | string[];
@@ -30,6 +36,36 @@ const qualification = read('main-qualification.yml');
 const nightly = read('nightly.yml');
 const expr = (inner: string) => `\${{ ${inner} }}`;
 describe('independent scheduled delivery and full qualification', () => {
+  it.each(['test-gate', 'nightly-cli'])(
+    '%s selects verified pnpm before Node package caching and managed install',
+    (jobId) => {
+      const steps = nightly.jobs[jobId].steps ?? [];
+      const setup = steps.findIndex(
+        (step) => step.name === 'Setup pinned pnpm',
+      );
+      const node = steps.findIndex((step) =>
+        step.uses?.startsWith('actions/setup-node@'),
+      );
+      const install = steps.findIndex((step) =>
+        step.run
+          ?.split('\n')
+          .some((line) => line.trim() === 'npm run dependencies:ci'),
+      );
+      expect(setup).toBeGreaterThanOrEqual(0);
+      expect(steps[setup].uses).toBe(
+        'kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20',
+      );
+      expect(steps[setup].with).toBeUndefined();
+      expect(node).toBeGreaterThan(setup);
+      expect(install).toBeGreaterThan(node);
+      expect(steps[node].with).toEqual({
+        'node-version-file': '.nvmrc',
+        cache: 'pnpm',
+        'cache-dependency-path': 'pnpm-lock.yaml',
+      });
+    },
+  );
+
   it('concentrates full qualification every six hours without making Nightly wait', () => {
     expect(Object.keys(qualification.on).sort()).toEqual([
       'push',

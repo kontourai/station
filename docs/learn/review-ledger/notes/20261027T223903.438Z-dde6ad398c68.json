@@ -1,0 +1,7 @@
+{
+  "revision": "ef2294efc1a933b77103c8a63d12b9068b515451",
+
+  "notes": [
+    {"path":"docs/guides/mobile-release.md","note":"CoreUpdateLaunchCheck change is limited to the server checkout notice (summaryOnly, no action); the mobile feed reader, provenance pinning, channel/version and HTTPS release-URL checks this guide describes are unchanged.","inputs":["docs/guides/mobile-release.md","src-ui/src/__tests__/CoreUpdateLaunchCheck.test.tsx","src-ui/src/components/CoreUpdateLaunchCheck.tsx"]}
+  ]
+}

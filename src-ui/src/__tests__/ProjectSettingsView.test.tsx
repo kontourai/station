@@ -629,11 +629,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
         'Default AI Model',
       ) as HTMLInputElement;
       expect(model.disabled).toBe(true);
-      expect(
-        screen.getByText(
-          'Choose a model connection first. Without one, chats in this project use the Station default.',
-        ),
-      ).toBeTruthy();
+      expect(screen.getByText('Choose a model connection first.')).toBeTruthy();
 
       fireEvent.change(screen.getByLabelText('Model connection'), {
         target: { value: 'openai-main' },
@@ -766,9 +762,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
         (screen.getByLabelText('Default AI Model') as HTMLInputElement).value,
       ).toBe('');
       expect(
-        screen.getByText(
-          'This connection offers no model to pre-fill. Choose one, or this project uses the Station default.',
-        ),
+        screen.getByText('This connection offers no model to pre-fill.'),
       ).toBeTruthy();
     });
 
@@ -959,7 +953,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       ).toBeTruthy();
       // The fallback select says what it is for.
       expect(
-        screen.getByText(/Used when “Use the set approval mode” is chosen/),
+        screen.getByText(/Used by “Use the set approval mode”/),
       ).toBeTruthy();
     });
 
