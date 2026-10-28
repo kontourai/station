@@ -670,7 +670,7 @@ describe('an approval pick as a server-ordered command (#2436)', () => {
       expect.objectContaining({ approvalMode: 'connection-default' }),
     );
     expect(chat().approvalPosture).toBe('connection-default');
-    expect(renderPill().text).toBe('Engine default');
+    expect(renderPill().text).toBe('Default');
     const wire = await send();
     expect(wire.setApprovalMode).toBeUndefined();
     expect(wire.model?.options ?? {}).not.toHaveProperty('approvalMode');

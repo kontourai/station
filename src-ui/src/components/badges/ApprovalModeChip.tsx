@@ -235,9 +235,7 @@ export function ApprovalModeChip({
             : 'Own settings'
           : agentDefaultShown
             ? `${approvalModeChipLabel(effective.mode)} (agent default)`
-            : displayedMode === 'connection-default'
-              ? 'Engine default'
-              : approvalModeChipLabel(displayedMode);
+            : approvalModeChipLabel(displayedMode);
   const notAppliedNote =
     notApplied && isApprovalMode(sessionOverride)
       ? ` — ${approvalModeLabel(sessionOverride)} was not applied: Station couldn't switch the engine to its approval rules`

@@ -577,10 +577,10 @@ describe('Home and the dock start the same way', () => {
       await screen.findByRole('radio', { name: /^Connection default/ }),
     );
     const engineDefault = await within(formOf(home)).findByRole('button', {
-      name: /^Permissions: Engine default/,
+      name: /^Permissions: Default/,
     });
     expect(within(engineDefault).getByText('Approval')).toBeTruthy();
-    expect(within(engineDefault).getByText('Engine default')).toBeTruthy();
+    expect(within(engineDefault).getByText('Default')).toBeTruthy();
     fireEvent.click(engineDefault);
     expect(
       await screen.findByText(

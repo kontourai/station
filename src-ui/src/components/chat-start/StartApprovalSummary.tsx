@@ -74,9 +74,7 @@ export function StartApprovalSummary({
   const label =
     resolved.source === 'project unavailable'
       ? 'Set at start'
-      : resolved.mode === 'connection-default'
-        ? 'Engine default'
-        : approvalModeChipLabel(resolved.mode);
+      : approvalModeChipLabel(resolved.mode);
   const title = `${
     resolved.source === 'session override'
       ? 'Chosen for this chat.'

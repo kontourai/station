@@ -584,7 +584,7 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   and `ArrowDownGlyph`, also used by the layout switcher and scheduler agent picker.
   Standard actions continue to use `Button`.
 - Startup permissions show only the requested mode before Start; the picker
-  explains its source. Engine default uses the engine’s saved permissions,
+  explains its source. Default uses the engine’s saved permissions,
   confirmed after startup. The chip opens the same approval picker as a running chat (full access still
   takes its confirmation); the pick is the new chat's own and rides its first
   send. Inside the dock's New chat dialog the picker opens on the dialog layer.
@@ -603,7 +603,7 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   (#3290). OpenCode, whose rules Station sets at launch, offers Station's
   approval modes, with OpenCode-specific descriptions. Its Default says
   OpenCode's own settings decide until a mode is picked (the chip's name reads
-  "Engine default — OpenCode's own settings"), and "Ask — Ask first" after
+  "Default — OpenCode's own settings"), and "Ask — Ask first" after
   Station has taken over. A pick the engine could not be switched to is never
   shown as applied: the chip shows what still runs, marked pending, with text
   that differs from Default ("Own settings", or "Ask · kept"), and its name

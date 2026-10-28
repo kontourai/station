@@ -2158,6 +2158,9 @@ export class CodexAdapter implements ProviderAdapterShape {
       const reportedSandbox = readCodexSandboxPolicy(
         (result as { sandbox?: unknown } | undefined)?.sandbox,
       );
+      const reportedApprovalPolicy = (
+        result as { approvalPolicy?: unknown } | undefined
+      )?.approvalPolicy;
       // #2494: the confinement record comes from Codex's response, never
       // from the sandbox Station sent. A start whose policy requires
       // confinement and whose engine does not report it applied is refused
@@ -2167,7 +2170,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       // configuration, when Station sent no knobs) requires confinement too.
       const plan = requiredByReportedPolicy(
         input.confinementPlan,
-        (result as { approvalPolicy?: unknown } | undefined)?.approvalPolicy,
+        reportedApprovalPolicy,
       );
       const reportedProfile = readActivePermissionProfileId(result);
       const sandboxEvidence = {
@@ -2241,6 +2244,10 @@ export class CodexAdapter implements ProviderAdapterShape {
       const configuredSandbox = reportedSandbox
         ? codexSandboxModeOfPolicy(reportedSandbox)
         : approvalKnobs?.sandbox;
+      const configuredApprovalPolicy =
+        reportedApprovalPolicy === undefined
+          ? approvalKnobs?.approvalPolicy
+          : reportedApprovalPolicy;
       record.session = {
         ...record.session,
         modelRoute: connectionLaunch.route,
@@ -2308,20 +2315,18 @@ export class CodexAdapter implements ProviderAdapterShape {
         ...reportedModelMetadata(reportedModelFromInit),
         reasoningEffort: mapReasoningEffort(modelOptions),
         fastMode: modelOptions.fastMode ?? false,
-        ...(approvalKnobs
+        approvalMode: configuredSandbox
+          ? mapCodexKnobsToApprovalMode({
+              approvalPolicy: configuredApprovalPolicy,
+              sandbox: configuredSandbox,
+            })
+          : 'connection-default',
+        ...(configuredApprovalPolicy
           ? {
-              approvalPolicy: approvalKnobs.approvalPolicy,
+              approvalPolicy: configuredApprovalPolicy,
               ...(configuredSandbox
                 ? {
                     sandbox: configuredSandbox,
-                    // Resolved approvalMode alongside the raw knobs, so the
-                    // client can track a durable lastAppliedApprovalMode
-                    // baseline at session start (archive#727 review round
-                    // 3, item 1), derived from the applied pair.
-                    approvalMode: mapCodexKnobsToApprovalMode({
-                      approvalPolicy: approvalKnobs.approvalPolicy,
-                      sandbox: configuredSandbox,
-                    }),
                   }
                 : {}),
               // #2493: the pair alone no longer says whether `never` is
