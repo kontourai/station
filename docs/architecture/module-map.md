@@ -1822,8 +1822,9 @@ is recorded once per person, so a repeat is never sent. A burst waits
 `COORDINATOR_WAKE_COALESCE_MS`, and at most `COORDINATOR_WAKE_MAX_PER_HOUR`
 wakes go per rolling hour: items past the cap wait for the next slot, and past
 `COORDINATOR_WAKE_MAX_PENDING_ITEMS` a new item is refused. The coordinator's
-own conversation and children it delegated (#3158 already delivers those) do
-not wake it. The wake row is committed before the inbox call under a key
+own conversation does not wake it, nor does a delegated child's finished or
+failed turn (#3158 already delivers settled turns); a delegated child that
+needs the person does. The wake row is committed before the inbox call under a key
 derived from its id, so a restart re-submits it and the inbox accepts it once.
 The turn replays the person's dispatch actor and an internal client origin.
 

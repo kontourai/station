@@ -51,9 +51,9 @@ Station keeps this from getting noisy:
 | Sessions named in one message | 10, then a count of the rest |
 | Items waiting at once | 100; newer ones still show in your Attention |
 
-The same item is never sent twice. Houston's own turns don't wake it, and
-neither does work it delegated itself, because those results already come
-back to it directly. A message waits for Houston's current turn to finish;
+The same item is never sent twice. Houston's own turns don't wake it. Work it delegated
+itself doesn't wake it when it finishes or fails, because that result already
+comes back to it directly; if that work needs you, Houston is told. A message waits for Houston's current turn to finish;
 it never interrupts it.
 
 ## Limits

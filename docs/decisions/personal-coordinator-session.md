@@ -9,6 +9,8 @@ evidence:
     ref: b6a9730da7d
   - kind: commit
     ref: 445dbae30c8
+  - kind: commit
+    ref: 97611a72fbd
   - kind: doc
     ref: src-server/services/orchestration/coordinator-session.ts
   - kind: doc
@@ -59,8 +61,9 @@ it; a requested stop does not. The person must still be able to read the
 Session when the item is recorded.
 
 Self-wakes are excluded by construction: the coordinator's own conversation,
-and children it delegated, whose results #3158's delegation delivery already
-returns once. Without the first exclusion, each wake turn ending would write a
+and a delegated child's finished or failed turn, which #3158's delegation
+delivery already returns once. #3158 delivers only settled turns, so a child
+of the coordinator that needs the person still wakes it. Without the first exclusion, each wake turn ending would write a
 "finished" record that woke the coordinator again.
 
 ## Bounds
