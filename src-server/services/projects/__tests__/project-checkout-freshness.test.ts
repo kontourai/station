@@ -220,10 +220,16 @@ describe('project checkout freshness', () => {
     git(worktree, ['branch', '-q', '--set-upstream-to=origin/main']);
     land(3);
     git(checkout, ['fetch', '-q']);
-    const old = new Date(Date.now() - 10 * DAY_MS);
-    // The worktree's own FETCH_HEAD, if any, is older than the main checkout's.
-    const mainFetch = statSync(join(checkout, '.git', 'FETCH_HEAD')).mtime;
-    utimesSync(join(checkout, '.git', 'FETCH_HEAD'), old, mainFetch);
+    // The worktree has no FETCH_HEAD of its own. Give the shared records
+    // distinct times: the main checkout's FETCH_HEAD is the newest.
+    const reflogAt = new Date(Date.now() - 10 * DAY_MS);
+    const mainFetch = new Date(Date.now() - 2 * DAY_MS);
+    utimesSync(
+      join(checkout, '.git', 'logs', 'refs', 'remotes', 'origin', 'main'),
+      reflogAt,
+      reflogAt,
+    );
+    utimesSync(join(checkout, '.git', 'FETCH_HEAD'), mainFetch, mainFetch);
     const result = await createProjectCheckoutFreshnessReader().read(
       worktree,
       THRESHOLDS,
