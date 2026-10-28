@@ -9,6 +9,12 @@ import {
 interface WorkingChatFocusOptions {
   activeSessionId: string | null;
   ready: boolean;
+  /**
+   * The chat is past its opening phases (a busy chat that will disable and
+   * re-enable its composer when its turn ends is not). The request ends only
+   * once a focused composer has stayed usable while settled.
+   */
+  settled?: boolean;
   terminal: boolean;
   surfaceRef: RefObject<HTMLElement | null>;
 }
@@ -24,6 +30,7 @@ const SETTLE_MS = 2_000;
 export function useWorkingChatFocus({
   activeSessionId,
   ready,
+  settled = true,
   terminal,
   surfaceRef,
 }: WorkingChatFocusOptions) {
@@ -81,7 +88,8 @@ export function useWorkingChatFocus({
     let settle: number | undefined;
     if (ready && composer && !composer.disabled && !composer.readOnly) {
       if (document.activeElement !== composer) composer.focus();
-      settle = window.setTimeout(() => setPending(null), SETTLE_MS);
+      if (settled)
+        settle = window.setTimeout(() => setPending(null), SETTLE_MS);
     }
     const onFocusIn = (event: FocusEvent) => {
       if (!ours(event.target)) setPending(null);
@@ -101,7 +109,15 @@ export function useWorkingChatFocus({
       document.removeEventListener('focusin', onFocusIn);
       observer.disconnect();
     };
-  }, [pending, activeSessionId, ready, terminal, composer, surfaceRef]);
+  }, [
+    pending,
+    activeSessionId,
+    ready,
+    settled,
+    terminal,
+    composer,
+    surfaceRef,
+  ]);
 
   return { requestComposerFocus, onComposerEnabledChange };
 }

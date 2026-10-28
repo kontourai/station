@@ -10,11 +10,18 @@ afterEach(() => {
 });
 
 let api: ReturnType<typeof useWorkingChatFocus> | undefined;
-function Harness({ ready }: { ready: boolean }) {
+function Harness({
+  ready,
+  settled = true,
+}: {
+  ready: boolean;
+  settled?: boolean;
+}) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   api = useWorkingChatFocus({
     activeSessionId: 'chat-1',
     ready,
+    settled,
     terminal: false,
     surfaceRef,
   });
@@ -78,4 +85,19 @@ test('the request ends once the composer stays usable', () => {
   setComposerEnabled(false);
   setComposerEnabled(true);
   expect(document.activeElement).toBe(document.body);
+});
+
+// A busy chat (its turn still running) takes a draft but disables its
+// composer again when the turn ends: the request outlives that, however long
+// the turn takes.
+test('a busy chat keeps the request through the end-of-turn disable', () => {
+  vi.useFakeTimers();
+  render(<Harness ready settled={false} />);
+  act(() => api!.requestComposerFocus('chat-1'));
+  setComposerEnabled(true);
+  expect(document.activeElement).toBe(composer());
+  act(() => vi.advanceTimersByTime(5_000));
+  setComposerEnabled(false);
+  setComposerEnabled(true);
+  expect(document.activeElement).toBe(composer());
 });

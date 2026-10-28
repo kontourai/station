@@ -1962,11 +1962,14 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const { requestComposerFocus, onComposerEnabledChange } = useWorkingChatFocus(
     {
       activeSessionId,
+      // A busy chat's composer still takes a draft ("Draft a follow-up…"), so it
+      // is usable: focus may land there too.
       ready:
-        composerFocusPhase === 'writable' &&
+        (composerFocusPhase === 'writable' || composerFocusPhase === 'busy') &&
         !!executionProfile &&
         isPaneOpen &&
         !importedSessionId,
+      settled: composerFocusPhase === 'writable',
       terminal:
         !activeSession ||
         !!activeSession.replay ||
