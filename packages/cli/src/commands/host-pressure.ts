@@ -16,7 +16,7 @@ export interface HostPressureReading {
  * CPU-starved: at least one runnable task waited for a CPU for this share of
  * the last minute.
  */
-export const PSI_CPU_SOME_AVG60_THRESHOLD = 25;
+const PSI_CPU_SOME_AVG60_THRESHOLD = 25;
 
 /**
  * One-minute load average per available CPU at or above which the host counts
