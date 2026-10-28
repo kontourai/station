@@ -23,6 +23,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
   installSessionTmpDirPolicy,
+  ownedDirTestHooks,
   sessionTempRoot,
   sessionTmpDirPath,
 } from '../../services/infra/session-tmpdir.js';
@@ -393,7 +394,45 @@ describe('MuseAdapter', () => {
         .catch(() => undefined);
       await vi.waitFor(() => expect(harness.spawnTmpDirs).toHaveLength(2));
       expect(harness.spawnTmpDirs[1]).toBe(sessionTmpDirPath('on', home));
+      // A second turn of the same session reuses that same root.
+      await writeLines(harness.processes[1], MUSE_META_RUN_TERMINAL);
+      harness.processes[1].exit(0);
+      await flushIo();
+      await harness.adapter.sendTurn({ threadId: 'on', input: 'again' });
+      expect(harness.spawnTmpDirs[2]).toBe(sessionTmpDirPath('on', home));
+      expect(sessionTempRoot('on')).toBe(harness.spawnTmpDirs[2]);
     } finally {
+      uninstall();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  test('chat-host-images: a folder gone before the start commits leaves exec turns with no session TMPDIR', async () => {
+    const home = makeSessionHome('muse-gone-tmp-');
+    vi.stubEnv('STATION_HOME', home);
+    const uninstall = installSessionTmpDirPolicy(() => true);
+    let opens = 0;
+    ownedDirTestHooks.afterOpen = (dir) => {
+      // 1st: prepared at start; 2nd: the commit. An earlier session's queued
+      // removal deletes the folder in between.
+      opens += 1;
+      if (opens === 2) rmSync(dir, { recursive: true, force: true });
+    };
+    try {
+      const harness = createHarness();
+      await harness.adapter.startSession({
+        provider: 'muse',
+        threadId: 'gone',
+        cwd: '/tmp/project',
+      });
+      expect(sessionTempRoot('gone')).toBeUndefined();
+      void harness.adapter
+        .sendTurn({ threadId: 'gone', input: 'hi' })
+        .catch(() => undefined);
+      await vi.waitFor(() => expect(harness.spawnTmpDirs).toHaveLength(1));
+      expect(harness.spawnTmpDirs[0]).toBeUndefined();
+    } finally {
+      ownedDirTestHooks.afterOpen = undefined;
       uninstall();
       vi.unstubAllEnvs();
     }

@@ -36,6 +36,7 @@ import {
 import {
   commitEngineLaunch,
   engineSessionTmpDir,
+  sessionTempRoot,
   stampLaunchExit,
 } from '../../services/infra/session-tmpdir.js';
 import {
@@ -198,6 +199,8 @@ export interface MuseServeAdapterOptions {
   spawnHost?: (
     posture: MuseServeHostPosture,
     cwd?: string,
+    /** chat-host-images: the session's temp folder, the host's TMPDIR. */
+    tmpDir?: string,
   ) => MuseServeSpawnResult;
   terminateHost?: (spawned: MuseServeSpawnResult) => Promise<void>;
   /** Station's bound on an unanswered approval (default 30 minutes). */
@@ -1178,6 +1181,11 @@ export class MuseAdapter implements ProviderAdapterShape {
       input.threadId,
       sessionTmpDir ? { own: sessionTmpDir } : undefined,
     );
+    // The folder may have gone while the serve host started (an earlier
+    // session's queued removal); exec turns then get no session folder rather
+    // than a TMPDIR that does not exist.
+    if (sessionTmpDir && sessionTempRoot(input.threadId) !== sessionTmpDir)
+      delete record.tmpDir;
     const transportMetadata = serveStarted
       ? {
           museTransport: 'serve',
@@ -1293,14 +1301,14 @@ export class MuseAdapter implements ProviderAdapterShape {
     const serve = this.options.serve ?? {};
     const spawnHost =
       serve.spawnHost ??
-      ((posture: MuseServeHostPosture, hostCwd?: string) =>
-        createMuseServeHost(posture, hostCwd, serve.dataHome, tmpDir));
+      ((posture: MuseServeHostPosture, hostCwd?: string, hostTmpDir?: string) =>
+        createMuseServeHost(posture, hostCwd, serve.dataHome, hostTmpDir));
     return new MuseServeSession({
       threadId,
       now: this.now,
       publish: (event) => this.publish(event),
       ...(this.options.logger ? { logger: this.options.logger } : {}),
-      spawnHost: (posture) => spawnHost(posture, cwd),
+      spawnHost: (posture) => spawnHost(posture, cwd, tmpDir),
       terminateHost: serve.terminateHost ?? terminateMuseServeHost,
       newCommandId: serve.newCommandId ?? (() => museUuidV7()),
       approvalTimeoutMs: resolveMuseSupervisionBound(
