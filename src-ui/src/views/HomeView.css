@@ -391,14 +391,14 @@
   justify-content: space-between;
   gap: var(--k-space-3);
   padding: var(--k-space-3) var(--k-space-4);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--k-radius-md, 8px);
-  background: var(--bg-secondary);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
 }
 .home-view__coordinator-body p {
   margin: 0;
-  color: var(--text-secondary);
-  font-size: var(--text-sm, 14px);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
 }
 .home-view__coordinator-body button {
   min-height: 44px;
