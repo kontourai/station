@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-sdk';
 import { useEffect, useRef } from 'react';
 import { Button } from '../../components/Button';
+import { LazyMarkdown } from '../../components/chat/LazyMarkdown';
 import { SkeletonBlock } from '../../components/state';
 import './ChildWorkTranscript.css';
 
@@ -36,10 +37,19 @@ function EntryLine({ entry }: { entry: ChildWorkTranscriptEntry }) {
           <span className="child-work-transcript__label">
             {entry.role === 'user' ? 'Prompt' : 'Subagent'}
           </span>
-          <p className="child-work-transcript__text">
-            {entry.text}
-            {cut}
-          </p>
+          {entry.role === 'assistant' ? (
+            // #4266: a subagent writes Markdown, as the card's summary of
+            // the same reply renders it. Any engine's child, the same way.
+            <div className="child-work-transcript__markdown">
+              <LazyMarkdown>{entry.text}</LazyMarkdown>
+              {cut}
+            </div>
+          ) : (
+            <p className="child-work-transcript__text">
+              {entry.text}
+              {cut}
+            </p>
+          )}
         </li>
       );
     case 'tool-call':
