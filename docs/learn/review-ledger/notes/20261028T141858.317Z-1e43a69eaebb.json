@@ -1,0 +1,7 @@
+{
+  "revision": "de20cad60790bf708211dc4d5d73981d5a916be8",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Rechecked after the anchor read was kept to a turn's own start (a late steer is never re-added): no claim here about window anchoring or paging.","inputs":["docs/design/placement.md","src-server/services/orchestration/event-store.ts"]}
+  ]
+}
