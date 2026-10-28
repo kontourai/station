@@ -33,7 +33,7 @@ afterEach(async () => {
 const TARGET = { kind: 'conversation', conversationId: 'chat-1' } as const;
 const CREATOR = { userId: 'human:local:operator' };
 
-function harness() {
+function harness(startedConversation?: string) {
   const root = makeTempDir('station-automation-');
   const outcomes: ScheduledConversationRunOutcome['kind'][] = [];
   const runs: ScheduledConversationRunInput[] = [];
@@ -44,6 +44,8 @@ function harness() {
     conversationRuns: {
       run: async (input) => {
         runs.push(input);
+        if (startedConversation)
+          input.onConversationStarted(startedConversation);
         const kind = outcomes.shift() ?? 'completed';
         return kind === 'completed'
           ? { kind, output: '{}', conversationId: 'chat-1' }
@@ -263,7 +265,7 @@ describe('targets the scheduler refuses', () => {
   });
 
   test('a dedicated target’s conversation id is server-written, never accepted', async () => {
-    const { scheduler, runs } = harness();
+    const { scheduler, runs } = harness('started-chat');
     await scheduler.addJob({
       name: 'own-chat',
       schedule: { kind: 'every', everyMs: 60_000 },
@@ -281,9 +283,13 @@ describe('targets the scheduler refuses', () => {
     });
     await scheduler.runJob('own-chat');
     expect(runs[0]!.target).toEqual({ kind: 'dedicated', agent: 'claude' });
-    // The runner reports the conversation it started; the job records it.
-    runs[0]!.onConversationStarted('started-chat');
+    // The runner reports the conversation before its claim settles.
     expect((await scheduler.listJobs())[0]!.target).toEqual({
+      kind: 'dedicated',
+      agent: 'claude',
+      conversationId: 'started-chat',
+    });
+    expect((await scheduler.getJobLogs('own-chat'))[0]?.runTarget).toEqual({
       kind: 'dedicated',
       agent: 'claude',
       conversationId: 'started-chat',
@@ -544,6 +550,49 @@ describe('fix round: creator, dedicated binding, late count, capacity', () => {
     });
   });
 
+  test('a dedicated run keeps its started conversation after the job is retargeted', async () => {
+    const root = makeTempDir('automation-dedicated-custody-');
+    let runInput: ScheduledConversationRunInput | undefined;
+    let complete!: (outcome: ScheduledConversationRunOutcome) => void;
+    const scheduler = new BuiltinScheduler({
+      ledger: createSchedulerLedger({ directory: root }),
+      turnAdapter: { invoke: vi.fn() },
+      conversationRuns: {
+        run: (input) => {
+          runInput = input;
+          return new Promise((resolve) => {
+            complete = resolve;
+          });
+        },
+      },
+    });
+    schedulers.push(scheduler);
+    await scheduler.addJob({
+      name: 'own-chat',
+      schedule: { kind: 'every', everyMs: 60_000 },
+      prompt: 'x',
+      target: { kind: 'dedicated', agent: 'old-agent' },
+      createdBy: CREATOR,
+    });
+    const running = scheduler.runJob('own-chat');
+    await vi.waitFor(() => expect(runInput).toBeDefined());
+    await scheduler.editJob('own-chat', {
+      target: { kind: 'dedicated', agent: 'new-agent' },
+    });
+    runInput!.onConversationStarted('old-chat');
+    complete({ kind: 'completed', conversationId: 'old-chat', output: '{}' });
+    await running;
+    expect((await scheduler.listJobs())[0]!.target).toEqual({
+      kind: 'dedicated',
+      agent: 'new-agent',
+    });
+    expect((await scheduler.getJobLogs('own-chat'))[0]!.runTarget).toEqual({
+      kind: 'dedicated',
+      agent: 'old-agent',
+      conversationId: 'old-chat',
+    });
+  });
+
   test('a late catch-up counts every occurrence it skipped', () => {
     const root = makeTempDir('station-automation-late-count-');
     const ledger = createSchedulerLedger({ directory: root });
@@ -687,5 +736,60 @@ describe('fix round: the runner hands its permit back once the turn is queued', 
     terminal = { kind: 'completed' };
     await expect(run).resolves.toMatchObject({ kind: 'completed' });
     expect(handedOff).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('fatigue and retry settlement', () => {
+  test('fatigue waits until the fifth occurrence finishes retrying', async () => {
+    const root = makeTempDir('review-fatigue-pending-');
+    const ledger = createSchedulerLedger({ directory: root });
+    expect(
+      ledger.create({
+        name: 'retrying',
+        schedule: { kind: 'every', everyMs: 86_400_000 },
+        prompt: 'x',
+        enabled: true,
+        createdAt: '2026-10-20T00:00:00.000Z',
+        retryCount: 1,
+      }),
+    ).toEqual({ kind: 'created' });
+    for (let index = 0; index < 4; index++) {
+      const claim = ledger.claimManual('retrying', Date.now());
+      if (claim.kind !== 'claimed') throw new Error('claim missing');
+      expect(claim.receipt.beginInvocation()).toEqual({ kind: 'applied' });
+      expect(
+        claim.receipt.settle({
+          success: false,
+          state: 'failed',
+          completedAt: new Date().toISOString(),
+          durationSecs: 0,
+        }),
+      ).toEqual({ kind: 'applied' });
+    }
+    const claim = ledger.claimManual('retrying', Date.now());
+    if (claim.kind !== 'claimed') throw new Error('claim missing');
+    expect(claim.receipt.beginInvocation()).toEqual({ kind: 'applied' });
+    const next = claim.receipt.recordNotInvoked({
+      completedAt: new Date().toISOString(),
+      error: 'provider unavailable before effect',
+    });
+    if (next.kind !== 'claimed') throw new Error('retry missing');
+    // Same call the new startup/tick reconciliation makes during backoff.
+    const applied = ledger.applyFatigue(5);
+    if (applied.kind !== 'available') throw new Error('fatigue unavailable');
+    expect(next.receipt.beginInvocation()).toEqual({ kind: 'applied' });
+    expect(
+      next.receipt.settle({
+        success: true,
+        state: 'completed',
+        completedAt: new Date().toISOString(),
+        durationSecs: 0,
+      }),
+    ).toEqual({ kind: 'applied' });
+    const jobs = ledger.list();
+    ledger.close();
+    expect(applied.value).toEqual([]);
+    if (jobs.kind !== 'available') throw new Error('jobs unavailable');
+    expect(jobs.value[0]!.enabled).toBe(true);
   });
 });

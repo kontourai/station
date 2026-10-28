@@ -474,8 +474,14 @@ export function createAgentScheduleRoutes(deps: AgentScheduleRoutesDeps) {
 
   app.get('/agent-schedule/:conversationId', async (c) => {
     const conversationId = c.req.param('conversationId');
-    const person = personFor(c, conversationId, 'read');
-    if (person instanceof Response) return person;
+    if (requestMayBeAnAgent(c.req.raw)) {
+      const caller = callerOf(c);
+      if ('refused' in caller) return caller.refused;
+      if (caller.conversationId !== conversationId) return otherConversation(c);
+    } else {
+      const person = personFor(c, conversationId, 'read');
+      if (person instanceof Response) return person;
+    }
     let usageLimitResume: ConversationUsageLimitResume | undefined;
     try {
       usageLimitResume = await deps.usageLimitResume?.(conversationId);

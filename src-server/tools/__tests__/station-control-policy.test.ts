@@ -63,7 +63,7 @@ const DECISION_1_BOUND_OPERATOR = [
 // Decision 2 (slice B): operator-wide reads — Station-wide data no single
 // person's view contains — need a bound caller acting for the operator.
 const DECISION_2_OPERATOR_READS = [
-  'get_job_logs',
+  // get_job_logs is now scoped per recorded run target at the route.
   'get_achievements',
   'get_ssh_environment',
   // Slice B review: Station-wide usage totals (H1), the operator-only

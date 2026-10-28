@@ -362,6 +362,32 @@ export const SCHEDULED_TURN_TERMINAL_METHODS: readonly string[] = [
 /** How many of a turn's terminal-method events `turnTerminal` reads. */
 export const SCHEDULED_TURN_TERMINAL_READ_LIMIT = 50;
 
+/** Scan the turn in bounded pages until a terminal or the current end. */
+export function readStoredScheduledTurnTerminal(
+  store: Pick<
+    import('../orchestration/event-store.js').EventStore,
+    'listTurnEventsByMethods'
+  >,
+  sessionId: string,
+  turnId: string,
+): ScheduledTurnTerminal | undefined {
+  let cursor = 0;
+  while (true) {
+    const rows = store.listTurnEventsByMethods(
+      sessionId,
+      turnId,
+      SCHEDULED_TURN_TERMINAL_METHODS,
+      SCHEDULED_TURN_TERMINAL_READ_LIMIT,
+      undefined,
+      cursor,
+    );
+    const terminal = readScheduledTurnTerminal(rows.map((row) => row.payload));
+    if (terminal) return terminal;
+    if (rows.length < SCHEDULED_TURN_TERMINAL_READ_LIMIT) return undefined;
+    cursor = rows[rows.length - 1]!.sequence;
+  }
+}
+
 type TurnTerminalEvent = {
   method?: string;
   finishReason?: string;

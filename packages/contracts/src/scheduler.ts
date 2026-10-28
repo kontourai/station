@@ -260,6 +260,8 @@ export interface SchedulerLogEntry {
   id: string;
   job: string;
   jobId?: string;
+  /** Target captured at claim; null means a Station-engine run. Absent is legacy. */
+  runTarget?: SchedulerAutomationTarget | null;
   startedAt: string;
   /** Exact recurring occurrence selected before the scheduler invoked an Adapter. */
   scheduledFor?: string;

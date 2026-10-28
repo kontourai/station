@@ -9,7 +9,12 @@ import type {
   ConversationAutomation,
   ConversationUsageLimitResume,
 } from '@kontourai/station-contracts/agent-schedule';
-import type { SchedulerAutomationTarget } from '@kontourai/station-contracts/scheduler';
+import type { RunSummary } from '@kontourai/station-contracts/runs';
+import type {
+  SchedulerAutomationTarget,
+  SchedulerJob,
+  SchedulerLogEntry,
+} from '@kontourai/station-contracts/scheduler';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { Context } from 'hono';
 import type {
@@ -109,6 +114,19 @@ export interface AgentScheduleComposition {
   readonly admitAutomationTarget: AutomationTargetAdmission;
   /** The scheduler routes' rule for acting on a job with a stored target. */
   readonly admitAutomationJob: AutomationJobAdmission;
+  readonly mayReadAutomationRun: (
+    c: Context,
+    job: SchedulerJob,
+    run: Pick<SchedulerLogEntry, 'jobId' | 'runTarget'>,
+  ) => boolean;
+  readonly mayReadAutomationJob: (
+    c: Context,
+    job: import('@kontourai/station-contracts/scheduler').SchedulerJob,
+  ) => boolean;
+  scheduleRunReadFilter(
+    c: Context,
+    jobs: readonly SchedulerJob[],
+  ): (run: RunSummary) => boolean;
   readonly delivery: AgentWakeUpDelivery | undefined;
   /** For the guard's `wake-up-stays-in-own-conversation` rule. */
   wakeUpConversation(wakeUpId: string): string | undefined;
@@ -349,12 +367,80 @@ export function composeAgentSchedule(
     },
     ...(deps.now ? { now: deps.now } : {}),
   };
-  return {
+  const composition: AgentScheduleComposition = {
     routeDeps,
     delivery,
     person,
     admitAutomationTarget: admitAutomationTargetFor(deps, person),
     admitAutomationJob: admitAutomationJobFor(person),
+    mayReadAutomationJob: (c, job) => {
+      if (requestMayBeAnAgent(c.req.raw)) {
+        const authority = stationControlRequestAuthority(c.req.raw);
+        if (authority?.kind !== 'caller') return false;
+        const own =
+          authority.caller.conversationId ?? authority.caller.sessionId;
+        return (
+          !!job.target?.conversationId && job.target.conversationId === own
+        );
+      }
+      const requester = person(c);
+      if (!requester) return false;
+      if (!job.target) return true;
+      return job.target.conversationId
+        ? requester.mayRead(job.target.conversationId)
+        : requester.userId === job.createdBy?.userId;
+    },
+    mayReadAutomationRun: (c, job, run) => {
+      if (run.jobId && run.jobId !== job.unattendedPrincipal?.jobId)
+        return false;
+      const isAgent = requestMayBeAnAgent(c.req.raw);
+      const requester = isAgent ? undefined : person(c);
+      if (run.runTarget === undefined) {
+        return (
+          !!requester &&
+          requester.userId === job.createdBy?.userId &&
+          (!job.target ||
+            (job.target.conversationId
+              ? requester.mayRead(job.target.conversationId)
+              : requester.userId === job.createdBy?.userId))
+        );
+      }
+      if (run.runTarget === null) return !!requester;
+      const target = run.runTarget;
+      if (target.kind !== 'conversation' && target.kind !== 'dedicated')
+        return false;
+      if (isAgent) {
+        const authority = stationControlRequestAuthority(c.req.raw);
+        return (
+          authority?.kind === 'caller' &&
+          !!target.conversationId &&
+          target.conversationId ===
+            (authority.caller.conversationId ?? authority.caller.sessionId)
+        );
+      }
+      return (
+        !!requester &&
+        (target.conversationId
+          ? requester.mayRead(target.conversationId)
+          : requester.userId === job.createdBy?.userId)
+      );
+    },
+    scheduleRunReadFilter: (c, jobs) => (run) =>
+      jobs.some(
+        (job) =>
+          job.name === run.sourceId &&
+          job.provider === run.providerId &&
+          composition.mayReadAutomationRun(c, job, {
+            jobId:
+              typeof run.metadata?.jobId === 'string'
+                ? run.metadata.jobId
+                : undefined,
+            runTarget: run.metadata?.runTarget as
+              | SchedulerJob['target']
+              | null
+              | undefined,
+          }),
+      ),
     jobProposals: createJobProposalApproval({
       store: deps.hosted ? undefined : deps.store,
       person,
@@ -364,4 +450,5 @@ export function composeAgentSchedule(
     wakeUpConversation: (wakeUpId) =>
       agentWakeUpConversation(deps.store, wakeUpId),
   };
+  return composition;
 }

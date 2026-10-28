@@ -37,7 +37,17 @@ const mockJob = {
 
 const mockStats = {
   providers: {
-    builtin: { totalJobs: 2, totalRuns: 10, successRate: 0.9 },
+    builtin: {
+      jobs: [
+        {
+          name: 'daily-report',
+          total: 10,
+          successes: 9,
+          failures: 1,
+          success_rate: 90,
+        },
+      ],
+    },
   },
   summary: { totalJobs: 2, totalRuns: 10, successRate: 0.9 },
 };
@@ -64,6 +74,7 @@ function createMockService() {
     listProviders: vi.fn().mockReturnValue([mockProvider]),
     listJobs: vi.fn().mockResolvedValue([mockJob]),
     getStats: vi.fn().mockResolvedValue(mockStats),
+    listRunSummaries: vi.fn().mockResolvedValue([]),
     getStatus: vi.fn().mockResolvedValue(mockStatus),
     previewSchedule: vi
       .fn()

@@ -775,9 +775,7 @@ import { PullRequestRepositoryContextResolver } from '../../services/pull-reques
 import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
 import {
   conversationAutomationsFrom,
-  readScheduledTurnTerminal,
-  SCHEDULED_TURN_TERMINAL_METHODS,
-  SCHEDULED_TURN_TERMINAL_READ_LIMIT,
+  readStoredScheduledTurnTerminal,
   ScheduledConversationRuns,
 } from '../../services/scheduling/scheduled-conversation-runs.js';
 import type { SchedulerService } from '../../services/scheduling/scheduler-service.js';
@@ -6028,16 +6026,7 @@ export function configureRuntimeRoutes(
       entry: (conversationId, clientTurnId) =>
         inbox.entry(conversationId, clientTurnId),
       turnTerminal: (sessionId, turnId) =>
-        readScheduledTurnTerminal(
-          eventStore
-            .listTurnEventsByMethods(
-              sessionId,
-              turnId,
-              SCHEDULED_TURN_TERMINAL_METHODS,
-              SCHEDULED_TURN_TERMINAL_READ_LIMIT,
-            )
-            .map((stored) => stored.payload),
-        ),
+        readStoredScheduledTurnTerminal(eventStore, sessionId, turnId),
       startDedicated: stationServerEntry(
         async ({ agent, workspace, message, clientTurnId, actor }) => {
           const handle = await executeExecutionTargetMessage(
@@ -10160,6 +10149,8 @@ export function configureRuntimeRoutes(
       // existing targeted job is admitted even without a runner, so it can
       // still be inspected, disabled or deleted.
       admitAutomationJob: agentSchedule.admitAutomationJob,
+      mayReadAutomationJob: agentSchedule.mayReadAutomationJob,
+      mayReadAutomationRun: agentSchedule.mayReadAutomationRun,
       ...(scheduledConversationRuns
         ? { admitAutomationTarget: agentSchedule.admitAutomationTarget }
         : {}),
@@ -10171,6 +10162,10 @@ export function configureRuntimeRoutes(
       runService,
       context.logger,
       conversationReadAuthorityForRequest,
+      async (c) => {
+        const jobs = await schedulerService.listJobs();
+        return agentSchedule.scheduleRunReadFilter(c, jobs);
+      },
     ),
   );
   context.app.route(

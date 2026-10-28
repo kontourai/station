@@ -42,6 +42,7 @@ import { BuiltinScheduler } from '../builtin-scheduler.js';
 import {
   automationRunMessage,
   readScheduledTurnTerminal,
+  readStoredScheduledTurnTerminal,
   SCHEDULED_TURN_TERMINAL_METHODS,
   SCHEDULED_TURN_TERMINAL_READ_LIMIT,
   ScheduledConversationRuns,
@@ -484,3 +485,75 @@ describe.each([
     });
   },
 );
+
+test('REVIEW: a completed turn after 50 deferred retry errors still settles', async () => {
+  const root = makeTempDir('review-terminal-prefix-');
+  const store = new EventStore(join(root, 'events.sqlite'));
+  try {
+    for (let i = 0; i < SCHEDULED_TURN_TERMINAL_READ_LIMIT + 1; i++)
+      store.appendEvent({
+        eventId: `retry-${i}`,
+        provider: 'codex',
+        threadId: 'review-chat',
+        turnId: 'review-turn',
+        method: 'runtime.error',
+        createdAt: '2026-10-28T00:00:00.000Z',
+        message: 'reconnecting',
+        retriable: true,
+      });
+    store.appendEvent({
+      eventId: 'completed-after-retries',
+      provider: 'codex',
+      threadId: 'review-chat',
+      turnId: 'review-turn',
+      method: 'turn.completed',
+      createdAt: '2026-10-28T00:01:00.000Z',
+      finishReason: 'stop',
+    } as never);
+    expect(
+      readScheduledTurnTerminal(
+        store
+          .listTurnEventsByMethods(
+            'review-chat',
+            'review-turn',
+            SCHEDULED_TURN_TERMINAL_METHODS,
+            SCHEDULED_TURN_TERMINAL_READ_LIMIT + 2,
+          )
+          .map((row) => row.payload),
+      ),
+    ).toEqual({ kind: 'completed' });
+    const runner = new ScheduledConversationRuns({
+      submit: () =>
+        ({ outcome: 'queued', entry: { state: 'queued' } }) as never,
+      entry: () =>
+        ({
+          state: 'sent',
+          sessionId: 'review-chat',
+          turnId: 'review-turn',
+        }) as never,
+      turnTerminal: (sessionId, turnId) =>
+        readStoredScheduledTurnTerminal(store, sessionId, turnId),
+      startDedicated: async () => {
+        throw new Error('not dedicated');
+      },
+      isIndeterminateStart: () => false,
+      pollMs: 1,
+      deadlineMs: 10,
+    });
+    const outcome = await runner.run({
+      jobId: 'review-job',
+      jobName: 'review-job',
+      runId: 'review-run',
+      prompt: 'x',
+      target: { kind: 'conversation', conversationId: 'review-chat' },
+      createdBy: { userId: OWNER },
+      lastSuccessAt: undefined,
+      onConversationStarted: () => {},
+      onHandedOff: () => {},
+      signal: new AbortController().signal,
+    });
+    expect(outcome).toMatchObject({ kind: 'completed' });
+  } finally {
+    store.close();
+  }
+});

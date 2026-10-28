@@ -598,6 +598,7 @@ export interface SchedulerLedger {
     jobId: string,
     conversationId: string,
     startedFrom: SchedulerAutomationTarget,
+    runId: string,
   ): Readonly<{ kind: 'applied' | 'stale' }> | SchedulerUnavailable;
   /**
    * Fatigue as one durable transition: every enabled job whose failed
@@ -1038,6 +1039,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
           id: `${claim.run_id}-1`,
           job: claim.job_name,
           jobId: claim.job_id,
+          ...this.targetForClaim(claim),
           startedAt: claim.started_at,
           firedAt: claim.started_at,
           completedAt: input.completedAt,
@@ -1191,7 +1193,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
           // Only who created it is public; the replayed actor stays private.
           ...(createdBy ? { createdBy: { userId: createdBy.userId } } : {}),
           consecutiveFailures: countConsecutiveFailures(
-            this.logsUnsafe(job.name, CONSECUTIVE_FAILURE_SCAN_LIMIT),
+            this.finalizedLogsUnsafe(job.name),
             failureCountResetAt,
           ),
           ...(lastSuccessAt ? { lastSuccessAt } : {}),
@@ -1565,7 +1567,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     return this.read(() => {
       const row = this.rowForJob(name);
       return countConsecutiveFailures(
-        this.logsUnsafe(name, CONSECUTIVE_FAILURE_SCAN_LIMIT),
+        this.finalizedLogsUnsafe(name),
         row ? parseStoredJob(row.data).failureCountResetAt : undefined,
       );
     });
@@ -1587,10 +1589,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
             continue;
           }
           if (!job.enabled) continue;
-          const runs = this.logsUnsafe(
-            row.name,
-            CONSECUTIVE_FAILURE_SCAN_LIMIT,
-          );
+          const runs = this.finalizedLogsUnsafe(row.name);
           const failures = countConsecutiveFailures(
             runs,
             job.failureCountResetAt,
@@ -1729,11 +1728,40 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     jobId: string,
     conversationId: string,
     startedFrom: SchedulerAutomationTarget,
+    runId: string,
   ): Readonly<{ kind: 'applied' | 'stale' }> | SchedulerUnavailable {
     const refused = this.refuseIfCorrupt();
     if (refused) return refused;
     try {
       return this.transaction(() => {
+        const claim = this.claimRow(jobId);
+        if (
+          !claim ||
+          claim.run_id !== runId ||
+          claim.owner_id !== this.owner.id ||
+          !claim.job_data
+        )
+          return { kind: 'stale' } as const;
+        const claimedTarget = parseStoredJob(claim.job_data).target;
+        if (
+          claimedTarget?.kind !== 'dedicated' ||
+          claimedTarget.conversationId ||
+          dedicatedTargetIdentity(claimedTarget) !==
+            dedicatedTargetIdentity(startedFrom)
+        )
+          return { kind: 'stale' } as const;
+        this.db
+          .prepare(
+            'INSERT OR IGNORE INTO scheduler_run_conversations(run_id, conversation_id) VALUES (?, ?)',
+          )
+          .run(runId, conversationId);
+        const recorded = this.db
+          .prepare(
+            'SELECT conversation_id FROM scheduler_run_conversations WHERE run_id = ?',
+          )
+          .get(runId) as { conversation_id: string } | undefined;
+        if (recorded?.conversation_id !== conversationId)
+          return { kind: 'stale' } as const;
         const row = this.rowForJobId(jobId);
         if (!row) return { kind: 'stale' } as const;
         const job = parseStoredJob(row.data);
@@ -1755,6 +1783,25 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     } catch (error) {
       return unavailableFrom(error);
     }
+  }
+
+  private targetForClaim(claim: ClaimRow): {
+    runTarget?: SchedulerAutomationTarget | null;
+  } {
+    if (!claim.job_data) return {};
+    const target = parseStoredJob(claim.job_data).target ?? null;
+    if (target?.kind !== 'dedicated' || target.conversationId)
+      return { runTarget: target };
+    const bound = this.db
+      .prepare(
+        'SELECT conversation_id FROM scheduler_run_conversations WHERE run_id = ?',
+      )
+      .get(claim.run_id) as { conversation_id: string } | undefined;
+    return {
+      runTarget: bound
+        ? { ...target, conversationId: bound.conversation_id }
+        : target,
+    };
   }
 
   private lastSuccessUnsafe(jobId: string): string | undefined {
@@ -1786,6 +1833,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
       id: `${randomUUID()}-1`,
       job: job.name,
       jobId,
+      runTarget: job.target ?? null,
       startedAt: at,
       scheduledFor: new Date(scheduledForMs).toISOString(),
       firedAt: at,
@@ -1842,6 +1890,14 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     );
   }
 
+  /** Attempts of a live claim have not decided their occurrence yet. */
+  private finalizedLogsUnsafe(name: string): SchedulerLogEntry[] {
+    const pending = new Set(this.runningLogsUnsafe(name).map(runOccurrenceId));
+    return this.logsUnsafe(name, CONSECUTIVE_FAILURE_SCAN_LIMIT).filter(
+      (run) => !pending.has(runOccurrenceId(run)),
+    );
+  }
+
   /** The table's opaque identity backfills legacy JSON receipts on read. */
   private logFromRow(row: {
     job_id?: string | null;
@@ -1869,6 +1925,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
         id: `${claim.run_id}-${claim.attempt}`,
         job: claim.job_name,
         jobId: claim.job_id,
+        ...this.targetForClaim(claim),
         startedAt: claim.started_at,
         ...(claim.scheduled_for_ms === null
           ? {}
@@ -1893,6 +1950,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
         id: `${active.run_id}-${active.attempt}`,
         job: active.job_name,
         jobId: active.job_id,
+        ...this.targetForClaim(active),
         startedAt: active.started_at,
         ...(active.scheduled_for_ms === null
           ? {}
@@ -3186,6 +3244,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
           id: `${claim.run_id}-${attempt}`,
           job: job.name,
           jobId: claim.job_id,
+          ...this.targetForClaim(claim),
           startedAt: claim.started_at,
           ...(claim.scheduled_for_ms === null
             ? {}
@@ -3257,6 +3316,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
             id: `${claim.run_id}-${attempt}`,
             job: job.name,
             jobId: claim.job_id,
+            ...this.targetForClaim(claim),
             startedAt: claim.started_at,
             ...(claim.scheduled_for_ms === null
               ? {}
@@ -3387,6 +3447,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
       id: `${claim.run_id}-${attempt}`,
       job: job.name,
       jobId: claim.job_id,
+      ...this.targetForClaim(claim),
       startedAt: claim.started_at,
       ...(claim.scheduled_for_ms === null
         ? {}
@@ -3624,6 +3685,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
         id: `${claim.run_id}-${claim.attempt}`,
         job: claim.job_name,
         jobId: claim.job_id,
+        ...this.targetForClaim(claim),
         startedAt: claim.started_at,
         ...(claim.scheduled_for_ms === null
           ? {}
@@ -4354,6 +4416,10 @@ const SCHEDULER_LEDGER_SCHEMA = `
     owner_id TEXT NOT NULL,
     owner_pid INTEGER NOT NULL,
     owner_birth TEXT
+  );
+  CREATE TABLE IF NOT EXISTS scheduler_run_conversations (
+    run_id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS scheduler_starter_manual_intents (
     operation_id TEXT PRIMARY KEY,

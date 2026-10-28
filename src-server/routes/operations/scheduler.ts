@@ -166,6 +166,12 @@ export function createSchedulerRoutes(
     admitAutomationTarget?: AutomationTargetAdmission;
     /** Absent: every action on a job with a stored target is refused. */
     admitAutomationJob?: AutomationJobAdmission;
+    mayReadAutomationJob?: (c: Context, job: SchedulerJob) => boolean;
+    mayReadAutomationRun?: (
+      c: Context,
+      job: SchedulerJob,
+      run: import('@kontourai/station-contracts/scheduler').SchedulerLogEntry,
+    ) => boolean;
   } = {},
 ) {
   const app = new Hono();
@@ -200,6 +206,53 @@ export function createSchedulerRoutes(
         );
   };
 
+  const canReadJob = (c: Context, job: SchedulerJob) =>
+    options.mayReadAutomationJob
+      ? options.mayReadAutomationJob(c, job)
+      : !job.target;
+  const canReadRunSummary = (
+    c: Context,
+    job: SchedulerJob,
+    run: import('@kontourai/station-contracts/runs').RunSummary,
+  ) =>
+    options.mayReadAutomationRun
+      ? options.mayReadAutomationRun(c, job, {
+          id: '',
+          job: job.name,
+          startedAt: run.startedAt,
+          success: run.status === 'completed',
+          jobId:
+            typeof run.metadata?.jobId === 'string'
+              ? run.metadata.jobId
+              : undefined,
+          runTarget: run.metadata?.runTarget as
+            | SchedulerJob['target']
+            | null
+            | undefined,
+        })
+      : canReadJob(c, job);
+  const visibleJobs = async (
+    c: Context,
+    summaries?: import('@kontourai/station-contracts/runs').RunSummary[],
+  ) => {
+    const jobs = (await schedulerService.listJobs()).filter((job) =>
+      canReadJob(c, job),
+    );
+    if (jobs.length === 0) return jobs;
+    const runs = summaries ?? (await schedulerService.listRunSummaries());
+    return jobs.map((job) => {
+      const hidden = runs.some(
+        (run) =>
+          run.providerId === job.provider &&
+          run.sourceId === job.name &&
+          !canReadRunSummary(c, job, run),
+      );
+      if (!hidden) return job;
+      const { lastRun, lastSuccessAt, consecutiveFailures, ...redacted } = job;
+      return redacted;
+    });
+  };
+
   // Scheduler storage and scheduler-originated output have no durable tenant
   // binding.  Do not expose a partially filtered API: every read, SSE frame,
   // webhook, and mutation is unavailable in hosted mode until that storage is
@@ -221,9 +274,34 @@ export function createSchedulerRoutes(
   app.get('/events', (c) => {
     return streamSSE(c, async (stream) => {
       const unsub = schedulerService.subscribe((data) => {
-        stream
-          .writeSSE({ data })
-          .catch((e) => logger.error('SSE write failed', { error: e }));
+        void (async () => {
+          const event = JSON.parse(data) as {
+            job?: unknown;
+            provider?: unknown;
+            id?: unknown;
+          };
+          if (
+            typeof event.job !== 'string' ||
+            typeof event.provider !== 'string'
+          )
+            return;
+          const job = (await schedulerService.listJobs()).find(
+            (candidate) =>
+              candidate.name === event.job &&
+              candidate.provider === event.provider,
+          );
+          if (!job) return;
+          if (typeof event.id === 'string') {
+            const logs = await schedulerService.getJobLogsForProvider(
+              event.provider,
+              event.job,
+              50,
+            );
+            const run = logs.find((entry) => entry.id === event.id);
+            if (!run || !options.mayReadAutomationRun?.(c, job, run)) return;
+          } else if (!canReadJob(c, job)) return;
+          await stream.writeSSE({ data });
+        })().catch((e) => logger.error('SSE write failed', { error: e }));
       });
       const stopKeepAlive = sseKeepalive(stream, undefined, {
         onWriteError: (e) => logger.error('SSE ping failed', { error: e }),
@@ -257,7 +335,7 @@ export function createSchedulerRoutes(
 
   app.get('/jobs', async (c) => {
     try {
-      const data = await schedulerService.listJobs();
+      const data = await visibleJobs(c);
       return c.json({ success: true, data });
     } catch (error: unknown) {
       logger.error('Failed to list scheduler jobs', { error });
@@ -270,7 +348,59 @@ export function createSchedulerRoutes(
 
   app.get('/stats', async (c) => {
     try {
-      const data = await schedulerService.getStats();
+      const [data, runs] = await Promise.all([
+        schedulerService.getStats(),
+        schedulerService.listRunSummaries(),
+      ]);
+      const jobs = await visibleJobs(c, runs);
+      for (const [provider, stats] of Object.entries(data.providers)) {
+        stats.jobs = stats.jobs.flatMap((stat) => {
+          const job = jobs.find(
+            (candidate) =>
+              candidate.provider === provider && candidate.name === stat.name,
+          );
+          if (!job) return [];
+          const visible = runs.filter(
+            (run) =>
+              run.providerId === provider &&
+              run.sourceId === job.name &&
+              run.status !== 'running' &&
+              canReadRunSummary(c, job, run),
+          );
+          const successes = visible.filter(
+            (run) => run.status === 'completed',
+          ).length;
+          return [
+            {
+              name: stat.name,
+              total: visible.length,
+              successes,
+              failures: visible.length - successes,
+              success_rate: visible.length
+                ? Math.round((successes / visible.length) * 100)
+                : 0,
+            },
+          ];
+        });
+      }
+      const entries = Object.values(data.providers).flatMap(
+        (provider) => provider.jobs,
+      );
+      const totalRuns = entries.reduce(
+        (total, entry) => total + entry.total,
+        0,
+      );
+      data.summary = {
+        totalJobs: entries.length,
+        totalRuns,
+        successRate: totalRuns
+          ? Math.round(
+              (entries.reduce((total, entry) => total + entry.successes, 0) /
+                totalRuns) *
+                100,
+            )
+          : 0,
+      };
       return c.json({ success: true, data });
     } catch (error: unknown) {
       logger.error('Failed to get scheduler stats', { error });
@@ -283,7 +413,15 @@ export function createSchedulerRoutes(
 
   app.get('/status', async (c) => {
     try {
-      const data = await schedulerService.getStatus();
+      const [data, jobs] = await Promise.all([
+        schedulerService.getStatus(),
+        visibleJobs(c),
+      ]);
+      for (const [provider, status] of Object.entries(data.providers)) {
+        status.jobCount = jobs.filter(
+          (job) => job.provider === provider,
+        ).length;
+      }
       return c.json({ success: true, data });
     } catch (error: unknown) {
       logger.error('Failed to get scheduler status', { error });
@@ -320,8 +458,16 @@ export function createSchedulerRoutes(
 
   app.get('/jobs/:target/logs', async (c) => {
     try {
-      const count = parseInt(c.req.query('count') || '20', 10);
+      const name = param(c, 'target');
       const providerId = c.req.query('providerId');
+      const jobs = await schedulerService.listJobs();
+      const job = jobs.find(
+        (candidate) =>
+          candidate.name === name &&
+          (!providerId || candidate.provider === providerId),
+      );
+      if (!job) return c.json({ success: false, error: 'Job not found' }, 404);
+      const count = parseInt(c.req.query('count') || '20', 10);
       const data = providerId
         ? await schedulerService.getJobLogsForProvider(
             providerId,
@@ -329,7 +475,14 @@ export function createSchedulerRoutes(
             count,
           )
         : await schedulerService.getJobLogs(param(c, 'target'), count);
-      return c.json({ success: true, data });
+      const visible = data.filter((run) =>
+        options.mayReadAutomationRun
+          ? options.mayReadAutomationRun(c, job, run)
+          : canReadJob(c, job),
+      );
+      if (!canReadJob(c, job) && visible.length === 0)
+        return c.json({ success: false, error: 'Job not found' }, 404);
+      return c.json({ success: true, data: visible });
     } catch (error: unknown) {
       logger.error('Failed to get job logs', { error });
       return c.json(

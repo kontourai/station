@@ -528,7 +528,15 @@ export const STATION_CONTROL_TOOL_POLICY = {
   },
 
   // ── operations: scheduler ──────────────────────────────────────────────
-  list_jobs: { ...READ, routes: [get('/scheduler/jobs')] },
+  list_jobs: {
+    ...READ,
+    routes: [
+      get('/scheduler/jobs'),
+      get('/api/runs'),
+      get('/api/runs/:runId'),
+      post('/api/runs/output'),
+    ],
+  },
   add_job: {
     ...OPERATOR_MUTATION,
     // Decision 1: a job that runs with every tool trusted runs host code
@@ -559,7 +567,10 @@ export const STATION_CONTROL_TOOL_POLICY = {
   },
   list_wake_ups: {
     ...SELF_READ,
-    routes: [get('/api/orchestration/station-control/wake-ups')],
+    routes: [
+      get('/api/orchestration/station-control/wake-ups'),
+      get('/api/orchestration/agent-schedule/:conversationId'),
+    ],
   },
   cancel_wake_up: {
     assurance: 'any',
@@ -589,10 +600,9 @@ export const STATION_CONTROL_TOOL_POLICY = {
     ...READ,
     routes: [get('/scheduler/jobs/preview-schedule')],
   },
-  // Decision 2: scheduled jobs are the operator's Station-wide work (no job
-  // records a person), so their run output is an operator-wide read.
+  // The route admits each receipt against the target recorded at claim.
   get_job_logs: {
-    ...OPERATOR_READ,
+    ...READ,
     routes: [get('/scheduler/jobs/:target/logs')],
   },
   update_job: {

@@ -63,6 +63,17 @@ that proposed it, so an approved job runs on that chat's own engine.
   person must be able to send to that conversation (for a dedicated one not
   started yet, only its creator), and an agent may act only on automations
   targeting its own conversation. A changed target is admitted as well.
+- **Reading runs.** A claim records the target it ran against, including a
+  dedicated target's agent and workspace fingerprint. Once that run starts a
+  dedicated conversation, Station records the conversation id for that run.
+  If that write fails, the unbound fingerprint remains creator-only. Logs, run details and output are admitted against that recorded target, even
+  if the job is later retargeted. An agent may read only its own conversation;
+  a person must be able to read the recorded conversation. An unstarted
+  dedicated target without a conversation is readable only by its creator.
+  Run-derived job fields are withheld when they would combine unreadable runs,
+  and statistics count only readable runs. Older runs with no recorded target
+  are readable only by the job's creator who can also read its current target;
+  agents cannot read those runs.
 - **Creator.** `createdBy` is set when the automation is created (or when a
   job without one gains a target) and never changed by an edit. There is no
   ownership transfer: to act as someone else, that person creates their own.
@@ -87,7 +98,7 @@ that proposed it, so an approved job runs on that chat's own engine.
   completion time, so recurring work can cover only what changed since.
 - **Fatigue.** After 5 failed occurrences in a row the automation is
   disabled and one notification is sent. An occurrence counts once however
-  many retry attempts it took. A success resets the count, and so does a
+  many retry attempts it took, and only after its final attempt settles. A success resets the count, and so does a
   person turning the automation back on (owner decision). The disable and the
   owed notification are one durable transition, checked at startup, on every
   tick and after every failed run, so a crash after the fifth failure, or
