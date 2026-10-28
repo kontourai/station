@@ -210,6 +210,26 @@ describe('integration-registry-provider helpers', () => {
     },
   );
 
+  test('a remote integration is not reported as a missing binary', async () => {
+    const homeDir = createHomeDir();
+    const dir = join(homeDir, 'integrations', 'remote-tool');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'integration.json'),
+      JSON.stringify({
+        id: 'remote-tool',
+        kind: 'mcp',
+        transport: 'streamable-http',
+        endpoint: 'https://mcp.example.test/mcp',
+      }),
+    );
+    const before = lookups.count;
+    const [item] = await readDiskIntegrations(homeDir);
+    expect(item).toMatchObject({ id: 'remote-tool', installed: true });
+    expect(item.status).toBeUndefined();
+    expect(lookups.count).toBe(before);
+  });
+
   test('readDiskIntegrations passes through a manifest-declared icon (issue #691)', async () => {
     const homeDir = createHomeDir();
     const integrationDir = join(homeDir, 'integrations', 'iconed-tool');

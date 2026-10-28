@@ -31,6 +31,7 @@ import {
   MCPToolDisabledError,
   type ToolServerAccountActor,
 } from '../../services/plugins/mcp-service.js';
+import { withUntrustedContentChange } from '../../services/plugins/untrusted-content-policy.js';
 import {
   integrationIconAssetReads,
   mcpUiRenderPermissionAllows,
@@ -886,7 +887,20 @@ export function createToolRoutes(
       if (!Object.hasOwn(update, 'secretEnv') && existing.env) {
         merged.env = existing.env;
       }
-      await mcpService.saveIntegration(merged);
+      // #3483: a change to the untrusted-content classification or
+      // permissions is a permission change and leaves a receipt.
+      const recorded = withUntrustedContentChange(
+        existing,
+        merged,
+        mcpUiCallDeps.resolveAccountPrincipalId?.(c),
+        new Date(),
+      );
+      if (
+        recorded.untrustedContentChanges?.length !==
+        existing.untrustedContentChanges?.length
+      )
+        toolDefinitionOps.add(1, { op: 'untrusted-content-permission' });
+      await mcpService.saveIntegration(recorded);
       return c.json({ success: true });
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 400);

@@ -8,6 +8,10 @@ import {
   RegistryLayoutActions,
 } from './RegistryLayoutActions';
 import {
+  McpQualificationBadge,
+  RegistryMcpServerFacts,
+} from './RegistryMcpServerFacts';
+import {
   getRegistryActionLabel,
   getRegistryItemId,
   getRegistrySkillInstallRefusal,
@@ -50,8 +54,10 @@ export function RegistryCatalogDetail({
   const installRefusal = installed
     ? null
     : getRegistrySkillInstallRefusal(tab, item);
+  const mcpServer = tab === 'integrations' ? item.mcpServer : undefined;
   const skillHint =
-    installRefusal ??
+    // The MCP facts already list every refusal reason.
+    (mcpServer ? null : installRefusal) ??
     (tab === 'skills'
       ? installed
         ? 'Removing deletes the workspace copy so the skill is no longer selectable in agent definitions.'
@@ -86,7 +92,12 @@ export function RegistryCatalogDetail({
       {item.catalogFreshness === 'stale' && (
         <p role="status">Offline marketplace · last successful catalog</p>
       )}
-      {item.version && <div className="page__subtitle">v{item.version}</div>}
+      {item.version && !mcpServer && (
+        <div className="page__subtitle">v{item.version}</div>
+      )}
+      {mcpServer && (
+        <RegistryMcpServerFacts listing={mcpServer} installed={installed} />
+      )}
       {item.catalog && (
         <div className="page__subtitle">
           Catalog revision: <code>{item.catalog.revision.slice(0, 12)}</code>
@@ -171,7 +182,7 @@ export function RegistryCatalogDetail({
                 ? 'Checking installed status...'
                 : pending
                   ? 'Working...'
-                  : getRegistryActionLabel(tab, installed)}
+                  : getRegistryActionLabel(tab, installed, item)}
           </Button>
         )}
       </div>
@@ -212,6 +223,9 @@ export function RegistryCatalogCard({
       <div className="page__card-footer">
         <div className="page__meta-row">
           {source && <span className="page__meta-pill">{source}</span>}
+          {tab === 'integrations' && item.mcpServer && (
+            <McpQualificationBadge listing={item.mcpServer} />
+          )}
         </div>
         <Button
           variant="secondary"

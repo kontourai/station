@@ -226,6 +226,8 @@ export const credentialProfileApplyRequestSchema = z.object({
 });
 
 // Integrations
+const untrustedContentPermissionSchema = z.enum(['ask', 'allow', 'deny']);
+
 export const integrationSchema = z.object({
   id: z.string().refine(isSafeToolServerId, {
     message:
@@ -300,6 +302,22 @@ export const integrationSchema = z.object({
     .object({
       owner: z.literal('principal'),
       allowInstanceFallback: z.boolean().optional(),
+    })
+    .strict()
+    .optional(),
+  // #3483: the person's classification and outbound-after-untrusted-content
+  // permissions. Change receipts are server-written and never accepted here.
+  contentTrust: z.enum(['untrusted', 'trusted']).optional(),
+  untrustedContentPermissions: z
+    .object({
+      default: untrustedContentPermissionSchema.optional(),
+      tools: z
+        .record(
+          z.string().min(1).max(200).refine(isSafeToolServerCredentialKey),
+          untrustedContentPermissionSchema,
+        )
+        .refine((tools) => Object.keys(tools).length <= 500)
+        .optional(),
     })
     .strict()
     .optional(),

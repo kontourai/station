@@ -21,6 +21,10 @@ import type { AgentPolicyService } from '../../services/agents/agent-policy-serv
 import { extractToolFilePath } from '../../services/agents/agent-policy-service.js';
 import type { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import {
+  UntrustedContentLedger,
+  untrustedContentDecision,
+} from '../../services/plugins/untrusted-content-policy.js';
 import { toolDenials } from '../../telemetry/metrics.js';
 import { findModelPricing } from '../../utils/pricing.js';
 import {
@@ -117,6 +121,15 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
     string,
     (tool: ToolCallContext) => Promise<boolean>
   >();
+  // #3483: turns that have read content an integration classifies untrusted.
+  const untrustedContent = new UntrustedContentLedger();
+  const provenanceOf = (tool: ToolCallContext) =>
+    tool.mcp?.provenance ?? deps.toolNameMapping.get(tool.toolName)?.provenance;
+  // Read fresh on each call so a person's change applies to the next call.
+  const storedDefinition = (integrationId: string) =>
+    Promise.resolve()
+      .then(() => deps.configLoader.loadIntegration(integrationId))
+      .catch(() => undefined);
 
   let hooks: IAgentHooks & {
     requestApproval?: (tool: ToolCallContext) => Promise<boolean>;
@@ -159,6 +172,18 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
         unattendedAutoApprove,
         deps.toolNameMapping,
       ),
+    untrustedContentPermission: async (tool, invocation) => {
+      if (!(await untrustedContent.hasRead(invocation))) return undefined;
+      const provenance = provenanceOf(tool);
+      // A tool Station did not load from an integration has no stored
+      // permission to change, so it takes the default.
+      if (!provenance)
+        return untrustedContentDecision(undefined, tool.toolName);
+      return untrustedContentDecision(
+        await storedDefinition(provenance.integrationId),
+        provenance.originalToolName,
+      );
+    },
     logger: deps.logger,
   });
 
@@ -212,6 +237,17 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
         agentSlug: invocation.agentSlug,
       });
 
+      const provenance = provenanceOf(tool);
+      if (provenance)
+        untrustedContent.mark(
+          invocation,
+          // An unreadable definition is unclassified, not untrusted: one
+          // unreadable file must not put every later call behind a question.
+          storedDefinition(provenance.integrationId).then(
+            (def) => def?.contentTrust === 'untrusted',
+          ),
+        );
+
       deps.workItemCapture?.capture({
         tool,
         result,
@@ -246,6 +282,7 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
 
     afterInvocation: async (ctx) => {
       const { invocation, usage, toolCallCount } = ctx;
+      untrustedContent.clear(invocation);
       if (!invocation.conversationId) return;
 
       try {

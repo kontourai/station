@@ -1445,3 +1445,88 @@ describe('Tool Routes', () => {
     expect(byId['mcp-1']).toBe(false);
   });
 });
+
+describe('untrusted-content permission changes (#3483)', () => {
+  const put = (app: ReturnType<typeof createToolRoutes>, body: unknown) =>
+    app.request('/mail', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  test('a change records who made it, and a caller cannot write receipts', async () => {
+    const svc = createMockMCPService();
+    svc.getIntegration.mockResolvedValue({
+      id: 'mail',
+      kind: 'mcp',
+      contentTrust: 'untrusted',
+    });
+    const app = createToolRoutes(svc as any, vi.fn(), {
+      resolveAccountPrincipalId: () => 'person-1',
+    });
+    const response = await put(app, {
+      contentTrust: 'trusted',
+      untrustedContentPermissions: { tools: { send_draft: 'allow' } },
+      untrustedContentChanges: [{ at: '2000-01-01T00:00:00Z', by: 'forged' }],
+    });
+    expect(response.status).toBe(200);
+    const saved = svc.saveIntegration.mock.calls[0][0];
+    expect(saved.untrustedContentChanges).toEqual([
+      {
+        at: expect.any(String),
+        by: 'person-1',
+        contentTrust: 'trusted',
+        permissions: { tools: { send_draft: 'allow' } },
+      },
+    ]);
+  });
+
+  test('an unrelated edit leaves no receipt', async () => {
+    const svc = createMockMCPService();
+    svc.getIntegration.mockResolvedValue({
+      id: 'mail',
+      kind: 'mcp',
+      contentTrust: 'untrusted',
+    });
+    const app = createToolRoutes(svc as any, vi.fn());
+    await put(app, { description: 'Mail' });
+    expect(svc.saveIntegration.mock.calls[0][0].untrustedContentChanges).toBe(
+      undefined,
+    );
+  });
+
+  test('the stored definition accepts the classification, permissions and receipts', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'station-untrusted-content-'));
+    try {
+      const loader = new ConfigLoader({ projectHomeDir: home });
+      const def = {
+        id: 'mail',
+        kind: 'mcp' as const,
+        transport: 'streamable-http' as const,
+        endpoint: 'https://mail.example.test/mcp',
+        contentTrust: 'untrusted' as const,
+        untrustedContentPermissions: {
+          default: 'ask' as const,
+          tools: { send_draft: 'deny' as const },
+        },
+        untrustedContentChanges: [
+          {
+            at: '2026-10-28T00:00:00.000Z',
+            by: 'person-1',
+            contentTrust: 'untrusted' as const,
+          },
+        ],
+      };
+      await loader.saveIntegration('mail', def);
+      expect(await loader.loadIntegration('mail')).toMatchObject(def);
+      await expect(
+        loader.saveIntegration('mail', {
+          ...def,
+          untrustedContentPermissions: { default: 'sometimes' as any },
+        }),
+      ).rejects.toThrow();
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+});

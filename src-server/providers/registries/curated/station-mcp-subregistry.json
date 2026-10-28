@@ -1,0 +1,121 @@
+{
+  "servers": [
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "app.linear/linear",
+        "title": "Linear",
+        "description": "Find and manage issues, projects, and documents in your Linear workspace.",
+        "version": "1.0.2",
+        "websiteUrl": "https://linear.app",
+        "remotes": [
+          { "type": "streamable-http", "url": "https://mcp.linear.app/mcp" }
+        ]
+      },
+      "_meta": {
+        "ai.kontour.station/curation": {
+          "remote": "https://mcp.linear.app/mcp",
+          "authMode": "dcr",
+          "checkedAt": "2026-10-28T13:00:00Z",
+          "summary": "Endpoint and version match the official MCP Registry entry. Station's sign-in registered a client by dynamic client registration and reached the provider's authorization page. A signed-in tool call is not yet verified."
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "com.notion/mcp",
+        "title": "Notion",
+        "description": "Search, read, create and update pages and databases in your Notion workspace.",
+        "version": "1.0.1",
+        "websiteUrl": "https://developers.notion.com/docs/mcp",
+        "remotes": [
+          { "type": "streamable-http", "url": "https://mcp.notion.com/mcp" }
+        ]
+      },
+      "_meta": {
+        "ai.kontour.station/curation": {
+          "remote": "https://mcp.notion.com/mcp",
+          "authMode": "dcr",
+          "checkedAt": "2026-10-28T13:00:00Z",
+          "summary": "Endpoint and version match the official MCP Registry entry. Station's sign-in registered a client by dynamic client registration and reached the provider's authorization page. A signed-in tool call is not yet verified. Workspace members only; guests cannot connect."
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "com.atlassian/atlassian-mcp-server",
+        "title": "Atlassian",
+        "description": "Work with Jira issues and Confluence pages in your Atlassian Cloud site.",
+        "version": "2.0.0",
+        "websiteUrl": "https://support.atlassian.com/atlassian-rovo-mcp-server/",
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://mcp.atlassian.com/v2/mcp"
+          }
+        ]
+      },
+      "_meta": {
+        "ai.kontour.station/curation": {
+          "remote": "https://mcp.atlassian.com/v2/mcp",
+          "authMode": "dcr",
+          "checkedAt": "2026-10-28T13:00:00Z",
+          "summary": "Endpoint and version match the official MCP Registry entry. Station's sign-in registered a client by dynamic client registration and reached the provider's authorization page. A signed-in tool call is not yet verified. Atlassian Cloud sites only."
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "io.github.github/github-mcp-server",
+        "title": "GitHub",
+        "description": "Work with repositories, issues, pull requests and Actions on GitHub.",
+        "version": "2.0.3",
+        "websiteUrl": "https://github.com/github/github-mcp-server",
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://api.githubcopilot.com/mcp/"
+          }
+        ]
+      },
+      "_meta": {
+        "ai.kontour.station/curation": {
+          "remote": "https://api.githubcopilot.com/mcp/",
+          "authMode": "pre-registered-required",
+          "checkedAt": "2026-10-28T13:00:00Z",
+          "summary": "Endpoint and version match the official MCP Registry entry. Its authorization server (github.com/login/oauth) has no dynamic client registration, so sign-in needs an OAuth app you register with GitHub. A personal access token header also works with GitHub, but Station cannot store one for a remote server yet."
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "ai.kontour.station/gmail",
+        "title": "Gmail",
+        "description": "Search, read, label and draft messages in your Gmail mailbox.",
+        "version": "mcp-v1",
+        "websiteUrl": "https://developers.google.com/workspace/gmail/api/guides/configure-mcp-server",
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://gmailmcp.googleapis.com/mcp/v1"
+          }
+        ]
+      },
+      "_meta": {
+        "ai.kontour.station/curation": {
+          "remote": "https://gmailmcp.googleapis.com/mcp/v1",
+          "authMode": "pre-registered-required",
+          "launchStage": "developer-preview",
+          "contentTrust": "untrusted",
+          "checkedAt": "2026-10-28T13:00:00Z",
+          "summary": "Google lists this endpoint as Developer Preview; Google has not published it to the official MCP Registry, so Station names it in its own namespace. Its authorization server (accounts.google.com) has no dynamic client registration: bring your own Google Cloud OAuth client and keep to read-only scopes. Email is content written by others, so Station asks before tools that send or change things by default; you can change that per tool."
+        }
+      }
+    }
+  ],
+  "metadata": { "count": 5 }
+}

@@ -136,3 +136,26 @@
   white-space: normal;
   overflow-wrap: anywhere;
 }
+
+.registry-mcp {
+  display: grid;
+  gap: var(--k-space-2);
+}
+.registry-mcp__unavailable {
+  margin: 0;
+  padding-left: var(--k-space-4);
+  color: var(--k-text-muted);
+}
+.registry-mcp__facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--k-space-1) var(--k-space-3);
+  margin: var(--k-space-2) 0;
+}
+.registry-mcp__facts dt {
+  color: var(--k-text-muted);
+}
+.registry-mcp__facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

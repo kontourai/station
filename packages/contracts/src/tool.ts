@@ -120,6 +120,43 @@ export interface ToolDef {
    * used for such a turn only when `allowInstanceFallback` is true.
    */
   credentialOwnership?: ToolCredentialOwnership;
+  /**
+   * #3483: `untrusted` means this server returns content written by others,
+   * such as email. A catalog sets the default; the person may set `trusted`.
+   * Absent means trusted.
+   */
+  contentTrust?: 'untrusted' | 'trusted';
+  /**
+   * #3483: what happens before one of THIS server's tools runs in a turn that
+   * has already read untrusted content. Applies only to tools the server does
+   * not declare read-only. Absent means `ask`.
+   */
+  untrustedContentPermissions?: UntrustedContentPermissions;
+  /** Server-written receipts for changes to the two fields above. */
+  untrustedContentChanges?: UntrustedContentChange[];
+}
+
+/**
+ * - `ask`: a person approves each call, even one an Agent auto-approves.
+ * - `allow`: untrusted content adds nothing; the tool's usual permission
+ *   decides, so an always-allow for the tool runs it without a question.
+ * - `deny`: the call is refused.
+ */
+export type UntrustedContentPermission = 'ask' | 'allow' | 'deny';
+
+export interface UntrustedContentPermissions {
+  /** For every tool of this server without its own entry. */
+  default?: UntrustedContentPermission;
+  /** Keyed by the server's own tool name. */
+  tools?: Record<string, UntrustedContentPermission>;
+}
+
+export interface UntrustedContentChange {
+  at: string;
+  /** Principal id of the person who made the change, when known. */
+  by?: string;
+  contentTrust?: 'untrusted' | 'trusted';
+  permissions?: UntrustedContentPermissions;
 }
 
 export interface ToolCredentialOwnership {

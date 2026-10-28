@@ -27,6 +27,7 @@ import { unregisterPluginEngineConnections } from '../../domain/agent-registry.j
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { PROTOTYPE_AFFECTING_KEYS } from '../../domain/skill-paths.js';
 import { UnsupportedRegistrySkillFormatError } from '../../providers/registries/github-skill-registry.js';
+import { mcpSubregistryIntegrationProviders } from '../../providers/registries/mcp-subregistry-provider.js';
 import {
   getAgentRegistryProvider,
   getIntegrationRegistryProvider,
@@ -743,7 +744,11 @@ export function createRegistryRoutes(
             .replace(/\\n/g, ' ')
             .trim() || undefined,
       }));
-    return c.json({ success: true, data: items });
+    // Read after listing so a source's first read is reflected.
+    const mcpSources = mcpSubregistryIntegrationProviders().map((provider) =>
+      provider.status(),
+    );
+    return c.json({ success: true, data: items, mcpSources });
   });
 
   // #2067: operator-only, same shape and same reason as the agent twin.
