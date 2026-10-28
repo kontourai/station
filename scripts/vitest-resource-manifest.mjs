@@ -172,6 +172,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/server-scenario.test.ts',
   // Tiny disposable user-service/scope budgets exercise actual OOM containment.
   'src-server/services/infra/__tests__/workload-resources.process.test.ts',
+  // A real detached engine-shaped process and the scope holder Station spawns.
+  'src-server/services/infra/__tests__/workload-scope-holder.process.test.ts',
+  // Fake systemd manager; one case starts and reaps a real short-lived process.
+  'src-server/services/infra/__tests__/workload-budget.test.ts',
   'scripts/__tests__/run-biome.process.test.ts',
   'scripts/__tests__/component-style-hygiene.process.test.ts',
   // Real second-process Task/share writers contend with the publication fence.

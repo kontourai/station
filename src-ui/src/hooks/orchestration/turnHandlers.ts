@@ -2,10 +2,12 @@ import { isStationCheckBackTurn } from '@kontourai/station-contracts/agent-sched
 import {
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
   APPROVAL_ESCALATION_REQUIRES_RESTART_CODE,
+  ENGINE_MEMORY_EXHAUSTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
   ENGINE_TURN_FAILED_CODE,
   isApprovalMode,
+  isStationMemoryContinuationTurn,
 } from '@kontourai/station-contracts/provider';
 import { runtimeEventContentDisplayText } from '@kontourai/station-contracts/runtime-event-content';
 import {
@@ -220,6 +222,9 @@ export function handleTurnStartedEvent(
         turnId: event.turnId,
         sessionId: event.threadId,
         ...(isStationCheckBackTurn(event) ? { stationCheckBack: true } : {}),
+        ...(isStationMemoryContinuationTurn(event)
+          ? { stationMemoryContinuation: true }
+          : {}),
       });
     }
   }
@@ -613,6 +618,7 @@ export function handleRuntimeErrorEvent(
   // `event.message` display — unchanged.
   const translation =
     event.code === ENGINE_SESSION_BINDING_DEAD_CODE ||
+    event.code === ENGINE_MEMORY_EXHAUSTED_CODE ||
     event.code === ENGINE_SIGN_IN_REQUIRED_CODE ||
     event.code === ENGINE_TURN_FAILED_CODE
       ? translateChatError({ message: event.message, code: event.code })

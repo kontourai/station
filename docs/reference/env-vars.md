@@ -22,7 +22,8 @@ rewrites. See [configuration and logging](config.md#logging).
 
 The trusted `STATION_WORKLOAD_*` settings configure managed Linux service
 resource limits. See [Linux service workload budgets](../guides/development.md#linux-service-workload-budgets)
-for defaults, platform support and refusal behavior.
+for defaults, platform support and refusal behavior. The two memory budgets
+override the matching saved Station setting.
 
 | Variable | Default | Description | Source |
 |----------|---------|-------------|--------|
