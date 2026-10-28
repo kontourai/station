@@ -3636,9 +3636,10 @@ monitoring NDJSON files and returns `{success: true, data}`. `data` contains
 - `days` defaults to 14 and must be an integer from 1 through 365; invalid
   windows return 400.
 - Rows count for the request's principal and, in a personal Station, the rest
-  of its personal account: the operator and every approved device. Rows from
-  outside that account, and rows with no owner, never count. The session
-  read check still applies to session-bearing rows.
+  of its personal account: the operator and every paired device, including a
+  revoked one's earlier rows. Rows from outside that account, and rows with no
+  owner, never count. The session read check still applies to session-bearing
+  rows, and producer rows stay readable only by the token's owner.
 - `agent`, `tool`, and `engine` are exact filters. Engine reads
   `gen_ai.provider.name`; an event without that field does not match.
 - Rows from external telemetry producers never count toward these figures;

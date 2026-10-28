@@ -4115,7 +4115,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       const now = Date.now();
       const stranger = 'human:tailscale-serve:stranger@example';
       const eventLogPath = makeTempDir('station-principal-insights-');
-      const { app, paired } = await principalSetup({
+      const { app, paired, pairing } = await principalSetup({
         eventLogPath,
         diskEventLog: true,
       });
@@ -4211,6 +4211,37 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           caller,
         ).toBe(4);
       }
+
+      // A paired principal outside the personal account (a delegation peer)
+      // reads none of the account's rows and none of the alias-stamped ones.
+      const outsider = {
+        Authorization: `Bearer ${pairDelegationPeer(pairing).credential}`,
+      };
+      const outsiderHistory = await app.request(
+        '/monitoring/events?start=0',
+        { headers: outsider },
+        REMOTE_TAILNET_ENV,
+      );
+      const outsiderHistoryBody = (await outsiderHistory.json()) as {
+        data?: unknown[];
+      };
+      expect(outsiderHistory.status, JSON.stringify(outsiderHistoryBody)).toBe(
+        200,
+      );
+      expect(outsiderHistoryBody.data).toEqual([]);
+      const outsiderInsights = await app.request(
+        '/api/insights?days=1',
+        { headers: outsider },
+        REMOTE_TAILNET_ENV,
+      );
+      const outsiderInsightsBody = (await outsiderInsights.json()) as {
+        data?: { totalToolCalls?: number };
+      };
+      expect(
+        outsiderInsights.status,
+        JSON.stringify(outsiderInsightsBody),
+      ).toBe(200);
+      expect(outsiderInsightsBody.data?.totalToolCalls).toBe(0);
     });
 
     test('the live relay delivers an answer update for the account’s session and not for a stranger’s', async () => {

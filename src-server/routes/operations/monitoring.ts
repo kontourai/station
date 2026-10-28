@@ -608,7 +608,17 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
       await stream.writeSSE({ data: JSON.stringify(connectedEvent) });
 
       const eventHandler = (event: any) => {
-        if (event.userId && !ownerIds.includes(event.userId)) return;
+        // History's owner rule, on either owner field. Writers stamp
+        // `station.user.id`, so checking `userId` alone admitted every
+        // principal's rows. An unowned live row still streams, as before.
+        const rowOwners = [event.userId, event['station.user.id']].filter(
+          (id): id is string => typeof id === 'string' && id.length > 0,
+        );
+        if (
+          rowOwners.length > 0 &&
+          !rowOwners.some((id) => ownerIds.includes(id))
+        )
+          return;
         // An agent's stream carries only rows its owner is named on.
         if (
           fixedOwner !== undefined &&

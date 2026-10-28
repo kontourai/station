@@ -291,6 +291,36 @@ describe('Monitoring Routes', () => {
     expect(JSON.stringify(body)).not.toContain('bravo');
   });
 
+  test('the live stream applies the principal owner set to station.user.id rows', async () => {
+    const deps = createMockDeps();
+    const app = createMonitoringRoutes({
+      ...deps,
+      readAuthorityForRequest: () => ({
+        mode: 'personal',
+        userId: 'human:device:phone',
+      }),
+      readableEventOwnerIds: () => [
+        'human:device:phone',
+        'human:local:operator',
+      ],
+    } as any);
+    const response = await app.request('/events');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    for (const [owner, text] of [
+      ['human:tailscale-serve:stranger@example', 'stranger live row'],
+      ['human:local:operator', 'operator live row'],
+    ])
+      deps.monitoringEvents.emit('event', {
+        'station.user.id': owner,
+        'gen_ai.tool.name': text,
+      });
+    const payload = await readStreamUntil(response.body!, (text) =>
+      text.includes('operator live row'),
+    );
+    expect(payload).toContain('operator live row');
+    expect(payload).not.toContain('stranger live row');
+  });
+
   test('uses canonical schema identity for historical and live tenant filtering', async () => {
     const deps = createMockDeps();
     deps.queryEventsFromDisk.mockResolvedValue([

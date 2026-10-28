@@ -4623,9 +4623,10 @@ prove every stored line was included. The current query returns no skipped-line
 completeness receipt. HTTP history pushes visibility, dimension filters and the
 requested limit into the reader. Without an explicitly named user, history and
 `/api/insights` read the rows owned by the request principal's session-owner
-set (itself plus, in personal mode, the operator and approved devices of its
-personal conversation account). Personal account members also read rows OTLP
-ingest stamps with the host's OS alias. A bounded heap retains the newest matching
+set (itself plus, in personal mode, the operator and paired devices of its
+personal conversation account); the live stream applies the same set to owned
+rows. Personal account members also read rows OTLP ingest stamps with the
+host's OS alias. A bounded heap retains the newest matching
 rows by timestamp, up to 10,000 rows and 8 MiB, while a chunk reader caps work
 at 32 MiB scanned and 1 MiB per line before parsing. Dropped rows or an exhausted
 scan/line budget return `truncated: true`. A truncated scan identifies the latest
