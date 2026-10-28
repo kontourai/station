@@ -124,6 +124,10 @@ import {
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../../utils/internal-api-token.js';
 import { orchestrationUsageRefFor } from '../../bootstrap/orchestration-usage-ref.js';
+import {
+  RuntimeEventLog,
+  type RuntimeEventQueryOptions,
+} from '../../conversation/runtime-event-log.js';
 import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../runtime-routes.js';
 
 // Deliberately NOT mocked (unlike the room-principal composition test): this
@@ -388,6 +392,11 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       actionOperations?: unknown;
       /** Rows `/monitoring/events?start=` reads, before its authorization. */
       monitoringRows?: unknown[];
+      /**
+       * `/monitoring/events` reads `eventLogPath` through the production
+       * RuntimeEventLog reader, owner filter included.
+       */
+      diskEventLog?: boolean;
       // Extra rows written before the orchestration runtime starts. Writing
       // after it starts races its own connections for the SQLite write lock.
       seed?: (store: EventStore) => void;
@@ -632,6 +641,22 @@ describe('device-session chat principal resolution over the REAL auth path (stat
             queryEventsFromDisk: async () => orchestrationExtras.monitoringRows,
           }
         : {}),
+      ...(orchestrationExtras.diskEventLog && orchestrationExtras.eventLogPath
+        ? (() => {
+            const eventLog = new RuntimeEventLog(
+              orchestrationExtras.eventLogPath,
+              { debug() {}, info() {}, warn() {}, error() {} },
+            );
+            return {
+              queryEventsFromDisk: (
+                start: number,
+                end: number,
+                owner: string | readonly string[],
+                options?: RuntimeEventQueryOptions,
+              ) => eventLog.queryEvents(start, end, owner, options ?? {}),
+            };
+          })()
+        : {}),
       ...(orchestrationExtras.eventLogPath
         ? {
             eventLogPath: orchestrationExtras.eventLogPath,
@@ -694,6 +719,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
               listSessions: orchestration!.listSessions.bind(orchestration),
               attachmentCandidateOwnerIds:
                 orchestration!.attachmentCandidateOwnerIds.bind(orchestration),
+              readableSessionOwnerIds:
+                orchestration!.readableSessionOwnerIds.bind(orchestration),
               readUsageReceiptExport:
                 orchestration!.readUsageReceiptExport.bind(orchestration),
               usageExportOwnerIds:
@@ -4080,20 +4107,45 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(body.data?.items?.[0]?.scope.accountId).toBe(accountId);
     });
 
-    test('monitoring history and the insights rollup keep the account’s session rows and drop a stranger’s', async () => {
-      // Both rows carry the OS alias as `userId`: the routes' separate
-      // per-user row filter still defaults to it, and this test is about the
-      // session predicate that runs after it.
+    test('monitoring history and the insights rollup count the whole personal account’s rows, from the operator and from a paired device, and drop a stranger’s', async () => {
+      // Station's own writers stamp `station.user.id` with the acting
+      // principal; OTLP ingest stamps the host's OS alias as the instance's
+      // user. Both routes used to compare rows with that alias alone, so every
+      // principal-stamped row was dropped and Profile Diagnostics read zero.
       const now = Date.now();
-      const row = (sessionId: string) => ({
+      const stranger = 'human:tailscale-serve:stranger@example';
+      const eventLogPath = makeTempDir('station-principal-insights-');
+      const { app, paired } = await principalSetup({
+        eventLogPath,
+        diskEventLog: true,
+      });
+      const device = `human:device:${paired.device.id}`;
+      const toolRow = (owner: string | undefined, tool: string) => ({
+        timestamp: new Date(now).toISOString(),
+        'timestamp.ms': now,
+        'gen_ai.operation.name': 'execute_tool',
+        'span.kind': 'start',
+        'gen_ai.tool.name': tool,
+        ...(owner === undefined ? {} : { 'station.user.id': owner }),
+      });
+      const sessionRow = (sessionId: string, owner: string) => ({
         timestamp: new Date(now).toISOString(),
         'timestamp.ms': now,
         'gen_ai.operation.name': 'invoke_agent',
         'gen_ai.conversation.id': sessionId,
-        userId: getCachedUser().alias,
+        'station.user.id': owner,
       });
-      const rows = [row('operator-owned'), row('stranger-owned')];
-      const eventLogPath = makeTempDir('station-principal-insights-');
+      const rows = [
+        toolRow(device, 'device-tool'),
+        toolRow(LOCAL_OPERATOR_PRINCIPAL_ID, 'operator-tool'),
+        toolRow(stranger, 'stranger-tool'),
+        toolRow(getCachedUser().alias, 'alias-tool'),
+        toolRow(undefined, 'unowned-tool'),
+        sessionRow('operator-owned', LOCAL_OPERATOR_PRINCIPAL_ID),
+        // An account member's id on a stranger's session: the session
+        // predicate still refuses it after the owner check admits it.
+        sessionRow('stranger-owned', device),
+      ];
       writeFileSync(
         join(
           eventLogPath,
@@ -4101,38 +4153,64 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         ),
         `${rows.map((entry) => JSON.stringify(entry)).join('\n')}\n`,
       );
-      const { app } = await principalSetup({
-        eventLogPath,
-        monitoringRows: rows,
-      });
 
-      const history = await app.request(
-        '/monitoring/events?start=0',
-        { headers: operatorHeaders },
-        REMOTE_TAILNET_ENV,
-      );
-      const historyBody = (await history.json()) as {
-        data?: Array<Record<string, unknown>>;
-      };
-      expect(history.status, JSON.stringify(historyBody)).toBe(200);
-      expect(
-        (historyBody.data ?? []).map(
-          (event) => event['gen_ai.conversation.id'],
-        ),
-      ).toEqual(['operator-owned']);
+      for (const [caller, headers] of [
+        ['operator', operatorHeaders],
+        ['paired device', { Authorization: `Bearer ${paired.credential}` }],
+      ] as const) {
+        const history = await app.request(
+          '/monitoring/events?start=0',
+          { headers },
+          REMOTE_TAILNET_ENV,
+        );
+        const historyBody = (await history.json()) as {
+          data?: Array<Record<string, unknown>>;
+        };
+        expect(
+          history.status,
+          `${caller}: ${JSON.stringify(historyBody)}`,
+        ).toBe(200);
+        expect(
+          (historyBody.data ?? [])
+            .map(
+              (event) =>
+                event['gen_ai.tool.name'] ?? event['gen_ai.conversation.id'],
+            )
+            .sort(),
+          caller,
+        ).toEqual([
+          'alias-tool',
+          'device-tool',
+          'operator-owned',
+          'operator-tool',
+        ]);
 
-      const insights = await app.request(
-        '/api/insights',
-        { headers: operatorHeaders },
-        REMOTE_TAILNET_ENV,
-      );
-      const insightsBody = (await insights.json()) as {
-        data?: { hourlyActivity?: number[] };
-      };
-      expect(insights.status, JSON.stringify(insightsBody)).toBe(200);
-      expect(
-        (insightsBody.data?.hourlyActivity ?? []).reduce((a, b) => a + b, 0),
-      ).toBe(1);
+        const insights = await app.request(
+          '/api/insights?days=1',
+          { headers },
+          REMOTE_TAILNET_ENV,
+        );
+        const insightsBody = (await insights.json()) as {
+          data?: {
+            totalToolCalls?: number;
+            toolUsage?: Record<string, unknown>;
+            hourlyActivity?: number[];
+          };
+        };
+        expect(
+          insights.status,
+          `${caller}: ${JSON.stringify(insightsBody)}`,
+        ).toBe(200);
+        expect(insightsBody.data?.totalToolCalls, caller).toBe(3);
+        expect(
+          Object.keys(insightsBody.data?.toolUsage ?? {}).sort(),
+          caller,
+        ).toEqual(['alias-tool', 'device-tool', 'operator-tool']);
+        expect(
+          (insightsBody.data?.hourlyActivity ?? []).reduce((a, b) => a + b, 0),
+          caller,
+        ).toBe(4);
+      }
     });
 
     test('the live relay delivers an answer update for the account’s session and not for a stranger’s', async () => {

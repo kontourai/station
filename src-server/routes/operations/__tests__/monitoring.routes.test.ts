@@ -430,7 +430,11 @@ describe('historical event slicing (station#3076)', () => {
       queryEventsFromDisk: vi
         .fn()
         .mockImplementation(
-          async (start: number, end: number, userId?: string) =>
+          async (
+            start: number,
+            end: number,
+            owner?: string | readonly string[],
+          ) =>
             // Mirrors the real reader on BOTH counts: it drops rows whose
             // user id does not match (a row without one is dropped, not
             // passed through), and it honours the window. A stand-in that
@@ -452,7 +456,8 @@ describe('historical event slicing (station#3076)', () => {
               // neither difference is load-bearing.
               const ts = Number(event['timestamp.ms']);
               if (!(ts >= start && ts <= end)) return false;
-              return event[K_USER] === userId;
+              const owners = typeof owner === 'string' ? [owner] : owner;
+              return owners?.includes(event[K_USER] as string) === true;
             }),
         ),
       ...extra,
