@@ -1916,10 +1916,7 @@ describe("the dock's New chat is a draft, not a dialog", () => {
       within(draft).getByRole('textbox', { name: 'What would you like done?' }),
       { target: { value: 'Go' } },
     );
-    const start = within(draft).getByRole('button', {
-      name: 'Start',
-      exact: true,
-    });
+    const start = within(draft).getByRole('button', { name: 'Start' });
     await waitFor(() =>
       expect((start as HTMLButtonElement).disabled).toBe(false),
     );
