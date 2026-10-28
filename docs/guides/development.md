@@ -247,18 +247,20 @@ Under host pressure caused by those workloads, the server's own unit is
 favoured:
 
 - `MemoryLow` asks for 1536 MiB, the measured working set of a busy server
-  with headroom, but never more than 1/8 of physical RAM: 1536 MiB on a 16 GiB
-  host, 512 MiB on 4 GiB, 256 MiB on 2 GiB. Under host-wide reclaim the kernel
+  with headroom, but never more than 1/8 of the memory the kernel reports
+  (`MemTotal`, a little under installed RAM): 1536 MiB at 16 GiB, 512 MiB at
+  4 GiB, 256 MiB at 2 GiB. Under host-wide reclaim the kernel
   caps a cgroup's effective protection by its ancestors', and a user manager
   cannot set `user.slice` or `user@.service`. So there this protection takes
   effect only where the host protects those ancestors; by default they have
   none.
 - `MemorySwapMax=0` keeps the server's anonymous memory resident on hosts
-  where the whole 1536 MiB fits in 1/8 of RAM (12 GiB and up). A swapped page
-  faulted back in on the event loop stalls every request. This limit holds
-  whatever the unit's ancestors set, but nothing else bounds it, so smaller
-  hosts get `MemorySwapMax=infinity` and keep swapping the server. File-backed
-  pages such as the Node.js binary stay reclaimable either way.
+  where the whole 1536 MiB fits in 1/8 of `MemTotal` (12 GiB and up). A
+  swapped page faulted back in on the event loop stalls every request. This
+  limit holds whatever the unit's ancestors set, but it puts no ceiling on how
+  much the server keeps resident, so smaller hosts get
+  `MemorySwapMax=infinity` and can still swap the server. File-backed pages
+  such as the Node.js binary stay reclaimable either way.
 - `ManagedOOMPreference=avoid` makes systemd-oomd pick other candidates first.
   For a user unit, systemd-oomd honours this only when it acts on pressure at
   or below the user manager, not on swap usage or on the whole host.

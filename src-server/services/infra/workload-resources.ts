@@ -253,12 +253,12 @@ const CONTROL_PLANE_MEMORY_LOW_HOST_DIVISOR = 8;
  * policy, not a global OOM guarantee.
  *
  * - `MemorySwapMax=0`, only where the whole working set fits in 1/8 of host
- *   RAM (12 GiB and up): the server's anonymous memory stays resident, since
+ *   RAM (a kernel MemTotal of 12 GiB and up): the server's anonymous memory stays resident, since
  *   a swapped page faulted back in on the event loop stalls every request.
  *   Unlike `MemoryLow` this holds whatever the ancestors set, and it has no
  *   size bound of its own, so a smaller host keeps swap (`infinity` replaces
  *   any earlier runtime value). File-backed pages stay reclaimable either way.
- * - `MemoryLow`: the working set above, at most 1/8 of host RAM so the
+ * - `MemoryLow`: the working set above, at most 1/8 of host RAM (MemTotal) so the
  *   protection cannot starve a small host. Under host-wide reclaim the kernel
  *   caps a cgroup's effective protection by its ancestors', and a user
  *   manager cannot set `user.slice` or `user@.service`, so there it takes

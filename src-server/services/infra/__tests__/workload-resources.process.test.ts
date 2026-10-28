@@ -226,13 +226,15 @@ describe.skipIf(!manager)('running server workload containment', () => {
           ]),
       );
     };
-    // The fixture unit itself starts with MemorySwapMax=0, so only the
-    // values boot alone sets prove that boot applied them.
+    // The fixture unit itself starts with MemorySwapMax=0, so on a host
+    // below the swap-ban threshold `infinity` also proves boot applied it.
     const MIB = 1024 * 1024;
-    expect(show(unit, ['MemoryLow', 'ManagedOOMPreference'])).toEqual({
-      MemoryLow: String(
-        Math.min(1536 * MIB, Math.floor(totalmem() / MIB / 8) * MIB),
-      ),
+    const share = Math.floor(totalmem() / MIB / 8) * MIB;
+    expect(
+      show(unit, ['MemoryLow', 'MemorySwapMax', 'ManagedOOMPreference']),
+    ).toEqual({
+      MemoryLow: String(Math.min(1536 * MIB, share)),
+      MemorySwapMax: share >= 1536 * MIB ? '0' : 'infinity',
       ManagedOOMPreference: 'avoid',
     });
     expect(show(slice, ['CPUWeight'])).toEqual({ CPUWeight: '25' });

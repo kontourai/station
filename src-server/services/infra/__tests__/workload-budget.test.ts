@@ -447,6 +447,12 @@ describe('workload manager budgets (fake systemd manager)', () => {
         'MemorySwapMax=infinity',
       ]),
     );
+    __workloadTestHooks.reset();
+    // One byte less still floors to 1535 MiB: the gate reads whole MiB.
+    const byte = await start({ hostMemoryBytes: 12 * GIB - 1 });
+    expect(setPropertyFor(byte.calls, 'station-test.service')).toContain(
+      'MemorySwapMax=infinity',
+    );
   });
 
   test('a host size that is not whole MiB rounds the protection down', async () => {
