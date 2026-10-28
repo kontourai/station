@@ -50,15 +50,60 @@ describe('CodexStderrTail', () => {
     expect(tail.text()).toBe('bad key [REDACTED PEM BLOCK] rejected');
   });
 
-  test('an END whose BEGIN was never seen takes the body lines above it', () => {
+  test('a BEGIN past the cut of a long line still opens the block', () => {
     const tail = new CodexStderrTail();
-    // The BEGIN sat past the cut of a long line, so it was never seen.
     tail.push(`${'x'.repeat(1100)} -----BEGIN EC PRIVATE KEY-----`);
     tail.push(BODY);
     tail.push(BODY);
     tail.push('-----END EC PRIVATE KEY-----');
+    tail.push('continuing');
     expect(tail.text()).not.toContain(BODY);
-    expect(tail.text().endsWith('[REDACTED PEM BLOCK]')).toBe(true);
+    expect(tail.text()).not.toContain('-----');
+    expect(tail.text().endsWith('…\ncontinuing')).toBe(true);
+  });
+
+  test('an END whose BEGIN was never seen takes the body lines above it', () => {
+    const tail = new CodexStderrTail();
+    // Station started reading after the BEGIN.
+    tail.push(BODY);
+    tail.push(BODY);
+    tail.push('-----END EC PRIVATE KEY-----');
+    expect(tail.text()).toBe('[REDACTED PEM BLOCK]');
+  });
+
+  test('a block on one line longer than the cut is still one marker, and later stderr is kept', () => {
+    const tail = new CodexStderrTail();
+    // BEGIN before the 1024-character cut, END after it.
+    tail.push(
+      `cert -----BEGIN CERTIFICATE----- ${'Q'.repeat(1500)} -----END CERTIFICATE-----`,
+    );
+    tail.push('ERROR codex_core: the real failure after');
+    expect(tail.text()).toBe(
+      'cert [REDACTED PEM BLOCK]\nERROR codex_core: the real failure after',
+    );
+    expect(tail.lastErrorLine()).toBe(
+      'ERROR codex_core: the real failure after',
+    );
+  });
+
+  test('a block whose END never comes ends at the next line that is not its own', () => {
+    const tail = new CodexStderrTail();
+    tail.push('-----BEGIN PRIVATE KEY-----');
+    tail.push(BODY);
+    tail.push('ERROR codex_core: the real failure after');
+    expect(tail.text()).toBe(
+      '[REDACTED PEM BLOCK]\nERROR codex_core: the real failure after',
+    );
+  });
+
+  test('an END whose BEGIN was never seen takes a short last body line too', () => {
+    const tail = new CodexStderrTail();
+    tail.push('loading key');
+    tail.push('a'.repeat(38));
+    tail.push('b'.repeat(38));
+    tail.push('abc=');
+    tail.push('-----END RSA PRIVATE KEY-----');
+    expect(tail.text()).toBe('loading key\n[REDACTED PEM BLOCK]');
   });
 
   test('quotes the newest ERROR line, unless it restates a reported warning', () => {
