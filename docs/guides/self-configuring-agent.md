@@ -396,7 +396,9 @@ Session by its `sessionId`, without creating a task.
   restart interrupted leaves the Session idle but settles nothing: no
   `settledTurn` reports it, and nothing acknowledges the requested work. A
   delegated task cut off that way tells its parent it was interrupted, quoting
-  no output. Active requested work whose
+  no output. A person waiting from the CLI (`station sessions wait`) is told
+  too: its separate person-facing leaf reports that turn as interrupted,
+  while `wait_session`'s answer stays as described here. Active requested work whose
   producer emits only untagged observations remains running and unacknowledged.
   A positively scoped terminal uses the actual current boundary or validated
   retirement witness and complete canonical scope; its invocation is never

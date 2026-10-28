@@ -1695,6 +1695,26 @@ saved-Environment forwarding,
 portable workspace, prepared attempt or Task room request. File limits and cleanup are described in
 the [CLI delegate reference](cli.md#delegate).
 
+### `waitForSession`, `getSessionDigest` and `listSessionActivity`
+
+`@kontourai/station-sdk/client` has one fetcher for each
+[person Session read](api.md#person-session-reads) (#3427), the reads behind
+`station sessions wait|digest` and `station activity`:
+
+- `waitForSession(apiBase, sessionId, { until, timeoutMs?, afterEventCursor? }, options?)`
+  makes one bounded wait of at most 50 seconds. Give the request a deadline
+  longer than `timeoutMs` (`options.timeoutMs`).
+- `getSessionDigest(apiBase, sessionId, { turnLimit?, cursor? }, options?)`
+- `listSessionActivity(apiBase, { projectSlug?, limit?, cursor?, activeWithinMinutes? }, options?)`
+
+Each reads the public handshake first. A host that does not advertise
+`sessionPersonReads` gets `SessionReadsUnsupportedError` and no request,
+because an older host's `404` for an unknown path reads exactly like
+`session_not_found`. A route refusal is a `StationHttpError` with its status
+and `code`, plus `previewId` and `settingsPath` for
+`feature_preview_disabled`. The fetchers send the configured credential as a
+person and never send a station-control caller.
+
 ### `useDelegateOrchestrationTaskMutation(apiBase?, options?)`
 
 Dispatches one delegated task. The mutation variable is backwards
