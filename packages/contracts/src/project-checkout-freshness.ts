@@ -41,7 +41,10 @@ export type ProjectCheckoutUnknownReason =
   | 'not-a-repository'
   /** HEAD is not on a branch. */
   | 'detached-head'
-  /** The branch has no upstream, or its upstream ref does not exist locally. */
+  /**
+   * The branch has no upstream, its remote does not exist, its upstream ref
+   * does not exist locally, or the configured value is not a ref name.
+   */
   | 'no-upstream'
   /**
    * The repository's own config sets options Station does not run git with
@@ -72,8 +75,9 @@ export interface ProjectCheckoutFacts {
   behindSince?: string;
   /**
    * ISO time of the most recent local record of a fetch: `FETCH_HEAD` (of
-   * any remote) or the upstream ref's reflog. Only for a remote-tracking
-   * upstream; absent when the checkout holds neither record.
+   * any remote), the upstream ref's reflog, or the remote's HEAD reflog
+   * (written by `git clone`). Only for an upstream from a remote, not a
+   * local branch; absent when the checkout holds none of these.
    */
   upstreamFetchedAt?: string;
 }

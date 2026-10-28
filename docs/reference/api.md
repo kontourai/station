@@ -206,7 +206,8 @@ confined read the coding routes use. The answer (`ProjectCheckoutFreshness`,
 
 - `unknown` with a `reason`: `no-working-directory`, `missing-directory`,
   `not-a-repository`, `detached-head`, `no-upstream` (none configured, its
-  remote does not exist, or its ref is not present locally), `config-refused`
+  remote does not exist, its ref is not present locally, or the configured
+  value is not a ref name), `config-refused`
   (the repository's own config sets options Station does not run git with,
   such as a credential helper or an ssh command) or `unreadable` (refused,
   timed out or changing). None of these is an error response.
@@ -224,7 +225,7 @@ earlier. Without a reflog only the committer date is available.
 `upstreamFetchedAt` is the newest of the worktree's and the repository's
 `FETCH_HEAD` (a fetch of any remote), the upstream ref's reflog and the
 configured remote's `HEAD` reflog (which `git clone` writes; `git remote
-set-head` and `git gc` also touch it), for a remote-tracking upstream only;
+set-head` and `git gc` also touch it), for an upstream from a remote only;
 it is absent when none exists. A record reached through a link anywhere below
 the git directory is ignored.
 
