@@ -228,7 +228,7 @@ test('fresh Station completes real Work and opts into the developer Scheduler ch
     await starter.getByRole('button', { name: 'Run check' }).click();
     await expect
       .poll(() => new URL(page.url()).pathname, { timeout: 30_000 })
-      .toBe('/schedule');
+      .toBe('/automations');
     await expect
       .poll(() => new URL(page.url()).searchParams.get('run'))
       .toMatch(/^schedule:built-in:station-starter-check:/);
