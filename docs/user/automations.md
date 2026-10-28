@@ -69,5 +69,5 @@ Templates only ask for work an agent can do with its workspace and tools.
 - GitHub event triggers are not part of Automations yet
   ([#3439](https://github.com/kontourai/station/issues/3439)).
 
-See [the decision record](../decisions/automations-unify-schedules.md) for
+See [the decision record](https://github.com/kontourai/station/blob/main/docs/decisions/automations-unify-schedules.md) for
 the rules behind this behaviour.
