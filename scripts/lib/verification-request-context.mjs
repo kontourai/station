@@ -1,6 +1,5 @@
 import { join } from 'node:path';
 import { resolveLane } from '../verification-lanes.mjs';
-import { withHeavyCheckHeld } from './heavy-check-slots.mjs';
 import {
   assertVerificationToolchain,
   collectVerificationProvenance,
@@ -91,12 +90,7 @@ export function prepareVerificationExecution({
     collectProvenance: collectBoundProvenance,
     before,
     request,
-    // The coordinator is the host admission for its lanes: a heavy check a
-    // lane runs is admitted under this process instead of queueing again,
-    // so admission order stays coordinator, then heavy-check slot.
-    env: withHeavyCheckHeld(
-      bindVerificationRequestEnvironment(executionEnv, request),
-    ),
+    env: bindVerificationRequestEnvironment(executionEnv, request),
   };
 }
 

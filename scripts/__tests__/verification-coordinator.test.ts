@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   chmodSync,
@@ -424,12 +424,22 @@ describe('verification coordinator', () => {
     }
   });
 
-  test('a lane admitted by the coordinator runs its heavy checks under that admission', () => {
-    const temp = fixture();
-    try {
-      // Another worktree holds the only heavy-check slot.
-      const slotDir = join(temp.root, 'heavy-check-slots');
-      mkdirSync(slotDir, { mode: 0o700 });
+  describe('host heavy-check admission', () => {
+    /** A private pool of one; neither hosted CI nor the Vitest run's own marker admits. */
+    function heavyCheckEnv(slotDir: string, waitMs: string): NodeJS.ProcessEnv {
+      const env: NodeJS.ProcessEnv = { ...process.env };
+      delete env.GITHUB_ACTIONS;
+      delete env[HEAVY_CHECK_HELD_ENV];
+      return {
+        ...env,
+        STATION_HEAVY_CHECK_SLOT_DIR: slotDir,
+        STATION_HEAVY_CHECK_SLOTS: '1',
+        STATION_HEAVY_CHECK_SLOT_WAIT_MS: waitMs,
+      };
+    }
+    /** Another worktree's heavy check holds the only slot (a live pid). */
+    function holdOnlySlot(slotDir: string) {
+      mkdirSync(slotDir, { recursive: true, mode: 0o700 });
       writeFileSync(
         join(slotDir, 'slot-0.lock'),
         JSON.stringify({
@@ -440,62 +450,168 @@ describe('verification coordinator', () => {
           label: 'docs:truth:gate',
         }),
       );
-      const inherited: NodeJS.ProcessEnv = { ...process.env };
-      delete inherited.CI;
-      delete inherited.GITHUB_ACTIONS;
-      delete inherited[HEAVY_CHECK_HELD_ENV];
-      const context = prepareCoordinatorContext({
-        laneId: 'test-changed',
-        root: temp.root,
-        cwd: process.cwd(),
-        collectProvenance: () =>
-          boundCoordinatorProvenance(process.cwd(), 'heavy-check-admission'),
-        env: inherited,
-      });
-      const ran = join(temp.root, 'ran');
-      const check = join(temp.root, 'check.mjs');
-      writeFileSync(
-        check,
-        `import { writeFileSync } from 'node:fs';\nwriteFileSync(${JSON.stringify(ran)}, 'ran');\n`,
-      );
-      const runCheck = (env: NodeJS.ProcessEnv) =>
-        spawnSync(
-          process.execPath,
-          [
-            join(process.cwd(), 'scripts', 'heavy-check-slot.mjs'),
-            'lane-check',
-            check,
-          ],
-          {
-            env: {
-              ...env,
-              STATION_HEAVY_CHECK_SLOT_DIR: slotDir,
-              STATION_HEAVY_CHECK_SLOTS: '1',
-              STATION_HEAVY_CHECK_SLOT_WAIT_MS: '0',
-            },
-            encoding: 'utf8',
-            windowsHide: true,
-            timeout: 30_000,
-          },
-        );
-
-      // Outside the coordinator the same check queues, and with no wait fails.
-      const outside = runCheck(inherited);
-      expect(outside.status, outside.stderr).toBe(1);
-      expect(outside.stderr).toContain(
-        'FAIL: waited 0s for a heavy-check slot for lane-check',
-      );
-      expect(existsSync(ran)).toBe(false);
-
-      // Inside, the coordinator's admission covers it: no second queue, so a
-      // heavy-check holder can never wait on a coordinator lane that waits
-      // on it.
-      const inside = runCheck(context.env);
-      expect(inside.status, inside.stderr).toBe(0);
-      expect(readFileSync(ran, 'utf8')).toBe('ran');
-    } finally {
-      temp.remove();
     }
+
+    test('an executing owner holds a slot for its run and gives the lane its marker', async () => {
+      const temp = fixture();
+      const slotDir = join(temp.root, 'heavy-check-slots');
+      const seen: Array<{
+        holder: { pid: number; label: string };
+        marker?: string;
+      }> = [];
+      try {
+        const result = await coordinateVerification({
+          laneId: 'prepush',
+          root: temp.root,
+          heartbeatMs: 1,
+          wait: async () => {},
+          collectProvenance: () => provenance(`heavy-${temp.root}`),
+          env: heavyCheckEnv(slotDir, '20000'),
+          runner: async ({ env }: { env?: NodeJS.ProcessEnv } = {}) => {
+            seen.push({
+              holder: JSON.parse(
+                readFileSync(join(slotDir, 'slot-0.lock'), 'utf8'),
+              ),
+              marker: env?.[HEAVY_CHECK_HELD_ENV],
+            });
+            return { status: 0 };
+          },
+        });
+        expect(result.disposition).toBe('executed');
+        expect(seen).toHaveLength(1);
+        expect(seen[0].holder.pid).toBe(process.pid);
+        expect(seen[0].holder.label).toBe('verification:prepush');
+        // The lane's children run under this owner's slot.
+        expect(seen[0].marker).toMatch(new RegExp(`^${process.pid}(:|$)`));
+        // Released once the lane finished.
+        expect(existsSync(join(slotDir, 'slot-0.lock'))).toBe(false);
+      } finally {
+        temp.remove();
+      }
+    });
+
+    test('a reused receipt takes no slot, even while the pool is full', async () => {
+      const temp = fixture();
+      const slotDir = join(temp.root, 'heavy-check-slots');
+      let calls = 0;
+      const options = {
+        laneId: 'prepush',
+        root: temp.root,
+        heartbeatMs: 1,
+        wait: async () => {},
+        collectProvenance: () => provenance(`heavy-reuse-${temp.root}`),
+        runner: async () => {
+          calls += 1;
+          return { status: 0 };
+        },
+      };
+      try {
+        const first = await coordinateVerification({
+          ...options,
+          env: heavyCheckEnv(slotDir, '20000'),
+        });
+        expect(first.disposition).toBe('executed');
+        holdOnlySlot(slotDir);
+        const reused = await coordinateVerification({
+          ...options,
+          env: heavyCheckEnv(slotDir, '0'),
+        });
+        expect(reused.disposition).toBe('reused');
+        expect(calls).toBe(1);
+      } finally {
+        temp.remove();
+      }
+    });
+
+    test('a lane whose deadline passes while it waits for a slot stops waiting and settles', async () => {
+      const temp = fixture();
+      const slotDir = join(temp.root, 'heavy-check-slots');
+      holdOnlySlot(slotDir);
+      let calls = 0;
+      const options = {
+        laneId: 'prepush',
+        root: temp.root,
+        heartbeatMs: 1,
+        wait: async () => {},
+        collectProvenance: () => provenance(`heavy-deadline-${temp.root}`),
+        runner: async () => {
+          calls += 1;
+          return { status: 0 };
+        },
+      };
+      try {
+        const timedOut = await coordinateVerification({
+          ...options,
+          timeoutMs: 1_500,
+          env: heavyCheckEnv(slotDir, '600000'),
+        });
+        expect(calls).toBe(0);
+        expect(timedOut.receipt.terminal.passed).toBe(false);
+        // The waiter left the queue rather than outliving its lane.
+        expect(readdirSync(join(slotDir, 'queue'))).toEqual([]);
+        // Nothing was fenced: the next request executes once the slot frees.
+        rmSync(join(slotDir, 'slot-0.lock'));
+        const retried = await coordinateVerification({
+          ...options,
+          env: heavyCheckEnv(slotDir, '0'),
+        });
+        expect(retried.disposition).toBe('executed');
+        expect(calls).toBe(1);
+      } finally {
+        temp.remove();
+      }
+    }, 30_000);
+
+    test('an owner that cannot get a slot in time refuses without running the lane', async () => {
+      const temp = fixture();
+      const slotDir = join(temp.root, 'heavy-check-slots');
+      holdOnlySlot(slotDir);
+      let calls = 0;
+      try {
+        const outcome = await coordinateVerification({
+          laneId: 'prepush',
+          root: temp.root,
+          heartbeatMs: 1,
+          wait: async () => {},
+          collectProvenance: () => provenance(`heavy-full-${temp.root}`),
+          env: heavyCheckEnv(slotDir, '0'),
+          runner: async () => {
+            calls += 1;
+            return { status: 0 };
+          },
+        }).then(
+          (result) => ({ result, error: null }),
+          (error: Error) => ({ result: null, error }),
+        );
+        expect(calls).toBe(0);
+        const text = outcome.error
+          ? String(outcome.error.message)
+          : JSON.stringify(outcome.result);
+        expect(text).toContain(
+          'FAIL: waited 0s for a heavy-check slot for verification:prepush',
+        );
+        expect(outcome.result?.receipt?.terminal?.passed).not.toBe(true);
+        // The refusal leaves no fence or capacity behind: once the other
+        // check finishes, the same request executes.
+        rmSync(join(slotDir, 'slot-0.lock'));
+        const retried = await coordinateVerification({
+          laneId: 'prepush',
+          root: temp.root,
+          heartbeatMs: 1,
+          wait: async () => {},
+          collectProvenance: () => provenance(`heavy-full-${temp.root}`),
+          env: heavyCheckEnv(slotDir, '0'),
+          runner: async () => {
+            calls += 1;
+            return { status: 0 };
+          },
+        });
+        expect(retried.disposition).toBe('executed');
+        expect(calls).toBe(1);
+      } finally {
+        temp.remove();
+      }
+    });
   });
 
   // The blocking acyclicity guard: fallow only warns on circular imports.

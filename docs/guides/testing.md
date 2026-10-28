@@ -1697,7 +1697,7 @@ slot and then runs the script as the slot holder. These entry points use it:
 | `npm run docs:truth:gate` (also a Veritas readiness evidence check) | `docs:truth:gate` |
 | `npm run docs:learn:build`, `npm run docs:learn:check` | `docs:learn:build`, `docs:learn:check` |
 | Pre-push transfer budgets, static gates, SDK barrel | `pre-push:transfer-budgets`, `pre-push:static-gates`, `pre-push:sdk-barrel` |
-| `node scripts/run-verification.mjs request <lane>` (`ci:fast`, `verify:static`, a local `full:regression`) | `verification:<lane>` |
+| A verification-coordinator lane that executes (`ci:fast`, `verify:static`, `full:regression`, requested or submitted) | `verification:<lane>` |
 
 - N is the smaller of one slot per four logical CPUs (floored) and one per
   8 GiB of RAM (rounded), between 1 and 4. A 4-core, 15 GiB host gets 1.
@@ -1715,16 +1715,13 @@ slot and then runs the script as the slot holder. These entry points use it:
   naming it. `STATION_HEAVY_CHECK_SLOT_HELD` carries the holder's pid and, on
   macOS and Linux, its process birth. A marker naming a dead or recycled pid is
   ignored.
-- Admission is always taken in one order: heavy-check slot, then the
-  verification coordinator, then typecheck or Biome. A local
-  `run-verification.mjs request` takes its slot before asking the coordinator.
-  Every lane the coordinator runs gives its children the marker of the
-  process running it, so a lane never waits on a heavy-check slot. A request
-  that holds a slot while it waits for coordinator capacity therefore cannot
-  deadlock against a running lane.
-- A submitted `full:regression` (`run-verification.mjs submit`) runs in a
-  detached worker that takes no heavy-check slot. Its heavier phases are
-  admitted only by the coordinator's host-pressure gate.
+- Admission is always taken in one order: the verification coordinator, then
+  a heavy-check slot, then typecheck or Biome. A coordinator owner takes its
+  slot only once it is about to execute the lane. A request that reuses a
+  receipt or joins a running lane takes none. The wait counts against the
+  lane's deadline, as coordinator queueing already does. No heavy-check holder
+  waits on the coordinator: a request made inside a holder's process tree runs
+  under that holder's slot.
 - Hosted CI (`GITHUB_ACTIONS=true`) takes no slot, because each runner is
   single-tenant, and prints one line saying so. `CI` alone does not exempt a
   run, because local tools set it too.

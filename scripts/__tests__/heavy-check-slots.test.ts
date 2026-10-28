@@ -355,33 +355,6 @@ describe('heavy-check slot runner (child processes)', () => {
     expect(JSON.parse(result.stdout)).toContain('--max-old-space-size=321');
   });
 
-  test('a local verification request queues for a heavy-check slot before the coordinator', () => {
-    const w = workspace();
-    holdSlot(w.slotDir);
-    const coordinatorRun = join(w.root, 'coordinator');
-    const result = spawnSync(
-      process.execPath,
-      [resolve('scripts/run-verification.mjs'), 'request', 'ci-fast'],
-      {
-        env: poolEnv(w.slotDir, {
-          STATION_HEAVY_CHECK_SLOT_WAIT_MS: '0',
-          STATION_VITEST_RUN_ROOT: coordinatorRun,
-        }),
-        encoding: 'utf8',
-        windowsHide: true,
-        timeout: 60_000,
-      },
-    );
-    expect(result.status).toBe(2);
-    expect(result.stderr).toContain(
-      `FAIL: waited 0s for a heavy-check slot for verification:ci-fast; all 1 are held: pid ${process.pid} (docs:truth:gate)`,
-    );
-    // Refused before the coordinator saw a request.
-    expect(existsSync(join(coordinatorRun, 'verification-coordinator'))).toBe(
-      false,
-    );
-  }, 90_000);
-
   test('hosted CI runs the check without taking a slot, and says so', () => {
     const w = workspace();
     holdSlot(w.slotDir);
