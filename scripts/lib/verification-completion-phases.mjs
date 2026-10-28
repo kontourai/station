@@ -337,12 +337,10 @@ async function runCompletionPhaseSequence(input) {
         getLease().phase?.executionDeadlineAt ?? executionDeadlineAt;
       let raw;
       let timedOut = false;
-      // A wait cut short by the lane deadline aborts the signal; the lane's
-      // own deadline runner then reports the timeout.
-      if (heavyCheckRefusal?.name === 'AbortError')
-        raw = { status: null, signal: 'SIGTERM' };
-      else if (heavyCheckRefusal)
-        raw = { status: null, error: heavyCheckRefusal };
+      // A refusal is this phase's failed result. A wait cut short by the lane
+      // deadline or a cancel aborts the lane, whose own deadline runner and
+      // cancellation decide how it ends.
+      if (heavyCheckRefusal) raw = { status: null, error: heavyCheckRefusal };
       else
         try {
           ({ raw, timedOut } = await runWithinDeadline({
