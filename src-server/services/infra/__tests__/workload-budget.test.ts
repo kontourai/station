@@ -448,7 +448,7 @@ describe('workload manager budgets (fake systemd manager)', () => {
       ]),
     );
     __workloadTestHooks.reset();
-    // One byte less still floors to 1535 MiB: the gate reads whole MiB.
+    // One byte less: rounding never lifts a host into the ban.
     const byte = await start({ hostMemoryBytes: 12 * GIB - 1 });
     expect(setPropertyFor(byte.calls, 'station-test.service')).toContain(
       'MemorySwapMax=infinity',

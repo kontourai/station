@@ -110,7 +110,9 @@ describe.skipIf(!manager)('running server workload containment', () => {
         `--unit=${unit}`,
         `--working-directory=${root}`,
         '--property=MemoryMax=536870912',
-        '--property=MemorySwapMax=0',
+        // Near-zero swap, but a value boot never writes, so the boot
+        // protection test can tell boot's MemorySwapMax from the launch one.
+        '--property=MemorySwapMax=1048576',
         '--property=NoNewPrivileges=yes',
         '--property=PrivateTmp=yes',
         `--setenv=PATH=${process.env.PATH}`,
@@ -226,8 +228,8 @@ describe.skipIf(!manager)('running server workload containment', () => {
           ]),
       );
     };
-    // The fixture unit itself starts with MemorySwapMax=0, so on a host
-    // below the swap-ban threshold `infinity` also proves boot applied it.
+    // The fixture unit launches with MemorySwapMax=1048576 and no MemoryLow,
+    // so each expected value is one only boot writes.
     const MIB = 1024 * 1024;
     const share = Math.floor(totalmem() / MIB / 8) * MIB;
     expect(
