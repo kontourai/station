@@ -2,7 +2,7 @@ import { expect, type Page } from '@playwright/test';
 
 /**
  * The Coding layout lands on its Chat page; every pane is a drill-in picked
- * from the icon rail on its trailing edge (#928 coding stack). These are the
+ * from its desktop rail or phone tool picker. These are the
  * user's own moves, as ordinary Playwright actions.
  */
 export function codingNavigation(page: Page) {
@@ -30,10 +30,16 @@ export function codingViewItem(page: Page, name: string | RegExp) {
   });
 }
 
-/** Drill into a pane from the rail. */
+/** Open the picker on phones, then select the pane. */
 export async function openCodingView(page: Page, name: string | RegExp) {
   const picker = page.getByRole('button', { name: /^Switch tool, current:/ });
-  if (await picker.isVisible()) await picker.click();
+  if (
+    await page.evaluate(
+      (query) => window.matchMedia(query).matches,
+      MOBILE_MEDIA_QUERY,
+    )
+  )
+    await picker.click();
   await codingViewItem(page, name).first().click();
 }
 
@@ -70,11 +76,14 @@ export async function codingRailMode(page: Page): Promise<'panels' | 'stack'> {
  */
 export async function selectCodingPane(page: Page, name: string | RegExp) {
   const picker = page.getByRole('button', { name: /^Switch tool, current:/ });
-  const mobile = await picker.isVisible();
+  const mobile = await page.evaluate(
+    (query) => window.matchMedia(query).matches,
+    MOBILE_MEDIA_QUERY,
+  );
   if (mobile) await picker.click();
   const item = codingViewItem(page, name).first();
   await expect(item).toBeVisible({ timeout: 20_000 });
-  const label = await item.innerText();
+  const label = mobile ? await item.locator('span').first().innerText() : '';
   await item.click();
   if (mobile) {
     await expect(page.getByRole('dialog', { name: 'Tools' })).toBeHidden();
