@@ -59,6 +59,23 @@ export function conversationOpenPhase(
 }
 
 /**
+ * Whether a turn ending can change this conversation's continuation verdict:
+ * it resolved (or is fork-ready) and may not continue yet, which includes a
+ * `busy` wait on that turn. A terminal turn event re-reads such a resolution
+ * so a follow-up queued during the wait is not left behind Check again.
+ */
+export function conversationOpenAwaitsTurnEnd(
+  state: ConversationOpenPolicyState,
+): boolean {
+  const resolution = state.conversationOpenState;
+  return (
+    (resolution?.status === 'resolved' ||
+      resolution?.status === 'fork-ready') &&
+    !resolution.canContinue
+  );
+}
+
+/**
  * The one synchronous gate shared by mutation, composer, inventory, and Basis.
  *
  * Unchanged in meaning: a conversation still in flight is not writable either.

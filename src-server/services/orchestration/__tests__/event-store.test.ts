@@ -967,6 +967,55 @@ describe('EventStore', () => {
     }
   });
 
+  test.each([
+    { deltas: 180, detached: true },
+    { deltas: 10, detached: false },
+    // Only the `turn.started` itself was left out: re-adding it closes the page.
+    { deltas: 149, detached: false },
+  ])(
+    'a newest page reports a detached turn start only across omitted rows ($deltas deltas)',
+    ({ deltas, detached }) => {
+      const threadId = `detached-${deltas}`;
+      const fields = {
+        provider: 'codex' as const,
+        threadId,
+        turnId: 'turn',
+        itemId: 'answer',
+        createdAt: '2026-09-12T00:00:00Z',
+      };
+      store.appendEvent({
+        ...fields,
+        eventId: `${threadId}-start`,
+        method: 'turn.started',
+        prompt: 'Question',
+      });
+      for (let i = 0; i < deltas; i++)
+        store.appendEvent({
+          ...fields,
+          eventId: `${threadId}-delta-${i}`,
+          method: 'content.text-delta',
+          delta: 'x',
+        });
+      const read = (cursor?: string) =>
+        store.listConversationEventWindowByTurn([threadId], {
+          direction: 'newest',
+          turnLimit: 1,
+          cursor,
+        });
+      const first = read();
+      expect(first.events[0].method).toBe('turn.started');
+      expect(first.turnStartDetached === true).toBe(detached);
+      if (!detached) return;
+      // The cursor reads the gap: its page holds the rest of the turn and is
+      // contiguous, so together the two pages are the whole turn.
+      const gap = read(first.nextCursor);
+      expect(gap.turnStartDetached).toBeUndefined();
+      expect(
+        new Set([...first.events, ...gap.events].map((event) => event.id)).size,
+      ).toBe(deltas + 1);
+    },
+  );
+
   test('newest paging pins its watermark and lineage while rejecting malformed cursors', () => {
     const base = {
       provider: 'codex' as const,

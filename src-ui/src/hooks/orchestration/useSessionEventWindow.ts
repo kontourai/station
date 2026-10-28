@@ -154,6 +154,9 @@ async function readConversationWindow(
   }
 }
 
+/** Pages one detached turn's gap may read before Load older takes over. */
+const MAX_TURN_GAP_PAGES = 12;
+
 /** REST-only bounded session history. Live content remains app-wide SSE state. */
 export function useSessionEventWindow(
   apiBase: string,
@@ -193,6 +196,9 @@ export function useSessionEventWindow(
   const requestSerialRef = useRef(0);
   const reconcileRevisionRef = useRef(reconcileRevision);
   const requestControllerRef = useRef<AbortController | undefined>(undefined);
+  const fillTurnGapRef = useRef<(gapCursor: string) => Promise<void>>(
+    async () => {},
+  );
   const recoveryTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
@@ -224,6 +230,7 @@ export function useSessionEventWindow(
     requestControllerRef.current = controller;
     setLoading(true);
     setSettled(false);
+    let turnGapCursor: string | undefined;
     try {
       const capability = await fetchSessionEventWindowCapability(apiBase);
       if (
@@ -291,18 +298,21 @@ export function useSessionEventWindow(
             requestGeneration === generation.current,
         ).catch(() => {});
       }
-      // The newest page is capped, so a long turn reads back as its
-      // `turn.started` plus its tail. Once older pages are loaded the cursor
-      // stays where they left it and will not re-read that gap, so the events
-      // already held are kept; stored events never change, and the new page
-      // wins where the two overlap. A first page alone is replaced: the live
-      // stitch refills its gap from frames this document still holds.
+      // Once older pages are loaded, the events already held are kept: stored
+      // events never change, and the new page wins where the two overlap.
       setEvents((current) =>
         mergePages(olderLoadedRef.current ? current : [], next),
       );
       if (!olderLoadedRef.current) setCursor(page.nextCursor);
       setWatermark(page.watermark);
+      watermarkRef.current = page.watermark;
       setError(undefined);
+      // The newest page is capped, so a long turn can read back as its
+      // `turn.started` plus its tail. The host says so, and its cursor reads
+      // that gap first: fill it now rather than leave the middle of the turn
+      // to a scroll to the top.
+      if (page.turnStartDetached && page.nextCursor)
+        turnGapCursor = page.nextCursor;
     } catch (cause) {
       if (controller.signal.aborted) return;
       if (
@@ -327,70 +337,114 @@ export function useSessionEventWindow(
         setSettledRevision(revisionAtStart);
       }
     }
+    if (turnGapCursor) void fillTurnGapRef.current(turnGapCursor);
   }, [apiBase, legacySessionId, observation, threadId, namespace]);
+
+  /**
+   * Read one older page at `pageCursor` and merge it. `adoptCursor` moves the
+   * reader's own paging cursor to the page's next one. Resolves with the page
+   * once applied, or undefined when it was superseded, failed, or re-read.
+   */
+  const readOlder = useCallback(
+    async (
+      pageCursor: string,
+      adoptCursor: boolean,
+    ): Promise<OrchestrationConversationEventWindow | undefined> => {
+      if (!threadId) return undefined;
+      const requestGeneration = generation.current;
+      const requestSerial = ++requestSerialRef.current;
+      const read = observation?.read(
+        threadId,
+        'older-history',
+        () =>
+          requestGeneration === generation.current &&
+          requestSerial === requestSerialRef.current,
+        activeChatsStore.getChatForExecutionSession(threadId)
+          ?.conversationActivity?.asOfSequence,
+      );
+
+      requestControllerRef.current?.abort();
+      const controller = new AbortController();
+      requestControllerRef.current = controller;
+      setLoading(true);
+      try {
+        const page = await readConversationWindow(
+          threadId,
+          apiBase,
+          { cursor: pageCursor, turnLimit: 20 },
+          { signal: controller.signal },
+          legacySessionId,
+        );
+        if (
+          requestGeneration !== generation.current ||
+          requestSerial !== requestSerialRef.current
+        )
+          return undefined;
+        if (read?.current() === false) return undefined;
+        activeChatsStore.applyConversationActivity(
+          page.session?.conversationActivity,
+        );
+        setCurrentSessionId(page.currentSessionId);
+        setSessionLineage(page.sessionLineage);
+        setHandoffs(page.handoffs ?? []);
+        setContextBoundaries(page.contextBoundaries ?? []);
+        read?.observed(page.watermark);
+        setError(undefined);
+        // A cursor pins the head it was minted at. One from before a later
+        // reload still pages immutable events below it, so its page merges;
+        // only a cursor ahead of this reader's head means the reader is stale.
+        if (page.watermark > watermarkRef.current) {
+          await reload();
+          return undefined;
+        }
+        setEvents((current) => mergePages(page.events, current));
+        olderLoadedRef.current = true;
+        if (adoptCursor) setCursor(page.nextCursor);
+        return page;
+      } catch (cause) {
+        if (controller.signal.aborted) return undefined;
+        if (requestGeneration !== generation.current) return undefined;
+        read?.failed();
+        setError(cause instanceof Error ? cause : new Error(String(cause)));
+        return undefined;
+      } finally {
+        if (
+          requestGeneration === generation.current &&
+          requestSerial === requestSerialRef.current
+        )
+          setLoading(false);
+      }
+    },
+    [apiBase, legacySessionId, observation, reload, threadId],
+  );
 
   const loadOlder = useCallback(async () => {
     const pageCursor = cursorRef.current;
-    if (!threadId || !pageCursor) return;
-    const requestGeneration = generation.current;
-    const requestSerial = ++requestSerialRef.current;
-    const read = observation?.read(
-      threadId,
-      'older-history',
-      () =>
-        requestGeneration === generation.current &&
-        requestSerial === requestSerialRef.current,
-      activeChatsStore.getChatForExecutionSession(threadId)
-        ?.conversationActivity?.asOfSequence,
-    );
+    if (pageCursor) await readOlder(pageCursor, true);
+  }, [readOlder]);
 
-    requestControllerRef.current?.abort();
-    const controller = new AbortController();
-    requestControllerRef.current = controller;
-    setLoading(true);
-    try {
-      const page = await readConversationWindow(
-        threadId,
-        apiBase,
-        { cursor: pageCursor, turnLimit: 20 },
-        { signal: controller.signal },
-        legacySessionId,
-      );
-      if (
-        requestGeneration !== generation.current ||
-        requestSerial !== requestSerialRef.current
-      )
-        return;
-      if (read?.current() === false) return;
-      activeChatsStore.applyConversationActivity(
-        page.session?.conversationActivity,
-      );
-      setCurrentSessionId(page.currentSessionId);
-      setSessionLineage(page.sessionLineage);
-      setHandoffs(page.handoffs ?? []);
-      setContextBoundaries(page.contextBoundaries ?? []);
-      read?.observed(page.watermark);
-      setError(undefined);
-      if (page.watermark !== watermarkRef.current) {
-        await reload();
-        return;
+  // Page a detached turn's gap until a page comes back contiguous. Older pages
+  // already loaded keep their own cursor, which sits past the gap; otherwise
+  // the reader's cursor follows the fill, so Load older resumes where it
+  // stopped. Bounded: a gap longer than this is left to Load older.
+  const fillTurnGap = useCallback(
+    async (gapCursor: string) => {
+      const adoptCursor = !olderLoadedRef.current;
+      let pageCursor: string | undefined = gapCursor;
+      for (
+        let pages = 0;
+        pageCursor && pages < MAX_TURN_GAP_PAGES;
+        pages += 1
+      ) {
+        const page = await readOlder(pageCursor, adoptCursor);
+        if (!page?.turnStartDetached) return;
+        pageCursor = page.nextCursor;
       }
-      setEvents((current) => mergePages(page.events, current));
-      olderLoadedRef.current = true;
-      setCursor(page.nextCursor);
-    } catch (cause) {
-      if (controller.signal.aborted) return;
-      if (requestGeneration !== generation.current) return;
-      read?.failed();
-      setError(cause instanceof Error ? cause : new Error(String(cause)));
-    } finally {
-      if (
-        requestGeneration === generation.current &&
-        requestSerial === requestSerialRef.current
-      )
-        setLoading(false);
-    }
-  }, [apiBase, legacySessionId, observation, reload, threadId]);
+      if (!adoptCursor && pageCursor) setCursor(pageCursor);
+    },
+    [readOlder],
+  );
+  fillTurnGapRef.current = fillTurnGap;
 
   useEffect(() => {
     if (readerKeyRef.current === readerKey) return;

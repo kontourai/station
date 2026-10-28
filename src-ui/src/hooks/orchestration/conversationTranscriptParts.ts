@@ -96,11 +96,15 @@ export function stitchWindowWithLiveEvents(input: {
     Math.max(0, ...input.windowEvents.map((item) => item.sequence));
   // The newest window page is capped by count and bytes: a long turn reads
   // back as its `turn.started` plus its tail, with nothing between. A live
-  // frame inside the page's range that the page lacks is that gap, not a stale
-  // duplicate, so only frames older than the whole page are left to paging.
+  // frame of a turn the page shows, inside the page's range but missing from
+  // it, is that gap rather than a stale duplicate. Anything else at or below
+  // the watermark is left to paging.
   const oldestRead = input.windowEvents.length
     ? Math.min(...input.windowEvents.map((item) => item.sequence))
     : watermark + 1;
+  const windowTurnIds = new Set(
+    input.windowEvents.map((item) => item.event.turnId).filter(Boolean),
+  );
   const events = [...input.windowEvents];
   const persistedIds = new Set(
     input.windowEvents.map((item) => item.event.eventId).filter(Boolean),
@@ -109,7 +113,11 @@ export function stitchWindowWithLiveEvents(input: {
     input.windowEvents.map((item) => item.sequence),
   );
   for (const item of input.liveEvents) {
-    if (item.sequence < oldestRead || !input.threadIds.has(item.event.threadId))
+    if (!input.threadIds.has(item.event.threadId)) continue;
+    if (
+      item.sequence <= watermark &&
+      (item.sequence < oldestRead || !windowTurnIds.has(item.event.turnId))
+    )
       continue;
     if (
       persistedIds.has(item.event.eventId) ||

@@ -1643,6 +1643,8 @@ export interface PersistedRuntimeEventWindow {
   events: PersistedRuntimeEvent[];
   hasMore: boolean;
   nextCursor?: string;
+  /** See `OrchestrationSessionEventWindow.turnStartDetached`. */
+  turnStartDetached?: true;
   /** Highest stream sequence for this thread at the same read boundary. */
   watermark: number;
 }
@@ -10677,6 +10679,9 @@ export class EventStore {
       }
       const oldest = events.at(-1);
       const moreInRange = rows.length > events.length;
+      // The newest row this page's budget left out, if any.
+      const newestOmitted = moreInRange ? rows[events.length] : undefined;
+      let turnStartDetached = false;
       if (
         oldest?.turnId &&
         !events.some(
@@ -10696,7 +10701,14 @@ export class EventStore {
             rangeStart,
             oldest.globalSequence,
           ) as any;
-        if (anchor) events.push(snapshotEvent(mapPersistedEventRow(anchor)));
+        if (anchor) {
+          events.push(snapshotEvent(mapPersistedEventRow(anchor)));
+          // Rows between the re-added `turn.started` and the tail were left
+          // out: the page is not contiguous, and `nextCursor` pages that gap.
+          turnStartDetached =
+            newestOmitted !== undefined &&
+            newestOmitted.global_sequence > anchor.global_sequence;
+        }
       }
       const hasMore = moreInRange || olderTurnsRemain;
       const nextCursorValue =
@@ -10719,6 +10731,7 @@ export class EventStore {
               ),
             }
           : {}),
+        ...(turnStartDetached ? { turnStartDetached: true as const } : {}),
         watermark,
       };
       this.db.exec('COMMIT');

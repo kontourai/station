@@ -2757,59 +2757,159 @@ describe('useActiveChatTranscript', () => {
     expect(result.current.hasMore).toBe(false);
   });
 
-  // A capped newest page is its oldest anchor plus the newest tail. With older
-  // pages loaded the cursor never re-reads the hole between them, so a reload
-  // must keep the events this reader already holds there.
-  test('a capped reload keeps loaded events between its anchor and its tail', async () => {
-    resetSequencedLiveEventsForTests();
-    const turns = (from: number, to: number) =>
+  // A capped newest page can be its turn's `turn.started` plus its tail. The
+  // host says so (`turnStartDetached`) and its cursor reads the gap, which
+  // the reader fills itself: the middle of the turn must not wait for a
+  // scroll to the top, and must not depend on live frames this tab missed.
+  describe('a detached turn start', () => {
+    const turnEvents = (from: number, to: number) =>
       Array.from({ length: to - from + 1 }, (_, offset) => {
-        const turn = from + offset;
-        return event(`e${turn}`, 'turn.started', {
-          turnId: `turn-${turn}`,
-          prompt: `Q${turn}`,
-        });
+        const sequence = from + offset;
+        return sequence === 6
+          ? event('e6', 'turn.started', { turnId: 'turn-6', prompt: 'Q6' })
+          : event(`e${sequence}`, 'content.text-delta', {
+              turnId: sequence < 6 ? 'turn-1' : 'turn-6',
+              itemId: `answer-${sequence < 6 ? 1 : 6}`,
+              delta: `${sequence} `,
+            });
       });
-    fetchWindow
-      .mockResolvedValueOnce({
-        protocolVersion: 1,
-        watermark: 5,
-        hasMore: true,
-        nextCursor: 'older-3',
-        events: turns(3, 5),
-      })
-      .mockResolvedValueOnce({
-        protocolVersion: 1,
-        watermark: 5,
-        hasMore: false,
-        events: turns(1, 2),
-      })
-      .mockResolvedValueOnce({
-        protocolVersion: 1,
-        watermark: 7,
-        hasMore: true,
-        nextCursor: 'ignored-newest-cursor',
-        events: [...turns(1, 1), ...turns(6, 7)],
-      });
-    const { result, rerender } = renderHook(
-      ({ revision }) =>
-        useActiveChatTranscript('http://capped-reload.test', {
-          ...baseSession,
-          orchestrationHistoryRevision: revision,
-        }),
-      { initialProps: { revision: 0 } },
-    );
-    await waitFor(() => expect(result.current.hasMore).toBe(true));
-    await act(async () => result.current.loadOlder());
-    expect(result.current.messages).toHaveLength(5);
+    const sequences = (events: readonly { sequence: number }[]) =>
+      events.map((item) => item.sequence);
+    const cursorOf = (call: number) =>
+      (fetchWindow.mock.calls[call]?.[2] as { cursor?: string } | undefined)
+        ?.cursor;
 
-    rerender({ revision: 1 });
-    await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(3));
-    await waitFor(() =>
-      expect(result.current.messages.map((message) => message.content)).toEqual(
-        ['Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Q7'],
-      ),
-    );
+    test('a fresh read fills the gap and leaves Load older after it', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'gap',
+          turnStartDetached: true,
+          events: [...turnEvents(6, 6), ...turnEvents(11, 12)],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'older-turns',
+          events: turnEvents(6, 10),
+        });
+      const { result } = renderHook(() =>
+        useActiveChatTranscript('http://detached-fresh.test', baseSession),
+      );
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([
+          6, 7, 8, 9, 10, 11, 12,
+        ]),
+      );
+      expect(cursorOf(1)).toBe('gap');
+      expect(result.current.hasMore).toBe(true);
+      await act(async () => result.current.loadOlder());
+      expect(cursorOf(2)).toBe('older-turns');
+    });
+
+    test('a reload with older pages loaded fills the gap this tab never streamed', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: true,
+          nextCursor: 'older',
+          events: turnEvents(3, 5),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: false,
+          events: turnEvents(1, 2),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'gap',
+          turnStartDetached: true,
+          events: [...turnEvents(6, 6), ...turnEvents(11, 12)],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: false,
+          events: turnEvents(1, 10),
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://detached-reload.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.hasMore).toBe(true));
+      await act(async () => result.current.loadOlder());
+      expect(sequences(result.current.events)).toEqual([1, 2, 3, 4, 5]);
+
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual(
+          Array.from({ length: 12 }, (_, index) => index + 1),
+        ),
+      );
+      expect(cursorOf(3)).toBe('gap');
+      expect(result.current.hasMore).toBe(false);
+    });
+
+    test('Load older still pages after a reload moved the head', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: true,
+          nextCursor: 'older-a',
+          events: turnEvents(4, 5),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: true,
+          nextCursor: 'older-b',
+          events: turnEvents(3, 3),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 7,
+          hasMore: true,
+          nextCursor: 'newest-only',
+          events: turnEvents(6, 7),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: false,
+          events: turnEvents(1, 2),
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://older-after-reload.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.hasMore).toBe(true));
+      await act(async () => result.current.loadOlder());
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([3, 4, 5, 6, 7]),
+      );
+      await act(async () => result.current.loadOlder());
+      expect(cursorOf(3)).toBe('older-b');
+      expect(sequences(result.current.events)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+      expect(fetchWindow).toHaveBeenCalledTimes(4);
+      expect(result.current.hasMore).toBe(false);
+    });
   });
 
   test('retains loaded older pages and ignores a stale terminal refresh', async () => {
