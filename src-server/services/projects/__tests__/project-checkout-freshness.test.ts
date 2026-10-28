@@ -429,6 +429,16 @@ describe('project checkout freshness', () => {
       status: 'unknown',
       reason: 'no-upstream',
     });
+    // A local "upstream" shaped like an option is never handed to git as one.
+    const config = join(checkout, '.git', 'config');
+    writeFileSync(
+      config,
+      readFileSync(config, 'utf8').replace(/merge = .*/, 'merge = --hash'),
+    );
+    await expect(reader.read(checkout, THRESHOLDS)).resolves.toMatchObject({
+      status: 'unknown',
+      reason: 'no-upstream',
+    });
   });
 
   test('a line break written into the upstream config cannot shift which remote is read', async () => {
