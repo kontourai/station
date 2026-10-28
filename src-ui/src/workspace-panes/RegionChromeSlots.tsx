@@ -16,7 +16,7 @@ export interface RegionMenu {
 }
 
 /**
- * The two places in a region's chrome bar where the SELECTED pane's own
+ * The places in a region's chrome bar where the SELECTED pane's own
  * toolbar content renders (#2046 2b): `leading` sits after the tab strip in
  * the bar's title cluster (Chat's identity, context meter and project
  * context), `trailing` before the region controls in its actions cluster
@@ -31,6 +31,8 @@ export interface RegionMenu {
  * full-screen Chat placement — and renders its toolbar as its own bar.
  */
 export interface RegionChromeSlots {
+  /** Before the region tabs or breadcrumb: the pane's sidebar toggle. */
+  start?: HTMLElement | null;
   leading: HTMLElement | null;
   trailing: HTMLElement | null;
   /**
