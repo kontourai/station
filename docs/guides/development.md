@@ -605,6 +605,31 @@ Common commands:
 
 See [../reference/cli.md](../reference/cli.md) for the complete command reference.
 
+### CLI and Station Control parity
+
+People and scripts use the `station` CLI; agents use Station Control tools.
+`scripts/cli-mcp-parity.json` classifies every tool in the authority table
+(`src-server/tools/station-control-policy.ts`) and every CLI action in
+`packages/cli/src/help.ts` as one of:
+
+- a counterpart: `"cli": ["<verb> <action>"]` on a tool, or `"tools": [...]` on a CLI action, naming entries that exist;
+- `"exempt"`: a category from `EXEMPT_CATEGORIES` in `scripts/cli-mcp-parity.mjs`, plus a one-line `"reason"`;
+- `"missing"`: the number of the issue tracking the gap.
+
+The `app` section records capabilities only the web app offers, keyed by
+name with their `"route"`; one is covered only when it has both a CLI and a
+tool counterpart. Keep section keys sorted.
+
+`npm run cli-mcp:parity:check` runs in `ci:fast` and `docs:truth:gate`. It
+fails on an unclassified or stale entry, a counterpart that does not exist, a
+`missing` entry without an issue number, and a tool or CLI action newly
+classified `missing` relative to the merge base with `origin/main`. That
+ratchet is keyed by name, so the missing set can only shrink. When you build a
+counterpart, change its entry from `missing` to the counterpart. The `app`
+section is outside the ratchet, so recording a newly found gap there passes.
+The check does not confirm that an `app` route exists, or that two
+counterparts reach the same server route.
+
 ## New user-facing capabilities
 
 Ship new capabilities that are not yet hardened behind a Station-wide Feature
