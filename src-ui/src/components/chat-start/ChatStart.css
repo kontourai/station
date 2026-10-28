@@ -76,14 +76,14 @@
   position: sticky;
   bottom: 0;
   z-index: 1;
-  background: var(--bg-primary);
+  background: var(--k-bg);
   padding: 0 var(--k-space-3) max(var(--k-space-3), var(--safe-bottom, 0px));
 }
 /* A short dock (a desktop bottom dock at its normal height) keeps the body
-   readable: the draft's text box starts at one line instead of three. */
-@container new-chat-draft (max-height: 560px) {
-  .new-chat-modal > .start-composer .start-composer__input {
-    min-height: 44px;
-    height: 2.75rem;
-  }
+   readable: the draft's text box shrinks with the draft's height (`cqh` of
+   the `new-chat-draft` container), from its usual three lines to one, never
+   below the 44px target. */
+.new-chat-modal > .start-composer .start-composer__input {
+  min-height: 2.75rem;
+  height: clamp(2.75rem, 100cqh - 25rem, 6rem);
 }
