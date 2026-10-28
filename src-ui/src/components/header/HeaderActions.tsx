@@ -13,6 +13,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { APP_DESTINATION_REGISTRY } from '../../app-shell/destination-registry';
 import { useApiBase } from '../../contexts/ApiBaseContext';
+import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { useLongPress } from '../../hooks/useLongPress';
 import { useMenuTriggerToggle } from '../../hooks/useMenuTriggerToggle';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
@@ -21,6 +22,7 @@ import {
   checkServerHealth,
   probeServerConnection,
 } from '../../lib/serverHealth';
+import { recordStationUse } from '../../lib/stationSwitcher';
 import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { BellGlyph } from '../icons/Glyph';
@@ -147,6 +149,21 @@ function ConnectionNameHint({
   );
 }
 
+/**
+ * Toggles the Station switcher. It opens on the previous Station, or on its
+ * filter once there are enough to need one, so the chord then Enter flips back.
+ */
+function StationSwitchShortcut({ onToggle }: { onToggle: () => void }) {
+  useKeyboardShortcut(
+    'station.switch',
+    's',
+    ['cmd', 'shift'],
+    'Switch Station',
+    onToggle,
+  );
+  return null;
+}
+
 export function HeaderActions({
   helpPrompts,
   showHelp,
@@ -166,10 +183,19 @@ export function HeaderActions({
 }: HeaderActionsProps) {
   const profile = usePlatformProfile();
   const stationConditions = useStationConditions();
-  const { activeConnection, connections, setActiveConnection } =
-    useConnections();
+  const {
+    activeConnection,
+    connections,
+    setActiveConnection,
+    forgetConnection,
+    canForgetConnection,
+  } = useConnections();
   const connectionButtonRef = useRef<HTMLButtonElement>(null);
   const [connectionMenuOpen, setConnectionMenuOpen] = useState(false);
+  const activeConnectionId = activeConnection?.id;
+  useEffect(() => {
+    if (activeConnectionId) recordStationUse(activeConnectionId);
+  }, [activeConnectionId]);
   const { apiBase } = useApiBase();
   const {
     status: connStatus,
@@ -345,16 +371,17 @@ export function HeaderActions({
   const [connectionNameAnchor, setConnectionNameAnchor] =
     useState<HTMLElement | null>(null);
   const connectionHintId = useId();
+  const openConnectionMenu = () => {
+    setConnectionNameAnchor(null);
+    onCloseHelp();
+    onCloseNotifications();
+    onCloseOverflow();
+    if (connections.length === 0) onOpenConnections();
+    else setConnectionMenuOpen(true);
+  };
   const connectionToggle = useMenuTriggerToggle(
     connectionMenuOpen,
-    () => {
-      setConnectionNameAnchor(null);
-      onCloseHelp();
-      onCloseNotifications();
-      onCloseOverflow();
-      if (connections.length === 0) onOpenConnections();
-      else setConnectionMenuOpen(true);
-    },
+    openConnectionMenu,
     () => setConnectionMenuOpen(false),
   );
   const connectionGesture = useLongPress({
@@ -443,6 +470,14 @@ export function HeaderActions({
           </>
         )}
       </button>
+      {connections.length > 1 && (
+        <StationSwitchShortcut
+          onToggle={() => {
+            if (connectionMenuOpen) setConnectionMenuOpen(false);
+            else openConnectionMenu();
+          }}
+        />
+      )}
       {connectionMenuOpen && connectionButtonRef.current && (
         <LazyBoundary
           load={loadStationSwitcher}
@@ -455,6 +490,8 @@ export function HeaderActions({
             onSelect: async (connection) => {
               await setActiveConnection(connection.id);
             },
+            onForget: (connection) => forgetConnection(connection.id),
+            canForget: (connection) => canForgetConnection(connection.id),
             onClose: () => setConnectionMenuOpen(false),
             onManage: onOpenConnections,
             onPairPhone: hasLocalStationForProfile(profile)

@@ -1,0 +1,7 @@
+{
+  "revision": "14341b2d324791e2722936e17985dd3d8488e9e1",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Re-reviewed after connections.md's switcher paragraph moved to Forget copy. This guide's direction/authority/persistence distinctions do not describe the switcher or forgetting a saved Station; no claim changes.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

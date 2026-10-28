@@ -218,10 +218,14 @@ export function ApprovalModeChip({
       : !isOverride && appliedMode
         ? approvalModeLabel(appliedMode)
         : // #3290: before Station takes over, OpenCode's own rules decide.
+          // Codex likewise runs its own configuration until a pick.
           effective.mode === 'connection-default' &&
             engineConnectionId === 'opencode'
           ? "OpenCode's own settings"
-          : effective.label;
+          : effective.mode === 'connection-default' &&
+              engineConnectionId === 'codex'
+            ? "Codex's own settings"
+            : effective.label;
   const chipText = isPendingApply
     ? `${approvalModeChipLabel('never')} · pending`
     : isPendingRestrict || isRefused

@@ -1,0 +1,7 @@
+{
+  "revision": "33c316abbe58329c5e885996baeb383a9338545e",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"chat.css: the Station switcher's hover-reveal and 44px touch rules moved into the existing (hover: hover) and (max-width: 768px), (pointer: coarse) blocks, adding only .station-switcher* selectors there; .station-switcher__empty removed. Searched this document for claims about those blocks or chat.css media rules: none; its claims do not change.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

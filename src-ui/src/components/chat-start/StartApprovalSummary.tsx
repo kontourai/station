@@ -6,6 +6,7 @@ import { useConfig } from '../../contexts/ConfigContext';
 import {
   type ApprovalMode,
   approvalModeChipLabel,
+  approvalModeDescription,
   resolveEffectiveApprovalMode,
 } from '../../utils/approvalMode';
 import { ArrowDownGlyph } from '../icons/Glyph';
@@ -83,7 +84,9 @@ export function StartApprovalSummary({
       : resolved.source === 'project unavailable'
         ? "This project's new-chat settings could not be read here; Station applies them when the chat starts."
         : resolved.mode === 'connection-default'
-          ? 'The engine has not reported its active approval mode yet.'
+          ? engine === 'codex'
+            ? approvalModeDescription('connection-default', 'codex')
+            : 'The engine has not reported its active approval mode yet.'
           : `Requested at startup, from ${resolved.source}.`
   }${
     resolved.source !== 'session override' &&
