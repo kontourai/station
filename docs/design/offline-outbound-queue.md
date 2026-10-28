@@ -110,9 +110,10 @@ Station answers, as before). A message Station composes for the person (the
 chat's Continue after a restart) gets the same before-the-request row under its
 own derived key, and every send under that key (a Retry or a replay as much as
 the first) leaves the composer out: it carries none of the composer's files, a refusal hands nothing back to the composer, and while a
-turn is running it is not sent, steered or queued under a new key. An engine
-that answers busy after receiving it holds it in the queue under the same key,
-like any send.
+turn is running it is not sent, steered or queued under a new key. A busy
+refusal before Station began sending holds it in the queue under the same key,
+like any send; a refusal after it began spends the key, so that Continue can
+only report the refusal.
 
 Configuration edits are excluded from the outbound chat queue by default. Station has no single
 configuration-mutation protocol: agent, connection, plugin, and system edits

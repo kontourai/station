@@ -1239,16 +1239,17 @@ export function ChatDockBody({
     },
     [surfaceRecoveryFailure],
   );
-  // By the row itself: the list may hide rows `renderedSession.messages`
-  // keeps, so its index can name a different row.
+  // Only on a transcript that has caught up: while it catches up the dock
+  // keeps showing the last one it read, whose latest row may be stale.
   const continueInterruptedAction = useCallback(
     (msg: ChatMessage) => {
       if (!continueInterruptedEnabled) return undefined;
       const boundaryId = continuableInterruptedBoundary(
         renderedSession.messages,
-        renderedSession.messages.indexOf(msg),
+        msg,
         {
           replay: Boolean(activeSession.replay),
+          current: !transcriptPending && openPhase === 'writable',
           turnInFlight: isTurnInFlight(activeSession),
           pendingSends:
             (activeSession.outboundQueuedTurns?.length ?? 0) +
@@ -1266,6 +1267,8 @@ export function ChatDockBody({
       continueInterruptedEnabled,
       renderedSession.messages,
       activeSession,
+      transcriptPending,
+      openPhase,
       continueInterruptedTurn,
     ],
   );

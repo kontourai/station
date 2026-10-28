@@ -336,10 +336,10 @@ describe('ChatDockBody Continue after a restart', () => {
       defaultOptions: { queries: { retry: false } },
     });
     const chatInput = { ...buildChatInput(), sendComposedMessage };
-    render(
+    const dock = (current: ChatSession) => (
       <QueryClientProvider client={queryClient}>
         <ChatDockBody
-          activeSession={session}
+          activeSession={current}
           chatFontSize={14}
           dockHeight={400}
           showStatsPanel={false}
@@ -351,9 +351,12 @@ describe('ChatDockBody Continue after a restart', () => {
           chatInput={chatInput as any}
           setShowStatsPanel={vi.fn()}
         />
-      </QueryClientProvider>,
+      </QueryClientProvider>
     );
-    return chatInput;
+    const { rerender } = render(dock(session));
+    return Object.assign(chatInput, {
+      rerender: (next: ChatSession) => rerender(dock(next)),
+    });
   }
 
   beforeEach(() => {
@@ -425,6 +428,30 @@ describe('ChatDockBody Continue after a restart', () => {
 
   test('is not offered while a turn is running', async () => {
     renderWith(buildSession({ messages: [prompt, banner], status: 'sending' }));
+    await screen.findByText(BANNER_TEXT);
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+  });
+
+  test('stays offered when a refresh hands the list an equivalent copy of the rows', async () => {
+    const session = buildSession({ messages: [prompt, banner] });
+    const { rerender } = renderWith(session);
+    await screen.findByRole('button', { name: 'Continue' });
+    // A refetch: new row objects with the same content. The list keeps
+    // rendering the rows it already had.
+    rerender({
+      ...session,
+      messages: session.messages.map((message) => ({ ...message })),
+    });
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
+  });
+
+  test('is not offered while the conversation is still opening', async () => {
+    renderWith(
+      buildSession({
+        messages: [prompt, banner],
+        conversationOpenPending: true,
+      }),
+    );
     await screen.findByText(BANNER_TEXT);
     expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
   });
