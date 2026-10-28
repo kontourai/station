@@ -297,32 +297,37 @@ describe('waitOnSession (the wait loop)', () => {
     expect(result.calls).toBeGreaterThan(20);
   });
 
-  test('a proxy answering 503 for a restarting Station is waited for, not called too old', async () => {
-    const proxy = createServer((_req, res) => {
-      res.writeHead(503, { 'Content-Type': 'text/html' });
-      res.end('<html>Service Unavailable</html>');
-    });
-    await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve));
-    const port = (proxy.address() as AddressInfo).port;
-    try {
-      const time = fakeTime();
-      const result = await waitOnSession({
-        apiBase: `http://127.0.0.1:${port}`,
-        sessionId: 'session-1',
-        until: 'idle',
-        timeoutMs: 600_000,
-        deps: time,
+  test.each([503, 521])(
+    'a proxy answering %i for a restarting Station is waited for, not called too old',
+    async (status) => {
+      const proxy = createServer((_req, res) => {
+        res.writeHead(status, { 'Content-Type': 'text/html' });
+        res.end('<html>Service Unavailable</html>');
       });
-      expect(result).toMatchObject({
-        outcome: 'observation-lost',
-        exitCode: 2,
-        lastError: 'wait call failed with HTTP 503',
-      });
-      expect(result.calls).toBeGreaterThan(20);
-    } finally {
-      await new Promise<void>((resolve) => proxy.close(() => resolve()));
-    }
-  });
+      await new Promise<void>((resolve) =>
+        proxy.listen(0, '127.0.0.1', resolve),
+      );
+      const port = (proxy.address() as AddressInfo).port;
+      try {
+        const time = fakeTime();
+        const result = await waitOnSession({
+          apiBase: `http://127.0.0.1:${port}`,
+          sessionId: 'session-1',
+          until: 'idle',
+          timeoutMs: 600_000,
+          deps: time,
+        });
+        expect(result).toMatchObject({
+          outcome: 'observation-lost',
+          exitCode: 2,
+          lastError: `wait call failed with HTTP ${status}`,
+        });
+        expect(result.calls).toBeGreaterThan(20);
+      } finally {
+        await new Promise<void>((resolve) => proxy.close(() => resolve()));
+      }
+    },
+  );
 
   test('a capacity refusal waits for a slot within the budget; nothing was lost', async () => {
     const time = fakeTime();
@@ -359,7 +364,9 @@ describe('waitOnSession (the wait loop)', () => {
       3,
     ]);
     // Told once, not on every retry, in the route's own words for its limit.
-    expect(notices).toEqual([`${STATION_FULL} Waiting for a free slot.`]);
+    expect(notices).toEqual([
+      'Waiting for a free wait slot (Station is serving the most waits it allows at once. Wait again shortly).',
+    ]);
   });
 
   test.each(['idle', 'turn-settled'] as const)(
@@ -416,6 +423,8 @@ describe('the session reads over HTTP', () => {
   let apiBase = '';
   let consoleLog: MockInstance;
   let capabilities: Record<string, boolean>;
+  /** Handshake answers to give, in order, before the real one. */
+  let handshakeScript: Array<{ status: number; raw: string }>;
   let waitReplies: Array<{ status: number; body: unknown }>;
   const requests: Array<{
     method: string;
@@ -430,6 +439,7 @@ describe('the session reads over HTTP', () => {
     vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     requests.length = 0;
     capabilities = { sessionPersonReads: true };
+    handshakeScript = [];
     waitReplies = [];
     server = createServer(async (req, res) => {
       const url = new URL(req.url || '/', 'http://127.0.0.1');
@@ -438,8 +448,14 @@ describe('the session reads over HTTP', () => {
         res.writeHead(status, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(payload));
       };
-      if (url.pathname === '/.well-known/station/v1')
+      if (url.pathname === '/.well-known/station/v1') {
+        const scripted = handshakeScript.shift();
+        if (scripted) {
+          res.writeHead(scripted.status, { 'Content-Type': 'text/html' });
+          return res.end(scripted.raw);
+        }
         return send(200, handshake(capabilities));
+      }
       requests.push({
         method: req.method || 'GET',
         pathname: url.pathname,
@@ -717,6 +733,34 @@ describe('the session reads over HTTP', () => {
     expect(await runExpectingExit(['sessions', 'wait', 'session-1'])).toBe(2);
     expect(printed()).toMatch(/HTTP 500/);
     expect(printed()).not.toMatch(/boom/);
+  });
+
+  test.each([
+    ['a 404', 404, 'Not Found'],
+    ['a 401 from a proxy', 401, 'Unauthorized'],
+    ['a 200 HTML page', 200, '<html>hello</html>'],
+  ])(
+    'a handshake that is %s is an older Station: no read is sent',
+    async (_label, status, raw) => {
+      handshakeScript = [
+        { status, raw },
+        { status, raw },
+      ];
+      await expect(run(['sessions', 'digest', 's-1'])).rejects.toThrow(
+        'This Station does not serve Session reads for a person.',
+      );
+      expect(requests).toEqual([]);
+      expect(handshakeScript).toEqual([]);
+    },
+  );
+
+  test('a Station that comes back between the two handshake reads is read normally', async () => {
+    handshakeScript = [{ status: 503, raw: 'Service Unavailable' }];
+    await run(['sessions', 'digest', 's-1', '--json']);
+    expect(requests.map((request) => request.pathname)).toEqual([
+      '/api/orchestration/session-reads/s-1/digest',
+    ]);
+    expect(JSON.parse(printed()).session.sessionId).toBe('s-1');
   });
 
   test('an older Station without the reads is told apart from not found, and no read is sent', async () => {

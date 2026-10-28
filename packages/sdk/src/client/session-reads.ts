@@ -182,9 +182,11 @@ async function read<T>(
 
 /**
  * One uncached handshake read. A transport failure or timeout throws as
- * itself, and a gateway status (502/503/504) throws a `StationHttpError`
- * with that status: the caller may retry both. Any other answer is the
- * host's: its handshake, or `undefined` when it has none.
+ * itself, and a server-side or rate status (5xx, 408, 429) throws a
+ * `StationHttpError` with that status: none of those says the host is too
+ * old, and the caller decides whether to retry. Any other answer is the
+ * host's: its handshake, or `undefined` when it has none (an older host
+ * answers 404, or 200 without the flag).
  */
 async function probeHandshake(
   apiBase: string,
@@ -195,7 +197,11 @@ async function probeHandshake(
     timeoutMs: 5000,
     ...(signal ? { signal } : {}),
   });
-  if ([502, 503, 504].includes(response.status)) {
+  if (
+    response.status >= 500 ||
+    response.status === 408 ||
+    response.status === 429
+  ) {
     await response.body?.cancel().catch(() => undefined);
     throw new StationHttpError(
       response.status,
@@ -210,6 +216,7 @@ async function probeHandshake(
     return parsePublicStationHandshake(await response.json()) ?? undefined;
   } catch (error) {
     rethrowDeadline(error);
+    if (signal?.aborted) throw error;
     return undefined;
   }
 }

@@ -123,12 +123,18 @@ const isCapacityRefusal = (error: unknown) =>
   error.status === 429 &&
   error.code === 'wait_capacity';
 
+/**
+ * Statuses a proxy or edge answers while the Station behind it is down:
+ * gateway errors, and an edge's "origin unreachable" family (520-524, 530).
+ * A plain 500 is the Station's own failure, reported at once.
+ */
+const GATEWAY_STATUSES = new Set([502, 503, 504, 520, 521, 522, 523, 524, 530]);
+
 /** The Station did not answer, or answered as a proxy does while it is down. */
 const isUnreachable = (error: unknown) =>
   error instanceof TypeError ||
   error instanceof StationRequestTimeoutError ||
-  (error instanceof StationHttpError &&
-    (error.status === 502 || error.status === 503 || error.status === 504));
+  (error instanceof StationHttpError && GATEWAY_STATUSES.has(error.status));
 
 function abortableSleep(
   ms: number,
@@ -274,7 +280,7 @@ export async function waitOnSession(input: {
           toldCapacity = true;
           // The route says which limit it is (this person's, or Station's).
           input.onNotice?.(
-            `${(error as StationHttpError).message} Waiting for a free slot.`,
+            `Waiting for a free wait slot (${(error as StationHttpError).message.replace(/\.$/, '')}).`,
           );
         }
         await sleep(Math.min(RETRY_DELAY_MS, remaining), input.signal);
