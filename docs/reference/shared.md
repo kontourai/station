@@ -1228,7 +1228,11 @@ at the integration root are skipped.
 An existing plugin-owned target is replaced using staged rollback handling;
 it is not silently skipped. The returned IDs describe copied files, not live
 MCP connections or permission grants. Use the host installation path for live
-plugin lifecycle and consent.
+plugin lifecycle and consent. This function writes the plugin's bytes as they
+are, including any `untrustedContentChanges`; the host installation path then
+passes each copied definition through the storage writer's untrusted-content
+receipt rule against the definition it replaced
+([design](../design/mcp-subregistry-curation.md#untrusted-content-and-outbound-tools)).
 
 ```ts
 const copied = copyPluginIntegrations('/path/to/plugin', '/project/.station/integrations');
