@@ -283,6 +283,13 @@ export function useSessionEventWindow(
   const eventsRef = useRef(events);
   const pendingFloorRef = useRef<number | undefined>(undefined);
   const partialRef = useRef(new Set<string>());
+  /**
+   * A reload's detached start over held history, partial until a read runs
+   * unbroken down to `floor` (what is held), whatever an earlier fill closed.
+   */
+  const heldGapRef = useRef<{ anchor: string; floor: number } | undefined>(
+    undefined,
+  );
   const closedRef = useRef(new Set<string>());
   const [partialTurnStartEventIds, setPartialTurnStartEventIds] =
     useState<ReadonlySet<string>>(NO_PARTIAL_TURNS);
@@ -407,8 +414,19 @@ export function useSessionEventWindow(
       if (!olderLoadedRef.current) {
         partialRef.current = new Set();
         closedRef.current = new Set();
+        heldGapRef.current = undefined;
       }
       notePartialTurnStarts(page, partialRef.current, closedRef.current);
+      // A reload whose detached start was closed by an earlier fill can land
+      // above what is held again: the gap between is owed anew, and the fill
+      // may stop short of it (its page bound, a newer read).
+      const anchor = page.turnStartDetached
+        ? next[0]?.event.eventId
+        : undefined;
+      if (fill && olderLoadedRef.current && anchor) {
+        partialRef.current.add(anchor);
+        heldGapRef.current = { anchor, floor: fill.floor };
+      }
       setPartialTurnStartEventIds(new Set(partialRef.current));
       if (!olderLoadedRef.current) setCursor(page.nextCursor);
       setWatermark(page.watermark);
@@ -497,6 +515,11 @@ export function useSessionEventWindow(
         // change, so its page merges whatever the reader's head is now.
         setEvents((current) => mergePages(page.events, current));
         notePartialTurnStarts(page, partialRef.current, closedRef.current);
+        const heldGap = heldGapRef.current;
+        if (heldGap && contiguousFrom(page) <= heldGap.floor) {
+          partialRef.current.delete(heldGap.anchor);
+          heldGapRef.current = undefined;
+        }
         setPartialTurnStartEventIds(new Set(partialRef.current));
         if (options.olderLoaded) olderLoadedRef.current = true;
         if (options.adoptCursor) setCursor(page.nextCursor);
@@ -566,6 +589,7 @@ export function useSessionEventWindow(
     pendingFloorRef.current = undefined;
     partialRef.current = new Set();
     closedRef.current = new Set();
+    heldGapRef.current = undefined;
     setPartialTurnStartEventIds(NO_PARTIAL_TURNS);
     if (recoveryTimerRef.current !== undefined) {
       clearTimeout(recoveryTimerRef.current);

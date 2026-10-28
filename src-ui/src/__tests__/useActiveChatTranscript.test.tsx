@@ -2863,6 +2863,110 @@ describe('useActiveChatTranscript', () => {
       },
     );
 
+    // A fill closed the start and older history was loaded; a later reload
+    // of the same long turn lands above what is held again. Until its fill
+    // reaches what is held, that gap is a hole in the turn's text.
+    test('a reload over held history marks its detached start partial again until the fill reaches what is held', async () => {
+      const assistantText = (messages: ChatSession['messages']) =>
+        messages
+          .filter((message) => message.role === 'assistant')
+          .map((message) => message.content ?? '')
+          .join('|');
+      const answer = (id: string, delta: string) =>
+        event(id, 'content.text-delta', {
+          turnId: 'turn-6',
+          itemId: 'answer-6',
+          delta,
+        });
+      const start = event('e6', 'turn.started', {
+        turnId: 'turn-6',
+        prompt: 'Q6',
+      });
+      let releaseHeldFill!: (page: unknown) => void;
+      fetchWindow
+        // A fresh read: the start and its tail.
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 11,
+          hasMore: true,
+          nextCursor: 'gap',
+          turnStartDetached: true,
+          events: [start, answer('e11', 'C. ')],
+        })
+        // Its fill reaches the start: closed.
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 11,
+          hasMore: true,
+          nextCursor: 'older',
+          events: [start, answer('e7', 'A. '), answer('e8', 'B. ')],
+        })
+        // Load older.
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 11,
+          hasMore: false,
+          events: [
+            event('e1', 'turn.started', { turnId: 'turn-1', prompt: 'Q1' }),
+          ],
+        })
+        // A later reload: the start again, then only the newest tail.
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 21,
+          hasMore: true,
+          nextCursor: 'gap-2',
+          turnStartDetached: true,
+          events: [
+            start,
+            answer('e20', 'E.'),
+            event('e21', 'turn.completed', {
+              turnId: 'turn-6',
+              outputText: 'A. B. C. D. E.',
+            }),
+          ],
+        })
+        // Its fill toward what is held, still outstanding.
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              releaseHeldFill = resolve;
+            }),
+        );
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://detached-held.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() =>
+        expect(assistantText(result.current.messages)).toBe('A. B. C. '),
+      );
+      await act(async () => result.current.loadOlder());
+      rerender({ revision: 1 });
+      await waitFor(() => expect(releaseHeldFill).toBeTypeOf('function'));
+      await waitFor(() =>
+        expect(assistantText(result.current.messages)).toContain('E.'),
+      );
+      // The hole (D.) is not pulled in from the terminal text.
+      expect(assistantText(result.current.messages)).not.toContain('D.');
+      await act(async () =>
+        releaseHeldFill({
+          protocolVersion: 1,
+          watermark: 21,
+          hasMore: true,
+          nextCursor: 'older-2',
+          events: [answer('e11', 'C. '), answer('e15', 'D. ')],
+        }),
+      );
+      // The fill reached what is held: the turn is whole again.
+      await waitFor(() =>
+        expect(assistantText(result.current.messages)).toBe('A. B. C. D. E.'),
+      );
+    });
+
     test('a fresh read fills the gap and leaves Load older after it', async () => {
       fetchWindow
         .mockResolvedValueOnce({
