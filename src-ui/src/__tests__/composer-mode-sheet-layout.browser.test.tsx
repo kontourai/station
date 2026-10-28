@@ -65,8 +65,7 @@ test('approval picker notes line up with its menu rows at phone and desktop widt
             row: contentLeft(row),
             source: find('From adapter default').getBoundingClientRect().left,
             applies: find('Applies on start').getBoundingClientRect().left,
-            save: find('Save as my codex default').getBoundingClientRect()
-              .left,
+            save: find('Save as my codex default').getBoundingClientRect().left,
           };
         });
         await page.screenshot({ path: `${out}/${width}-${theme}.png` });
