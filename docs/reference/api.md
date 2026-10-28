@@ -1412,7 +1412,11 @@ values; clients use the returned metadata when editing. A failed lookup returns
 `{success: true}`. Environment updates are merged by key: omission preserves
 stored values, `{env: {}}` clears nothing, and removal uses
 `removeSecretEnvKeys`. Package-supplied definitions are read-only; the MCP
-service refuses changes that would create a shadow copy.
+service refuses changes that would create a shadow copy. A change to
+`contentTrust` or `untrustedContentPermissions` appends a receipt to
+`untrustedContentChanges` (time, the caller's principal when known, the new
+value; last 50 kept); receipts in the request are ignored
+([design](../design/mcp-subregistry-curation.md#untrusted-content-and-outbound-tools)).
 
 ### Connected accounts (#3279)
 
@@ -4280,8 +4284,11 @@ same receipt.
 
 ### List Available Integrations (Registry)
 
-`GET /api/registry/integrations` returns `{success: true, data}` after the route's
-ID filtering, first-ID deduplication, and display-text cleanup.
+`GET /api/registry/integrations` returns `{success: true, data, mcpSources}` after the route's
+ID filtering, first-ID deduplication, and display-text cleanup. Entries from an
+MCP subregistry carry `mcpServer` (auth mode, derived qualification and the
+reasons Add is refused); `mcpSources` lists each subregistry source's freshness,
+last error and refused entries ([design](../design/mcp-subregistry-curation.md)).
 
 ### List Installed Integrations (Registry)
 

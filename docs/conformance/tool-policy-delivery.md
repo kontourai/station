@@ -194,6 +194,18 @@ after generation, delegation and config-protection refusals and retains guardian
 denies; guardian allows, session grants and unattended grants cannot bypass it.
 Managed calls without an approval channel are denied.
 
+## Outbound tools after untrusted content
+
+On the Station engine only, a turn that has read a tool result from an
+integration with `contentTrust: "untrusted"` runs one more stage after the
+Project tool policy and before authored Ask rules: the called tool's
+`untrustedContentPermissions` entry, `ask` when absent, for tools its server
+does not declare read-only. `ask` is answered exactly like an effective
+authored Ask above, `deny` refuses with `untrusted_content_denied`, and
+`allow` leaves the decision to the later stages. External engines build their
+evaluator without this stage, so Claude Code, Codex and ACP do not deliver it
+([design](../design/mcp-subregistry-curation.md#coverage-and-gaps)).
+
 Claude's staged evaluator returns a required Ask as a `PreToolUse` permission
 ask; `canUseTool` also excludes it from automatic, guardian and session grants.
 Adapter tests exercise both callbacks, including repeated calls after a session
