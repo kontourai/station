@@ -358,6 +358,12 @@ export class SecretBindingIntegrationService
       integrationId: input.integrationId,
     };
     const def = await this.assertOAuthClientConsumer(input.integrationId);
+    // GHSA-6qxp-vccf-f47h: a secret is only ever presented to the issuer the
+    // operator declared, so it cannot be bound before one is.
+    if (!def.oauthClient?.issuer)
+      throw new Error(
+        "Declare the client's authorization server before binding its secret.",
+      );
     const configured = def.oauthClient?.clientSecretRef;
     if (configured && configured !== input.id)
       throw new Error(

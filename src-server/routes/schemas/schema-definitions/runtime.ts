@@ -314,6 +314,14 @@ export const integrationSchema = z.object({
         .max(512)
         .regex(/^[\x21-\x7e]+$/, 'Client ID must be visible ASCII')
         .optional(),
+      issuer: z
+        .string()
+        .max(2048)
+        .refine(isAuthorizationServerIssuer, {
+          message:
+            'Authorization server must be an HTTPS issuer URL with no credentials, query or fragment',
+        })
+        .optional(),
       clientMetadataUrl: z
         .string()
         .max(2048)
@@ -330,6 +338,24 @@ export const integrationSchema = z.object({
     .strict()
     .optional(),
 });
+
+/** RFC 8414 issuer identifier: HTTPS, no credentials, query or fragment. */
+function isAuthorizationServerIssuer(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === 'https:' &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash &&
+      !value.includes('?') &&
+      !value.includes('#')
+    );
+  } catch {
+    return false;
+  }
+}
 
 /**
  * The MCP spec's Client ID Metadata Document shape: an HTTPS URL with a

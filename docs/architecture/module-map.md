@@ -2278,7 +2278,8 @@ integration's OAuth client secret for its token requests. It requires an exact
 instance binding; environment grants confer none. The integration records only
 the binding id at `oauthClient.clientSecretRef`, written by
 `SecretBindingIntegrationService.bindOAuthClientSecret` (grant first) and
-removed by `unbindOAuthClientSecret` (reference first). The secret is never
+removed by `unbindOAuthClientSecret` (reference first). Binding requires the integration's declared
+`oauthClient.issuer`; the provider never presents the secret to another issuer. The secret is never
 cached or written to the credential store; see
 [Use your own OAuth client](../guides/connections.md#use-your-own-oauth-client).
 

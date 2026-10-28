@@ -16,6 +16,7 @@ import { MCPService } from '../mcp-service.js';
 import {
   INSTANCE_CREDENTIAL_OWNER,
   OAuthClientIssuerMismatchError,
+  OAuthClientIssuerRequiredError,
   OAuthClientRequiredError,
   principalCredentialOwner,
   StationToolServerOAuthProvider,
@@ -41,6 +42,8 @@ const SECRET_ENV = 'STATION_TEST_BYO_CLIENT_SECRET';
 const CIMD_URL = 'https://client.example/station/client-metadata.json';
 const ALICE = humanPrincipal('tailscale-serve', 'alice', 'alice').id;
 const BOB = humanPrincipal('tailscale-serve', 'bob', 'bob').id;
+const CAROL = humanPrincipal('tailscale-serve', 'carol', 'carol').id;
+const DAN = humanPrincipal('tailscale-serve', 'dan', 'dan').id;
 
 type ServerOptions = {
   dcr: boolean;
@@ -49,13 +52,18 @@ type ServerOptions = {
 };
 
 type TokenRequest = {
+  origin: string;
   params: URLSearchParams;
   authorization: string | null;
 };
 
+const ATTACKER = 'https://attacker-as.example';
+
 function startAuthorizationServer(options: ServerOptions) {
-  const registrations: unknown[] = [];
+  const registrations: Array<Record<string, unknown>> = [];
   const tokenRequests: TokenRequest[] = [];
+  const contacted = new Set<string>();
+  let authorizationServer = ORIGIN;
   let issued = 0;
   const mcpHandler = createMcpHandler(
     () => {
@@ -73,19 +81,22 @@ function startAuthorizationServer(options: ServerOptions) {
       const request =
         input instanceof Request ? input : new Request(input, init);
       const url = new URL(request.url);
+      contacted.add(url.origin);
       if (url.pathname === '/.well-known/oauth-protected-resource/mcp')
         return Response.json({
           resource: `${ORIGIN}/mcp`,
-          authorization_servers: [ORIGIN],
+          authorization_servers: [authorizationServer],
           scopes_supported: ['mail.readonly', 'mail.compose'],
         });
       if (url.pathname === '/.well-known/oauth-authorization-server')
+        // Each host answers as its own issuer, so resource metadata decides
+        // which authorization server Station is sent to.
         return Response.json({
-          issuer: ORIGIN,
-          authorization_endpoint: `${ORIGIN}/authorize`,
-          token_endpoint: `${ORIGIN}/token`,
+          issuer: url.origin,
+          authorization_endpoint: `${url.origin}/authorize`,
+          token_endpoint: `${url.origin}/token`,
           ...(options.dcr
-            ? { registration_endpoint: `${ORIGIN}/register` }
+            ? { registration_endpoint: `${url.origin}/register` }
             : {}),
           ...(options.cimd
             ? { client_id_metadata_document_supported: true }
@@ -104,6 +115,7 @@ function startAuthorizationServer(options: ServerOptions) {
       }
       if (url.pathname === '/token') {
         tokenRequests.push({
+          origin: url.origin,
           params: new URLSearchParams(await request.text()),
           authorization: request.headers.get('authorization'),
         });
@@ -130,7 +142,16 @@ function startAuthorizationServer(options: ServerOptions) {
       return new Response('not found', { status: 404 });
     }),
   );
-  return { registrations, tokenRequests, close: () => mcpHandler.close() };
+  return {
+    registrations,
+    tokenRequests,
+    contacted,
+    /** RFC 9728 metadata names a different authorization server from now on. */
+    nameAuthorizationServer: (origin: string) => {
+      authorizationServer = origin;
+    },
+    close: () => mcpHandler.close(),
+  };
 }
 
 afterEach(() => {
@@ -194,16 +215,23 @@ async function createIntegration(
   });
 }
 
-async function bindClientSecret(env: ReturnType<typeof setup>) {
-  const created = await env.bindings.create({
-    id: 'byo-client-secret',
-    name: 'BYO client secret',
-    authRef: { env: SECRET_ENV },
-  });
+async function bindClientSecret(
+  env: ReturnType<typeof setup>,
+  existingRevision?: number,
+) {
+  const revision =
+    existingRevision ??
+    (
+      await env.bindings.create({
+        id: 'byo-client-secret',
+        name: 'BYO client secret',
+        authRef: { env: SECRET_ENV },
+      })
+    ).revision;
   const outcome = await env.consumers.bindOAuthClientSecret({
-    id: created.id,
+    id: 'byo-client-secret',
     integrationId: SERVER,
-    expectedRevision: created.revision,
+    expectedRevision: revision,
   });
   expect(outcome.outcome).toBe('complete');
 }
@@ -248,7 +276,11 @@ describe('pre-registered OAuth client on a server without DCR', () => {
     const env = setup();
     try {
       await createIntegration(env, {
-        oauthClient: { clientId: CLIENT_ID, scopes: ['mail.readonly'] },
+        oauthClient: {
+          clientId: CLIENT_ID,
+          issuer: ORIGIN,
+          scopes: ['mail.readonly'],
+        },
       });
       await bindClientSecret(env);
 
@@ -300,6 +332,7 @@ describe('pre-registered OAuth client on a server without DCR', () => {
       expect(logged).not.toContain(CLIENT_SECRET);
       expect(def.oauthClient).toEqual({
         clientId: CLIENT_ID,
+        issuer: ORIGIN,
         scopes: ['mail.readonly'],
         clientSecretRef: 'byo-client-secret',
       });
@@ -315,7 +348,9 @@ describe('pre-registered OAuth client on a server without DCR', () => {
     });
     const env = setup();
     try {
-      await createIntegration(env, { oauthClient: { clientId: CLIENT_ID } });
+      await createIntegration(env, {
+        oauthClient: { clientId: CLIENT_ID, issuer: ORIGIN },
+      });
       await bindClientSecret(env);
       await consent(env);
       const [exchange] = as.tokenRequests;
@@ -350,7 +385,9 @@ describe('pre-registered OAuth client on a server without DCR', () => {
     });
     const env = setup();
     try {
-      await createIntegration(env, { oauthClient: { clientId: CLIENT_ID } });
+      await createIntegration(env, {
+        oauthClient: { clientId: CLIENT_ID, issuer: ORIGIN },
+      });
       await bindClientSecret(env);
       const unreadable = new MCPService(
         env.loader,
@@ -437,7 +474,61 @@ describe('scopes are the signing-in person’s choice', () => {
     }
   });
 
-  test.each([[[]], [['a', 'a']], [['bad scope']], [['quote"']]])(
+  test('an empty choice requests the server’s scopes instead of the integration default', async () => {
+    const as = startAuthorizationServer({ dcr: false, authMethods: ['none'] });
+    const env = setup();
+    try {
+      await createIntegration(env, {
+        oauthClient: { clientId: CLIENT_ID, scopes: ['mail.readonly'] },
+      });
+      const authorizationUrl = await consent(env, undefined, { scopes: [] });
+      expect(authorizationUrl.searchParams.get('scope')).toBe(
+        'mail.readonly mail.compose',
+      );
+    } finally {
+      await as.close();
+    }
+  });
+
+  test.each([
+    { label: 'the person’s choice', extra: {}, requested: ['mail.readonly'] },
+    {
+      label: 'the integration default',
+      extra: { oauthClient: { scopes: ['mail.readonly'] } },
+      requested: undefined,
+    },
+  ])(
+    'a dynamically registered client is registered for $label, not the advertised scopes',
+    async ({ extra, requested }) => {
+      const as = startAuthorizationServer({ dcr: true });
+      const env = setup();
+      try {
+        await createIntegration(env, extra);
+        const authorizationUrl = await consent(
+          env,
+          undefined,
+          requested ? { scopes: requested } : undefined,
+        );
+        expect(as.registrations).toHaveLength(1);
+        expect(as.registrations[0]!.scope).toBe('mail.readonly');
+        expect(authorizationUrl.searchParams.get('client_id')).toBe(
+          'dcr-registered-client',
+        );
+        expect(authorizationUrl.searchParams.get('scope')).toBe(
+          'mail.readonly',
+        );
+      } finally {
+        await as.close();
+      }
+    },
+  );
+
+  test.each([
+    [['a', 'a']],
+    [['bad scope']],
+    [['quote"']],
+    [Array.from({ length: 33 }, (_, index) => `s${index}`)],
+  ])(
     'a malformed choice %j is refused before the server is contacted',
     async (scopes) => {
       const as = startAuthorizationServer({ dcr: true });
@@ -446,7 +537,9 @@ describe('scopes are the signing-in person’s choice', () => {
         await createIntegration(env);
         await expect(
           env.service.startOAuth(SERVER, 'remote', undefined, { scopes }),
-        ).rejects.toThrow('Scopes must be 1 to 32 distinct OAuth scope values');
+        ).rejects.toThrow(
+          'Scopes must be at most 32 distinct OAuth scope values',
+        );
         expect(vi.mocked(fetch)).not.toHaveBeenCalled();
       } finally {
         await as.close();
@@ -455,8 +548,64 @@ describe('scopes are the signing-in person’s choice', () => {
   );
 });
 
-describe('a configured client secret stays with its first authorization server', () => {
-  test('a different issuer is refused before the secret is read (GHSA-6qxp-vccf-f47h)', async () => {
+describe('the client secret is used only with its declared authorization server (GHSA-6qxp-vccf-f47h)', () => {
+  test('after Alice signs in, metadata naming another issuer cannot collect the shared secret through Bob, even after Alice disconnects', async () => {
+    const as = startAuthorizationServer({
+      dcr: false,
+      authMethods: ['client_secret_basic'],
+    });
+    const env = setup();
+    try {
+      await createIntegration(env, {
+        credentialOwnership: { owner: 'principal' },
+        oauthClient: { clientId: CLIENT_ID, issuer: ORIGIN },
+      });
+      await bindClientSecret(env);
+      await consent(env, { principalId: ALICE });
+      // Consent, then the catalog read refreshing her already-due token.
+      expect(as.tokenRequests.length).toBeGreaterThan(0);
+      expect(
+        new Set(as.tokenRequests.map((request) => request.origin)),
+      ).toEqual(new Set([ORIGIN]));
+
+      const reads = vi.spyOn(env.bindings, 'resolveOAuthClientSecret');
+      as.nameAuthorizationServer(ATTACKER);
+      // Bob's bucket has no saved discovery, so he follows the new metadata.
+      await expect(
+        env.service.startOAuth(SERVER, 'remote', { principalId: BOB }),
+      ).rejects.toBeInstanceOf(OAuthClientIssuerMismatchError);
+      // Concurrent first sign-ins have nothing to race: the issuer is config.
+      const concurrent = await Promise.allSettled([
+        env.service.startOAuth(SERVER, 'remote', { principalId: CAROL }),
+        env.service.startOAuth(SERVER, 'remote', { principalId: DAN }),
+      ]);
+      for (const outcome of concurrent) {
+        expect(outcome.status).toBe('rejected');
+        expect((outcome as PromiseRejectedResult).reason).toBeInstanceOf(
+          OAuthClientIssuerMismatchError,
+        );
+      }
+      // A disconnect clears Alice's saved discovery; the declared issuer stays.
+      await env.service.disconnectAccount(SERVER, { principalId: ALICE });
+      await expect(
+        env.service.startOAuth(SERVER, 'remote', { principalId: ALICE }),
+      ).rejects.toBeInstanceOf(OAuthClientIssuerMismatchError);
+
+      expect(as.contacted.has(ATTACKER)).toBe(true);
+      expect(reads).not.toHaveBeenCalled();
+      expect(
+        as.tokenRequests.filter((request) => request.origin === ATTACKER),
+      ).toEqual([]);
+      // Nothing about the issuer was written by a sign-in attempt.
+      expect(
+        (await env.loader.loadIntegration(SERVER)).oauthClient?.issuer,
+      ).toBe(ORIGIN);
+    } finally {
+      await as.close();
+    }
+  });
+
+  test('a bound secret without a declared issuer is refused before it is read', async () => {
     const env = setup();
     const secret = vi.fn(async () => CLIENT_SECRET);
     const provider = new StationToolServerOAuthProvider(
@@ -468,31 +617,64 @@ describe('a configured client secret stays with its first authorization server',
       INSTANCE_CREDENTIAL_OWNER,
       { clientId: CLIENT_ID, clientSecret: secret },
     );
-    expect(await provider.clientInformation({ issuer: ORIGIN })).toEqual({
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
-      issuer: ORIGIN,
-    });
-    expect(await provider.clientInformation({ issuer: ORIGIN })).toMatchObject({
-      client_secret: CLIENT_SECRET,
-    });
-    expect(secret).toHaveBeenCalledTimes(2);
-
     await expect(
-      provider.clientInformation({ issuer: 'https://other-as.example' }),
-    ).rejects.toBeInstanceOf(OAuthClientIssuerMismatchError);
-    expect(secret).toHaveBeenCalledTimes(2);
-    // No issuer context, no server to present a secret to.
+      provider.clientInformation({ issuer: ORIGIN }),
+    ).rejects.toBeInstanceOf(OAuthClientIssuerRequiredError);
+    // Without an issuer context there is no server to present a secret to.
     expect(await provider.clientInformation()).toEqual({
       client_id: CLIENT_ID,
     });
-    expect(secret).toHaveBeenCalledTimes(2);
+    expect(secret).not.toHaveBeenCalled();
+  });
 
-    // Resetting the credentials (disable, endpoint or client change) re-pins.
-    await provider.clearCredentials();
+  test('a public pre-registered client without a declared issuer still works; with one, it is enforced', async () => {
+    const env = setup();
+    const providerWith = (issuer?: string) =>
+      new StationToolServerOAuthProvider(
+        toolServerCredentialStoreFor(env.home, INSTANCE_CREDENTIAL_OWNER),
+        SERVER,
+        `${ORIGIN}/mcp`,
+        `http://127.0.0.1:${PORT}/integrations/${SERVER}/oauth/callback`,
+        undefined,
+        INSTANCE_CREDENTIAL_OWNER,
+        { clientId: CLIENT_ID, ...(issuer ? { issuer } : {}) },
+      );
     expect(
-      await provider.clientInformation({ issuer: 'https://other-as.example' }),
-    ).toMatchObject({ issuer: 'https://other-as.example' });
+      await providerWith().clientInformation({ issuer: ATTACKER }),
+    ).toEqual({ client_id: CLIENT_ID, issuer: ATTACKER });
+    await expect(
+      providerWith(ORIGIN).clientInformation({ issuer: ATTACKER }),
+    ).rejects.toBeInstanceOf(OAuthClientIssuerMismatchError);
+  });
+
+  test('binding a secret needs a declared issuer, and the issuer moves only after unbinding', async () => {
+    startAuthorizationServer({ dcr: false });
+    const env = setup();
+    await createIntegration(env, { oauthClient: { clientId: CLIENT_ID } });
+    const created = await env.bindings.create({
+      id: 'byo-client-secret',
+      name: 'BYO client secret',
+      authRef: { env: SECRET_ENV },
+    });
+    await expect(
+      env.consumers.bindOAuthClientSecret({
+        id: created.id,
+        integrationId: SERVER,
+        expectedRevision: created.revision,
+      }),
+    ).rejects.toThrow("Declare the client's authorization server");
+    await createIntegration(env, {
+      oauthClient: { clientId: CLIENT_ID, issuer: ORIGIN },
+    });
+    await bindClientSecret(env, created.revision);
+    await expect(
+      createIntegration(env, {
+        oauthClient: { clientId: CLIENT_ID, issuer: ATTACKER },
+      }),
+    ).rejects.toThrow('Unbind the OAuth client secret before changing');
+    await expect(
+      createIntegration(env, { oauthClient: { clientId: CLIENT_ID } }),
+    ).rejects.toThrow('Unbind the OAuth client secret before changing');
   });
 });
 
@@ -597,7 +779,7 @@ describe('person-owned integration with a pre-registered client', () => {
     try {
       await createIntegration(env, {
         credentialOwnership: { owner: 'principal' },
-        oauthClient: { clientId: CLIENT_ID },
+        oauthClient: { clientId: CLIENT_ID, issuer: ORIGIN },
       });
       await bindClientSecret(env);
       await consent(env, { principalId: ALICE });

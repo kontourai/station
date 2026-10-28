@@ -138,6 +138,12 @@ export interface ToolDef {
 export interface ToolOAuthClient {
   /** A client ID registered with the authorization server ahead of time. */
   clientId?: string;
+  /**
+   * The authorization server's `issuer` the pre-registered client belongs to.
+   * The client is never used with another issuer, and a client secret cannot
+   * be bound without one (GHSA-6qxp-vccf-f47h).
+   */
+  issuer?: string;
   /** HTTPS URL of a Client ID Metadata Document, used as the client ID. */
   clientMetadataUrl?: string;
   /**

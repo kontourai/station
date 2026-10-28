@@ -101,7 +101,60 @@ beforeEach(() => {
   ];
 });
 
+/**
+ * One change event per keystroke, each appending to the field's live value,
+ * as a person typing does. A field that re-derives its text from the parsed
+ * list drops the space before the next key reads it.
+ */
+function typeInto(element: HTMLElement, text: string) {
+  const field = element as HTMLInputElement | HTMLTextAreaElement;
+  for (const character of text)
+    fireEvent.change(field, { target: { value: field.value + character } });
+}
+
 describe('OAuthClientSection', () => {
+  test('typing scopes key by key keeps the spaces between them', () => {
+    render(<Harness initial={{ ...base, oauthClient: { clientId: 'c' } }} />);
+    const scopes = screen.getByLabelText(
+      'Default scopes',
+    ) as HTMLTextAreaElement;
+    typeInto(scopes, 'mail.readonly mail.compose');
+    expect(scopes.value).toBe('mail.readonly mail.compose');
+    expect(latest.oauthClient?.scopes).toEqual([
+      'mail.readonly',
+      'mail.compose',
+    ]);
+    // Leaving the field lists one scope per line, so long URLs stay readable.
+    fireEvent.blur(scopes);
+    expect(scopes.value).toBe('mail.readonly\nmail.compose');
+    expect(scopes.tagName).toBe('TEXTAREA');
+  });
+
+  test('a client secret cannot be bound until an authorization server is declared', () => {
+    render(<Harness initial={{ ...base, oauthClient: { clientId: 'c' } }} />);
+    fireEvent.change(screen.getByLabelText('Client secret'), {
+      target: { value: 'gmail-client' },
+    });
+    expect(
+      (screen.getByRole('button', { name: 'Bind' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      screen.getByText('Save an authorization server first to bind a secret.'),
+    ).toBeTruthy();
+  });
+
+  test('the declared authorization server is part of the client draft', () => {
+    render(<Harness initial={{ ...base, oauthClient: { clientId: 'c' } }} />);
+    fireEvent.change(screen.getByLabelText('Authorization server'), {
+      target: { value: ' https://accounts.google.com ' },
+    });
+    expect(latest.oauthClient).toEqual({
+      clientId: 'c',
+      issuer: 'https://accounts.google.com',
+    });
+  });
+
   test('stays folded until opened, then edits the client into the integration draft', () => {
     render(<Harness />);
     const toggle = screen.getByRole('button', {
@@ -158,7 +211,14 @@ describe('OAuthClientSection', () => {
 
   test('binds a shared secret binding as the client secret and offers no person-owned one', async () => {
     mocks.bind.mockResolvedValue({ outcome: 'complete' });
-    render(<Harness initial={{ ...base, oauthClient: { clientId: 'c' } }} />);
+    render(
+      <Harness
+        initial={{
+          ...base,
+          oauthClient: { clientId: 'c', issuer: 'https://accounts.google.com' },
+        }}
+      />,
+    );
     const select = screen.getByLabelText('Client secret') as HTMLSelectElement;
     expect([...select.options].map((option) => option.value)).toEqual([
       '',

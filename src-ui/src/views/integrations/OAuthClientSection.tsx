@@ -12,13 +12,16 @@ import { Button } from '../../components/Button';
 import { DisclosureToggle } from '../../components/DisclosureToggle';
 import { ErrorState, SkeletonBlock } from '../../components/state';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { ScopesField } from './ScopesField';
 
 type OAuthClient = NonNullable<IntegrationViewModel['oauthClient']>;
+const NO_SCOPES: readonly string[] = [];
 
 /**
  * "Use your own OAuth client" for a remote integration: a pre-registered
- * client ID, its secret through a secret binding, default scopes, and an optional
- * Client ID Metadata Document URL. Opens by itself when one is configured or
+ * client ID with its declared authorization server, its secret through a
+ * secret binding, default scopes, and an optional Client ID Metadata Document
+ * URL. Opens by itself when one is configured or
  * the server needs one.
  */
 export function OAuthClientSection({
@@ -44,6 +47,7 @@ export function OAuthClientSection({
   const ids = {
     region: useId(),
     clientId: useId(),
+    issuer: useId(),
     scopes: useId(),
     url: useId(),
   };
@@ -93,31 +97,42 @@ export function OAuthClientSection({
               }
             />
           </div>
+          <div className="editor-field">
+            <label className="editor-label" htmlFor={ids.issuer}>
+              Authorization server
+            </label>
+            <input
+              id={ids.issuer}
+              className="editor-input"
+              type="url"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="https://accounts.example.com"
+              value={client.issuer ?? ''}
+              disabled={locked}
+              onChange={(event) =>
+                update({ issuer: event.target.value.trim() || undefined })
+              }
+            />
+            <p className="editor-field-hint">
+              The issuer this client belongs to. Required for a client secret.
+            </p>
+          </div>
           <OAuthClientSecretBinding
             integrationId={editForm.id}
             unavailable={isNew || requireSave}
+            issuerDeclared={Boolean(client.issuer)}
           />
-          <div className="editor-field">
-            <label className="editor-label" htmlFor={ids.scopes}>
-              Default scopes
-            </label>
-            <input
-              id={ids.scopes}
-              className="editor-input"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="Server default"
-              value={client.scopes?.join(' ') ?? ''}
-              disabled={locked}
-              onChange={(event) => {
-                const scopes = event.target.value.split(/\s+/).filter(Boolean);
-                update({ scopes: scopes.length > 0 ? scopes : undefined });
-              }}
-            />
-            <p className="editor-field-hint">
-              Prefilled at sign-in; each person can change them.
-            </p>
-          </div>
+          <ScopesField
+            id={ids.scopes}
+            label="Default scopes"
+            hint="One per line. Prefilled at sign-in; each person can change them."
+            scopes={client.scopes ?? NO_SCOPES}
+            disabled={locked}
+            onChange={(scopes) =>
+              update({ scopes: scopes.length > 0 ? scopes : undefined })
+            }
+          />
           <div className="editor-field">
             <label className="editor-label" htmlFor={ids.url}>
               Client metadata URL
@@ -151,9 +166,11 @@ export function OAuthClientSection({
 function OAuthClientSecretBinding({
   integrationId,
   unavailable,
+  issuerDeclared,
 }: {
   integrationId: string;
   unavailable: boolean;
+  issuerDeclared: boolean;
 }) {
   const selectId = useId();
   const bindings = useSecretBindingsQuery({
@@ -264,12 +281,17 @@ function OAuthClientSecretBinding({
           <Button
             pending={bind.isPending}
             pendingLabel="Binding…"
-            disabled={!selected || pending}
+            disabled={!selected || pending || !issuerDeclared}
             onClick={() => void run('bind')}
           >
             Bind
           </Button>
         </div>
+      )}
+      {!unavailable && !boundId && !issuerDeclared && (
+        <p className="editor-field-hint">
+          Save an authorization server first to bind a secret.
+        </p>
       )}
       {error && (
         <ErrorState

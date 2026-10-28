@@ -13,7 +13,10 @@ import type {
   StoredOAuthTokens,
 } from '@modelcontextprotocol/client';
 
-import { refreshAuthorization } from '@modelcontextprotocol/client';
+import {
+  refreshAuthorization,
+  registerClient,
+} from '@modelcontextprotocol/client';
 
 import {
   principalToolServerCredentialBucket,
@@ -504,18 +507,28 @@ export class OAuthClientRequiredError extends StationOwnedToolServerError {
   }
 }
 
-/** The server now names a different authorization server than this client's. */
+/** The server names an authorization server other than the client's declared one. */
 export class OAuthClientIssuerMismatchError extends StationOwnedToolServerError {
   override name = 'OAuthClientIssuerMismatchError';
   constructor(readonly serverId: string) {
     super(
-      `Integration '${serverId}' now names a different OAuth authorization server than its client was first used with. Check the server before resetting the integration's credentials and signing in again.`,
+      `Integration '${serverId}' names a different OAuth authorization server than its client's declared one. Station did not use the client there.`,
+    );
+  }
+}
+
+/** A client secret is bound but no authorization server is declared for it. */
+export class OAuthClientIssuerRequiredError extends StationOwnedToolServerError {
+  override name = 'OAuthClientIssuerRequiredError';
+  constructor(readonly serverId: string) {
+    super(
+      `Integration '${serverId}' has an OAuth client secret but no declared authorization server. Add the client's authorization server in the integration's settings.`,
     );
   }
 }
 
 /** The configured client secret's binding could not be materialized. */
-export class OAuthClientSecretUnavailableError extends StationOwnedToolServerError {
+class OAuthClientSecretUnavailableError extends StationOwnedToolServerError {
   override name = 'OAuthClientSecretUnavailableError';
   constructor() {
     super(
@@ -530,6 +543,8 @@ export class OAuthClientSecretUnavailableError extends StationOwnedToolServerErr
  */
 export interface ToolServerOAuthClientConfig {
   clientId?: string;
+  /** The operator-declared issuer a pre-registered client may be used with. */
+  issuer?: string;
   clientMetadataUrl?: string;
   scopes?: readonly string[];
   clientSecret?: () => Promise<string>;
@@ -547,14 +562,14 @@ const OAUTH_SCOPE_TOKEN = /^[\x21\x23-\x5b\x5d-\x7e]{1,256}$/;
 const MAX_REQUESTED_SCOPES = 32;
 
 /**
- * The scopes a person chose for one sign-in: 1–32 distinct RFC 6749 scope
- * tokens. Station does not judge which scopes are appropriate; it only bounds
- * the shape. Refuses rather than truncating.
+ * The scopes a person chose for one sign-in: up to 32 distinct RFC 6749 scope
+ * tokens. An empty list chooses the server's advertised scopes over the
+ * integration default. Station does not judge which scopes are appropriate;
+ * it only bounds the shape. Refuses rather than truncating.
  */
 export function parseRequestedOAuthScopes(value: unknown): string[] {
   if (
     !Array.isArray(value) ||
-    value.length === 0 ||
     value.length > MAX_REQUESTED_SCOPES ||
     !value.every(
       (scope) => typeof scope === 'string' && OAUTH_SCOPE_TOKEN.test(scope),
@@ -562,7 +577,7 @@ export function parseRequestedOAuthScopes(value: unknown): string[] {
     new Set(value).size !== value.length
   )
     throw new StationOwnedToolServerError(
-      'Scopes must be 1 to 32 distinct OAuth scope values.',
+      'Scopes must be at most 32 distinct OAuth scope values.',
     );
   return [...value];
 }
@@ -577,6 +592,7 @@ export function toolServerOAuthClientConfig(
   const bindingId = client.clientSecretRef;
   return {
     ...(client.clientId ? { clientId: client.clientId } : {}),
+    ...(client.issuer ? { issuer: client.issuer } : {}),
     ...(client.clientMetadataUrl
       ? { clientMetadataUrl: client.clientMetadataUrl }
       : {}),
@@ -705,7 +721,7 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
       // secret stays in its binding and never reaches the credential store.
       // Without an issuer there is no server to present it to.
       if (!ctx) return { client_id: clientId };
-      await this.pinPreRegisteredIssuer(clientId, ctx.issuer);
+      this.requireDeclaredIssuer(ctx.issuer);
       const secret = this.client?.clientSecret
         ? await this.client.clientSecret()
         : undefined;
@@ -719,31 +735,23 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
   }
 
   /**
-   * A configured client has no issuer of its own, so the first authorization
-   * server it is used with in this bucket becomes its issuer. A resource that
-   * later names a different server (GHSA-6qxp-vccf-f47h) is refused before
-   * the secret is read. Changing the client, the endpoint, or disconnecting
-   * clears the pin with the other credentials.
+   * GHSA-6qxp-vccf-f47h: resource metadata, not the operator, names the
+   * authorization server, so a compromised or changed server could otherwise
+   * collect the client's secret. A pre-registered client is used only with
+   * the issuer the operator declared, checked against configuration before the
+   * secret is read. Nothing is written, so concurrent sign-ins and account
+   * resets cannot move it. A public client without a declared issuer has no
+   * secret to give away; issuer binding still guards its saved tokens.
    */
-  private async pinPreRegisteredIssuer(
-    clientId: string,
-    issuer: string,
-  ): Promise<void> {
-    const record = readJson<BoundRecord<StoredOAuthClientInformation>>(
-      this.store,
-      this.bucket,
-      KEYS.client,
-    );
-    if (
-      record?.schemaVersion === 1 &&
-      record.resource === this.resourceIdentity &&
-      record.value?.client_id === clientId
-    ) {
-      if (record.issuer !== issuer)
-        throw new OAuthClientIssuerMismatchError(this.serverId);
+  private requireDeclaredIssuer(issuer: string): void {
+    const declared = this.client?.issuer;
+    if (declared === undefined) {
+      if (this.client?.clientSecret)
+        throw new OAuthClientIssuerRequiredError(this.serverId);
       return;
     }
-    await this.writeBound(KEYS.client, { client_id: clientId }, issuer);
+    if (declared !== issuer)
+      throw new OAuthClientIssuerMismatchError(this.serverId);
   }
   async saveClientInformation(
     value: StoredOAuthClientInformation,
@@ -759,15 +767,34 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
    * accept the configured metadata document; without discovered metadata the
    * SDK's own registration fallback decides.
    */
-  private async requireClientRegistration(): Promise<void> {
-    const metadata = (await this.discoveryState())?.authorizationServerMetadata;
-    if (!metadata || metadata.registration_endpoint) return;
+  private async requireClientRegistration(
+    ctx: OAuthClientInformationContext,
+  ): Promise<StoredOAuthClientInformation | undefined> {
+    const discovery = await this.discoveryState();
+    const metadata = discovery?.authorizationServerMetadata;
     if (
       this.clientMetadataUrl &&
-      metadata.client_id_metadata_document_supported === true
+      metadata?.client_id_metadata_document_supported === true
     )
-      return;
-    throw new OAuthClientRequiredError(this.serverId);
+      return undefined;
+    if (metadata && !metadata.registration_endpoint)
+      throw new OAuthClientRequiredError(this.serverId);
+    // The SDK registers with the resource's advertised scopes, ahead of the
+    // client's. Configured scopes (a default or the person's choice) must be
+    // what the client is registered for, so Station registers it here.
+    if (!this.client?.scopes || !discovery || !metadata) return undefined;
+    const registered = {
+      ...(await registerClient(discovery.authorizationServerUrl, {
+        metadata,
+        clientMetadata: this.clientMetadata,
+        scope: this.client.scopes.join(' '),
+        fetchFn: (url, init) =>
+          fetch(url, { ...init, signal: AbortSignal.timeout(15_000) }),
+      })),
+      issuer: ctx.issuer,
+    };
+    await this.saveClientInformation(registered, ctx);
+    return registered;
   }
   async tokens(ctx?: OAuthClientInformationContext) {
     return this.readBound<StoredOAuthTokens>(KEYS.tokens, ctx);
@@ -825,8 +852,8 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
         if (key === 'clientInformation')
           return async (ctx?: OAuthClientInformationContext) => {
             const value = await target.clientInformation(ctx);
-            if (!value && ctx) await target.requireClientRegistration();
-            return value;
+            if (value || !ctx) return value;
+            return target.requireClientRegistration(ctx);
           };
         const value = Reflect.get(target, key);
         return typeof value === 'function' ? value.bind(target) : value;

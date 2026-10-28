@@ -11,6 +11,7 @@ import { ErrorState, Skeleton } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { openExternalLink } from '../../platform/openExternalLink';
 import { errorText } from '../../utils/errorText';
+import { ScopesField } from './ScopesField';
 
 /** The server resolves account ownership; this view never selects another person. */
 export function IntegrationAccountSection(props: {
@@ -63,7 +64,7 @@ function IntegrationAccountControls({
   const [error, setError] = useState<string | null>(null);
   const callbackId = useId();
   const scopesId = useId();
-  const [scopes, setScopes] = useState(defaultScopes?.join(' ') ?? '');
+  const [scopes, setScopes] = useState<string[]>(() => defaultScopes ?? []);
   const pending = start.isPending || finish.isPending || disconnect.isPending;
   const input = { id: integrationId, projectSlug, requestScope };
 
@@ -72,12 +73,9 @@ function IntegrationAccountControls({
     setAuthorizationUrl(null);
     setCallbackUrl('');
     try {
-      // The person's scopes for this sign-in; empty leaves it to the server.
-      const chosen = scopes.split(/\s+/).filter(Boolean);
-      const result = await start.mutateAsync({
-        ...input,
-        ...(chosen.length > 0 ? { scopes: chosen } : {}),
-      });
+      // Always the person's explicit choice for this sign-in. An empty list
+      // means the server's own scopes, never the integration default.
+      const result = await start.mutateAsync({ ...input, scopes });
       setAuthorizationUrl(result.authorizationUrl);
     } catch (cause) {
       setError(errorText(cause));
@@ -150,25 +148,17 @@ function IntegrationAccountControls({
         />
       ) : status ? (
         <>
-          <p role="status">{connectedLabel}</p>
-          <div className="editor-field">
-            <label className="editor-label" htmlFor={scopesId}>
-              Scopes
-            </label>
-            <input
-              id={scopesId}
-              className="editor-input"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="Server default"
-              value={scopes}
-              disabled={pending}
-              onChange={(event) => setScopes(event.target.value)}
-            />
-            <p className="editor-field-hint">
-              Access you grant at sign-in. Separate scopes with spaces.
-            </p>
-          </div>
+          <p role="status" className="integration-account__status">
+            {connectedLabel}
+          </p>
+          <ScopesField
+            id={scopesId}
+            label="Scopes"
+            hint="One per line. Access you grant at sign-in; empty uses the server's."
+            scopes={scopes}
+            disabled={pending}
+            onChange={setScopes}
+          />
           <Button onClick={() => void begin()} disabled={pending}>
             {start.isPending
               ? 'Preparing sign-in…'

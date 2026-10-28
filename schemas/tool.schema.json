@@ -327,6 +327,11 @@
           "minLength": 1,
           "maxLength": 512
         },
+        "issuer": {
+          "type": "string",
+          "pattern": "^https://[^?#]+$",
+          "maxLength": 2048
+        },
         "clientMetadataUrl": {
           "type": "string",
           "pattern": "^https://",

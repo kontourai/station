@@ -330,7 +330,9 @@ test('the person chooses the scopes requested at sign-in, starting from the defa
       />
     </QueryClientProvider>,
   );
-  const scopes = (await screen.findByLabelText('Scopes')) as HTMLInputElement;
+  const scopes = (await screen.findByLabelText(
+    'Scopes',
+  )) as HTMLTextAreaElement;
   expect(scopes.value).toBe('mail.readonly');
 
   // Adding write access is the person's call, not Station's.
@@ -344,9 +346,10 @@ test('the person chooses the scopes requested at sign-in, starting from the defa
     scopes: ['mail.readonly', 'mail.compose'],
   });
 
-  // Clearing the field leaves the choice to the server.
+  // Clearing the field is an explicit choice of the server's scopes, sent as
+  // an empty list rather than omitted (omission would mean the default).
   fireEvent.change(scopes, { target: { value: '  ' } });
   fireEvent.click(screen.getByRole('button', { name: 'Connect your account' }));
   await waitFor(() => expect(authorizeBodies).toHaveLength(2));
-  expect(authorizeBodies[1]).toEqual({ mode: 'remote' });
+  expect(authorizeBodies[1]).toEqual({ mode: 'remote', scopes: [] });
 });

@@ -73,6 +73,7 @@ import {
   requireToolServerResult,
   StationOwnedToolServerError,
   StationToolServerOAuthProvider,
+  type ToolServerOAuthClientConfig,
   toolServerCredentialStoreFor,
   toolServerOAuthClientConfig,
   toolServerOAuthResourceIdentity,
@@ -503,11 +504,22 @@ export class MCPService {
         'Unbind the OAuth client secret before changing the integration endpoint.',
       );
     }
+    // The declared issuer is what keeps the secret away from any other
+    // authorization server, so it moves only after an explicit unbind.
+    if (
+      existingSecretRef &&
+      def.oauthClient?.issuer !== existing?.oauthClient?.issuer
+    ) {
+      throw new Error(
+        "Unbind the OAuth client secret before changing the client's authorization server.",
+      );
+    }
     // Tokens and a registered client belong to the client that obtained them.
     const clientChanged =
       existing !== undefined &&
       !identityChanged &&
       (existing.oauthClient?.clientId !== def.oauthClient?.clientId ||
+        existing.oauthClient?.issuer !== def.oauthClient?.issuer ||
         existing.oauthClient?.clientMetadataUrl !==
           def.oauthClient?.clientMetadataUrl);
     const withPreservedBindings = withPreservedOAuthClientSecret(
@@ -1071,7 +1083,7 @@ export class MCPService {
         },
       },
       owner,
-      scopes ? { ...client, scopes } : client,
+      withRequestedScopes(client, scopes),
     );
   }
 
@@ -1884,6 +1896,21 @@ export function openSystemBrowser(
 
 export function toolServerOAuthRedirectUrl(port: number, id: string): string {
   return `http://127.0.0.1:${port}/integrations/${encodeURIComponent(id)}/oauth/callback`;
+}
+
+/**
+ * A person's scope choice for one sign-in replaces the integration default;
+ * an empty choice drops it so the server's advertised scopes apply.
+ */
+function withRequestedScopes(
+  client: ToolServerOAuthClientConfig | undefined,
+  scopes: readonly string[] | undefined,
+): ToolServerOAuthClientConfig | undefined {
+  if (scopes === undefined) return client;
+  if (scopes.length > 0) return { ...client, scopes };
+  if (!client) return undefined;
+  const { scopes: _default, ...rest } = client;
+  return rest;
 }
 
 /**

@@ -1620,35 +1620,55 @@ Configure the client under **Use your own OAuth client** in the integration's
 settings:
 
 - **Client ID**: the ID the provider issued.
+- **Authorization server**: the `issuer` of the authorization server the client
+  was registered with, exactly as its OAuth metadata states it (an HTTPS URL).
+  Station uses the client only with that issuer. It is required before a client
+  secret can be bound; see [Authorization server binding](#authorization-server-binding).
 - **Client secret**: a confidential client's secret, chosen from a shared secret
   binding (keychain, 1Password or environment). Create the binding under
-  **Advanced: Secret bindings** first, save the integration, then choose it and
-  **Bind**. The integration stores only the binding id. The secret is read for
+  **Advanced: Secret bindings** first, declare the authorization server and save
+  the integration, then choose the binding and **Bind**. The integration stores only the binding id. The secret is read for
   each token request and sent with the method the server advertises
   (`client_secret_basic`, then `client_secret_post`). It is never written to
   `integration.json`, the credential store or logs. A public client leaves this
   empty. A configured secret that cannot be read refuses sign-in and refresh;
   Station does not fall back to a public client.
-- **Default scopes**: space-separated. They prefill the **Scopes** field in the
-  sign-in panel and replace the scopes the server advertises. A manifest or
-  `integration.json` can supply them.
+- **Default scopes**: one per line (spaces also separate them). They prefill the
+  **Scopes** field in the sign-in panel and replace the scopes the server
+  advertises. A manifest or `integration.json` can supply them.
 - **Client metadata URL**: optional; see the order above.
 
 Which access to grant is the choice of the person signing in, not Station's.
 The sign-in panel's **Scopes** field starts with the integration's default
 scopes; add or remove scopes there before **Sign in** or **Connect your
-account**. Station requests exactly that list for that sign-in and does not
-write it back as the default. An empty field leaves the choice to the server.
-Station checks only that each scope is a well-formed OAuth scope (1–32 distinct
-values); the provider decides what each scope allows.
+account**. Station requests exactly that list for that sign-in, including when
+it registers a client dynamically, and does not write it back as the default.
+Clearing the field requests the server's advertised scopes instead of the
+default. Station checks only that each scope is a well-formed OAuth scope (at
+most 32 distinct values); the provider decides what each scope allows.
 
-A configured client is pinned to the first authorization server it is used
-with for each account. If the server later names a different authorization
-server, sign-in and refresh stop before the client secret is read.
+#### Authorization server binding
 
-Changing the client ID or metadata URL clears the integration's tokens, because
-they belong to the client that obtained them; everyone signs in again. While a
-client secret is bound, the endpoint cannot change; remove the secret first.
+A remote MCP server names its authorization server in its resource metadata
+(RFC 9728). If that server were compromised or changed, it could name a
+different authorization server, which would then receive the client secret
+at its token endpoint ([GHSA-6qxp-vccf-f47h](https://github.com/advisories/GHSA-6qxp-vccf-f47h)).
+Station therefore uses a pre-registered client only with the **Authorization
+server** the operator declared. The check reads configuration, not anything a
+sign-in wrote, so it holds for every person, every Project, after a disconnect
+and for concurrent sign-ins. A mismatch stops sign-in and refresh before the
+secret is read.
+
+A client secret cannot be bound without a declared authorization server, and
+a bound secret pins both the authorization server and the endpoint: unbind the
+secret before changing either. A public pre-registered client has no secret to
+give away, so declaring its authorization server is optional; when declared it
+is enforced the same way, and Station's issuer binding still protects the
+tokens it saves.
+
+Changing the client ID, authorization server or metadata URL clears the
+integration's tokens, because they belong to the client that obtained them;
+everyone signs in again.
 Raw integration JSON cannot set the binding; only the secret-binding routes can.
 
 The client identifies the app, not a person. Everyone who signs in uses the same
@@ -1670,8 +1690,11 @@ Google is **NOT_VERIFIED**.
    `http://127.0.0.1:<port>/integrations/<id>/oauth/callback`, where `<port>`
    is the Station server port and `<id>` the integration id.
 2. Create the integration with connection type **HTTP** and the endpoint above.
-3. Under **Use your own OAuth client**, enter the client ID and, optionally,
-   **Default scopes**. Save.
+3. Under **Use your own OAuth client**, enter the client ID and the
+   **Authorization server**: the `issuer` in the authorization server metadata
+   that the Gmail MCP server's resource metadata names. Google documents
+   `https://accounts.google.com` as its OAuth issuer; confirm it against that
+   metadata. Optionally add **Default scopes**. Save.
 4. If the client has a secret, store it as a secret binding and **Bind** it.
 5. Sign in as in the steps above, choosing the scopes you want to grant.
 
