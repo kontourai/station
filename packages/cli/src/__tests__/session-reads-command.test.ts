@@ -543,8 +543,13 @@ describe('the session reads over HTTP', () => {
 
   test('an older Station without the reads is told apart from not found, and no read is sent', async () => {
     capabilities = {};
+    // Were the gate skipped, a wait would run: a short budget and a throwing
+    // exit keep that a prompt assertion failure, never a hang or a real exit.
+    vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
     for (const args of [
-      ['sessions', 'wait', 'session-1'],
+      ['sessions', 'wait', 'session-1', '--timeout=1'],
       ['sessions', 'digest', 's-1'],
       ['activity'],
     ]) {
