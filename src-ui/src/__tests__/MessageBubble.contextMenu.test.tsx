@@ -207,6 +207,64 @@ describe('message bubble context menu', () => {
     expect(trigger.getAttribute('aria-expanded')).toBe('true');
   });
 
+  test('a second right-click on the bubble leaves focus in the open menu', async () => {
+    renderBubble({
+      role: 'assistant',
+      content: 'Twice',
+      sessionId: 'session-1',
+      turnId: 'turn-1',
+      answerEligible: true,
+    });
+    await screen.findByRole('button', { name: 'More answer actions' });
+    const text = screen.getByText('Twice');
+    rightClick(text);
+    const menu = screen.getByRole('menu', { name: 'Answer actions' });
+    // Focus inside the menu first, as a pointer user's arrow keys put it.
+    (menu.querySelector('[role="menuitem"]') as HTMLElement | null)?.focus();
+    menu.focus();
+    expect(menu.contains(document.activeElement)).toBe(true);
+    expect(rightClick(text)).toBe(true);
+    expect(menu.contains(document.activeElement)).toBe(true);
+  });
+
+  test("a right-click inside the open answer menu is not the bubble's", async () => {
+    renderBubble({
+      role: 'assistant',
+      content: 'Inner',
+      sessionId: 'session-1',
+      turnId: 'turn-1',
+      answerEligible: true,
+    });
+    await screen.findByRole('button', { name: 'More answer actions' });
+    rightClick(screen.getByText('Inner'));
+    const menu = screen.getByRole('menu', { name: 'Answer actions' });
+    expect(rightClick(menu)).toBe(false);
+  });
+
+  test('the keyboard menu key after a finger has lifted opens the menu', async () => {
+    renderBubble({
+      role: 'assistant',
+      content: 'Tapped then keyed',
+      sessionId: 'session-1',
+      turnId: 'turn-1',
+      answerEligible: true,
+    });
+    const trigger = await screen.findByRole('button', {
+      name: 'More answer actions',
+    });
+    const text = screen.getByText('Tapped then keyed');
+    fireEvent.pointerDown(text, { pointerType: 'touch', button: 0 });
+    fireEvent.pointerUp(text, { pointerType: 'touch' });
+    const event = createEvent.contextMenu(text, {
+      button: 0,
+      clientX: 0,
+      clientY: 0,
+    });
+    fireEvent(text, event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+  });
+
   test('a bubble with no ⋯ leaves the right-click to the platform', () => {
     // An optimistic user row: no fork, no Task tuple, so no menu to open.
     renderBubble({ role: 'user', content: 'Optimistic', clientId: 'local-1' });

@@ -89,7 +89,8 @@ export function useContextMenuGesture({
   const origin = useRef<ContextMenuPoint | null>(null);
   /** This press's hold has opened the menu and the finger is still down. */
   const holding = useRef(false);
-  const lastPointerType = useRef<string | null>(null);
+  /** A finger is down on the item (for `touchHold: false`). */
+  const touchDown = useRef(false);
   const suppressUntil = useRef(0);
 
   const cancel = useCallback(() => {
@@ -104,12 +105,14 @@ export function useContextMenuGesture({
     cancel();
     if (holding.current) suppressUntil.current = Date.now() + SUPPRESS_CLICK_MS;
     holding.current = false;
+    touchDown.current = false;
   }, [cancel]);
 
   return {
     onContextMenu: (event) => {
       if (!enabled) return;
-      if (!touchHold && lastPointerType.current === 'touch') return;
+      // The platform's own long-press on a text item: selection, not a menu.
+      if (!touchHold && touchDown.current) return;
       if (wantsNativeContextMenu(event)) return;
       const point =
         event.clientX === 0 && event.clientY === 0
@@ -117,15 +120,21 @@ export function useContextMenuGesture({
           : { x: event.clientX, y: event.clientY };
       // Android (and Chromium's own gesture recogniser) fires a `contextmenu`
       // from the SAME long-press, usually after the timer below has opened
-      // the menu. It is refused to the platform and opens again rather than
-      // being ignored: the long-press can move focus onto the menu's backdrop
-      // first, and the menu closes on that focus move.
+      // the menu, and it hit-tests whatever is under the finger by then: the
+      // row, or the menu's own backdrop (a portal, which React bubbles here).
+      // Either way it is this hold's, so it is refused to the platform and
+      // opens again rather than being ignored: the long-press can move focus
+      // onto the backdrop first, and the menu closes on that focus move.
       if (holding.current) {
+        if (onOpen(event.currentTarget, origin.current ?? point) === false)
+          return;
         event.preventDefault();
         event.stopPropagation();
-        onOpen(event.currentTarget, origin.current ?? point);
         return;
       }
+      // Otherwise a right-click inside something the item opened (its menu,
+      // its sheet, a dialog from a menu row) is that surface's business.
+      if (!inItem(event)) return;
       const midPress = origin.current !== null;
       cancel();
       if (onOpen(event.currentTarget, point) === false) return;
@@ -139,11 +148,12 @@ export function useContextMenuGesture({
       event.stopPropagation();
     },
     onPointerDown: (event) => {
-      if (!inItem(event)) return;
-      lastPointerType.current = event.pointerType;
-      // A new press: whatever click the last hold ended in is not coming now.
+      // Any new press, on the item or on what it opened: whatever click the
+      // last hold ended in is not coming now.
       suppressUntil.current = 0;
+      if (!inItem(event)) return;
       holding.current = false;
+      touchDown.current = event.pointerType === 'touch';
       if (!enabled || !touchHold) return;
       if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
       if (event.button !== 0) return;
@@ -174,8 +184,12 @@ export function useContextMenuGesture({
     onPointerCancel: (event) => {
       if (inItem(event)) end();
     },
+    // Not limited to the item: the click a hold ends in is hit-tested where
+    // the finger lifts, which can be the menu or sheet the hold just opened
+    // under it. A deliberate tap there starts with a press, which closed the
+    // window above.
     onClickCapture: (event) => {
-      if (!inItem(event) || Date.now() >= suppressUntil.current) return;
+      if (Date.now() >= suppressUntil.current) return;
       suppressUntil.current = 0;
       event.preventDefault();
       event.stopPropagation();

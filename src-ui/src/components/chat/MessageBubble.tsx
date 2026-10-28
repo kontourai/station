@@ -1095,8 +1095,11 @@ function MessageBubbleComponent({
             : '70%',
         }}
         onContextMenu={onBubbleContextMenu}
-        // Only to learn the pointer: a finger's long-press is text selection.
+        // Only to learn whether a finger is down: its long-press is text
+        // selection, not the menu.
         onPointerDown={bubbleGesture.onPointerDown}
+        onPointerUp={bubbleGesture.onPointerUp}
+        onPointerCancel={bubbleGesture.onPointerCancel}
         className={`message ${sender ? 'agent-incoming' : msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}${stationCheckBack || stationMemoryContinuation ? ' message--station-check-back' : ''}${
           // Outlined, not filled, until the agent has the message.
           undelivered

@@ -146,6 +146,9 @@ export function ContextMenu({
         aria-label={label}
         tabIndex={-1}
         style={layer === null ? position : { ...position, zIndex: layer }}
+        // No WebView menu over this one. Opened at the finger, the panel is
+        // what the platform's own long-press `contextmenu` lands on.
+        onContextMenu={(event) => event.preventDefault()}
       >
         {ordered.map((action, index) => (
           <Fragment key={action.key}>

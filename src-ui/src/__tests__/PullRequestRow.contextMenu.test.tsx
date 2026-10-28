@@ -189,9 +189,75 @@ describe('pull request row context menu', () => {
       vi.advanceTimersByTime(500);
     });
     // Chromium's long-press moved focus onto the backdrop, which closes it.
-    fireEvent.click(screen.getByRole('button', { name: /^Close more/ }));
+    const backdrop = screen.getByRole('button', { name: /^Close more/ });
+    act(() => {
+      backdrop.focus();
+    });
     expect(screen.queryByRole('menu')).toBeNull();
     expect(rightClick(open, { button: 0 })).toBe(true);
+    expect(screen.getByRole('menu')).toBeTruthy();
+  });
+
+  test("the hold's own contextmenu on the menu's backdrop keeps the menu open, focus inside", () => {
+    vi.useFakeTimers();
+    const { open } = renderRow();
+    fireEvent.pointerDown(open, {
+      pointerType: 'touch',
+      button: 0,
+      clientX: 10,
+      clientY: 10,
+    });
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    const backdrop = screen.getByRole('button', { name: /^Close more/ });
+    expect(rightClick(backdrop, { button: 0 })).toBe(true);
+    expect(screen.getAllByRole('menu')).toHaveLength(1);
+    expect(screen.getByRole('menu').contains(document.activeElement)).toBe(
+      true,
+    );
+  });
+
+  test('the click a hold ends in is swallowed even where it lands on the menu', () => {
+    vi.useFakeTimers();
+    const { open, unlink } = renderRow();
+    fireEvent.pointerDown(open, {
+      pointerType: 'touch',
+      button: 0,
+      clientX: 10,
+      clientY: 10,
+    });
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    fireEvent.pointerUp(open, { pointerType: 'touch' });
+    // No new press: this is the release's click, hit-tested on the menu row
+    // the hold opened under the finger.
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Unlink' }));
+    expect(unlink).not.toHaveBeenCalled();
+  });
+
+  test('a tap on a menu row starts no hold on the row behind it', () => {
+    vi.useFakeTimers();
+    const { open, unlink } = renderRow();
+    rightClick(open);
+    const row = screen.getByRole('menuitem', { name: 'Unlink' });
+    fireEvent.pointerDown(row, { pointerType: 'touch', button: 0 });
+    fireEvent.pointerUp(row, { pointerType: 'touch' });
+    fireEvent.click(row);
+    expect(unlink).toHaveBeenCalledTimes(1);
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  test("a right-click inside the open menu is not the row's to claim", () => {
+    const { open } = renderRow();
+    rightClick(open);
+    expect(rightClick(screen.getByRole('menuitem', { name: 'Unlink' }))).toBe(
+      false,
+    );
     expect(screen.getByRole('menu')).toBeTruthy();
   });
 

@@ -408,11 +408,14 @@ Details sheet.
 Wire the gesture with
 [`useContextMenuGesture`](../../src-ui/src/hooks/useContextMenuGesture.ts).
 Only a finger or pen can hold (500ms, cancelled by 8px of movement or a scroll).
-A click on the item within 700ms of the hold's release is swallowed, and the
-next press on the item ends that window early. Presses and clicks inside the
-menu the hold opened are never swallowed, even though React bubbles them through
-the item. The platform's own long-press `contextmenu` for the same hold is
-refused to the platform and reopens the menu. Set `touchHold: false` on mostly
+The click the hold ends in is swallowed for up to 700ms, wherever it lands,
+including on the menu or sheet the hold opened under the finger. Any new press
+ends that window, so a deliberate tap on the menu acts. A press inside what the
+item opened never starts a hold on the item, and a right-click there is that
+surface's own. The platform's own long-press `contextmenu` for the same hold
+is refused to the platform. On the item or its `⋯` menu's backdrop it reopens
+the menu, which Chromium's long-press can close by moving focus. Opens must be
+idempotent. Set `touchHold: false` on mostly
 selectable text: chat messages open their menu only on a mouse right-click,
 because a held finger there selects text. `useLongPress` is a different
 gesture: one control whose click it owns, plus a second act behind a hold.

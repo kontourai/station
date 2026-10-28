@@ -34,17 +34,20 @@ const loadConnectedAttachAnswerToTaskButton = () =>
  * The bubble's right-click opens its ⋯ (`OverflowMenuHandle`): the same rows,
  * anchored to the same trigger. Focus goes to the trigger first so the menu
  * returns it there on close. No trigger (the phone sheet's inline rows) means
- * no menu to open.
+ * no menu to open. An open, not a toggle: asked again while the menu is open,
+ * it leaves focus in the menu.
  */
 function useMenuHandle(
   handleRef: Ref<OverflowMenuHandle> | undefined,
   triggerRef: RefObject<HTMLButtonElement | null>,
+  isOpen: boolean,
   openMenu: () => void,
 ) {
   useImperativeHandle(handleRef, () => ({
     open: () => {
       const trigger = triggerRef.current;
       if (!trigger) return false;
+      if (isOpen) return true;
       trigger.focus();
       openMenu();
       return true;
@@ -192,7 +195,7 @@ export default function TurnActionsMenu({
     },
     close,
   );
-  useMenuHandle(handleRef, triggerRef, () => {
+  useMenuHandle(handleRef, triggerRef, open, () => {
     place();
     setView('menu');
   });
@@ -396,7 +399,7 @@ export function UserMessageActionsMenu({
     },
     close,
   );
-  useMenuHandle(handleRef, triggerRef, () => {
+  useMenuHandle(handleRef, triggerRef, open, () => {
     place();
     setView('menu');
   });
