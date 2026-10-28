@@ -9,7 +9,7 @@ import {
   useProjectIconCandidatesQuery,
   useUpdateProjectMutation,
 } from '@kontourai/station-sdk';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { Button } from '../components/Button';
 import { DetailHeader } from '../components/DetailHeader';
 import { EnvironmentPicker } from '../components/EnvironmentPicker';
@@ -485,7 +485,17 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                     leaf <code>{workingDirectoryLeaf || 'project'}</code>
                   </span>
                   <span className="project-settings__path-pill">
-                    path <code>{workingDirectory}</code>
+                    path{' '}
+                    <code>
+                      {workingDirectory
+                        .split(/(?<=[/\\])/)
+                        .map((part, index) => (
+                          <Fragment key={index}>
+                            {part}
+                            <wbr />
+                          </Fragment>
+                        ))}
+                    </code>
                   </span>
                 </div>
               )}

@@ -104,3 +104,27 @@ until another query change; reverting the draft alone does not adopt that
 skipped remote snapshot.
 
 The branch is local; no PR, deployment, or merge was performed.
+
+## PR #4278 capture and hosted-check follow-up
+
+Compared the same fixture against `origin/main` at `8718e01c72a5a39778e1ebeed607b0a5b9bf66cf`
+and the submitted branch. Retained baseline captures accompany this note.
+
+- At 1440 light, switching from Danger zone back to Workspace and capturing
+  before transitions settle reproduces two filled-looking links on **main**:
+  Danger zone has no `aria-current` and background alpha 0.54 while fading out.
+  The branch reproduces the same inherited transition. Product tab styles are
+  unchanged. Captures now wait for animations to finish and verify exactly one
+  current link and a transparent inactive Danger zone.
+- At 390 dark, main keeps `station` intact while the branch's shorter `path`
+  label exposed a mid-word break. Explicit separator break opportunities now
+  keep this leaf together without changing the copied path. The new browser
+  assertion failed with two leaf lines before the repair and passes afterward.
+- Hosted shard failures were reproduced locally in ProjectLayoutsSection:
+  three tests used the former `+ Add Layout` label. The assertions now use
+  `Add Layout`; the redundant empty-state button was removed because the header
+  already offers that action. All 24 owner tests pass. The browser and settings
+  owner tests pass (45 tests combined).
+- Hosted documentation failure was a stale Knowledge guide review after the
+  post-merge assertion edit, rather than the earlier local timing limit.
+  Updated source review notes accompany this follow-up.

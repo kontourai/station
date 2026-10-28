@@ -115,6 +115,45 @@ test('project settings remain usable above the dock at phone and desktop widths 
           )
             parent.scrollTop = 0;
         });
+        await page.mouse.move(0, 0);
+        await page.evaluate(() =>
+          Promise.all(
+            document.getAnimations().map((animation) => animation.finished),
+          ),
+        );
+        const nav = page.getByRole('navigation', {
+          name: 'Project settings sections',
+        });
+        expect(await nav.locator('[aria-current="location"]').count()).toBe(1);
+        expect(
+          await nav
+            .getByRole('link', { name: 'Workspace', exact: true })
+            .getAttribute('aria-current'),
+        ).toBe('location');
+        expect(
+          await nav
+            .getByRole('link', { name: 'Danger zone', exact: true })
+            .evaluate((element) => getComputedStyle(element).backgroundColor),
+        ).toBe('rgba(0, 0, 0, 0)');
+        const leafLines = await page
+          .locator('.project-settings__path-pill code')
+          .last()
+          .evaluate((element) => {
+            const walker = document.createTreeWalker(
+              element,
+              NodeFilter.SHOW_TEXT,
+            );
+            let last: Node | null = null;
+            while (walker.nextNode()) last = walker.currentNode;
+            if (!last?.textContent?.endsWith('station'))
+              throw new Error('Expected fixture path leaf');
+            const range = document.createRange();
+            range.setStart(last, last.textContent.length - 7);
+            range.setEnd(last, last.textContent.length);
+            return new Set(Array.from(range.getClientRects(), (rect) => rect.y))
+              .size;
+          });
+        expect(leafLines).toBe(1);
         await page.screenshot({ path: `${out}/${width}-${theme}.png` });
         expect(
           await page.evaluate(

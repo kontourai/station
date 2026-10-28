@@ -126,11 +126,6 @@ export function LayoutsSection({ slug }: { slug: string }) {
           variant="compact"
           label="This project doesn't have any layouts yet"
           description="Add a layout to give this project its own workspace arrangement."
-          action={
-            <Button size="sm" onClick={() => setShowAdd(true)}>
-              Add Layout
-            </Button>
-          }
         />
       )}
 
