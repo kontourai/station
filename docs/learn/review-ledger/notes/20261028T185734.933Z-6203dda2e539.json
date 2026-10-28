@@ -1,0 +1,7 @@
+{
+  "revision": "316adc3ad0a6fbf6daf8ca468b52f24c86d94512",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Monitoring guide changed only in the event-loop stall paragraph wording; this document's observation-path paragraph (#2750-#2755) is unaffected.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md"]}
+  ]
+}

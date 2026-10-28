@@ -140,6 +140,11 @@ describe('telemetry producer management over the production composition', () => 
       orchestrationService: deepStub({
         canUserReadSession: (sessionId: string) =>
           sessionId === STATION_SESSION,
+        // The production owner set: the caller plus its personal account.
+        readableSessionOwnerIds: (authority: { userId: string }) => [
+          authority.userId,
+          ...(security.personalConversationOwnerIds(authority.userId) ?? []),
+        ],
       }),
       eventBus: new EventBus(),
       taskGraphService: { listTasks: () => [] },
