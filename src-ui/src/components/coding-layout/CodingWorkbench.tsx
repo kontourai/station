@@ -1566,6 +1566,11 @@ export function CodingWorkbench({
               <Button
                 key={instance.instanceId}
                 variant="ghost"
+                aria-label={
+                  badges[instance.descriptorId] === undefined
+                    ? paneLabel(instance)
+                    : `${paneLabel(instance)}, ${badges[instance.descriptorId]} changed ${badges[instance.descriptorId] === 1 ? 'file' : 'files'}`
+                }
                 aria-current={
                   instance.instanceId === paneId ? 'page' : undefined
                 }

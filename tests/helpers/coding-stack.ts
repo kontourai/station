@@ -32,37 +32,24 @@ export function codingViewItem(page: Page, name: string | RegExp) {
 
 /** Drill into a pane from the rail. */
 export async function openCodingView(page: Page, name: string | RegExp) {
+  const picker = page.getByRole('button', { name: /^Switch tool, current:/ });
+  if (await picker.isVisible()) await picker.click();
   await codingViewItem(page, name).first().click();
 }
 
-/**
- * The Coding rail's mode, derived from the device the way the product derives
- * it, not from the rail's own attributes, so a rail that renders the wrong
- * mode's state fails rather than being believed. `ProjectLayoutRenderer`
- * runs `panels` only when `useCodingWide()` (the `codingPanels.ts` query
- * below) AND Chat is in the centre; Chat leaves the centre whenever the dock
- * folds to one region, which `availablePlacements` (`useIsMobile.ts`) decides
- * as a coarse pointer or a viewport of 768px or less. So a touch screen past
- * 1280px still runs `stack`.
- */
+/** Derive the expected presentation independently from the workbench's attributes. */
 const CODING_WIDE_MEDIA_QUERY = '(min-width: 1280px)';
-const DOCK_SLOT_COARSE_POINTER_QUERY = '(pointer: coarse)';
-const DOCK_ONE_REGION_MAX_WIDTH = 768;
+const MOBILE_MEDIA_QUERY =
+  '(max-width: 768px), (max-height: 540px) and (pointer: coarse)';
 
 export async function codingRailMode(page: Page): Promise<'panels' | 'stack'> {
   const derived = await page.evaluate(
-    ({ wideQuery, coarseQuery, oneRegionMaxWidth }) => {
-      const wide = window.matchMedia(wideQuery).matches;
-      const bottomOnly =
-        window.matchMedia(coarseQuery).matches ||
-        window.innerWidth <= oneRegionMaxWidth;
-      return wide && !bottomOnly ? 'panels' : 'stack';
-    },
-    {
-      wideQuery: CODING_WIDE_MEDIA_QUERY,
-      coarseQuery: DOCK_SLOT_COARSE_POINTER_QUERY,
-      oneRegionMaxWidth: DOCK_ONE_REGION_MAX_WIDTH,
-    },
+    ({ wideQuery, mobileQuery }) =>
+      window.matchMedia(wideQuery).matches &&
+      !window.matchMedia(mobileQuery).matches
+        ? 'panels'
+        : 'stack',
+    { wideQuery: CODING_WIDE_MEDIA_QUERY, mobileQuery: MOBILE_MEDIA_QUERY },
   );
   // The workbench names the mode it chose; a disagreement means this
   // derivation and the product's have drifted apart, which is the thing to
@@ -82,10 +69,20 @@ export async function codingRailMode(page: Page): Promise<'panels' | 'stack'> {
  * panel it controls, and is not a page.
  */
 export async function selectCodingPane(page: Page, name: string | RegExp) {
+  const picker = page.getByRole('button', { name: /^Switch tool, current:/ });
+  const mobile = await picker.isVisible();
+  if (mobile) await picker.click();
   const item = codingViewItem(page, name).first();
   await expect(item).toBeVisible({ timeout: 20_000 });
+  const label = await item.innerText();
   await item.click();
-  if ((await codingRailMode(page)) === 'panels') {
+  if (mobile) {
+    await expect(page.getByRole('dialog', { name: 'Tools' })).toBeHidden();
+    await expect(picker).toContainText(label.split('\n')[0]);
+    await expect(
+      page.locator('.coding-workbench__page--drill-in'),
+    ).toHaveAttribute('data-active', 'true');
+  } else if ((await codingRailMode(page)) === 'panels') {
     await expect(item).toHaveAttribute('aria-pressed', 'true');
     await expect(item).toHaveAttribute('aria-controls', /\S/);
     await expect(item).not.toHaveAttribute('aria-current', /.*/);

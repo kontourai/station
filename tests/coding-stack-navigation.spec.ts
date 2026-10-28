@@ -467,14 +467,26 @@ test.describe('Coding stack — phone (390px)', () => {
     await seed(page);
   });
 
-  test('the phone keeps Chat in its maximized dock; the centre mounts no second Chat', async ({
+  test('the phone tool picker gives a tool the full width and returns to the same Chat', async ({
     page,
   }) => {
-    await page.goto(`${ROUTE}?chat=conv-1`);
-    await dismissSetupLauncher(page);
-    await expect(page.locator('#chat-dock')).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('#chat-dock')).toHaveClass(/is-maximized/);
-    await expect(page.locator('#chat-workspace-pane')).toHaveCount(0);
+    await landOnChat(page);
+    await expect(page.locator('.coding-workbench__rail')).toHaveCount(0);
+    await selectCodingPane(page, 'Diff');
+    await expect(
+      page.getByRole('button', { name: 'Switch tool, current: Diff' }),
+    ).toBeVisible();
+    const room = await drillInPage(page).boundingBox();
+    expect(room!.width).toBe(390);
+    await page
+      .getByRole('button', { name: 'Switch tool, current: Diff' })
+      .click();
+    await page
+      .getByRole('dialog', { name: 'Tools' })
+      .getByRole('button', { name: 'Chat', exact: true })
+      .click();
+    await expect(centreChat(page)).toBeVisible();
+    await expect(page).not.toHaveURL(/[?&]pane=/);
   });
 });
 
