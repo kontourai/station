@@ -64,7 +64,7 @@ import {createRoot} from 'react-dom/client';
 import {NavigationProvider} from './src-ui/src/contexts/NavigationContext';
 import {DialogHistoryHostBoundary} from './src-ui/src/components/DialogHistoryHost';
 import {ProjectSettingsView} from './src-ui/src/views/ProjectSettingsView';
-createRoot(document.getElementById('root')).render(<NavigationProvider><DialogHistoryHostBoundary><div style={{height:'calc(100dvh - 72px)',display:'flex',flexDirection:'column',flexShrink:0,overflow:'hidden','--dock-bottom-clearance':'72px'}}><ProjectSettingsView slug="demo"/></div></DialogHistoryHostBoundary></NavigationProvider>);
+createRoot(document.getElementById('root')).render(<NavigationProvider><DialogHistoryHostBoundary><div style={{position:'fixed',inset:0,height:'calc(100dvh - 72px)',display:'flex',flexDirection:'column',overflow:'visible','--dock-bottom-clearance':'72px'}}><ProjectSettingsView slug="demo"/></div></DialogHistoryHostBoundary></NavigationProvider>);
 `;
 
 test('project settings remain usable above the dock at phone and desktop widths in both themes', async () => {
@@ -81,7 +81,8 @@ test('project settings remain usable above the dock at phone and desktop widths 
     });
     await baseStyles.evaluate((element) => document.head.prepend(element));
     await page.addStyleTag({
-      content: 'html,body,#root{height:100%;margin:0;overflow:hidden}',
+      content:
+        'html,body,#root{height:100%;margin:0;overflow:hidden}*,*::before,*::after{box-sizing:border-box}',
     });
     const out = resolve('.kontourai/project-settings-audit');
     mkdirSync(out, { recursive: true });
@@ -147,6 +148,9 @@ test('project settings remain usable above the dock at phone and desktop widths 
         const bounds = await remove.boundingBox();
         expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(900 - 72);
         await page.screenshot({ path: `${out}/danger-${width}-${theme}.png` });
+        await remove.click();
+        await page.getByRole('dialog', { name: 'Delete Project' }).waitFor();
+        await page.getByRole('button', { name: 'Cancel', exact: true }).click();
       }
     }
     expect(errors).toEqual([]);
