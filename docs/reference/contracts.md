@@ -678,6 +678,16 @@ transcript that a turn is a check-back Station sent (its internal origin and
 a send key `parseWakeUpClientTurnId` accepts). A wake-up waiting for a
 person's approval is in state `needs_approval`.
 
+`@kontourai/station-contracts/coordinator` owns a person's coordinator Session
+(#3628): `CoordinatorDesignation`, the route bodies
+(`CoordinatorDesignationRead`, `CoordinatorDesignateRequest`), the refusal
+codes (`CoordinatorRefusalCode`), `CoordinatorAttentionKind` (`needs-you`,
+`failed`, `finished`), the wake bounds (`COORDINATOR_WAKE_COALESCE_MS`,
+`COORDINATOR_WAKE_MAX_PER_HOUR` over `COORDINATOR_WAKE_WINDOW_MS`,
+`COORDINATOR_WAKE_MAX_ITEMS_PER_TURN`, `COORDINATOR_WAKE_MAX_PENDING_ITEMS`)
+and `coordinatorWakeClientTurnId`. The handshake advertises the routes as
+`StationCapabilityFlags.coordinatorSession`, withdrawn on a hosted Station.
+
 `@kontourai/station-contracts/station-control-refusal` owns the refusal view
 a transcript shows for a station-control tool (`StationControlRefusalView`:
 code, sentence, out-of-scope reason), `parseStationControlRefusal`, which

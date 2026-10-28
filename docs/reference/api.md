@@ -4589,6 +4589,21 @@ needs a person who may send to the conversation, and answers 404 to anyone
 else. An agent's request reaches none of them. The agent's own side is the station-control tools in
 [the self-configuring agent guide](../guides/self-configuring-agent.md#wake-an-agent-later).
 
+### A person's coordinator Session
+
+The [coordinator routes](../../src-server/routes/orchestration/coordinator.ts)
+read and set the caller's own coordinator (#3628, product name Houston; see
+[Houston](../user/houston.md)). `GET /api/orchestration/coordinator` answers
+`CoordinatorDesignationRead` (`designation`, or `null`).
+`PUT /api/orchestration/coordinator` with `{conversationId, replace?}`
+designates a conversation the person may send to (404 otherwise). It answers
+409 `coordinator_already_designated` when the person has another one and
+`replace` is not `true`, and 409 `coordinator_conversation_taken` when the
+conversation is another person's. `DELETE` removes it (`undesignated`). The
+user id is the request principal's; a request that may be an agent's is
+refused (403 `person-approval-required`). A hosted Station answers 503
+`coordinator_unavailable` and withdraws the `coordinatorSession` capability.
+
 ### Update Job
 
 `PUT /scheduler/jobs/:target` accepts supported partial job options, including
