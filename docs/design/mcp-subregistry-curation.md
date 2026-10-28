@@ -147,7 +147,10 @@ can change, not a fixed gate.
   nothing by default. Otherwise the answer is `ask`.
 - **When it applies.** After a tool from an `untrusted` server returns in a
   turn, every later call in that turn takes the called tool's permission.
-  The turn ends when the invocation finishes. A result whose server
+  The turn ends when the invocation ends, however it ends: each Station
+  engine framework calls `endInvocation` on success, error and abort. At
+  most 10,000 turns are held; past that the longest-idle turn (no call for
+  an hour) is forgotten, and an active turn never is. A result whose server
   definition cannot be read counts as untrusted, and a called tool whose
   definition cannot be read asks.
 - **Delegation.** A conversation that has read untrusted content marks every
@@ -178,9 +181,18 @@ install use) keeps the stored receipts (`untrustedContentChanges`) read
 under its mutation lock, ignores receipts in the incoming definition, and
 appends one (time, the authenticated request principal when known, new
 value) whenever the classification, a permission or `trustReadOnlyHints`
-changes. A plugin install's copied integrations pass through the same rule
-against the definitions they replaced. A whole-definition replacement or a
-concurrent save cannot erase or drop a receipt. The last 50 are kept. The
+changes. A plugin's install, update and rollback publish its integrations
+through one locked operation, `publishPluginIntegrations`: the plugin's
+trees are staged privately, then every affected integration's lock is held
+from reading the stored definitions through renaming sanitized trees into
+place. Plugin-authored binding references are dropped, the person's
+classification, permissions, hint setting and receipts come from the stored
+copy (a plugin update cannot downgrade or reopen them), and a list of
+validators runs on each definition under the lock; other owners, such as
+tool-server OAuth client rules, add theirs there. A reader sees the old
+definition, briefly none, or the sanitized one, never the plugin's raw
+bytes. A whole-definition replacement or a concurrent save cannot erase or
+drop a receipt. The last 50 are kept. The
 rule itself is `withUntrustedContentChange` in the tool contract.
 
 ### Coverage and gaps

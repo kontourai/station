@@ -1229,9 +1229,10 @@ An existing plugin-owned target is replaced using staged rollback handling;
 it is not silently skipped. The returned IDs describe copied files, not live
 MCP connections or permission grants. Use the host installation path for live
 plugin lifecycle and consent. This function writes the plugin's bytes as they
-are, including any `untrustedContentChanges`; the host installation path then
-passes each copied definition through the storage writer's untrusted-content
-receipt rule against the definition it replaced
+are, including any `untrustedContentChanges`. Station's host paths (install,
+update and rollback) call it only to stage into a private directory, then
+publish through `publishPluginIntegrations`, which applies the integration
+invariants and receipts under each integration's lock
 ([design](../design/mcp-subregistry-curation.md#untrusted-content-and-outbound-tools)).
 
 ```ts
