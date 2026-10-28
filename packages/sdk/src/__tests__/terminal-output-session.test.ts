@@ -141,6 +141,44 @@ afterEach(() => {
 });
 
 describe('terminal output session', () => {
+  test('foreign-origin credentials are refused before the HTTP probe or socket', async () => {
+    vi.useFakeTimers();
+    const f = fixture({
+      resolveCredential: () => ({
+        credential: 'foreign',
+        origin: 'https://other.example',
+        requestAuthority: {
+          apiBase: 'http://127.0.0.1:4198',
+          authorityKey: 'owner-1',
+          isCurrent: () => true,
+        },
+      }),
+    });
+    await expect(f.session.connect()).rejects.toMatchObject({
+      code: 'authority-changed',
+    });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(f.sockets).toHaveLength(0);
+  });
+
+  test('a native HTTP transport cannot silently fall back to a raw credential socket', async () => {
+    vi.useFakeTimers();
+    const transport = vi.fn(async () => new Response());
+    const f = fixture({
+      resolveCredential: () => ({
+        credential: 'not-a-raw-fallback',
+        origin: 'http://127.0.0.1:4198',
+        transport,
+      }),
+    });
+    await expect(f.session.connect()).rejects.toMatchObject({
+      code: 'credential-unavailable',
+    });
+    expect(transport).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(f.sockets).toHaveLength(0);
+  });
+
   test('a state-notification failure settles its caller without leaving a connection timer', async () => {
     vi.useFakeTimers();
     const f = fixture({
