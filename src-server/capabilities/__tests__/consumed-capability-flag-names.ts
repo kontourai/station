@@ -9,6 +9,7 @@ export const TABLED_CAPABILITY_FLAGS: readonly string[] = Object.freeze([
   'connectionRoutes',
   'eventStreamResume',
   'privateOperationalOutcomes',
+  'scheduledConversationTarget',
   'sessionEventWindow',
   'sessionInventoryInputRead',
   'webPushNotifications',

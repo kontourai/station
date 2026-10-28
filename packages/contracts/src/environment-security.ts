@@ -1209,6 +1209,14 @@ export interface EnvironmentSecurityRecord {
 export interface StationCapabilityFlags {
   /** Consented private terminal outcome reads. */
   privateOperationalOutcomes?: boolean;
+  /**
+   * `POST /api/scheduler/jobs` accepts a `target` (`SchedulerAutomationTarget`):
+   * each run lands in a conversation through its inbox, so it runs on any
+   * engine. A host without it rejects the field, and its runs are
+   * Station-engine only, so a client offers other engines only with this
+   * flag. Absent on hosted deployments, whose scheduler routes answer 404.
+   */
+  scheduledConversationTarget?: boolean;
   /** SSH environment management (`src-server/services/ssh/`, `/api/ssh-environments`). */
   sshEnvironments?: boolean;
   /**

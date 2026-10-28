@@ -114,6 +114,16 @@ export interface AgentJobProposalJob {
       };
   readonly prompt: string;
   readonly agent?: string;
+  /**
+   * The conversation the job runs in: the proposing chat. Station sets it
+   * when the proposal is recorded, so an approved job continues the chat on
+   * whatever engine it runs on. Absent on proposals recorded before
+   * automations could target a conversation.
+   */
+  readonly target?: {
+    readonly kind: 'conversation';
+    readonly conversationId: string;
+  };
 }
 
 export type AgentJobProposalState = 'open' | 'approved' | 'declined';
@@ -145,11 +155,30 @@ export interface ConversationUsageLimitResume {
   readonly autoResume: boolean;
 }
 
+/**
+ * An automation whose runs land in this conversation, as the chat lists it
+ * beside its check-backs. Read from the scheduler, not stored here.
+ */
+export interface ConversationAutomation {
+  readonly name: string;
+  readonly enabled: boolean;
+  /** ISO time of the next run; absent when disabled or none is due. */
+  readonly nextRun?: string;
+  readonly lastRun?: string;
+  readonly lastSuccessAt?: string;
+  readonly consecutiveFailures: number;
+}
+
 /** A conversation's agent-scheduled items, as the chat shows them. */
 export interface ConversationAgentSchedule {
   readonly wakeUps: readonly AgentWakeUp[];
   readonly jobProposals: readonly AgentJobProposal[];
   readonly jobs: readonly ConversationScheduledJob[];
+  /**
+   * Automations targeting this conversation. Absent from a Station that
+   * predates conversation targets.
+   */
+  readonly automations?: readonly ConversationAutomation[];
   readonly usageLimitResume?: ConversationUsageLimitResume;
 }
 
@@ -197,13 +226,15 @@ export function jobMatchesProposal(
     readonly schedule?: unknown;
     readonly prompt?: unknown;
     readonly agent?: unknown;
+    readonly target?: unknown;
   },
 ): boolean {
   return (
     body.name === job.name &&
     body.prompt === job.prompt &&
     (body.agent ?? undefined) === (job.agent ?? undefined) &&
-    canonical(body.schedule) === canonical(job.schedule)
+    canonical(body.schedule) === canonical(job.schedule) &&
+    canonical(body.target ?? null) === canonical(job.target ?? null)
   );
 }
 

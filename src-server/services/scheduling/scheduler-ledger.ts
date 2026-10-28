@@ -29,10 +29,13 @@ import type {
   ExternalMonitorConfig,
   ExternalMonitorState,
 } from '@kontourai/station-contracts/external-monitor';
-import type {
-  SchedulerJob,
-  SchedulerLogEntry,
-  SchedulerProviderStats,
+import {
+  AUTOMATION_RUN_POLICY,
+  type SchedulerAutomationCreator,
+  type SchedulerAutomationTarget,
+  type SchedulerJob,
+  type SchedulerLogEntry,
+  type SchedulerProviderStats,
 } from '@kontourai/station-contracts/scheduler';
 import {
   exactProcessIdentity,
@@ -83,7 +86,38 @@ export interface StoredSchedulerJob {
   lastRunMs?: number;
   monitor?: ExternalMonitorConfig;
   monitorState?: ExternalMonitorState;
+  /** Where each run lands; absent is a legacy Station-engine file run. */
+  target?: SchedulerAutomationTarget;
+  /** The admitted creator a targeted run acts as. */
+  createdBy?: SchedulerAutomationCreator;
   createdAt: string;
+}
+
+/** Why a targeted occurrence was recorded missed instead of run. */
+export const ANNOUNCEMENT_SKIPPED_LATE_OCCURRENCE =
+  'announcement skipped: late occurrence recorded missed, not failed';
+
+/**
+ * How many recent runs the fatigue count reads. Larger than the threshold so
+ * a read past it still reports the real count up to this bound.
+ */
+const CONSECUTIVE_FAILURE_SCAN_LIMIT = 50;
+
+/**
+ * Failed runs since the last success, from a job's runs oldest first. A
+ * running receipt and a late occurrence recorded missed are neither.
+ */
+export function countConsecutiveFailures(
+  runs: readonly SchedulerLogEntry[],
+): number {
+  let count = 0;
+  for (let index = runs.length - 1; index >= 0; index -= 1) {
+    const run = runs[index]!;
+    if (run.state === 'running' || run.skipped) continue;
+    if (run.success) break;
+    count += 1;
+  }
+  return count;
 }
 
 export interface SchedulerDispatchReceipt {
@@ -511,6 +545,19 @@ export interface SchedulerLedger {
   ): SchedulerSettlementOutcome;
   logs(name: string, count?: number): SchedulerReadOutcome<SchedulerLogEntry[]>;
   allLogs(): SchedulerReadOutcome<SchedulerLogEntry[]>;
+  /** Failed runs since the job's last success (`countConsecutiveFailures`). */
+  consecutiveFailures(name: string): SchedulerReadOutcome<number>;
+  /** When the job's last successful run completed, by opaque job id. */
+  lastSuccessAt(jobId: string): SchedulerReadOutcome<string | undefined>;
+  /**
+   * Record the conversation a dedicated target's first run started. Applies
+   * only while the job (by opaque id) still has a dedicated target with no
+   * conversation; anything else is `stale` and changes nothing.
+   */
+  bindDedicatedConversation(
+    jobId: string,
+    conversationId: string,
+  ): Readonly<{ kind: 'applied' | 'stale' }> | SchedulerUnavailable;
   runningLogs(name?: string): SchedulerReadOutcome<SchedulerLogEntry[]>;
   stats(): SchedulerReadOutcome<SchedulerProviderStats>;
   readOutput(path: string): SchedulerReadOutcome<string>;
@@ -1084,8 +1131,16 @@ class SqliteSchedulerLedger implements SchedulerLedger {
         const last = this.logsUnsafe(job.name, 1).at(-1);
         const scheduled = job.enabled ? toScheduledJob(job) : null;
         const next = scheduled ? nextOccurrence(scheduled.schedule, now) : null;
+        const { createdBy, ...rest } = job;
+        const lastSuccessAt = this.lastSuccessUnsafe(row.job_id);
         return {
-          ...job,
+          ...rest,
+          // Only who created it is public; the replayed actor stays private.
+          ...(createdBy ? { createdBy: { userId: createdBy.userId } } : {}),
+          consecutiveFailures: countConsecutiveFailures(
+            this.logsUnsafe(job.name, CONSECUTIVE_FAILURE_SCAN_LIMIT),
+          ),
+          ...(lastSuccessAt ? { lastSuccessAt } : {}),
           provider: 'built-in',
           unattendedPrincipal: {
             kind: 'scheduled-job' as const,
@@ -1141,6 +1196,21 @@ class SqliteSchedulerLedger implements SchedulerLedger {
           }
           if (due.kind === 'not-due') continue;
           if (this.claimRow(row.job_id)) continue;
+          // A targeted run is a turn in someone's conversation. One that
+          // arrives hours after its time (Station was off) would land out of
+          // context, so it is recorded missed and the cursor moves on.
+          if (
+            due.job.target &&
+            now - due.scheduledForMs > AUTOMATION_RUN_POLICY.latenessCutoffMs
+          ) {
+            this.recordLateOccurrence(
+              row.job_id,
+              due.job,
+              now,
+              due.scheduledForMs,
+            );
+            continue;
+          }
           receipts.push(
             this.insertClaim(
               due.job,
@@ -1435,6 +1505,99 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     count?: number,
   ): SchedulerReadOutcome<SchedulerLogEntry[]> {
     return this.read(() => this.logsUnsafe(name, count));
+  }
+
+  consecutiveFailures(name: string): SchedulerReadOutcome<number> {
+    return this.read(() =>
+      countConsecutiveFailures(
+        this.logsUnsafe(name, CONSECUTIVE_FAILURE_SCAN_LIMIT),
+      ),
+    );
+  }
+
+  lastSuccessAt(jobId: string): SchedulerReadOutcome<string | undefined> {
+    return this.read(() => this.lastSuccessUnsafe(jobId));
+  }
+
+  bindDedicatedConversation(
+    jobId: string,
+    conversationId: string,
+  ): Readonly<{ kind: 'applied' | 'stale' }> | SchedulerUnavailable {
+    const refused = this.refuseIfCorrupt();
+    if (refused) return refused;
+    try {
+      return this.transaction(() => {
+        const row = this.rowForJobId(jobId);
+        if (!row) return { kind: 'stale' } as const;
+        const job = parseStoredJob(row.data);
+        if (job.target?.kind !== 'dedicated' || job.target.conversationId)
+          return { kind: 'stale' } as const;
+        job.target = { ...job.target, conversationId };
+        // No revision bump: this records what the job already ran into, not
+        // an edit, so an in-flight claim of the same revision stays current.
+        this.db
+          .prepare('UPDATE scheduler_jobs SET data = ? WHERE job_id = ?')
+          .run(JSON.stringify(job), jobId);
+        return { kind: 'applied' } as const;
+      });
+    } catch (error) {
+      return unavailableFrom(error);
+    }
+  }
+
+  private lastSuccessUnsafe(jobId: string): string | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT data FROM scheduler_logs
+          WHERE job_id = ? AND json_extract(data, '$.success') = 1
+          ORDER BY sequence DESC LIMIT 1`,
+      )
+      .get(jobId) as { data: string } | undefined;
+    if (!row) return undefined;
+    const entry = JSON.parse(row.data) as SchedulerLogEntry;
+    return entry.completedAt ?? entry.startedAt;
+  }
+
+  /**
+   * A late targeted occurrence: one run row saying it was missed, stamped so
+   * the failure outbox never announces it, and the cursor advanced past it.
+   */
+  private recordLateOccurrence(
+    jobId: string,
+    job: StoredSchedulerJob,
+    now: number,
+    scheduledForMs: number,
+  ): void {
+    const at = new Date(now).toISOString();
+    const lateMinutes = Math.round((now - scheduledForMs) / 60_000);
+    const entry: SchedulerLogEntry = {
+      id: `${randomUUID()}-1`,
+      job: job.name,
+      jobId,
+      startedAt: at,
+      scheduledFor: new Date(scheduledForMs).toISOString(),
+      firedAt: at,
+      completedAt: at,
+      success: false,
+      durationSecs: 0,
+      missedCount: 1,
+      manual: false,
+      error: `Missed: Station was not running when this was due (${lateMinutes} minutes late), so it did not run late.`,
+      attempt: 1,
+      maxAttempts: 1,
+      state: 'failed',
+      skipped: 'late',
+    };
+    this.insertRunLog(entry, jobId);
+    this.stampAnnouncement(entry.id, now, ANNOUNCEMENT_SKIPPED_LATE_OCCURRENCE);
+    this.db
+      .prepare(
+        `UPDATE scheduler_jobs
+         SET last_run_ms = MAX(COALESCE(last_run_ms, 0), ?),
+             data = json_set(data, '$.lastRunMs', MAX(COALESCE(last_run_ms, 0), ?))
+         WHERE job_id = ?`,
+      )
+      .run(scheduledForMs, scheduledForMs, jobId);
   }
 
   allLogs(): SchedulerReadOutcome<SchedulerLogEntry[]> {

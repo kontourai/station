@@ -86,7 +86,7 @@ test('a refused terminal bell stays owed, retries once, and encodes its Schedule
       dedupeTag: expect.stringMatching(/^external-monitor:terminal:/),
       metadata: {
         jobName: name,
-        link: '/schedule?job=monitor%3Fnext%3D%2Foutside%26mode%3Dunsafe',
+        link: '/automations?job=monitor%3Fnext%3D%2Foutside%26mode%3Dunsafe',
       },
     }),
   );

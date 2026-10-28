@@ -1,5 +1,8 @@
 import { writeFileSync } from 'node:fs';
-import type { SchedulerEvent } from '@kontourai/station-contracts/scheduler';
+import {
+  AUTOMATION_RUN_POLICY,
+  type SchedulerEvent,
+} from '@kontourai/station-contracts/scheduler';
 import {
   schedulerJobDuration,
   schedulerJobRuns,
@@ -10,6 +13,7 @@ import type {
   ScheduledTurnAdapter,
   ScheduledTurnOutcome,
 } from './builtin-scheduler.js';
+import type { ScheduledConversationRunner } from './scheduled-conversation-runs.js';
 import {
   type SchedulerAnnouncementClaim,
   type SchedulerAnnouncementOutbox,
@@ -30,6 +34,15 @@ export interface SchedulerExecutionDeps {
   startedAt: string;
   receipt: SchedulerDispatchReceipt;
   turnAdapter: ScheduledTurnAdapter;
+  /**
+   * Runs a job that has a `target`. Absent: this Station cannot run a turn in
+   * a conversation (hosted), and a targeted job fails without invoking.
+   */
+  conversationRuns?: ScheduledConversationRunner;
+  /** The job's last successful completion, the framed prompt's watermark. */
+  lastSuccessAt?: string;
+  /** Record the conversation a dedicated target's first run started. */
+  onConversationStarted?: (conversationId: string) => void;
   notificationService: NotificationService | null;
   broadcast: (event: SchedulerEvent) => void;
   /**
@@ -80,6 +93,11 @@ export interface SchedulerExecutionResult {
 }
 
 const JOB_TIMEOUT = 10 * 60_000;
+/**
+ * A targeted run settles from its own turn deadline; this outer bound only
+ * catches a runner that never answers, so it sits a minute past that.
+ */
+const TARGETED_JOB_TIMEOUT = AUTOMATION_RUN_POLICY.turnDeadlineMs + 60_000;
 
 /**
  * The strings below reach the durable run log and a manual run's receipt
@@ -120,12 +138,15 @@ export async function executeSchedulerJobAttempt({
   startedAt,
   receipt,
   turnAdapter,
+  conversationRuns,
+  lastSuccessAt,
+  onConversationStarted,
   notificationService,
   broadcast,
   announcementOutbox,
   announcedRunIds,
   logger,
-  timeoutMs = JOB_TIMEOUT,
+  timeoutMs = job.target ? TARGETED_JOB_TIMEOUT : JOB_TIMEOUT,
   signal,
 }: SchedulerExecutionDeps): Promise<SchedulerExecutionResult> {
   const outFile = receipt.outputPath();
@@ -175,18 +196,27 @@ export async function executeSchedulerJobAttempt({
     }, timeoutMs);
     let turn: ScheduledTurnOutcome;
     try {
-      const invocation = turnAdapter.invoke({
-        agentSlug: agent,
-        prompt: job.prompt,
-        receipt,
-        approval: 'unattended-deny',
-        principal: {
-          kind: 'scheduled-job',
-          jobId: receipt.jobId,
-          runId: receipt.id,
-        },
-        signal: controller.signal,
-      });
+      const invocation: Promise<ScheduledTurnOutcome> = job.target
+        ? invokeConversationTarget({
+            job,
+            receipt,
+            conversationRuns,
+            lastSuccessAt,
+            onConversationStarted,
+            signal: controller.signal,
+          })
+        : turnAdapter.invoke({
+            agentSlug: agent,
+            prompt: job.prompt,
+            receipt,
+            approval: 'unattended-deny',
+            principal: {
+              kind: 'scheduled-job',
+              jobId: receipt.jobId,
+              runId: receipt.id,
+            },
+            signal: controller.signal,
+          });
       const raced = await Promise.race([
         invocation.then((outcome) => ({ kind: 'outcome' as const, outcome })),
         timedOut.then(() => ({ kind: 'timed-out' as const })),
@@ -280,6 +310,9 @@ export async function executeSchedulerJobAttempt({
     if (turn.kind === 'indeterminate') {
       throw new SchedulerIndeterminateInvocationError(turn.error);
     }
+    if (turn.kind === 'failed') {
+      throw new SchedulerTurnFailedError(turn.error);
+    }
     const output = turn.output;
 
     try {
@@ -354,9 +387,12 @@ export async function executeSchedulerJobAttempt({
     const durationSecs =
       (Date.parse(completedAt) - Date.parse(startedAt)) / 1000;
 
+    // A turn that ran and ended in failure is a definite failure; anything
+    // else that reaches here may or may not have had its effect.
     const settlement = receipt.settle({
       success: false,
-      state: 'indeterminate',
+      state:
+        error instanceof SchedulerTurnFailedError ? 'failed' : 'indeterminate',
       completedAt,
       durationSecs,
       output: outFile,
@@ -557,7 +593,7 @@ function persistFailureNotification({
             actions: [{ id: 'view-logs', label: 'View Logs' }],
             metadata: {
               jobName: job,
-              link: `/schedule?job=${encodeURIComponent(job)}`,
+              link: `/automations?job=${encodeURIComponent(job)}`,
             },
           });
         } catch (failure) {
@@ -590,6 +626,48 @@ function rememberAnnouncedRunId(
     const oldest = announcedRunIds.values().next();
     if (oldest.done) break;
     announcedRunIds.delete(oldest.value);
+  }
+}
+
+/**
+ * A targeted run through its conversation runner. Only a proof that nothing
+ * was queued or started maps to `definitely-not-invoked`.
+ */
+async function invokeConversationTarget(input: {
+  job: StoredSchedulerJob;
+  receipt: SchedulerDispatchReceipt;
+  conversationRuns: ScheduledConversationRunner | undefined;
+  lastSuccessAt: string | undefined;
+  onConversationStarted: ((conversationId: string) => void) | undefined;
+  signal: AbortSignal;
+}): Promise<ScheduledTurnOutcome> {
+  if (!input.conversationRuns)
+    return {
+      kind: 'definitely-not-invoked',
+      error: 'This Station cannot run an automation in a conversation.',
+    };
+  const outcome = await input.conversationRuns.run({
+    jobId: input.receipt.jobId,
+    jobName: input.job.name,
+    runId: input.receipt.id,
+    prompt: input.job.prompt,
+    target: input.job.target!,
+    createdBy: input.job.createdBy,
+    lastSuccessAt: input.lastSuccessAt,
+    onConversationStarted: (conversationId) =>
+      input.onConversationStarted?.(conversationId),
+    signal: input.signal,
+  });
+  if (outcome.kind === 'completed')
+    return { kind: 'completed', output: outcome.output };
+  return outcome;
+}
+
+/** A targeted run's turn ran and ended in failure. */
+class SchedulerTurnFailedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SchedulerTurnFailedError';
   }
 }
 

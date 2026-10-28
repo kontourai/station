@@ -126,6 +126,8 @@ const facts = {
   mayNotSend: new Set<string>(),
   /** Conversations the person may not read as a whole. */
   mayNotRead: new Set<string>(),
+  /** What the scheduler lists as targeting each conversation. */
+  automations: new Map<string, string[]>(),
   /** Agents and their Project slug (`null`: global); absent: no such agent. */
   agents: new Map<string, string | null>([
     ['writer', 'project-a'],
@@ -262,6 +264,12 @@ async function boot(options: { hosted: boolean }): Promise<World> {
       if (!facts.agents.has(slug)) throw new Error('no such agent');
       return facts.agents.get(slug) ?? undefined;
     },
+    conversationAutomations: async (conversationId) =>
+      (facts.automations.get(conversationId) ?? []).map((name) => ({
+        name,
+        enabled: true,
+        consecutiveFailures: 0,
+      })),
     logger: quietLogger(),
     now: () => clock.now,
   });
@@ -316,7 +324,10 @@ async function boot(options: { hosted: boolean }): Promise<World> {
     createSchedulerRoutes(
       { addJob } as unknown as SchedulerService,
       quietLogger(),
-      { jobProposals: composition.jobProposals },
+      {
+        jobProposals: composition.jobProposals,
+        admitAutomationTarget: composition.admitAutomationTarget,
+      },
     ),
   );
   return {
@@ -383,6 +394,7 @@ beforeEach(() => {
   facts.hostNow.clear();
   facts.mayNotSend.clear();
   facts.mayNotRead.clear();
+  facts.automations.clear();
 });
 
 type Channel = 'bound' | 'delegated-custody' | 'bearer-exposed';
@@ -893,6 +905,12 @@ const PROPOSED = {
   agent: 'writer',
 };
 
+/** The job a proposal from this session records: it runs in that chat. */
+const proposedFor = (sessionId: string) => ({
+  ...PROPOSED,
+  target: { kind: 'conversation', conversationId: `conv-${sessionId}` },
+});
+
 describe('propose_job: a person approves under their own credential, or declines', () => {
   async function propose(channel: Channel = 'delegated-custody') {
     const sessionId = nextSession();
@@ -915,7 +933,11 @@ describe('propose_job: a person approves under their own credential, or declines
       `/api/orchestration/agent-schedule/conv-${sessionId}`,
     );
     expect(read.body.data.jobProposals).toEqual([
-      expect.objectContaining({ id, job: PROPOSED, state: 'open' }),
+      expect.objectContaining({
+        id,
+        job: proposedFor(sessionId),
+        state: 'open',
+      }),
     ]);
     expect(addJob).not.toHaveBeenCalled();
   });
@@ -937,15 +959,19 @@ describe('propose_job: a person approves under their own credential, or declines
   });
 
   test('Approve: the person’s scheduler create, naming the proposal, creates exactly that job and records it approved', async () => {
-    const { id } = await propose();
+    const { sessionId: proposer, id } = await propose();
     const response = await personRequest('POST', '/scheduler/jobs', {
-      ...PROPOSED,
+      ...proposedFor(proposer),
       proposalId: id,
     });
     expect(response.status).toBe(200);
     expect(addJob).toHaveBeenCalledTimes(1);
-    // The proposal id is the route's, never the scheduler's.
-    expect(addJob.mock.calls[0]?.[0]).toEqual(PROPOSED);
+    // The proposal id is the route's, never the scheduler's. The job runs in
+    // the proposing chat (any engine), acting as the approving person.
+    expect(addJob.mock.calls[0]?.[0]).toEqual({
+      ...proposedFor(proposer),
+      createdBy: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+    });
     expect(store.jobProposal(id)).toMatchObject({ state: 'approved' });
     // The chat lists the job it now has, and no longer the open card.
     const { sessionId } = {
@@ -961,7 +987,7 @@ describe('propose_job: a person approves under their own credential, or declines
     expect(read.body.data.jobProposals).toEqual([]);
     // Approving twice creates nothing more.
     const again = await personRequest('POST', '/scheduler/jobs', {
-      ...PROPOSED,
+      ...proposedFor(proposer),
       proposalId: id,
     });
     expect(again.status).toBe(409);
@@ -970,11 +996,18 @@ describe('propose_job: a person approves under their own credential, or declines
   });
 
   test('an Approve whose body is not the proposed job creates nothing', async () => {
-    const { id } = await propose();
+    const { sessionId: proposer, id } = await propose();
+    const proposed = proposedFor(proposer);
     for (const body of [
-      { ...PROPOSED, prompt: 'Something else.' },
-      { ...PROPOSED, trustAllTools: true },
-      { ...PROPOSED, schedule: { kind: 'every', everyMs: 60_000 } },
+      { ...proposed, prompt: 'Something else.' },
+      { ...proposed, trustAllTools: true },
+      { ...proposed, schedule: { kind: 'every', everyMs: 60_000 } },
+      // Its runs land where it was proposed, nowhere else.
+      {
+        ...proposed,
+        target: { kind: 'conversation', conversationId: 'conv-elsewhere' },
+      },
+      PROPOSED,
     ]) {
       const response = await personRequest('POST', '/scheduler/jobs', {
         ...body,
@@ -1051,6 +1084,131 @@ describe('add_job’s refusal names what the agent can do instead', () => {
     expect(response.body.error).toContain('schedule_wake_up');
     expect(response.body.error).toContain('propose_job');
     expect(addJob).not.toHaveBeenCalled();
+  });
+});
+
+describe('automation targets: an agent runs one only in its own chat', () => {
+  const JOB = {
+    name: 'repo-digest',
+    schedule: { kind: 'every', everyMs: 3_600_000 },
+    prompt: 'Summarize the repository.',
+  };
+
+  test('a bound operator’s add_job naming another conversation is refused by the guard', async () => {
+    const response = await agent(
+      'bound',
+      nextSession(),
+      'POST',
+      '/scheduler/jobs',
+      {
+        ...JOB,
+        target: { kind: 'conversation', conversationId: 'conv-someone-else' },
+      },
+    );
+    expect(response.status).toBe(403);
+    expect(response.body).toMatchObject({ reason: 'other-conversation' });
+    expect(refusals).toEqual(['station_control_out_of_scope']);
+    expect(addJob).not.toHaveBeenCalled();
+  });
+
+  test('a dedicated conversation is a person’s choice, not an agent’s', async () => {
+    const response = await agent(
+      'bound',
+      nextSession(),
+      'POST',
+      '/scheduler/jobs',
+      {
+        ...JOB,
+        target: { kind: 'dedicated', agent: 'writer' },
+      },
+    );
+    expect(response.status).toBe(403);
+    expect(addJob).not.toHaveBeenCalled();
+  });
+
+  test('its own conversation is admitted and runs as its dispatch actor', async () => {
+    const sessionId = nextSession();
+    const target = {
+      kind: 'conversation',
+      conversationId: `conv-${sessionId}`,
+    };
+    const response = await agent(
+      'bound',
+      sessionId,
+      'POST',
+      '/scheduler/jobs',
+      {
+        ...JOB,
+        target,
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(addJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target,
+        createdBy: expect.objectContaining({
+          userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        }),
+      }),
+    );
+  });
+
+  test('an update cannot retarget a job to another conversation either', async () => {
+    const response = await agent(
+      'bound',
+      nextSession(),
+      'PUT',
+      '/scheduler/jobs/repo-digest',
+      { target: { kind: 'conversation', conversationId: 'conv-someone-else' } },
+    );
+    // Changing a job's target changes whose conversation its runs act in,
+    // so the guard refuses it before it reaches the route, whatever rule
+    // answers first (a retarget fails closed as a person's step).
+    expect(response.status).toBe(403);
+    expect([
+      'station_control_person_only',
+      'station_control_out_of_scope',
+    ]).toContain(response.body.code);
+  });
+
+  test('a person may target only a conversation they may send to', async () => {
+    facts.mayNotSend.add('conv-closed');
+    const refused = await personRequest('POST', '/scheduler/jobs', {
+      ...JOB,
+      target: { kind: 'conversation', conversationId: 'conv-closed' },
+    });
+    expect(refused.status).toBe(404);
+    expect(refused.body.code).toBe('automation_target_not_found');
+    expect(addJob).not.toHaveBeenCalled();
+    const admitted = await personRequest('POST', '/scheduler/jobs', {
+      ...JOB,
+      target: { kind: 'conversation', conversationId: 'conv-open' },
+    });
+    expect(admitted.status).toBe(200);
+    expect(addJob.mock.calls[0]?.[0]).toMatchObject({
+      createdBy: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+    });
+  });
+
+  test('a body cannot choose who the runs act as', async () => {
+    await personRequest('POST', '/scheduler/jobs', {
+      ...JOB,
+      target: { kind: 'conversation', conversationId: 'conv-open' },
+      createdBy: { userId: 'someone-else' },
+    });
+    expect(addJob.mock.calls[0]?.[0]).toMatchObject({
+      createdBy: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+    });
+  });
+
+  test('the chat’s read lists automations targeting it beside its check-backs', async () => {
+    const sessionId = nextSession();
+    facts.automations.set(`conv-${sessionId}`, ['repo-digest']);
+    const read = await personRequest('GET', schedulePath(`conv-${sessionId}`));
+    expect(read.status).toBe(200);
+    expect(read.body.data.automations).toEqual([
+      { name: 'repo-digest', enabled: true, consecutiveFailures: 0 },
+    ]);
   });
 });
 
@@ -1414,7 +1572,7 @@ describe('Approve claims the proposal before the job is created', () => {
         }),
     );
     const approving = personRequest('POST', '/scheduler/jobs', {
-      ...PROPOSED,
+      ...store.jobProposal(id)!.job,
       proposalId: id,
     });
     await vi.waitFor(() => expect(addJob).toHaveBeenCalledTimes(1));
@@ -1425,7 +1583,7 @@ describe('Approve claims the proposal before the job is created', () => {
     expect(declined.body.data).toEqual({ declined: false });
     // A second Approve meanwhile is refused too.
     const twice = await personRequest('POST', '/scheduler/jobs', {
-      ...PROPOSED,
+      ...store.jobProposal(id)!.job,
       proposalId: id,
     });
     expect(twice.body.code).toBe('job_proposal_settled');
@@ -1441,7 +1599,7 @@ describe('Approve claims the proposal before the job is created', () => {
       throw new Error('scheduler unavailable');
     });
     const response = await personRequest('POST', '/scheduler/jobs', {
-      ...PROPOSED,
+      ...store.jobProposal(id)!.job,
       proposalId: id,
     });
     expect(response.status).toBe(500);
@@ -1449,7 +1607,7 @@ describe('Approve claims the proposal before the job is created', () => {
     expect(store.jobProposalState(id)).toBe('open');
     // So the person can try again.
     const again = await personRequest('POST', '/scheduler/jobs', {
-      ...PROPOSED,
+      ...store.jobProposal(id)!.job,
       proposalId: id,
     });
     expect(again.status).toBe(200);
@@ -1549,7 +1707,7 @@ describe('startup reopens only Approves an earlier process claimed', () => {
         }),
     );
     const approving = personRequest('POST', '/scheduler/jobs', {
-      ...PROPOSED,
+      ...store.jobProposal(id)!.job,
       proposalId: id,
     });
     await vi.waitFor(() => expect(addJob).toHaveBeenCalledTimes(1));

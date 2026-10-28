@@ -265,7 +265,7 @@ test.describe('Schedule Page', () => {
     page,
   }) => {
     await seedScheduleCrudApi(page);
-    await page.goto('/schedule');
+    await page.goto('/automations');
 
     const lastRun = page.getByRole('columnheader', { name: /last run/i });
     await expect(lastRun).toHaveAttribute('aria-sort', 'descending');
@@ -288,16 +288,18 @@ test.describe('Schedule Page', () => {
     await page.route('**/api/agents', (route) =>
       route.fulfill({ json: { success: true, data: [] } }),
     );
-    await page.goto('/schedule');
-    await page.getByRole('button', { name: 'Add job', exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: 'Add Job' });
+    await page.goto('/automations');
+    await page
+      .getByRole('button', { name: 'New automation', exact: true })
+      .click();
+    const dialog = page.getByRole('dialog', { name: 'New automation' });
     await expect(
       dialog.getByText(
         'Scheduled jobs need an agent using a model connection (Station engine). AI app agents cannot run scheduled jobs.',
       ),
     ).toBeVisible();
     await expect(
-      dialog.getByRole('button', { name: 'Add Job', exact: true }),
+      dialog.getByRole('button', { name: 'Create automation', exact: true }),
     ).toBeDisabled();
     await dialog.getByLabel('Name').fill('keep-my-check');
     await dialog
@@ -317,7 +319,7 @@ test.describe('Schedule Page', () => {
       'Check my service each morning',
     );
     await expect(
-      dialog.getByRole('button', { name: 'Add Job', exact: true }),
+      dialog.getByRole('button', { name: 'Create automation', exact: true }),
     ).toBeDisabled();
   });
 
@@ -377,9 +379,11 @@ test.describe('Schedule Page', () => {
         },
       }),
     );
-    await page.goto('/schedule');
-    await page.getByRole('button', { name: 'Add job', exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: 'Add Job' });
+    await page.goto('/automations');
+    await page
+      .getByRole('button', { name: 'New automation', exact: true })
+      .click();
+    const dialog = page.getByRole('dialog', { name: 'New automation' });
     for (const label of ['Name', 'Instructions']) {
       const fontSize = await dialog
         .getByLabel(label)
@@ -408,7 +412,7 @@ test.describe('Schedule Page', () => {
       .getByRole('textbox', { name: 'Base URL', exact: true })
       .fill('http://127.0.0.1:11435');
     await page.getByRole('button', { name: 'Save', exact: true }).click();
-    await expect(page).toHaveURL(/\/schedule$/);
+    await expect(page).toHaveURL(/\/automations$/);
     await expect(dialog).toBeVisible();
     await expect(dialog.getByLabel('Name')).toHaveValue('recovered-check');
     await expect(dialog.getByLabel('Instructions')).toHaveValue(
@@ -418,7 +422,9 @@ test.describe('Schedule Page', () => {
     await expect(dialog.getByLabel('Interval unit')).toHaveValue('minutes');
     expect(model.id).toBe('existing-model');
     expect(model.config.baseUrl).toBe('http://127.0.0.1:11435');
-    await dialog.getByRole('button', { name: 'Add Job', exact: true }).click();
+    await dialog
+      .getByRole('button', { name: 'Create automation', exact: true })
+      .click();
     await expect(page.getByTestId('job-row-recovered-check')).toBeVisible();
   });
 
@@ -426,15 +432,17 @@ test.describe('Schedule Page', () => {
     page,
   }) => {
     const { runCalls } = await seedScheduleCrudApi(page);
-    await page.goto('/schedule');
+    await page.goto('/automations');
 
-    await expect(page.getByRole('heading', { name: 'Schedule' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Automations' }),
+    ).toBeVisible();
     await expect(page.getByTestId('job-row-daily-report')).toBeVisible();
     await expect(
       page.getByLabel('Scheduler statistics').getByText('100%'),
     ).toBeVisible();
 
-    await page.getByPlaceholder('Filter jobs…').fill('missing');
+    await page.getByPlaceholder('Filter automations…').fill('missing');
     await expect(
       page.getByText('Nothing in scheduled jobs matches “missing”'),
     ).toBeVisible();
@@ -445,7 +453,9 @@ test.describe('Schedule Page', () => {
     await expect(page.getByTestId('job-row-daily-report')).toBeVisible();
 
     await page.getByRole('button', { name: 'Duplicate daily-report' }).click();
-    const duplicateDialog = page.getByRole('dialog', { name: 'Add Job' });
+    const duplicateDialog = page.getByRole('dialog', {
+      name: 'New automation',
+    });
     await expect(
       duplicateDialog.locator('.agent-picker__trigger'),
     ).toContainText('Codex');
@@ -453,20 +463,24 @@ test.describe('Schedule Page', () => {
       .getByPlaceholder('my-daily-briefing')
       .fill('daily-report');
     await duplicateDialog
-      .getByRole('button', { name: 'Add Job', exact: true })
+      .getByRole('button', { name: 'Create automation', exact: true })
       .click();
     await expect(duplicateDialog.getByRole('alert')).toHaveText(
       "Job 'daily-report' already exists",
     );
     await duplicateDialog.getByRole('button', { name: 'Cancel' }).click();
 
-    await page.getByRole('button', { name: 'Add job', exact: true }).click();
+    await page
+      .getByRole('button', { name: 'New automation', exact: true })
+      .click();
     await page.getByPlaceholder('my-daily-briefing').fill('weekly-brief');
     await page
       .getByPlaceholder('What should the agent do?')
       .fill('Summarize weekly work');
     await fillCron(page, ['30', '8', '*', '*', '1']);
-    await page.getByRole('button', { name: 'Add Job', exact: true }).click();
+    await page
+      .getByRole('button', { name: 'Create automation', exact: true })
+      .click();
     await expect(page.getByTestId('job-row-weekly-brief')).toBeVisible();
 
     await page.getByRole('button', { name: 'Edit weekly-brief' }).click();
@@ -529,7 +543,9 @@ test.describe('Schedule Page', () => {
     await expect(page.getByPlaceholder('my-daily-briefing')).toHaveValue(
       'weekly-brief-copy',
     );
-    await page.getByRole('button', { name: 'Add Job', exact: true }).click();
+    await page
+      .getByRole('button', { name: 'Create automation', exact: true })
+      .click();
     await expect(page.getByTestId('job-row-weekly-brief-copy')).toBeVisible();
 
     await page

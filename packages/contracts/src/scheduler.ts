@@ -160,6 +160,64 @@ export interface SchedulerFormField {
   hint?: string;
 }
 
+/**
+ * Where an automation's run lands. Absent on a job: the legacy behaviour, a
+ * Station-engine turn whose output is written to the run's file.
+ *
+ * - `conversation`: an existing conversation. Each run is a framed Station
+ *   turn queued on its inbox, so it runs on whatever engine that
+ *   conversation runs on, under its normal approval mode.
+ * - `dedicated`: a conversation the automation owns. The first run starts it
+ *   with `agent` (and `workspace`, when given) and Station records its id in
+ *   `conversationId`; every later run continues it like `conversation`.
+ */
+export type SchedulerAutomationTarget =
+  | Readonly<{ kind: 'conversation'; conversationId: string }>
+  | Readonly<{
+      kind: 'dedicated';
+      agent: string;
+      workspace?: Readonly<{ kind: 'project'; projectSlug: string }>;
+      /** Server-written once the first run has started the conversation. */
+      conversationId?: string;
+    }>;
+
+/**
+ * The conversation an automation target runs in, when it has one yet. A
+ * dedicated target has none until its first run starts it.
+ */
+export function automationTargetConversationId(
+  target: SchedulerAutomationTarget | undefined,
+): string | undefined {
+  return target?.conversationId;
+}
+
+/**
+ * Fixed policy for automations that target a conversation. Published so the
+ * UI and docs can state the numbers instead of restating them.
+ */
+export const AUTOMATION_RUN_POLICY = {
+  /**
+   * Consecutive failed runs after which Station disables the automation and
+   * sends one notification. A successful run resets the count.
+   */
+  fatigueFailureThreshold: 5,
+  /**
+   * A targeted run whose due occurrence is older than this when Station
+   * claims it is recorded missed instead of run. Station only ever claims
+   * the latest due occurrence, so an `every` schedule shorter than this is
+   * never more than one interval late; this bounds the rest (cron, at, and
+   * long intervals) after Station was off.
+   */
+  latenessCutoffMs: 6 * 60 * 60 * 1000,
+  /** How long a targeted run waits for its turn to finish before settling. */
+  turnDeadlineMs: 30 * 60 * 1000,
+} as const;
+
+/** The idempotency key a targeted run's turn is queued under. */
+export function automationRunClientTurnId(runId: string): string {
+  return `scheduler:${runId}`;
+}
+
 export interface SchedulerJob {
   name: string;
   provider: string;
@@ -167,7 +225,16 @@ export interface SchedulerJob {
   schedule?: SchedulerSchedule;
   prompt: string;
   agent?: string;
+  /** Where each run lands; absent is a legacy Station-engine file run. */
+  target?: SchedulerAutomationTarget;
+  /** Server-recorded creator a targeted run acts as. Read-only. */
+  createdBy?: Readonly<{ userId: string }>;
+  /** Failed runs since the last success, newest first. Read-only. */
+  consecutiveFailures?: number;
+  /** When the last successful run completed. Read-only. */
+  lastSuccessAt?: string;
   enabled: boolean;
+  /** Accepted for compatibility and ignored: Station sends no start notice. */
   notifyStart?: boolean;
   retryCount?: number;
   retryDelaySecs?: number;
@@ -201,6 +268,12 @@ export interface SchedulerLogEntry {
   maxAttempts?: number;
   /** A claimed receipt is visible to RunService before its terminal entry. */
   state?: 'running' | 'completed' | 'failed' | 'indeterminate';
+  /**
+   * `late`: a targeted occurrence Station recorded missed instead of running
+   * it, because it was older than `AUTOMATION_RUN_POLICY.latenessCutoffMs`.
+   * Not a failure: it neither notifies nor counts toward fatigue.
+   */
+  skipped?: 'late';
 }
 
 export interface AddJobOpts {
@@ -210,6 +283,9 @@ export interface AddJobOpts {
   schedule?: SchedulerSchedule;
   prompt: string;
   agent?: string;
+  target?: SchedulerAutomationTarget;
+  /** Server-only: the route records the admitted creator. */
+  createdBy?: SchedulerAutomationCreator;
   notifyStart?: boolean;
   trustAllTools?: boolean;
   retryCount?: number;
@@ -218,11 +294,23 @@ export interface AddJobOpts {
   [key: string]: unknown;
 }
 
+/**
+ * Who a targeted automation acts as when it runs: the admitted creator, as
+ * the create route resolved them. Replayed exactly, never strengthened.
+ */
+export type SchedulerAutomationCreator = Readonly<{
+  userId: string;
+  principal?: import('./principal').PrincipalRef;
+  ownerAttribution?: 'verified-bound' | 'unattributed-agent';
+}>;
+
 export interface UpdateJobOpts {
   cron?: string;
   schedule?: SchedulerSchedule;
   prompt?: string;
   agent?: string;
+  /** `null` removes the target, returning the job to a legacy file run. */
+  target?: SchedulerAutomationTarget | null;
   enabled?: boolean;
   notifyStart?: boolean;
   trustAllTools?: boolean;

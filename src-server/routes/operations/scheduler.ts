@@ -2,7 +2,11 @@
  * Scheduler Routes — scheduled job management
  */
 
-import type { SchedulerManualRunReceipt } from '@kontourai/station-contracts/scheduler';
+import type {
+  SchedulerAutomationCreator,
+  SchedulerAutomationTarget,
+  SchedulerManualRunReceipt,
+} from '@kontourai/station-contracts/scheduler';
 import {
   isHostedSessionReadAuthority,
   type SessionReadAuthority,
@@ -79,6 +83,53 @@ export interface JobProposalApproval {
       };
 }
 
+/**
+ * Whether this request may point an automation at `target`, and who its
+ * runs act as. A person must be able to continue the conversation; an
+ * agent's request may only name its own conversation. Runtime composition
+ * supplies it (`agent-schedule-composition.ts`).
+ */
+export type AutomationTargetAdmission = (
+  c: Context,
+  target: SchedulerAutomationTarget,
+) =>
+  | { readonly ok: true; readonly createdBy: SchedulerAutomationCreator }
+  | {
+      readonly ok: false;
+      readonly status: 403 | 404;
+      readonly code: string;
+      readonly error: string;
+    };
+
+/** The admitted creator for a body's target, or the refusal response. */
+function admitTarget(
+  c: Context,
+  admission: AutomationTargetAdmission | undefined,
+  target: SchedulerAutomationTarget | null | undefined,
+): { createdBy?: SchedulerAutomationCreator } | { refused: Response } {
+  if (!target) return {};
+  if (!admission)
+    return {
+      refused: c.json(
+        {
+          success: false,
+          code: 'automation_target_unavailable',
+          error: "This Station can't run an automation in a conversation.",
+        },
+        503,
+      ),
+    };
+  const admitted = admission(c, target);
+  if (!admitted.ok)
+    return {
+      refused: c.json(
+        { success: false, code: admitted.code, error: admitted.error },
+        admitted.status,
+      ),
+    };
+  return { createdBy: admitted.createdBy };
+}
+
 export function createSchedulerRoutes(
   schedulerService: SchedulerService,
   logger: Logger,
@@ -91,6 +142,8 @@ export function createSchedulerRoutes(
      * refused.
      */
     jobProposals?: JobProposalApproval;
+    /** Absent: a body with a `target` is refused (no conversation runs). */
+    admitAutomationTarget?: AutomationTargetAdmission;
   } = {},
 ) {
   const app = new Hono();
@@ -255,10 +308,19 @@ export function createSchedulerRoutes(
           { success: false, code: approval.code, error: approval.error },
           approval.status,
         );
+      const admitted = admitTarget(
+        c,
+        options.admitAutomationTarget,
+        body.target,
+      );
+      if ('refused' in admitted) {
+        approval?.revert();
+        return admitted.refused;
+      }
       schedulerJobRuns.add(1, { op: 'create_job' });
       let output: Awaited<ReturnType<SchedulerService['addJob']>>;
       try {
-        output = await schedulerService.addJob(body);
+        output = await schedulerService.addJob({ ...body, ...admitted });
       } catch (error) {
         approval?.revert();
         throw error;
@@ -276,9 +338,18 @@ export function createSchedulerRoutes(
 
   app.put('/jobs/:target', validate(editJobSchema), async (c) => {
     try {
-      const opts = getBody(c);
+      const opts = getBody(c) as Record<string, unknown>;
+      const admitted = admitTarget(
+        c,
+        options.admitAutomationTarget,
+        opts.target as SchedulerAutomationTarget | null | undefined,
+      );
+      if ('refused' in admitted) return admitted.refused;
       schedulerJobRuns.add(1, { op: 'edit_job' });
-      const output = await schedulerService.editJob(param(c, 'target'), opts);
+      const output = await schedulerService.editJob(param(c, 'target'), {
+        ...opts,
+        ...admitted,
+      });
       return c.json({ success: true, data: { output } });
     } catch (error: unknown) {
       logger.error('Failed to edit job', { error });

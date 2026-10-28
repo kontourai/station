@@ -5,16 +5,25 @@
  * the scheduler's proposal approval. Kept out of `runtime-routes.ts` so the
  * production wiring itself is what the authority tests drive.
  */
-import type { ConversationUsageLimitResume } from '@kontourai/station-contracts/agent-schedule';
+import type {
+  ConversationAutomation,
+  ConversationUsageLimitResume,
+} from '@kontourai/station-contracts/agent-schedule';
+import type { SchedulerAutomationTarget } from '@kontourai/station-contracts/scheduler';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { Context } from 'hono';
-import type { JobProposalApproval } from '../../routes/operations/scheduler.js';
+import type {
+  AutomationTargetAdmission,
+  JobProposalApproval,
+} from '../../routes/operations/scheduler.js';
 import {
   type AgentScheduleActor,
   type AgentSchedulePerson,
   type AgentScheduleRoutesDeps,
   createJobProposalApproval,
 } from '../../routes/orchestration/agent-schedule.js';
+import { requestMayBeAnAgent } from '../../security/coding-authority.js';
+import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import {
   type AgentScheduleStore,
   AgentWakeUpDelivery,
@@ -70,6 +79,13 @@ export interface AgentScheduleCompositionDeps {
   dispatchActor(c: Context): AgentScheduleActor;
   /** The Project an Agent belongs to (`undefined`: global); throws when none. */
   agentProject(agentSlug: string): Promise<string | undefined>;
+  /**
+   * The automations whose runs land in a conversation. Absent (hosted, no
+   * scheduler): the chat's schedule lists none.
+   */
+  conversationAutomations?(
+    conversationId: string,
+  ): Promise<readonly ConversationAutomation[]>;
   readonly logger: {
     warn(message: string, meta?: Record<string, unknown>): void;
   };
@@ -88,6 +104,8 @@ export interface AgentScheduleComposition {
   /** What `createAgentScheduleRoutes` is mounted with. */
   readonly routeDeps: AgentScheduleRoutesDeps;
   readonly jobProposals: JobProposalApproval;
+  /** The scheduler create/edit routes' rule for a job `target`. */
+  readonly admitAutomationTarget: AutomationTargetAdmission;
   readonly delivery: AgentWakeUpDelivery | undefined;
   /** For the guard's `wake-up-stays-in-own-conversation` rule. */
   wakeUpConversation(wakeUpId: string): string | undefined;
@@ -114,6 +132,70 @@ export function admitWakeUpAtFire(
   );
   if (!refusal) return true;
   return refusal.reason === 'host' && record.approvedBy !== undefined;
+}
+
+const TARGET_OUT_OF_SCOPE = {
+  ok: false,
+  status: 403,
+  code: 'automation_target_out_of_scope',
+  error: 'An agent may only run an automation in its own conversation.',
+} as const;
+
+/**
+ * Who may point an automation at a conversation, and as whom its runs act.
+ *
+ * - An agent's request (Station's internal principal): only its own
+ *   conversation, and its runs act as the agent's dispatch actor (its user,
+ *   owner attribution and principal), never stronger. A dedicated
+ *   conversation is a person's choice. The guard's
+ *   `automation-target-stays-in-own-conversation` rule refuses the same
+ *   first; this repeats it at the route.
+ * - A person: one who may send to the conversation now, the same rule the
+ *   inbox applies again when each run is placed. Its runs act as the person.
+ */
+export function admitAutomationTargetFor(
+  deps: Pick<AgentScheduleCompositionDeps, 'dispatchActor'>,
+  person: (c: Context) => AgentSchedulePerson | undefined,
+): AutomationTargetAdmission {
+  return (c, target: SchedulerAutomationTarget) => {
+    if (requestMayBeAnAgent(c.req.raw)) {
+      const authority = stationControlRequestAuthority(c.req.raw);
+      if (authority?.kind !== 'caller') return TARGET_OUT_OF_SCOPE;
+      const own = authority.caller.conversationId ?? authority.caller.sessionId;
+      if (target.kind !== 'conversation' || target.conversationId !== own)
+        return TARGET_OUT_OF_SCOPE;
+      const actor = deps.dispatchActor(c);
+      return {
+        ok: true,
+        createdBy: {
+          userId: actor.userId,
+          ...(actor.principal ? { principal: actor.principal } : {}),
+          ...(actor.ownerAttribution
+            ? { ownerAttribution: actor.ownerAttribution }
+            : {}),
+        },
+      };
+    }
+    const requester = person(c);
+    if (!requester)
+      return {
+        ok: false,
+        status: 403,
+        code: 'automation_target_person_required',
+        error: 'Sign in again to choose where this automation runs.',
+      };
+    if (
+      target.kind === 'conversation' &&
+      !requester.mayMutate(target.conversationId)
+    )
+      return {
+        ok: false,
+        status: 404,
+        code: 'automation_target_not_found',
+        error: 'Conversation not found.',
+      };
+    return { ok: true, createdBy: { userId: requester.userId } };
+  };
 }
 
 export function composeAgentSchedule(
@@ -194,6 +276,9 @@ export function composeAgentSchedule(
     person,
     jobAgentTarget,
     hosted: deps.hosted,
+    ...(deps.conversationAutomations
+      ? { conversationAutomations: deps.conversationAutomations }
+      : {}),
     // The conversation's current Session's stop, when it waits for a known
     // reset; the same projection the usage-limit banner reads.
     usageLimitResume: async (
@@ -217,6 +302,7 @@ export function composeAgentSchedule(
     routeDeps,
     delivery,
     person,
+    admitAutomationTarget: admitAutomationTargetFor(deps, person),
     jobProposals: createJobProposalApproval({
       store: deps.hosted ? undefined : deps.store,
       person,

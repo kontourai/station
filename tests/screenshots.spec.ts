@@ -2651,7 +2651,7 @@ const SCREENS: Screen[] = [
     return {
       name: 'schedule',
       title: 'Schedule',
-      path: '/schedule',
+      path: '/automations',
       viewport: DESKTOP,
       // archive#4464: without this, ScheduleView hits the live (unmocked)
       // scheduler/system endpoints on a freshly booted temp-home server —
@@ -3017,7 +3017,7 @@ const SCREENS: Screen[] = [
     return {
       name: 'motion-reduced-schedule-loading',
       title: 'Reduced motion — Schedule loading',
-      path: '/schedule',
+      path: '/automations',
       viewport: DESKTOP,
       reducedMotion: true,
       // This screen's whole point is capturing the skeleton itself (with the
@@ -3055,7 +3055,7 @@ const SCREENS: Screen[] = [
     return {
       name: 'motion-reduced-schedule-modal',
       title: 'Reduced motion — Schedule modal',
-      path: '/schedule',
+      path: '/automations',
       viewport: DESKTOP,
       reducedMotion: true,
       beforeGoto: async (page) => {
@@ -3064,7 +3064,7 @@ const SCREENS: Screen[] = [
       afterGoto: async (page) => {
         try {
           await page
-            .getByRole('button', { name: 'Add job', exact: true })
+            .getByRole('button', { name: 'New automation', exact: true })
             .click();
           // archive#4461: NOT `.schedule__modal-overlay` — Add Job migrated onto
           // the shared `Dialog` chrome (components/Dialog.tsx), which renders its
@@ -3412,7 +3412,7 @@ const SCREENS: Screen[] = [
     return {
       name: 'overlay-add-job-modal',
       title: 'Overlay — Add Job modal',
-      path: '/schedule',
+      path: '/automations',
       viewport: DESKTOP,
       beforeGoto: async (page) => {
         cleanup = await seedScheduleScreenshotApi(page);
@@ -3420,14 +3420,17 @@ const SCREENS: Screen[] = [
       afterGoto: async (page) => {
         try {
           await page
-            .getByRole('button', { name: 'Add job', exact: true })
+            .getByRole('button', { name: 'New automation', exact: true })
             .click();
           await expect(page.locator('.station-dialog__overlay')).toBeVisible({
             timeout: 10_000,
           });
           await expect(page.locator('.schedule__modal')).toBeVisible();
           await expect(
-            page.getByRole('button', { name: 'Add Job', exact: true }),
+            page.getByRole('button', {
+              name: 'Create automation',
+              exact: true,
+            }),
           ).toBeDisabled();
         } finally {
           await cleanup();
@@ -3440,7 +3443,7 @@ const SCREENS: Screen[] = [
     return {
       name: 'overlay-confirm-dialog',
       title: 'Overlay — Destructive confirm (Delete Job)',
-      path: '/schedule',
+      path: '/automations',
       viewport: DESKTOP,
       beforeGoto: async (page) => {
         cleanups = [

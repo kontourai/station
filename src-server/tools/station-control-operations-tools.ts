@@ -131,6 +131,19 @@ const schedulerScheduleSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 
+/**
+ * Where an automation's runs land. An agent may name only its own
+ * conversation (`automation-target-stays-in-own-conversation`).
+ */
+const automationTargetSchema = z
+  .object({
+    kind: z.literal('conversation'),
+    conversationId: z.string().min(1),
+  })
+  .describe(
+    'Run each time as a turn in this conversation (your own), on its engine, instead of as a Station-engine file run',
+  );
+
 const schedulerJobUpdateSchema = {
   cron: z.string().min(1).optional(),
   schedule: schedulerScheduleSchema.optional(),
@@ -141,6 +154,7 @@ const schedulerJobUpdateSchema = {
   trustAllTools: z.boolean().optional(),
   retryCount: z.number().int().min(0).max(10).optional(),
   retryDelaySecs: z.number().int().min(0).max(3600).optional(),
+  target: automationTargetSchema.optional(),
 };
 
 const delegationContextSchema = z.object({
@@ -371,6 +385,7 @@ export function registerOperationsTools(
       trustAllTools: z.boolean().optional(),
       retryCount: z.number().int().min(0).max(10).optional(),
       retryDelaySecs: z.number().int().min(0).max(3600).optional(),
+      target: automationTargetSchema.optional(),
     },
     async (params) => {
       if (params.cron !== undefined && params.schedule !== undefined) {

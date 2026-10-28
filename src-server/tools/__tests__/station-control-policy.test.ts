@@ -986,3 +986,51 @@ describe('station-control authority table: work claims (#3413 B)', () => {
       ]).toEqual([name, 'station_control_route_unmapped']);
   });
 });
+
+/**
+ * `automation-target-stays-in-own-conversation`: an automation's runs send a
+ * turn into its target conversation, so an agent's job may name only its own
+ * one, on create and on update, whoever asks.
+ */
+describe('automation targets stay in the caller’s own conversation', () => {
+  const caller: StationControlPolicyCaller = {
+    assurance: 'bound',
+    principal: { id: OPERATOR, elevationEligible: true },
+    sessionId: 'session-a',
+    conversationId: 'conversation-a',
+  };
+  const decide = (
+    method: 'POST' | 'PUT',
+    automationTargetConversationId: string | null | undefined,
+  ) =>
+    authorizeStationControlRequest(
+      method,
+      method === 'POST' ? '/scheduler/jobs' : '/scheduler/jobs/digest',
+      {
+        caller,
+        isOperatorPrincipal: (id) => id === OPERATOR,
+        // The edit changes no granted job's work: only the target rule decides.
+        retargetsGrantedJob: false,
+        automationTargetConversationId,
+      },
+    );
+
+  test.each(['POST', 'PUT'] as const)(
+    '%s: its own conversation, or none, is admitted',
+    (method) => {
+      expect(decide(method, 'conversation-a')).toBeUndefined();
+      expect(decide(method, undefined)).toBeUndefined();
+    },
+  );
+
+  test.each(['POST', 'PUT'] as const)(
+    '%s: another conversation, or a dedicated one, is out of scope',
+    (method) => {
+      for (const named of ['conversation-b', null])
+        expect(decide(method, named)).toMatchObject({
+          code: 'station_control_out_of_scope',
+          reason: 'other-conversation',
+        });
+    },
+  );
+});

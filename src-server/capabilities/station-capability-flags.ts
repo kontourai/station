@@ -20,6 +20,11 @@ import type { StationCapabilityFlags } from '@kontourai/station-contracts';
 
 export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   privateOperationalOutcomes: true,
+  // Automation targets: src-server/routes/operations/scheduler.ts accepts a
+  // job `target` and the built-in scheduler runs it through the conversation
+  // inbox (any engine). Hosted deployments withdraw it: see
+  // servesScheduledConversationTarget.
+  scheduledConversationTarget: true,
   // SSH environment management: src-server/services/ssh/, /api/ssh-environments
   // routes, packages/sdk/src/query-domains/sshEnvironments.ts.
   sshEnvironments: true,
@@ -149,6 +154,17 @@ export function servesConnectionRoutes(
   return !deployment.hosted;
 }
 
+/**
+ * Whether the scheduler routes, and so automation targets, serve in this
+ * deployment. Scheduler storage has no tenant binding, so the scheduler
+ * routes answer 404 to every hosted request (`routes/operations/scheduler.ts`).
+ */
+export function servesScheduledConversationTarget(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
 /** Flags whose route serves only in some deployment modes. */
 const DEPLOYMENT_SERVED_FLAGS: Readonly<
   Partial<
@@ -161,6 +177,7 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
   sessionInventoryInputRead: servesSessionInventoryInputRead,
   webPushNotifications: servesWebPushNotifications,
   connectionRoutes: servesConnectionRoutes,
+  scheduledConversationTarget: servesScheduledConversationTarget,
 };
 
 /**

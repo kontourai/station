@@ -172,7 +172,14 @@ function needsBody(method: string, path: string): boolean {
  * `agentId`, `projectId` and `target` choose the work a monitor dispatch runs
  * under the job's scheduled-job principal (and so the job's grants).
  */
-const JOB_TARGET_FIELDS = ['prompt', 'agent', 'provider', 'monitor'] as const;
+const JOB_TARGET_FIELDS = [
+  'prompt',
+  'agent',
+  'provider',
+  'monitor',
+  // Where its runs land, and so whose conversation the grants act in.
+  'target',
+] as const;
 
 /**
  * The fields of an edit body that could change what a job runs; the grant
@@ -273,6 +280,33 @@ function wakeUpConversationId(
   return typeof named === 'string' ? named : undefined;
 }
 
+/**
+ * For `automation-target-stays-in-own-conversation`: the conversation a job
+ * body's `target` names, `null` for a target that names no conversation an
+ * agent may use (a dedicated one, or an unreadable shape), or `undefined`
+ * when the body sets no target (`null` removes one, which runs nowhere).
+ */
+function automationTargetConversationId(
+  method: string,
+  path: string,
+  body: unknown,
+): string | null | undefined {
+  if (
+    !matchStationControlRoute(method, path)?.rules.includes(
+      'automation-target-stays-in-own-conversation',
+    )
+  )
+    return undefined;
+  if (!body || typeof body !== 'object') return undefined;
+  const target = (body as { target?: unknown }).target;
+  if (target === undefined || target === null) return undefined;
+  const record = target as { kind?: unknown; conversationId?: unknown };
+  return record.kind === 'conversation' &&
+    typeof record.conversationId === 'string'
+    ? record.conversationId
+    : null;
+}
+
 /** The thread a scoped command's body names, if it is one. */
 function scopedCommandThreadId(body: unknown): string | undefined {
   if (!body || typeof body !== 'object') return undefined;
@@ -344,6 +378,11 @@ export function createStationControlAuthorityGuard(
       ),
       commandThread: commandThread(options, method, path, body),
       wakeUpConversationId: wakeUpConversationId(options, method, path, body),
+      automationTargetConversationId: automationTargetConversationId(
+        method,
+        path,
+        body,
+      ),
     });
     if (!refusal) {
       await next();

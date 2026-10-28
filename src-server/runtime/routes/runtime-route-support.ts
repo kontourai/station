@@ -50,6 +50,7 @@ import {
 } from '../../services/projects/attention-projection.js';
 import type { ScheduledTurnAdapter } from '../../services/scheduling/builtin-scheduler.js';
 import { MonitorTaskTurnSupervisor } from '../../services/scheduling/monitor-task-supervisor.js';
+import type { ScheduledConversationRunner } from '../../services/scheduling/scheduled-conversation-runs.js';
 import { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import { DevicePairingNotificationProvider } from '../../services/ssh/device-pairing-notifications.js';
 import { publicIngressOriginResolver } from '../../services/tailscale/public-ingress-origin.js';
@@ -389,6 +390,11 @@ export function configureRuntimeSupportServices(
      */
     focus?: FocusSource;
     inAppLiveness?: InAppLiveness;
+    /**
+     * Runs automations that target a conversation, through its inbox.
+     * Absent (hosted, or no inbox): such a job fails without invoking.
+     */
+    conversationRuns?: ScheduledConversationRunner;
   } = {},
 ) {
   // The hosted registry is immutable deployment configuration. Until pairing
@@ -482,6 +488,9 @@ export function configureRuntimeSupportServices(
     builtin: {
       notificationService,
       turnAdapter: createScheduledTurnAdapter(context.activeAgents),
+      ...(options.conversationRuns
+        ? { conversationRuns: options.conversationRuns }
+        : {}),
       integrationSecretResolver:
         context.secretBindingAdministration as unknown as import('../../services/secrets/secret-binding-administration.js').IntegrationSecretResolver,
       onActionableMonitor: async (input) => {

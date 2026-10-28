@@ -1,6 +1,8 @@
 import { type Schedule, validateSchedule } from '@kontourai/ephemeris';
 import {
+  AUTOMATION_RUN_POLICY,
   SCHEDULER_EXECUTION_LIMITS,
+  type SchedulerAutomationTarget,
   type SchedulerConcurrencyDisposition,
   type SchedulerEvent,
   type SchedulerManualRunReceipt,
@@ -35,6 +37,7 @@ import {
   parseGitHubPullRequestTarget,
   probeGitHubPullRequest,
 } from './external-monitor.js';
+import type { ScheduledConversationRunner } from './scheduled-conversation-runs.js';
 import {
   type AttachedMonitorTrigger,
   createSchedulerLedger,
@@ -97,6 +100,52 @@ function assertMonitorAuthority(
     );
 }
 
+/**
+ * A targeted automation's run is a turn in a conversation: its outcome can
+ * be indeterminate, and an indeterminate run must never be replayed, so it
+ * takes no generic retry. A monitor dispatches a Task, not a turn.
+ */
+function assertTargetAuthority(
+  input: Pick<AddJobOpts, 'monitor' | 'retryCount' | 'createdBy'> & {
+    target?: SchedulerAutomationTarget;
+  },
+): void {
+  if (!input.target) return;
+  if (input.monitor)
+    throw new Error(
+      'An automation that runs in a conversation cannot have a monitor',
+    );
+  if ((input.retryCount ?? 0) !== 0)
+    throw new Error(
+      'An automation that runs in a conversation cannot retry: a run that may have started is never repeated',
+    );
+  if (!input.createdBy?.userId)
+    throw new Error(
+      'An automation that runs in a conversation needs a recorded creator',
+    );
+  if (
+    input.target.kind === 'conversation' &&
+    !input.target.conversationId.trim()
+  )
+    throw new Error('Automation target names no conversation');
+  if (input.target.kind === 'dedicated' && !input.target.agent.trim())
+    throw new Error('A dedicated automation conversation needs an agent');
+}
+
+/** The conversation id of a dedicated target is server-written, never accepted. */
+function acceptedTarget(
+  target: SchedulerAutomationTarget | undefined,
+): SchedulerAutomationTarget | undefined {
+  if (target?.kind !== 'dedicated') return target;
+  const { conversationId: _serverWritten, ...accepted } = target;
+  return accepted;
+}
+
+/** One fatigue disable has one bell, whichever process noticed it. */
+function fatigueDedupeTag(jobId: string, runId: string): string {
+  return `scheduler:fatigue:${jobId}:${runId}`;
+}
+
 /** One terminal fact has one NotificationService identity across every retry. */
 function monitorTerminalDedupeTag(id: string): string {
   return `external-monitor:terminal:${id}`;
@@ -154,6 +203,8 @@ const OWED_ANNOUNCEMENT_RETRY_JITTER_MS = 500;
  */
 export type ScheduledTurnOutcome =
   | { kind: 'completed'; output: string }
+  /** The turn ran and ended in failure (targeted runs only). */
+  | { kind: 'failed'; error: string }
   | { kind: 'definitely-not-invoked'; error: string }
   | { kind: 'indeterminate'; error: string };
 
@@ -179,6 +230,11 @@ export interface BuiltinSchedulerOptions {
   logger?: Logger;
   ledger?: SchedulerLedger;
   turnAdapter: ScheduledTurnAdapter;
+  /**
+   * Runs jobs that target a conversation (any engine). Absent: such a job
+   * fails without invoking anything (hosted, or no inbox).
+   */
+  conversationRuns?: ScheduledConversationRunner;
   notificationService?: NotificationService | null;
   integrationSecretResolver?: IntegrationSecretResolver;
   onActionableMonitor?: (input: {
@@ -653,7 +709,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
               actions: [{ id: 'view-scheduler', label: 'View Schedule' }],
               metadata: {
                 jobName: input.jobName,
-                link: `/schedule?job=${encodeURIComponent(input.jobName)}`,
+                link: `/automations?job=${encodeURIComponent(input.jobName)}`,
               },
             });
             resolve(true);
@@ -808,6 +864,72 @@ export class BuiltinScheduler implements ISchedulerProvider {
   }
 
   private async executeJob(initialReceipt: SchedulerDispatchReceipt) {
+    const result = await this.executeJobLifecycle(initialReceipt);
+    if (!result.success && result.outcome !== 'deferred')
+      await this.applyFailureFatigue(initialReceipt, result.logId);
+    return result;
+  }
+
+  /**
+   * Fatigue: an automation that has failed `fatigueFailureThreshold` runs in
+   * a row is disabled, and the person is told once. The count is derived
+   * from the run log (`countConsecutiveFailures`), so a success resets it
+   * without any stored counter. Only the enabled-to-disabled transition
+   * notifies, and its bell is keyed by the run that tripped it.
+   */
+  private async applyFailureFatigue(
+    receipt: SchedulerDispatchReceipt,
+    logId: string,
+  ): Promise<void> {
+    const name = receipt.job.name;
+    const failures = this.ledger.consecutiveFailures(name);
+    if (
+      failures.kind !== 'available' ||
+      failures.value < AUTOMATION_RUN_POLICY.fatigueFailureThreshold
+    )
+      return;
+    const current = this.ledger.list();
+    if (current.kind !== 'available') return;
+    if (!current.value.find((job) => job.name === name)?.enabled) return;
+    const disabled = this.ledger.update(name, { enabled: false });
+    if (disabled.kind !== 'updated') return;
+    this.observe(() =>
+      this.options.logger?.warn('Automation disabled after repeated failures', {
+        job: name,
+        consecutiveFailures: failures.value,
+      }),
+    );
+    const notificationService = this.notificationService;
+    if (!notificationService) return;
+    await this.trackAnnouncement(
+      new Promise<void>((resolve) => {
+        const admitted = notificationService.dispatch(
+          'scheduler-fatigue',
+          async () => {
+            try {
+              await notificationService.schedule('scheduler', {
+                category: 'job-failure',
+                title: `Automation "${name}" turned off`,
+                body: `It failed ${failures.value} times in a row. Fix it, then turn it back on.`,
+                priority: 'high',
+                dedupeTag: fatigueDedupeTag(receipt.jobId, logId),
+                actions: [{ id: 'view-logs', label: 'View Logs' }],
+                metadata: {
+                  jobName: name,
+                  link: `/automations?job=${encodeURIComponent(name)}`,
+                },
+              });
+            } finally {
+              resolve();
+            }
+          },
+        );
+        if (!admitted) resolve();
+      }),
+    );
+  }
+
+  private async executeJobLifecycle(initialReceipt: SchedulerDispatchReceipt) {
     const { job } = initialReceipt;
     const done = this.trackJob(initialReceipt.id);
     let receipt = initialReceipt;
@@ -986,6 +1108,23 @@ export class BuiltinScheduler implements ISchedulerProvider {
             startedAt: receipt.startedAt,
             receipt,
             turnAdapter: this.options.turnAdapter,
+            ...(job.target
+              ? {
+                  conversationRuns: this.options.conversationRuns,
+                  lastSuccessAt: this.lastSuccessAt(receipt.jobId),
+                  onConversationStarted: (conversationId: string) => {
+                    const bound = this.ledger.bindDedicatedConversation(
+                      receipt.jobId,
+                      conversationId,
+                    );
+                    if (bound.kind === 'unavailable')
+                      this.options.logger?.warn(
+                        'Automation conversation could not be recorded',
+                        { job: job.name },
+                      );
+                  },
+                }
+              : {}),
             notificationService: this.notificationService,
             broadcast: (event) => this.broadcast(event),
             announcementOutbox: this.announcementOutbox,
@@ -1535,7 +1674,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
           actions: [{ id: 'view-scheduler', label: 'View Scheduler' }],
           metadata: {
             lastTickAt: new Date(this.lastTickAt).toISOString(),
-            link: '/schedule',
+            link: '/automations',
           },
         }),
       );
@@ -1586,6 +1725,8 @@ export class BuiltinScheduler implements ISchedulerProvider {
       parseGitHubPullRequestTarget(opts.monitor.target);
       assertMonitorAuthority(opts);
     }
+    const target = acceptedTarget(opts.target);
+    assertTargetAuthority({ ...opts, target });
     const schedule = opts.schedule as Schedule | undefined;
     if (schedule !== undefined) {
       const err = validateSchedule(schedule);
@@ -1603,6 +1744,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
       notifyStart: opts.notifyStart,
       retryCount: opts.retryCount,
       retryDelaySecs: opts.retryDelaySecs,
+      ...(target ? { target, createdBy: opts.createdBy } : {}),
       monitor: opts.monitor
         ? {
             ...opts.monitor,
@@ -1622,18 +1764,19 @@ export class BuiltinScheduler implements ISchedulerProvider {
     target: string,
     opts: Record<string, unknown>,
   ): Promise<string> {
-    const normalized =
+    const normalized: Record<string, unknown> =
       typeof opts.cron === 'string'
         ? {
             ...opts,
             schedule: { kind: 'cron' as const, expr: opts.cron },
           }
-        : opts;
+        : { ...opts };
     const schedule = normalized.schedule as Schedule | undefined;
     if (schedule !== undefined) {
       const error = validateSchedule(schedule);
       if (error !== null) throw new Error(`Invalid schedule: ${error}`);
     }
+    this.assertEditKeepsTargetAuthority(target, normalized);
     let durableUpdate = normalized;
     if (normalized.monitor && typeof normalized.monitor === 'object') {
       // Monitor authority has no top-level Agent. Strip compatibility input
@@ -1743,6 +1886,61 @@ export class BuiltinScheduler implements ISchedulerProvider {
       throw new Error(`Job '${target}' not found`);
     if (result.kind === 'busy') throw new Error(monitorBusyMessage(target));
     return `Job '${target}' updated`;
+  }
+
+  /**
+   * An edit may add, change or remove a target, or change what a targeted
+   * job carries; the result must still satisfy `assertTargetAuthority`. A
+   * dedicated target's conversation id stays server-written: an edit that
+   * keeps the same dedicated agent and workspace keeps the recorded one.
+   */
+  private assertEditKeepsTargetAuthority(
+    target: string,
+    update: Record<string, unknown>,
+  ): void {
+    const touches = ['target', 'retryCount', 'monitor', 'createdBy'].some(
+      (key) => Object.hasOwn(update, key),
+    );
+    if (!touches) return;
+    const existing = this.ledger.list();
+    if (existing.kind === 'unavailable') throw storageError(existing);
+    const job = existing.value.find((candidate) => candidate.name === target);
+    if (!job) throw new Error(`Job '${target}' not found`);
+    if (Object.hasOwn(update, 'target')) {
+      const next = update.target as SchedulerAutomationTarget | null;
+      if (next === null) {
+        update.target = undefined;
+      } else {
+        const accepted = acceptedTarget(next)!;
+        const prior = job.target;
+        update.target =
+          accepted.kind === 'dedicated' &&
+          prior?.kind === 'dedicated' &&
+          prior.agent === accepted.agent &&
+          JSON.stringify(prior.workspace ?? null) ===
+            JSON.stringify(accepted.workspace ?? null) &&
+          prior.conversationId
+            ? { ...accepted, conversationId: prior.conversationId }
+            : accepted;
+      }
+    }
+    assertTargetAuthority({
+      monitor: (Object.hasOwn(update, 'monitor')
+        ? update.monitor
+        : job.monitor) as AddJobOpts['monitor'],
+      retryCount: (Object.hasOwn(update, 'retryCount')
+        ? update.retryCount
+        : job.retryCount) as number | undefined,
+      createdBy: (update.createdBy ?? job.createdBy) as AddJobOpts['createdBy'],
+      target: (Object.hasOwn(update, 'target') ? update.target : job.target) as
+        | SchedulerAutomationTarget
+        | undefined,
+    });
+  }
+
+  private lastSuccessAt(jobId: string): string | undefined {
+    const read = this.ledger.lastSuccessAt(jobId);
+    return read.kind === 'available' ? read.value : undefined;
   }
 
   /** Explicit monitor recovery; generic edit/enable may never revive terminal state. */
