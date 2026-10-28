@@ -24,8 +24,9 @@
  * Who is not woken, so a wake can never cause another wake:
  * - the coordinator for its own conversation's turns (its wake turn ending
  *   writes a "finished" notification of its own);
- * - the coordinator for a child it delegated: #3158's delegation result
- *   delivery already brings that result back, once.
+ * - the coordinator for a finished or failed child it delegated: #3158's
+ *   delegation result delivery already brings that settled turn back, once.
+ *   A delegated child that needs the person does wake it: nothing else would.
  *
  * Delivery is the conversation's durable inbox (#3568), the path agent
  * wake-ups use: a running coordinator turn finishes before the wake is
@@ -595,7 +596,13 @@ export class CoordinatorWakeDelivery {
     const outcomes: CoordinatorObserveOutcome[] = [];
     for (const designation of this.ports.store.designations()) {
       if (designation.conversationId === conversationId) continue;
-      if (delegatedBy === designation.conversationId) continue;
+      // #3158 already returns a delegated child's settled turn (any
+      // outcome) to its parent; a child waiting on the person does not settle.
+      if (
+        delegatedBy === designation.conversationId &&
+        item.kind !== 'needs-you'
+      )
+        continue;
       const userId = designation.actor.userId;
       let readable = false;
       try {

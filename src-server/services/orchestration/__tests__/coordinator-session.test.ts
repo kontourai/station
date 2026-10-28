@@ -280,6 +280,12 @@ describe('coordinator wake bounds', () => {
       h.delivery.observe({ ...item(2), sessionId: 'session-child' }),
     ).toEqual([]);
     expect(
+      h.delivery.observe({
+        ...item(4, 'finished'),
+        sessionId: 'session-child',
+      }),
+    ).toEqual([]);
+    expect(
       h.delivery.observe({ ...item(3), sessionId: 'session-private' }),
     ).toEqual([]);
     h.advance(COORDINATOR_WAKE_COALESCE_MS);
@@ -419,5 +425,29 @@ describe('wireCoordinatorWakes', () => {
       },
     ]);
     wired.unsubscribe();
+  });
+});
+
+describe('a delegated child waiting on the person', () => {
+  test('wakes the coordinator that delegated it, since #3158 only returns settled turns', () => {
+    const store = openStore(
+      join(makeTempDir('coordinator-child-'), 'orchestration.sqlite'),
+    );
+    designate(store);
+    const h = harness(store, {
+      delegatedBy: (conversationId) =>
+        conversationId === 'session-child' ? COORDINATOR : undefined,
+    });
+    expect(
+      h.delivery.observe({
+        ...item(5, 'needs-you'),
+        sessionId: 'session-child',
+      }),
+    ).toEqual([{ userId: OWNER, outcome: 'recorded' }]);
+    h.advance(COORDINATOR_WAKE_COALESCE_MS);
+    expect(h.submitted).toHaveLength(1);
+    expect(h.submitted[0]!.payload.message).toContain(
+      'Needs the person: Session session-child',
+    );
   });
 });
