@@ -302,7 +302,7 @@ describe('ApprovalModeChip', () => {
     // Says what the engine default concretely is for Codex, not only that
     // Station has not confirmed a mode.
     expect(defaultOption.closest('label')?.textContent).toContain(
-      'Your Codex settings decide. Unset, Codex asks before network use or writes outside this folder and temp.',
+      'Your Codex settings apply until you pick a mode. Unset, Codex never uses network or writes outside this folder and temp unasked.',
     );
   });
 

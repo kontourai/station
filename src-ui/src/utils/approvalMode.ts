@@ -142,14 +142,14 @@ const ENGINE_MODE_DESCRIPTIONS: Partial<
       "Uses OpenCode's own permission settings until you pick a mode here. After that, Default means Ask first.",
     // Station sends Codex no mode here, so the user's Codex configuration
     // decides. With none, Codex (EXECUTED, codex-cli 0.164.0, empty
-    // CODEX_HOME) reports `on-request` with a read-only sandbox for a host
-    // session in an untrusted folder, and workspace-write without network
-    // under Station's `station-workspace` profile (a trusted host folder
-    // gets `:workspace`, the same). Either way it asks before network or a
-    // write outside the folder and temp, which `workspaceWrite` leaves
-    // writable. Not "Codex Auto": that holds only for workspace-write.
+    // CODEX_HOME, approval policy `on-request`) reports a read-only sandbox
+    // for a host session in a folder with no trust entry, and workspace-write
+    // without network (temp writable too) for a trusted host folder and
+    // under Station's `station-workspace` profile. The copy is a bound on
+    // what runs unasked, which holds for all three; it is not "Codex Auto",
+    // which the read-only case is not.
     codex:
-      'Your Codex settings decide. Unset, Codex asks before network use or writes outside this folder and temp.',
+      'Your Codex settings apply until you pick a mode. Unset, Codex never uses network or writes outside this folder and temp unasked.',
   },
   ask: {
     codex:
