@@ -1,0 +1,7 @@
+{
+  "revision": "57ffc22dca4beeaeb0e23cee15056247d54eb0c8",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"ConnectionManagerModalContent change only reroutes the Forget action through forgetConnection; registration, audience, revocation and Settings callers described here are untouched.","inputs":["docs/guides/web-push-notifications.md","packages/connect/src/react/ConnectionManagerModalContent.tsx"]}
+  ]
+}

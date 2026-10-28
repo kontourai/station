@@ -67,7 +67,7 @@ export function NewChatDefaultsSection({
     : undefined;
   const fixedModelText = projectModelSet
     ? 'the AI model above'
-    : 'the Agent’s own model (this project sets no AI model above)';
+    : 'the Agent’s own model';
   const lastApproval = chatDefaults?.approvalMode.lastUsed;
   const stationApprovalLabel =
     stationApprovalDefault === 'ask' ||
@@ -79,8 +79,8 @@ export function NewChatDefaultsSection({
   const modelDescription =
     form.defaultModelSelection === 'last-used'
       ? lastModel
-        ? `A new chat starts on the model your last chat here started with, for the same Agent (last: ${lastModelLabel} with ${lastModelAgent}). If that model is no longer offered, it starts on ${fixedModelText}.`
-        : `No chat started here has been recorded yet, so a new chat starts on ${fixedModelText} until you start one.`
+        ? `Reuse the last starting model for the same Agent (last: ${lastModelLabel} with ${lastModelAgent}). If unavailable, use ${fixedModelText}.`
+        : `No chat started here has been recorded yet. Use ${fixedModelText}.`
       : projectModelSet
         ? 'A new chat starts on the AI model above wherever its Agent offers that model, ahead of your last pick on this device.'
         : 'This project sets no AI model above, so a new chat starts on the Agent’s own model.';
@@ -88,8 +88,8 @@ export function NewChatDefaultsSection({
   const approvalDescription =
     form.defaultApprovalModeSelection === 'last-used'
       ? lastApproval
-        ? `A new chat starts in the approval mode your last chat here started in (last: ${approvalModeLabel(lastApproval.approvalMode)}). Full access is only reused when you can grant it; otherwise the set approval mode below applies.`
-        : 'No chat started here has been recorded yet, so the set approval mode below applies until you start one.'
+        ? `Reuse the last starting approval mode (last: ${approvalModeLabel(lastApproval.approvalMode)}). Without permission for full access, use the set mode below.`
+        : 'No chat started here has been recorded yet. Use the set approval mode below.'
       : 'A new chat starts in the set approval mode below.';
 
   return (
@@ -98,7 +98,7 @@ export function NewChatDefaultsSection({
       className="project-settings__section"
       eyebrow="New chat default"
       title="New chats"
-      description="Start new chats from these settings or from your last chat here. An Agent's approval mode applies first; the composer always wins."
+      description="Start from project defaults or your last chat. Agent approval settings take precedence; composer choices override defaults."
     >
       <PageRow
         label="Starting model"
@@ -144,7 +144,7 @@ export function NewChatDefaultsSection({
       />
       <PageRow
         label="Set approval mode"
-        description="Used by “Use the set approval mode” and when there's no history. Saving full access needs your full-access permission."
+        description="Also used when there is no chat history. Full access requires permission; otherwise a narrower mode applies."
         control={
           <select
             id="project-default-approval-mode"
