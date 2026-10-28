@@ -1972,6 +1972,17 @@ carries display data and does not confer workspace-read authority. The server
 reuses Project/Session admission and confines reads to that workspace or a
 verified Git worktree of the same repository.
 
+A refused read answers `{ success: false, error, reason }` with a
+`WorkspaceVisualFileRefusal`: `missing` and `no-workspace` (404),
+`outside-project` (403), `unsupported-type` (415), `too-large` (413) and
+`unreadable` (422), per `WORKSPACE_VISUAL_FILE_REFUSAL_STATUS`. Name and
+extension are checked before any filesystem access, and containment is decided
+on resolved paths; a path or link that does not end inside the allowed folders
+is `outside-project` whether or not its target exists.
+`workspaceVisualFileUnavailableReason(status, body)` believes a reason only
+with its paired status, and otherwise reports `unauthorized` (401, or 403
+without a reason), `server-error` (5xx) or `unavailable`.
+
 ## Walkthrough
 
 [`@kontourai/station-contracts/walkthrough`](../../packages/contracts/src/walkthrough.ts)

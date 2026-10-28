@@ -17,10 +17,14 @@ even when the profile file requests it.
 
 Local HTML and raster-image links in a Project conversation also open inline.
 Station reads the file through that Project's workspace or a verified Git
-worktree of the same repository. HTML uses the same isolated viewer; missing
-or out-of-scope files show an unavailable message rather than navigating away
-from the conversation. These file previews follow the current file bytes and
-are not retained published pages.
+worktree of the same repository. HTML uses the same isolated viewer. An
+image's alt text is shown as its caption, beside a Hide/Show control. A file
+that cannot be shown stays in the conversation as a card that says why: not
+on the host, outside the Project's folders, not a PNG image or HTML page, too
+large, no Project folder, unreadable, signed out, or a Station error. A path
+that does not resolve inside the Project gets the same answer whether or not
+anything exists there. These file previews follow
+the current file bytes and are not retained published pages.
 
 ## Images saved on the host
 
