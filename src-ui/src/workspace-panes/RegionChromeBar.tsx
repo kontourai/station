@@ -358,7 +358,7 @@ export function RegionChromeSlotsProvider({
   absorb,
   children,
 }: {
-  slots: Pick<RegionChromeSlots, 'leading' | 'trailing'>;
+  slots: Pick<RegionChromeSlots, 'start' | 'leading' | 'trailing'>;
   chrome: DockShellChrome;
   tabs: readonly RegionChromeTab[];
   selectedSurfaceId: string | undefined;
