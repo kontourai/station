@@ -3094,6 +3094,23 @@ describe('useActiveChatTranscript', () => {
       });
       expect(sequences(result.current.events)).toHaveLength(14);
       expect(result.current.hasMore).toBe(false);
+
+      // Paid: the next reload that lands on held events reads nothing more.
+      fetchWindow.mockResolvedValueOnce({
+        protocolVersion: 1,
+        watermark: 16,
+        hasMore: true,
+        nextCursor: 'below-9-third',
+        events: turn9(9, 16),
+      });
+      rerender({ revision: 3 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toHaveLength(16),
+      );
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      expect(fetchWindow).toHaveBeenCalledTimes(7);
     });
 
     test('a page that cuts only an older turn reads nothing more', async () => {
