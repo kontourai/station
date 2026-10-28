@@ -4698,6 +4698,7 @@ Hosted deployments mount only the session read; the first two answer 404 there.
 
 `POST /api/orchestration/conversations/:conversationId/memory-continuation`
 continues a conversation whose latest turn ended with `engine-memory-exhausted`
+(or a Codex memory kill stored before that code, as `isEngineMemoryExhaustedFailure` recognises)
 ([continuation module](../../src-server/services/orchestration/memory-exhaustion-continuation.ts)).
 It sends one Station-authored turn through the conversation inbox as the caller,
 under a key derived from the dead Session and turn, and answers 202 with that
