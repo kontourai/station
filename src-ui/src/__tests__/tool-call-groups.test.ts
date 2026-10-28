@@ -270,6 +270,81 @@ describe('classifyToolCallRun', () => {
     );
   });
 
+  describe('#4266: a command row leads with what ran, not the shell wrapper', () => {
+    const label = (args: unknown, state = 'completed', needsApproval = false) =>
+      classifyFirstRun([
+        toolCall({
+          toolCallId: 'a',
+          toolName: 'Bash',
+          args,
+          state,
+          needsApproval,
+        }),
+      ]).summary;
+    const heredoc = [
+      "/bin/bash -lc \"python3 - <<'PY'",
+      'import json',
+      'for line in open("x"):',
+      '    print(line)',
+      'a = 1',
+      'b = 2',
+      'c = 3',
+      'd = 4',
+      'e = 5',
+      'PY"',
+    ].join('\n');
+
+    test.each([
+      [
+        "/bin/bash -lc 'npx --no @kontourai/veritas readiness'",
+        'Ran npx --no @kontourai/veritas readiness',
+      ],
+      ['bash -c "git status --short"', 'Ran git status --short'],
+      ['/usr/bin/zsh -l -c \'echo "a b"\'', 'Ran echo "a b"'],
+      ["sh -c 'echo it'\\''s'", "Ran echo it's"],
+      [heredoc, 'Ran python3 script (8 lines)'],
+      // Not exactly a wrapper and one script: shown as written.
+      ["bash -c 'echo a' extra", "Ran bash -c 'echo a' extra"],
+      ['bash script.sh', 'Ran bash script.sh'],
+      ["bash -lc 'unterminated", "Ran bash -lc 'unterminated"],
+    ])('a settled %s', (command, expected) => {
+      expect(label({ command })).toBe(expected);
+    });
+
+    test('an argv wrapper is unwrapped too', () => {
+      expect(
+        label({ command: ['/bin/bash', '-lc', 'cargo test --quiet'] }),
+      ).toBe('Ran cargo test --quiet');
+    });
+
+    test("the engine's description leads, followed by the unwrapped command", () => {
+      const args = {
+        command: "/bin/bash -lc 'npx --no @kontourai/veritas readiness'",
+        description: 'Run the Veritas readiness check',
+      };
+      expect(label(args)).toBe(
+        'Run the Veritas readiness check · npx --no @kontourai/veritas readiness',
+      );
+      expect(label(args, 'running')).toBe(
+        'Run the Veritas readiness check · npx --no @kontourai/veritas readiness…',
+      );
+      expect(label({ description: 'Wait for the build' })).toBe(
+        'Wait for the build',
+      );
+    });
+
+    test('a call awaiting approval shows the whole command, wrapper and all, and no description', () => {
+      const command = "/bin/bash -lc 'rm -rf build'";
+      expect(
+        label(
+          { command, description: 'Clean the build' },
+          'awaiting-approval',
+          true,
+        ),
+      ).toBe(`Run ${command}`);
+    });
+  });
+
   test.each([
     'JAVA_TOOL_OPTIONS',
     'npm_config_script_shell',
