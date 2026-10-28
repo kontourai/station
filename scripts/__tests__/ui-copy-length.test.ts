@@ -119,7 +119,6 @@ describe('UI copy length policy', () => {
       `console.warn('${VERBOSE}');`,
       `logger.info('${VERBOSE}');`,
       `log.debug('${VERBOSE}');`,
-      `throw new TypeError(\`${VERBOSE}\`);`,
       `import thing from '${VERBOSE}';`,
       `export { thing } from '${VERBOSE}';`,
       `<div className={\`${'panel '.repeat(40)}\`} />`,
@@ -149,10 +148,25 @@ describe('UI copy length policy', () => {
       `{/* ${VERBOSE} */}<p>Saved.</p>`,
       `// ${VERBOSE}\nconst x = <p>Saved. Synced.</p>;`,
       `<p>Pairing failed. Try again.</p>`,
-      `throw new Error('${VERBOSE}');`,
+      `<Row ariaLabel="${VERBOSE}" />`,
     ]) {
       expect(kinds('src-ui/src/Quiet.tsx', source), source).toEqual([]);
     }
+  });
+
+  it('counts error messages, which the UI often renders as written', () => {
+    expect(
+      kinds('src-ui/src/Loud.tsx', `throw new Error('${VERBOSE}');`),
+    ).toEqual([
+      'long-copy:literal:new:Error',
+      'multi-sentence:literal:new:Error',
+    ]);
+    expect(
+      kinds('src-ui/src/Loud.tsx', `throw new TypeError(\`${VERBOSE}\`);`),
+    ).toEqual([
+      'long-copy:literal:new:TypeError',
+      'multi-sentence:literal:new:TypeError',
+    ]);
   });
 
   it('counts sentences without splitting on abbreviations, decimals, ellipses or stat labels', () => {

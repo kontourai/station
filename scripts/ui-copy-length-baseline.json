@@ -15,6 +15,9 @@
       "multi-sentence:text:p": 1,
       "long-copy:text:p": 1
     },
+    "src-ui/src/components/OnboardingGate.tsx": {
+      "long-copy:literal:return": 1
+    },
     "src-ui/src/components/PendingPairingReconciler.tsx": {
       "multi-sentence:literal:call:finish": 1
     },
@@ -242,6 +245,7 @@
       "long-copy:text:PageRow": 1
     },
     "src-ui/src/views/connections-hub/ConnectStationDialog.tsx": {
+      "long-copy:literal:new:Error": 1,
       "multi-sentence:literal:call:setError": 1
     },
     "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx": {

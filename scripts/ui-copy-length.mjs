@@ -34,8 +34,8 @@
  * identity, addresses, prompt slots), text inside `code`/`pre`/`kbd`/`samp`,
  * strings without whitespace (identifiers, paths, URLs), command lines,
  * markup and SVG path data, types, imports, property names, comparisons,
- * tagged templates, log and DOM calls (`NON_COPY_CALLEE`) and `new *Error`
- * messages, which are developer diagnostics. There is no i18n catalog in
+ * tagged templates, and log and DOM calls (`NON_COPY_CALLEE`). Error messages
+ * count, because the UI often renders them as written. There is no i18n catalog in
  * `src-ui`.
  *
  * Known gap: the ratchet counts findings, so a string already over the cap
@@ -207,7 +207,7 @@ function calleeName(expression, ast) {
  * accessibility names (`aria-label` is spoken, not shown).
  */
 const NON_COPY_NAME =
-  /^(?:aria-(?!description$).*|as|class|className|\w+ClassName|css|d|data-.*|font|fontFamily|href|id|instructions|key|points|prompt|rel|role|sandbox|sizes|src|srcSet|style|system|systemPrompt|testId|transform|type|viewBox)$/;
+  /^(?:aria-(?!description$).*|aria(?!Description$)[A-Z]\w*|as|class|className|\w+ClassName|css|d|data-.*|font|fontFamily|href|id|instructions|key|points|prompt|rel|role|sandbox|sizes|src|srcSet|style|system|systemPrompt|testId|transform|type|viewBox)$/;
 /**
  * Not copy, by shape: HTML or CSS markup, a code comment, or SVG path data.
  * Only the catch-all literal rule applies this; JSX text cannot start so.
@@ -243,9 +243,8 @@ function literalSite(node, ast) {
     if (child === parent.expression) return null;
     const callee = calleeName(parent.expression, ast);
     if (NON_COPY_CALLEE.test(callee)) return null;
-    // Errors a component throws are developer diagnostics; one shown to a
-    // person is a translated message, measured where it is written.
-    if (ts.isNewExpression(parent) && /Error$/.test(callee)) return null;
+    // `new Error(...)` counts too: src-ui renders many error messages as
+    // written (e.g. a query's `error.message`).
     return `${ts.isNewExpression(parent) ? 'new' : 'call'}:${callee}`;
   }
   if (ts.isJsxAttribute(parent)) {

@@ -583,7 +583,10 @@ export function CoreUpdateCheck({
     status,
     progress: serviceProgress,
     unreachable,
-    superseded: comparisonSuperseded,
+    // This card's own followed update polls through the restart disconnect
+    // (which reads as a stale scope), so its progress still counts.
+    superseded:
+      comparisonSuperseded && !(trackedServiceUpdate && serviceUpdateInFlight),
     updating: restarting || selfUpdating,
     restartOffered: showStageApply,
   });

@@ -1474,6 +1474,34 @@ describe('a prebuilt release archive (#2675 D3)', () => {
     expect(screen.queryByText(/stopped following the update/)).toBeNull();
   });
 
+  test('the badge keeps reporting a followed update while its restart drops the connection', () => {
+    const view = renderWith(archiveService());
+    fireEvent.click(screen.getByRole('button', { name: 'Update server' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Update and restart' }));
+    act(() => {
+      applyOptions?.onSuccess?.({
+        success: true,
+        serviceUpdate: { requestId: REQUEST_ID },
+      });
+    });
+    serviceProgressState.data = {
+      state: 'updating',
+      requestId: REQUEST_ID,
+      phase: 'stopping',
+      fromVersion: '0.8.0-preview.1',
+      targetVersion: '0.8.0-preview.2',
+      attempts: 0,
+    };
+    // The restart takes the server away: the connection reads as checking.
+    view.rerender(
+      <CoreUpdateCheck
+        apiBase="http://localhost:3141"
+        context={makeContext({ reachability: 'checking' })}
+      />,
+    );
+    expect(badgeText()).toBe('Updating');
+  });
+
   test('a server that stops answering mid-update says it is restarting, not that the update failed', () => {
     serviceProgressState.data = {
       state: 'updating',
