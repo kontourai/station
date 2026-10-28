@@ -769,7 +769,9 @@ describe('ChatDockBody memory-exhaustion marker', () => {
         expect(
           screen.queryByText(/Run memory-heavy checks sequentially/),
         ).toBeNull();
-        fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+        fireEvent.click(
+          await screen.findByRole('button', { name: 'Continue' }),
+        );
         await waitFor(() =>
           expect(sdk.continueAfterMemoryExhaustion).toHaveBeenCalledWith(
             'conversation-oom',
@@ -782,7 +784,11 @@ describe('ChatDockBody memory-exhaustion marker', () => {
     test('a kill a person has moved on from reads in current copy, with no Continue', async () => {
       sdk.fetchWindow.mockResolvedValue(
         stored('codex-turn-orphaned', LEGACY, [
-          { method: 'turn.started', turnId: 'turn-2', prompt: 'Something else.' },
+          {
+            method: 'turn.started',
+            turnId: 'turn-2',
+            prompt: 'Something else.',
+          },
           { method: 'turn.completed', turnId: 'turn-2' },
         ]),
       );

@@ -441,7 +441,10 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
     const inventoryReads = invalidateQueries.mock.calls.filter(
       ([filters]: unknown[]) =>
         JSON.stringify(filters) ===
-        JSON.stringify({ queryKey: ['conversation-inventory'], type: 'active' }),
+        JSON.stringify({
+          queryKey: ['conversation-inventory'],
+          type: 'active',
+        }),
     );
     expect(inventoryReads).toHaveLength(1);
   });

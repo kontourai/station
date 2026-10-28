@@ -3773,7 +3773,10 @@ describe('Global Conversation Routes', () => {
       });
       expect(posted.status).toBe(200);
 
-      for (const principal of ['human:device:phone-1', 'human:local:operator']) {
+      for (const principal of [
+        'human:device:phone-1',
+        'human:local:operator',
+      ]) {
         expect((await inventoryAs(principal)).acknowledgedAt).toBe(
           '2026-10-28T04:10:00.000Z',
         );

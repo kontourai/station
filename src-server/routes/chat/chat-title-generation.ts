@@ -9,8 +9,8 @@
  */
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import { jsonSchema } from 'ai';
-import { createRuntimeFrameworkModel } from '../../runtime/plugins/runtime-provider-resolution.js';
 import { isHostedTenantExecutionRequired } from '../../runtime/bootstrap/hosted-tenant-mode.js';
+import { createRuntimeFrameworkModel } from '../../runtime/plugins/runtime-provider-resolution.js';
 import type { RuntimeContext } from '../../runtime/types.js';
 import { CHAT_TITLE_SERVICE_PRINCIPAL } from '../../services/identity/service-principals.js';
 

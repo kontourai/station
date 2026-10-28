@@ -43,7 +43,8 @@ const PEM_REDACTED = '[REDACTED PEM BLOCK]';
  * A tracing ERROR line (`<time> ERROR <target>: <message>`) or a CLI's own
  * `Error:` / `error:` line, or a Rust panic.
  */
-const ERROR_LINE = /(?:^|\s)ERROR\s|^(?:error|fatal)(?:\[[^\]]*\])?:|panicked at/i;
+const ERROR_LINE =
+  /(?:^|\s)ERROR\s|^(?:error|fatal)(?:\[[^\]]*\])?:|panicked at/i;
 /** The message of a tracing line, after its `target:`. */
 const TRACING_MESSAGE = /\sERROR\s+[\w:]+:\s*(.*)$/;
 
@@ -151,10 +152,7 @@ export class CodexStderrTail {
       const line = this.lines[index] ?? '';
       if (!ERROR_LINE.test(line)) continue;
       const message = normalized(TRACING_MESSAGE.exec(line)?.[1] ?? line);
-      if (
-        message &&
-        this.reported.some((text) => text.includes(message))
-      )
+      if (message && this.reported.some((text) => text.includes(message)))
         continue;
       return line;
     }

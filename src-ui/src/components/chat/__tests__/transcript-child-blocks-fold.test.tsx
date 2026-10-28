@@ -18,7 +18,8 @@ import {
   useTranscriptChildBlocks,
 } from '../transcript-child-work';
 
-const INTENT = 'I will run the commands, then ask a subagent to list the files.';
+const INTENT =
+  'I will run the commands, then ask a subagent to list the files.';
 const NARRATION = 'The shell is stalling, so I will use the system Python.';
 const OUTCOME =
   'Completed the commands.\n\nThe subagent found one file: `README.md`.';
