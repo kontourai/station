@@ -488,6 +488,55 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
     expect(inventoryReads()).toHaveLength(2);
   });
 
+  it('re-reads inventory after an in-flight read outlasts the trailing window', async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    client.setQueryData(['conversation-inventory'], 'old');
+    let finish!: (value: string) => void;
+    const read = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            finish = resolve;
+          }),
+      )
+      .mockResolvedValue('fresh');
+    const observer = new QueryObserver(client, {
+      queryKey: ['conversation-inventory'],
+      queryFn: read,
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          openSseResponseWithOneFrame(
+            terminalFrame('slow-1', 'turn.completed') +
+              terminalFrame('slow-2', 'turn.completed'),
+          ),
+        ),
+    );
+    const release = ensureOrchestrationEventStream(
+      'https://inventory-slow.example.test',
+      client,
+    );
+    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1));
+    await vi.advanceTimersByTimeAsync(5_100);
+    expect(read).toHaveBeenCalledTimes(1);
+    finish('stale');
+    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() =>
+      expect(client.getQueryData(['conversation-inventory'])).toBe('fresh'),
+    );
+    unsubscribe();
+    release();
+    client.clear();
+  });
+
   it('leaves the read-model alone for ordinary streaming frames', async () => {
     const { client, invalidateQueries } = spiedClient();
     vi.stubGlobal(

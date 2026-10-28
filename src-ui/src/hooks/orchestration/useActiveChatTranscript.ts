@@ -1,5 +1,8 @@
 import type { OrchestrationSequencedEvent } from '@kontourai/station-contracts/orchestration';
-import { isEngineMemoryExhaustedFailure } from '@kontourai/station-contracts/provider';
+import {
+  isEngineMemoryExhaustedFailure,
+  lastRuntimeError,
+} from '@kontourai/station-contracts/provider';
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
@@ -868,6 +871,20 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     // way, and a global text match would collapse them. A marker with no
     // turn identity keeps the text-comparison fallback it had before.
     const projectedFailures = projectedTurnFailures(visibleProjected);
+    const rawFailures = projectedFailures.map((turn) => {
+      const failure = lastRuntimeError(
+        stitchedEvents
+          .map(({ event }) => event)
+          .filter((event) => event.turnId === turn.turnId),
+      );
+      return {
+        ...turn,
+        failure:
+          failure?.method === 'runtime.error'
+            ? { code: failure.code, message: failure.message }
+            : undefined,
+      };
+    });
     const adoptedMarkers = adoptStoredFailureMarkers(
       session.messages,
       projectedFailures,
@@ -875,7 +892,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     const markerMessages = [
       ...adoptedMarkers,
       ...storedMemoryKillMarkers(
-        projectedFailures,
+        rawFailures,
         new Set(
           adoptedMarkers
             .filter((message) => isLiveFailureMarker(message))

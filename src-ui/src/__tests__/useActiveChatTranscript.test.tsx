@@ -3002,6 +3002,94 @@ describe('useActiveChatTranscript', () => {
       },
     );
 
+    test('Load older resumes a failed held gap before older history', async () => {
+      const start = event('e6', 'turn.started', {
+        turnId: 'turn-6',
+        prompt: 'Q6',
+      });
+      const answer = (id: string, delta: string) =>
+        event(id, 'content.text-delta', {
+          turnId: 'turn-6',
+          itemId: 'answer-6',
+          delta,
+        });
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 11,
+          hasMore: true,
+          nextCursor: 'gap',
+          turnStartDetached: true,
+          events: [start, answer('e11', 'C.')],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 11,
+          hasMore: true,
+          nextCursor: 'older',
+          events: [start, answer('e7', 'A.')],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 11,
+          hasMore: true,
+          nextCursor: 'older-old',
+          events: [
+            event('e1', 'turn.started', { turnId: 'old', prompt: 'old' }),
+          ],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 21,
+          hasMore: true,
+          nextCursor: 'gap2',
+          turnStartDetached: true,
+          events: [
+            start,
+            answer('e20', 'E.'),
+            event('e21', 'turn.completed', {
+              turnId: 'turn-6',
+              outputText: 'A. C. D. E.',
+            }),
+          ],
+        })
+        .mockRejectedValueOnce(new Error('gap failed'))
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 21,
+          hasMore: true,
+          nextCursor: 'gap3',
+          events: [answer('e15', 'D.')],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 21,
+          hasMore: true,
+          nextCursor: 'older',
+          events: [answer('e11', 'C.')],
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://failed-held-gap.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(2));
+      await act(async () => result.current.loadOlder());
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(result.current.error?.message).toBe('gap failed'),
+      );
+      expect(result.current.partialTurnStartEventIds.has('e6')).toBe(true);
+      await act(async () => result.current.loadOlder());
+      expect(cursorOf(5)).toBe('gap2');
+      expect(cursorOf(6)).toBe('gap3');
+      expect(sequences(result.current.events)).toContain(15);
+      expect(result.current.partialTurnStartEventIds.has('e6')).toBe(false);
+    });
+
     test('a fresh read fills the gap and leaves Load older after it', async () => {
       fetchWindow
         .mockResolvedValueOnce({
@@ -4511,5 +4599,25 @@ describe('useActiveChatTranscript stored memory kill', () => {
     );
     expect(found).toHaveLength(1);
     expect(found[0]?.content ?? '').not.toContain('[CHAT_ERROR');
+  });
+
+  test('a later retriable Codex error prevents the memory Continue card', async () => {
+    const found = await read([
+      ...killed('turn-1', 'engine-memory-exhausted', CURRENT),
+      event('e4', 'runtime.error', {
+        turnId: 'turn-1',
+        severity: 'error',
+        code: 'stream-disconnected',
+        message: 'will retry',
+        retriable: true,
+      }),
+    ]);
+    expect(
+      found.some((message) =>
+        (message.content ?? '').includes(
+          '[CHAT_ERROR:engine-memory-exhausted]',
+        ),
+      ),
+    ).toBe(false);
   });
 });

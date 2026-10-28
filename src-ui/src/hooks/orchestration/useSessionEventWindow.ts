@@ -287,9 +287,9 @@ export function useSessionEventWindow(
    * A reload's detached start over held history, partial until a read runs
    * unbroken down to `floor` (what is held), whatever an earlier fill closed.
    */
-  const heldGapRef = useRef<{ anchor: string; floor: number } | undefined>(
-    undefined,
-  );
+  const heldGapRef = useRef<
+    { anchor: string; floor: number; cursor: string } | undefined
+  >(undefined);
   const closedRef = useRef(new Set<string>());
   const [partialTurnStartEventIds, setPartialTurnStartEventIds] =
     useState<ReadonlySet<string>>(NO_PARTIAL_TURNS);
@@ -425,7 +425,7 @@ export function useSessionEventWindow(
         : undefined;
       if (fill && olderLoadedRef.current && anchor) {
         partialRef.current.add(anchor);
-        heldGapRef.current = { anchor, floor: fill.floor };
+        heldGapRef.current = { anchor, floor: fill.floor, cursor: fill.cursor };
       }
       setPartialTurnStartEventIds(new Set(partialRef.current));
       if (!olderLoadedRef.current) setCursor(page.nextCursor);
@@ -516,9 +516,18 @@ export function useSessionEventWindow(
         setEvents((current) => mergePages(page.events, current));
         notePartialTurnStarts(page, partialRef.current, closedRef.current);
         const heldGap = heldGapRef.current;
-        if (heldGap && contiguousFrom(page) <= heldGap.floor) {
-          partialRef.current.delete(heldGap.anchor);
-          heldGapRef.current = undefined;
+        if (heldGap) {
+          if (
+            pageCursor === heldGap.cursor &&
+            contiguousFrom(page) <= heldGap.floor
+          ) {
+            partialRef.current.delete(heldGap.anchor);
+            heldGapRef.current = undefined;
+          } else {
+            partialRef.current.add(heldGap.anchor);
+            if (pageCursor === heldGap.cursor && page.nextCursor)
+              heldGap.cursor = page.nextCursor;
+          }
         }
         setPartialTurnStartEventIds(new Set(partialRef.current));
         if (options.olderLoaded) olderLoadedRef.current = true;
@@ -542,6 +551,11 @@ export function useSessionEventWindow(
   );
 
   const loadOlder = useCallback(async () => {
+    const heldGap = heldGapRef.current;
+    if (heldGap) {
+      await fillRef.current(heldGap.cursor, heldGap.floor);
+      return;
+    }
     const pageCursor = cursorRef.current;
     if (pageCursor)
       await readOlder(pageCursor, { adoptCursor: true, olderLoaded: true });
@@ -573,7 +587,8 @@ export function useSessionEventWindow(
       }
       // Bounded or out of pages: Load older owns the rest of the gap.
       pendingFloorRef.current = undefined;
-      if (!adoptCursor && pageCursor) setCursor(pageCursor);
+      if (!adoptCursor && pageCursor && !heldGapRef.current)
+        setCursor(pageCursor);
     },
     [readOlder],
   );
@@ -674,7 +689,7 @@ export function useSessionEventWindow(
     ...(currentReader && sessionLineage ? { sessionLineage } : {}),
     handoffs: currentReader ? handoffs : [],
     contextBoundaries: currentReader ? contextBoundaries : [],
-    hasMore: currentReader && Boolean(cursor),
+    hasMore: currentReader && Boolean(cursor || heldGapRef.current),
     loadOlder,
     reload,
     upgradeRequired: currentReader && upgradeRequired,

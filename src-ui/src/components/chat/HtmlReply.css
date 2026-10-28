@@ -35,6 +35,9 @@
   display: block;
   max-width: 100%;
 }
+.workspace-file-reply--unavailable {
+  display: inline;
+}
 
 /* A visual reply's label: an image's alt text as a caption under it, a
    link's text above its page; the disclosure beside it is a quiet button. */

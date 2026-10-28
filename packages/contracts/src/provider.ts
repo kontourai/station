@@ -825,6 +825,13 @@ export function isEngineMemoryExhaustedFailure(failure: {
   );
 }
 
+/** The last raw error decides whether a turn can be continued. */
+export function lastRuntimeError<T extends { readonly method?: unknown }>(
+  events: readonly T[],
+): T | undefined {
+  return events.findLast((event) => event.method === 'runtime.error');
+}
+
 /**
  * `runtime.warning` code: the kernel OOM killer killed a process inside an
  * engine's workload scope (normally a command the engine started) while the

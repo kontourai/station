@@ -115,6 +115,9 @@ export class CodexStderrTail {
     // PEM blocks are found on the whole line: a cut could separate a BEGIN
     // from its END.
     const line = boundedLine(this.withoutPem(plainLine(raw)));
+    // The unscanned suffix may have opened a block. Fail closed until a
+    // subsequent line cannot be PEM content or closes the block.
+    if (raw.length > CODEX_STDERR_REDACT_MAX_CHARS * 2) this.inPem = true;
     if (!line) return '';
     this.lines.push(line);
     this.chars += line.length + 1;
@@ -126,47 +129,44 @@ export class CodexStderrTail {
 
   /** `line` with any PEM block in it, or a body line, withheld. */
   private withoutPem(line: string): string {
-    if (this.inPem) {
-      if (!line) return '';
-      const end = PEM_END.exec(line);
-      if (end) {
+    const parts: string[] = [];
+    let rest = line;
+    while (rest) {
+      if (this.inPem) {
+        const end = PEM_END.exec(rest);
+        if (end) {
+          this.inPem = false;
+          rest = rest.slice(end.index + end[0].length).trim();
+          continue;
+        }
+        if (PEM_INNER_LINE.test(rest)) break;
         this.inPem = false;
-        return line.slice(end.index + end[0].length).trim();
       }
-      if (PEM_INNER_LINE.test(line)) return '';
-      // Not a block line: the block's END was lost.
-      this.inPem = false;
-    }
-    if (!line) return '';
-    const begin = PEM_BEGIN.exec(line);
-    if (begin) {
-      const before = line.slice(0, begin.index).trim();
-      const rest = line.slice(begin.index + begin[0].length);
+      const begin = PEM_BEGIN.exec(rest);
       const end = PEM_END.exec(rest);
-      if (!end) {
+      if (begin && (!end || begin.index < end.index)) {
+        parts.push(rest.slice(0, begin.index).trim(), PEM_REDACTED);
         this.inPem = true;
-        return joinParts(before, PEM_REDACTED);
+        rest = rest.slice(begin.index + begin[0].length).trim();
+        // The remainder belongs to the block even if it is not a body line.
+        const closing = PEM_END.exec(rest);
+        if (!closing) break;
+        this.inPem = false;
+        rest = rest.slice(closing.index + closing[0].length).trim();
+        continue;
       }
-      return joinParts(
-        before,
-        PEM_REDACTED,
-        rest.slice(end.index + end[0].length).trim(),
-      );
+      if (!end) {
+        parts.push(rest);
+        break;
+      }
+      if (PEM_LAST_BODY_LINE.test(this.lines.at(-1) ?? ''))
+        this.chars -= (this.lines.pop() ?? '').length + 1;
+      while (PEM_BODY_LINE.test(this.lines.at(-1) ?? ''))
+        this.chars -= (this.lines.pop() ?? '').length + 1;
+      parts.push(rest.slice(0, end.index).trim(), PEM_REDACTED);
+      rest = rest.slice(end.index + end[0].length).trim();
     }
-    const end = PEM_END.exec(line);
-    if (!end) return line;
-    // An END whose BEGIN was never seen: the body lines above it are its,
-    // the one just above it possibly short.
-    if (PEM_LAST_BODY_LINE.test(this.lines.at(-1) ?? ''))
-      this.chars -= (this.lines.pop() ?? '').length + 1;
-    while (PEM_BODY_LINE.test(this.lines.at(-1) ?? '')) {
-      this.chars -= (this.lines.pop() ?? '').length + 1;
-    }
-    return joinParts(
-      line.slice(0, end.index).trim(),
-      PEM_REDACTED,
-      line.slice(end.index + end[0].length).trim(),
-    );
+    return joinParts(...parts);
   }
 
   /** Notes text already shown to the user (a `configWarning`). */

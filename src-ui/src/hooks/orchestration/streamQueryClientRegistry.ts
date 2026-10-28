@@ -56,6 +56,7 @@ export interface SessionReadModelRefreshState {
   /** #4266: the conversation inventory's own refresh, throttled apart. */
   inventoryLastAt: number;
   inventoryDeferred: ReturnType<typeof setTimeout> | undefined;
+  inventoryAwaitingSettle: (() => void) | undefined;
 }
 const sessionReadModelRefreshes = new Map<
   string,
@@ -74,6 +75,7 @@ export function sessionReadModelRefreshState(
       owed: false,
       inventoryLastAt: 0,
       inventoryDeferred: undefined,
+      inventoryAwaitingSettle: undefined,
     };
     sessionReadModelRefreshes.set(apiBase, state);
   }
@@ -120,6 +122,7 @@ export function registerOrchestrationStreamQueryClient(
       if (state?.inventoryDeferred !== undefined)
         clearTimeout(state.inventoryDeferred);
       state?.awaitingSettle?.();
+      state?.inventoryAwaitingSettle?.();
       sessionReadModelRefreshes.delete(apiBase);
     }
   };
@@ -132,6 +135,7 @@ export function resetStreamQueryClientRegistryForTests(): void {
     if (state.inventoryDeferred !== undefined)
       clearTimeout(state.inventoryDeferred);
     state.awaitingSettle?.();
+    state.inventoryAwaitingSettle?.();
   }
   sessionReadModelRefreshes.clear();
   streamQueryClients.length = 0;

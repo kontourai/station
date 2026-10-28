@@ -33,6 +33,7 @@ import {
 import {
   isEngineMemoryExhaustedFailure,
   isStationMemoryContinuationTurn,
+  lastRuntimeError,
   MEMORY_CONTINUATION_CLIENT_TURN_PREFIX,
   memoryContinuationKeyKind,
 } from '@kontourai/station-contracts/provider';
@@ -253,11 +254,8 @@ export class MemoryExhaustionContinuation {
       .listEventWindowByTurn(threadId, { turnLimit: 1, direction: 'newest' })
       .events.map((event) => record(event.payload))
       .filter((payload): payload is Record<string, unknown> => !!payload);
-    let failureIndex = -1;
-    payloads.forEach((payload, index) => {
-      if (payload.method === 'runtime.error') failureIndex = index;
-    });
-    const failure = payloads[failureIndex];
+    const failure = lastRuntimeError(payloads);
+    const failureIndex = failure ? payloads.indexOf(failure) : -1;
     if (
       !failure ||
       !isEngineMemoryExhaustedFailure(failure) ||

@@ -267,13 +267,25 @@ const CONVERSATION_INVENTORY_REFRESH_WINDOW_MS = 5000;
 function requestConversationInventoryRefresh(apiBase: string): void {
   const state = sessionReadModelRefreshState(apiBase);
   if (state.inventoryDeferred !== undefined) return;
+  if (state.inventoryAwaitingSettle !== undefined) return;
   const run = () => {
     state.inventoryDeferred = undefined;
     const client = currentStreamQueryClient(apiBase);
     if (!client) return;
+    const queryKey = ['conversation-inventory'];
+    if (client.isFetching({ queryKey, type: 'active' }) > 0) {
+      const stop = client.getQueryCache().subscribe(() => {
+        if (client.isFetching({ queryKey, type: 'active' }) > 0) return;
+        stop();
+        state.inventoryAwaitingSettle = undefined;
+        requestConversationInventoryRefresh(apiBase);
+      });
+      state.inventoryAwaitingSettle = stop;
+      return;
+    }
     state.inventoryLastAt = Date.now();
     void client.invalidateQueries(
-      { queryKey: ['conversation-inventory'], type: 'active' },
+      { queryKey, type: 'active' },
       { cancelRefetch: false },
     );
   };

@@ -638,6 +638,40 @@ describe('automatic continuation after a memory kill', () => {
     },
   );
 
+  test('a later retriable Codex error prevents memory continuation', () => {
+    const continuation = coordinator();
+    const threadId = 'thread-retriable';
+    append(threadId, { method: 'session.started', sessionId: threadId });
+    append(threadId, {
+      method: 'turn.started',
+      turnId: 'turn-1',
+      prompt: 'run',
+      clientOrigin: PERSON,
+    });
+    append(threadId, {
+      method: 'runtime.error',
+      turnId: 'turn-1',
+      severity: 'error',
+      code: ENGINE_MEMORY_EXHAUSTED_CODE,
+      message: 'Codex ran out of memory and was stopped.',
+    });
+    append(threadId, {
+      method: 'runtime.error',
+      turnId: 'turn-1',
+      severity: 'error',
+      code: 'stream-disconnected',
+      message: 'will retry',
+      retriable: true,
+    });
+    owners.set(threadId, 'person-1');
+    expect(
+      continuation.continueOnRequest({
+        conversationId: threadId,
+        actor: { userId: 'person-1' },
+      }),
+    ).toEqual({ kind: 'skipped', reason: 'not-memory-exhausted' });
+  });
+
   test('#4266: a memory kill stored before #4257, under the orphaned-turn code, can be continued', () => {
     const continuation = coordinator();
     append('thread-legacy', {

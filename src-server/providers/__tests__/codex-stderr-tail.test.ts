@@ -25,6 +25,43 @@ describe('cleanCodexDiagnosticLine', () => {
 });
 
 describe('CodexStderrTail', () => {
+  test('redacts every block on a line and keeps the following text', () => {
+    const tail = new CodexStderrTail();
+    const logged = tail.push(
+      `before -----BEGIN PRIVATE KEY----- ${BODY} -----END PRIVATE KEY----- between -----BEGIN PRIVATE KEY----- ${BODY} -----END PRIVATE KEY----- after`,
+    );
+    expect(logged).toBe(
+      'before [REDACTED PEM BLOCK] between [REDACTED PEM BLOCK] after',
+    );
+    expect(tail.text()).toBe(logged);
+  });
+
+  test('continues redacting when a block starts after an END', () => {
+    const tail = new CodexStderrTail();
+    const logged = [
+      '-----BEGIN PRIVATE KEY-----',
+      BODY,
+      '-----END PRIVATE KEY----------BEGIN PRIVATE KEY-----',
+      BODY,
+      '-----END PRIVATE KEY----- done',
+    ].map((line) => tail.push(line));
+    expect(logged.join('\n')).not.toContain(BODY);
+    expect(tail.text()).toBe(
+      '[REDACTED PEM BLOCK]\n[REDACTED PEM BLOCK]\ndone',
+    );
+  });
+
+  test('withholds body after a line exceeding the scanning bound', () => {
+    const tail = new CodexStderrTail();
+    const logged = [
+      `${'x'.repeat(131073)}-----BEGIN PRIVATE KEY-----`,
+      BODY,
+      'ERROR real failure',
+    ].map((line) => tail.push(line));
+    expect(logged.join('\n')).not.toContain(BODY);
+    expect(tail.text()).not.toContain(BODY);
+    expect(tail.text()).toContain('ERROR real failure');
+  });
   test('keeps a PEM block as one marker, never its body', () => {
     const tail = new CodexStderrTail();
     const logged = [
