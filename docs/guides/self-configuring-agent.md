@@ -822,7 +822,11 @@ An agent acting for the operator on a bound credential can create a job
 directly with `add_job`. Its `target` may name only the agent's own
 conversation (`{"kind": "conversation", "conversationId": "<own>"}`), so each
 run is a turn in this chat; any other conversation is refused
-`other-conversation`, and a targeted job takes no `retryCount`. Use a cron schedule for calendar recurrence, `every`
+`other-conversation`, and a targeted job takes no `retryCount`. `update_job`,
+`run_job`, `enable_job`, `disable_job` and `delete_job` on a job that already
+runs in a conversation are likewise refused unless that conversation is this
+agent's own (`automation_target_out_of_scope`), whatever the request body
+names, and no edit changes the creator a job runs as. Use a cron schedule for calendar recurrence, `every`
 for a fixed interval, or `at` for one future instant:
 
 ```json
