@@ -25,7 +25,7 @@
 
 @supports (animation-timeline: scroll()) {
   .composer-choices {
-    animation: chat-markdown-table-edge linear both;
+    animation: chat-markdown-table-edge var(--ease-linear) both;
     animation-timeline: scroll(self inline);
   }
 }
