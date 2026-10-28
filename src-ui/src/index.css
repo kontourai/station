@@ -6974,6 +6974,26 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .markdown-image-unavailable strong {
   color: var(--k-text);
 }
+.markdown-image-unavailable > svg {
+  color: var(--k-caution);
+}
+.markdown-image-unavailable__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  min-width: 0;
+}
+/* The retry keeps a 44px target on touch without growing the card. */
+.markdown-image-unavailable__retry {
+  position: relative;
+  flex-shrink: 0;
+  align-self: center;
+}
+.markdown-image-unavailable__retry::after {
+  content: "";
+  position: absolute;
+  inset: min(0px, calc((100% - 44px) / 2));
+}
 .markdown-image-pending {
   display: inline-block;
   width: min(240px, 100%);

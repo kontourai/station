@@ -1,4 +1,6 @@
 /** @vitest-environment jsdom */
+
+import { WorkspaceVisualFileError } from '@kontourai/station-sdk/workspace-file-preview';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   cleanup,
@@ -12,9 +14,13 @@ import { MarkdownLinkContext } from '../MarkdownLinkContext';
 import { MarkdownRenderer } from '../MarkdownRenderer';
 
 const readVisual = vi.hoisted(() => vi.fn());
-vi.mock('@kontourai/station-sdk/workspace-file-preview', () => ({
-  readProjectWorkspaceVisualFile: readVisual,
-}));
+vi.mock(
+  '@kontourai/station-sdk/workspace-file-preview',
+  async (importOriginal) => ({
+    ...(await importOriginal<object>()),
+    readProjectWorkspaceVisualFile: readVisual,
+  }),
+);
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => ({
     apiBase: 'http://station.test',
@@ -87,20 +93,57 @@ test('a host image reference reads image bytes through the Project instead of re
       dataUrl: png,
     },
   });
-  mount(`![Option A](${path.replace('index.html', 'option-a.png')})`);
-  const image = await screen.findByAltText('option-a.png');
+  const view = mount(
+    `![Option A](${path.replace('index.html', 'option-a.png')})`,
+  );
+  const image = await screen.findByAltText('Option A');
   expect(image.getAttribute('src')).toBe(png);
+  // The alt text is the caption, beside a disclosure that is not a link.
+  expect(
+    view.container.querySelector('.workspace-file-reply__caption')?.textContent,
+  ).toContain('Option A');
+  const toggle = screen.getByRole('button', { name: 'Hide Option A' });
+  expect(toggle.className).not.toContain('button--link');
+  fireEvent.click(toggle);
+  expect(screen.queryByAltText('Option A')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Show Option A' })).toBeTruthy();
 });
 
-test('an unavailable local visual stays in the conversation with a visible error', async () => {
-  readVisual.mockRejectedValue(
-    new Error('This visual file is unavailable in this Project.'),
-  );
+test.each([
+  ['missing', 404, 'The file is not on the Station host.', true],
+  ['outside-project', 403, "It is outside this Project's folders.", false],
+  ['unsupported-type', 415, 'Only PNG images and HTML pages show here.', false],
+  ['too-large', 413, 'The file is too large to show here.', false],
+  ['no-workspace', 404, 'This chat has no Project folder to read.', false],
+  ['unreadable', 422, 'Station could not read the file.', true],
+  ['unauthorized', 401, 'Sign in to this Station again to see it.', true],
+  ['server-error', 502, 'Station had an error reading it.', true],
+  ['unavailable', 404, 'This Station cannot show this file.', true],
+] as const)(
+  'a %s visual shows an inline card that says so',
+  async (reason, status, copy, retryable) => {
+    readVisual.mockRejectedValue(new WorkspaceVisualFileError(status, reason));
+    mount(`![Saved drafts](${path.replace('index.html', 'after.png')})`);
+    const card = await screen.findByRole('note');
+    expect(card.textContent).toBe(
+      `Saved drafts${copy}${retryable ? 'Retry' : ''}`,
+    );
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.queryByRole('img')).toBeNull();
+    if (retryable) {
+      readVisual.mockClear();
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      await waitFor(() => expect(readVisual).toHaveBeenCalledTimes(1));
+    }
+  },
+);
+
+test('a request that never got an answer is not reported as a missing file', async () => {
+  readVisual.mockRejectedValue(new TypeError('Failed to fetch'));
   mount(`[Interactive mockup](${path})`);
-  await waitFor(() =>
-    expect(screen.getByRole('status').textContent).toContain('unavailable'),
+  expect((await screen.findByRole('note')).textContent).toContain(
+    'Station did not answer.',
   );
-  expect(screen.queryByRole('link')).toBeNull();
 });
 
 test.each([

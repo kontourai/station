@@ -36,6 +36,35 @@
   max-width: 100%;
 }
 
+/* A visual reply's label: an image's alt text as a caption under it, a
+   link's text above its page; the disclosure beside it is a quiet button. */
+.workspace-file-reply__caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+  margin-block: var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-normal);
+}
+.workspace-file-reply__label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.workspace-file-reply__toggle {
+  position: relative;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-1);
+}
+.workspace-file-reply__toggle::after {
+  content: "";
+  position: absolute;
+  inset: min(0px, calc((100% - 44px) / 2));
+}
+
 .markdown-visual-paragraph {
   margin-block: 0 var(--k-space-2);
 }
