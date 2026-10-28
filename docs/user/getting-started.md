@@ -1106,7 +1106,7 @@ configured Projects.
 
 An automation that runs in a chat can use any agent, including AI app agents
 such as Claude Code or Codex, when your Station supports it (see
-[Automations](automations.md)). The older output-file run needs an agent with
+[Automations](https://github.com/kontourai/station/blob/main/docs/user/automations.md)). The older output-file run needs an agent with
 a model connection (Station's engine); if none is ready, the form offers **Set
 up a scheduled-job agent** to open agent creation; choose **Use a model
 connection** there.
