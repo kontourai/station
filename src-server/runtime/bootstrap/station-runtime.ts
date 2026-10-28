@@ -174,6 +174,7 @@ import { OperatorPasskeyEnrollmentService } from '../../services/identity/operat
 import { LazyOperatorPasskeyRegistry } from '../../services/identity/operator-passkey-registry.js';
 import { FleetCandidateService } from '../../services/inference/fleet-candidate-service.js';
 import { FleetProbeService } from '../../services/inference/fleet-probe-service.js';
+import { installSessionTmpDirPolicy } from '../../services/infra/session-tmpdir.js';
 import type { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
 import type { OperationalEventPublisher } from '../../services/operational-events/operational-event-outbox.js';
@@ -1112,6 +1113,7 @@ export class StationRuntime {
   private readonly featurePreviews: FeaturePreviewRegistry;
   /** Bound during composition, then selected at the fleet-routing branch. */
   private fleetConsumerProbesPreview!: FeaturePreviewSelector;
+  private chatHostImagesPreview!: FeaturePreviewSelector;
   private sshEnvironmentService: SshEnvironmentService;
   private timers: NodeJS.Timeout[] = [];
   private analyticsMaintenance?: (
@@ -1443,6 +1445,7 @@ export class StationRuntime {
         this.logger,
       );
       this.bindFleetConsumerProbesPreview();
+      this.bindChatHostImagesPreview();
       // Journal consumers wire after the quarantine notice: the runtime must
       // report a recorded corruption before anything asks the store for more
       // than its publisher.
@@ -3983,6 +3986,7 @@ export class StationRuntime {
           // failed-safe on Station's native engine until another config write.
           onACPConnectionsReady: () => this.reloadDefaultAgent(),
           orchestrationEventStore: this.orchestrationEventStore,
+          hostImagesPreview: this.chatHostImagesPreview,
           credentialProfileRecoveryAdapter:
             this.connectionService.createCredentialProfileRecoveryAdapter(
               credentialRecoveryRuntimeConnectionId,
@@ -5110,6 +5114,24 @@ export class StationRuntime {
       description:
         'Probe a peer-contributed model before routing work to it. This can spend a completion on another Station.',
     });
+  }
+
+  /**
+   * The chat-host-images preview: one selector for every consumer — turn
+   * capture and the agent instruction (orchestration), and the per-session
+   * engine TMPDIR, decided when an engine starts (`session-tmpdir.ts`).
+   */
+  private bindChatHostImagesPreview(): void {
+    this.chatHostImagesPreview = this.featurePreviews.bind({
+      id: 'chat-host-images',
+      label: 'Chat images from the host',
+      description:
+        "Show images an agent saves on this Station and names in its reply, on any device. Station copies each one (PNG, JPEG, GIF or WebP, up to 512 KiB, from the chat's working folder or its own temporary folder) into the chat's attachment storage when the reply finishes.",
+    });
+    const preview = this.chatHostImagesPreview;
+    installSessionTmpDirPolicy(() =>
+      preview.select({ enabled: () => true, disabled: () => false }),
+    );
   }
 
   private replaceTemplateVariables(text: string, _agentName?: string): string {

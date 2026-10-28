@@ -2168,6 +2168,29 @@ function telemetryConsentScreens(): Screen[] {
               await expect(outbox.locator('pre')).toContainText(
                 'station_daily',
               );
+              // Rest the Operator select just below the pinned toolbar, so no
+              // control is left partly behind it (the judge credits no
+              // scroll position).
+              await page
+                .getByRole('combobox', { name: 'Operator telemetry' })
+                .evaluate((select) => {
+                  const bar = document.querySelector('.app-toolbar');
+                  const barBottom = bar?.getBoundingClientRect().bottom ?? 0;
+                  let scroller: Element | null = select.parentElement;
+                  while (
+                    scroller &&
+                    !(
+                      /(auto|scroll)/.test(
+                        getComputedStyle(scroller).overflowY,
+                      ) && scroller.scrollHeight > scroller.clientHeight
+                    )
+                  )
+                    scroller = scroller.parentElement;
+                  (scroller ?? document.scrollingElement)?.scrollBy(
+                    0,
+                    select.getBoundingClientRect().top - barBottom - 8,
+                  );
+                });
             }
           }
         },

@@ -13,6 +13,7 @@ import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { ElapsedWait } from '../ElapsedWait';
 import { LoadingDots } from '../LoadingDots';
 import { FilePartPreview } from './FilePartPreview';
+import { HostImagesContext, STREAMING_HOST_IMAGES } from './HostImagesContext';
 import { InputRequestRecordRow } from './InputRequestRecordRow';
 import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { INLINE_RUN_LIMIT } from './message-bubble/MessageContent';
@@ -293,7 +294,9 @@ function StreamingMessageWithApps({
                 className={current ? 'streaming-tip' : undefined}
                 key={block.key ?? i}
               >
-                <StreamingMarkdown content={part.content} />
+                <HostImagesContext.Provider value={STREAMING_HOST_IMAGES}>
+                  <StreamingMarkdown content={part.content} />
+                </HostImagesContext.Provider>
                 {current && block === blocks.at(-1) && (
                   <div className="stream-caret-line" aria-hidden="true">
                     <span className="stream-caret" />

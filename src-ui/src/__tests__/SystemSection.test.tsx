@@ -12,7 +12,11 @@ vi.mock('../views/settings/BuildProvenance', () => ({
   InstalledAppBuildProvenance: () => null,
 }));
 vi.mock('../views/settings/ConnectedServerUpdates', () => ({
-  ConnectedServerUpdates: () => null,
+  // The real card renders its "Server · {name}" title as the heading this id
+  // names.
+  ConnectedServerUpdates: ({ headingId }: { headingId?: string }) => (
+    <h3 id={headingId}>Server · station</h3>
+  ),
 }));
 const platform = { isDesktop: false, isTauri: false };
 vi.mock('../platform/PlatformProfileContext', () => ({
@@ -41,7 +45,13 @@ describe('SystemSection', () => {
       screen.queryByRole('button', { name: 'Check for desktop app updates' }),
     ).toBeNull();
     expect(screen.queryByText('Desktop app updates')).toBeNull();
-    expect(screen.getByText('Connected Station server')).not.toBeNull();
+    // The card's heading labels the row; no row title repeats the server.
+    expect(
+      screen
+        .getByRole('region', { name: 'Server · station' })
+        .getAttribute('data-catalog-id'),
+    ).toBe('core-app-updates');
+    expect(screen.queryByText('Connected Station server')).toBeNull();
     platform.isDesktop = true;
     platform.isTauri = true;
     try {
@@ -53,9 +63,9 @@ describe('SystemSection', () => {
       const desktopCard = screen
         .getByText('Desktop app updates')
         .closest('[data-catalog-id]');
-      const serverCard = screen
-        .getByText('Connected Station server')
-        .closest('[data-catalog-id]');
+      const serverCard = screen.getByRole('region', {
+        name: 'Server · station',
+      });
       expect(desktopCard?.getAttribute('data-catalog-id')).toBe(
         'desktop-app-updates',
       );

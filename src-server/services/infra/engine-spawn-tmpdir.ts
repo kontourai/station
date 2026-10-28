@@ -1,4 +1,14 @@
-import { mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
+import {
+  closeSync,
+  fchmodSync,
+  constants as fsConstants,
+  fstatSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  rmSync,
+  statSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { resolveHomeDir } from '../../utils/paths.js';
 
@@ -25,13 +35,41 @@ export function engineSpawnTmpDirPath(
   return join(homeDir, 'tmp', 'engine-spawn');
 }
 
-/** Resolves AND ensures the Station-owned engine spawn tmp directory exists. */
+/**
+ * Resolves AND ensures the Station-owned engine spawn tmp directory exists,
+ * private to this user: `mkdir`'s mode is masked by the umask (a host with
+ * umask 002 made it group-writable), so it and its `<home>/tmp` parent are
+ * tightened to 0700 afterwards, on a no-follow handle.
+ */
 export function ensureEngineSpawnTmpDir(
   homeDir: string = resolveHomeDir(),
 ): string {
   const dir = engineSpawnTmpDirPath(homeDir);
-  mkdirSync(dir, { recursive: true });
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  tightenToOwnerOnly(join(homeDir, 'tmp'));
+  tightenToOwnerOnly(dir);
   return dir;
+}
+
+/**
+ * Make a Station-owned directory 0700 through a no-follow directory handle,
+ * so a link in its place is never followed. Best-effort: a directory that
+ * cannot be opened that way is left as it is (Windows has no POSIX modes).
+ */
+export function tightenToOwnerOnly(dir: string): void {
+  if (process.platform === 'win32') return;
+  let fd: number | undefined;
+  try {
+    fd = openSync(
+      dir,
+      fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW,
+    );
+    if ((fstatSync(fd).mode & 0o777) !== 0o700) fchmodSync(fd, 0o700);
+  } catch {
+    // Best-effort; callers that need a private folder verify it themselves.
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
 }
 
 /**

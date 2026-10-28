@@ -71,6 +71,11 @@
 .updates-panel__notice {
   margin-bottom: var(--k-space-3);
 }
+/* The server card spaces its own rows. */
+.updates-panel .server-update p,
+.updates-panel .server-update .updates-panel__notice {
+  margin: 0;
+}
 .updates-panel a {
   display: inline-flex;
   align-items: center;
