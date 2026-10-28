@@ -413,8 +413,8 @@ export function BrowserRelayRoutes({
           <h2 className="relay-route-profiles__heading">Broker routes</h2>
           <RelaySetupHelp label="About broker routes">
             <p>
-              A broker can find a Station. The Station still checks your
-              account, approved Device and Project access separately.
+              A broker only finds the Station; the Station still checks your
+              account and access.
             </p>
           </RelaySetupHelp>
         </div>
@@ -428,7 +428,7 @@ export function BrowserRelayRoutes({
           status={
             <span className="connections-computers__state">
               {activeConnection?.id === connection.id
-                ? 'Route selected; Station authorization separate'
+                ? 'Route selected'
                 : 'Saved; not connected'}
             </span>
           }
@@ -556,7 +556,7 @@ export function BrowserRelayRoutes({
         <Dialog
           eyebrow="Browser route"
           title={`Configure TURN for ${configuringTurn.name}`}
-          subtitle="Use this when the browser and Station cannot establish a direct WebRTC connection. The browser connects to the TURN service; application content stays encrypted between the browser and Station. Saving reconnects an active route."
+          subtitle="For when a direct WebRTC connection fails. Content stays encrypted end to end. Saving reconnects an active route."
           closeLabel="Close TURN settings"
           onClose={closeTurnSettings}
           size="md"

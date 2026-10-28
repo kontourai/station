@@ -263,6 +263,7 @@ import {
 } from '../evidence/orchestration-workflow-sidecar.js';
 import type { VeritasReadinessService } from '../evidence/veritas-readiness-service.js';
 import type { WorkflowSidecarService } from '../evidence/workflow-sidecar-service.js';
+import type { FeaturePreviewSelector } from '../feature-previews/feature-preview-registry.js';
 import type {
   AttachFlowEvidenceOptions,
   FlowRunService,
@@ -391,6 +392,7 @@ import {
   type ForegroundInvocationAdmission,
   ForegroundInvocationUnavailableError,
 } from './foreground-invocation-admission.js';
+import { HostImageTurnCapture } from './host-image-turn-capture.js';
 import { InternalStopSuppression } from './internal-stop-suppression.js';
 import {
   type InterruptedTurnMemoryAdapter,
@@ -993,6 +995,12 @@ interface OrchestrationServiceOptions {
    * {@link IDLE_SESSION_PARK_AFTER_MS}.
    */
   idleSessionParkAfterMs?: number;
+  /**
+   * The `chat-host-images` Feature Preview: host images a settled reply
+   * names are copied into the attachment store, and agents are told how to
+   * name them. Absent means off.
+   */
+  hostImagesPreview?: FeaturePreviewSelector;
   /** How often idle sessions are checked. Default {@link IDLE_SESSION_SWEEP_MS}. */
   idleSessionSweepMs?: number;
   /**
@@ -1445,6 +1453,11 @@ function taskBriefStartRecord(brief: { digest: string; text: string }) {
     digest: brief.digest,
     text: brief.text,
   };
+}
+
+/** No turn has started in this session yet (the first-turn rule above). */
+function isGenuineFirstTurn(events: readonly { method?: unknown }[]): boolean {
+  return !events.some((event) => event.method === 'turn.started');
 }
 
 /**
@@ -1995,6 +2008,7 @@ export class OrchestrationService {
   readonly sessionLifecycles: SessionLifecycleModule;
   private usageTelemetry?: UsageTelemetryObserver;
   private readonly sessionExecutionCoordinator: SessionExecutionCoordinator;
+  private readonly hostImages: HostImageTurnCapture;
   private readonly workspaceExecutionBarrier = new WorkspaceExecutionBarrier();
   private readonly sessionStartBoundaries: SessionTurnBoundaryAuthority;
   /** Private native-output authority; no public Session/Thread API exposes it. */
@@ -2633,6 +2647,17 @@ export class OrchestrationService {
       this.sessionStartBoundaries,
       this.workspaceExecutionBarrier,
     );
+    this.hostImages = new HostImageTurnCapture({
+      preview: options.hostImagesPreview,
+      eventStore: options.eventStore,
+      sessionCwd: (threadId) =>
+        this.sessionReadModel.get(threadId)?.cwd ??
+        options.eventStore?.readSessionByThread(threadId)?.cwd,
+      publish: (event) => {
+        this.projectAndPublishEvent(event);
+      },
+      logger: options.logger,
+    });
     this.turnDeduplicator =
       options.turnDeduplicator ?? options.eventStore?.createTurnDeduplicator();
     this.adoptionLedger =
@@ -4034,6 +4059,10 @@ export class OrchestrationService {
     // #3562: boot recovery retries on a backoff; none of it may publish once
     // the publish path below starts coming down. Its rows stay for next boot.
     this.interruptedTurns.stop();
+    // A capture still reading files must not publish into a closing store.
+    // Synchronous on purpose: an await here would reorder the rest of this
+    // shutdown's synchronous prefix.
+    this.hostImages.close();
     if (this.idleSweepTimer) clearInterval(this.idleSweepTimer);
     this.idleSweepTimer = undefined;
     this.transcriptSearchStopped = true;
@@ -8097,16 +8126,25 @@ export class OrchestrationService {
               : undefined,
             recoveryNote,
           ].filter((part): part is string => part !== undefined);
+          // The chat-host-images preview's one line, on the same first turn.
+          const pendingHostImageGuide =
+            current && isGenuineFirstTurn(current.events)
+              ? await this.hostImages.instructionFor(submittedInput.threadId)
+              : undefined;
           const firstTurnContext = [
             ...stationContext,
             pendingPrompt,
             pendingBrief?.text,
+            pendingHostImageGuide,
             publicTurnInput.ambientContext?.trim()
               ? publicTurnInput.ambientContext
               : undefined,
           ].filter((part): part is string => part !== undefined);
           const turnInputWithFirstTurnPrompt =
-            pendingPrompt || pendingBrief || stationContext.length > 0
+            pendingPrompt ||
+            pendingBrief ||
+            pendingHostImageGuide ||
+            stationContext.length > 0
               ? {
                   ...publicTurnInput,
                   ambientContext: firstTurnContext.join('\n'),
@@ -11296,6 +11334,15 @@ export class OrchestrationService {
         }),
       )) {
         if (!this.isAdapterCurrent(adapter)) continue;
+        if (event.method === ('content.host-images' as string)) {
+          // Station derives this from files it read itself; an engine's
+          // version would map paths to images Station never admitted.
+          this.options.logger.warn('Ignored adapter-provided host images', {
+            provider: adapter.provider,
+            threadId: event.threadId,
+          });
+          continue;
+        }
         if (event.method === 'session.stop-settled') {
           // This is an orchestration-owned derivation. Accepting it from an
           // adapter would let an engine label a forced stop cooperative.
@@ -13363,6 +13410,7 @@ export class OrchestrationService {
     // Recovery observes only after canonical persistence, so a restart can
     // reconstruct the source turn without copying its content into recovery.
     this.recoveryCoordinator?.observe(projectedEvent);
+    this.hostImages.observe(projectedEvent);
     // archive#1120: invalidate the session-owner cache BEFORE emitting on
     // the event bus, so any subscriber reacting to this same event (e.g.
     // the /events route's canUserReadSession gate) that re-derives

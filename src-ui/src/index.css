@@ -6952,6 +6952,36 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   inset: min(0px, calc((100% - 44px) / 2));
 }
 
+/* chat-host-images: a host image this device cannot show, and why. */
+.markdown-image-unavailable {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: var(--k-space-2);
+  max-width: 100%;
+  padding: var(--k-space-2) var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel-raised);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-normal);
+  overflow-wrap: anywhere;
+}
+.markdown-image-unavailable > svg {
+  flex-shrink: 0;
+  margin-top: 0.2em;
+}
+.markdown-image-unavailable strong {
+  color: var(--k-text);
+}
+.markdown-image-pending {
+  display: inline-block;
+  width: min(240px, 100%);
+  aspect-ratio: 4 / 3;
+  border-radius: 6px;
+  background: var(--k-panel-raised);
+}
+
 /* File Part Preview */
 .file-part-preview {
   display: inline-flex;

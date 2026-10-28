@@ -1509,7 +1509,7 @@ function DeletedProjectTaskState({ task }: { task: TaskRecord }) {
       <div className="task-workspace__body">
         <ErrorState
           title="Project deleted"
-          description={`This Task is retained in history, but its Project (${task.projectId}) no longer exists. Chats and recorded Task details remain; live Project workspace controls are unavailable.`}
+          description={`Its Project (${task.projectId}) no longer exists. Chats and Task details remain; Project workspace controls are unavailable.`}
         />
         <TaskIdentitySection task={task} />
       </div>

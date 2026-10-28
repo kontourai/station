@@ -1,5 +1,71 @@
 [
   {
+    "timestampUtc": "2026-10-28T13:44:59Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2492.40697396751",
+    "sha": "aacdba448bc461868cfcd149884185598b47e6ec",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40697396751",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2492.40697396751 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "a8f9cc4673812e0782c14882c1b081f023df80ad",
+      "groups": {
+        "feat": [],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 0
+    }
+  },
+  {
+    "timestampUtc": "2026-10-28T12:46:33Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2492.40689076116",
+    "sha": "a8f9cc4673812e0782c14882c1b081f023df80ad",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40689076116",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2492.40689076116 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "b43bf4983801c9450b11b4f27457a64107bbd6e5",
+      "groups": {
+        "feat": [
+          "[#4263](https://github.com/kontourai/station/pull/4263) feat(ui): say less — Updates dialog redesign, app-wide copy pass, ui-copy-length ratchet",
+          "[#4264](https://github.com/kontourai/station/pull/4264) feat(chat): show agent-produced host images behind a Feature Preview",
+          "[#4262](https://github.com/kontourai/station/pull/4262) feat(ui): replace the mobile coding rail with a tool picker",
+          "[#4259](https://github.com/kontourai/station/pull/4259) feat(terminal): deliver bounded same-origin server transport"
+        ],
+        "fix": [
+          "[#4268](https://github.com/kontourai/station/pull/4268) fix(orchestration): unstick chats whose turn a restart interrupted",
+          "[#4267](https://github.com/kontourai/station/pull/4267) fix(ci): repair main qualification inventory and exclusive bootstrap",
+          "[#4265](https://github.com/kontourai/station/pull/4265) fix(ui): give saved chat drafts a responsive dialog",
+          "[#4260](https://github.com/kontourai/station/pull/4260) fix(ui): stop the layout error flicker and refetch loop when the server is unreachable"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4261](https://github.com/kontourai/station/pull/4261) test(connect): include telemetry management in full scope fixture"
+        ]
+      },
+      "note": null,
+      "commitCount": 9
+    }
+  },
+  {
     "timestampUtc": "2026-10-28T01:43:33Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2492",
