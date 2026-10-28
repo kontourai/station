@@ -11,6 +11,7 @@ import type { EnrollmentActor } from '../../analytics/source-enrollment-store.js
 import { SourceEnrollmentStore } from '../../analytics/source-enrollment-store.js';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
 import { createRecipientCandidateRoutes } from '../../routes/operations/recipient-candidates.js';
+import { createCoordinatorRoutes } from '../../routes/orchestration/coordinator.js';
 import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
 import { createSystemStatusRoutes } from '../../routes/system/system-status-routes.js';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../runtime/bootstrap/hosted-tenant-mode.js';
@@ -19,10 +20,12 @@ import {
   resolveRuntimeWebPushEnabled,
 } from '../../runtime/routes/runtime-route-support.js';
 import { configureRuntimePublicRoutes } from '../../runtime/routes/runtime-routes.js';
+import { EventStore } from '../../services/orchestration/event-store.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import {
   resolveStationCapabilityFlags,
   STATION_CAPABILITY_FLAGS,
+  servesCoordinatorSession,
 } from '../station-capability-flags.js';
 import { TABLED_CAPABILITY_FLAGS } from './consumed-capability-flag-names.js';
 
@@ -191,6 +194,33 @@ const CONSUMED_FLAGS: Record<
     );
     return response.status === 200;
   },
+  // GET /api/orchestration/coordinator answers only where the runtime mounts
+  // the routes with a store, from the same predicate as the flag.
+  coordinatorSession: async (deployment) => {
+    const eventStore = new EventStore(
+      join(makeTempDir('coordinator-flag-'), 'orchestration.sqlite'),
+    );
+    try {
+      const routes = new Hono().route(
+        '/api/orchestration',
+        createCoordinatorRoutes({
+          store: servesCoordinatorSession(deployment)
+            ? eventStore.coordinatorStore()
+            : undefined,
+          person: () => ({
+            userId: 'owner',
+            mayRead: () => true,
+            mayMutate: () => true,
+          }),
+          dispatchActor: () => ({ userId: 'owner' }),
+        }),
+      );
+      const response = await routes.request('/api/orchestration/coordinator');
+      return response.status === 200;
+    } finally {
+      eventStore.close();
+    }
+  },
   // GET /api/system/routes answers the Station routes only where runtime
   // route support composes a resolver, from the same predicate as the flag.
   connectionRoutes: async ({ hosted }) => {
@@ -306,6 +336,7 @@ describe('consumed capability flags match what their routes serve', () => {
     eventStreamResume: { personal: true, hosted: true },
     webPushNotifications: { personal: true, hosted: false },
     connectionRoutes: { personal: true, hosted: false },
+    coordinatorSession: { personal: true, hosted: false },
   };
 
   test('every flag a deployment withdraws has a row', () => {

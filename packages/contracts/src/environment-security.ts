@@ -1345,6 +1345,12 @@ export interface StationCapabilityFlags {
    * about this build, never a statement that any request is open.
    */
   delegatedInputAnswers?: boolean;
+  /**
+   * #3628: `/api/orchestration/coordinator` reads and sets the person's
+   * coordinator Session. Withdrawn on a hosted Station, which keeps no
+   * conversation inbox to wake it through.
+   */
+  coordinatorSession?: boolean;
 }
 
 export interface PublicStationHandshake {

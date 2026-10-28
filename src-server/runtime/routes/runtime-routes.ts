@@ -323,6 +323,7 @@ import type { Context } from 'hono';
 import { setCookie } from 'hono/cookie';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import { NodePtyAdapter } from '../../adapters/node-pty-adapter.js';
+import { servesCoordinatorSession } from '../../capabilities/station-capability-flags.js';
 import {
   loadOrCreateAgentRegistry,
   replacePluginEngineConnections,
@@ -6226,10 +6227,11 @@ export function configureRuntimeRoutes(
   // #3628: a person's coordinator Session, woken through the same inbox when
   // work they can read needs them, finished or failed. Not on a hosted
   // Station (no inbox there).
-  const coordinatorStore =
-    hostedTenantRegistry === undefined
-      ? context.orchestrationEventStore?.coordinatorStore()
-      : undefined;
+  const coordinatorStore = servesCoordinatorSession({
+    hosted: hostedTenantRegistry !== undefined,
+  })
+    ? context.orchestrationEventStore?.coordinatorStore()
+    : undefined;
   context.app.route(
     '/api/orchestration',
     createCoordinatorRoutes({

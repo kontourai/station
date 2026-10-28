@@ -482,6 +482,78 @@ describe('createSessionAgentResolver', () => {
     },
   );
 
+  // #3628: the auto-detected `claude` Agent has no authored spec, so a
+  // coordinator running on it (or on Codex or an ACP engine) had no
+  // station-control tools and could not delegate.
+  test.each(['claude', 'codex', 'acp'] as const)(
+    'a designated coordinator Session gets station-control on %s; the same Agent outside it does not',
+    async (provider) => {
+      const toolDef: ToolDef = {
+        id: 'station-control',
+        kind: 'mcp',
+        transport: 'stdio',
+        command: 'node',
+        args: [builtinStationControlServerPath()],
+        env: { STATION_PORT: '7777' },
+      };
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () => null,
+        resolveToolServer: async (id) =>
+          id === 'station-control' ? toolDef : null,
+        resolveSkillDir: async () => null,
+        isCoordinatorSession: (threadId) => threadId === 'coordinator-thread',
+      });
+      const coordinator = await resolver(
+        baseInput({
+          provider,
+          threadId: 'coordinator-thread',
+          metadata: { agentSlug: provider },
+        }),
+      );
+      expect(
+        coordinator.agent?.toolServers?.map((server) => server.id),
+      ).toEqual(['station-control']);
+      // Codex and ACP have no system-prompt channel (receipted unsupported);
+      // the tools are what lets the coordinator delegate.
+      if (provider === 'claude')
+        expect(coordinator.agent?.systemPrompt ?? '').not.toBe('');
+      const ordinary = await resolver(
+        baseInput({
+          provider,
+          threadId: 'other-thread',
+          metadata: { agentSlug: provider },
+        }),
+      );
+      expect(ordinary.agent).toBeUndefined();
+    },
+  );
+
+  test('a coordinator keeps what its Agent authored, its own auto-approvals included', async () => {
+    const resolver = createSessionAgentResolver({
+      loadAgentSpec: async () =>
+        agentSpec({
+          tools: { mcpServers: ['github'], autoApprove: ['github_read'] },
+        }),
+      resolveToolServer: async () => null,
+      resolveSkillDir: async () => null,
+      isCoordinatorSession: () => true,
+    });
+    const result = await resolver(baseInput({ provider: 'claude' }));
+    expect(
+      result.metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY],
+    ).toMatchObject({
+      toolServers: {
+        requested: [
+          'station-control',
+          'station-knowledge',
+          'station-docs',
+          'github',
+        ],
+      },
+    });
+    expect(result.agent?.autoApprove).toEqual(['github_read']);
+  });
+
   test('uses the captured plugin Agent without rereading a replacement definition', async () => {
     const loadAgentSpec = vi.fn(async () =>
       agentSpec({ prompt: 'Replacement instructions' }),

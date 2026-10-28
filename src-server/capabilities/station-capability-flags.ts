@@ -104,6 +104,10 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // `continueDelegatedTask`, re-checked by the orchestration service at
   // engine invocation). Senders gate the field on this flag.
   delegatedInputAnswers: true,
+  // #3628: the person's coordinator Session, src-server/routes/orchestration/
+  // coordinator.ts. Hosted deployments withdraw it: see
+  // servesCoordinatorSession.
+  coordinatorSession: true,
 };
 
 /** Deployment facts that decide whether a build-supported route can serve. */
@@ -149,6 +153,17 @@ export function servesConnectionRoutes(
   return !deployment.hosted;
 }
 
+/**
+ * Whether the coordinator routes serve in this deployment. A hosted Station
+ * has no conversation inbox to wake a coordinator through, so the runtime
+ * mounts the routes without a store (every call answers unavailable).
+ */
+export function servesCoordinatorSession(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
 /** Flags whose route serves only in some deployment modes. */
 const DEPLOYMENT_SERVED_FLAGS: Readonly<
   Partial<
@@ -161,6 +176,7 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
   sessionInventoryInputRead: servesSessionInventoryInputRead,
   webPushNotifications: servesWebPushNotifications,
   connectionRoutes: servesConnectionRoutes,
+  coordinatorSession: servesCoordinatorSession,
 };
 
 /**
