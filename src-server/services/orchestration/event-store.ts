@@ -10682,13 +10682,19 @@ export class EventStore {
       // The newest row this page's budget left out, if any.
       const newestOmitted = moreInRange ? rows[events.length] : undefined;
       let turnStartDetached = false;
+      // The turn to anchor is the oldest one the page shows: a turnless row
+      // (a `session.state-changed`) can be the oldest that fit. Its start is
+      // on the page only as the turn's own `turn.started`; a steer
+      // re-announces the same turn later and does not stand in for it.
+      const oldestTurned = [...events].reverse().find((event) => event.turnId);
       if (
-        oldest?.turnId &&
+        oldestTurned?.turnId &&
         !events.some(
           (event) =>
-            event.method === 'turn.started' &&
-            event.threadId === oldest.threadId &&
-            event.turnId === oldest.turnId,
+            event.payload.method === 'turn.started' &&
+            event.payload.inputKind !== 'steer' &&
+            event.threadId === oldestTurned.threadId &&
+            event.turnId === oldestTurned.turnId,
         )
       ) {
         const anchor = this.db
@@ -10696,10 +10702,10 @@ export class EventStore {
             `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence FROM orchestration_events WHERE thread_id = ? AND turn_id = ? AND method = 'turn.started' AND global_sequence >= ? AND global_sequence < ? ORDER BY sequence ASC LIMIT 1`,
           )
           .get(
-            oldest.threadId,
-            oldest.turnId,
+            oldestTurned.threadId,
+            oldestTurned.turnId,
             rangeStart,
-            oldest.globalSequence,
+            oldestTurned.globalSequence,
           ) as any;
         if (anchor) {
           events.push(snapshotEvent(mapPersistedEventRow(anchor)));

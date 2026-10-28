@@ -1028,6 +1028,65 @@ describe('EventStore', () => {
     },
   );
 
+  test.each([
+    // A steer re-announces the turn; it is not the turn's start.
+    { label: 'steered', before: 200, steer: true, after: 20 },
+    // The oldest row that fit is turnless; the turn behind it is anchored.
+    { label: 'turnless oldest', before: 100, steer: false, after: 148 },
+  ])(
+    'a capped newest page re-adds the original turn start ($label)',
+    ({ label, before, steer, after }) => {
+      const threadId = `anchor-${label}`;
+      const fields = {
+        provider: 'codex' as const,
+        threadId,
+        turnId: 'turn',
+        itemId: 'answer',
+        createdAt: '2026-09-12T00:00:00Z',
+      };
+      const delta = (index: number) =>
+        store.appendEvent({
+          ...fields,
+          eventId: `${threadId}-delta-${index}`,
+          method: 'content.text-delta',
+          delta: 'x',
+        });
+      store.appendEvent({
+        ...fields,
+        eventId: `${threadId}-start`,
+        method: 'turn.started',
+        prompt: 'Question',
+      });
+      for (let i = 0; i < before; i++) delta(i);
+      if (steer)
+        store.appendEvent({
+          ...fields,
+          eventId: `${threadId}-steer`,
+          method: 'turn.started',
+          inputKind: 'steer',
+          prompt: 'Steer',
+        } as never);
+      else
+        store.appendEvent({
+          provider: 'codex',
+          threadId,
+          eventId: `${threadId}-idle`,
+          method: 'session.state-changed',
+          from: 'running',
+          to: 'idle',
+          createdAt: '2026-09-12T00:00:00Z',
+        } as never);
+      for (let i = before; i < before + after; i++) delta(i);
+      const page = store.listConversationEventWindowByTurn([threadId], {
+        direction: 'newest',
+        turnLimit: 10,
+      });
+      expect(page.events[0].id).toBe(`${threadId}-start`);
+      expect(page.turnStartDetached).toBe(true);
+      if (!steer) expect(page.events[1].turnId).toBeUndefined();
+    },
+  );
+
   test('newest paging pins its watermark and lineage while rejecting malformed cursors', () => {
     const base = {
       provider: 'codex' as const,

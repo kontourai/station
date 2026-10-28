@@ -3000,7 +3000,10 @@ describe('useActiveChatTranscript', () => {
               prompt: 'Steer',
             }),
             ...turnEvents(12, 12),
-            event('e13', 'session.state-changed', { state: 'idle' }),
+            event('e13', 'session.state-changed', {
+              from: 'running',
+              to: 'idle',
+            }),
           ],
         })
         .mockResolvedValueOnce({
@@ -3111,6 +3114,66 @@ describe('useActiveChatTranscript', () => {
         await new Promise((resolve) => setTimeout(resolve, 20));
       });
       expect(fetchWindow).toHaveBeenCalledTimes(7);
+    });
+
+    test('a fill cut short before older pages were loaded owes nothing later', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'gap',
+          turnStartDetached: true,
+          events: [...turnEvents(6, 6), ...turnEvents(11, 12)],
+        })
+        // The fill's read: Load older aborts it before it answers.
+        .mockImplementationOnce(() => new Promise(() => {}))
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: false,
+          events: turnEvents(6, 10),
+        })
+        // Turn 6 is now the older turn cut; turn 13 is whole, and the page
+        // overlaps what is held.
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 14,
+          hasMore: true,
+          nextCursor: 'below-11',
+          turnStartDetached: true,
+          events: [
+            ...turnEvents(6, 6),
+            ...turnEvents(11, 12),
+            event('e13', 'turn.started', { turnId: 'turn-13', prompt: 'Q13' }),
+            event('e14', 'content.text-delta', {
+              turnId: 'turn-13',
+              itemId: 'answer-13',
+              delta: '14',
+            }),
+          ],
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://cut-short-unloaded.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(2));
+      await act(async () => result.current.loadOlder());
+      expect(sequences(result.current.events)).toEqual([
+        6, 7, 8, 9, 10, 11, 12,
+      ]);
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toHaveLength(9),
+      );
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      expect(fetchWindow).toHaveBeenCalledTimes(4);
     });
 
     test('a page that cuts only an older turn reads nothing more', async () => {

@@ -483,7 +483,9 @@ export function useSessionEventWindow(
   const fillToFloor = useCallback(
     async (cursor: string, floor: number) => {
       const adoptCursor = !olderLoadedRef.current;
-      pendingFloorRef.current = floor;
+      // Only held history can owe a gap: without older pages, the next reload
+      // replaces this page and finds its own floor.
+      pendingFloorRef.current = adoptCursor ? undefined : floor;
       let pageCursor: string | undefined = cursor;
       for (let pages = 0; pageCursor && pages < MAX_FILL_PAGES; pages += 1) {
         const page = await readOlder(pageCursor, {
