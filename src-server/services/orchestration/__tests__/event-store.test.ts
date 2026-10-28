@@ -1107,6 +1107,57 @@ describe('EventStore', () => {
     },
   );
 
+  // A steer is published after the engine accepts it, so it can land after
+  // the next turn started. Its turn's own start then lies before the range,
+  // and the steer must not be re-added in its place.
+  test('a capped newest page never re-adds a late steer as its turn start', () => {
+    const threadId = 'late-steer';
+    const base = {
+      provider: 'codex' as const,
+      threadId,
+      itemId: 'answer',
+      createdAt: '2026-09-12T00:00:00Z',
+    };
+    store.appendEvent({
+      ...base,
+      turnId: 'turn-1',
+      eventId: 'late-steer-start-1',
+      method: 'turn.started',
+      prompt: 'First',
+    });
+    store.appendEvent({
+      ...base,
+      turnId: 'turn-2',
+      eventId: 'late-steer-start-2',
+      method: 'turn.started',
+      prompt: 'Second',
+    });
+    store.appendEvent({
+      ...base,
+      turnId: 'turn-1',
+      eventId: 'late-steer-steer-1',
+      method: 'turn.started',
+      inputKind: 'steer',
+      prompt: 'Steer',
+    } as never);
+    for (let i = 0; i < 200; i++)
+      store.appendEvent({
+        ...base,
+        turnId: 'turn-1',
+        eventId: `late-steer-delta-${i}`,
+        method: 'content.text-delta',
+        delta: 'x',
+      });
+    const page = store.listConversationEventWindowByTurn([threadId], {
+      direction: 'newest',
+      turnLimit: 1,
+    });
+    expect(page.events.map((event) => event.id)).not.toContain(
+      'late-steer-steer-1',
+    );
+    expect(page.turnStartDetached).toBeUndefined();
+  });
+
   test('newest paging pins its watermark and lineage while rejecting malformed cursors', () => {
     const base = {
       provider: 'codex' as const,
