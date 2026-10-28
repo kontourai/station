@@ -21,6 +21,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
+import { useState } from 'react';
 import {
   afterEach,
   beforeAll,
@@ -41,6 +42,12 @@ import {
 } from '../hooks/lastChosenModel';
 import { resetStartChoicesForTests } from '../hooks/useStartSelection';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+
+/** jsdom runs `history.back()` as chained 0ms tasks; let queued ones land. */
+async function flushHistory() {
+  for (let turn = 0; turn < 4; turn += 1)
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+}
 
 function render(ui: Parameters<typeof renderView>[0]) {
   const client = new QueryClient({
@@ -281,8 +288,10 @@ window.addEventListener = ((type: string, listener: never, options?: never) => {
   if (type === 'station:open-new-chat') dockListeners.push(listener);
   return realAdd(type, listener, options);
 }) as typeof window.addEventListener;
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // An open draft folds its history layer on unmount; let that land.
+  await flushHistory();
   for (const listener of dockListeners.splice(0))
     window.removeEventListener('station:open-new-chat', listener);
 });
@@ -1769,6 +1778,57 @@ describe("the dock's New chat is a draft, not a dialog", () => {
         .getByRole('group', { name: 'Chat setup' })
         .contains(projectChip(home)),
     ).toBe(false);
+  });
+
+  // Like the dialog it replaced, the draft takes a history entry, so a
+  // phone's Back dismisses it; leaving it returns focus to its opener.
+  test('Back and Escape dismiss the draft, and focus returns to the control that opened it', async () => {
+    const onClose = vi.fn();
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <AuthorityPersistenceContext.Provider
+          value={{ status: 'verified', namespace: 'ns-1', observation: null }}
+        >
+          <button type="button" onClick={() => setOpen(true)}>
+            Open draft
+          </button>
+          {open && (
+            <NewChatModal
+              projectIconBySlug={new Map()}
+              startSurface
+              agents={state.agents as AgentData[]}
+              projects={state.projects as ProjectMetadata[]}
+              onSelect={vi.fn()}
+              onClose={() => {
+                onClose();
+                setOpen(false);
+              }}
+            />
+          )}
+        </AuthorityPersistenceContext.Provider>
+      );
+    }
+    render(<Harness />);
+    const opener = screen.getByRole('button', { name: 'Open draft' });
+    opener.focus();
+    fireEvent.click(opener);
+    const draft = screen.getByRole('region', { name: 'New chat' });
+    fireEvent.keyDown(draft, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('region', { name: 'New chat' })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+    await flushHistory();
+
+    opener.focus();
+    fireEvent.click(opener);
+    screen.getByRole('region', { name: 'New chat' });
+    act(() => window.history.back());
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'New chat' })).toBeNull(),
+    );
+    expect(onClose).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(document.activeElement).toBe(opener));
   });
 
   test('with no project the line uses the chip’s words and names no Station before the device answers; a second Station adds the Station control', async () => {

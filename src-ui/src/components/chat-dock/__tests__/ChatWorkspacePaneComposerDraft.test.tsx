@@ -55,18 +55,29 @@ import {
 } from '../../../lib/projectChatEvents';
 import { displayableProjectIcon } from '../../icons/ProjectIcon';
 
-const { createChatSession, sendMessage, updateChat, pickerProps, dockProbe } =
-  vi.hoisted(() => ({
-    createChatSession: vi.fn(() => 'new-session'),
-    sendMessage: vi.fn(),
-    updateChat: vi.fn(),
-    pickerProps: [] as Record<string, any>[],
-    dockProbe: {
-      mobile: false,
-      sessions: [] as Record<string, any>[],
-      agents: [{ slug: 'assistant', name: 'Assistant' }],
-    },
-  }));
+const {
+  createChatSession,
+  sendMessage,
+  updateChat,
+  pickerProps,
+  pickerMounts,
+  autoStarts,
+  dockProbe,
+} = vi.hoisted(() => ({
+  createChatSession: vi.fn(() => 'new-session'),
+  sendMessage: vi.fn(),
+  updateChat: vi.fn(),
+  pickerProps: [] as Record<string, any>[],
+  /** One entry per mount of the picker, not per render. */
+  pickerMounts: [] as Record<string, any>[],
+  /** What an automatic start (`startWithDefault`) would have sent, per mount. */
+  autoStarts: [] as (string | undefined)[],
+  dockProbe: {
+    mobile: false,
+    sessions: [] as Record<string, any>[],
+    agents: [{ slug: 'assistant', name: 'Assistant' }],
+  },
+}));
 
 const RUN_LOCATIONS = {
   pulse: { kind: 'execution-root', path: '/work/pulse/app' },
@@ -123,12 +134,25 @@ vi.mock('../ChatDockMobileHeader', () => ({
   ),
 }));
 
-vi.mock('../../modals/NewChatModal', () => ({
-  NewChatModal: (props: Record<string, any>) => {
-    pickerProps.push(props);
-    return <section aria-label="New chat picker" />;
-  },
-}));
+vi.mock('../../modals/NewChatModal', async () => {
+  const { useEffect } = await import('react');
+  return {
+    NewChatModal: (props: Record<string, any>) => {
+      pickerProps.push(props);
+      // The real draft runs its automatic start once per mount, so a
+      // remount is what would start (and send) a second time.
+      useEffect(() => {
+        pickerMounts.push(props);
+        if (props.startWithDefault) autoStarts.push(props.initialPrompt);
+      }, []);
+      return (
+        <section aria-label="New chat picker" className="new-chat-modal">
+          <textarea aria-label="Draft text" />
+        </section>
+      );
+    },
+  };
+});
 vi.mock('../../../hooks/useActiveChatSessions', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useCreateChatSession: () => createChatSession,
@@ -223,6 +247,8 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
   pickerProps.length = 0;
+  pickerMounts.length = 0;
+  autoStarts.length = 0;
   runLocationReads.length = 0;
   createChatSession.mockClear();
   sendMessage.mockClear();
@@ -871,7 +897,10 @@ test('New chat opens as a draft in the dock body, expanding a collapsed dock; fo
   // In the dock's conversation surface, where the transcript was.
   await waitFor(() => expect(regionModel!.regions.bottom.visible).toBe(true));
   expect(draft.closest('.chat-dock__conversation-surface')).not.toBeNull();
-  expect(screen.queryByTestId('active-chat-body')).toBeNull();
+  // The chat it opened over stays mounted under it, hidden and inert.
+  const covered = screen.getByTestId('active-chat-body');
+  expect(covered.closest('[hidden]')).not.toBeNull();
+  expect(covered.closest('[inert]')).not.toBeNull();
   expect(pickerProps.at(-1)!.initialPrompt).toBe('Draft words');
 
   act(() => {
@@ -883,5 +912,100 @@ test('New chat opens as a draft in the dock body, expanding a collapsed dock; fo
     ).toBeNull(),
   );
   expect(onClosed).toHaveBeenCalledExactlyOnceWith('dismissed', undefined);
-  expect(screen.getByTestId('active-chat-body')).toBeTruthy();
+  expect(screen.getByTestId('active-chat-body')).toBe(covered);
+  expect(covered.closest('[hidden]')).toBeNull();
+});
+
+// Any route that moves the dock to another chat leaves the draft, not only the
+// dock's own focus paths: here the `?chat=` pointer (a toast's Open, a share,
+// browser history) names another chat.
+test('the dock moving to another chat by any route dismisses the draft with its text', async () => {
+  dockProbe.sessions = [chatSession('chat-a'), chatSession('chat-b')];
+  navigationStore.navigate('/', { dock: 'open', chat: 'chat-a' });
+  renderDockedPane();
+  await act(async () => {});
+  const onClosed = vi.fn();
+  act(() => {
+    dispatchNewChatIntent({ initialPrompt: 'Keep me', onClosed });
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  act(() => pickerProps.at(-1)!.onDraftChange('Keep me, edited'));
+
+  act(() => navigationStore.setActiveChat('chat-b'));
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('region', { name: 'New chat picker' }),
+    ).toBeNull(),
+  );
+  expect(onClosed).toHaveBeenCalledExactlyOnceWith(
+    'dismissed',
+    'Keep me, edited',
+  );
+});
+
+// A bare New chat (header, Cmd+T, the palette) while a draft is open keeps
+// that draft and focuses it; a request carrying something replaces it.
+test('a plain New chat keeps the open draft and focuses it; one with a prompt replaces it', async () => {
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+  const onClosed = vi.fn();
+  act(() => {
+    dispatchNewChatIntent({ initialPrompt: 'Mine', onClosed });
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  const mounts = pickerMounts.length;
+
+  act(() => {
+    dispatchNewChatIntent({});
+  });
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole('textbox', { name: 'Draft text' }),
+    ),
+  );
+  expect(pickerMounts).toHaveLength(mounts);
+  expect(onClosed).not.toHaveBeenCalled();
+
+  act(() => {
+    dispatchNewChatIntent({ initialPrompt: 'Something else' });
+  });
+  await waitFor(() => expect(pickerMounts).toHaveLength(mounts + 1));
+  expect(pickerProps.at(-1)!.initialPrompt).toBe('Something else');
+  expect(onClosed).toHaveBeenCalledExactlyOnceWith('dismissed', undefined);
+});
+
+// Collapsing the dock (as a phone's setup journey does) keeps the draft
+// mounted, hidden: its whole state survives, and an automatic start that
+// already ran never runs again on reopening.
+test('collapsing and reopening the dock keeps the same draft and never re-runs its automatic start', async () => {
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+  act(() => {
+    dispatchNewChatIntent({
+      startWithDefault: true,
+      initialPrompt: 'Go once',
+      selection: { context: '__global__', agentSlug: 'assistant' },
+    });
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  expect(autoStarts).toEqual(['Go once']);
+  const mounts = pickerMounts.length;
+
+  act(() => regionModel!.setRegion('bottom', { visible: false }));
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('region', { name: 'New chat picker' }),
+    ).toBeNull(),
+  );
+  // Hidden, not gone.
+  expect(
+    document.querySelector('section[aria-label="New chat picker"]'),
+  ).not.toBeNull();
+
+  act(() => regionModel!.setRegion('bottom', { visible: true }));
+  await screen.findByRole('region', { name: 'New chat picker' });
+  expect(pickerMounts).toHaveLength(mounts);
+  expect(autoStarts).toEqual(['Go once']);
 });
