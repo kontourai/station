@@ -928,11 +928,11 @@ describe('service supervisor', () => {
   describe('wedge escalation under host CPU pressure', () => {
     const pressured: HostPressureReading = {
       pressured: true,
-      detail: 'PSI cpu some avg60=80%, load 10.20 on 4 CPUs',
+      detail: '/proc/pressure/cpu some avg60=80%',
     };
     const unpressured: HostPressureReading = {
       pressured: false,
-      detail: 'PSI cpu some avg60=3%, load 0.40 on 4 CPUs',
+      detail: '/proc/pressure/cpu some avg60=3%',
     };
     const wedgedCollect = () =>
       vi.fn().mockResolvedValue(instanceStatus(slowChild(10), okChild(11)));
@@ -965,7 +965,7 @@ describe('service supervisor', () => {
       expect(
         warn.mock.calls.some(([message]) =>
           String(message).includes(
-            'identity probe failed for 600s; process alive and port listening — tolerating (slow is not dead); host under CPU pressure (PSI cpu some avg60=80%, load 10.20 on 4 CPUs) — wedge escalation deferred until 900s of continuous failure',
+            'identity probe failed for 600s; process alive and port listening — tolerating (slow is not dead); host under CPU pressure (/proc/pressure/cpu some avg60=80%) — wedge escalation deferred until 900s of continuous failure',
           ),
         ),
       ).toBe(true);
@@ -1023,7 +1023,7 @@ describe('service supervisor', () => {
       expect(
         warn.mock.calls.some(([message]) =>
           String(message).includes(
-            'host still under CPU pressure (PSI cpu some avg60=80%, load 10.20 on 4 CPUs) but the 900s pressure ceiling is reached',
+            'host still under CPU pressure (/proc/pressure/cpu some avg60=80%) but the 900s pressure ceiling is reached',
           ),
         ),
       ).toBe(true);
@@ -1069,7 +1069,7 @@ describe('service supervisor', () => {
       expect(
         warn.mock.calls.some(([message]) =>
           String(message).includes(
-            'identity probe has failed continuously for 360s; escalation was deferred for host CPU pressure, which has eased (PSI cpu some avg60=3%, load 0.40 on 4 CPUs)',
+            'identity probe has failed continuously for 360s; escalation was deferred for host CPU pressure, which is no longer measured as pressured (/proc/pressure/cpu some avg60=3%)',
           ),
         ),
       ).toBe(true);

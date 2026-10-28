@@ -6,7 +6,7 @@ Stop the Station service from restarting a working server or UI process just bec
 
 How pressure is measured depends on the platform:
 
-- **Linux:** CPU pressure stall information (PSI) of 25% or more over the last minute. A container's own cgroup v2 `cpu.pressure` is used when present.
+- **Linux:** CPU pressure stall information (PSI) of 25% or more over the last minute. In a container with its own cgroup namespace (Docker's default under cgroup v2), its `cpu.pressure` is used instead of the host-wide file.
 - **macOS, or Linux without PSI:** a one-minute load average of 1.5 or more per CPU.
 - **Windows:** neither signal exists, so the 180-second timing is unchanged.
 

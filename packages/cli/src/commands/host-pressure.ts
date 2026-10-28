@@ -37,26 +37,11 @@ export const PSI_CPU_PATHS = [
 ] as const;
 
 export interface HostPressureSources {
-  /**
-   * The first readable PSI cpu file and its path; throws where PSI is absent
-   * (macOS, Windows, kernels without PSI).
-   */
-  readPsiCpu?: () => { path: string; text: string };
+  /** PSI cpu files to try in order; none exist on macOS or Windows. */
+  psiCpuPaths?: readonly string[];
   /** os.loadavg(); Windows reports zeros. */
   loadAverage?: () => number[];
   cpuCount?: () => number;
-}
-
-function readFirstPsiCpu(): { path: string; text: string } {
-  let lastError: unknown;
-  for (const path of PSI_CPU_PATHS) {
-    try {
-      return { path, text: readFileSync(path, 'utf8') };
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  throw lastError;
 }
 
 /** Parses the `some avg60=` field of a PSI cpu file, or null when absent or malformed. */
@@ -79,21 +64,23 @@ export function parsePsiCpuSomeAvg60(text: string): number | null {
 export function readHostPressure(
   sources: HostPressureSources = {},
 ): HostPressureReading | null {
-  const readPsiCpu = sources.readPsiCpu ?? readFirstPsiCpu;
+  const psiCpuPaths = sources.psiCpuPaths ?? PSI_CPU_PATHS;
   const loadAverage = sources.loadAverage ?? loadavg;
   const cpuCount = sources.cpuCount ?? availableParallelism;
 
-  try {
-    const psi = readPsiCpu();
-    const avg60 = parsePsiCpuSomeAvg60(psi.text);
+  for (const path of psiCpuPaths) {
+    let avg60: number | null = null;
+    try {
+      avg60 = parsePsiCpuSomeAvg60(readFileSync(path, 'utf8'));
+    } catch {
+      // Absent here; try the next file, then the load average.
+    }
     if (avg60 !== null) {
       return {
         pressured: avg60 >= PSI_CPU_SOME_AVG60_THRESHOLD,
-        detail: `${psi.path} some avg60=${avg60}%`,
+        detail: `${path} some avg60=${avg60}%`,
       };
     }
-  } catch {
-    // No PSI here; fall back to the load average.
   }
 
   let load1: number | undefined;

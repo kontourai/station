@@ -679,7 +679,7 @@ export async function superviseService(
       } else if (pressure?.pressured) {
         pressureNote = `; host still under CPU pressure (${pressure.detail}) but the ${PRESSURED_ESCALATION_CEILING_MS / 1000}s pressure ceiling is reached`;
       } else if (state.pressureDeferred) {
-        pressureNote = `; escalation was deferred for host CPU pressure, which has eased${pressure ? ` (${pressure.detail})` : ''}`;
+        pressureNote = `; escalation was deferred for host CPU pressure, which is no longer measured as pressured${pressure ? ` (${pressure.detail})` : ''}`;
       }
       console.warn(
         `Station ${name} identity probe has failed continuously for ${Math.round(failingForMs / 1000)}s${pressureNote}; running a ${CONFIRMATION_PROBE_TIMEOUT_MS / 1000}s confirmation probe`,
