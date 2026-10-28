@@ -276,7 +276,7 @@ export function registerAgentTools(server: StationControlToolRegistry) {
     'fork_conversation',
     [
       'Fork a conversation into a new one that starts from its history up to a completed assistant turn, as the Station UI fork does. The source is unchanged.',
-      "It is held to the same scope as starting a Session: the source must be your own conversation or another of your owner's that your scope lets you view, and the fork lands (in targetProjectSlug, else the source's Project) only where you could start a Session yourself. Unless your credential is bound, your scope is your session's Project (or the global space, if it has none); a bound credential reaches the Projects your owner may act in. Anything else is refused.",
+      "It is held to the same scope as starting a Session: the source must be your own conversation or another of your owner's that your scope lets you view, and the fork lands (in targetProjectSlug, else the source's Project) only where you could start a Session yourself. Unless your credential is bound, your scope is your session's Project (or the global space, if it has none); a bound credential reaches the global space and the Projects your owner may act in, and a bound operator's reaches what the operator may read. Anything else is refused.",
       'Returns the new conversationId and the seed its first turn replays.',
     ].join(' '),
     {

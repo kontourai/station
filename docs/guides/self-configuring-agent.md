@@ -389,11 +389,11 @@ holds every caller except a bound operator to the dispatch scope above twice,
 before it writes anything:
 
 - the source must be the caller's own conversation or another of its owner's,
-  in a Project where the owner holds `view`. A conversation a person only
-  referenced is not enough here, and a conversation with no started Session
-  is refused;
-- the fork must land where the caller could start a Session itself, in a
-  Project where the owner holds `execute`.
+  in the global space or a Project where the owner holds `view`. A
+  conversation a person only referenced is not enough here, and a
+  conversation with no started Session is refused;
+- the fork must land where the caller could start a Session itself: the
+  global space, or a Project where the owner holds `execute`.
 
 A caller whose credential is not bound is also held to its own Session's
 scope: the source and the fork must both be in its Session's Project, or in
