@@ -3927,7 +3927,10 @@ Callers use these operations rather than mutating leases or output ownership.
 owns coordinator roots, request/output/receipt paths and execution-equivalence
 keys. [Request context](../../scripts/lib/verification-request-context.mjs)
 validates lane/time/capacity, binds revision/worktree and exact Node/npm toolchain
-provenance, and checks a submitted request at admission. Provenance is checked
+provenance, and checks a submitted request at admission. Its execution
+environment also marks the lane's children as admitted to the
+[host heavy-check pool](../guides/testing.md#host-heavy-check-slots), so a heavy
+check run inside a lane takes no second slot. Provenance is checked
 again before execution and each non-reused completion phase. A same-name lane
 or green sentinel alone is not reusable evidence.
 
