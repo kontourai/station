@@ -1078,6 +1078,31 @@ describe('service supervisor', () => {
     // Review of this change, finding 2: an intermittent foreign responder
     // only ever drains through the 180s backstop, and a different identity
     // answering is positive evidence against starvation.
+    test('an unmeasurable reading after a deferral escalates without claiming a reading', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      let reading: HostPressureReading | null = pressured;
+      const harness = makeSupervisor({
+        clockAdvanceMs: 60_000,
+        collect: wedgedCollect(),
+        hostPressure: () => reading,
+      });
+      await harness.supervision;
+      for (let index = 0; index < 5; index += 1) await harness.runTick();
+      expect(harness.exit).not.toHaveBeenCalled();
+
+      reading = null;
+      await harness.runTick();
+      await vi.waitFor(() => expect(harness.exit).toHaveBeenCalledWith(1));
+      expect(
+        warn.mock.calls.some(([message]) =>
+          String(message).endsWith(
+            'failed continuously for 360s; escalation was deferred for host CPU pressure, which is no longer measured as pressured; running a 45s confirmation probe',
+          ),
+        ),
+      ).toBe(true);
+    });
+
     test('pressure does not defer an intermittent foreign responder past the 180s window', async () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const error = vi.spyOn(console, 'error').mockImplementation(() => {});
