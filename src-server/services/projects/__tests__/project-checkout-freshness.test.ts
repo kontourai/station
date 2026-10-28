@@ -441,6 +441,45 @@ describe('project checkout freshness', () => {
     });
   });
 
+  test('an upstream a refspec maps outside refs/remotes is still read', async () => {
+    const { checkout, land } = fixture();
+    git(checkout, [
+      'config',
+      'remote.origin.fetch',
+      '+refs/heads/*:refs/origin/*',
+    ]);
+    git(checkout, ['fetch', '-q']);
+    land(3);
+    git(checkout, ['fetch', '-q']);
+    const result = await createProjectCheckoutFreshnessReader().read(
+      checkout,
+      THRESHOLDS,
+    );
+    expect(result).toMatchObject({
+      status: 'stale',
+      upstream: 'refs/origin/main',
+      behind: 3,
+    });
+    expect(result).toHaveProperty('upstreamFetchedAt');
+  });
+
+  test('an upstream whose name holds a character git allows but a regex might not is read', async () => {
+    const { checkout, other } = fixture();
+    // A no-break space: allowed in a ref name, unlike an ASCII space.
+    const name = 'f\u00a0x';
+    git(other, ['push', '-q', 'origin', `main:refs/heads/${name}`]);
+    git(checkout, ['fetch', '-q']);
+    git(checkout, ['checkout', '-q', '-b', 'nb', '--track', `origin/${name}`]);
+    const result = await createProjectCheckoutFreshnessReader().read(
+      checkout,
+      THRESHOLDS,
+    );
+    expect(result).toMatchObject({
+      status: 'not-stale',
+      upstream: `origin/${name}`,
+    });
+  });
+
   test('a line break written into the upstream config cannot shift which remote is read', async () => {
     const { checkout, land } = fixture();
     land(1);

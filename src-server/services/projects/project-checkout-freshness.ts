@@ -209,9 +209,10 @@ async function readFacts(repository: ReadRepository): Promise<RepositoryFacts> {
       head,
     ])
   ).split('\0');
-  // A plain branch or remote-tracking ref name: nothing a revision parser
-  // would read more into (`main~1`, a bare object id), and no line break.
-  if (!/^refs\/(?:heads|remotes)\/[^\s~^:?*[\\]+$/.test(upstreamRef))
+  // A ref name, never something git would take as an option, with none of
+  // the characters git forbids in one (control characters, space, `~^:?*[\`).
+  // A remote's refspec may map it anywhere under `refs/`.
+  if (!/^refs\/[^\x00-\x20\x7f~^:?*[\\]+$/.test(upstreamRef))
     return { kind: 'unknown', reason: 'no-upstream' };
   // Whether exactly that ref exists. `show-ref --verify` takes the full name
   // as written, with no guessing at other refs, and reads it by name (so a
@@ -268,10 +269,11 @@ async function readFacts(repository: ReadRepository): Promise<RepositoryFacts> {
       behindSince = Math.max(behindSince ?? learned, learned);
   }
 
-  // A remote-tracking upstream only. `git clone` writes neither FETCH_HEAD
-  // nor the branch's reflog, only the remote's HEAD reflog.
+  // An upstream from a remote only (a local branch's remote is `.`). `git
+  // clone` writes neither FETCH_HEAD nor the branch's reflog, only the
+  // remote's HEAD reflog.
   const fetched =
-    remote && upstreamRef.startsWith('refs/remotes/')
+    remote && remote !== '.'
       ? await latestModification([
           [repository.gitDir, ['FETCH_HEAD']],
           [repository.commonDir, ['FETCH_HEAD']],
