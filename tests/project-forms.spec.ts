@@ -479,7 +479,7 @@ test.describe('Project forms', () => {
         );
         const savedAs = section
           .locator('.project-settings__path-pill')
-          .filter({ hasText: 'saved as' });
+          .filter({ hasText: 'path' });
         await expect(savedAs.locator('code')).toHaveText(value);
         for (const pill of await section
           .locator('.project-settings__path-pill')
@@ -490,7 +490,7 @@ test.describe('Project forms', () => {
             `${context}: path pill right edge`,
           ).toBeLessThanOrEqual(card.x + card.width + 0.5);
           // The value stays inside its pill, and the pill's label ("leaf",
-          // "saved as") stays on one line however far the value wraps.
+          // "path") stays on one line however far the value wraps.
           const code = (await pill.locator('code').boundingBox())!;
           expect(
             code.x + code.width,

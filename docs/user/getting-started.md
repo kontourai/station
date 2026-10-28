@@ -519,6 +519,13 @@ its engine does not offer: a default that an engine advertising its own model
 list left out is skipped, and a kept choice that list no longer contains is
 refused at **Start** with the message kept, so you can choose another.
 
+Project settings keeps workspace details and chat defaults together. Use
+**Save** to apply workspace, identity, model, new-chat, execution, Agent, and
+tool changes. Layouts, Sources, People and access, and Project knowledge
+have their own actions, which apply immediately. Background refreshes preserve
+unsaved edits. Clearing the working directory removes the configured folder;
+a Project that requires worktree isolation still needs a valid Git directory.
+
 A Project can choose how its new chats start, in Project settings → **New
 chats**. **Use the AI model above** starts each new chat on the Project's AI
 model wherever its Agent offers that model, ahead of your last pick on this
