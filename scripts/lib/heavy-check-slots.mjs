@@ -105,7 +105,7 @@ export function resolveHeavyCheckSlotCount({
  *
  * @param {{ env?: NodeJS.ProcessEnv, platform?: string, uid?: number, tmpdir?: string }} [options]
  */
-export function resolveHeavyCheckSlotDirectory({
+function resolveHeavyCheckSlotDirectory({
   env = process.env,
   platform = process.platform,
   uid = typeof process.getuid === 'function' ? process.getuid() : -1,
@@ -148,7 +148,7 @@ function defaultPidAlive(pid) {
  * @param {NodeJS.ProcessEnv} env
  * @param {(pid: number) => boolean} [pidAlive]
  */
-export function heldByLiveAncestor(env, pidAlive = defaultPidAlive) {
+function heldByLiveAncestor(env, pidAlive = defaultPidAlive) {
   const raw = env[HEAVY_CHECK_HELD_ENV];
   if (!raw || !/^[1-9]\d*$/.test(raw)) return false;
   return pidAlive(Number(raw));
