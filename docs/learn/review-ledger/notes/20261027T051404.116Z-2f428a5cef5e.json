@@ -1,0 +1,7 @@
+{
+  "revision": "10a66a2d5e1bbdafb71f54ced66d3dadff49a85b",
+
+  "notes": [
+    {"path":"docs/guides/local-speech.md","note":"Bounded archive-source follow-up at 10a66a2d5e1bbdafb71f54ced66d3dadff49a85b. Re-read Backup and update rollback against the creation-only media exclusion repair at fa48d34e4387e1b14810dff923d91b3bd9666717. New ordinary and supervised-update snapshots still omit re-acquirable media-tools downloads; exactcap1 creation controls both passed while live downloaded bytes remained untouched. Physical validation and ordinary staged comparison now inspect media bytes actually recorded in older archives; the concrete v1 marker+media-file restore passed at exactcap2. Unlisted-file/hash/link/cap refusal controls preserve current marker/sentinel. Update external-registry behavior is unchanged. The37-test macOS owner result, creation-only intended fault and byte-exact restoration/shared typecheck remain bound to fa48; this note does not renew acquisition/transcription/provider/platform/recognition/release evidence. Existing limits and prose remain accurate for this archive-only delta; no classification, source relationship, capture or historical check change is proposed.","inputs":["docs/guides/local-speech.md","packages/shared/src/station-home-archive.ts"]}
+  ]
+}

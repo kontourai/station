@@ -36,6 +36,11 @@ interface ComposerModeSheetProps {
   pendingNote?: string;
   activeMode?: string;
   isNewSession?: boolean;
+  /**
+   * `dialog` when the trigger sits in a dialog (the dock's New chat), so the
+   * picker opens above it, as that dialog's other menus do.
+   */
+  layer?: 'dialog' | 'popover';
 }
 
 /**
@@ -67,6 +72,7 @@ export function ComposerModeSheet({
   pendingNote,
   activeMode,
   isNewSession,
+  layer = 'popover',
 }: ComposerModeSheetProps) {
   const account = useAccountPreferences();
   const [saveAsDefault, setSaveAsDefault] = useState(false);
@@ -102,7 +108,7 @@ export function ComposerModeSheet({
 
   return (
     <ResponsiveDialogSurface
-      layer="popover"
+      layer={layer}
       ariaLabel="Approval mode"
       onClose={onClose}
       historyMode="entry"

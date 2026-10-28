@@ -34,6 +34,9 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
 - `list_agents`, `get_agent`, `list_projects`, `get_project`
 - `list_skills`, `list_registry_skills`, `install_skill`, `uninstall_skill`, `update_skill`, `track_skill_run`, `record_skill_outcome`
 - `send_message` for a lightweight message to a Station agent
+- `workload_status` for the calling Session's own workload memory budget and
+  usage (limit, current, peak, swap, OOM kills), or why no budget is enforced;
+  see [Linux service workload budgets](development.md#linux-service-workload-budgets)
 - `read_conversation` to page through a conversation a person referenced in a
   message to the Agent, or to start at a `search_sessions` hit
   (`aroundMessageId`)
@@ -389,7 +392,11 @@ Session by its `sessionId`, without creating a task.
   work. An unscoped ordinary terminal can supply a new settlement only when
   the host proves the thread inactive and genuinely inputless, with no retained
   captured-input audit. A thread with capture history can therefore be idle
-  while a requested settlement remains unverified. Active requested work whose
+  while a requested settlement remains unverified. A turn that a Station
+  restart interrupted leaves the Session idle but settles nothing: no
+  `settledTurn` reports it, and nothing acknowledges the requested work. A
+  delegated task cut off that way tells its parent it was interrupted, quoting
+  no output. Active requested work whose
   producer emits only untagged observations remains running and unacknowledged.
   A positively scoped terminal uses the actual current boundary or validated
   retirement witness and complete canonical scope; its invocation is never

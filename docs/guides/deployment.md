@@ -56,8 +56,15 @@ from native packages. The
 listener negotiates `Accept-Encoding`, sets `Vary: Accept-Encoding`, and falls
 back to the original file when sidecars are absent. HTML stays `no-cache` and
 uncompressed: the listener injects a fresh CSP nonce for each response and does
-not return `304` for the shell. API cache policy and unbuffered event streams
-are unchanged.
+not return `304` for the shell. The listener passes API responses and
+unbuffered event streams through as the API sends them; the API revalidates its
+own JSON reads (see [conditional JSON reads](../reference/api.md#conditional-json-reads)).
+
+This listener and the API listener keep an idle HTTP connection open for 65
+seconds instead of Node's 5. A client polling every few seconds reuses its
+connection, and a reverse proxy with the common 60-second idle limit closes
+its upstream connection before Station does, rather than reusing one Station
+has just closed.
 
 The built shell preloads its `station-eager-entry` main module while the boot
 module prepares startup recovery. Page and highlight-worker builds share the
@@ -196,9 +203,20 @@ and hot reload stay outside the published image contract.
 
 The optional [private telemetry companion](../../deployment/telemetry/README.md)
 now has an explicit receiver image target and a separate pinned Compose profile.
-It requires private credential files and loopback exposure; consumer validation,
-actual delivery, backup/restore and release qualification are still pending.
-Its source is distinct from existing dogfood receipts.
+It requires private credential files and loopback exposure. Source consumers and
+bounded delivery/restore diagnostics are implemented; their historical receipts
+do not qualify the current installed release or the full private two-Station
+journey. See [the diagnostic profile](../../deployment/telemetry/README.md#artifact-and-private-files)
+for its exact scope and remaining native/release limits. Its source is distinct
+from existing dogfood receipts.
+
+Developer → Monitoring → Companion exposes the operator-only host prerequisite
+check. The in-person operator and an explicitly promoted human operator Device
+can read it. The Device needs read scope, `telemetry:manage` and its current
+operator role; agents and unpromoted paired Devices remain refused. This read
+does not install, start or qualify the deployment.
+See the [prerequisite API](../../deployment/telemetry/README.md#station-host-prerequisite-api)
+for supported container capabilities and explicit failure states.
 
 The same directory provides the only checked-in monitoring stack. Its
 [developer profile](../../deployment/telemetry/README.md#developer-profile) runs
@@ -226,8 +244,11 @@ its private operator `sto_` key and return exact marginals. Keep these routes
 private at the proxy too. The public dashboard and publisher `stq_` keys expose
 only frozen weekly noisy estimates over a fixed public domain, with cursor
 pagination. Configure public release versions/registry IDs independently of
-observed traffic. Schema 6 must be migrated before serving; older binaries
-refuse it. Back up the entire database including `lite_noise_key`,
+observed traffic. The current receiver requires schema 9 before serving; a
+schema-8 binary refuses that database. In-place rollback is `NOT_SUPPORTED`, and
+rollback by restoring the original backup remains `NOT_VERIFIED`. Follow the
+[maintained lifecycle profile](../../deployment/telemetry/README.md#backup-restore-and-upgrade-acceptance)
+for exact backup, restore and compatibility boundaries. Back up the entire database including `lite_noise_key`,
 `lite_publications`, and `lite_published`. Never clear publication markers,
 regenerate already released weeks, or restore their cells independently. Review
 the [privacy/utility contract](../../packages/telemetry-broker/README.md#public-aggregates)
@@ -253,8 +274,10 @@ readiness. Application and workspace files need their own retention/backup polic
 ## Offline home recovery drill
 
 Use a disposable home first, with the same Station release on source and target.
-Record a Project, Task, room message, document edit, its durable edit receipt,
-and the published revision link. Make another edit so the first revision is no
+Record a Project, Task, room message, document edit and its durable edit receipt.
+Create a Task Review thread on that Plan revision to freeze a receipt, and record
+the resulting published revision link. Enable the `task-review` feature preview
+for this step; saving alone retains a replaceable candidate. Make another edit so the first revision is no
 longer the current document. Stop every runtime using the source home before
 running the [home backup and restore commands](../reference/cli.md#home-backup)
 from a matching source checkout. These local archive verbs are not a promise
@@ -267,6 +290,10 @@ that the published client can restore a server home:
 ```
 
 The archive contains sensitive home files and is not an encrypted transport.
+Use a v2-capable CLI for newly written home archives; it preserves empty
+directories and can also read older v1 archives. A v1 archive cannot recover
+empty directories it never recorded. This format compatibility does not
+establish post-snapshot effect-history continuity or a safe runtime downgrade.
 Restrict archive access and encrypt off-host storage using your organization's
 backup system. Preserve required evidence-signing keys securely; rotating the
 operator credential is separate from replacing those keys. OS-held credentials,
@@ -303,6 +330,16 @@ provenance metadata, not proof of source shutdown or a transfer certificate.
 Keep one active writer by operational control; automatic cross-host handoff,
 witness-less fork presentation, and per-tenant recovery require separate
 verification before offering those guarantees to customers.
+
+Private analytics uses that recovery record as a negative activation fence.
+Normal restore and supervised in-place update rollback require fresh source
+consent and receiving keys; copied approvals and sync checkpoints cannot renew
+access. Update rollback persists the fence before removing state and preserves
+it if interrupted. Generic EventStore stream identity is not rewritten. Keep
+recovery metadata intact; unreadable startup metadata disables private export
+until repair and restart. These controlled home-restore checks do not establish
+companion PostgreSQL backup reconciliation, canonical clone/mirror identity or
+cross-host authority. See [source recovery limits](monitoring.md#source-approval-review).
 
 ## Reverse Proxy
 

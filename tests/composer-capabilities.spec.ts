@@ -374,7 +374,10 @@ async function attachThroughPicker(
 }
 
 async function evidence(page: Page, testInfo: TestInfo, name: string) {
-  await page.screenshot({ path: testInfo.outputPath(name) });
+  await page.screenshot({
+    path: testInfo.outputPath(name),
+    animations: 'disabled',
+  });
   const directory = process.env.STATION_COMPOSER_EVIDENCE_DIR;
   if (directory) {
     await mkdir(directory, { recursive: true });
@@ -421,6 +424,53 @@ for (const [label, viewport] of [
     expect(prepared.size).toBe(1);
     expect(JSON.stringify(executionRequests[0])).toContain('stage-0');
     await evidence(page, testInfo, `start-composer-sent-${label}.png`);
+  });
+
+  test(`${label}: full access picked at Start rides the new chat's first send`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize(
+      label === 'desktop' ? { width: 1440, height: 900 } : viewport,
+    );
+    const executionRequests: Array<Record<string, unknown>> = [];
+    await installMockOrchestrationSse(page);
+    await seedRoutes(page, executionRequests);
+    const { composer, started } = await openStartComposer(page, label);
+
+    await composer.getByRole('button', { name: /^Permissions: / }).click();
+    const sheet = page.getByRole('dialog', { name: 'Approval mode' });
+    await expect(sheet).toBeVisible();
+    await evidence(
+      page,
+      testInfo,
+      `start-composer-approval-sheet-${label}.png`,
+    );
+    // A person taps the option's row (its label); choosing full access
+    // swaps the list for its confirmation.
+    await sheet.getByText('Never ask (full access)', { exact: true }).click();
+    await sheet.getByRole('button', { name: 'Enable full access' }).click();
+    await expect(sheet).toBeHidden();
+    await expect(
+      composer.getByRole('button', {
+        name: /^Permissions: Full access\. Chosen for this chat/,
+      }),
+    ).toBeVisible();
+    await evidence(page, testInfo, `start-composer-approval-${label}.png`);
+
+    await composer
+      .getByRole('textbox', { name: 'What would you like done?' })
+      .fill('go');
+    await composer.getByRole('button', { name: 'Start', exact: true }).click();
+    await started();
+    await waitForMockOrchestrationSse(page);
+    await expect
+      .poll(() => executionRequests.length, { timeout: 15_000 })
+      .toBe(1);
+    expect(executionRequests[0]).toMatchObject({
+      message: 'go',
+      setApprovalMode: 'never',
+      setApprovalModeBasedOn: null,
+    });
   });
 
   test(`${label}: the unavailable microphone dialog contains reverse Tab from its panel`, async ({
@@ -559,6 +609,41 @@ for (const [label, viewport] of [
       page.getByRole('button', { name: 'Send mode: Steer' }),
     ).toBeVisible();
     await evidence(page, testInfo, `running-turn-steer-${label}.png`);
+    if (label === 'desktop') {
+      const originalTheme = await page
+        .locator('html')
+        .getAttribute('data-theme');
+      try {
+        for (const width of [390, 1440]) {
+          for (const theme of ['dark', 'light']) {
+            await page.setViewportSize({ width, height: 900 });
+            await page.evaluate((value) => {
+              document.documentElement.setAttribute('data-theme', value);
+            }, theme);
+            await expect(page.locator('html')).toHaveAttribute(
+              'data-theme',
+              theme,
+            );
+            await expect(
+              page.getByRole('button', { name: 'Send mode: Steer' }),
+            ).toBeVisible();
+            await expect(stop).toBeVisible();
+            await evidence(
+              page,
+              testInfo,
+              `native-steering-${width}-${theme}.png`,
+            );
+          }
+        }
+      } finally {
+        await page.setViewportSize(viewport);
+        await page.evaluate((value) => {
+          if (value === null)
+            document.documentElement.removeAttribute('data-theme');
+          else document.documentElement.setAttribute('data-theme', value);
+        }, originalTheme);
+      }
+    }
     // Horizontally: at 390px a running turn's full row (Clear, Send, Queue,
     // Stop) wraps onto a second line, which is a separate, existing limit.
     await textarea.fill('');

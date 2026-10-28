@@ -2168,6 +2168,13 @@ finish_archive_version() {
         value.releaseChannel !== releaseChannel || value.node !== `v${nodeVersion}`) process.exit(1);
   ' "$version_report" "$release_tag" "$release_sha" "$runtime_channel" "$release_channel" "$archive_node_version" || \
     return 1
+  # Retain the verified envelope for later signature/identity checks. Its
+  # presence alone grants no authority to install a companion or start services.
+  node -e '
+    const fs = require("node:fs");
+    const path = require("node:path");
+    fs.copyFileSync(process.argv[1], path.join(process.argv[2], ".station-signed-release-manifest.json"), fs.constants.COPYFILE_EXCL);
+  ' "$manifest_file" "$version_dir" || return 1
   printf '%s\n' "$actual_checksum" >"$version_dir/.station-install-complete"
 }
 

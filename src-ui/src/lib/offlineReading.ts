@@ -1,7 +1,8 @@
 import type { RequestCredentialEvidence } from '@kontourai/station-connect';
 import type { OrchestrationSequencedEvent } from '@kontourai/station-contracts/orchestration';
+import { runtimeEventContentDisplayText } from '@kontourai/station-contracts/runtime-event-content';
 import { createStore, get, update } from 'idb-keyval';
-import { buildInfo } from '../build-info';
+import { buildCacheBuster } from './buildCacheBuster';
 
 /** Durable authority identity: request ordering and mount epochs change offline. */
 export function offlineReadingBinding(
@@ -18,7 +19,7 @@ export function offlineReadingBinding(
 }
 
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
-const buster = () => `${buildInfo.version}+${buildInfo.commit}`;
+const buster = buildCacheBuster;
 
 const MAX_CONVERSATIONS = 20;
 const MAX_COPY_BYTES = 256 * 1024;
@@ -178,8 +179,11 @@ export async function saveOfflineReading(
     const prompt = events.find(
       ({ event }) => event.method === 'turn.started' && event.turnId === id,
     )?.event;
-    if (prompt?.method === 'turn.started' && prompt.prompt)
-      turns.push({ role: 'user', text: prompt.prompt });
+    const promptText =
+      prompt?.method === 'turn.started'
+        ? runtimeEventContentDisplayText(prompt.prompt)
+        : undefined;
+    if (promptText) turns.push({ role: 'user', text: promptText });
     const text = events
       .filter(
         ({ event }) =>

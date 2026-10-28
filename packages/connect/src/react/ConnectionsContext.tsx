@@ -1,4 +1,5 @@
 import type { StationProfileCredentialRef } from '@kontourai/station-contracts';
+import type { StationRoute } from '@kontourai/station-contracts/station-routes';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import React, {
   createContext,
@@ -161,6 +162,17 @@ interface ConnectionsContextType {
     detail?: string,
   ) => void;
   selectEndpoint: (id: string, endpointId: string) => SavedConnection | null;
+  /**
+   * Station routes (docs/design/station-routes.md). Optional so hosts and
+   * fixtures that predate routes keep compiling; absent means "not offered".
+   */
+  applyAdvertisedRoutes?: (
+    id: string,
+    environmentId: string,
+    routes: readonly StationRoute[],
+  ) => boolean;
+  addRoute?: (id: string, address: string) => boolean;
+  removeRoute?: (id: string, endpointId: string) => boolean;
   credentialProvider: ConnectionCredentialProvider;
   /**
    * Selects a connection after any host-owned credential projection has
@@ -553,6 +565,21 @@ export function ConnectionsProvider({
       selectEndpoint: (id, endpointId) => {
         selectionEpoch.current += 1;
         return resolvedStore.selectEndpoint(id, endpointId);
+      },
+      applyAdvertisedRoutes: (id, environmentId, routes) =>
+        resolvedStore.applyAdvertisedRoutes(id, environmentId, routes, {
+          clientProtocol:
+            (nativeShell ?? detectNativeShell())
+              ? 'native:'
+              : typeof window !== 'undefined' &&
+                  window.location.protocol === 'http:'
+                ? 'http:'
+                : 'https:',
+        }),
+      addRoute: (id, address) => resolvedStore.addRoute(id, address),
+      removeRoute: (id, endpointId) => {
+        selectionEpoch.current += 1;
+        return resolvedStore.removeRoute(id, endpointId);
       },
       credentialProvider: {
         getCredential: () => {

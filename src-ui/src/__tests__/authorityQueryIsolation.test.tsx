@@ -27,6 +27,7 @@ import type { AuthorityObservation } from '@kontourai/station-contracts/authorit
 import { useUserLookup } from '@kontourai/station-sdk';
 import { StationHttpError } from '@kontourai/station-sdk/client';
 import {
+  onlineManager,
   QueryClient,
   QueryClientProvider,
   useQuery,
@@ -243,7 +244,8 @@ function createHarness(): Harness {
 }
 
 function Probe() {
-  const { status, namespace, refused } = useAuthorityPersistence();
+  const { status, namespace, refused, reobserve } = useAuthorityPersistence();
+  (Probe as unknown as { reobserve?: () => void }).reobserve = reobserve;
   const client = useQueryClient();
   const harness = (Probe as unknown as { harness: Harness }).harness;
   harness.activeClient = client;
@@ -1324,6 +1326,89 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
       unmount();
     },
   );
+
+  it('a browser reconnect keeps the verified workspace: no re-read, same client', async () => {
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    renderTree(harness);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-status')).toBe('verified'),
+    );
+    const client = harness.activeClient;
+    const reads = harness.observationCalls.length;
+    try {
+      // A Wi-Fi/cellular handoff: the browser goes offline, then online.
+      act(() => onlineManager.setOnline(false));
+      act(() => onlineManager.setOnline(true));
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      expect(probe().getAttribute('data-status')).toBe('verified');
+      expect(harness.activeClient).toBe(client);
+      expect(harness.observationCalls).toHaveLength(reads);
+    } finally {
+      onlineManager.setOnline(true);
+    }
+  });
+
+  it('a failed observation is read again when the browser reconnects', async () => {
+    const harness = createHarness();
+    let networkUp = false;
+    harness.observationPlan.set('default', async () => {
+      if (!networkUp) throw new TypeError('fetch failed');
+      return OBS_DEFAULT;
+    });
+    renderTree(harness);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-status')).toBe('unverified'),
+    );
+    try {
+      act(() => onlineManager.setOnline(false));
+      networkUp = true;
+      act(() => onlineManager.setOnline(true));
+      await waitFor(() =>
+        expect(probe().getAttribute('data-status')).toBe('verified'),
+      );
+    } finally {
+      onlineManager.setOnline(true);
+    }
+  });
+
+  it('a failed observation offers a re-read that verifies; a refused one does not', async () => {
+    const harness = createHarness();
+    let networkUp = false;
+    harness.observationPlan.set('default', async () => {
+      if (!networkUp) throw new TypeError('fetch failed');
+      return OBS_DEFAULT;
+    });
+    const first = renderTree(harness);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-status')).toBe('unverified'),
+    );
+    const reobserve = (Probe as unknown as { reobserve?: () => void })
+      .reobserve;
+    expect(reobserve).toBeTypeOf('function');
+    networkUp = true;
+    act(() => reobserve?.());
+    await waitFor(() =>
+      expect(probe().getAttribute('data-status')).toBe('verified'),
+    );
+    expect(
+      (Probe as unknown as { reobserve?: () => void }).reobserve,
+    ).toBeUndefined();
+    first.unmount();
+
+    harness.observationPlan.set('default', async () => {
+      throw UNAUTHORIZED;
+    });
+    renderTree(harness);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-refused')).toBe('true'),
+    );
+    expect(
+      (Probe as unknown as { reobserve?: () => void }).reobserve,
+    ).toBeUndefined();
+  });
 
   it('offline with no observation shows zero A rows and retains the blob byte-identical', async () => {
     const harness = createHarness();

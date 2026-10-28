@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts/environment-security';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
   parseHostedTenantRegistry,
@@ -10,8 +12,10 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { bindOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { readStreamUntil } from '../../../__test-utils__/sse-helpers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { ProjectFileTransactions } from '../../../domain/project-file-transactions.js';
 import { STATION_CONTROL_MCP_PATH } from '../../../routes/mcp/station-control-mcp-route.js';
 import { assertRuntimeHttpRouteCoverage } from '../../../security/pairing-route-scopes.js';
 import {
@@ -20,13 +24,20 @@ import {
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
 import { ApprovalRegistry } from '../../../services/approvals/approval-registry.js';
+import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
+import {
+  ActionOperationService,
+  FileActionOperationStore,
+} from '../../../services/operations/action-operation-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_TENANT_HEADER,
 } from '../../../utils/internal-api-token.js';
+import { createLogger } from '../../../utils/logger.js';
+import { composeLocalMedia } from '../../bootstrap/local-media-runtime.js';
 import {
   buildRuntimeRouteVocabulary,
   labelRuntimeRoutePath,
@@ -1219,5 +1230,83 @@ describe('configureRuntimeRoutes hosted station-control MCP composition', () => 
     expect(payload).toContain('alpha-only');
     expect(payload).not.toContain('bravo-id');
     expect(payload).not.toContain('clearedCount');
+  });
+});
+
+test('personal Walkthrough imports bind canonical request authority before creating and reading operations', async () => {
+  delete process.env[registryFileEnv];
+  const home = makeTempDir('station-walkthrough-composition-');
+  const files = new ProjectFileTransactions(home);
+  await files.createProject('alpha', { id: 'project-alpha', slug: 'alpha' });
+  const previews = new FeaturePreviewRegistry(
+    home,
+    createLogger({ name: 'walkthrough-composition', level: 'error' }),
+  );
+  const operations = new ActionOperationService(
+    new FileActionOperationStore(home),
+  );
+  const media = composeLocalMedia(home);
+  const app = new Hono();
+  bindOperatorPrincipal(app); // Only authentication is substituted; production principal and actor binding execute.
+  await configureRuntimeRoutes(
+    runtimeContext(app, home, {
+      featurePreviews: previews,
+      mediaTools: media.mediaTools,
+      actionOperations: operations,
+      walkthroughImportDependencies: {
+        resolver: {
+          resolveFfmpeg: async () => ({
+            status: 'needs-consent',
+            downloads: [],
+          }),
+        },
+        transcriber: { transcribeFile: vi.fn() },
+      },
+      projectService: {
+        getProject: (slug: string) =>
+          slug === 'alpha' ? { id: 'project-alpha', slug } : undefined,
+      },
+      environmentSecurityService: {
+        devicePairing: { environmentId: () => 'test-environment' },
+        authorizeCredential: () => true,
+        resolveGrantedScope: () => DEFAULT_GRANT_PAIRING_SCOPE,
+        verifyOperatorCredential: () => true,
+      },
+    }),
+  );
+  await previews.setEnabled('walkthroughs', true);
+  const id = randomUUID();
+  const response = await app.request(
+    '/api/projects/alpha/walkthroughs/import?filename=screen.mp4',
+    {
+      method: 'POST',
+      headers: { 'x-walkthrough-request-id': id },
+      body: 'video bytes',
+    },
+    loopbackEnv(),
+  );
+  expect(
+    response.status,
+    'runtime must bind Walkthrough operation authority',
+  ).toBe(202);
+  expect(await response.json()).toMatchObject({
+    data: { operation: { scope: { accountId: LOCAL_OPERATOR_PRINCIPAL_ID } } },
+  });
+  await vi.waitFor(async () => {
+    const status = await app.request(
+      `/api/projects/alpha/walkthroughs/imports/${id}`,
+      {},
+      loopbackEnv(),
+    );
+    expect(status.status).toBe(200);
+    expect(await status.json()).toMatchObject({
+      data: {
+        outcome: {
+          status: 'unavailable',
+          reason: 'needs-consent',
+          downloads: [],
+        },
+      },
+    });
   });
 });

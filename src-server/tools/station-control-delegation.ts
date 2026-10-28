@@ -46,6 +46,7 @@ import {
   SESSION_VISIBILITY_METADATA_KEY,
   type SessionCapabilityDeliveryMetadata,
 } from '@kontourai/station-contracts/provider';
+import { isRuntimeEventContentRef } from '@kontourai/station-contracts/runtime-event-content';
 import {
   type CanonicalRuntimeEventBase,
   isDeferredRetriableTurnError,
@@ -71,6 +72,7 @@ import {
 } from '@kontourai/station-contracts/tool';
 import {
   type ApprovalDecision,
+  fetchApprovalContentBinding,
   getAgent,
   getOrchestrationSession,
   getOrchestrationSessionEventPage,
@@ -4024,6 +4026,10 @@ function optionalCount(value: unknown): number | undefined {
 }
 
 function visibleText(value: unknown): { text?: string; truncated?: true } {
+  // A reply stored out of line (event-content-spill) shows its preview,
+  // honestly marked truncated.
+  if (isRuntimeEventContentRef(value))
+    return value.preview ? { text: value.preview, truncated: true } : {};
   if (typeof value !== 'string' || !value) return {};
   if (value.length <= MAX_TASK_EVENT_TEXT) return { text: value };
   return { text: value.slice(0, MAX_TASK_EVENT_TEXT), truncated: true };
@@ -5189,7 +5195,48 @@ export async function respondToDelegatedTaskRequest(
   if (!requestIsOpen || requestWasResolved) {
     throw new Error('Delegated task request is not open');
   }
+  // docs/design/event-content-spill.md: the server defines what an allow
+  // must load (the request and the tool calls bound to it) and the digest
+  // its gate checks. This tool fetches that binding and echoes its digest
+  // without loading the bodies (owner decision: agent approve tools send the
+  // digest; the agent is not shown the full content first). The request
+  // event it pins is the one this tool read, so a request that changed
+  // since is refused rather than allowed unseen. An unreadable binding
+  // sends none, and the gate refuses an allow that needed one.
   const snapshot = snapshotFor(loaded);
+  const allowing =
+    input.decision === 'accept' || input.decision === 'acceptForSession';
+  const binding = !allowing
+    ? undefined
+    : loaded.target.kind === 'current' && orchestrationService
+      ? orchestrationService.readApprovalContentBinding?.(
+          snapshot.currentSessionId,
+          input.requestId,
+          readAuthority,
+        )
+      : await readSelectedStation(loaded.target, () =>
+          fetchApprovalContentBinding(
+            loaded.target.apiBase,
+            snapshot.currentSessionId,
+            input.requestId,
+            loaded.target.requestOptions,
+          ),
+        ).catch(() => undefined);
+  const readRequest = [...events]
+    .reverse()
+    .find(
+      (event) =>
+        event.method === 'request.opened' &&
+        event.requestId === input.requestId,
+    );
+  const readRequestEventId =
+    typeof readRequest?.eventId === 'string' ? readRequest.eventId : undefined;
+  const contentBinding = binding?.required
+    ? {
+        expectedRequestEventId: readRequestEventId ?? binding.requestEventId,
+        viewedContentDigest: binding.viewedContentDigest,
+      }
+    : {};
   if (loaded.target.kind === 'current' && orchestrationService) {
     await orchestrationService.dispatchWithReceipt(
       {
@@ -5197,6 +5244,7 @@ export async function respondToDelegatedTaskRequest(
         threadId: snapshot.currentSessionId,
         requestId: input.requestId,
         decision: input.decision,
+        ...contentBinding,
       },
       dispatchContextForAuthority(
         readAuthority,
@@ -5222,6 +5270,7 @@ export async function respondToDelegatedTaskRequest(
           threadId: snapshot.currentSessionId,
           requestId: input.requestId,
           decision: input.decision,
+          ...contentBinding,
         },
         loaded.target.requestOptions,
       ),
@@ -6558,6 +6607,12 @@ export async function executeExecutionTargetMessage(
     readAuthority,
     orchestrationService,
   );
+  if (input.conversationId && orchestrationService)
+    orchestrationService.assertConversationForkContextEnvironment(
+      input.conversationId,
+      selectedTarget.kind === 'current' && !selectedTarget.relayEnvironmentId,
+      readAuthority,
+    );
   if (selectedTarget.kind !== 'current' || !orchestrationService) {
     if (input.resolveAttachments) {
       throw new Error(
@@ -6626,6 +6681,22 @@ export async function executeExecutionTargetMessage(
     );
   }
   const resolverDependencies = {
+    readInitialConversationContext: async (
+      access: EnvironmentAccess,
+      initial: {
+        conversationId: string;
+        agentId: string;
+        projectSlug?: string;
+        userId?: string;
+      },
+    ) => {
+      if (access.kind !== 'current')
+        throw new Error('Saved fork context is local to its owning Station.');
+      return orchestrationService.prepareInitialConversationForkContext(
+        initial,
+        readAuthority,
+      );
+    },
     resolveEnvironmentAccess: async (_executionTarget: ExecutionTarget) => {
       const target = selectedTarget;
       return {
@@ -6850,6 +6921,16 @@ export async function executeExecutionTargetMessage(
         throw new Error('The requested conversation is unavailable.');
       return inspection;
     },
+    readSessionStartMetadata: (
+      _access: EnvironmentAccess,
+      sessionId: string,
+    ) =>
+      typeof orchestrationService.readSessionStartMetadata === 'function'
+        ? orchestrationService.readSessionStartMetadata(
+            sessionId,
+            readAuthority,
+          )
+        : undefined,
     joinConversationTurnKey: async (
       _access: EnvironmentAccess,
       sessionId: string,
@@ -7113,6 +7194,11 @@ export async function executeExecutionTargetMessage(
                 },
               }
             : {}),
+          ...(input.personChatStart &&
+          !ephemeral &&
+          !startInput.metadata?.delegation
+            ? { personChatStart: true as const }
+            : {}),
           resourceAdmissionIntent:
             startContext?.resourceAdmissionIntent ??
             (ephemeral
@@ -7178,6 +7264,8 @@ export async function executeExecutionTargetMessage(
         : undefined,
     approvalPickReachesFullAccess: (_access: EnvironmentAccess, input) =>
       orchestrationService.approvalPickReachesFullAccess(input),
+    recordPersonalApprovalDefault: (_access: EnvironmentAccess, hint) =>
+      orchestrationService.recordPersonalApprovalDefault(hint),
     sendTurn: async (_access: EnvironmentAccess, turnInput, context) => {
       if (
         input.taskRoomInvocationAdmission?.expectedSessionId &&

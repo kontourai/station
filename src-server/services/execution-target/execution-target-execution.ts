@@ -47,6 +47,8 @@ import {
 import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
 import { canonicalPath } from '../../utils/path-containment.js';
+import type { InitialConversationForkContext } from '../orchestration/conversation-fork-context.js';
+import type { ConversationContextSeedPin } from '../orchestration/conversation-handoff-module.js';
 import type { DispatchCwdAdmission } from '../orchestration/dispatch-cwd-admission.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { ConversationTurnQueuedError } from '../orchestration/thread-inbox.js';
@@ -68,6 +70,18 @@ import {
 } from './execution-target-resolver.js';
 
 const logger = createLogger({ name: 'execution-target-execution' });
+
+/**
+ * #4162: session-start metadata naming the client key of the send a
+ * foreground start was for.
+ */
+const START_CLIENT_TURN_METADATA_KEY = 'startClientTurnId';
+
+function engineConnectionOf(
+  engine: ResolvedExecutionEngine,
+): string | undefined {
+  return engine.kind === 'connection' ? engine.connectionId : undefined;
+}
 
 async function provisionProjectWorktree(
   workspace: Extract<ResolvedWorkspaceTarget, { kind: 'project' }>,
@@ -180,6 +194,20 @@ export interface ForegroundMessageInput {
   handoffCapability?: ConversationHandoffLaunchCapability;
   /** Server-only intent; it is converted to a capability only after preflight. */
   handoffIntent?: ConversationHandoffIntent;
+  /**
+   * Set only by the `/chat` route, from the request itself
+   * (`isPersonChatRequest`): a person's own interactive chat, not an agent,
+   * a peer Station's delegation credential, a delegation or an automatic
+   * replay. Never a public-schema field.
+   */
+  personChatStart?: true;
+  /**
+   * The person's personal per-engine approval default, sent by their
+   * composer on a chat's first send as a HINT, not a pick: the server records
+   * it only for a new conversation of a person's own chat, and only when no
+   * higher layer (Agent default, Project layer) decides.
+   */
+  personalApprovalDefault?: ApprovalMode;
 }
 
 const conversationHandoffLaunchCapabilityBrand = Symbol(
@@ -360,6 +388,15 @@ export interface ExecutionTargetExecutionDependencies
     access: EnvironmentAccess,
     sessionId: string,
   ) => Promise<ExecutionSessionBinding | null>;
+  readInitialConversationContext: (
+    access: EnvironmentAccess,
+    input: {
+      conversationId: string;
+      agentId: string;
+      projectSlug?: string;
+      userId?: string;
+    },
+  ) => Promise<InitialConversationForkContext | undefined>;
   startSession: (
     access: EnvironmentAccess,
     input: ProviderSessionStartInput,
@@ -405,6 +442,31 @@ export interface ExecutionTargetExecutionDependencies
     access: EnvironmentAccess,
     input: { threadId: string; pick: ApprovalMode; agentSlug: string },
   ) => Promise<boolean>;
+  /**
+   * A person's personal default for a new chat, recorded only when no
+   * higher layer decides (`OrchestrationService.recordPersonalApprovalDefault`).
+   * Absent: a Station seam that does not speak it; the hint is then dropped.
+   */
+  recordPersonalApprovalDefault?: (
+    access: EnvironmentAccess,
+    input: {
+      threadId: string;
+      provider: EngineId;
+      connectionId?: string;
+      approvalMode: ApprovalMode;
+      agentSlug?: string;
+      projectSlug?: string;
+      userId?: string;
+      personChat: boolean;
+      mayGrantFullAccess: boolean;
+      clientOrigin?: ClientOrigin;
+      principal?: PrincipalRef;
+    },
+  ) => Promise<
+    | { outcome: 'not-applied' }
+    | { outcome: 'refused-full-access' }
+    | { outcome: 'recorded'; result: SetApprovalModeResult }
+  >;
   /** An authorized sender's existing FIFO entry, before any live continuation effect. */
   readPendingConversationSubmission?: (
     access: EnvironmentAccess,
@@ -439,6 +501,14 @@ export interface ExecutionTargetExecutionDependencies
     | { outcome: 'indeterminate' | 'in-flight' }
   >;
   /**
+   * #4162: the metadata the latest start of `sessionId` recorded, read under
+   * the caller's authority; undefined when unknown or unreadable.
+   */
+  readSessionStartMetadata?: (
+    access: EnvironmentAccess,
+    sessionId: string,
+  ) => Record<string, unknown> | undefined;
+  /**
    * Server-owned durable conversation/session resolution. It is optional for
    * remote compatibility until every Station speaks lineage, but the current
    * runtime composes it for all local foreground entries.
@@ -462,6 +532,7 @@ export interface ExecutionTargetExecutionDependencies
     resumeModel?: string;
     /** Bounded provider-neutral transcript fallback when no cursor exists. */
     transcriptSeed?: string;
+    contextSeed?: ConversationContextSeedPin;
     /** Explicit one-shot context policy, never inferred from a restart. */
     contextBoundary?: ConversationContextBoundaryProjection;
     /** A never-ran predecessor to stop once this start succeeds. */
@@ -638,6 +709,16 @@ export async function executeForegroundMessage(
     resolved.access,
     conversationId,
   );
+  const initialContext = binding
+    ? undefined
+    : await deps.readInitialConversationContext(resolved.access, {
+        conversationId,
+        agentId: resolved.agentId,
+        userId: input.userId,
+        ...(resolved.workspace?.kind === 'project'
+          ? { projectSlug: resolved.workspace.projectSlug }
+          : {}),
+      });
   const requestedHandoff =
     input.handoffIntent?.[conversationHandoffIntentBrand] === true;
   const handoffPayloadDigest = requestedHandoff
@@ -843,6 +924,11 @@ export async function executeForegroundMessage(
         providerTurnId: existingEffect.providerTurnId,
         target: { kind: 'agent', id: resolved.agentId },
         resolution,
+        // A handoff starts its target Session, so the earlier attempt this
+        // replays started it. `prepareConversationHandoff` answers `existing`
+        // only for a marker whose target (Agent, connection, model) is the
+        // one `resolution` names, so that is the engine it runs on.
+        sessionStarted: true,
         handoff: {
           predecessorSessionId: preparedHandoff.marker.predecessorSessionId,
           sessionId: preparedHandoff.marker.sessionId,
@@ -949,12 +1035,26 @@ export async function executeForegroundMessage(
           threadId: decision.sessionId,
           clientTurnId,
         });
+      // The earlier attempt's reply said whether it started its Session; a
+      // replay says so when that Session's start was recorded for this very
+      // key, on the engine `resolution` names (the Agent may have been
+      // repointed since).
+      const start = deps.readSessionStartMetadata?.(
+        resolved.access,
+        decision.sessionId,
+      );
+      const startedHere =
+        start?.[START_CLIENT_TURN_METADATA_KEY] === clientTurnId &&
+        (typeof start.connectionId === 'string'
+          ? start.connectionId
+          : undefined) === engineConnectionOf(resolved.engine);
       return {
         conversationId,
         sessionId: decision.sessionId,
         providerTurnId: decision.turnId,
         target: { kind: 'agent', id: resolved.agentId },
         resolution,
+        ...(startedHere ? { sessionStarted: true as const } : {}),
       };
     }
     if (decision.kind === 'may-have-been-sent')
@@ -971,7 +1071,15 @@ export async function executeForegroundMessage(
   }
   // Validate every durable binding before a continuation can reserve its next
   // child. A rejected Agent/Environment/user/workspace request is read-only.
-  const continuation = validHandoff
+  const continuation:
+    | Awaited<
+        ReturnType<
+          NonNullable<
+            ExecutionTargetExecutionDependencies['resolveConversationSession']
+          >
+        >
+      >
+    | undefined = validHandoff
     ? {
         sessionId: handoff.sessionId,
         // A retry after an accepted cold start must send the one durable
@@ -1006,8 +1114,25 @@ export async function executeForegroundMessage(
               : {}),
           },
         )
-      : undefined;
+      : initialContext
+        ? {
+            sessionId: conversationId,
+            startRequired: true,
+            transcriptSeed: initialContext.seed.text,
+          }
+        : undefined;
   const sessionId = continuation?.sessionId ?? conversationId;
+  const transcriptSeed =
+    resolved.provider === 'station-agent' && deps.nativeMemoryOwnsTranscript
+      ? undefined
+      : continuation?.transcriptSeed;
+  const sendClientTurnId =
+    effectiveClientTurnId ??
+    (initialContext && transcriptSeed
+      ? initialContext.fallbackClientTurnId
+      : continuation?.contextSeed && transcriptSeed
+        ? `context:${createHash('sha256').update(sessionId).digest('hex')}`
+        : undefined);
   // A fresh or successor session records `userId` as its owner, and a
   // session with no recorded owner is readable by no caller. Refuse the start
   // here, before its approval-mode receipt, a boundary claim, a worktree or
@@ -1033,7 +1158,7 @@ export async function executeForegroundMessage(
     );
   }
   await refuseUngrantedCarriedPick(input, deps, resolved, sessionId);
-  const approvalMode = input.setApprovalMode
+  let approvalMode = input.setApprovalMode
     ? deps.recordApprovalMode?.(resolved.access, {
         threadId: sessionId,
         provider: resolved.provider,
@@ -1068,6 +1193,36 @@ export async function executeForegroundMessage(
     (resolved.workspace?.kind === 'project'
       ? resolved.workspace.projectSlug
       : undefined);
+  // The person's personal default, below the Agent's and the Project's: a
+  // new conversation of their own chat, with no pick carried.
+  if (
+    !binding &&
+    !input.setApprovalMode &&
+    input.personalApprovalDefault &&
+    input.personChatStart &&
+    deps.recordPersonalApprovalDefault
+  ) {
+    const personal = await deps.recordPersonalApprovalDefault(resolved.access, {
+      threadId: sessionId,
+      provider: resolved.provider,
+      ...(resolved.engine.kind === 'connection'
+        ? { connectionId: resolved.engine.connectionId }
+        : {}),
+      approvalMode: input.personalApprovalDefault,
+      agentSlug: resolved.agentId,
+      ...(conversationProjectSlug
+        ? { projectSlug: conversationProjectSlug }
+        : {}),
+      ...(input.userId ? { userId: input.userId } : {}),
+      personChat: true,
+      mayGrantFullAccess: isFullAccessGrant(input.fullAccessGrant),
+      ...(input.clientOrigin ? { clientOrigin: input.clientOrigin } : {}),
+      ...(input.principal ? { principal: input.principal } : {}),
+    });
+    if (personal.outcome === 'refused-full-access')
+      throw new FullAccessNotGrantedError();
+    if (personal.outcome === 'recorded') approvalMode = personal.result;
+  }
   const conversationWorkspaceIsolation =
     binding?.workspaceIsolation ??
     (resolved.workspace?.kind === 'project'
@@ -1191,6 +1346,38 @@ export async function executeForegroundMessage(
           // resumable as every delegated session.
           ...agentExecutionBindingMetadata(resolved),
           conversationId,
+          // #4162: the key of the send this start is for, so a same-key
+          // retry answered from that send's turn can say it started here.
+          ...(effectiveClientTurnId
+            ? { [START_CLIENT_TURN_METADATA_KEY]: effectiveClientTurnId }
+            : {}),
+          ...(continuation?.contextSeed && transcriptSeed
+            ? {
+                conversationStartSeedCarrier: {
+                  pinDigest: continuation.contextSeed.pinDigest,
+                  seedDigest: continuation.contextSeed.seedDigest,
+                  clientTurnId: sendClientTurnId,
+                },
+              }
+            : {}),
+          ...(initialContext
+            ? {
+                forkContextOrigin: {
+                  contextId: initialContext.contextId,
+                  contextDigest: initialContext.contextDigest,
+                },
+                ...(transcriptSeed
+                  ? {
+                      forkSeedCarrier: {
+                        contextId: initialContext.contextId,
+                        contextDigest: initialContext.contextDigest,
+                        seedDigest: initialContext.seed.seedDigest,
+                        clientTurnId: sendClientTurnId,
+                      },
+                    }
+                  : {}),
+              }
+            : {}),
           ...(continuation?.contextBoundary
             ? {
                 contextBoundary: {
@@ -1364,10 +1551,6 @@ export async function executeForegroundMessage(
       threadId: sessionId,
       clientTurnId: effectiveClientTurnId,
     });
-  const transcriptSeed =
-    resolved.provider === 'station-agent' && deps.nativeMemoryOwnsTranscript
-      ? undefined
-      : continuation?.transcriptSeed;
   const turn = await deps.sendTurn(
     resolved.access,
     {
@@ -1387,7 +1570,7 @@ export async function executeForegroundMessage(
               .join('\n\n'),
           }
         : {}),
-      ...(effectiveClientTurnId ? { clientTurnId: effectiveClientTurnId } : {}),
+      ...(sendClientTurnId ? { clientTurnId: sendClientTurnId } : {}),
       // A handoff is deduplicated under a key derived from its conversation;
       // its turn.started carries the key the client actually sent with it.
       ...(requestedHandoff

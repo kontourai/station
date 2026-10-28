@@ -35,6 +35,7 @@ import { useConfig } from '../contexts/ConfigContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import {
   type ProjectConfig,
+  useScopedProjectChatDefaultsQuery,
   useScopedProjectQuery,
 } from '../contexts/ProjectsContext';
 import { useShowSurface } from '../contexts/useShowSurface';
@@ -46,6 +47,7 @@ import { AccessSection } from './project-settings/AccessSection';
 import { AgentsSection } from './project-settings/AgentsSection';
 import { KnowledgeSection } from './project-settings/KnowledgeSection';
 import { LayoutsSection } from './project-settings/LayoutsSection';
+import { NewChatDefaultsSection } from './project-settings/NewChatDefaultsSection';
 import { ProjectSourcesSection } from './project-settings/ProjectSourcesSection';
 import { ToolsSection } from './project-settings/ToolsSection';
 import type { ProjectForm } from './project-settings/types';
@@ -61,6 +63,7 @@ const PROJECT_SETTINGS_SECTIONS = [
   ['workspace', 'Workspace'],
   ['basic-info', 'Basic info'],
   ['model', 'Model'],
+  ['new-chat', 'New chats'],
   ['thread-execution', 'Thread execution'],
   ['agents', 'Agents'],
   ['tools', 'Tools'],
@@ -229,6 +232,8 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   const selectedConnectionModels = connectionModelOptions(selectedConnection);
 
   const saveMutation = useUpdateProjectMutation();
+  const { data: chatDefaultsAnswer } = useScopedProjectChatDefaultsQuery(slug);
+  const chatDefaults = chatDefaultsAnswer ?? undefined;
 
   // The icon picker reads the project's SAVED folder for artwork, and only
   // while it is open: discovery is a filesystem scan, and suggestions are
@@ -401,7 +406,6 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           className="project-settings__section project-settings__section--hero"
           eyebrow="Project home"
           title="Workspace"
-          description="Keep the project pointed at the folder you actually work in. Name and icon stay editable, but the directory is the first thing surfaced here."
           actions={
             <div className="project-settings__identity-preview">
               <ProjectIcon
@@ -481,7 +485,6 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           className="project-settings__section"
           eyebrow="Project identity"
           title="Basic info"
-          description="Set the name and description Station uses throughout the project."
         >
           <div className="project-settings__identity-grid">
             <div className="editor-field">
@@ -547,11 +550,10 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           className="project-settings__section"
           eyebrow="Conversation default"
           title="AI model"
-          description="Choose the starting model for new work in this project. Both a model connection and a model are needed — with only one of them set, this project falls back to the Station default."
+          description="Set both a connection and a model, or new work uses the Station default."
         >
           <PageRow
             label="Model connection"
-            description="Which configured model connection this project's chats run through."
             control={
               <select
                 id="project-default-provider"
@@ -605,10 +607,10 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             // change exists to remove.
             description={
               !form.defaultProviderId
-                ? 'Choose a model connection first. Without one, chats in this project use the Station default.'
+                ? 'Choose a model connection first.'
                 : form.defaultModel
-                  ? 'Pre-filled with a model this connection offers. Both the connection and a model are needed; with either missing, this project uses the Station default.'
-                  : 'This connection offers no model to pre-fill. Choose one, or this project uses the Station default.'
+                  ? 'Pre-filled with a model this connection offers.'
+                  : 'This connection offers no model to pre-fill.'
             }
             control={
               <ModelSelector
@@ -622,12 +624,21 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           />
         </PageSection>
 
+        <NewChatDefaultsSection
+          form={form}
+          setField={setField}
+          chatDefaults={chatDefaults}
+          stationApprovalDefault={stationConfig?.defaultApprovalMode}
+          stationConfigLoaded={stationConfig !== null}
+          projectModelSet={!!form.defaultProviderId && !!form.defaultModel}
+        />
+
         <PageSection
           id="section-thread-execution"
           className="project-settings__section"
           eyebrow="New thread default"
           title="Thread execution"
-          description="Choose where new threads for this project begin. A thread-specific selection takes precedence."
+          description="A thread's own selection takes precedence."
         >
           <EnvironmentPicker
             id="project-default-environment"
@@ -636,7 +647,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           />
           <PageRow
             label="Execution environment"
-            description="Fresh worktrees isolate changes; the current checkout shares this project's working directory. Leave it on the Station default and this project follows whatever Settings says."
+            description="Fresh worktrees isolate changes; the current checkout shares the project folder."
             control={
               <select
                 id="project-default-workspace-isolation"

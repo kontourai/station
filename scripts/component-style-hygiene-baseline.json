@@ -1372,20 +1372,6 @@
       "legacy-token:--space-6": 1,
       "legacy-token:--text-xs": 1
     },
-    "src-ui/src/components/project-sidebar/ProjectSidebarPresenceTray.css": {
-      "legacy-token:--text-muted": 4,
-      "legacy-token:--text-sm": 2,
-      "legacy-token:--border-primary": 3,
-      "legacy-token:--text-primary": 3,
-      "legacy-token:--bg-secondary": 2,
-      "legacy-token:--bg-tertiary": 2,
-      "legacy-token:--text-secondary": 2,
-      "legacy-token:--text-xs": 4,
-      "legacy-token:--accent-primary": 1
-    },
-    "src-ui/src/components/project-sidebar/ProjectSidebarPresenceTray.tsx": {
-      "bespoke-dialog:div": 1
-    },
     "src-ui/src/components/project-sidebar/SidebarPopover.tsx": {
       "bespoke-dialog:div": 1
     },

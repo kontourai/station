@@ -1,0 +1,13 @@
+{
+  "revision": "5f2559c56916b389b9521e57c668f60790af2dcc",
+
+  "notes": [
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Behavior-neutral guard repair in runtime-routes.ts: only the Browser/device block guard returns to the literal isPersonalHost (from an alias truthy exactly when isPersonalHost), and only the media-tools and transcription mounts are nested under localMediaPreviews. The operator sign-in and step-up routes this capture shows are outside that block and unchanged, so the captured screen remains accurate; no recapture needed.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Behavior-neutral guard repair in runtime-routes.ts: only the Browser/device block guard returns to the literal isPersonalHost (from an alias truthy exactly when isPersonalHost), and only the media-tools and transcription mounts are nested under localMediaPreviews. The operator sign-in and step-up routes this capture shows are outside that block and unchanged, so the captured screen remains accurate; no recapture needed.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Behavior-neutral guard repair in runtime-routes.ts: only the Browser/device block guard returns to the literal isPersonalHost (from an alias truthy exactly when isPersonalHost), and only the media-tools and transcription mounts are nested under localMediaPreviews. The operator sign-in and step-up routes this capture shows are outside that block and unchanged, so the captured screen remains accurate; no recapture needed.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Behavior-neutral guard repair in runtime-routes.ts: only the Browser/device block guard returns to the literal isPersonalHost (from an alias truthy exactly when isPersonalHost), and only the media-tools and transcription mounts are nested under localMediaPreviews. The operator sign-in and step-up routes this capture shows are outside that block and unchanged, so the captured screen remains accurate; no recapture needed.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

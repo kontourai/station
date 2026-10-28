@@ -21,6 +21,75 @@ native thread with a bounded seed of the intervening conversation, after the
 previous engine confirms retirement. Unsupported or unbound history uses
 bounded replay. An explicit fork creates a separate Conversation.
 
+An ordinary follow-up is refused while the native return's seed-bearing turn
+has no observed completion, including a failed or uncertain turn. Acceptance of
+the native Session start alone does not confirm delivery of its catch-up context.
+This refusal does not automatically resend the seed or reopen the start boundary.
+Delivery and current native identity are checked again synchronously at provider
+dispatch, including resumption of a prepared turn. An identity replacement after
+continuation resolution cannot borrow the earlier identity's completion.
+
+New native-return reservations pin the exact catch-up text and its SHA-256 digest
+alongside ordered source Session cutoffs and omission facts in the existing event
+store. Each cutoff is an exclusive `afterSequence` and inclusive `throughSequence`
+within that Session; sequence numbers from different Sessions are not comparable.
+An intervening source append refuses reservation before a successor is created.
+A retry rechecks source authorization and native ownership and uses the pinned
+text. A legacy reservation with no pin refuses rather than reconstructing new
+context under its old identity.
+
+The authorized handoff status projection exposes `contextDelivery` for these
+reservations: `seedDigest`, `sourceCutoffs`, `omission` and observed `status`,
+without the seed text. `acceptedTextThrough` appears only after the correlated
+seed-bearing turn completes with a matched native identity and no omitted or
+shortened text messages. Non-text rows remain counted and excluded by the text
+projection. Failed, pending or uncertain delivery and truncated seeds never
+acknowledge the complete text range. These are Station observations, not proof
+that a provider retains its transcript indefinitely. A known native identity is
+captured in the prepared invocation. If the first identity arrives during the
+turn, the exact correlated engine completion can supply its opaque identity key;
+absent or conflicting observations leave delivery unverified. A witness never
+derives that identity from a later mutable carrier binding. A rebind before
+completion cannot credit the replacement
+identity with context sent to its predecessor. Context-start consumption
+remains a separate boundary; ordinary context replacement and fork delivery are
+not qualified by this native-return receipt.
+
+New seed-backed ordinary continuations and `continue-from-history` context starts
+also pin their exact text and source cutoffs before the replacement provider
+starts. A seed reads each message at its full size, including a reply Station
+stored out of line, so a long reply is seeded whole or disclosed as omitted,
+never cut to its preview. Retries recheck source access and use that pin, even if a cursor becomes
+available later. Ordinary reuse requires the seed-bearing invocation's exact
+completion witness and, where required, its current native identity. Failed or
+ambiguous delivery refuses further ordinary turns rather than silently dropping
+history. The start boundary remains consumed by its accepted start receipt; that
+is separate from seed delivery and is not reopened by a failed first turn.
+`empty-next-cold-start` deliberately carries no prior transcript, while retaining
+Agent instructions. Context witnesses are derived proof: a failed projection rolls back its own
+update and cannot roll back an observed canonical provider terminal. Missing
+proof still refuses continuation. Native cursor and structured native-memory paths retain
+their own contracts and do not acquire a literal-seed acknowledgement by inference.
+
+Saved forks reserve their selected copied context in the same EventStore before
+creating the file transcript. The first native turn carries that saved seed; an
+ordinary follow-up refuses if the seed-bearing turn failed or has uncertain
+completion. Later native transcript reads include both the copied parent rows
+and new runtime turns. This is an independent Conversation, with explicit parent
+provenance, rather than another child Session in the parent's lineage.
+
+An authorized fork with no provider Session opens as `fork-ready`, with
+`transcript.owner: 'fork-context'`. First send creates the real provider Session;
+opening alone does not. The engine replay is text-only; non-text entries stay
+in the saved history and attachment references retain their existing retention
+rules. Mutable titles are read from the owner/digest-checked file record; after
+handoff, lookup uses the current authorized execution projection. These display
+updates do not change the pinned context. Deleting an unstarted fork tombstones its saved seed
+under the existing lifecycle guard before file cleanup, so a failed cleanup
+cannot make it eligible for later activation. Runtime-owned history remains
+read-only through that file deletion route. These paths have scripted local
+qualification; live installed-provider acceptance remains unverified.
+
 The compact conversation reader used by `read_conversation` and the SDK's
 `readConversation` preserves message Session attribution. Versioned `provenance`
 reports the ordered Sessions, providers, handoffs, requested native returns and
@@ -32,6 +101,135 @@ Session. Pagination and truncation still apply.
 Independent [Task room agent requests](../design/task-room-agent-requests.md)
 use the existing delegation route with a separate durable request journal.
 They do not replace foreground chat or the Task's current-session association.
+
+## External clients using Station tools
+
+The public setup seam is personal-host, loopback-only tool access. Its
+[operator routes](../../src-server/routes/mcp/station-control-external-client-routes.ts)
+compose the existing token registry, server-recorded caller, selected-tool MCP
+server and per-tool authority. They do not create a Session or Environment,
+expose the internal API token, transfer provider sign-in, or turn an external
+client into a Station-managed engine. Remote OAuth/TLS onboarding is outside
+this surface. Station consuming an external MCP server is a different journey.
+
+**Authority.** The explicit personal-host setup action is authorized by a current
+device credential minted through the owner-home file-proven local-grant path.
+`access:manage` is an additional route gate, not sufficient authority by itself;
+personal tokens are refused. This action does not require a second per-issuance
+ConsentTransaction. Browser/plugin-origin consent flows retain their own
+transactions and decisions; they cannot inherit this setup authority.
+UI-bootstrap/browser approval and the internal process credential are not this
+authority. The requested Session must already have a recorded operator owner,
+Conversation and Project ID, and the current Project must still match that ID.
+The caller cannot provide actor, Project, Environment, assurance or server fields.
+Legacy slug-only Project lookup does not authorize issuance.
+
+The Session may be stopped or historical: it is an existing recorded context,
+not a liveness claim or an execution grant. Issuance does not start, resume or
+revive its engine. An earlier stop is not replayed as revocation of a newly
+authorized lease. A subsequent Session-token revocation hook removes leases
+then bound to that Session; expiry, explicit lease revocation, issuer standing,
+current scope and process restart remain independent invalidation paths. This
+is the precise meaning of `process-and-session-bound` in the response.
+
+| Operation | Request | Result |
+| --- | --- | --- |
+| `POST /api/orchestration/station-control/external-clients` | `{sessionId, allowedTools, ttlSeconds}` | `201 {success:true,data:{leaseId,sessionId,project,allowedTools,expiresAt,lifetime,config}}` |
+| `DELETE /api/orchestration/station-control/external-clients/:leaseId` | Exact lease ID; no bearer needed in the body | `{success:true,data:{revoked:true,leaseId}}`, or non-disclosing `lease_not_found` |
+
+The request is bounded to 4096 bytes. Tools and TTL are required: choose one or
+more of `read_conversation`, `board_read`, and `board_pin`, without duplicates,
+and an integer lifetime from 60 through 3600 seconds. `config` contains the
+actually bound loopback URL and an `Authorization` header with a separate scoped
+bearer. It is returned once with `Cache-Control: no-store`; do not log it, put it
+in argv or a URL, or commit it. The [CLI](cli.md#mcp-clients) stores this response
+in a new private file and prints only metadata.
+
+Each lease has independent identity. Runtime token refresh and other client
+setup do not replace it. Explicit lease revocation leaves other credentials
+alone; Session revocation removes its runtime and client credentials. The
+registry is in memory, so process restart loses all leases. The issuing device
+must still hold access administration and valid account standing under the
+existing grant owner; revocation or narrowing refuses descendant leases. This
+check retains only server-side device identity/time, not its bearer. Replacing
+that operator grant can therefore invalidate its existing client leases.
+Owner/Project/Conversation binding is rechecked from current Session records on each request
+and call, including current Project identity; changes refuse instead of silently
+rebinding the client. Initial tools retain their existing data scopes:
+conversation reads use owner/reference rules, and Board tools address the
+operator's own Boards. Recorded Project context does not turn self-owned Boards
+into a Project partition. These tokens
+are header-only and retain `delegated-custody` assurance. They never acquire the
+`bound` assurance required by browser tools, nor replace their approval flow.
+
+### Configure an existing local client
+
+Select an already-created operator-owned Session in the intended Project. Run
+`station mcp-clients authorize` for the saved installed local profile when it
+needs a file-proven grant, then create a private configuration as shown in the
+CLI reference. Do not create a fictitious Session or export the process-wide
+internal credential to make setup succeed.
+
+For Codex CLI, use the returned URL and an environment-backed bearer, preserving
+client-side mutation approval. The following starts a fresh Codex client under
+its own existing sign-in; it does not resume or take control of Station's native
+thread. Only run it when you intend to start that client:
+
+```bash
+node --input-type=module - /absolute/private/path/station-client.json <<'JS'
+import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+const lease = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+const token = lease.config.headers.Authorization.slice('Bearer '.length);
+const clientEnvironmentKeys = [
+  'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'TMPDIR', 'TMP', 'TEMP',
+  'LANG', 'LC_ALL', 'TERM', 'COLORTERM', 'CODEX_HOME',
+  'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_DATA_HOME',
+  'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY',
+  'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy',
+  'SSL_CERT_FILE', 'SSL_CERT_DIR', 'NODE_EXTRA_CA_CERTS',
+];
+const env = Object.fromEntries(clientEnvironmentKeys
+  .filter(key => process.env[key] !== undefined)
+  .map(key => [key, process.env[key]]));
+env.STATION_CLIENT_TOKEN = token;
+const child = spawnSync('codex', [
+  '-c', `mcp_servers.station.url=${JSON.stringify(lease.config.url)}`,
+  '-c', 'mcp_servers.station.bearer_token_env_var="STATION_CLIENT_TOKEN"',
+  '-c', 'mcp_servers.station.default_tools_approval_mode="prompt"',
+  '-c', `mcp_servers.station.enabled_tools=${JSON.stringify(lease.allowedTools)}`,
+], {
+  stdio: 'inherit', windowsHide: true,
+  env,
+});
+if (child.error) throw new Error('Could not launch Codex.');
+process.exitCode = child.status ?? 1;
+JS
+```
+
+The command uses the client configuration described by the [official OpenAI MCP
+documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli); installed
+`codex mcp add --help` also exposes `--bearer-token-env-var`. This recipe avoids
+writing a plaintext token into Codex's global configuration. Its explicit
+environment list excludes Station's internal/operator credentials and provider
+API keys; the client uses its own existing sign-in. The scoped bearer
+is intentionally entrusted to the client process; that is not in-process caller
+assurance or protection from the client itself.
+
+Verify the selected tools are visible before asking for a scoped conversation
+read. Obtain the client's approval before a Board mutation and verify the
+result separately. Configuration success is not operation success. A disconnected
+client may still have an unexpired lease; revoke it explicitly when done. A lost
+mutation acknowledgement remains unknown and must not be automatically replayed.
+Expired, revoked, restarted or changed-authority leases refuse and require a new
+explicit setup; this endpoint does not provide an OAuth login or silent renewal.
+
+**Evidence limit.** Scripted API/CLI tests cover issuance/refusal, selected MCP
+catalog delivery, private-file handling, token isolation, revocation, expiry and
+restart. The earlier independently maintained Codex consumer receipt used the
+private lab SPI. It does not qualify this new public onboarding path. A fresh
+operator/client journey, actual mutation approval and independent persisted
+result check remain required before claiming that journey qualified.
 
 ---
 
@@ -143,7 +341,11 @@ Agent, engine kind, provider, and honest model launch plan. When the send starte
 its Session (a new conversation, a successor, or a handoff target), the handle also
 carries `sessionStarted: true`, and the receipt's engine is that Session's. A turn
 sent to an already-running Session omits it: the receipt then describes the Agent's
-current binding, which can differ from the engine that Session runs on. A validated continuation
+current binding, which can differ from the engine that Session runs on. A replay
+answered from an earlier attempt's turn says the same as that attempt: a handoff
+replay carries it, and a same-key retry carries it when that Session's recorded
+start was for this key on the engine the receipt names (not after the Agent was
+repointed, and not for a Session started before Station recorded the key). A validated continuation
 without an owned-worktree binding reports its server-read bound directory rather
 than the Project's current default, including an accepted-key retry. Owned-worktree
 bindings retain the existing repository-root receipt form. Changing the default
@@ -192,9 +394,10 @@ one. See [TurnDeduplicator](../architecture/module-map.md#turndeduplicator) for
 the exact submission scope, unsupported-input refusal and mixed-version limits.
 
 A send that names its own idempotency key (`clientTurnId`, up to 200
-characters) and its `conversationId` can be looked up afterwards, for example
-by a device whose connection dropped before the answer arrived, or that was
-closed mid-send:
+characters, not starting `memory-continue-`, which Station reserves for its
+own continuation after a memory kill and refuses with `400`) and its
+`conversationId` can be looked up afterwards, for example by a device whose
+connection dropped before the answer arrived, or that was closed mid-send:
 
 ```
 GET /api/orchestration/conversations/<conversationId>/turn-deliveries/<clientTurnId>[?projectSlug=<slug>]
@@ -560,11 +763,6 @@ clicking Allow/Deny on an approval card. Requests surface as `request.opened` ca
 runtime events (see [Reading session activity](#reading-session-activity)); resolve them
 by `requestId`.
 
-Codex approval events larger than 48 KiB are refused on the wire before they
-enter the approval inbox. Station emits `codex-approval-request-too-large` and
-asks the Agent to split the operation. It never offers approval over truncated
-command or permission details.
-
 For Codex, this is Station's canonical string ID. The
 [adapter](../../src-server/providers/adapters/codex-adapter-transport.ts)
 maps it to Codex's original wire ID and preserves that ID's value and type in
@@ -581,9 +779,31 @@ requests through simulated process streams; they are not a live Codex receipt.
   "threadId": "string, required, min length 1",
   "requestId": "string, required, min length 1 — from the request.opened event",
   "decision": "'accept' | 'acceptForSession' | 'decline' | 'cancel'",
-  "sessionGrantScope": "'server', optional, only with acceptForSession"
+  "sessionGrantScope": "'server', optional, only with acceptForSession",
+  "expectedRequestEventId": "string, optional — the exact request.opened event answered",
+  "viewedContentDigest": "'sha256-<hex>', required to allow a request with spilledContent"
 }
 ```
+
+An approval of any size is delivered whole. When its content is too large
+to keep inside the event, Station stores it out of line and the event carries
+`spilledContent` plus a reference in place of each large value
+([design](../design/event-content-spill.md)). Allowing such a request needs
+`viewedContentDigest`: the `sha256-` digest of the stored request event (and,
+when the tool call it gates holds spilled arguments, of their references:
+a Codex file change's diff lives only in its `tool.started`).
+`GET /api/orchestration/sessions/:threadId/requests/:requestId/content-binding`
+returns what an allow must load: the stored `request`, its `bound`
+`tool.started` events, whether the digest is `required`, and the
+`viewedContentDigest`. A client loads every reference in them through
+`GET /api/orchestration/sessions/:threadId/content/:ref`, checks the digest
+against its own computation, and sends it. Without it the
+server answers 409 `request_content_not_loaded`; a client answered 409 after
+loading refetches the binding (a bound call can arrive after the request). Declining never needs it,
+and neither does answering a form (`payload.inputRequest`, or a legacy
+`mcpElicitation`/`questionnaire`): the form itself is never stored out of
+line and the answer is validated against it.
+A client that has not loaded the content therefore cannot allow the request.
 
 Harness questions and a tool server's form elicitation carry a
 `station.input-request/v1` form as `payload.inputRequest` on `request.opened`

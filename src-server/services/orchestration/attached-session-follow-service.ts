@@ -1249,8 +1249,31 @@ export class AttachedSessionFollowService {
     } catch (error) {
       if (!(error instanceof EventStoreIngressError) || !onIngressRefusal)
         throw error;
-      onIngressRefusal(error);
-      return false;
+      // docs/design/event-content-spill.md#residual-refusal: content over
+      // the per-event ceiling is stored marked unavailable rather than lost.
+      const marked = this.options.eventStore.markContentUnavailable?.(event);
+      if (marked) {
+        try {
+          const appended = guard
+            ? await this.options.eventStore.appendEventIfAbsentInBackgroundIf(
+                marked,
+                guard,
+              )
+            : await this.options.eventStore.appendEventIfAbsentInBackground(
+                marked,
+              );
+          if (appended === false) return 'stale';
+          sequence = appended;
+        } catch (markedError) {
+          if (!(markedError instanceof EventStoreIngressError))
+            throw markedError;
+          onIngressRefusal(error);
+          return false;
+        }
+      } else {
+        onIngressRefusal(error);
+        return false;
+      }
     }
     if (sequence === undefined) return false;
     if (
@@ -1259,8 +1282,14 @@ export class AttachedSessionFollowService {
     ) {
       this.options.invalidateSessionOwner?.(event.threadId);
     }
+    // Live frames carry what was stored: out-of-line content stays a
+    // reference (docs/design/event-content-spill.md), never the raw value.
     this.options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
-      event,
+      event:
+        this.options.eventStore.storedLiveEvent?.(
+          event.threadId,
+          event.eventId,
+        ) ?? event,
       globalSequence: this.options.eventStore.readGlobalSequence(event.eventId),
     });
     return true;
@@ -1281,6 +1310,17 @@ export class AttachedSessionFollowService {
     event: CanonicalRuntimeEvent,
     guard?: () => boolean,
   ): Promise<boolean | 'stale'> {
+    // chat-host-images: Station derives this event from files it read
+    // itself; one arriving from an imported transcript would map paths to
+    // images Station never admitted. Skipped like an ingress refusal.
+    if (event.method === 'content.host-images') {
+      this.options.logger?.warn('Ignored imported host images', {
+        threadId: event.threadId,
+        eventId: event.eventId,
+      });
+      rememberEvent(state.seen, event.eventId, this.maxSeenEventIds);
+      return false;
+    }
     const committed = await this.appendAndPublish(
       event,
       (error) => {

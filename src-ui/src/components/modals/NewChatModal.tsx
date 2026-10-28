@@ -39,6 +39,7 @@ import type {
 } from '../../lib/newChatIntent';
 import type { SkillExperienceDraft } from '../../lib/skill-experience-draft';
 import { TASK_SHAPING_INSTRUCTION } from '../../lib/task-shaping';
+import type { ApprovalMode } from '../../utils/approvalMode';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import {
   type EffectiveModelSource,
@@ -100,6 +101,7 @@ import {
   modelPickerProviders,
   NEW_CHAT_AGENT_UNAVAILABLE_FALLBACK,
   NO_PROJECT_LABEL,
+  newChatProjectModelNote,
   resolveNewChatAgentEnable,
   resolveNewChatInitialContext,
   resolveNewChatWorkspaceHint,
@@ -178,6 +180,8 @@ interface NewChatModalProps {
     /** Files for the first message (passed only when there are some). */
     initialFiles?: File[],
     ambientContext?: string,
+    /** The Permissions chip's pick, queued on the chat that opens. */
+    approvalMode?: ApprovalMode,
   ) => void | Promise<void>;
   onClose: () => void;
   onTaskStarted?: () => void;
@@ -259,6 +263,9 @@ export function NewChatModal({
   // In the automatic start, "Chat options" (or a start that cannot use
   // Home's choice) drops back to the composer, prompt and all.
   const [showChatOptions, setShowChatOptions] = useState(false);
+  const [approvalPick, setApprovalPick] = useState<ApprovalMode | undefined>(
+    startSelection?.approvalMode,
+  );
   const automaticMode = startWithDefault && !mode && !showChatOptions;
   const experienceInventory = useSkillExperienceInventoryQuery({
     enabled: !mode && !automaticMode,
@@ -952,9 +959,11 @@ export function NewChatModal({
         boolean?,
         File[]?,
         string?,
+        ApprovalMode?,
       ] = [...startOptions];
       if (startFiles.length) selectTail[5] = startFiles;
       if (shaping) selectTail[6] = TASK_SHAPING_INSTRUCTION;
+      if (approvalPick) selectTail[7] = approvalPick;
       try {
         if (composer && submitInFlight.current) return;
         if (composer) {
@@ -1298,6 +1307,22 @@ export function NewChatModal({
           needsSetup: draftAgent
             ? !agentRunnability(draftAgent).runnable
             : false,
+          modelNote: draftAgent
+            ? newChatProjectModelNote({
+                projectChatDefaults: selectionModel.projectChatDefaults,
+                agentSlug: draftAgent.slug,
+                effectiveModel:
+                  selectionModel.defaultEffectiveModelForAgent(draftAgent),
+                chosen: !!start.modelChoiceFor(draftAgent),
+              })
+            : undefined,
+          approvalProjectDefault:
+            selectionModel.projectChatDefaults?.approvalMode.resolved,
+          approvalProjectDefaultUnavailable:
+            selectionModel.projectChatDefaultsUnavailable,
+          approvalPick,
+          onApprovalPick: setApprovalPick,
+          approvalSheetLayer: 'dialog',
         };
   const projectChip: StartProjectChip = contextPending
     ? { status: 'loading' }
@@ -2099,7 +2124,7 @@ export function NewChatModal({
               <Empty
                 variant="compact"
                 label="Nothing to chat with yet"
-                description="Connect an engine (Claude Code, Codex, OpenCode…) or add a Model connection, and new chats appear here automatically."
+                description="Connect an engine (Claude Code, Codex, OpenCode…) or add a Model connection."
                 action={
                   <button
                     type="button"

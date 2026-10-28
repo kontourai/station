@@ -229,6 +229,7 @@ export {
   applyProjectLayout,
   bindProjectResource,
   closeProjectTerminal,
+  getProjectChatDefaults,
   getProjectResolution,
   getProjectView,
   listProjectRunLocations,
@@ -723,6 +724,7 @@ export {
   type PluginSettingField,
   type PluginSettingsData,
   PluginVisibilityForbiddenError,
+  PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX,
   PROJECT_RUN_LOCATIONS_QUERY_KEY_PREFIX,
   ProjectIdentityIncarnationMismatchError,
   type ProjectIdentityReadFailure,
@@ -732,6 +734,7 @@ export {
   peerCredentialQueries,
   pluginLifecycleTargetName,
   postBoardIntent,
+  projectChatDefaultsQueryKey,
   projectIdentityReadFailure,
   promoteTaskLearning,
   proposedChangesQueryKey,
@@ -1108,6 +1111,7 @@ export {
   usePluginVisibilityQuery,
   usePreviewSchedule,
   useProbeSshEnvironmentMutation,
+  useProjectChatDefaultsQuery,
   useProjectConversationsQuery,
   useProjectIconCandidatesQuery,
   useProjectIdentityQuery,
@@ -1473,13 +1477,54 @@ export {
   useTaskReviewQuery,
   useTaskReviewThreadQuery,
 } from './query-domains/taskReview';
+export type { TelemetryIncidentLinkMutation } from './query-domains/telemetryCompanion';
+export {
+  controlTelemetryCompanion,
+  fetchTelemetryCompanionAction,
+  fetchTelemetryCompanionIncidentLinks,
+  fetchTelemetryCompanionInstallation,
+  fetchTelemetryCompanionManagedState,
+  fetchTelemetryCompanionProductIncidents,
+  fetchTelemetryCompanionProductTrends,
+  installTelemetryCompanion,
+  mutateTelemetryCompanionIncidentLink,
+  useControlTelemetryCompanionMutation,
+  useInstallTelemetryCompanionMutation,
+  usePrepareTelemetryPrivateUsageMutation,
+  useTelemetryCompanionActionQuery,
+  useTelemetryCompanionIncidentLinkMutation,
+  useTelemetryCompanionIncidentLinksQuery,
+  useTelemetryCompanionInstallationQuery,
+  useTelemetryCompanionManagedStateQuery,
+  useTelemetryCompanionProductIncidentsQuery,
+  useTelemetryCompanionProductTrendsQuery,
+  useTelemetryPrivateUsagePreparationQuery,
+} from './query-domains/telemetryCompanion';
 export {
   checkTelemetryConnection,
+  fetchTelemetryCompanionArchivePreparation,
+  fetchTelemetryCompanionPreparationState,
+  fetchTelemetryCompanionPrerequisites,
   fetchTelemetryDeliveryStatus,
+  prepareTelemetryCompanionArchive,
   useCheckTelemetryConnectionMutation,
+  usePrepareTelemetryCompanionArchiveMutation,
+  useTelemetryCompanionArchivePreparationQuery,
+  useTelemetryCompanionPreparationStateQuery,
+  useTelemetryCompanionPrerequisitesQuery,
   useTelemetryDeliveryStatusQuery,
 } from './query-domains/telemetryDelivery';
 export { extractUIBlocks } from './query-domains/uiBlocks.js';
+export {
+  continueAfterMemoryExhaustion,
+  fetchWorkloadBudgets,
+  MemoryContinuationUnsupportedError,
+  updateWorkloadBudgetSettings,
+  useUpdateWorkloadBudgetSettingsMutation,
+  useWorkloadBudgetsQuery,
+  type WorkloadBudgetStatus,
+  WorkloadBudgetsUnsupportedError,
+} from './query-domains/workloadBudgets.js';
 // station#3390 introduced these alongside useModelPickerCatalogQuery (exported
 // above). publicBarrel derives its expected list from the domain module by
 // design, so a hook whose types never reach the barrel is one a consumer

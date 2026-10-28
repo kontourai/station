@@ -76,6 +76,11 @@ their **Inspect output** action. Items that cannot be read show an unavailable
 state rather than an empty result. The answer's **Basis** chip still opens
 inspection scoped to that answer.
 
+To see how much of the model's context window a chat has used, read the meter
+beside the model under the message box, or choose **⋯** then **Conversation
+stats** in the phone chat header, which names the share used. Either opens the
+chat's stats.
+
 ## MCP app previews in chat
 
 In Station's web client, a completed MCP call can show its declared app directly
@@ -213,7 +218,11 @@ remain local. Different Stations keep separate account preferences.
 The approval chip shows the known mode, including **Full access**, **Auto** or
 **Ask**. **Engine default** means the engine's active mode has not been confirmed.
 Open the picker to see the source, the confirmed mode and whether a request takes
-effect next turn or requires restarting the session.
+effect next turn or requires restarting the session. A Claude chat started in a
+chosen mode by someone who may grant full access can switch to full access on
+its next turn. A chat left on Claude's own settings, one that started before
+this was available, or one on a Station running as root outside a sandbox
+needs a restart.
 
 ## Read recent conversations offline
 
@@ -230,7 +239,9 @@ additional encryption, and anyone using this browser profile can read them
 while offline. Enable this only on a device where that trade-off is acceptable.
 **Clear offline copies** deletes the saved text and turns saving off. Signing out,
 changing credential authority or account, or switching Station also clears the
-copies. Reachability failures leave saved copies and the saving preference intact.
+copies. A build change also turns saving off with the expired copies, so enable it
+again after an update. Reachability failures leave saved copies and the saving
+preference intact.
 
 A browser reload while the Station route is unavailable shows a separate, read-only reader with an **offline
 copy from** timestamp. If you lose connectivity in an already open workspace,
@@ -501,6 +512,20 @@ which names the default it returns to. Station does not start a chat on a Model
 its engine does not offer: a default that an engine advertising its own model
 list left out is skipped, and a kept choice that list no longer contains is
 refused at **Start** with the message kept, so you can choose another.
+
+A Project can choose how its new chats start, in Project settings → **New
+chats**. **Use the AI model above** starts each new chat on the Project's AI
+model wherever its Agent offers that model, ahead of your last pick on this
+device. **Last model used in this project** starts on the model your last chat
+there started with for the same Agent; if that model is no longer offered, the
+Project's model or the usual default applies and the Model chip's tooltip says
+why. The approval mode can be set for the Project (Ask first, Auto or full
+access) or follow your last chat there. It applies below the Agent's own mode
+and replaces your personal default for that engine, and full access is only
+reused when you can grant it. **Permissions** on the composer names where its
+mode came from, and opens the approval picker to choose this chat's mode
+before you start; picking **Default** there uses the Agent's, then the
+Station's default instead.
 
 Until Station has loaded your projects, the chips show placeholders and
 **Start** waits, so a start never runs in a project Station has guessed. If
@@ -793,8 +818,15 @@ every open window. It does not hold back the messages written after
 it.
 
 Quiet turns show elapsed silence without guessing that an engine retried. Retry
-status appears only when the engine reports it. The Drafts icon saves and restores
-unsent composer content; the trash icon clears the current message. Hold or focus
+status appears only when the engine reports it. The **Drafts** icon opens **Saved
+drafts** (also Ctrl/Cmd+S in the composer). Save a copy of an unsent prompt,
+including attachments and quoted context, then choose it from any chat on this
+device to put it in that chat's composer. Saving leaves the current message in
+place; restoring replaces the destination composer's content without sending it.
+Drafts are stored in this browser or app on this device, not synced to other
+devices. Station keeps the 20 newest saved drafts, with up to five images per
+draft, and lists any dropped or unreadable images. The trash icon clears the
+current message. Hold or focus
 either icon to read its label. Choose **Chat settings → Return in chat** to change
 Return behavior on this device. Touch devices default to a new line; desktop
 Return sends. Shift+Return adds a line and Ctrl/Cmd+Return sends.

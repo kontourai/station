@@ -1,20 +1,32 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import crypto from 'node:crypto';
 import { createInterface } from 'node:readline';
+import {
+  ENGINE_MEMORY_EXHAUSTED_CODE,
+  WORKLOAD_COMMAND_OOM_KILLED_CODE,
+} from '@kontourai/station-contracts/provider';
 import type {
   ApprovalStatus,
   ProviderRuntimeEvent as CanonicalRuntimeEvent,
   ProviderRuntimeErrorEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import {
+  type ChildWorkloadOomKill,
   type ChildWorkloadOutcome,
+  childWorkloadMemoryExhausted,
   childWorkloadOutcome,
+  watchChildWorkloadOomKills,
 } from '@kontourai/station-shared/child-workload';
+import {
+  WORKLOAD_COMMAND_OOM_KILLED_TYPE,
+  WORKLOAD_TRANSCRIPT_NAMESPACE,
+} from '@kontourai/station-shared/extension-transcript-markers';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
   releaseOwnedChildAfterGroupExit,
   spawnOwnedChild,
 } from '../../services/infra/process-utils.js';
+import { stampLaunchExit } from '../../services/infra/session-tmpdir.js';
 import { raceWithSignal } from '../../utils/bounded-async.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
 import { onNdjsonLines } from '../../utils/ndjson-lines.js';
@@ -82,13 +94,14 @@ export function createCodexProcess(
   processFactory?: () => CodexProcessLike,
   extraEnv?: Record<string, string>,
   extraArgs?: string[],
+  tmpDir?: string,
 ): CodexProcessLike {
   // archive#896 wave 2 / archive#1195: `extraEnv`/`extraArgs` only reach the real
   // spawn path — test-double factories are unaffected (they don't take
   // these arguments at all).
   return processFactory
     ? processFactory()
-    : spawnCodexProcess(extraEnv, extraArgs);
+    : spawnCodexProcess(extraEnv, extraArgs, tmpDir);
 }
 
 export function createCodexSessionRecord(options: {
@@ -257,6 +270,14 @@ export class CodexAdapterTransport {
     });
 
     const workloadOutcome = childWorkloadOutcome(record.process);
+    // OOMPolicy=continue: the kernel kills one process in Codex's scope,
+    // normally a command, and Codex keeps running. The command's own failure
+    // is Codex's to report; Station adds that memory was the cause.
+    const stopWatchingOomKills = watchChildWorkloadOomKills(
+      record.process,
+      (kill) => this.publishCommandOomKill(record, kill),
+    );
+    record.process.once('exit', () => stopWatchingOomKills?.());
     record.process.on('exit', (code, signal) => {
       // An intentional stop (stopSession/stopAll) already settled pending
       // requests and published session.exited — skip re-running that here
@@ -744,6 +765,9 @@ export class CodexAdapterTransport {
     sourceRecord?: CodexSessionRecord,
   ): void {
     if (event.method === 'session.exited') this.onSessionExit?.(event.threadId);
+    // chat-host-images: which launch this exit ends, taken now (see
+    // `stampLaunchExit`).
+    stampLaunchExit(event);
     const origins = (sourceRecord ?? this.sessions.get(event.threadId))
       ?.turnInvocationIds;
     if (event.turnId && origins && !origins.has(event.turnId)) {
@@ -930,41 +954,10 @@ export class CodexAdapterTransport {
       return;
     }
 
-    // Approval details must remain complete: a truncated command or permission
-    // profile cannot safely be approved. Leave room below EventStore's 64 KiB
-    // ingress ceiling for orchestration stamps and return an error to the peer
-    // instead of stranding an invisible request in pendingApprovals.
-    const fitsStructure = (value: unknown, depth = 0): boolean => {
-      if (value === null || typeof value !== 'object') return true;
-      if (depth >= 30) return false;
-      const values = Object.values(value);
-      return (
-        values.length <= 512 &&
-        values.every((child) => fitsStructure(child, depth + 1))
-      );
-    };
-    if (
-      !fitsStructure(event) ||
-      Buffer.byteLength(JSON.stringify(event), 'utf8') > 48 * 1024
-    ) {
-      this.sendErrorResponse(
-        record,
-        requestId,
-        'Approval request is too large or structurally complex to display safely. Split the operation into smaller requests.',
-      );
-      this.publish({
-        eventId: crypto.randomUUID(),
-        provider: 'codex',
-        threadId: record.externalThreadId,
-        createdAt: this.now().toISOString(),
-        method: 'runtime.warning',
-        severity: 'warning',
-        code: 'codex-approval-request-too-large',
-        message:
-          'Codex requested approval for an operation too large to display safely. Station refused it; ask the Agent to split it into smaller operations.',
-      });
-      return;
-    }
+    // Approval details are delivered whole, whatever their size: EventStore
+    // stores large values out of line and every approval surface loads them
+    // before it offers Allow (docs/design/event-content-spill.md). This
+    // replaced #4118's refusal of approvals over 48 KiB.
 
     const payload = (request.params ?? {}) as Record<string, unknown>;
     const toolName = deriveApprovalToolName(request.method, payload);
@@ -1240,6 +1233,7 @@ export class CodexAdapterTransport {
           AbortSignal.timeout(12_000),
         ).catch(() => undefined)
       : undefined;
+    const memoryExhausted = childWorkloadMemoryExhausted(outcome, signal);
     if (
       record.stopped ||
       this.sessions.get(record.externalThreadId) !== record
@@ -1300,13 +1294,14 @@ export class CodexAdapterTransport {
     this.publishOrphanedTurnFailure(
       record,
       nowIso,
-      outcome?.result === 'oom-kill'
-        ? `Codex was killed because memory was exhausted.${outcome.memoryMaxBytes ? ` Its workload budget was ${Math.round(outcome.memoryMaxBytes / 1024 / 1024)} MiB.` : ''} Commands and delegated work were interrupted. Run memory-heavy checks sequentially before continuing.`
+      memoryExhausted && outcome
+        ? memoryExhaustedMessage(outcome)
         : `Codex app-server exited before the turn finished (${signal ? `signal: ${signal}` : `code: ${code ?? 'unknown'}`}).`,
       {
         skipSynthesis: interruptWasInFlight,
         workloadOutcome: outcome,
         exitSignal: signal,
+        ...(memoryExhausted ? { code: ENGINE_MEMORY_EXHAUSTED_CODE } : {}),
       },
     );
     this.publish({
@@ -1317,12 +1312,11 @@ export class CodexAdapterTransport {
       method: 'session.exited',
       sessionId: record.externalThreadId,
       exitCode: code ?? undefined,
-      reason:
-        outcome?.result === 'oom-kill'
-          ? 'memory-exhausted'
-          : code === 0
-            ? 'completed'
-            : 'process-exit',
+      reason: memoryExhausted
+        ? 'memory-exhausted'
+        : code === 0
+          ? 'completed'
+          : 'process-exit',
     });
   }
 
@@ -1403,6 +1397,60 @@ export class CodexAdapterTransport {
    * attempt for THIS turn is still outstanding, this guard suppresses the
    * one synthesis they were relying on.
    */
+  /**
+   * A process in Codex's own scope was killed by the kernel OOM killer while
+   * Codex kept running. Station does not know which command it was, so it
+   * reports only that: a live warning naming the budget, and a transcript
+   * marker. It never fabricates a tool result; Codex reports the command's
+   * own failure.
+   */
+  private publishCommandOomKill(
+    record: CodexSessionRecord,
+    kill: ChildWorkloadOomKill,
+  ): void {
+    if (record.stopped) return;
+    const nowIso = this.now().toISOString();
+    const budget = kill.memoryMaxBytes
+      ? ` the ${toMiB(kill.memoryMaxBytes)} MiB`
+      : ' its';
+    const turn = record.activeTurnId ? { turnId: record.activeTurnId } : {};
+    this.publish(
+      {
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: nowIso,
+        method: 'runtime.warning',
+        severity: 'warning',
+        ...turn,
+        code: WORKLOAD_COMMAND_OOM_KILLED_CODE,
+        message: `A command Codex started was killed for exceeding${budget} workload memory budget. Codex is still running.`,
+        details: {
+          newKills: kill.newKills,
+          oomKills: kill.oomKills,
+          ...(kill.memoryMaxBytes
+            ? { memoryMaxBytes: kill.memoryMaxBytes }
+            : {}),
+        },
+      },
+      record,
+    );
+    this.publish(
+      {
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: nowIso,
+        method: 'extension.notification',
+        ...turn,
+        namespace: WORKLOAD_TRANSCRIPT_NAMESPACE,
+        type: WORKLOAD_COMMAND_OOM_KILLED_TYPE,
+        payload: { newKills: kill.newKills, oomKills: kill.oomKills },
+      },
+      record,
+    );
+  }
+
   private publishOrphanedTurnFailure(
     record: CodexSessionRecord,
     nowIso: string,
@@ -1411,6 +1459,7 @@ export class CodexAdapterTransport {
       skipSynthesis: boolean;
       workloadOutcome?: ChildWorkloadOutcome;
       exitSignal?: NodeJS.Signals | null;
+      code?: string;
     },
   ): void {
     if (
@@ -1434,7 +1483,7 @@ export class CodexAdapterTransport {
         severity: 'error',
         turnId,
         message,
-        code: 'codex-turn-orphaned',
+        code: options.code ?? 'codex-turn-orphaned',
         ...(options.exitSignal || options.workloadOutcome
           ? {
               details: {
@@ -1480,9 +1529,21 @@ export class CodexAdapterTransport {
   }
 }
 
+const toMiB = (bytes: number) => Math.round(bytes / 1024 / 1024);
+
+/** User-facing copy: what happened, and what Station does on the next turn. */
+function memoryExhaustedMessage(outcome: ChildWorkloadOutcome): string {
+  const budget = outcome.memoryMaxBytes
+    ? ` Its workload budget is ${toMiB(outcome.memoryMaxBytes)} MiB${outcome.memoryPeakBytes ? ` (peak ${toMiB(outcome.memoryPeakBytes)} MiB)` : ''}, shared by Codex and every command it runs.`
+    : '';
+  return `Codex ran out of memory and was stopped, along with the commands it was running.${budget} When the chat continues, Station tells Codex which commands were interrupted and to run memory-heavy steps one at a time.`;
+}
+
 function spawnCodexProcess(
   extraEnv?: Record<string, string>,
   extraArgs?: string[],
+  /** A session's own Station-owned TMPDIR (`session-tmpdir.ts`), never env-supplied. */
+  tmpDir?: string,
 ): ChildProcessWithoutNullStreams {
   const binary = findCliBinary('codex') ?? 'codex';
   // archive#1195: `extraArgs` carries `-c mcp_servers.<id>....` session-layer
@@ -1526,7 +1587,7 @@ function spawnCodexProcess(
       env: childProcessEnvironment({
         PATH: resolveAugmentedPathSync(),
         ...extraEnv,
-        TMPDIR: ensureEngineSpawnTmpDir(),
+        TMPDIR: tmpDir ?? ensureEngineSpawnTmpDir(),
       }),
     },
   );

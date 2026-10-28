@@ -1,13 +1,28 @@
-import { type HttpBindings } from '@hono/node-server';
+import { randomUUID } from 'node:crypto';
+import { type HttpBindings, serve } from '@hono/node-server';
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts';
 import { CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES } from '@kontourai/station-contracts/chat-attachment';
+import {
+  MAX_TRANSCRIPTION_UPLOAD_BYTES,
+  WALKTHROUGH_LIMITS,
+} from '@kontourai/station-contracts/walkthrough';
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   INTERACTIVE_WORKSPACE_TIMING_MODE,
   INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER,
 } from '../../../src-shared/interactive-workspace-performance-timing.js';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
+import { ProjectFileTransactions } from '../../domain/project-file-transactions.js';
+import { createTranscriptionRoutes } from '../../routes/transcription.js';
+import { createWalkthroughRoutes } from '../../routes/walkthroughs.js';
+import {
+  ActionOperationService,
+  FileActionOperationStore,
+} from '../../services/operations/action-operation-service.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
+import { WalkthroughService } from '../../services/walkthroughs/walkthrough-service.js';
 import type { Logger } from '../../utils/logger.js';
 
 // Partial mock: only the budget counter is observed. Spreading the real module
@@ -144,7 +159,7 @@ function createBudgetHarness(
     );
   }
 
-  return { request, sideEffects };
+  return { app, request, sideEffects, logger };
 }
 
 /**
@@ -867,4 +882,278 @@ it('allows bounded Task image uploads above the standard body ceiling while keep
   ).toBe(413);
   expect(sideEffects.get(`POST ${path}`)).toBe(1);
   expect(sideEffects.get(`POST ${adjacent}`)).toBeUndefined();
+});
+
+// Real HTTP exercises the Node adapter and composed authentication/body budget.
+it.each([
+  ['/api/projects/alpha/walkthroughs/import', WALKTHROUGH_LIMITS.uploadBytes],
+  ['/api/transcription', MAX_TRANSCRIPTION_UPLOAD_BYTES],
+])(
+  'HTTP budget for %s accepts its larger ceiling, rejects limit+1 and counts rate admission',
+  async (path, limit) => {
+    const { app, sideEffects } = createBudgetHarness({
+      maxMutationBodyBytes: 1_048_576,
+      maxMutationsPerWindow: 3,
+      extraMutationRoutes: [{ method: 'POST', path }],
+    });
+    let server: ReturnType<typeof serve> | undefined;
+    try {
+      const base = await new Promise<string>((resolve) => {
+        server = serve(
+          { fetch: app.fetch, hostname: '127.0.0.1', port: 0 },
+          (info) => resolve(`http://127.0.0.1:${info.port}`),
+        );
+      });
+      const post = (body: NonNullable<RequestInit['body']>, length?: number) =>
+        fetch(`${base}${path}?filename=review.mp4`, {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${BEARER_CREDENTIAL}`,
+            ...(length === undefined
+              ? {}
+              : { 'content-length': String(length) }),
+          },
+          body,
+        });
+      expect((await post(new Uint8Array(2 * 1024 * 1024))).status).toBe(200);
+      // The declared length rejects without allocating/sending a 512 MiB fixture.
+      const { request, logger } = createBudgetHarness({
+        extraMutationRoutes: [{ method: 'POST', path }],
+      });
+      const refused = await request(
+        path,
+        {
+          ...bearerAuth(),
+          headers: {
+            ...bearerAuth().headers,
+            'content-length': String(limit + 1),
+          },
+          body: 'x',
+        },
+        '192.168.1.50',
+      );
+      expect(refused.status).toBe(413);
+      expect(await refused.json()).toEqual({
+        error: { code: 'request_too_large', limit_bytes: limit },
+      });
+      // Absent Content-Length must also be bounded. Reuse a chunk rather than allocate limit bytes.
+      let sent = 0;
+      const chunk = new Uint8Array(1024 * 1024);
+      const stream = new ReadableStream<Uint8Array>({
+        pull(c) {
+          const n = Math.min(chunk.length, limit + 1 - sent);
+          c.enqueue(chunk.subarray(0, n));
+          sent += n;
+          if (sent === limit + 1) c.close();
+        },
+      });
+      const streamed = await request(
+        path,
+        { ...bearerAuth(), body: stream, duplex: 'half' } as RequestInit,
+        '192.168.1.50',
+      );
+      expect(streamed.status).toBe(413);
+      expect(
+        logger.error,
+        'an over-limit upload is a handled refusal',
+      ).not.toHaveBeenCalled();
+      expect((await post('x')).status).toBe(200);
+      expect((await post('x')).status).toBe(200);
+      expect((await post('x')).status).toBe(429);
+      expect(sideEffects.get(`POST ${path}`)).toBe(3);
+    } finally {
+      if (server) await new Promise<void>((r) => server!.close(() => r()));
+    }
+  },
+  30000,
+);
+
+const makeUploadHome = trackTempDirs();
+
+async function uploadHarness(enabled = true) {
+  const { app, request, logger } = createBudgetHarness({
+    extraMutationRoutes: [],
+    maxMutationsPerWindow: 30,
+  });
+  const home = makeUploadHome('station-composed-upload-');
+  const files = new ProjectFileTransactions(home);
+  await files.createProject('alpha', {
+    id: 'alpha',
+    slug: 'alpha',
+    name: 'Alpha',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+  const storage = new FileStorageAdapter(home);
+  const diagnostic = vi.fn();
+  const service = new WalkthroughService({
+    files,
+    operations: new ActionOperationService(new FileActionOperationStore(home)),
+    resolver: {
+      resolveFfmpeg: async () => ({
+        status: 'unsupported-platform',
+        platform: 'test',
+      }),
+    },
+    transcriber: { transcribeFile: vi.fn() },
+    diagnostic: vi.fn(),
+  });
+  const preview = {
+    select: <T>(branches: { enabled(): T; disabled(): T }) =>
+      enabled ? branches.enabled() : branches.disabled(),
+  };
+  app.route(
+    '/api/projects/:projectSlug/walkthroughs',
+    createWalkthroughRoutes({
+      service,
+      preview,
+      project: (slug) => storage.getProject(slug),
+      authorize: async () => ({ kind: 'operator' }),
+      actor: () => ({ accountId: 'human:local:operator' }),
+      diagnostic,
+    }),
+  );
+  app.route(
+    '/api/transcription',
+    createTranscriptionRoutes({
+      preview,
+      transcriber: { transcribeFile: vi.fn() },
+      isRequestPrincipalCurrent: () => true,
+    }),
+  );
+  return { app, request, service, diagnostic, logger };
+}
+function countedUpload(total = 3 * 1024 * 1024) {
+  let produced = 0;
+  const chunk = new Uint8Array(64 * 1024);
+  const body = new ReadableStream<Uint8Array>(
+    {
+      pull(c) {
+        if (produced === total) return c.close();
+        const n = Math.min(chunk.length, total - produced);
+        produced += n;
+        c.enqueue(chunk.subarray(0, n));
+      },
+    },
+    { highWaterMark: 0 },
+  );
+  return { body, bytes: () => produced };
+}
+function uploadInit(body: ReadableStream<Uint8Array>): RequestInit {
+  return {
+    ...bearerAuth(),
+    headers: {
+      ...bearerAuth().headers,
+      'x-walkthrough-request-id': randomUUID(),
+    },
+    body,
+    duplex: 'half',
+  } as RequestInit;
+}
+it.each([
+  [false, '/api/projects/alpha/walkthroughs/import?filename=a.mp4', 404],
+  [false, '/api/transcription', 404],
+  [true, '/api/projects/missing/walkthroughs/import?filename=a.mp4', 404],
+])(
+  'composed upload refuses before reading: enabled=%s %s',
+  async (enabled, path, status) => {
+    const { request } = await uploadHarness(enabled);
+    const source = countedUpload();
+    const response = await request(
+      path,
+      uploadInit(source.body),
+      '192.168.1.50',
+    );
+    expect(response.status).toBe(status);
+    expect(
+      source.bytes(),
+      'refused upload body consumed before admission',
+    ).toBe(0);
+    expect(response.headers.get('connection')).toBe('close');
+  },
+);
+it('composed upload reaches importer admission before a single chunk is pulled and streams more than 2 MiB', async () => {
+  const { request, service } = await uploadHarness();
+  const source = countedUpload();
+  const start = service.start.bind(service);
+  let beforeAdmission = -1;
+  vi.spyOn(service, 'start').mockImplementation((input) => {
+    beforeAdmission = source.bytes();
+    return start(input);
+  });
+  const response = await request(
+    '/api/projects/alpha/walkthroughs/import?filename=a.mp4',
+    uploadInit(source.body),
+    '192.168.1.50',
+  );
+  expect(response.status).toBe(202);
+  expect(
+    beforeAdmission,
+    'middleware retained bytes before importer admission',
+  ).toBe(0);
+  expect(source.bytes()).toBe(3 * 1024 * 1024);
+});
+it('composed over-capacity importer refuses without pulling the third upload', async () => {
+  const { request } = await uploadHarness();
+  const controllers: ReadableStreamDefaultController<Uint8Array>[] = [];
+  const streams = [0, 1].map(
+    () =>
+      new ReadableStream<Uint8Array>(
+        {
+          start(c) {
+            controllers.push(c);
+          },
+        },
+        { highWaterMark: 0 },
+      ),
+  );
+  const pending = streams.map((body) =>
+    request(
+      '/api/projects/alpha/walkthroughs/import?filename=a.mp4',
+      uploadInit(body),
+      '192.168.1.50',
+    ),
+  );
+  try {
+    await vi.waitFor(() => expect(streams.every((s) => s.locked)).toBe(true));
+    const source = countedUpload();
+    const refused = await request(
+      '/api/projects/alpha/walkthroughs/import?filename=a.mp4',
+      uploadInit(source.body),
+      '192.168.1.50',
+    );
+    expect(refused.status).toBe(503);
+    expect(
+      source.bytes(),
+      'third upload consumed before capacity refusal',
+    ).toBe(0);
+    expect(refused.headers.get('connection')).toBe('close');
+  } finally {
+    controllers.forEach((c) => {
+      c.enqueue(new Uint8Array([1]));
+      c.close();
+    });
+    await Promise.all(pending);
+  }
+});
+
+it('composed chunked walkthrough limit returns 413 without an unexpected warning', async () => {
+  const { request, diagnostic, logger } = await uploadHarness();
+  const source = countedUpload(WALKTHROUGH_LIMITS.uploadBytes + 64 * 1024);
+  const response = await request(
+    '/api/projects/alpha/walkthroughs/import?filename=large.mp4',
+    uploadInit(source.body),
+    '192.168.1.50',
+  );
+  expect(response.status).toBe(413);
+  expect(await response.json()).toMatchObject({
+    error: {
+      code: 'request_too_large',
+      limit_bytes: WALKTHROUGH_LIMITS.uploadBytes,
+    },
+  });
+  expect(response.headers.get('connection')).toBe('close');
+  expect(diagnostic).not.toHaveBeenCalled();
+  expect(logger.warn).not.toHaveBeenCalled();
+  expect(logger.error).not.toHaveBeenCalled();
 });

@@ -25,7 +25,10 @@ import { NATIVE_DEVICE_PROOF_SELF_RECEIPT_BASE_PATH } from '@kontourai/station-c
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { nativeDeviceOnlyObservationRoute } from '../../security/native-device-request-authority.js';
-import { isRelayManagementHttpLeaf } from '../../security/pairing-route-scopes.js';
+import {
+  isRelayManagementHttpLeaf,
+  matchPairingScopeRule,
+} from '../../security/pairing-route-scopes.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
   getRuntimeNativeDeviceProofPrincipal,
@@ -396,7 +399,16 @@ export function installAccountBoundDeviceGate(
           403,
         );
       }
+      const rule = matchPairingScopeRule(method, path);
+      const personLeaf =
+        rule?.exact === true && rule.accountBoundPerson === true;
+      if (accountToken && personLeaf)
+        return c.json(
+          { error: { code: 'account_bound_device_route_forbidden' } },
+          403,
+        );
       const permitted =
+        personLeaf ||
         (method === 'GET' &&
           [
             '/api/tool-library/access',

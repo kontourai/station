@@ -1,8 +1,10 @@
 #!/usr/bin/env tsx
+
 import {
   mintLocalBrowserToken,
   runOpenCommand,
 } from './commands/local-browser.js';
+import { runMediaToolsCommand } from './commands/media-tools.js';
 
 /**
  * @kontourai/station-cli — Unified CLI for Station
@@ -407,6 +409,7 @@ const CORE_COMMANDS = [
   'tasks',
   'skills',
   'secret-bindings',
+  'mcp-clients',
   'conversation',
   'chat',
 ] as const;
@@ -421,12 +424,14 @@ const SURFACE_COMMANDS = [
   'runs',
   'review',
   'knowledge',
+  'walkthrough',
   'auth',
   'branding',
   'feedback',
   'insights',
   'acp',
   'voice',
+  'workload',
 ] as const;
 
 const INDIVIDUAL_COMMANDS = [
@@ -448,6 +453,7 @@ const INDIVIDUAL_COMMANDS = [
   'shortcut',
   'config',
   'telemetry',
+  'media-tools',
   'checkpoints',
   'environment',
   'export',
@@ -1279,6 +1285,7 @@ function buildProgram(
   });
 
   register('telemetry', runTelemetryCommand);
+  register('media-tools', runMediaToolsCommand);
 
   register('config', async (args) => {
     // `--offline` is a flag, not a positional — parse it out before reading

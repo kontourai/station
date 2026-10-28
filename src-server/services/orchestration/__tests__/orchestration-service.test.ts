@@ -3878,7 +3878,8 @@ describe('OrchestrationService', () => {
     );
     expect(first).toMatchObject({
       sessionId: incompatibleProvider.sessionId,
-      resumeCursor: { nativeSession: 'turn-one' },
+      transcriptSeed: incompatibleProvider.transcriptSeed,
+      contextSeed: incompatibleProvider.contextSeed,
     });
     const incompatibleConnection =
       await service.resolveConversationContinuation(
@@ -3899,6 +3900,25 @@ describe('OrchestrationService', () => {
     expect(first).toMatchObject({ startRequired: true });
     expect(concurrent).toEqual(first);
     expect(first.sessionId).not.toBe('conversation-continuation');
+    const firstSeed = first.contextSeed;
+    if (!firstSeed) throw new Error('expected the reserved continuation seed');
+    expect(first).not.toHaveProperty('resumeCursor');
+    const startChild = claude.startSession.getMockImplementation();
+    if (!startChild)
+      throw new Error('expected the scripted start implementation');
+    claude.startSession.mockImplementationOnce(async (input) => {
+      const session = await startChild(input);
+      claude.events.push({
+        eventId: 'continuation-child-started',
+        method: 'session.started',
+        provider: 'claude',
+        threadId: input.threadId,
+        sessionId: input.threadId,
+        createdAt: new Date().toISOString(),
+        metadata: input.metadata,
+      });
+      return session;
+    });
     const child = await service.sessionCommands.execute(
       {
         type: 'start-session',
@@ -3909,12 +3929,22 @@ describe('OrchestrationService', () => {
             userId: 'owner-user',
             conversationId: 'conversation-continuation',
             connectionId: 'connection-a',
+            conversationStartSeedCarrier: {
+              pinDigest: firstSeed.pinDigest,
+              seedDigest: firstSeed.seedDigest,
+              clientTurnId: 'continuation-first-turn',
+            },
           },
         },
       },
       { userId: 'owner-user' },
     );
     if (child.status !== 'accepted') throw new Error(child.message);
+    await vi.waitFor(() =>
+      expect(eventStore.latestEventByMethod(first.sessionId, 'session.started')?.payload).toMatchObject({
+        metadata: { conversationStartSeedCarrier: { pinDigest: firstSeed.pinDigest } },
+      }),
+    );
     // Supervision is intentionally read-only: it follows the active child
     // without reserving another one, and therefore never treats the durable
     // Conversation id as though it were an execution Session id.
@@ -3929,23 +3959,55 @@ describe('OrchestrationService', () => {
     expect(
       eventStore.conversationSessions('conversation-continuation'),
     ).toHaveLength(2);
-    await service.dispatch({
-      type: 'sendTurn',
-      input: {
-        threadId: first.sessionId,
-        input: 'What was the token from the first turn?',
-      },
+    let seedInvocationId: string | undefined;
+    claude.sendTurn.mockImplementationOnce(async (input) => {
+      seedInvocationId = input.invocationId;
+      return { threadId: input.threadId, turnId: 'continuation-seed-turn' };
     });
+    await service.dispatch(
+      {
+        type: 'sendTurn',
+        input: {
+          threadId: first.sessionId,
+          ambientContext: first.transcriptSeed,
+          clientTurnId: 'continuation-first-turn',
+          input: 'What was the token from the first turn?',
+        },
+      },
+      { userId: 'owner-user' },
+    );
     expect(claude.sendTurn).toHaveBeenCalledWith(
       expect.objectContaining({ threadId: first.sessionId }),
     );
-    await expect(
-      service.resolveConversationContinuation(
-        'conversation-continuation',
-        INTERNAL_SESSION_READ_SCOPE,
-        { provider: 'claude', connectionId: 'connection-a' },
-      ),
-    ).resolves.toEqual({ sessionId: first.sessionId, startRequired: false });
+    if (!seedInvocationId) throw new Error('expected the captured invocation');
+    const seedTurn = {
+      provider: 'claude' as const,
+      threadId: first.sessionId,
+      turnId: 'continuation-seed-turn',
+      invocationId: seedInvocationId,
+      createdAt: new Date().toISOString(),
+    };
+    claude.events.push({
+      ...seedTurn,
+      eventId: 'continuation-seed-started',
+      method: 'turn.started',
+      prompt: 'What was the token from the first turn?',
+    });
+    claude.events.push({
+      ...seedTurn,
+      eventId: 'continuation-seed-completed',
+      method: 'turn.completed',
+      outputText: 'continued',
+    });
+    await vi.waitFor(async () => {
+      await expect(
+        service.resolveConversationContinuation(
+          'conversation-continuation',
+          INTERNAL_SESSION_READ_SCOPE,
+          { provider: 'claude', connectionId: 'connection-a' },
+        ),
+      ).resolves.toEqual({ sessionId: first.sessionId, startRequired: false });
+    });
     eventStore.appendEvent({
       eventId: 'conversation-root-user-turn',
       provider: 'claude',
@@ -4808,6 +4870,7 @@ describe('OrchestrationService', () => {
             input: {
               threadId: first.marker.sessionId,
               input: 'continue',
+              ambientContext: first.transcriptSeed,
               clientTurnId,
             },
           },
@@ -4905,13 +4968,17 @@ describe('OrchestrationService', () => {
         transitionSource: 'runtime',
         createdAt: '2026-08-24T01:01:00.000Z',
       });
-      await expect(
-        handoffService.resolveConversationContinuation(
-          'handoff-conversation',
-          INTERNAL_SESSION_READ_SCOPE,
-          { provider: 'claude', connectionId: 'claude' },
-        ),
-      ).resolves.toMatchObject({ startRequired: true });
+      const continuation = handoffService.resolveConversationContinuation(
+        'handoff-conversation',
+        INTERNAL_SESSION_READ_SCOPE,
+        { provider: 'claude', connectionId: 'claude' },
+      );
+      if (custody === 'captured')
+        await expect(continuation).resolves.toMatchObject({ startRequired: true });
+      else
+        await expect(continuation).rejects.toThrow(
+          'Handoff context delivery has not completed.',
+        );
       await handoffService.shutdown();
     },
   );
@@ -12658,7 +12725,7 @@ describe('OrchestrationService', () => {
   test('BOTH REAL HALVES: a restart whose REPLAY dispatch fails still pushes "needs attention" for the stopped turn (slice 7 I7 guard)', async () => {
     // The sibling test above fails inside startSession (the C6e catch);
     // no test drove a sendTurn rejection AFTER a successful restart, so
-    // deleting restartCredentialProfileRecoverySession's own catch (the
+    // deleting CredentialProfileRecovery.restartRecoverySession's catch (the
     // FIX 1 channel) was invisible (slice-7 plan I7).
     const adapter = new FakeAdapter('codex');
     const notificationsDir = join(tmp, 'internal-stop-notifications-replay');
@@ -12670,7 +12737,7 @@ describe('OrchestrationService', () => {
       999_999,
     );
     const logger = { warn: vi.fn() };
-    const restartService = new OrchestrationService({
+    const restartService = new RawOrchestrationService({
       adapterRegistry: createRegistry([adapter]),
       eventBus: notificationBus,
       eventStore,
@@ -12735,17 +12802,7 @@ describe('OrchestrationService', () => {
     adapter.sendTurn.mockRejectedValueOnce(new Error('replay dispatch failed'));
 
     await expect(
-      (
-        restartService as unknown as {
-          restartCredentialProfileRecoverySession(input: {
-            threadId: string;
-            input: string;
-            recoveryCorrelationId: string;
-            signal: AbortSignal;
-            credentialProfileRef?: string;
-          }): Promise<unknown>;
-        }
-      ).restartCredentialProfileRecoverySession({
+      restartService['credentialProfileRecovery'].restartRecoverySession({
         threadId,
         input: 'replayed prompt',
         recoveryCorrelationId: 'replay-fail-correlation',
@@ -12778,7 +12835,7 @@ describe('OrchestrationService', () => {
     await restartService.shutdown();
   });
 
-  test('independent review HIGH-1: restartCredentialProfileRecoverySession composes ambientContext into the adapter wire input (a pending first-turn instructions receipt riding it must not be silently dropped on a credential-profile recovery replay)', async () => {
+  test('profile recovery dispatch composes pending first-turn instructions into the adapter wire input', async () => {
     // `CredentialProfileRecovery.restartRecoverySession` used to call
     // `adapter.sendTurn({ input: input.input, ... })` directly, bypassing
     // the SAME ambientContext choke point (`composeAmbientSendTurnInput`)
@@ -12789,7 +12846,7 @@ describe('OrchestrationService', () => {
     // delegate-seam receipt still read the prompt 'delivered' (derived from
     // `turn.started` existing, which this call path itself creates).
     const adapter = new FakeAdapter('codex');
-    const restartService = new OrchestrationService({
+    const restartService = new RawOrchestrationService({
       adapterRegistry: createRegistry([adapter]),
       eventBus,
       eventStore,
@@ -12802,25 +12859,22 @@ describe('OrchestrationService', () => {
     });
     adapter.sendTurn.mockClear();
 
-    await (
-      restartService as unknown as {
-        restartCredentialProfileRecoverySession(input: {
-          threadId: string;
-          input: string;
-          ambientContext?: string;
-          recoveryCorrelationId: string;
-          signal: AbortSignal;
-          credentialProfileRef?: string;
-        }): Promise<unknown>;
-      }
-    ).restartCredentialProfileRecoverySession({
-      threadId,
-      input: 'Hello',
-      ambientContext: 'Be terse.',
-      recoveryCorrelationId: 'first-turn-restart-correlation',
-      signal: new AbortController().signal,
+    const recovered = await restartService['createRecoveryDispatchAdapter']().dispatch({
+      intent: {
+        fingerprint: 'first-turn-restart-intent', threadId, provider: 'codex',
+        sourceEventId: 'first-turn-source-event', sourceTurnId: 'first-turn-source',
+        failureKind: 'authentication', scope: 'account', decision: 'reconnect',
+        attempts: 0, maxAttempts: 1, outcome: 'armed',
+        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      },
+      replay: {
+        threadId, input: 'Hello', ambientContext: 'Be terse.',
+        recoveryCorrelationId: 'first-turn-restart-correlation',
+        signal: new AbortController().signal,
+      },
       credentialProfileRef: 'canary',
     });
+    expect(recovered).toEqual({ kind: 'observed', turnId: 'codex-turn' });
 
     expect(adapter.sendTurn).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -13037,7 +13091,7 @@ describe('OrchestrationService', () => {
         agent: resolvedAgent,
       }),
     );
-    const restartService = new OrchestrationService({
+    const restartService = new RawOrchestrationService({
       adapterRegistry: createRegistry([adapter]),
       eventBus,
       eventStore,
@@ -13087,17 +13141,7 @@ describe('OrchestrationService', () => {
       return { threadId: turn.threadId, turnId: 'credential-retry-turn' };
     });
 
-    await (
-      restartService as unknown as {
-        restartCredentialProfileRecoverySession(input: {
-          threadId: string;
-          input: string;
-          recoveryCorrelationId: string;
-          signal: AbortSignal;
-          credentialProfileRef?: string;
-        }): Promise<unknown>;
-      }
-    ).restartCredentialProfileRecoverySession({
+    await restartService['credentialProfileRecovery'].restartRecoverySession({
       threadId,
       input: 'replay after credential recovery',
       recoveryCorrelationId: 'credential-retry-2732',
@@ -13149,7 +13193,7 @@ describe('OrchestrationService', () => {
         resolveToolServer: async () => null,
         resolveSkillDir: async () => null,
       });
-      const restartService = new OrchestrationService({
+      const restartService = new RawOrchestrationService({
         adapterRegistry: createRegistry([adapter]),
         eventBus,
         eventStore,
@@ -13177,16 +13221,7 @@ describe('OrchestrationService', () => {
       adapter.sendTurn.mockClear();
 
       await expect(
-        (
-          restartService as unknown as {
-            restartCredentialProfileRecoverySession(input: {
-              threadId: string;
-              input: string;
-              recoveryCorrelationId: string;
-              signal: AbortSignal;
-            }): Promise<unknown>;
-          }
-        ).restartCredentialProfileRecoverySession({
+        restartService['credentialProfileRecovery'].restartRecoverySession({
           threadId,
           input: 'must not replay',
           recoveryCorrelationId: 'credential-retry-resolution-failure',
@@ -13297,16 +13332,7 @@ describe('OrchestrationService', () => {
         userId: 'u1',
       },
     } as CanonicalRuntimeEvent);
-    await (
-      restartService as unknown as {
-        restartCredentialProfileRecoverySession(input: {
-          threadId: string;
-          input: string;
-          recoveryCorrelationId: string;
-          signal: AbortSignal;
-        }): Promise<unknown>;
-      }
-    ).restartCredentialProfileRecoverySession({
+    await restartService['credentialProfileRecovery'].restartRecoverySession({
       threadId,
       input: 'replay prompt',
       recoveryCorrelationId: 'recovery-1',
@@ -22924,25 +22950,30 @@ describe('OrchestrationService', () => {
         itemId: 'huge-tool',
         toolName: 'read_file',
         status: 'success',
-        output: 'x'.repeat(100000),
-      });
+        output: 'ok',
+        // Tool output is stored out of line now; only a field outside the
+        // spill allowlist can still exceed EventStore's backstop.
+        adapterNote: 'x'.repeat(100000),
+      } as CanonicalRuntimeEvent);
+      // docs/design/event-content-spill.md#residual-refusal: the unstorable
+      // event is skipped with a warning on its own thread; the stream is not
+      // interrupted, so no other thread hears about it.
       await vi.waitFor(() =>
         expect(
           eventStore
-            .listEvents('unrelated-owner')
+            .listEvents('oversized-owner')
             .some(
               (entry) =>
                 entry.payload.method === 'runtime.warning' &&
-                entry.payload.code === 'adapter-event-stream-interrupted',
+                entry.payload.code === 'event-not-stored',
             ),
         ).toBe(true),
       );
-      const unrelatedWarning = eventStore
-        .listEvents('unrelated-owner')
-        .find((entry) => entry.payload.method === 'runtime.warning');
-      expect(JSON.stringify(unrelatedWarning?.payload)).not.toContain(
-        'oversized-owner',
-      );
+      expect(
+        eventStore
+          .listEvents('unrelated-owner')
+          .some((entry) => entry.payload.method === 'runtime.warning'),
+      ).toBe(false);
       for (const threadId of ['oversized-owner', 'unrelated-owner']) {
         expect(await isolated.readSession(threadId)).toMatchObject({
           session: { lifecycleState: 'running' },
@@ -27634,6 +27665,7 @@ describe('OrchestrationService', () => {
       'runtime.error': 'fold',
       'content.text-delta': 'non-fold',
       'content.reasoning-delta': 'non-fold',
+      'content.host-images': 'non-fold',
       'tool.started': 'non-fold',
       'tool.progress': 'non-fold',
       'tool.completed': 'non-fold',
@@ -28581,8 +28613,10 @@ describe('OrchestrationService', () => {
       eventId: 'window-elided-turn',
       createdAt: '2026-08-19T00:00:01.000Z',
       method: 'turn.started',
-      // Past `snapshotEvent`'s serialized ceiling (24 KiB).
-      prompt: 'p'.repeat(32_000),
+      // Past `snapshotEvent`'s serialized ceiling (24 KiB), in a field
+      // outside the spill allowlist (a long prompt is stored out of line).
+      prompt: 'short',
+      metadata: { note: 'p'.repeat(32_000) },
     } as never);
     eventStore.appendEvent({
       provider: 'claude',
@@ -28605,7 +28639,9 @@ describe('OrchestrationService', () => {
     );
     const elidedTurn = byId.get('window-elided-turn');
     expect(elidedTurn?.elided).toBe('byte_limit');
-    expect((elidedTurn?.event as { prompt?: string })?.prompt).toBeUndefined();
+    expect(
+      (elidedTurn?.event as { metadata?: unknown })?.metadata,
+    ).toBeUndefined();
     // Absence is the other half of the contract: a whole event must not
     // carry a label, or the label distinguishes nothing.
     expect(byId.get('window-whole-tool')?.elided).toBeUndefined();

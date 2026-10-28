@@ -210,7 +210,7 @@ export function KnowledgeStoreSection() {
                       </span>
                     }
                     label="Personal knowledge is off"
-                    description="The recommended setup creates a local file-based store in Station's data folder. Nothing is imported automatically."
+                    description="Creates a local file-based store in Station's data folder. Nothing is imported automatically."
                     action={
                       <button
                         type="button"

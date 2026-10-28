@@ -1,6 +1,6 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
-import { useMemo, useSyncExternalStore } from 'react';
-import { activeChatsStore } from '../../contexts/active-chats-store';
+import { useMemo } from 'react';
+import { useOpenChatStatus } from '../../contexts/open-chat-status';
 import type { HomeWorkItem } from './home-view-model';
 import { buildWorkFacts, type WorkFactsById } from './work-facts';
 
@@ -19,11 +19,7 @@ export function useWorkFacts(
     'tasks' | 'remoteEnvironments'
   > = NO_EXTRA_SOURCES,
 ): WorkFactsById {
-  const chats = useSyncExternalStore(
-    activeChatsStore.subscribe,
-    activeChatsStore.getSnapshot,
-    activeChatsStore.getSnapshot,
-  );
+  const chats = useOpenChatStatus();
   return useMemo(
     () => buildWorkFacts({ items, chats, sessions, ...extra }),
     [chats, items, sessions, extra],

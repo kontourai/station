@@ -420,6 +420,51 @@ describe('useSendMessage: durable before the request', () => {
     ).toBe('unconfirmed');
   });
 
+  const indeterminateFor = (threadId: string) =>
+    Object.assign(
+      new ChatHttpError(
+        { status: 409, message: 'may have started' } as never,
+        true,
+      ),
+      {
+        code: 'foreground_message_indeterminate',
+        outcome: 'indeterminate',
+        detail: { session: { threadId } },
+      },
+    );
+
+  it("a continuation's may-have-started successor Session never replaces the chat's Conversation", async () => {
+    activeChatsStore.assignConversationId(chat, 'codex:conv-1');
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      indeterminateFor('codex:conv-1:session:successor'),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result
+        .current(chat, 'codex', undefined, 'continue please')
+        .catch(() => undefined);
+    });
+    expect(activeChatsStore.getSnapshot()[chat]?.conversationId).toBe(
+      'codex:conv-1',
+    );
+  });
+
+  it('a first send that may have started adopts the observed session as its Conversation', async () => {
+    expect(activeChatsStore.getSnapshot()[chat]?.conversationId).toBeFalsy();
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      indeterminateFor('codex:first-session'),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result
+        .current(chat, 'codex', undefined, 'hello')
+        .catch(() => undefined);
+    });
+    expect(activeChatsStore.getSnapshot()[chat]?.conversationId).toBe(
+      'codex:first-session',
+    );
+  });
+
   it.each([
     ['the engine is busy', 'provider_turn_in_progress'],
     ['its session is still starting', 'provider_session_starting'],

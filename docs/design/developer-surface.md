@@ -34,7 +34,31 @@ existing engine, capability, developer-service and ACP projections, including
 unavailable reasons and discovery freshness. Ready means the projection's
 readiness observation, not successful execution of a turn.
 
-Monitoring separates Activity, Tool latency, Usage, Context, and Routing.
+Monitoring has Activity and Companion tabs. Companion reads operator-only host
+prerequisites through the authority-bound SDK query; it exposes missing
+capabilities and observed versions. An explicitly authorized operator can prepare
+the signed archive and fixed companion files. Receipt reads recover a lost reply
+or reopened pane without automatically repeating the mutation. Unknown outcomes,
+pending receipts and locks block another preparation; they do not prove liveness.
+The pane also exposes conditional installation after an explicit managed-volume
+choice, separate start/stop controls and current runtime/storage observations.
+Installation creates stopped services; no lifecycle action enables sending or
+acknowledges disclosure. Lost replies recover through retained operation reads.
+When current runtime/storage are ready, the product-only trends view offers time
+and release filters, coverage labels and bounded group pages. Failed refreshes
+hide prior results. Personal source grants and canonical usage remain separate.
+The host check is separate from artifact qualification and ingestion readiness;
+no complete official profile or installed-release journey has been qualified.
+The expandable **Incident groups and issue drafts** view uses the selected UTC
+window to show retained product cohorts with immutable builds and explicit
+observed denominators. Reviewing or copying a draft refreshes current evidence.
+**Linked issues** stores operator-supplied GitHub references locally; it does not
+verify an issue, publish externally or attach diagnostics. Failed reads hide old
+results. See [incident handoff](../guides/monitoring.md#review-an-incident-draft)
+for authority, retention and qualification limits. Personal incident detail is
+not supplied by these operator aggregates.
+
+The Activity tab separates Activity, Tool latency, Usage, Context, and Routing.
 Activity keeps the event explorer and adds expandable current session diagnostics.
 Tool latency uses only measured result events in the loaded, filtered window;
 truncated or unreadable history is marked partial. Usage reuses the receipt

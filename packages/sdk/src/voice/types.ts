@@ -9,7 +9,7 @@
  * can bind to their state without additional wrappers.
  */
 
-export type STTState = 'idle' | 'listening' | 'error';
+export type STTState = 'idle' | 'listening' | 'transcribing' | 'error';
 
 export interface STTOptions {
   lang?: string;
@@ -51,8 +51,13 @@ export interface STTProvider {
   readonly isSupported: boolean;
   readonly state: STTState;
   readonly transcript: string;
+  readonly errorMessage?: string;
+  readonly unsupportedReason?: string;
   startListening(opts?: STTOptions): void;
+  /** Finish capture; batch providers report transcribing until the final result. */
   stopListening(): void;
+  /** Discard capture or pending transcription without delivering a result. */
+  cancelListening?(): void;
   /** useSyncExternalStore-compatible subscribe. Returns unsubscribe fn. */
   subscribe(fn: () => void): () => void;
 }

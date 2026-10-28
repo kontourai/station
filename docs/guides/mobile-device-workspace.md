@@ -76,6 +76,11 @@ is not completed boot. The current
 [pane](../../src-ui/src/workspace-panes/DeviceWorkspacePane.tsx) renders a
 `LiveSurfaceCanvas`, controller and input status, and device tools. Its bounded
 selection state does not persist captured image bytes or control authority.
+The canvas asks for frames no larger than the pane's size in device pixels,
+rounded up in 320-pixel steps so resizing within a step keeps the stream. On a
+metered or data-saving connection it asks for at most 5 frames per second at
+quality 50 and 960 pixels on each side. See the
+[stream budget](../../src-ui/src/live-surface/liveSurfaceStreamBudget.ts).
 
 Devices belong to the operator. An active admin/owner of a Project may view or
 drive only devices shared with that Project, on the named host. Android shares
@@ -89,7 +94,12 @@ shares, current request credentials and the route's pairing scope all matter.
 The [producer](../../src-server/services/devices/device-live-surface-producer.ts)
 separates video and input liveness. iOS video uses MJPEG. Android video uses
 server-side H.264 decoding when a decoder is available; otherwise it reports a
-PNG screenshot-poll fallback. Controls reflect input-channel status independently
+PNG screenshot-poll fallback. The decoder uses host ffmpeg even without ffprobe,
+or the pinned ffmpeg already acquired through `station media-tools download --yes`.
+Existing decoding stays available with both Feature Previews off. Downloading
+missing tools requires enabling Walkthroughs or Local speech in Settings →
+Advanced → Feature previews and explicit consent. Resolution never downloads;
+see [local speech and media tools](local-speech.md). Controls reflect input-channel status independently
 of the most recent frame. A successful input write proves only that the hub
 socket accepted bytes, not that the device applied the gesture.
 

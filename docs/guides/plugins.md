@@ -53,7 +53,12 @@ labels, and requests with missing or wrong capabilities, receive an empty 403
 before slot reservation or credentials. A four-request limit **per label**
 includes queued blocking work; excess requests for that label receive 429.
 Other windows retain their own capacity. The UI loads each window's plugins
-sequentially.
+sequentially. Outside desktop delivery, the UI starts every installed
+bundle's download together, a stylesheet fetch and a same-origin script
+`preload` for each, then still applies and executes them one at a time in
+registry order, so each registration is read at its own script's load event.
+Each stylesheet's deadline starts at its plugin's turn, not at its download.
+See the [registry](../../src-ui/src/core/PluginRegistry.ts).
 
 The capability is a per-launch 256-bit secret checked in constant time. It
 is derived using HMAC over a fixed message, not bound to label, path or port;

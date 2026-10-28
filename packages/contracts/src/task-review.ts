@@ -251,10 +251,17 @@ export type TaskReviewThreadSummary =
   | {
       readonly status: 'unavailable';
       readonly state: 'unavailable';
+      readonly artifact?: TaskReviewArtifactRef;
       readonly threadId: string;
       readonly ordinal: number;
       readonly eventCount: number;
     };
+
+export interface TaskReviewAuthorIdentity {
+  readonly author: TaskReviewAuthor;
+  readonly name: string;
+  readonly startedBy?: { readonly name: string };
+}
 
 export interface TaskReviewView {
   readonly version: typeof TASK_REVIEW_VERSION;
@@ -262,9 +269,23 @@ export interface TaskReviewView {
   readonly taskCreatedAt: string;
   readonly items: readonly TaskReviewItem[];
   readonly threads: readonly TaskReviewThreadSummary[];
+  readonly authors?: readonly TaskReviewAuthorIdentity[];
+  /** Absent on legacy projections; action admission remains server-owned. */
+  readonly capabilities?: TaskReviewCapabilities;
   /** Unfiltered counts, even when the request selects one state. */
   readonly counts: TaskReviewCounts;
   readonly limits: typeof TASK_REVIEW_LIMITS;
+}
+
+export interface TaskReviewCapabilities {
+  readonly view: boolean;
+  readonly comment: boolean;
+  readonly send: boolean;
+}
+
+/** Multiplayer list producers must supply the admitted person's capabilities. */
+export interface TaskReviewListProjection extends TaskReviewView {
+  readonly capabilities: TaskReviewCapabilities;
 }
 
 export type TaskReviewRefusalCode =
@@ -391,6 +412,8 @@ export type TaskThreadListResponse = TaskReviewResponse<{
   readonly taskCreatedAt: string;
   readonly threads: readonly TaskReviewThreadView[];
   readonly counts: TaskReviewCounts;
+  /** Corrupt entries omitted from threads and state counts, independent of the state filter. */
+  readonly unavailableThreadCount: number;
 }>;
 
 /** POST /api/orchestration/station-control/task-thread-reply. */

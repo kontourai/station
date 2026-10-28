@@ -50,6 +50,8 @@ by themselves produce a complete visual dialog.
   media query;
 - an overlay context, linked to the surface it was opened from, so a menu
   inside it can take a layer above it (see [Action rows](#action-rows)).
+- the phone-sheet drag handle, behind the Sheet gestures device preview
+  (see [Sheet drag handle](#sheet-drag-handle)).
 
 A consumer may keep its content mounted with `open={false}` to preserve a
 pending decision. The closed surface is hidden and releases dialog history and
@@ -88,6 +90,38 @@ until one of its explicit actions answers it. `useRequestSheet(pending)` closes
 the sheet when an answer given on this page settles the request; a request
 resolved elsewhere leaves the pending list instead, which unmounts the card and
 its sheet together. Desktop keeps the feature's inline card.
+
+### Sheet drag handle
+
+With the Sheet gestures developer preview on, a phone-width surface renders a
+drag handle centred over its panel's top edge
+([`useResponsiveSheetGesture`](../../src-ui/src/components/useResponsiveSheetGesture.ts),
+snap math in [`sheetSnap.ts`](../../src-ui/src/components/sheetSnap.ts)). It
+appears only while the panel is measured within 12px of its overlay's bottom
+edge, so floating cards and centred dialogs get none, and only for a
+dismissible `role="dialog"`: never for an `alertdialog`. The handle is a
+sibling of the panel, not a child, so consumer markup, scrolling and controls
+are untouched; its 44px hit area is 120px wide so it covers no title or close
+control.
+
+Dragging up grows the panel, past the consumer's own `max-height`, to Full:
+from where the panel rests up to the top safe area plus `--k-space-4`. Dragging
+down shrinks it back to the consumer's own height, then slides it out.
+Release snaps to the nearest of dismiss, Default and Full; flings use the
+dock's thresholds, and a downward fling from Full only returns to Default. A
+tap toggles Default and Full. Dismissal calls the surface's ordinary
+`onClose` after the slide, so history entries, close guards and focus return
+are the close button's; a consumer that declines to close gets its sheet back.
+The handle is `aria-hidden` and pointer-only: keyboard and assistive
+technology users keep the close control and Escape, and Full is a convenience,
+not the only way to reach content.
+
+The Full height is measured and published as
+`--responsive-sheet-full-height`, with `data-sheet-expanded` on the overlay;
+both are the gesture's, not the consumer's. A consumer with its own grab
+gesture passes `sheetGesture={false}` (`RequestSheet` does, because its drag is
+hide-only). Only the handle is draggable: a drag that starts anywhere else in
+the sheet scrolls or activates what it started on.
 
 Every `ResponsiveDialogSurface` declares `layer="dialog"`, `"popover"` or
 `"system"`. [The token scale](../../src-ui/src/tokens.css) includes dock,
@@ -143,8 +177,12 @@ at the surface or workspace boundary that needs geometry, then size descendants
 from `--responsive-visual-viewport-height`. It combines Visual Viewport readings
 with the Android inset projection and falls back to window dimensions. The
 separate document publisher, installed by `main.tsx`, exposes
-`--visual-viewport-bottom-inset` for fixed siblings. The hook is not a global
-singleton: do not add redundant subscriptions in every nested panel.
+`--visual-viewport-bottom-inset` for fixed siblings. Every call, and the SDK
+and Connect modals, reads one per-window store
+(`@kontourai/station-shared/visual-viewport`) that reads the geometry once per
+frame, so another call adds a re-render rather than more listeners. Still read
+it at the boundary and size descendants from its custom properties instead of
+calling it in every nested panel.
 
 Use flex/grid with `min-width: 0` and `min-height: 0` where content must shrink.
 Keep one bounded scroll owner per region; use overscroll containment where a
@@ -165,6 +203,20 @@ sheet: the bar's edge reserve holds two 44px controls, and a third wrapped the
 header onto a second line (#4192). This is separate from the compact Basis/answer inspection described
 above. Selecting a row reveals detail inline, within the existing scrollable
 reader; it does not add another modal. Closing returns focus to the opener.
+
+### Coding tools on phones
+
+The Coding workbench uses the shared mobile predicate to replace the desktop
+rail with a header tool picker. Its Tools Dialog lists the current host's panes
+with labels and counts; the same navigation owner selects them. The tool gets
+the full workbench width. See [mobile tool navigation](../design/placement.md#mobile-tool-navigation-2026-10-27).
+
+A tool can use [ToolControls](../../src-ui/src/components/ToolControls.tsx) for
+contextual controls that float within its own scrolling region. Render them
+only for the active task, as File preview does for Go to line. The surface is
+sticky near that region's top so its controls stay clear of a bottom keyboard;
+its content must supply labels, dismissal, and 44px touch targets. Keep terminal
+accessory keys in their existing row rather than adding a second floating dock.
 
 ## Controls and enforcement
 

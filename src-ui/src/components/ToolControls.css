@@ -1,0 +1,18 @@
+.tool-controls {
+  position: sticky;
+  top: var(--k-space-2);
+  z-index: var(--layer-sticky);
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto var(--k-space-2);
+  padding: var(--k-space-2);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+  box-shadow: var(--k-shadow);
+}
+
+.tool-controls input {
+  font-size: max(16px, 1em);
+}

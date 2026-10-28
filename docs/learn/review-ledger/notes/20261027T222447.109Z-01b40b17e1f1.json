@@ -1,0 +1,17 @@
+{
+  "revision": "f743d827c3305f55ecf0bf2a631b3a0513d932c7",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Holder passage revised for the descriptor sweep, checked against engineScopeWrapper and resolveHolderBinaries in workload-resources.ts: setsid -f with 0-2 on /dev/null and 3-9 closed; where bash exists the holder closes every descriptor from 3 up listed in /dev/fd and execs sleep 2147483647; without bash, descriptors from 10 up stay open in the holder. Exercised by the process test that hands the wrapper a pipe at fd 11 (macOS here; Linux CI pending).","inputs":["docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Its workload paragraph does not describe the holder's descriptors; the bash sweep is an internal of workload-resources.ts covered in development.md. No claim affected.","inputs":["docs/architecture/module-map.md","docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"Its holder is the supervisor lock holder. Relevant only in that the supervisor gives Station an IPC channel; the holder sweep now closes any such inherited descriptor in the workload holder. No claim in this proposal changes.","inputs":["docs/design/process-supervisor.md","docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Routes to the development.md workload section; the new process-test descriptor case follows the existing process-test rules (resource manifest entry already present). No claim affected.","inputs":["docs/guides/testing.md","docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"packages/shared/README.md","note":"child-workload leaf unchanged; the holder wrapper is server-side in workload-resources.ts.","inputs":["packages/shared/README.md","docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"src-server/AGENTS.md","note":"Routes to development.md; the wrapper change adds no spawn site in Station (the holder is started by the scope's shell) and no new logging.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

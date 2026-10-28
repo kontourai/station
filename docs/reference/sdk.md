@@ -12,6 +12,21 @@ entry point. Exports select TypeScript/TSX source and host components may also
 need CSS, React and a Query Client. See the [package README](../../packages/sdk/README.md)
 for source distribution and a checked authoring example.
 
+## Local speech and media tools
+
+The React-free `@kontourai/station-sdk/client` exports
+`getMediaToolsStatus(apiBase, options?)`,
+`downloadMediaTools(apiBase, { consent: true, components? }, options?)` and
+`transcribeAudio(apiBase, blob, options?)`. The first two accept ordinary
+`ClientRequestOptions`. The upload uses the host credential resolver and
+accepts `signal`, `headers` and `timeoutMs`; it defaults to 16 minutes and
+refuses empty or over-32-MiB Blobs. Results use `MediaToolsStatus` and
+`LocalTranscriptionResult`. A caller must distinguish `unavailable`, `failed`
+and `transcribed` before reading segments. Queue overflow throws `StationHttpError`
+with status 503, code `busy` and `retryAfterMs: 5000`; direct transcription
+results also include `busy` in the failed reason union. These exports require a build
+containing this change. See [local speech](../guides/local-speech.md).
+
 ## Telemetry delivery
 
 The root exports `fetchTelemetryDeliveryStatus`, `checkTelemetryConnection`,
@@ -23,6 +38,110 @@ responses throw instead of supplying healthy defaults. Product commit receipts
 and collector HTTP acceptance remain distinct from downstream delivery. See
 [Monitoring](../guides/monitoring.md#environment-variables) for the operator
 journey and limits. This surface requires a published SDK version containing it.
+
+`fetchTelemetryCompanionPrerequisites(apiBase, options?)` and
+`useTelemetryCompanionPrerequisitesQuery(apiBase, config?)` read the operator's
+companion host capabilities. Pass the render-captured `requestScope`; the hook
+partitions by Station and authority, does not retain previous data or retry
+automatically, and refreshes when mounted or explicitly requested. A server
+refusal, unsupported response or malformed capability result is an error,
+not a passed prerequisite. The bounded response contains versions and container
+architecture, never credentials or raw host output. A passed host check is not
+artifact qualification or installation readiness. The Developer → Monitoring →
+Companion tab consumes this read alongside conditional lifecycle controls. See the [host prerequisite API](../../deployment/telemetry/README.md#station-host-prerequisite-api).
+
+The SDK opts in with `artifactEvidence=1`. A capable server may include
+`artifact` on an available host result; older servers may omit it. Requests
+without that opt-in retain the original prerequisite response. Evidence can be
+unavailable for a missing/invalid retained envelope or companion payload, or
+`parent-envelope-verified` with the release version, source and signed parent
+artifact digest. That state verifies the retained signature/channel/identity
+and local build inventory, not the original archive bytes or runtime
+qualification. Its `qualification` remains `build-only` and
+`installationAuthority` must be `false`; promoted or malformed values are
+refused by the SDK.
+
+Archive preparation uses `fetchTelemetryCompanionPreparationState`,
+`fetchTelemetryCompanionArchivePreparation` and
+`prepareTelemetryCompanionArchive`; the corresponding hooks are
+`useTelemetryCompanionPreparationStateQuery`,
+`useTelemetryCompanionArchivePreparationQuery` and
+`usePrepareTelemetryCompanionArchiveMutation`. Pass the captured `requestScope`
+to each. Queries partition by Station and authority, discard unused cached data,
+do not retain previous data and do not retry automatically. The mutation accepts
+a UUIDv4 operation ID, submits it once, and invalidates scoped preparation reads
+when settled. A lost reply requires reading that same operation's receipt,
+not replaying the mutation. State includes the durable latest-operation ID and
+observed lock presence; neither a lock nor a `pending` receipt proves liveness.
+Strict receipt decoding requires `installationAuthority:false`; authenticated
+archive bytes do not authorize installation or start services.
+New servers include optional `payloadPrepared:true` only after materializing and
+verifying the fixed companion file inventory and matching release source.
+Older receipts may omit it; archive authentication alone does not establish that
+companion files were prepared. The SDK refuses this field on a non-authenticated
+receipt. Optional `qualifiedArchitectures` lists the profile declarations found
+in authenticated prepared files; it is a hint for admission, not execution proof
+or an installation permit.
+
+Managed lifecycle reads use `fetchTelemetryCompanionManagedState`,
+`fetchTelemetryCompanionInstallation` and `fetchTelemetryCompanionAction`, with
+corresponding `useTelemetryCompanionManagedStateQuery`,
+`useTelemetryCompanionInstallationQuery` and `useTelemetryCompanionActionQuery`
+hooks. `installTelemetryCompanion` and `controlTelemetryCompanion` have matching
+`useInstallTelemetryCompanionMutation` and `useControlTelemetryCompanionMutation`
+hooks. All ten are SDK root exports. Pass the captured `requestScope`; reads and
+mutation invalidation partition by Station and authority. Queries discard unused
+cache data, refresh on mount and do not retry or retain previous data. Mutations
+submit once without automatic retries and invalidate scoped reads when settled.
+Recover a lost response by reading its operation ID.
+
+The strict bounded decoders reject inconsistent installation/action identities
+and runtime/storage relations. Completed receipts are historical; only current
+managed state reports runtime and storage observations. The default read deadline
+is 30 seconds, installation 650 seconds and control 200 seconds. Installation
+retains `configuresSending:false`; neither lifecycle mutation grants personal
+source access. No complete official profile has been issued; these source APIs
+are not a qualified public release journey.
+
+`fetchTelemetryCompanionProductTrends(apiBase, window, options?)` and
+`useTelemetryCompanionProductTrendsQuery(apiBase, window, config?)` are separate
+operator product-query root exports. The UTC `window` uses canonical ISO `from`
+and exclusive `to`, at most 365 days apart. Pass captured `requestScope`; cache
+keys include Station, authority and both bounds. The client bounds responses to
+512 KiB, checks the exact returned window and rejects unknown fields or invalid
+receiver aggregates with the contracts decoder. Queries do not automatically
+retry or retain previous data. The result retains producer wall-clock time,
+retention days and unknown delivery coverage. It grants no personal source access.
+
+`fetchTelemetryCompanionProductIncidents(apiBase, window, options?)` and
+`useTelemetryCompanionProductIncidentsQuery(apiBase, window, config?)` use the
+same captured operator scope and canonical UTC bounds. Responses are limited to
+1 MiB and 1,000 groups. `isProductTelemetryIncidents` in the product-telemetry
+contract rejects extra fields, unsafe provenance, duplicate groups and
+inconsistent observed/population counts. Reports contain public product
+aggregates; they do not grant private analytics authority.
+
+`createProductTelemetryIncidentDraft(report, groupId)` in that contract returns
+local review text and a versioned group/window evidence reference, or `null` for
+an invalid report or missing group. It performs no network request, publishing
+or attachment authorization. Callers exporting a draft must first refresh its
+evidence under current authority; a stored group ID is not an access grant.
+
+`fetchTelemetryCompanionIncidentLinks(apiBase, groupId, window, options?)` and
+`useTelemetryCompanionIncidentLinksQuery(apiBase, groupId, window, config?)`
+read at most eight current references for a product group. Pass a captured
+operator scope; the key includes group and UTC bounds. The strict decoder checks
+canonical GitHub references, returned group identity and duplicate link IDs.
+
+`mutateTelemetryCompanionIncidentLink` and
+`useTelemetryCompanionIncidentLinkMutation` accept `TelemetryIncidentLinkMutation`:
+`{ kind: 'link', operationId, groupId, window, issueUrl }` or
+`{ kind: 'unlink', linkId, groupId, window }`. They submit once without automatic
+retries, check the returned operation identity, and invalidate only the scoped
+link queries. Keep the create operation ID and input unchanged after an uncertain
+reply. A receipt with `state:'deleted'` is historical and must not recreate the
+reference. Recovery/tombstone retention is 30 days; this API does not publish to
+GitHub or authorize diagnostic attachments.
 
 `@kontourai/station-sdk/secret-bindings` also exports
 `listTelemetrySecretBindings(apiBase, options?)` and
@@ -223,6 +342,25 @@ credential-recovery policy endpoint. Omit the field to preserve the saved
 preference, or pass `null` to clear it. The mutation does not enroll accounts,
 probe quota by itself, apply credentials, or prove a recovery succeeded. See
 [the policy and evidence boundaries](../guides/connections.md#prefer-allowance-that-expires-sooner-during-account-recovery).
+
+## Out-of-line event content
+
+The `@kontourai/station-sdk/runtime-event-content` subpath reads the value
+behind a runtime event's out-of-line content reference
+([design](../design/event-content-spill.md)). `fetchRuntimeEventContent`
+calls `GET /api/orchestration/sessions/:threadId/content/:ref` and returns the
+raw body with its kind and size (`maxChars` returns a prefix marked
+incomplete). `loadRuntimeEventContent` loads every reference in a stored
+event, rejects if any body is incomplete, and returns the resolved event with
+its `viewedContentDigest`; `computeViewedContentDigest` computes that digest
+with WebCrypto. `loadApprovalContent` fetches a request's content binding
+(the request and the tool calls it gates, as the server defines them), loads
+every reference in it, checks the server's digest against its own, and
+returns the digest to send. Allowing a request with `spilledContent`
+requires the digest on `respondToRequest`. `useApprovalContentQuery` and
+`useRuntimeEventContentQuery` are the React Query hooks; a host Query Client
+is required. The client functions are also exported from
+`@kontourai/station-sdk/client`.
 
 ## Credential-profile device-code login
 
@@ -1451,6 +1589,24 @@ authority changes before the body is consumed. With `requireRequestScope`, a
 missing scope uses an isolated inert key and never exposes an older unscoped
 cache entry.
 
+### `useProjectChatDefaultsQuery(slug, config?)`
+
+Fetches `GET /api/projects/:slug/chat-defaults` through
+`getProjectChatDefaults`: the caller's `ProjectChatDefaultsView` for a new chat
+in that Project, or `null` when the route answers 404 or 501 (an older Station,
+no such Project, or a Station that does not compose it), meaning no Project
+layer applies; other failures throw. Scoped like `useProjectRunLocationsQuery`
+and keyed under `projectChatDefaultsQueryKey(requestScope, durableAuthorityId,
+slug)`: `[PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX, apiBase, identity, slug]`
+(`'project-chat-defaults'`), outside `'projects'`, because every chat start can
+change it. A host reads or seeds that exact entry with the exported key
+function; Station's first send reads it without waiting, only to tell a
+Station that answered 404 (which may predate the `personalApprovalDefault`
+hint) to receive the personal default as a pick. Disabled without a slug. `useUpdateProjectMutation` invalidates the
+prefix. Station reads it through `ProjectsContext`'s
+`useScopedProjectChatDefaultsQuery` (`staleTime: 0`, `refetchOnMount: true`)
+in the start composers, a chat that has not started, and Project settings.
+
 ### `useProjectRunLocationsQuery(config?)`
 
 Fetches `GET /api/projects/run-locations` through `listProjectRunLocations`:
@@ -1895,9 +2051,19 @@ accept an explicit API base and current request options.
 
 Resolves one inventory row under the server's request-derived authority before
 a caller treats it as a writable Session. The discriminated result is
-`resolved`, `missing-session`, or `unavailable`; only the `resolved` arm can
-carry a current Session identity and a server-derived
-`canContinue` decision. Transport, rejection, and invalid wire failures throw a
+`resolved`, `fork-ready`, `missing-session`, or `unavailable`. Only `resolved`
+can carry a current Session identity. `fork-ready` identifies an authorized saved
+fork whose copied transcript is available under `transcript.owner: 'fork-context'`;
+it has no provider Session or runtime execution binding until first send. Both
+successful arms carry the server-derived `canContinue` decision. A pending first
+start may return `canContinue: false` with `continuationPending: true`; clients
+must wait rather than fabricate a Session identity. A current server also says on
+the `resolved` arm whether the next ordinary turn starts a new Session
+(`nextTurnStartsSession`, #4179). The field is optional: older servers omit it,
+and so does a server that would refuse that turn (a handoff awaiting its target,
+or a context delivery not yet reconciled). A value that is not a boolean is
+refused as `invalid-response`.
+Transport, rejection, and invalid wire failures throw a
 typed `ConversationOpenResolutionFailure` rather than degrading to an empty
 chat. Optional `options.signal` cancels the request and `options.timeoutMs`
 sets its deadline, including JSON body consumption. Picker opens and active retries use the default request behavior without
@@ -3373,10 +3539,13 @@ interface STTProvider {
   readonly id: string;
   readonly name: string;
   readonly isSupported: boolean;
-  readonly state: 'idle' | 'listening' | 'error';
+  readonly state: 'idle' | 'listening' | 'transcribing' | 'error';
+  readonly errorMessage?: string;
+  readonly unsupportedReason?: string;
   readonly transcript: string;
   startListening(opts?: STTOptions): void;
   stopListening(): void;
+  cancelListening?(): void;
   subscribe(fn: () => void): () => void;
 }
 
@@ -3386,6 +3555,18 @@ interface STTOptions {
   interimResults?: boolean;
 }
 ```
+
+A batch provider uses `listening` during recording, `transcribing` after stop
+while upload/recognition runs, then `idle` with the final `transcript`. It notifies
+subscribers for those changes; the interface has no separate result callback.
+It need not emit interim results or implement continuous capture. Optional
+`errorMessage` and `unsupportedReason` supply actionable UI diagnostics.
+`stopListening` finishes a clip; optional `cancelListening` discards capture or
+pending recognition without delivering text. The host invokes cancellation when
+an owner closes or changes providers. The compatibility voice-session adapter
+projects `transcribing` and uses cancellation when ending a session, falling back
+to `stopListening` for older providers. Station’s built-in **Station (local)**
+registration follows the live `local-speech` preview and selected Station.
 
 ### `TTSProvider` interface
 
@@ -5402,7 +5583,8 @@ The React-free client entry exports `fetchUsageExport(apiBase, query, options)`.
 Supply a captured `options.requestScope` and `query.expectedStationId` alongside
 the requested `from`, `to`, `scope`, and optional `pageSize`. The transport must
 have matching current authority; the client provides no ambient host fallback.
-The [client](../../packages/sdk/src/client/usage-export.ts) validates the schema,
+The [client](../../packages/sdk/src/client/usage-export.ts) uses the shared pure
+`parseUsageExportPage` contract decoder to validate the schema,
 receipt shapes and observation clocks within the selected UTC window,
 selected source/window/scope, committed order and page size, with
 a 2 MiB response ceiling. It preserves reported currencies, estimates and their
@@ -5414,6 +5596,11 @@ the previous page's `streamEpoch`, `highWater`, and last observation's
 `globalSequence` as `afterGlobalSequence`. A cursor requires that snapshot;
 changed epoch/watermark or non-advancing observations are refused. These values
 are pagination data, never a credential or authorization grant.
+Source deletion or scope changes also invalidate queued pages and continuations.
+The host must clear its cursor/snapshot and start a new first page after that
+refusal; these hooks do not silently replace the requested snapshot. Old opaque
+cursors cannot be reused across the source invalidation upgrade.
+
 
 `useUsageExportQuery(requestScope, query, config?)` is available from the lazy
 `@kontourai/station-sdk/usage-export-query` entry. Its key partitions API base,
@@ -5429,6 +5616,10 @@ Server export and request-authority controls have executed against mounted
 runtime composition with controlled identity fixtures; SDK fetcher and hook
 controls provide focused client evidence. These checks do not establish live
 source enrollment, deployment, publication or complete synced history.
+The separately confirmed receiving-source page endpoint is currently a server
+API; these interactive export hooks do not enroll a source, expose its private
+credential, or operate a durable synchronization checkpoint.
+
 `useUsageRollupQuery` retains its interactive limits and is not a complete
 long-term export. No sync/checkpoint consumer is delivered by this page reader;
 #3459/#3460 retain grant, destination credential custody, deletion, restore and
@@ -5580,6 +5771,54 @@ state and process-local run status without a forge snapshot.
 `writePullRequestGuide` accepts a fourth `{ force?: boolean }` argument; absent
 or false reuses a completed guide for the current head.
 
+
+### Analytics enrollment consent preparation
+
+`performAnalyticsSetup(authority, {kind:"offer", ...})` accepts optional
+`operationalConsent:"terminal-outcomes/v1"` and preserves it in the strict
+public offer decoder. Omit it for usage-only enrollment. Consent is immutable
+for an operation ID and is bound to the receiving candidate, source requester
+approval and encrypted credential; rotation cannot expand it. Older strict
+servers or SDKs may reject this optional profile, so use matching versions. The
+server exports and stores consented terminal outcomes and serves the receiving
+[outcome summary route](api.md#query-receiving-terminal-outcomes).
+`fetchPrivateOutcomes` checks the `privateOperationalOutcomes` capability before
+reading that route. Saved `kind:"outcomes"` definitions select completed,
+aborted or failed counts grouped by engine/day; the setup UI offers the explicit
+opt-in and Personal Insights renders independent source populations with unknown
+coverage. Full consent-to-PostgreSQL/UI execution and installed/native
+qualification remain unverified by this source review.
+
+### Private enrolled Insights and saved views
+
+The lazy `@kontourai/station-sdk/private-insights-query` entry exposes the scoped
+private usage client and hooks. `usePrivateInsightsInventory(authority)` reads
+owned recipient metadata and saved definitions. `usePrivateInsightsResult` takes
+recipient ID, date/filter/group query, semantic selection key and bounded polling
+interval; it advances index/summary progress without retaining a previous
+selection as placeholder data. Principal/API base, recipient, account filters,
+dates, group, mode and the view's semantic selection partition its key. Current
+host authority is required before dispatch and display. Its `refetch()` rejects
+on failure or a selection change, including the waiting caller.
+
+`useSavedAnalyticsViewMutation` creates, updates or deletes definitions under the
+captured authority; revisions prevent silent overwrites. Client helpers include
+fetch/create/update/delete/export. `usePrivateInsightsSyncWindow` wraps explicit
+foreground sync: one or two windows, original-operation recovery, seven-second
+pacing between incomplete pages, cancellation, no retry-to-success and a bounded
+page budget. It does not turn a persisted pending status into process liveness.
+
+Current `data` is withheld on failure. Only an explicitly retained-copy, still
+valid, completed snapshot may appear in the separate `historical` field during
+service failure. Known source validation/access refusal invalidates older cached
+snapshots across windows/remounts; earlier in-flight successes cannot undo it.
+The inventory hook also fences snapshots for an observed inactive slot (including
+`restore-required`), and person-level 401/403 inventory refusals fence the scope's
+source snapshots. A subsequent service outage cannot revive those older copies.
+A newer successful source check is required. UI consumers label historical data
+and unknown coverage explicitly, and never treat a saved ID as source authority.
+These APIs require matching server/contracts versions. Controlled tests and
+browser fixtures do not establish native/installed/release qualification.
 ## Workspace visual files
 
 `@kontourai/station-sdk/workspace-file-preview` exports
@@ -5589,6 +5828,29 @@ read-only POST returns a validated HTML page plus isolated frame origin, or a
 bounded raster preview. `thread` selects an authorized Session workspace;
 verified Git worktrees of that repository are also eligible. The returned bytes
 are display data, not permission to navigate to a host filesystem URL.
+
+## Walkthroughs
+
+The React-free `@kontourai/station-sdk/client` exports `importWalkthrough`,
+`getWalkthroughImport`, `listWalkthroughs`, `getWalkthrough`,
+`getWalkthroughFrame`, and `walkthroughFramePath`. They take an explicit API
+base and Project slug. Import takes a Blob, plain filename, UUID request id and
+optional request options; it returns the operation after upload admission.
+Import defaults to a two-hour upload timeout; `timeoutMs` can override it.
+The server also enforces a 60-second receive-idle deadline.
+Follow status separately until `outcome` is present. Reuse an id only to
+observe that upload; use a new id to retry a refused import or upload new bytes.
+Reads return bounded pages, a contract-validated manifest, or bounded JPEG bytes.
+These calls retain normal Station authentication and Project authorization.
+
+The [runtime composition](../../src-server/runtime/bootstrap/local-media-runtime.ts)
+shares concrete acquisition/transcription instances. Calls require the default-off
+Walkthroughs Feature Preview; enable it in Settings → Advanced → Feature previews.
+Off responses throw `StationHttpError` with `code:'feature_preview_disabled'`,
+`previewId` and `settingsPath`, also preserved by the MCP tools. See the
+[Walkthrough guide](../guides/walkthroughs.md). Missing tools are typed terminal
+unavailability, never empty transcript success. The CLI and Station-control MCP
+use these same fetchers.
 
 ### Task review threads
 
@@ -5608,7 +5870,10 @@ SDK barrels; detail provides full text. Use `openingEvent.body`/author/createdAt
 for the card preview and `lastDeliveryEvent` for the latest delivery, even when
 `lastEvent` is a person reply or resolve. Render `status:'unavailable'`
 as an unavailable card; it has no invented base state or history and does not
-contribute to aggregate counts.
+contribute to aggregate counts. Its optional `artifact` identifies the item on
+which to render that state. The list's optional `authors` projection supplies
+person and agent display labels without People-management scope or transcript
+reads; missing identity facts use the UI's generic label.
 
 `fetchTaskReviewItem(taskId, kind, id)` and
 `useTaskReviewItemQuery(taskId, kind, id, options)` read one selected item through
@@ -5665,3 +5930,44 @@ another send; changing the mode on that same operation is a conflict. Only the r
 lead owner may send until multiplayer is supported. Older replies are omitted from oversized messages while preserving the opening
 and latest comments with an omitted count. Only selections whose minimal content
 cannot fit fail with `message-too-large` before Sent; select fewer threads.
+
+`useCaptureToTaskMutation(taskId)` takes `TaskReviewCreateCaptureRequest` with
+`sourceKind:'browser'`, `sourceSessionId`, optional `label` and a stable
+`operationId`. It requires `orchestration:operate`, returns `{capture}` and
+invalidates the Task review query.
+`fetchTaskCaptureSessions(taskId, signal?)` and
+`useTaskCaptureSessionsQuery(taskId, options?)` supply live, view-authorized
+Browser sessions for the picker. `fetchTaskCaptureContent(taskId, captureId,
+signal?)` returns an image `Blob`; callers own any object URL they create and
+must revoke it. Content stays Task-scoped, uses authenticated fetch and throws
+`StationHttpError` on refusals. These functions and `TaskCapture`,
+`TaskReviewCreateCaptureRequest` and `TaskCaptureBrowserSession` are exported
+from both the root and query barrels.
+
+### Private terminal outcomes
+
+The private Insights client exports `fetchPrivateOutcomes(scope, recipientId,
+{ from, to, groupBy }, signal)` and its principal-scoped
+`usePrivateOutcomesResult(scope, recipientId, query, selection)` hook through the
+existing private Insights query surface. The reader checks
+`privateOperationalOutcomes` with `hasCapability` and provides an explicit host
+update remedy when absent, then validates source identity and the bounded summary.
+The hook hides cached outcome rows during refresh, errors, lost principal authority
+and source validation denial; stale or revoked data is not retained for display.
+Source inventory includes optional `operationalConsent` from the source intent.
+These APIs report private retained observations and do not join product telemetry.
+
+### Private analytics storage preparation
+
+`useAnalyticsSetupMutation` accepts
+`{kind:'storage-preparation', recipientId, requestId}` and returns secret-free
+`storagePreparation` review metadata. It uses the captured person request scope.
+The Companion operator surface uses
+`useTelemetryPrivateUsagePreparationQuery(apiBase, requestId, config)` and
+`usePrepareTelemetryPrivateUsageMutation(apiBase, options)` with captured operator
+scope. The mutation accepts only the reviewed request ID and fingerprint.
+Queries partition by authority and retain no prior review while refreshing.
+A 404 means unsupported host or unavailable/expired request; request again and
+consider updating the host. No operator or private-vault credential is returned.
+See [the source journey](../guides/monitoring.md#connect-a-personal-source-in-insights)
+for expiry, source/Device revalidation and remaining qualification limits.

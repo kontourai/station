@@ -22,6 +22,12 @@ of prebuild staging. Other native dependencies retain their own platform
 requirements. Rust and platform SDKs are needed for native builds/checks; a server/UI-only
 loop need not run them.
 
+Scoped terminal process-group cleanup on POSIX also needs `ps` with PID, PPID
+and process-group columns. A missing or failed census is a cleanup error, not
+proof that descendants stopped. The new cleanup path has real-PTY macOS
+coverage; other POSIX hosts and Windows still need their own qualification.
+
+
 ## Optional `just` contributor Interface
 
 `just` forwards to Station's existing commands; it does not replace them. Use
@@ -184,23 +190,66 @@ environment variables before starting the service:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `STATION_WORKLOAD_MEMORY_MIB` | `3072` | Per-scope memory, capped by the aggregate budget |
+| `STATION_WORKLOAD_MEMORY_MIB` | 60% of the total budget, at least `3072`, at most the total | Per-scope memory, capped by the aggregate budget |
 | `STATION_WORKLOAD_TOTAL_MEMORY_MIB` | Half physical RAM | Combined memory for this service's workload slice |
 | `STATION_WORKLOAD_SWAP_MIB` | `256` | Per-scope swap; `0` disables it |
 | `STATION_WORKLOAD_CPU_PERCENT` | Logical CPUs × `75` | Combined CPU quota; `100` is one core |
 | `STATION_WORKLOAD_TASKS_MAX` | `512` | Per-scope processes and threads |
 | `STATION_WORKLOAD_TOTAL_TASKS_MAX` | `2048` | Combined processes and threads |
 
+The per-scope default grows with the host: a 16 GiB host has an 8 GiB total
+and about 4.8 GiB per engine, while an 8 GiB host keeps the earlier 3 GiB. One
+runaway engine still leaves at least 40% of the slice to its siblings. A fixed
+3 GiB was too small for an engine running a build, a repository-wide lint and a
+browser at once, which is exactly what a 16 GiB host could otherwise afford.
+
+The two memory budgets can also be saved as Station settings in
+`<home>/config/workload-budgets.json`. Each value resolves in this order: the
+environment variable, then the saved setting, then the default above. A
+setting is never silently capped: one below 256 MiB or above the host's memory,
+a per-engine value above the total it would resolve against (a saved or
+environment total, or the default), and a saved total below
+`STATION_WORKLOAD_MEMORY_MIB` are refused. The same check runs when the file is
+read at start; a file that is unreadable, malformed or out of range is
+reported (`settingsError`) and ignored, so the environment and defaults apply.
+
+While enforcement runs, a save applies without a restart. The total is the
+slice's `MemoryMax`, which binds every running engine at once, so a total
+below what the slice uses now is refused. A new per-engine budget reaches only
+scopes launched after the save; running scopes keep the limit they started
+with, and `GET /api/system/workload` lists each running scope with its own
+limit. Saves are serialized; the slice is changed before the file is replaced,
+and a failed change leaves the file, the reported state and the enforced limits
+as they were. Where enforcement is not running, the saved values are read when
+it next starts.
+
+Only the editor is a preview: Settings → Advanced → Host options shows it, and
+`PUT /api/system/workload/settings` accepts a save, only while the **Workload
+budget settings** Feature Preview is on. The budgets themselves, the
+host-sized default, the engine statement, `workload_status` and memory-kill
+recovery are not previews. Turning the preview off keeps saved values in
+force; to clear them, save empty fields (the default) before turning it off, or
+remove `workload-budgets.json` and restart Station. The read
+(`GET /api/system/workload`) and the save are ordinary `/api/system` routes:
+a paired device holding `orchestration:operate` can save, like it can change
+feature previews. Hosted deployments mount neither.
+
 The slice also caps combined swap at 1 GiB. At most 256 scopes can be active.
 One engine's budget includes all of its tools, so size it for the intended
-workload. Exceeding its limit can interrupt that engine. Aggregate exhaustion
+workload. Engine scopes launch with `OOMPolicy=continue`: when a scope reaches
+its limit, the kernel OOM killer kills one process in it, normally the largest
+command (a build, a linter, a browser), and the engine keeps running and sees
+that command fail (SIGKILL, exit 137) within the same turn. Only when the
+engine itself is the process killed does the engine end. Aggregate exhaustion
 can kill any workload in the slice, including a sibling engine. The server
 requests 512 MiB of memory protection and an oomd avoidance preference; these
 do not guarantee survival under host-wide exhaustion or an ancestor policy
 that kills the entire user session.
 
-Managed Linux service isolation requires systemd 253 or newer for scope OOM
-policy and cause reporting. Older installations must upgrade systemd before
+Managed Linux service isolation requires systemd 253 or newer, which accepts
+`OOMPolicy=` on a scope; an older `systemd-run` rejects the property (systemd
+249 was observed to). Memory-kill causes no longer depend on the scope result
+systemd reports, so the floor is set by the property, not by reporting. Older installations must upgrade systemd before
 starting workloads. Scope launches preserve literal arguments; systemd 254 and
 newer receive an explicit option disabling environment expansion.
 
@@ -213,12 +262,132 @@ their existing process behavior and do not gain these limits. The developer
 scopes, recent results/peaks and slice memory/pressure measurements. An unavailable
 measurement is reported separately from enforcement state.
 
-Codex retains its own launch's systemd outcome through scope cleanup. A positively
-observed `oom-kill` produces a memory-exhaustion diagnostic and the configured
-scope budget; aggregate or host pressure can also select that scope. A signal
-alone does not prove OOM. Other unexpected exits retain their signal in the
-message. Unavailable outcome inspection leaves the cause unknown while the
-turn and interrupted tool/child rows still settle.
+Under `OOMPolicy=continue` systemd records no `oom-kill` result for a scope,
+so Station reads the kernel's own count: the `oom_kill` line of the scope's
+cgroup v2 `memory.events`. A 1-second poll reads every running scope and
+announces a kill count to the engine's adapter only once a later poll finds the
+very engine it launched (same pid and start time) still alive; kills seen at
+that later poll wait for the next one, so a steady stream of command kills is
+reported one poll behind (a kill can take up to about two seconds to appear).
+A poll that lands between the kernel killing the engine itself and Station
+noticing the exit therefore never reports the engine's own death as a command
+kill. The count is read again when the scope closes. systemd collects a scope
+as soon as its last process exits, cgroup and counters with it, so an engine's
+own scope (a launch that names its Session) also runs a holder: the scope's
+shell wrapper first runs `setsid -f` on a holder with descriptors 0-2 on
+`/dev/null` and 3-9 closed, then execs the engine. Where the host has bash the
+holder is a bash, run with `-p` so an inherited `BASH_ENV` or `SHELLOPTS` cannot change it, that closes every remaining descriptor from 3 up (as listed in
+`/dev/fd`) and execs `sleep 2147483647`; otherwise it is that sleep directly. The holder is forked inside
+the scope before the engine starts, so it is there however soon the engine
+dies, and nothing is moved between cgroups (a transient scope is the user
+manager's and is not delegated, so Station never migrates processes). It runs in
+its own session and process group, out of reach of the group kill that tears a
+Codex engine down, and holds none of the engine's pipes: Node maps a child's
+stdio, IPC and extra pipes onto the lowest descriptors and opens the rest
+close-on-exec. The bash sweep also drops descriptors from 10 up that Station
+itself inherited without close-on-exec (a harness, a terminal, a CI step),
+which dash cannot name; without bash, those stay open in the holder. When the engine dies, the holder keeps the scope and its
+`memory.events` until Station reads the count and stops the scope, which kills
+the holder with everything else. Until the holder is found, each poll searches
+the scope's own `cgroup.procs` for a pid other than the engine whose command
+line is exactly the holder's; once found, each poll confirms that pid is still
+in the scope with the same start time. `GET /api/system/workload` reports an
+engine scope's `holder` as `placed`, or `unplaced` with `holderReason`
+`not-in-scope` after two polls in a row miss it (the search stops after five
+polls without it),
+`holder-gone` once a found holder has left the scope or its pid names another
+process (an agent's `pkill sleep`, say), or `holder-unavailable` when the
+host has no `setsid`(1) or `sleep`(1) (then engine scopes run without one).
+A process in the scope running the same `sleep 2147483647` can pass for the
+holder; that misreports status only. An
+engine scope without a holder has its count at close unknown, like any
+scope already gone: unknown, never inferred. The settled record
+(`recent` in `/api/system/resource-posture` and the "Workload scope settled"
+log) reports `result: oom-kill-in-scope` with `oomKills` whenever the kernel
+killed a process in the scope (the engine or a command; the engine adapter
+decides which), and keeps systemd's own `systemdResult` (`success` under
+`continue`). Its `oomKillsSource` is `close` for the exact read before the
+stop, or `last-poll` when systemd had already collected the scope (a terminal
+whose shell exited on hangup, since only engine scopes have holders): then a
+kill in the scope's final second can be missing.
+
+Codex reports both cases. A kill while Codex runs publishes a live warning
+(`workload-command-oom-killed`, naming the budget) and a transcript marker
+("A command was killed … for exceeding the engine's workload memory budget");
+Station does not know which command it was and fabricates no tool result —
+Codex reports that command's own failure. Codex's own death is a SIGKILL with
+an `oom_kill` no listener was told about, or a scope systemd reports as
+`oom-kill`; it produces an `engine-memory-exhausted` failure with the budget
+and peak and `session.exited` reason `memory-exhausted`. A signal alone does
+not prove OOM; an unknown count (a scope systemd already collected) leaves
+the cause unknown, and the turn and interrupted tool/child rows still settle.
+Claude Code runs in the same scopes and is told its budget, but its adapter
+does not yet read these counts: a Claude command kill is reported only by
+Claude, and Claude's own memory death is not classified as such.
+
+#### What engines are told
+
+Engine adapters that launch one engine process per Session through the shared
+launcher declare `workloadScope: 'engine-process'` (Codex and Claude Code).
+While enforcement is `ready`, the first turn of each such Session starts with a
+short Station section naming the per-engine limit, that it covers every command
+the engine starts, and that memory-heavy work should run one step at a time.
+Nothing is said where no scope is enforced, or for engines that have not
+declared one (ACP, Muse and in-process engines today).
+
+The statement names the limit of the Session's own scope when it already
+exists (a later settings save does not change a running scope), otherwise the
+limit a launch would receive now. Codex and Claude Code launches also name
+their Station session to the launcher, which attributes the scope to it. The
+`workload_status` station-control tool (`GET /api/system/workload/session`)
+reports the calling Session's own scope: enforcement state, limits, and
+`memory.current`, `memory.peak`, `memory.max`, swap, `oom_kill` and task
+counters read from the scope's cgroup v2 files, with the time Station first saw
+the latest kill (to its 1-second poll). A Session whose engine is not attributed reports
+`unattributed` rather than another scope's numbers. Operators read the whole
+Station's budgets with `station workload status` (`GET /api/system/workload`).
+
+After the engine itself is killed for memory, Station continues the
+conversation on its own: it hands one Station-authored turn ("Continue the
+task from where it stopped.") to the conversation inbox, which runs it in a
+successor Session. That Session's first turn is prefixed with a Station
+recovery note built from the predecessor's own events: the commands whose tool
+calls never reported a result (secrets redacted, set as code, and labelled as
+a record of the previous engine's commands rather than an instruction from the
+user), the peak and the limit, and the instruction to check their partial
+results and run heavy steps one at a time. The chat shows "The engine ran out
+of memory and was restarted — continuing", with **Stop** while it runs.
+
+Automatic continuation is withheld when the turn was interrupted, when a
+request (approval or question) was still open at the kill, when the
+conversation has moved on, for a delegated child (its parent decides whether
+to retry), after `AUTO_CONTINUE_CHAIN_MAX` (2) automatic continuations in a row
+in the conversation's lineage (a task that always runs out of memory stops
+after two restarts). A person's Continue, or a turn an operator or a device
+sent, resets the chain; Station's other turns and turns of unknown origin
+(project-room agent runs) neither count nor reset it. Station also does not
+continue on its own once its continuation for that turn was cancelled or
+refused. A rate cap also allows at most `AUTO_CONTINUE_MAX` (3) automatic
+continuations within `AUTO_CONTINUE_WINDOW_MS` (5 minutes) per conversation, counted in the server
+process (a restart resets that rate cap; the chain is read from the stored
+turns). Then the chat offers
+**Continue** instead of **Send again**, because resending the original prompt
+would restart the same concurrent work. Continue posts
+`/api/orchestration/conversations/:id/memory-continuation`, which sends the
+same turn under a key derived from the dead Session and turn (Station's bare
+key, or the `-p` person key). Whoever continues first owns the one live entry;
+every later request, including the owner's click after Station continued on
+its own, gets 409 `memory_continuation_already_started` and never a second
+turn. Only an entry the inbox proves sent nothing (refused, or cancelled before
+it was ever placed) is spent: a person's Continue then takes the next person key
+(`-p2` … `-p5`), so two devices clicking still name one entry. A dismissed
+unconfirmed entry may have started a turn and still counts as continued. Once
+every key is spent, Continue answers 409 `memory_continuation_retries_exhausted`. The
+`memory-continue-` key prefix is reserved: `/chat` refuses it and the inbox
+accepts it only from Station's own origin, so nobody can pre-claim the key. An older
+Station without the route answers 404 and the client sends the short
+continuation as an ordinary message. Ordinary connection recovery still treats
+a memory kill as manual and never replays the prompt.
 
 `npm run lint:check` and `lint:fix` share one Biome slot per OS user across
 worktrees and use at most two Biome worker threads. This prevents overlapping
@@ -326,7 +495,7 @@ implicitly reactivate sessions, scheduled jobs, grants, or account selection.
 | `@kontourai/station-sdk` | `packages/sdk/` | Published (npm, Apache-2.0) | Plugin SDK hooks, components, query domains, and client helpers |
 | `@kontourai/station-shared` | `packages/shared/` | Published (npm, Apache-2.0) | Shared runtime helpers and compatibility re-exports |
 | `@kontourai/station-connect` | `packages/connect/` | Private in this checkout (`private: true`) | Standalone bidirectional pairing library |
-| `@kontourai/station-telemetry-broker` | `packages/telemetry-broker/` | Private optional companion; separate Node bundle | Durable receiver for disclosed product observations; no personal accounting |
+| `@kontourai/station-telemetry-broker` | `packages/telemetry-broker/` | Private optional companion; separate Node bundle | Durable product receiver and isolated private usage storage; Core owns person/source authority, not the receiver |
 | `@kontourai/monument` | `packages/monument/` | Tier 1 package (ADR 0005), `private: true` until a qualified functional release (see its README); imports nothing of Station's | Engine-neutral durability kernel: turn dedup, turn boundaries, request keys, message delivery decisions and sequencing, conformance suite. Station uses its public entry points, binds storage commands to its existing tables and supplies host admission, terminal facts, owner liveness and start/steer invocation |
 | `@kontourai/agent-runtime` | `packages/agent-runtime/` | Private experimental Tier 1 boundary; source workspace exports | Model-only request journal, retained stream replay and guarded VoltAgent/Strands consumers over public Monument contracts; Station chat/boot adoption and package release remain unqualified |
 | `@kontourai/station-supervisor` | `packages/supervisor/` | Private (`private: true`); self-contained `dist-server/station-supervisor.js` bundle, Node built-ins only | [Process supervisor](../design/process-supervisor.md) that holds listeners and hands them between core server generations. `station start`, and `station service run` through it, run the core server under it unless `STATION_DIRECT_LAUNCH=1`, `--watch` or `--lifecycle-journal` keeps the direct start. Its [README](../../packages/supervisor/README.md) covers status and build. The core's supervisor link imports the protocol from `@kontourai/station-supervisor/protocol` |
@@ -435,6 +604,14 @@ Common commands:
 ```
 
 See [../reference/cli.md](../reference/cli.md) for the complete command reference.
+
+## New user-facing capabilities
+
+Ship new capabilities that are not yet hardened behind a Station-wide Feature
+Preview, off by default. Follow [Ship a feature preview](feature-previews.md)
+for scope, runtime binding, entry-point gating, refusal behavior, tests, user
+documentation, and promotion. Device developer previews serve local developer
+UI experiments and do not gate shared server behavior.
 
 ## Plugin Development
 

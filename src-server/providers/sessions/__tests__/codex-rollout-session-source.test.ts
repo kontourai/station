@@ -899,11 +899,12 @@ describe('CodexRolloutSessionSource', () => {
     expect(started).toMatchObject({
       metadata: { sourceTextTruncated: true, source: 'codex-rollout' },
     });
-    expect(
-      Buffer.byteLength(
-        started?.method === 'turn.started' ? (started.prompt ?? '') : '',
-      ),
-    ).toBeLessThan(escapedPrompt.length);
+    const prompt = started?.method === 'turn.started' ? started.prompt : '';
+    // A truncated source prompt stays inline text, not a reference.
+    expect(typeof prompt).toBe('string');
+    expect(Buffer.byteLength(String(prompt))).toBeLessThan(
+      escapedPrompt.length,
+    );
     const textEvents = result.events.filter(
       (event) => event.method === 'content.text-delta',
     );

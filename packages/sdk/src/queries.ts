@@ -865,8 +865,10 @@ export {
 } from './query-domains/taskReview';
 export {
   checkTelemetryConnection,
+  fetchTelemetryCompanionPrerequisites,
   fetchTelemetryDeliveryStatus,
   useCheckTelemetryConnectionMutation,
+  useTelemetryCompanionPrerequisitesQuery,
   useTelemetryDeliveryStatusQuery,
 } from './query-domains/telemetryDelivery';
 export {
@@ -957,10 +959,12 @@ export {
   layoutCatalogRetryDelay,
   type ModelConnectionMutationInput,
   type ModelConnectionSmokeInput,
+  PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX,
   PROJECT_RUN_LOCATIONS_QUERY_KEY_PREFIX,
   ProjectIdentityIncarnationMismatchError,
   type ProjectIdentityReadFailure,
   type ProjectReadQueryConfig,
+  projectChatDefaultsQueryKey,
   projectIdentityReadFailure,
   type ReorderProjectsInput,
   type ReorderProjectsVariables,
@@ -999,6 +1003,7 @@ export {
   useInvokeAgent,
   useModelConnectionsQuery,
   useModelPickerCatalogQuery,
+  useProjectChatDefaultsQuery,
   useProjectIconCandidatesQuery,
   useProjectIdentityQuery,
   useProjectLayoutQuery,

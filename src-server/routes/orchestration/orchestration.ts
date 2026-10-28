@@ -60,9 +60,11 @@ import {
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   CLIENT_TURN_IN_FLIGHT_CODE,
   type DelegationProvenance,
+  MEMORY_CONTINUATION_CLIENT_TURN_PREFIX,
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
+import { isRuntimeEventContentDigest } from '@kontourai/station-contracts/runtime-event-content';
 import {
   ORCHESTRATION_STREAM_ACTIVITY_EVENT,
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
@@ -105,7 +107,10 @@ import {
   tenantExecutionContextForRequest,
 } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
-import type { FullAccessGrant } from '../../security/coding-authority.js';
+import {
+  type FullAccessGrant,
+  requestMayBeAnAgent,
+} from '../../security/coding-authority.js';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import {
@@ -148,6 +153,7 @@ import type {
   DelegationResultDelivery,
 } from '../../services/orchestration/delegation-result-delivery.js';
 import type { DispatchCwdAdmission } from '../../services/orchestration/dispatch-cwd-admission.js';
+import type { MemoryExhaustionContinuation } from '../../services/orchestration/memory-exhaustion-continuation.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import {
   AdoptionContinuationInProgressError,
@@ -171,6 +177,7 @@ import {
 } from '../../services/orchestration/thread-inbox.js';
 import { MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES } from '../../services/orchestration/thread-tool-result-adapter.js';
 import { foregroundTurnSubmissionDigest } from '../../services/orchestration/turn-submission-digest.js';
+import { isPersonChatRequest } from '../../services/projects/project-chat-defaults.js';
 import type { ReceiverExecutionAdmission } from '../../services/projects/project-contribution-service.js';
 import {
   RECEIVER_EXECUTION_REFUSAL_COPY,
@@ -510,6 +517,14 @@ const respondToRequestCommandSchema = z.object({
   // Only an `acceptForSession` answer reads it, and only an authentic
   // Station browser request honours it (the adapter's grant computation).
   sessionGrantScope: z.literal('server').optional(),
+  // docs/design/event-content-spill.md: proof the client loaded a spilled
+  // request's full content before allowing it. Checked by the service.
+  viewedContentDigest: z
+    .string()
+    // 'sha256-' plus 64 hex digits; the regex fixes the exact shape.
+    .max(71)
+    .regex(/^sha256-[0-9a-f]{64}$/)
+    .optional(),
   // Deprecated (#3390): a pre-0.9 client's harness answer; translated to
   // `content` by the service. Retained for compatibility; new callers use `content`.
   answers: z
@@ -900,11 +915,24 @@ export const foregroundMessageObjectSchema = z.object({
     })
     .optional(),
   attachmentRefs: stagedAttachmentReferencesSchema,
-  clientTurnId: z.string().min(1).max(200).optional(),
+  // Station's own continuation after a memory kill owns its key prefix; a
+  // client claiming one could pre-empt that continuation.
+  clientTurnId: z
+    .string()
+    .min(1)
+    .max(200)
+    .refine(
+      (key) => !key.startsWith(MEMORY_CONTINUATION_CLIENT_TURN_PREFIX),
+      'This clientTurnId prefix is reserved for Station.',
+    )
+    .optional(),
   // #2436: a posture decision this send carries (a pick made before the chat
   // had a session, or while offline). Recorded on receipt, before the turn.
   setApprovalMode: approvalModeSchema.optional(),
   setApprovalModeBasedOn: z.number().int().nonnegative().nullable().optional(),
+  // The person's personal per-engine default, a hint below the Agent's and
+  // the Project's defaults (`recordPersonalApprovalDefault`), never a pick.
+  personalApprovalDefault: z.enum(['ask', 'auto', 'never']).optional(),
 });
 
 /**
@@ -1285,6 +1313,10 @@ interface ForegroundMessageRequest {
   clientOrigin?: ClientOrigin;
   /** #3323: how the route came by the stamped delegation; never body JSON. */
   delegationProvenance?: DelegationProvenance;
+  /** See `ForegroundMessageInput.personChatStart`; derived here, never body JSON. */
+  personChatStart?: true;
+  /** See `ForegroundMessageInput.personalApprovalDefault`. */
+  personalApprovalDefault?: ApprovalMode;
 }
 
 interface ContinueForegroundMessageRequest {
@@ -2093,6 +2125,14 @@ export function createOrchestrationRoutes(
       | 'heldByOther'
       | 'inFlight'
     >;
+    /**
+     * Continuing a conversation whose engine was killed for memory
+     * (`memory-exhaustion-continuation.ts`). Absent without an inbox.
+     */
+    memoryContinuation?: Pick<
+      MemoryExhaustionContinuation,
+      'continueOnRequest'
+    >;
     delegationResults?: Pick<
       DelegationResultDelivery,
       | 'arm'
@@ -2612,6 +2652,12 @@ export function createOrchestrationRoutes(
       // #2377 slice C3b: an agent sends without an approval posture.
       const postureRefused = refuseCarriedPosture(c, [
         { path: 'setApprovalMode', value: body.setApprovalMode, kind: 'pick' },
+        // A person's approval hint is theirs to send; an agent sends none.
+        {
+          path: 'personalApprovalDefault',
+          value: body.personalApprovalDefault,
+          kind: 'pick',
+        },
         {
           path: 'target.model.options',
           value: body.target.model?.options,
@@ -2833,6 +2879,17 @@ export function createOrchestrationRoutes(
         // #2873: the scope decision above, run again where the engine spawns.
         ...(scoped.spawn ? { dispatchCwdAdmission: scoped.spawn } : {}),
         clientOrigin: resolveClientOriginForRequest(c.req.raw),
+        // A person's own interactive chat, which alone records and inherits
+        // a Project's last-used values (`project-chat-defaults.ts`).
+        ...(isPersonChatRequest({
+          mayBeAnAgent: requestMayBeAnAgent(c.req.raw),
+          inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
+          automaticBackground: body.automaticBackground === true,
+          delegated: Boolean(claimedDelegation || delegation),
+          ownerAttributed: ownerAttribution !== undefined,
+        })
+          ? { personChatStart: true as const }
+          : {}),
         // Only the join wait a same-key retry may spend; never the send.
         joinWaitSignal: c.req.raw.signal,
       } as ForegroundMessageRequest;
@@ -3150,6 +3207,12 @@ export function createOrchestrationRoutes(
             kind: 'pick',
           },
           {
+            path: 'personalApprovalDefault',
+            value: (body as { personalApprovalDefault?: unknown })
+              .personalApprovalDefault,
+            kind: 'pick',
+          },
+          {
             path: 'target.model.options',
             value: body.target.model?.options,
             kind: 'options',
@@ -3389,6 +3452,92 @@ export function createOrchestrationRoutes(
   });
 
   /**
+   * A person's Continue after the conversation's engine was killed for
+   * memory: the same Station-authored turn, under the same key derived from
+   * the dead turn, as Station's automatic continuation. Whichever arrives
+   * second is the same entry (same sender) or a 409 (another sender), never a
+   * second continuation. An older Station answers 404; the client then sends
+   * an ordinary message.
+   */
+  app.post('/conversations/:conversationId/memory-continuation', async (c) => {
+    const conversationId = param(c, 'conversationId');
+    if (!deps.memoryContinuation)
+      return c.json(
+        { success: false, error: 'This Station has no memory continuation.' },
+        404,
+      );
+    if (
+      conversationId.length > 512 ||
+      !(await orchestrationService.hasReadableSession(
+        conversationId,
+        readAuthorityFor(c),
+      ))
+    )
+      return c.json({ success: false, error: 'Conversation not found' }, 404);
+    const actor = resolveDispatchActor(deps, c);
+    const outcome = deps.memoryContinuation.continueOnRequest({
+      conversationId,
+      actor: {
+        userId: actor.userId,
+        ...(actor.principal ? { principal: actor.principal } : {}),
+        ...(actor.ownerAttribution
+          ? { ownerAttribution: actor.ownerAttribution }
+          : {}),
+      },
+    });
+    if (outcome.kind === 'queued')
+      return c.json(
+        { success: true, data: { clientTurnId: outcome.clientTurnId } },
+        202,
+      );
+    if (
+      (outcome.kind === 'skipped' && outcome.reason === 'already-claimed') ||
+      (outcome.kind === 'failed' && outcome.reason === 'conflict')
+    )
+      return c.json(
+        {
+          success: false,
+          code: 'memory_continuation_already_started',
+          error: 'This conversation is already being continued.',
+        },
+        409,
+      );
+    if (outcome.kind === 'skipped' && outcome.reason === 'withdrawn')
+      return c.json(
+        {
+          success: false,
+          code: 'memory_continuation_retries_exhausted',
+          error:
+            "This turn's continuation was cancelled or refused too many times. Send a message to continue the conversation.",
+        },
+        409,
+      );
+    if (outcome.kind === 'skipped')
+      return c.json(
+        {
+          success: false,
+          code: 'memory_continuation_not_applicable',
+          error:
+            "The conversation's latest turn did not end because its engine ran out of memory.",
+        },
+        409,
+      );
+    if (outcome.reason === 'not-permitted')
+      return c.json(
+        {
+          success: false,
+          code: 'memory_continuation_not_permitted',
+          error: 'You cannot continue this conversation.',
+        },
+        403,
+      );
+    return c.json(
+      { success: false, error: 'Station could not continue the conversation.' },
+      503,
+    );
+  });
+
+  /**
    * #3568: withdraw a held follow-up (its sender only), or dismiss one that
    * is unconfirmed or refused (anyone who may send to the conversation, so
    * one person's possibly-sent message cannot hold everyone's). Anyone else,
@@ -3557,6 +3706,12 @@ export function createOrchestrationRoutes(
           {
             path: 'setApprovalMode',
             value: body.setApprovalMode,
+            kind: 'pick',
+          },
+          {
+            path: 'personalApprovalDefault',
+            value: (body as { personalApprovalDefault?: unknown })
+              .personalApprovalDefault,
             kind: 'pick',
           },
           {
@@ -5291,6 +5446,71 @@ export function createOrchestrationRoutes(
     return c.json({ success: true, data });
   });
 
+  /**
+   * docs/design/event-content-spill.md: the full value behind a runtime
+   * event's out-of-line content reference, as its raw body (a string as
+   * text, a subtree as JSON) with no JSON-in-JSON escaping. Authorized like
+   * the window read that delivered the reference, so it works in hosted
+   * mode under the same tenant scope and for paired devices. `maxChars`
+   * returns a prefix for bounded readers, marked incomplete.
+   */
+  app.get('/sessions/:threadId/content/:ref', (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    const threadId = param(c, 'threadId');
+    const digest = param(c, 'ref');
+    const maxCharsQuery = c.req.query('maxChars');
+    const maxChars =
+      maxCharsQuery === undefined ? undefined : Number(maxCharsQuery);
+    if (
+      !isRuntimeEventContentDigest(digest) ||
+      (maxChars !== undefined &&
+        (!Number.isSafeInteger(maxChars) || maxChars < 1))
+    )
+      return c.json(
+        { success: false, error: 'Invalid content reference' },
+        400,
+      );
+    const found = orchestrationService.readEventContent(
+      threadId,
+      digest,
+      readAuthorityFor(c),
+    );
+    if (!found)
+      return c.json({ success: false, error: 'Content not found' }, 404);
+    const complete = maxChars === undefined || found.body.length <= maxChars;
+    c.header('X-Station-Content-Kind', found.kind);
+    c.header('X-Station-Content-Bytes', String(found.bytes));
+    c.header('X-Station-Content-Complete', complete ? 'true' : 'false');
+    c.header(
+      'Content-Type',
+      found.kind === 'string' || !complete
+        ? 'text/plain; charset=utf-8'
+        : 'application/json; charset=utf-8',
+    );
+    const prefix = complete
+      ? found.body
+      : found.body.slice(0, maxChars).replace(/[\uD800-\uDBFF]$/u, '');
+    return c.body(prefix);
+  });
+
+  /**
+   * docs/design/event-content-spill.md: what an allow of this request must
+   * load and the viewed-content digest the gate will check, as the server
+   * defines them (the request and the tool calls bound to it). Authorized
+   * like the window read.
+   */
+  app.get('/sessions/:threadId/requests/:requestId/content-binding', (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    const binding = orchestrationService.readApprovalContentBinding(
+      param(c, 'threadId'),
+      param(c, 'requestId'),
+      readAuthorityFor(c),
+    );
+    if (!binding)
+      return c.json({ success: false, error: 'Request not found' }, 404);
+    return c.json({ success: true, data: binding });
+  });
+
   app.get('/conversations/:conversationId/event-window', async (c) => {
     const parsed = sessionEventWindowQuerySchema.safeParse({
       cursor: c.req.query('cursor'),
@@ -6482,7 +6702,8 @@ export function createOrchestrationRoutes(
             indeterminate ||
             (error instanceof OrchestrationCommandDispatchError &&
               (error.code === 'request_event_changed' ||
-                error.code === 'request_verification_unavailable'))
+                error.code === 'request_verification_unavailable' ||
+                error.code === 'request_content_not_loaded'))
             ? 409
             : 400,
         );

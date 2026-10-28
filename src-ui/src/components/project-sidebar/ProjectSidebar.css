@@ -636,7 +636,7 @@
 /* Panel destination rows. #2059 (D3): these sit INSIDE the scrolling body,
    directly under Home, rather than forming a bordered band pinned below the
    projects — the band existed to hold eleven configuration destinations that
-   now live behind the gear. `.sidebar__nav-btn` shares
+   now live behind the footer's Customize chooser. `.sidebar__nav-btn` shares
    `.sidebar__project-btn`'s box metrics, so no padding of its own is what
    keeps Activity aligned with Home. */
 .sidebar__nav {

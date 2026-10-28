@@ -711,7 +711,7 @@ export function MutableSessionDetail({
       <ConfirmModal
         isOpen={confirmStop}
         title="Stop this task?"
-        message="Station interrupts the turn that is running now. The session stays open, so you can send it another message afterward."
+        message="Stops the running turn. The session stays open."
         confirmLabel="Stop task"
         cancelLabel="Keep running"
         variant="danger"

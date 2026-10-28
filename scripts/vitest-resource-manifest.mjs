@@ -139,6 +139,20 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Exercises the serialized CLI UI listener in an owned Node child.
+  'src-server/runtime/frameworks/__tests__/http-receive.integration.test.ts',
+  // Runs the preview-docs CLI against private source/doc fixtures and the real repo.
+  'scripts/__tests__/feature-preview-docs-check.test.ts',
+  // Drives a fake `security` binary through the macOS keyring store's child processes.
+  'packages/cli/src/__tests__/profile-keyring-macos.test.ts',
+  // Native archive tools and owned recognizer/process fixtures; every home is disposable.
+  'src-server/services/media-tools/__tests__/media-tools-acquisition.test.ts',
+  'src-server/services/transcription/__tests__/sherpa-transcriber.test.ts',
+  'src-server/services/transcription/__tests__/sherpa-transcriber.real.test.ts',
+
+  // Explicit opt-in ffmpeg fixture; owns its video, children and Project home.
+  'src-server/services/walkthroughs/__tests__/walkthrough-video.integration.test.ts',
+  'src-server/services/walkthroughs/__tests__/walkthrough-media-regressions.integration.test.ts',
   // Real bounded Node children exercise failure receipts without running another corpus.
   'scripts/__tests__/run-vitest-corpus.test.ts',
   // Real private Git fixtures and hardened cat-file verification through the MCP route.
@@ -150,6 +164,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/adapters/__tests__/node-pty-adapter.test.ts',
   // Real node-pty shells in isolated homes; no shared ports or host state.
   'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+  // Production route/auth composition opens real terminal PTYs in a private home.
+  'src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts',
+  'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
   // Two disposable workers contend on private SQLite connections; no shared host output or timing assertion.
   'src-server/services/outside-agent/__tests__/oauth-concurrency.test.ts',
   // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.
@@ -158,8 +175,14 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/server-scenario.test.ts',
   // Tiny disposable user-service/scope budgets exercise actual OOM containment.
   'src-server/services/infra/__tests__/workload-resources.process.test.ts',
+  // A real detached engine-shaped process and the scope holder Station spawns.
+  'src-server/services/infra/__tests__/workload-scope-holder.process.test.ts',
+  // Fake systemd manager; one case starts and reaps a real short-lived process.
+  'src-server/services/infra/__tests__/workload-budget.test.ts',
   'scripts/__tests__/run-biome.process.test.ts',
   'scripts/__tests__/component-style-hygiene.process.test.ts',
+  // Runs the UI copy length gate as a node child against a disposable Git tree.
+  'scripts/__tests__/ui-copy-length.process.test.ts',
   // Real second-process Task/share writers contend with the publication fence.
   'src-server/services/projects/project-room-agent-task-context.test.ts',
   // Reviewed setup launches real bounded commands and verifies durable outcomes.
@@ -1028,6 +1051,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/verify-desktop-clean-checkout.test.ts',
   // Vite's real page/worker fixture owns an esbuild service child.
   'scripts/__tests__/vite-ui-assets.test.ts',
+  // Same real Vite build fixture shape, so the same esbuild service child.
+  'scripts/__tests__/vite-third-party-licenses.test.ts',
   'scripts/__tests__/vite-loopback-default.test.ts',
   'scripts/__tests__/vitest-worktree-exclusion.test.ts',
   'scripts/__tests__/voice-realtime-live-smoke.test.ts',
@@ -1331,8 +1356,14 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-ui/src/components/notifications/__tests__/NotificationContainer.touch-target.test.tsx',
   // Runs real canvas/React startup handoffs with Chromium's controlled clock.
   'src-ui/src/__tests__/startup-presentation.browser.test.tsx',
+  // Mounted Coding tool navigation and sticky controls own a Chromium instance.
+  'src-ui/src/__tests__/coding-mobile-tools.browser.test.tsx',
   // Owns Chromium and a local HTTP fixture for SW offline reload and real IndexedDB.
   'src-ui/src/__tests__/offline-reading.browser.test.ts',
+  // Owns Chromium and a local HTTP fixture for strict-durability IndexedDB custody.
+  'src-ui/src/__tests__/strict-indexeddb.browser.test.ts',
+  // Owns Chromium to decode, resize and encode a real photo into a thumbnail.
+  'src-ui/src/__tests__/attachment-thumbnails.browser.test.ts',
   // station#4474: same shape again — launches a real Chromium via
   // `@playwright/test` to measure real cascade-resolved layout (sibling
   // toolbar control x-offsets across connection states).

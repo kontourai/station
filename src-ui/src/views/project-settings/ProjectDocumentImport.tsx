@@ -475,7 +475,7 @@ export function ProjectDocumentImport({
       <ConfirmModal
         isOpen={retry}
         title="Retry uncertain documents?"
-        message="The previous attempt has no confirmed publication. Station will check the saved record identities and retry missing documents from retained originals. Continue only if you want this import completed."
+        message="The previous attempt wasn't confirmed. Station will retry missing documents from the retained originals."
         confirmLabel="Retry missing documents"
         confirmDisabled={
           !canManage ||

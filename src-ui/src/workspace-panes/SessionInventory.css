@@ -446,6 +446,15 @@
   color: var(--text-primary);
 }
 
+/* A row's owner-reported state (#4178) sits beside its classification chip,
+   as wide as its words, so the title and its cue keep their row. */
+.session-inventory__item-status {
+  flex: 0 0 auto;
+  align-self: start;
+  inline-size: max-content;
+  max-inline-size: 100%;
+}
+
 .session-inventory__item-heading button {
   flex: 1 1 auto;
   min-inline-size: 0;
@@ -695,6 +704,10 @@
   .session-inventory__item-heading {
     align-items: start;
     flex-direction: row;
+  }
+
+  .session-inventory__item-status {
+    align-self: center;
   }
 
   /* Scoped under the pane: the base rule for these actions comes later in
