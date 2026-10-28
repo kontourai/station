@@ -7272,6 +7272,117 @@ describe('chat-host-images: an ACP approval relaunch and its temp folder', () =>
   });
 });
 
+describe('chat-host-images: ACP relaunch sequences and the temp folder', () => {
+  const makeHome = trackTempDirs();
+  type Step = { oldDies: boolean; next: 'ok' | 'start-fails' | 'resume-fails' };
+
+  /** Each step relaunches once; returns whether the folder and root remain. */
+  async function relaunches(steps: Step[]) {
+    const home = makeHome('acp-relaunch-seq-');
+    const previous = process.env.STATION_HOME;
+    process.env.STATION_HOME = home;
+    const uninstall = installSessionTmpDirPolicy(() => true);
+    const exits: Array<() => void> = [];
+    const gates: Array<() => void> = [];
+    try {
+      const { adapter } = createAdapter({
+        resumeSessionCapability: true,
+        onProcess: (proc, index) => {
+          const emitter = new EventEmitter();
+          Object.assign(proc, { once: emitter.once.bind(emitter) });
+          exits.push(() => emitter.emit('exit', 1));
+          if (index === 0) return;
+          const step = steps[index - 1]!;
+          const gate = new Promise<void>((resolve) => {
+            gates[index] = resolve;
+          });
+          const start = proc.start.bind(proc);
+          proc.start = async () => {
+            await gate;
+            if (step.next === 'start-fails') throw new Error('start failed');
+            return start();
+          };
+          const resume = proc.resumeSession.bind(proc);
+          Object.assign(proc, {
+            resumeSession: async (...args: Parameters<typeof resume>) => {
+              if (step.next === 'resume-fails')
+                throw new Error('resume failed');
+              await resume(...args);
+              return {};
+            },
+          });
+        },
+      });
+      await adapter.startSession({
+        provider: 'acp',
+        threadId: 'thread-seq',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+      });
+      const own = sessionTmpDirPath('thread-seq', home);
+      const record = (
+        adapter as unknown as { sessions: Map<string, unknown> }
+      ).sessions.get('thread-seq');
+      const relaunch = (
+        adapter as unknown as {
+          relaunchOnApprovalFloor: (
+            record: unknown,
+            floor: undefined,
+          ) => Promise<{ ok: boolean }>;
+        }
+      ).relaunchOnApprovalFloor.bind(adapter);
+      const outcomes: boolean[] = [];
+      let current = 0;
+      for (const [i, step] of steps.entries()) {
+        const pending = relaunch(record, undefined);
+        await vi.waitFor(() => expect(gates[i + 1]).toBeDefined());
+        if (step.oldDies) exits[current]!();
+        gates[i + 1]!();
+        const outcome = await pending;
+        outcomes.push(outcome.ok);
+        if (outcome.ok) current = i + 1;
+      }
+      const result = {
+        outcomes,
+        root: sessionTempRoot('thread-seq'),
+        own,
+        exists: existsSync(own),
+      };
+      await adapter.stopAll();
+      return result;
+    } finally {
+      uninstall();
+      if (previous === undefined) delete process.env.STATION_HOME;
+      else process.env.STATION_HOME = previous;
+    }
+  }
+
+  test('a relaunch after an earlier one whose old process died does not inherit that marker', async () => {
+    const result = await relaunches([
+      { oldDies: true, next: 'ok' },
+      { oldDies: false, next: 'start-fails' },
+    ]);
+    expect(result.outcomes).toEqual([true, false]);
+    // The live (first replacement) process keeps its folder.
+    expect(result.root).toBe(result.own);
+    expect(result.exists).toBe(true);
+  });
+
+  test('replacement starts but cannot resume: the folder is kept while the old process lives', async () => {
+    const result = await relaunches([{ oldDies: false, next: 'resume-fails' }]);
+    expect(result.outcomes).toEqual([false]);
+    expect(result.root).toBe(result.own);
+    expect(result.exists).toBe(true);
+  });
+
+  test('replacement starts but cannot resume and the old process died: the launch is released', async () => {
+    const result = await relaunches([{ oldDies: true, next: 'resume-fails' }]);
+    expect(result.outcomes).toEqual([false]);
+    expect(result.root).toBeUndefined();
+    expect(result.exists).toBe(false);
+  });
+});
+
 describe('chat-host-images: which ACP engine exit ends its launch', () => {
   const engine = {};
   const other = {};
