@@ -498,6 +498,28 @@ describe('station-control fork_conversation', () => {
     expect(forksOf('a-caller')).toBe(1);
   });
 
+  test('replaying a fork key does not hand back a fork outside the caller scope', async () => {
+    const { fork, forksOf } = await setup();
+    const request = {
+      conversationId: 'a-caller',
+      targetProjectSlug: 'project-2',
+      idempotencyKey: 'into-project-2',
+    };
+    // The bound operator may fork its own conversation into Project 2.
+    const made = await fork(bound('a-caller'), request);
+    expect(made.body?.success, JSON.stringify(made.body)).toBe(true);
+    // The same owner's copied credential replays the same key: the saved
+    // fork is in Project 2, which that caller could not reach.
+    for (const kind of [delegated, bearer]) {
+      const replayed = await fork(kind('a-caller'), request);
+      expect(replayed.body, JSON.stringify(replayed.body)).toMatchObject({
+        success: false,
+        code: 'station_control_out_of_scope',
+      });
+    }
+    expect(forksOf('a-caller')).toBe(1);
+  });
+
   test("a bound operator keeps the operator's reach; a person's own fork is not scoped by this rule", async () => {
     const { fork, personFork, forksOf } = await setup();
     const operator = await fork(bound('a-caller'), {
