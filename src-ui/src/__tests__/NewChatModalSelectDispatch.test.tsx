@@ -1260,6 +1260,47 @@ describe('visual skill selection through the New Chat picker', () => {
       }),
     ).toBeNull();
   });
+  test('turning the visual-skills preview off after choosing a skill starts without it', () => {
+    const experience = installedExperience();
+    experienceInventory.current = {
+      executionContract: '1.0',
+      experiences: [experience],
+      diagnostics: [],
+    } as SkillExperienceInventoryV1;
+    const onSelect = vi.fn();
+    // A fresh element each time, so React re-renders with the new flags.
+    const modal = () => (
+      <NewChatModal
+        projectIconBySlug={new Map()}
+        agents={[AGENT]}
+        projects={[]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        requestAuthority={authority}
+      />
+    );
+    const view = render(modal());
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: new RegExp(experience.definition.title),
+      }),
+    );
+    featurePreviews.current = [{ id: 'visual-skills', enabled: false }];
+    view.rerender(modal());
+    fireEvent.click(
+      document.querySelector(
+        'button[data-agent-slug="assistant"]',
+      ) as HTMLButtonElement,
+    );
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    const carriesSkill = onSelect.mock.calls[0].some(
+      (argument: unknown) =>
+        typeof argument === 'object' &&
+        argument !== null &&
+        'start' in argument,
+    );
+    expect(carriesSkill).toBe(false);
+  });
   test('inventory-only hosts retain the inputs and visibly refuse preparing a start', () => {
     const experience = installedExperience();
     experienceInventory.current = {

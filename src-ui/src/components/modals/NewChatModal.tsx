@@ -280,8 +280,11 @@ export function NewChatModal({
     refetchOnMount: 'always',
   });
   const [skillsOpen, setSkillsOpen] = useState(false);
-  const [experience, setExperience] =
+  const [chosenExperience, setExperience] =
     useState<InstalledSkillExperienceV1 | null>(null);
+  // Turning the preview off mid-draft drops the chosen skill from the chip,
+  // the start check and the draft alike, not only from the pickers.
+  const experience = visualSkillsEnabled ? chosenExperience : null;
   const [experienceInputs, setExperienceInputs] = useState<
     Record<string, string>
   >({});
