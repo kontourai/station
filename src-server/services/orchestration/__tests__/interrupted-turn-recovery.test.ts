@@ -1768,43 +1768,6 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     ).toBeUndefined();
   });
 
-  test('a turn the engine opened on the dead turn id is left running', async () => {
-    const path = databasePath();
-    const threadId = 'thread-engine-reused-turn-id';
-    const eventStore = bootAfterCrash({
-      path,
-      threadId,
-      provider: 'codex',
-      boundaryState: 'accepted',
-      startInvocationId: 'invocation-1',
-    });
-    stores.push(eventStore);
-    // The engine opened a turn of its own under the same id; it carries no
-    // invocation.
-    eventStore.appendEvent({
-      eventId: 'turn-started:engine',
-      provider: 'codex',
-      threadId,
-      turnId: 'turn-1',
-      createdAt: '2026-08-16T00:00:04.000Z',
-      method: 'turn.started',
-      metadata: { trigger: 'provider' },
-    } as CanonicalRuntimeEvent);
-    const service = new OrchestrationService({
-      adapterRegistry: createRegistry(),
-      eventBus: new EventBus(),
-      eventStore,
-      logger,
-    });
-
-    await (service as any).interruptedTurns.consume();
-
-    const events = eventStore.listEvents(threadId);
-    expect(events.filter((e) => e.payload.method === 'turn.aborted')).toEqual(
-      [],
-    );
-  });
-
   test('a recovery abort persisted without an invocationId still closes its invocation-anchored turn', async () => {
     // The row shape boot recovery wrote before it stamped the invocation:
     // those conversations read an active turn forever, so every send waited.

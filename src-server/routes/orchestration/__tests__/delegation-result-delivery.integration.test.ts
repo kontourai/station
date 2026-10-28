@@ -470,11 +470,14 @@ describe('delegated task result delivery (#3158)', () => {
         itemId: 'child-turn-1-text',
         delta: 'half done',
       });
-      // Boot recovery's abort: turn-scoped, no invocation.
+      // Boot recovery's abort (turn-scoped, no invocation), then its banner.
       emit(h, CHILD, 'turn.aborted', {
         eventId: 'turn-interrupted-abort:boundary-1',
         turnId: 'child-turn-1',
         recoveryTerminal: true,
+      });
+      emit(h, CHILD, 'session.state-changed', {
+        sessionState: 'needs_input',
       });
       await h.delivery.idle();
       emit(h, CHILD, 'session.exited');
@@ -501,6 +504,25 @@ describe('delegated task result delivery (#3158)', () => {
       expect(h.starts[1]!.text).toContain('> done now');
     },
   );
+
+  test('a turn the engine opened on its own and a restart cut off is not reported', async () => {
+    const h = setup();
+    await routes(h, PARENT, () => 'running').delegate();
+    runChildTurn(h, CHILD, 'child-turn-1', 'the task is done');
+    await h.delivery.idle();
+    const engine = { metadata: { trigger: 'provider' } };
+    emit(h, CHILD, 'turn.started', { turnId: 'provider:turn-2', ...engine });
+    emit(h, CHILD, 'turn.aborted', {
+      eventId: 'turn-interrupted-abort:boundary-2',
+      turnId: 'provider:turn-2',
+      recoveryTerminal: true,
+      ...engine,
+    });
+    await h.delivery.idle();
+    await h.delivery.reconcile();
+    expect(h.starts).toHaveLength(1);
+    expect(h.starts[0]!.text).toContain('> the task is done');
+  });
 
   test('an engine abort without an invocation is not read as a restart', async () => {
     const h = setup();

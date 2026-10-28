@@ -1,5 +1,8 @@
 import type { InvocationTerminalRead } from '@kontourai/monument';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  isProviderTriggeredTurn,
+} from '@kontourai/station-contracts/runtime-events';
 import {
   advanceOpenTurnId,
   isInvocationlessRecoveryAbort,
@@ -75,7 +78,7 @@ const SETTLE_OUTCOME: Record<string, SessionSettledTurn['outcome']> = {
 };
 
 /**
- * The newest turn a restart-recovery abort closed. Not a settlement (it
+ * The newest dispatched turn a restart-recovery abort closed. Not a settlement (it
  * acknowledges no work) and not part of `SessionWaitState`; delegation reads
  * it to tell a parent its task was cut off.
  */
@@ -133,7 +136,13 @@ export function evaluateSessionWait(
     // so the Session reads idle. It has no invocation to prove, so it is not
     // a settlement: it supplies no terminal ACK for the requested work.
     const recoveryAbort = isInvocationlessRecoveryAbort(event);
-    if (recoveryAbort && before !== undefined && open === undefined)
+    // A turn the engine opened on its own was nobody's requested work.
+    if (
+      recoveryAbort &&
+      before !== undefined &&
+      open === undefined &&
+      !isProviderTriggeredTurn(event)
+    )
       interrupted = { turnId: before, sequence, eventId: event.eventId };
     let settledInvocation = invocationId;
     const ordinary =

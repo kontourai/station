@@ -8676,7 +8676,8 @@ export class EventStore {
    * The oldest and newest dispatch `turn.started` (not a steer) of one turn
    * at or after `sinceCreatedAt`. Boot recovery compares their invocations
    * to tell a later dispatch that reused a native turn id from the dead turn
-   * itself. Two indexed single-row reads: no page bound to overflow.
+   * itself. Two single-row reads with no page bound to overflow; each walks
+   * the turn's rows, which only boot recovery pays.
    */
   dispatchStartsOfTurnSince(
     threadId: string,

@@ -570,8 +570,9 @@ export class InterruptedTurnRecovery {
           // moving on, not this boundary's turn. Read from the starts since
           // the claim, skipping steers, which carry no invocation. A turn the
           // engine opened on its own carries none either, so a dispatch that
-          // reused its id (which does) reads as different too. Both starts
-          // without an invocation: no evidence, and the abort is written.
+          // reused its id (which does) reads as different too. A newest start
+          // with no invocation is no evidence, and the abort is written: a
+          // dead turn left open is the worse error.
           const dispatchStarts =
             ownTurnId === undefined
               ? undefined
@@ -583,15 +584,11 @@ export class InterruptedTurnRecovery {
           const ownInvocationId =
             record.intent?.invocationId ??
             dispatchStarts?.oldest.payload.invocationId;
-          // A start with no invocation is only evidence when it is not the
-          // own start (a captured dispatch whose start carries none).
           const newestInvocationId =
             dispatchStarts?.newest.payload.invocationId;
           const reusedByNewerInvocation =
-            dispatchStarts !== undefined &&
-            newestInvocationId !== ownInvocationId &&
-            (newestInvocationId !== undefined ||
-              dispatchStarts.newest.id !== dispatchStarts.oldest.id);
+            newestInvocationId !== undefined &&
+            newestInvocationId !== ownInvocationId;
           if (
             reusedByNewerInvocation ||
             (providerTurn &&
