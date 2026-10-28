@@ -1634,7 +1634,7 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     // Steer starts carry no invocation and land after the reused start.
     { shape: 'a steer after the reuse', earlierUse: 0, steered: true },
   ])(
-    'leaves a newer invocation that reuses the dead turn id running ()',
+    'leaves a newer invocation that reuses the dead turn id running ($shape)',
     async ({ earlierUse, steered }) => {
       const path = databasePath();
       const threadId = 'thread-reused-turn-id';
