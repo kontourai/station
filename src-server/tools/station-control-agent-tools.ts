@@ -276,7 +276,7 @@ export function registerAgentTools(server: StationControlToolRegistry) {
     'fork_conversation',
     [
       'Fork a conversation into a new one that starts from its history up to a completed assistant turn, as the Station UI fork does. The source is unchanged.',
-      "The source must be your own conversation or one in your session's Project (or global space). The fork lands in targetProjectSlug, else the source's Project, and only where you could start a Session yourself; anything else is refused as out of scope.",
+      "The source must be your own conversation or another of your owner's in your session's Project (in the global space if your session has no Project). The fork lands in targetProjectSlug, else the source's Project, and only where you could start a Session yourself; anything else is refused as out of scope.",
       'Returns the new conversationId and the seed its first turn replays.',
     ].join(' '),
     {

@@ -92,12 +92,15 @@ async function runConversationFork(
     console.log(JSON.stringify({ ok: true, kind: 'conversation.fork', data }));
     return;
   }
+  // The ids and disclosure are the Station's text: made safe, as its errors are.
   console.log(
     [
       `Forked ${conversationId} into conversation ${data.conversationId}${
         data.branchPointTurnId ? ` (from turn ${data.branchPointTurnId})` : ''
       }`,
       ...(data.disclosure ? [data.disclosure] : []),
-    ].join('\n'),
+    ]
+      .map(terminalSafeText)
+      .join('\n'),
   );
 }

@@ -446,6 +446,21 @@ describe('station-control fork_conversation', () => {
         success: false,
         code: 'station_control_out_of_scope',
       });
+      // Into the caller's OWN Project, so only the source rule stands between
+      // another scope's transcript and a copy of it here.
+      for (const source of ['a-other', 'g-caller']) {
+        const copied = await fork(kind('a-caller'), {
+          conversationId: source,
+          targetProjectSlug: 'project-1',
+        });
+        expect(
+          [source, copied.body],
+          JSON.stringify(copied.body),
+        ).toMatchObject([
+          source,
+          { success: false, code: 'station_control_out_of_scope' },
+        ]);
+      }
     }
     // Another person's Session in the same Project is not the owner's: only
     // a bound operator reaches it, so an operator-owned caller whose
@@ -462,8 +477,33 @@ describe('station-control fork_conversation', () => {
     expect([
       forksOf('a-other'),
       forksOf('a-peer'),
+      forksOf('g-caller'),
       forksOf('carol-p1'),
-    ]).toEqual([0, 0, 0]);
+    ]).toEqual([0, 0, 0, 0]);
+  });
+
+  test("a bound caller that is not the operator keeps its owner's reach and no more", async () => {
+    const { fork, forksOf } = await setup();
+    // Carol's own conversation, from her bound Session. A bound caller is
+    // held to its owner's Project actions, not its Session's scope; on a
+    // personal host an identity that is not a deployment account holds view
+    // and execute (`ownerMay`), so this is admitted.
+    const own = await fork(bound('carol-p1'), {
+      conversationId: 'carol-p1',
+      targetProjectSlug: 'project-1',
+    });
+    expect(own.body?.success, JSON.stringify(own.body)).toBe(true);
+    // Bound never reaches another owner's conversation: the operator's
+    // reads as Carol's role not being enough, before anything is read.
+    const operators = await fork(bound('carol-p1'), {
+      conversationId: 'a-peer',
+      targetProjectSlug: 'project-1',
+    });
+    expect(operators.body, JSON.stringify(operators.body)).toMatchObject({
+      success: false,
+      code: 'station_control_role_required',
+    });
+    expect([forksOf('carol-p1'), forksOf('a-peer')]).toEqual([1, 0]);
   });
 
   test('a fork never lands in a scope the caller could not otherwise reach', async () => {

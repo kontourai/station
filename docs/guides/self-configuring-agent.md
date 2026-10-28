@@ -389,17 +389,23 @@ holds a caller that is not a bound operator to the dispatch scope above twice,
 before it writes anything:
 
 - the source must be a conversation the scope admits with the owner's Project
-  `view` action: the caller's own, or another of the owner's in the same
-  Project or global space. A conversation a person only referenced is not
-  enough here, and a conversation with no started Session is refused;
+  `view` action: the caller's own, or another of the owner's in the caller's
+  Project (in the global space when the caller's Session has no Project). A
+  conversation a person only referenced is not enough here, and a
+  conversation with no started Session is refused;
 - the fork must land where the caller could start a Session itself (Project
-  `execute`), so forking from Project 1 into Project 2, or from the global
-  space into a Project, is refused.
+  `execute`).
 
-Refusals carry the scope rule's codes (`station_control_out_of_scope`,
+For a caller whose credential is not bound, both checks also hold it to its
+own Session's scope, so forking from Project 1 into Project 2, or from the
+global space into a Project, is refused. A bound caller that is not the
+operator is held only to its owner's Project actions, as for dispatch: it may fork across Projects where
+its owner holds `view` on the source and `execute` on the target, and never
+another owner's conversation. A bound operator caller keeps the operator's
+reach. Refusals carry the scope rule's codes (`station_control_out_of_scope`,
 `station_control_role_required`, `station_control_assurance_insufficient`).
-A bound operator caller keeps the operator's reach. A person forking through
-the UI or `station conversation fork` is not held to this rule. The
+A person forking through the UI or `station conversation fork` is not held to
+this rule. The
 [mounted tests](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-fork-conversation.test.ts)
 drive each caller kind through the real route.
 

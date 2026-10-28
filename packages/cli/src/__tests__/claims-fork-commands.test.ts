@@ -242,6 +242,26 @@ describe('station claims and conversation fork over HTTP', () => {
       );
     });
 
+    test("the human summary escapes terminal controls in the Station's reply", async () => {
+      forkReply = {
+        status: 200,
+        body: {
+          success: true,
+          data: { ...FORK, disclosure: 'replayed \u009b31mRED' },
+        },
+      };
+      const { runCli } = await import('../cli.js');
+      await runCli([
+        'conversation',
+        'fork',
+        'terra',
+        'conversation-1',
+        `--api-base=${apiBase}`,
+      ]);
+      expect(printed()).toContain('replayed \\u009b31mRED');
+      expect(printed()).not.toContain('\u009b');
+    });
+
     test("the route's refusal is reported and exits 3", async () => {
       forkReply = {
         status: 409,
