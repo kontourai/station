@@ -2794,66 +2794,74 @@ describe('useActiveChatTranscript', () => {
     // #4266: until the fill reaches the detached start, the window holds the
     // turn's prompt and tail only. Its terminal outputText is the whole
     // reply, so adopting it then would pull the missing middle to the bottom.
-    test('a detached turn adopts no terminal text until the fill reaches its start', async () => {
-      const assistantText = (messages: ChatSession['messages']) =>
-        messages
-          .filter((message) => message.role === 'assistant')
-          .map((message) => message.content ?? '')
-          .join('|');
-      const answer = (id: string, delta: string) =>
-        event(id, 'content.text-delta', {
+    test.each([
+      // Before the fill the window shows only the tail; adopting the whole
+      // reply then would pull the missing middle below it.
+      ['A. B. C.', 'A. B. C.'],
+      // Once the fill closes the turn, its terminal text is adopted again,
+      // including the last words the stream dropped.
+      ['A. B. C. D.', 'A. B. C. D.'],
+    ])(
+      'a detached turn adopts no terminal text until the fill reaches its start (outputText %j)',
+      async (outputText, whole) => {
+        const assistantText = (messages: ChatSession['messages']) =>
+          messages
+            .filter((message) => message.role === 'assistant')
+            .map((message) => message.content ?? '')
+            .join('|');
+        const answer = (id: string, delta: string) =>
+          event(id, 'content.text-delta', {
+            turnId: 'turn-6',
+            itemId: 'answer-6',
+            delta,
+          });
+        const start = event('e6', 'turn.started', {
           turnId: 'turn-6',
-          itemId: 'answer-6',
-          delta,
+          prompt: 'Q6',
         });
-      const start = event('e6', 'turn.started', {
-        turnId: 'turn-6',
-        prompt: 'Q6',
-      });
-      let releaseFill!: (page: unknown) => void;
-      fetchWindow
-        .mockResolvedValueOnce({
-          protocolVersion: 1,
-          watermark: 12,
-          hasMore: true,
-          nextCursor: 'gap',
-          turnStartDetached: true,
-          events: [
-            start,
-            answer('e11', 'C.'),
-            event('e12', 'turn.completed', {
-              turnId: 'turn-6',
-              // The terminal text also ends with what the stream dropped.
-              outputText: 'A. B. C. D.',
-            }),
-          ],
-        })
-        .mockImplementationOnce(
-          () =>
-            new Promise((resolve) => {
-              releaseFill = resolve;
-            }),
+        let releaseFill!: (page: unknown) => void;
+        fetchWindow
+          .mockResolvedValueOnce({
+            protocolVersion: 1,
+            watermark: 12,
+            hasMore: true,
+            nextCursor: 'gap',
+            turnStartDetached: true,
+            events: [
+              start,
+              answer('e11', 'C.'),
+              event('e12', 'turn.completed', {
+                turnId: 'turn-6',
+                outputText,
+              }),
+            ],
+          })
+          .mockImplementationOnce(
+            () =>
+              new Promise((resolve) => {
+                releaseFill = resolve;
+              }),
+          );
+        const { result } = renderHook(() =>
+          useActiveChatTranscript('http://detached-partial.test', baseSession),
         );
-      const { result } = renderHook(() =>
-        useActiveChatTranscript('http://detached-partial.test', baseSession),
-      );
-      await waitFor(() => expect(releaseFill).toBeTypeOf('function'));
-      await waitFor(() =>
-        expect(assistantText(result.current.messages)).toBe('C.'),
-      );
-      await act(async () =>
-        releaseFill({
-          protocolVersion: 1,
-          watermark: 12,
-          hasMore: false,
-          events: [start, answer('e7', 'A. '), answer('e8', 'B. ')],
-        }),
-      );
-      // Whole again: the terminal text is adopted, its last words included.
-      await waitFor(() =>
-        expect(assistantText(result.current.messages)).toBe('A. B. C. D.'),
-      );
-    });
+        await waitFor(() => expect(releaseFill).toBeTypeOf('function'));
+        await waitFor(() =>
+          expect(assistantText(result.current.messages)).toBe('C.'),
+        );
+        await act(async () =>
+          releaseFill({
+            protocolVersion: 1,
+            watermark: 12,
+            hasMore: false,
+            events: [start, answer('e7', 'A. '), answer('e8', 'B. ')],
+          }),
+        );
+        await waitFor(() =>
+          expect(assistantText(result.current.messages)).toBe(whole),
+        );
+      },
+    );
 
     test('a fresh read fills the gap and leaves Load older after it', async () => {
       fetchWindow
