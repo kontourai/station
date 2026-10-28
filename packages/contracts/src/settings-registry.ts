@@ -585,7 +585,7 @@ export const APP_SETTINGS_REGISTRY = [
     help: 'Choose the model that names a chat after its first reply.',
     // #4266: read by `resolveTitleModel` (chat-title-generation.ts).
     description:
-      'Uses the structure model when empty. With neither set, a chat is named from its first message.',
+      'When empty, no model sees the chat and it is named from its first message.',
   }),
   defineSetting({
     key: 'defaultWorkspaceIsolation',

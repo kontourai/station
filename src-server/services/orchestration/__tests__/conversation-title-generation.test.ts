@@ -217,14 +217,23 @@ describe('generated conversation titles (#4266)', () => {
 });
 
 describe('resolveTitleModel (#4266)', () => {
-  test('prefers titleModel, falls back to structureModel, and is off when both are empty', () => {
+  test('only an explicit titleModel turns titles on, and never on a hosted Station', () => {
+    const personal = {};
+    expect(resolveTitleModel({ titleModel: 'haiku' }, personal)).toBe('haiku');
+    expect(resolveTitleModel({ titleModel: '  ' }, personal)).toBeUndefined();
+    // The structure model is configured for another purpose.
     expect(
-      resolveTitleModel({ titleModel: 'haiku', structureModel: 'nova' }),
-    ).toBe('haiku');
+      resolveTitleModel(
+        { structureModel: 'nova' } as Parameters<typeof resolveTitleModel>[0],
+        personal,
+      ),
+    ).toBeUndefined();
     expect(
-      resolveTitleModel({ titleModel: '  ', structureModel: 'nova' }),
-    ).toBe('nova');
-    expect(resolveTitleModel({ structureModel: '' })).toBeUndefined();
+      resolveTitleModel(
+        { titleModel: 'haiku' },
+        { STATION_HOSTED_TENANT_REGISTRY_FILE: '/srv/tenants.json' },
+      ),
+    ).toBeUndefined();
   });
 });
 

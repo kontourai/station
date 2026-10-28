@@ -1637,7 +1637,7 @@ export class StationRuntime {
       // the `.catch` here is defense-in-depth for the subscription callback
       // itself.
       // #4266: name a conversation with the title model after its first
-      // completed turn. Off unless `titleModel` or `structureModel` is set;
+      // completed turn. Off unless `titleModel` is set, and on a hosted Station;
       // detached and best-effort, so it never delays a turn.
       const conversationTitles = new ConversationTitleGeneration({
         eventStore: this.orchestrationEventStore,
