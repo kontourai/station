@@ -153,7 +153,7 @@ const TARGET_OUT_OF_SCOPE = {
  * - A person: one who may send to the conversation now, the same rule the
  *   inbox applies again when each run is placed. Its runs act as the person.
  */
-export function admitAutomationTargetFor(
+function admitAutomationTargetFor(
   deps: Pick<AgentScheduleCompositionDeps, 'dispatchActor'>,
   person: (c: Context) => AgentSchedulePerson | undefined,
 ): AutomationTargetAdmission {

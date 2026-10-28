@@ -94,7 +94,7 @@ export interface StoredSchedulerJob {
 }
 
 /** Why a targeted occurrence was recorded missed instead of run. */
-export const ANNOUNCEMENT_SKIPPED_LATE_OCCURRENCE =
+const ANNOUNCEMENT_SKIPPED_LATE_OCCURRENCE =
   'announcement skipped: late occurrence recorded missed, not failed';
 
 /**

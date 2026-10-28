@@ -159,7 +159,7 @@ export function servesConnectionRoutes(
  * deployment. Scheduler storage has no tenant binding, so the scheduler
  * routes answer 404 to every hosted request (`routes/operations/scheduler.ts`).
  */
-export function servesScheduledConversationTarget(
+function servesScheduledConversationTarget(
   deployment: StationCapabilityDeployment,
 ): boolean {
   return !deployment.hosted;
