@@ -39,14 +39,40 @@ function parseTime(iso: string | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-/** The first line of `text` with Markdown emphasis left as written. */
-function firstLine(text: string): string {
-  return (
-    text
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .find(Boolean) ?? ''
-  );
+const LIST_ITEM = /^(?:[-*+]|\d+[.)])\s+/;
+
+/** One Markdown line as the plain text it renders: no block markers, code
+ * spans, emphasis or link syntax. */
+function plainMarkdownLine(line: string): string {
+  // A code fence line renders as no text.
+  if (/^(?:`{3,}|~{3,})/.test(line.trim())) return '';
+  return line
+    .trim()
+    .replace(/^(?:#{1,6}\s+|>\s*)+/, '')
+    .replace(LIST_ITEM, '')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/(`+)([^`]*?)\1/g, '$2')
+    .replace(/`/g, '')
+    .replace(/(\*\*|__)(.+?)\1/g, '$2')
+    .replace(/(^|[^\w*])[*_]([^*_\s][^*_]*?)[*_](?=[^\w*]|$)/g, '$1$2')
+    .trim();
+}
+
+/**
+ * The collapsed card's one line of the result (#4266): Markdown stripped, so
+ * a cut never leaves a stray backtick, and a first line that introduces a
+ * list ("Found three issues:") followed by the list's first item.
+ */
+export function subagentSummaryPreview(markdown: string): string {
+  const lines = markdown.split(/\r?\n/);
+  const firstIndex = lines.findIndex((line) => plainMarkdownLine(line));
+  if (firstIndex < 0) return '';
+  const first = plainMarkdownLine(lines[firstIndex]!);
+  if (!first.endsWith(':')) return first;
+  const item = lines
+    .slice(firstIndex + 1)
+    .find((line) => LIST_ITEM.test(line.trim()) && plainMarkdownLine(line));
+  return item ? `${first} ${plainMarkdownLine(item)}` : first;
 }
 
 function StatusGlyph({
@@ -95,7 +121,7 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
   const preview = running
     ? item.progress
     : summary
-      ? firstLine(summary)
+      ? subagentSummaryPreview(summary) || undefined
       : undefined;
   const usage = childWorkUsageClauses(item.usage);
   const statusLabel = CHILD_WORK_STATUS_LABEL[item.status];

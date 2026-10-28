@@ -276,7 +276,10 @@ test.describe('subagent transcript cards', () => {
           childId: children[0].childId,
           status: 'failed',
           identity: { ...children[0], endedAt: ENDED_AT },
-          result: { summary: 'Could not read the project' },
+          result: {
+            summary:
+              'Found three test issues in `e80310601`:\n\n- `a.test.ts` reads the project before it exists\n- the fixture is stale\n- one assertion pins the old count',
+          },
         },
       });
       await expect(heading).toContainText('5 running');
@@ -295,8 +298,29 @@ test.describe('subagent transcript cards', () => {
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       await heading.click();
       const card = group.getByTestId('subagent-card').first();
+      // #4266: the collapsed preview is plain text and carries the list's
+      // first item; the header's identity, title and time share one row.
+      await expect(card.locator('.subagent-card__preview')).toHaveText(
+        'Found three test issues in e80310601: a.test.ts reads the project before it exists',
+      );
+      const centre = async (selector: string) => {
+        const box = (await card.locator(selector).first().boundingBox())!;
+        return box.y + box.height / 2;
+      };
+      const row = await centre('.subagent-card__headline');
+      for (const selector of [
+        '.subagent-card__glyph',
+        '.subagent-card__elapsed',
+        '.subagent-card__chevron',
+      ])
+        expect(Math.abs((await centre(selector)) - row)).toBeLessThanOrEqual(2);
+      await group.screenshot({
+        path: testInfo.outputPath(
+          `subagent-roster-collapsed-mobile-${theme}.png`,
+        ),
+      });
       await card.getByRole('button', { expanded: false }).click();
-      await expect(card.getByText('Could not read the project')).toHaveCount(1);
+      await expect(card.getByText('a.test.ts')).toHaveCount(1);
       await expect(card.getByText('claude-opus-5-5')).toBeVisible();
       const box = await group.boundingBox();
       expect(box!.x).toBeGreaterThanOrEqual(0);
@@ -556,7 +580,7 @@ test.describe('subagent transcript cards', () => {
     await expect(card.getByText('Completed')).toBeVisible();
     await expect(card.getByText('17:04')).toBeVisible();
     await expect(
-      card.getByText(/Verdict: merge as-is\.\*\* I found no blockers/),
+      card.getByText(/^Verdict: merge as-is\. I found no blockers/),
     ).toBeVisible();
     await card.scrollIntoViewIfNeeded();
     await page.screenshot({
