@@ -1429,26 +1429,40 @@ describe('useSendMessage: a composed message leaves the composer alone', () => {
     );
   });
 
-  it('any later send under the Continue key keeps the composer out, without the flag', async () => {
-    // What an outbox replay or a queue drain does: the key, no option.
+  // The outbox flush's replay call (useOutboundQueueFlush): the row's key,
+  // a dispatch claim, and no preserveComposer.
+  const replay = (send: ReturnType<typeof useSendMessage>) =>
+    send(chat, 'codex', undefined, 'Continue please', [], undefined, KEY, {
+      skipInMemoryQueueOnBusy: true,
+      dispatch: { indeterminate: async () => 'applied' as const },
+    });
+
+  it('an outbox replay of a Continue keeps the composer out', async () => {
     sendExecutionMessageMock.mockResolvedValueOnce(receipt());
     const { result } = renderHook(() => useSendMessage('http://api.test'));
     await act(async () => {
-      await result.current(
-        chat,
-        'codex',
-        undefined,
-        'Continue please',
-        [],
-        undefined,
-        KEY,
-      );
+      await replay(result.current);
     });
     const body = sendExecutionMessageMock.mock.calls[0]?.[1];
     expect(body).toMatchObject({ clientTurnId: KEY });
     expect(body).not.toHaveProperty('attachmentRefs');
     const state = activeChatsStore.getSnapshot()[chat];
     expect(state?.input).toBe('my unsent draft');
+    expect(state?.attachmentStages).toEqual([draftStage]);
+  });
+
+  it('a refused outbox replay of a Continue puts nothing in an empty composer', async () => {
+    activeChatsStore.updateChat(chat, { input: '' });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new ChatHttpError({ status: 400, message: 'Refused' } as never),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    // A replay's refusal goes back to the flush that owns the row.
+    await act(async () => {
+      await replay(result.current).catch(() => undefined);
+    });
+    const state = activeChatsStore.getSnapshot()[chat];
+    expect(state?.input).toBe('');
     expect(state?.attachmentStages).toEqual([draftStage]);
   });
 

@@ -1733,7 +1733,9 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     });
     expect(activeChatsStore.getSnapshot()[sessionId]?.input).toBe('');
 
-    activeChatsStore.updateChat(sessionId, { input: 'my new draft' });
+    // Even a draft that happens to read exactly like the prompt is the
+    // person's own.
+    activeChatsStore.updateChat(sessionId, { input: 'Continue please' });
     await act(async () => {
       notice?.action?.handler();
     });
@@ -1745,7 +1747,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       clientTurnId: 'continue-interrupted:turn-boundary:1',
     });
     expect(activeChatsStore.getSnapshot()[sessionId]?.input).toBe(
-      'my new draft',
+      'Continue please',
     );
   });
 

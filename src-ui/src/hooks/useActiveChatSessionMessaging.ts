@@ -507,8 +507,9 @@ export function useSendMessage(
         ambientContext = [ambientContext, TASK_SHAPING_INSTRUCTION]
           .filter(Boolean)
           .join('\n\n');
-      // A Continue key marks the message composed on every send of it (a
-      // Retry, an outbox replay, a queue drain), not only the first.
+      // A Continue key marks the message composed on every send of it that
+      // comes through here (a Retry, an outbox replay), not only the first.
+      // The queue drain sends without touching the composer anyway.
       const preserveComposer =
         options?.preserveComposer === true ||
         turnInterruptedContinueBoundaryId(turnId) !== undefined;

@@ -355,12 +355,14 @@ the row that took its place) offers **Continue** while it is the conversation's
 latest row and nothing is running or waiting to send. Continue sends a fixed
 note as an ordinary turn, keyed `continue-interrupted:<boundary id>` from the
 notice's `interruptedTurnBoundary`, so a second tap or another device names the
-same turn and the server's turn deduplication starts it once. It is not the
-composer's send on any send of that key (a Retry, an outbox replay): the draft, quotes, attachments and visual skill stay in the
-composer, a refusal puts nothing there, and a turn running by the time it is
-sent makes it send nothing rather than steer or queue under a new key (an
-engine that answers busy after receiving it holds it in the queue under the
-same key). It is never sent automatically. A row without answer text has no Basis chip. The pill's state changes animate its width with
+same turn and the server's turn deduplication starts it once. Every send
+under that key (the tap, a Retry, an outbox replay) leaves the composer out:
+the draft, quotes, attachments and visual skill stay there, a refusal puts
+nothing there, and a turn running by the time it is sent makes it send nothing
+rather than steer or queue under a new key (an engine that answers busy after
+receiving it holds it in the queue under the same key). Only a person's tap
+starts it; the outbox may replay an unanswered tap under the same key, as it
+does any send. A row without answer text has no Basis chip. The pill's state changes animate its width with
 the shared motion token, while the clock reserves a stable text column. A running
 tool call's label carries a highlight moving through its text; settled calls
 and approval requests stay still. The streaming row's "Running <tool>" line
