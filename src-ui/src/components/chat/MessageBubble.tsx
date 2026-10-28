@@ -1,15 +1,24 @@
 import { readTaskProposal } from '@kontourai/station-contracts/task-graph';
 import { isSupportedTurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
-import { Fragment, memo, type ReactNode, useCallback, useState } from 'react';
+import {
+  Fragment,
+  memo,
+  type ReactNode,
+  useCallback,
+  useRef,
+  useState,
+} from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { isReplayThread } from '../../hooks/orchestration/replay/replay-registry';
+import { useContextMenuGesture } from '../../hooks/useContextMenuGesture';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMessageDeliveryState } from '../../hooks/useMessageDeliveryState';
 import type { ChatMessage } from '../../types';
 import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { absoluteTime, messageTime } from '../../utils/relativeTime';
+import type { OverflowMenuHandle } from '../ActionOverflowMenu';
 import { FlowGateVerdictCard } from '../flow/FlowGateVerdictCard';
 import { FlowRunAttachedMarker } from '../flow/FlowRunAttachedMarker';
 import { AgentIcon } from '../icons/AgentIcon';
@@ -227,6 +236,28 @@ function MessageBubbleComponent({
   // The user's own message until the agent has it (`messageDeliveryState`).
   // Hoisted above the early returns below: hooks run unconditionally.
   const deliveryState = useMessageDeliveryState(activeSession.id, msg);
+  // A right-click on the bubble opens its own ⋯ — the user menu on a user
+  // bubble, the answer menu on an answer — with the rows that ⋯ shows. Only on
+  // the desktop layout and only for the pointer: a held finger in a message is
+  // text selection (and the quote toolbar reads that selection), and the
+  // phone has its own Details sheet. A link inside the bubble keeps its own
+  // menu (`NativeContextMenuGuard`), and selected text keeps the native one.
+  const userMenuHandle = useRef<OverflowMenuHandle>(null);
+  const answerMenuHandle = useRef<OverflowMenuHandle>(null);
+  const bubbleGesture = useContextMenuGesture({
+    enabled: !isMobile,
+    touchHold: false,
+    onOpen: () =>
+      (msg.role === 'user'
+        ? userMenuHandle
+        : answerMenuHandle
+      ).current?.open() ?? false,
+  });
+  const onBubbleContextMenu = (event: React.MouseEvent<HTMLElement>) => {
+    if (event.target instanceof Element && event.target.closest('a[href]'))
+      return;
+    bubbleGesture.onContextMenu(event);
+  };
   const undelivered =
     msg.role === 'user' &&
     msg.clientId !== undefined &&
@@ -580,6 +611,7 @@ function MessageBubbleComponent({
               : undefined,
           onDiscardUnsent: textContent ? discardUnsent : undefined,
           taskTarget: menuTaskTarget,
+          handleRef: userMenuHandle,
           // The phone already opens a sheet for the row: its actions are
           // listed there, not behind a second ⋯ inside it.
           inline: isMobile,
@@ -831,6 +863,7 @@ function MessageBubbleComponent({
               reasoningContent !== undefined
                 ? { content: reasoningContent }
                 : undefined,
+            handleRef: answerMenuHandle,
           }}
           pending={null}
           unavailable={() => null}
@@ -1049,6 +1082,7 @@ function MessageBubbleComponent({
       style={sender ? agentAccentStyle(sender) : undefined}
     >
       {!isMobile && <div className="message-row__avatar">{avatarContent}</div>}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: the right-click is a pointer shortcut to the bubble's own ⋯, which is the keyboard path to the same menu. */}
       <div
         style={{
           position: 'relative',
@@ -1061,6 +1095,12 @@ function MessageBubbleComponent({
               : undefined
             : '70%',
         }}
+        onContextMenu={onBubbleContextMenu}
+        // Only to learn whether a finger is down: its long-press is text
+        // selection, not the menu.
+        onPointerDown={bubbleGesture.onPointerDown}
+        onPointerUp={bubbleGesture.onPointerUp}
+        onPointerCancel={bubbleGesture.onPointerCancel}
         className={`message ${sender ? 'agent-incoming' : msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}${stationCheckBack || stationMemoryContinuation ? ' message--station-check-back' : ''}${
           // Outlined, not filled, until the agent has the message.
           undelivered

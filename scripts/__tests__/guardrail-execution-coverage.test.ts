@@ -213,6 +213,7 @@ const EXECUTED_BY_OWN_TEST: ReadonlyArray<readonly [string, string]> = [
     'type-laundering-gate.mjs',
     'scripts/__tests__/type-laundering-gate.process.test.ts',
   ],
+  ['ui-copy-length.mjs', 'scripts/__tests__/ui-copy-length.process.test.ts'],
   [
     'ui-glyph-coverage-ratchet.mjs',
     'scripts/__tests__/ui-glyph-coverage-gate.cli.test.ts',
