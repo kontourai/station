@@ -145,6 +145,7 @@
   margin: 0;
   padding-left: var(--k-space-4);
   color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
 }
 .registry-mcp__facts {
   display: grid;
