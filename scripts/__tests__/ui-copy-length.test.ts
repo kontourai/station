@@ -74,6 +74,70 @@ describe('UI copy length policy', () => {
     ).toEqual(['multi-sentence:attr:hint']);
   });
 
+  it('flags long literals outside JSX by where they are used, never by line', () => {
+    const both = (key: string) => [`long-copy:${key}`, `multi-sentence:${key}`];
+    for (const [source, key] of [
+      [`const msg = '${VERBOSE}';`, 'literal:const'],
+      [`const msg = ok ? 'Saved.' : \`${VERBOSE}\`;`, 'literal:const'],
+      [`function why() { return '${VERBOSE}'; }`, 'literal:return'],
+      [`const why = () => '${VERBOSE}';`, 'literal:return'],
+      [`toast.error('${VERBOSE}');`, 'literal:call:toast.error'],
+      [`setError(failed ? '${VERBOSE}' : null);`, 'literal:call:setError'],
+      // A lookup table keyed by quoted reasons.
+      [
+        `const DETAIL: Record<Reason, string> = { 'share-expired': '${VERBOSE}' };`,
+        'literal:prop:share-expired',
+      ],
+      [`<Notice reason="${VERBOSE}" />`, 'literal:attr:reason'],
+      [`<Banner error="${VERBOSE}" />`, 'attr:error'],
+      [`<Chip text={\`${VERBOSE}\`} />`, 'attr:text'],
+      [`const steps = [{ text: '${VERBOSE}' }];`, 'prop:text'],
+      [`message = '${VERBOSE}';`, 'literal:assign'],
+    ] as const) {
+      expect(kinds('src-ui/src/Lit.tsx', source), source).toEqual(both(key));
+    }
+  });
+
+  it('counts a literal once, under the copy rule that already measured it', () => {
+    expect(kinds('src-ui/src/Once.tsx', `<p>{'${VERBOSE}'}</p>`)).toEqual([
+      'long-copy:text:p',
+      'multi-sentence:text:p',
+    ]);
+    expect(
+      kinds(
+        'src-ui/src/Once.tsx',
+        `<Row description={busy ? 'Saving.' : '${VERBOSE}'} />`,
+      ),
+    ).toEqual([
+      'long-copy:attr:description',
+      'multi-sentence:attr:description',
+    ]);
+  });
+
+  it('ignores literals that are not copy: logs, errors, imports, styling, markup, types and comparisons', () => {
+    for (const source of [
+      `console.warn('${VERBOSE}');`,
+      `logger.info('${VERBOSE}');`,
+      `log.debug('${VERBOSE}');`,
+      `throw new TypeError(\`${VERBOSE}\`);`,
+      `import thing from '${VERBOSE}';`,
+      `export { thing } from '${VERBOSE}';`,
+      `<div className={\`${'panel '.repeat(40)}\`} />`,
+      `const cls = { className: '${'panel '.repeat(40)}' };`,
+      `<div style={{ fontFamily: "'${'Mono Font, '.repeat(20)}'" }} />`,
+      `<span data-hint="${VERBOSE}" />`,
+      `const html = '<div style="padding: 8px; margin: 4px;">${VERBOSE}</div>';`,
+      `const path = '${'M6.2 3.2A2.3 2.3 0 0 0 2.5 5a2.2 2.2 0 0 0 .7 4.2 '.repeat(4)}';`,
+      `if (reason === '${VERBOSE}') go();`,
+      `type Reason = '${VERBOSE}';`,
+      `el.querySelector('${VERBOSE}');`,
+      `const re = new RegExp('${VERBOSE}');`,
+      `const req = { system: '${VERBOSE}' };`,
+    ]) {
+      expect(kinds('src-ui/src/Quiet.tsx', source), source).toEqual([]);
+    }
+  });
+
   it('ignores aria-labels, code, commands, identifiers, comments and short copy', () => {
     for (const source of [
       `<button aria-label="${VERBOSE}">x</button>`,

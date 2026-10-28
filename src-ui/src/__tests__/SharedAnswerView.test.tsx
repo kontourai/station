@@ -317,7 +317,7 @@ describe('SharedAnswerView', () => {
     render(<SharedAnswerView />);
 
     expect(await screen.findByText('The shared answer.')).toBeTruthy();
-    expect(screen.getByText(/No provenance was recorded/)).toBeTruthy();
+    expect(screen.getByText('This share has no provenance.')).toBeTruthy();
   });
 
   it('degrades to the card unreadable state for an envelope it cannot read', async () => {

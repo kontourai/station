@@ -3,8 +3,8 @@
  * longer or wordier than they already are.
  *
  * Two finding kinds, each counted per file and per stable discriminator (the
- * JSX tag that holds the text, or the copy-bearing attribute name), never per
- * line:
+ * JSX tag that holds the text, the copy-bearing attribute name, or where a
+ * literal is used), never per line:
  *
  * - `long-copy`: one string or element text longer than `LONG_COPY_CAP`.
  * - `multi-sentence`: one string or element text with more than
@@ -22,12 +22,25 @@
  *   same name (`{ description: '...' }` in copy tables such as tour steps
  *   or error translations). Measured at introduction: 742 such property
  *   strings, 11 over the cap, all real copy.
+ * - Every other string or template literal, so moving copy out of JSX into
+ *   a constant, a return value, a call argument (`toast.error('...')`) or a
+ *   lookup table does not hide it. Keyed `literal:<site>` by where it is
+ *   used (`literal:const`, `literal:return`, `literal:call:<callee>`,
+ *   `literal:prop:<name>`, `literal:attr:<name>`, ...); see `literalSite`.
+ *   Measured at introduction: 43 findings over the copy rules above, about
+ *   five of them agent prompts a person sees in the composer, none markup.
  *
- * Not copy: `aria-label` and other attributes outside `COPY_ATTRIBUTE`, text
- * inside `code`/`pre`/`kbd`/`samp`, strings without whitespace (identifiers,
- * paths, URLs), command lines, and string literals anywhere else (thrown
- * errors, log lines, call arguments): those mix copy with diagnostics and are
- * not worth the noise. There is no i18n catalog in `src-ui`.
+ * Not copy: `aria-label` and the other names in `NON_COPY_NAME` (styling,
+ * identity, addresses, prompt slots), text inside `code`/`pre`/`kbd`/`samp`,
+ * strings without whitespace (identifiers, paths, URLs), command lines,
+ * markup and SVG path data, types, imports, property names, comparisons,
+ * tagged templates, log and DOM calls (`NON_COPY_CALLEE`) and `new *Error`
+ * messages, which are developer diagnostics. There is no i18n catalog in
+ * `src-ui`.
+ *
+ * Known gap: the ratchet counts findings, so a string already over the cap
+ * in the baseline can grow longer without failing. Accepted: counting
+ * lengths would key the baseline to text that every edit changes.
  *
  * Ratchet semantics: the gate fails only when a file's count for a key grows
  * or a new file appears with findings. A shrinking count passes and prints a
@@ -49,7 +62,7 @@ const BASELINE_PATH = 'scripts/ui-copy-length-baseline.json';
 export const LONG_COPY_CAP = 140;
 export const MAX_SENTENCES = 2;
 const COPY_ATTRIBUTE =
-  /^(?:aria-description|body|caption|confirmLabel|confirmText|description|detail|details|emptyMessage|emptyText|explanation|heading|helperText|hint|label|message|placeholder|subtitle|summary|title|tooltip)$/;
+  /^(?:aria-description|body|caption|confirmLabel|confirmText|description|detail|details|emptyMessage|emptyText|error|explanation|heading|helperText|hint|label|message|placeholder|subtitle|summary|text|title|tooltip)$/;
 const CODE_TAG = /^(?:code|pre|kbd|samp|script|style)$/;
 // Phrasing elements whose text reads as part of the parent's sentence.
 const INLINE_TAG = /^(?:a|abbr|b|em|i|mark|q|s|small|span|strong|sub|sup|u)$/;
@@ -110,20 +123,25 @@ function templateText(node) {
  * Each alternative literal an expression can evaluate to: a literal, a
  * template's literal parts, both conditional branches, a `??`/`||` fallback.
  */
-function literalAlternatives(expression) {
+function literalAlternatives(expression, claimed) {
   if (!expression) return [];
   if (ts.isParenthesizedExpression(expression))
-    return literalAlternatives(expression.expression);
+    return literalAlternatives(expression.expression, claimed);
   if (
     ts.isStringLiteral(expression) ||
     ts.isNoSubstitutionTemplateLiteral(expression)
-  )
+  ) {
+    claimed?.add(expression);
     return [expression.text];
-  if (ts.isTemplateExpression(expression)) return [templateText(expression)];
+  }
+  if (ts.isTemplateExpression(expression)) {
+    claimed?.add(expression);
+    return [templateText(expression)];
+  }
   if (ts.isConditionalExpression(expression))
     return [
-      ...literalAlternatives(expression.whenTrue),
-      ...literalAlternatives(expression.whenFalse),
+      ...literalAlternatives(expression.whenTrue, claimed),
+      ...literalAlternatives(expression.whenFalse, claimed),
     ];
   if (
     ts.isBinaryExpression(expression) &&
@@ -135,8 +153,8 @@ function literalAlternatives(expression) {
       ...(expression.operatorToken.kind ===
       ts.SyntaxKind.AmpersandAmpersandToken
         ? []
-        : literalAlternatives(expression.left)),
-      ...literalAlternatives(expression.right),
+        : literalAlternatives(expression.left, claimed)),
+      ...literalAlternatives(expression.right, claimed),
     ];
   return [];
 }
@@ -146,6 +164,115 @@ function tagName(node, ast) {
   return (ts.isJsxElement(node) ? node.openingElement : node).tagName.getText(
     ast,
   );
+}
+
+/** Wrappers a literal passes through on its way to where it is used. */
+function isTransparent(parent, child) {
+  if (
+    ts.isParenthesizedExpression(parent) ||
+    ts.isAsExpression(parent) ||
+    ts.isSatisfiesExpression(parent) ||
+    ts.isTypeAssertionExpression(parent) ||
+    ts.isNonNullExpression(parent) ||
+    ts.isArrayLiteralExpression(parent) ||
+    ts.isTemplateSpan(parent) ||
+    ts.isTemplateExpression(parent)
+  )
+    return true;
+  if (ts.isConditionalExpression(parent)) return child !== parent.condition;
+  if (ts.isJsxExpression(parent)) return ts.isJsxAttribute(parent.parent);
+  if (ts.isBinaryExpression(parent)) {
+    const operator = parent.operatorToken.kind;
+    return (
+      operator === ts.SyntaxKind.QuestionQuestionToken ||
+      operator === ts.SyntaxKind.BarBarToken ||
+      operator === ts.SyntaxKind.PlusToken ||
+      (operator === ts.SyntaxKind.AmpersandAmpersandToken &&
+        child === parent.right)
+    );
+  }
+  return false;
+}
+
+/** A callee as a stable dotted name (`toast.error`), else its last name. */
+function calleeName(expression, ast) {
+  const text = expression.getText(ast);
+  if (/^[\w$]+(?:\.[\w$]+)*$/.test(text)) return text;
+  if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
+  return 'expression';
+}
+
+/**
+ * Not copy, by name: markup and styling, identifiers, addresses, and
+ * accessibility names (`aria-label` is spoken, not shown).
+ */
+const NON_COPY_NAME =
+  /^(?:aria-(?!description$).*|as|class|className|\w+ClassName|css|d|data-.*|font|fontFamily|href|id|instructions|key|points|prompt|rel|role|sandbox|sizes|src|srcSet|style|system|systemPrompt|testId|transform|type|viewBox)$/;
+/**
+ * Not copy, by shape: HTML or CSS markup, a code comment, or SVG path data.
+ * Only the catch-all literal rule applies this; JSX text cannot start so.
+ */
+const MARKUP =
+  /^(?:<|\/\*|\{)|^[MmLlHhVvCcSsQqTtAaZz][\d\s.,eMmLlHhVvCcSsQqTtAaZz-]*$/;
+/** Developer-facing calls: logs, thrown errors, DOM and regex plumbing. */
+const NON_COPY_CALLEE =
+  /^(?:console\..*|(?:\w+\.)*(?:log|logger|debug|trace)(?:\.\w+)?|(?:\w+\.)*(?:querySelector|querySelectorAll|closest|matches|matchMedia|setAttribute|getAttribute|addEventListener|removeEventListener|getPropertyValue|setProperty)|RegExp|require|import)$/;
+
+/**
+ * Where a literal outside the copy-specific rules is used, as a stable key:
+ * `const`, `return`, `call:<callee>`, `new:<callee>`, `attr:<name>`,
+ * `prop:<name>`, `assign`, `default`, `field`, `throw`. Null when the
+ * literal is not copy: a type, an import, a property name, a comparison or
+ * switch label, a tagged template, a developer-facing call, or a styling,
+ * identity or accessibility-name slot.
+ */
+function literalSite(node, ast) {
+  let child = node;
+  let parent = node.parent;
+  while (parent && isTransparent(parent, child)) {
+    child = parent;
+    parent = parent.parent;
+  }
+  if (!parent) return null;
+  if (ts.isVariableDeclaration(parent))
+    return child === parent.initializer ? 'const' : null;
+  if (ts.isReturnStatement(parent)) return 'return';
+  if (ts.isArrowFunction(parent))
+    return child === parent.body ? 'return' : null;
+  if (ts.isCallExpression(parent) || ts.isNewExpression(parent)) {
+    if (child === parent.expression) return null;
+    const callee = calleeName(parent.expression, ast);
+    if (NON_COPY_CALLEE.test(callee)) return null;
+    // Errors a component throws are developer diagnostics; one shown to a
+    // person is a translated message, measured where it is written.
+    if (ts.isNewExpression(parent) && /Error$/.test(callee)) return null;
+    return `${ts.isNewExpression(parent) ? 'new' : 'call'}:${callee}`;
+  }
+  if (ts.isJsxAttribute(parent)) {
+    const name = parent.name.getText(ast);
+    return NON_COPY_NAME.test(name) ? null : `attr:${name}`;
+  }
+  if (ts.isPropertyAssignment(parent)) {
+    if (child !== parent.initializer) return null;
+    const name =
+      ts.isIdentifier(parent.name) ||
+      ts.isStringLiteral(parent.name) ||
+      ts.isNumericLiteral(parent.name)
+        ? parent.name.text
+        : 'computed';
+    return NON_COPY_NAME.test(name) ? null : `prop:${name}`;
+  }
+  if (
+    ts.isBinaryExpression(parent) &&
+    parent.operatorToken.kind === ts.SyntaxKind.EqualsToken
+  )
+    return child === parent.right ? 'assign' : null;
+  if (ts.isParameter(parent) || ts.isBindingElement(parent))
+    return child === parent.initializer ? 'default' : null;
+  if (ts.isPropertyDeclaration(parent))
+    return child === parent.initializer ? 'field' : null;
+  if (ts.isThrowStatement(parent)) return 'throw';
+  return null;
 }
 
 /**
@@ -167,6 +294,9 @@ export function collectUiCopy(file, source) {
     if (isProse(text)) candidates.push({ key, text });
   };
   const absorbed = new Set();
+  // Literals a copy-specific rule above already measured; the catch-all
+  // literal rule skips them so nothing counts twice.
+  const claimed = new Set();
 
   /** The element's own text run; inline children are absorbed into it. */
   function textRun(element) {
@@ -179,10 +309,13 @@ export function collectUiCopy(file, source) {
           expression &&
           (ts.isStringLiteral(expression) ||
             ts.isNoSubstitutionTemplateLiteral(expression))
-        )
+        ) {
+          claimed.add(expression);
           parts.push(expression.text);
-        else if (expression && ts.isTemplateExpression(expression))
+        } else if (expression && ts.isTemplateExpression(expression)) {
+          claimed.add(expression);
           parts.push(templateText(expression));
+        }
       } else if (
         ts.isJsxElement(child) &&
         INLINE_TAG.test(tagName(child, ast))
@@ -214,7 +347,7 @@ export function collectUiCopy(file, source) {
         !ts.isNoSubstitutionTemplateLiteral(expression) &&
         !ts.isTemplateExpression(expression)
       )
-        for (const text of literalAlternatives(expression))
+        for (const text of literalAlternatives(expression, claimed))
           add(`text:${tagName(node.parent, ast)}`, text);
     }
     if (
@@ -224,11 +357,10 @@ export function collectUiCopy(file, source) {
     ) {
       const name = node.name.getText(ast);
       const initializer = node.initializer;
-      const texts = ts.isStringLiteral(initializer)
-        ? [initializer.text]
-        : ts.isJsxExpression(initializer)
-          ? literalAlternatives(initializer.expression)
-          : [];
+      const texts = literalAlternatives(
+        ts.isJsxExpression(initializer) ? initializer.expression : initializer,
+        claimed,
+      );
       for (const text of texts) add(`attr:${name}`, text);
     }
     if (
@@ -236,8 +368,20 @@ export function collectUiCopy(file, source) {
       (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name)) &&
       COPY_ATTRIBUTE.test(node.name.text)
     )
-      for (const text of literalAlternatives(node.initializer))
+      for (const text of literalAlternatives(node.initializer, claimed))
         add(`prop:${node.name.text}`, text);
+    if (
+      (ts.isStringLiteral(node) ||
+        ts.isNoSubstitutionTemplateLiteral(node) ||
+        ts.isTemplateExpression(node)) &&
+      !claimed.has(node)
+    ) {
+      const site = literalSite(node, ast);
+      const text = ts.isTemplateExpression(node)
+        ? templateText(node)
+        : node.text;
+      if (site && !MARKUP.test(text.trim())) add(`literal:${site}`, text);
+    }
     ts.forEachChild(node, visit);
   }
   visit(ast);

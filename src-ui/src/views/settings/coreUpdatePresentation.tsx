@@ -514,9 +514,12 @@ export interface ServerUpdateBadge {
 
 /**
  * The connected-server card's one status word, from the same facts its lines
- * are derived from. Progress the server reports outranks the comparison; a
- * superseded comparison (another selection, an accepted rebuild) claims
- * nothing, and an unreachable server says only that.
+ * are derived from. An unreachable server says only that, and this card's
+ * own restart or rebuild says Updating. Otherwise a superseded comparison
+ * (another selection, an accepted rebuild) claims nothing, not even the
+ * progress cached for it. Progress the server reports outranks the
+ * comparison, but a staged release reads as ready to restart only while the
+ * card offers Restart; otherwise the comparison speaks.
  */
 export function serverUpdateBadge({
   view,
@@ -525,6 +528,7 @@ export function serverUpdateBadge({
   unreachable,
   superseded,
   updating,
+  restartOffered,
 }: {
   view: ComparisonView | null;
   status: CoreUpdateStatus | undefined;
@@ -533,9 +537,13 @@ export function serverUpdateBadge({
   superseded: boolean;
   /** A restart being verified or an accepted source rebuild. */
   updating: boolean;
+  /** The card renders Restart for a staged release (identity matched). */
+  restartOffered: boolean;
 }): ServerUpdateBadge | null {
   if (unreachable) return { label: 'Unavailable', tone: 'neutral' };
-  if (updating || progress?.state === 'updating') {
+  if (updating) return { label: 'Updating', tone: 'active' };
+  if (superseded) return null;
+  if (progress?.state === 'updating') {
     return { label: 'Updating', tone: 'active' };
   }
   if (progress?.state === 'queued' || progress?.state === 'staging') {
@@ -543,13 +551,13 @@ export function serverUpdateBadge({
       ? { label: 'Updating', tone: 'active' }
       : { label: 'Downloading', tone: 'active' };
   }
-  if (progress?.state === 'staged') {
+  if (progress?.state === 'staged' && restartOffered) {
     return { label: 'Ready to restart', tone: 'active' };
   }
   if (progress?.state === 'needs-operator') {
     return { label: 'Needs operator', tone: 'negative' };
   }
-  if (superseded || !view || !status) return null;
+  if (!view || !status) return null;
   if (view.kind === 'failed-check') {
     return { label: 'Check failed', tone: 'negative' };
   }

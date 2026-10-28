@@ -695,7 +695,7 @@ export function usageTelemetryDisclosureSummary(
   endpointConfigured: boolean | undefined,
 ): string {
   const lede =
-    'Sends pseudonymous usage events (monthly-rotating ID) only to a configured endpoint';
+    'Pseudonymous usage events (monthly ID, never linked to your account) go only to a set endpoint';
   if (endpointConfigured === false)
     return `${lede}; none is configured, so nothing is sent.`;
   if (endpointConfigured === true) return `${lede}; one is configured here.`;

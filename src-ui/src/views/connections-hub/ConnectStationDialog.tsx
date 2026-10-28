@@ -555,7 +555,7 @@ export function ConnectStationDialog({
                   {status === 'connected'
                     ? 'Peer access approved.'
                     : status === 'pending'
-                      ? 'Waiting for approval on the destination Station, from its operator session or host CLI.'
+                      ? 'Waiting for approval from the destination’s operator session or host CLI. This device can’t approve itself.'
                       : status === 'outcome-unknown' || !status
                         ? 'Request outcome unknown. Check it before starting a new one.'
                         : `Peer setup: ${status}.`}
@@ -774,6 +774,7 @@ export function ConnectStationDialog({
               </a>
               .
             </p>
+            <p>No access request was sent.</p>
           </section>
         ) : null}
       </div>

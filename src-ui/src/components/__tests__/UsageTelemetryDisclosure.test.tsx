@@ -398,7 +398,7 @@ test('#1582 A3: the step leads with a derived sentence and hides the schema behi
 
   expect(
     await screen.findByText(
-      'Sends pseudonymous usage events (monthly-rotating ID) only to a configured endpoint; none is configured, so nothing is sent.',
+      'Pseudonymous usage events (monthly ID, never linked to your account) go only to a set endpoint; none is configured, so nothing is sent.',
     ),
   ).toBeTruthy();
   const details = screen
@@ -421,13 +421,13 @@ test('#1582 A3: the summary is derived from the host, never asserted', () => {
   // "none is configured here" is a claim about THIS Station. A build that
   // cannot see the endpoint says less rather than guessing.
   expect(usageTelemetryDisclosureSummary(false)).toBe(
-    'Sends pseudonymous usage events (monthly-rotating ID) only to a configured endpoint; none is configured, so nothing is sent.',
+    'Pseudonymous usage events (monthly ID, never linked to your account) go only to a set endpoint; none is configured, so nothing is sent.',
   );
   expect(usageTelemetryDisclosureSummary(true)).toBe(
-    'Sends pseudonymous usage events (monthly-rotating ID) only to a configured endpoint; one is configured here.',
+    'Pseudonymous usage events (monthly ID, never linked to your account) go only to a set endpoint; one is configured here.',
   );
   expect(usageTelemetryDisclosureSummary(undefined)).toBe(
-    'Sends pseudonymous usage events (monthly-rotating ID) only to a configured endpoint.',
+    'Pseudonymous usage events (monthly ID, never linked to your account) go only to a set endpoint.',
   );
 });
 
@@ -640,7 +640,7 @@ test('#1600: the standalone modal leads with the derived sentence, not the inven
   const modal = await screen.findByTestId('usage-telemetry-disclosure-modal');
   expect(
     screen.getByText(
-      'Sends pseudonymous usage events (monthly-rotating ID) only to a configured endpoint; none is configured, so nothing is sent.',
+      'Pseudonymous usage events (monthly ID, never linked to your account) go only to a set endpoint; none is configured, so nothing is sent.',
     ),
     'the modal did not lead with the derived summary',
   ).toBeTruthy();

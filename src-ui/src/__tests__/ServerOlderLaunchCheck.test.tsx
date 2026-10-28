@@ -99,7 +99,7 @@ describe('ServerOlderLaunchCheck notices', () => {
       {
         id: 'server-older',
         target: 'server',
-        message: 'Server is older than this app.',
+        message: `Server is older than this app (${NEWER_CLIENT}).`,
         // The notice renders only inside Updates, beside the section's own
         // update control: no detail repeats it and no action reopens Updates.
         detail: undefined,
@@ -197,7 +197,9 @@ describe('ServerOlderLaunchCheck notices', () => {
       status = serviceArchive(facts);
       render(tree());
       expect(notices[0]?.detail).toMatch(detail);
-      expect(notices[0]?.message).toBe('Server is older than this app.');
+      expect(notices[0]?.message).toBe(
+        `Server is older than this app (${NEWER_CLIENT}).`,
+      );
       expect(notices[0]?.onAction).toBeUndefined();
       expect(sdk.useApplyCoreUpdateMutation).not.toHaveBeenCalled();
     },

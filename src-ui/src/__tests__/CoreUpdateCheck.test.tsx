@@ -1195,6 +1195,75 @@ describe('a prebuilt release archive (#2675 D3)', () => {
     ).toBeNull();
   });
 
+  test.each([
+    ['unverified', 'unverified'],
+    ['not recorded', 'not-recorded'],
+    ['unreachable', 'unreachable'],
+    ['not yet run', undefined],
+  ] as const)(
+    'a release check that is %s claims no status, even with equal versions',
+    (_name, releaseCheck) => {
+      renderWith(
+        archiveService({
+          latestVersion: '0.8.0-preview.1',
+          releaseCheck,
+          updateAvailable: false,
+        }),
+      );
+      expect(badgeText()).toBe('');
+      expect(screen.queryByText('Up to date')).toBeNull();
+    },
+  );
+
+  test('the badge names a failed check, an unreachable server and a stuck update, and nothing when superseded', () => {
+    queryState.data = archiveService();
+    queryState.error = new Error('HTTP 503');
+    const view = render(
+      <CoreUpdateCheck
+        apiBase="http://localhost:3141"
+        context={makeContext()}
+      />,
+    );
+    expect(badgeText()).toBe('Check failed');
+    queryState.error = null;
+
+    view.rerender(
+      <CoreUpdateCheck
+        apiBase="http://localhost:3141"
+        context={makeContext({ reachability: 'unavailable' })}
+      />,
+    );
+    expect(badgeText()).toBe('Unavailable');
+
+    queryState.data = archiveService({
+      serviceUpdate: {
+        state: 'needs-operator',
+        requestId: REQUEST_ID,
+        fromVersion: '0.8.0-preview.1',
+        targetVersion: '0.8.0-preview.2',
+        reason: 'prepared-timeout',
+        restoreAttempts: 3,
+        finishedAt: '2026-09-27T12:00:00.000Z',
+      },
+    });
+    view.rerender(
+      <CoreUpdateCheck
+        apiBase="http://localhost:3141"
+        context={makeContext()}
+      />,
+    );
+    expect(badgeText()).toBe('Needs operator');
+
+    // Another selection: the cached comparison and progress are history.
+    view.rerender(
+      <CoreUpdateCheck
+        apiBase="http://localhost:3141"
+        context={makeContext({ isCurrent: () => false })}
+      />,
+    );
+    expect(badgeText()).toBe('');
+  });
+
   test('an archive no launcher runs says how to update instead of offering it', () => {
     renderWith(
       archiveService({
@@ -1681,6 +1750,40 @@ describe('download, then a confirmed restart (#3851)', () => {
     expect(screen.queryByText(/is downloaded and verified/)).toBeNull();
     expect(screen.queryByText(new RegExp(`${STAGED} is available`))).toBeNull();
   });
+
+  test.each([
+    [
+      'the answering server is not the one this view correlated',
+      { instanceId: 'other-instance' },
+      {},
+    ],
+    ['the comparison is superseded', {}, { isCurrent: () => false }],
+  ] as const)(
+    'a staged release never reads as ready to restart when %s, since no Restart is offered',
+    (_name, identity, contextOverrides) => {
+      serverUpdateQuery.data = pushed({
+        state: 'staged',
+        requestId: 'r-1',
+        version: STAGED,
+        stagedAt: '2026-10-19T10:00:00.000Z',
+      });
+      queryState.data = stagedService({
+        serverIdentity: { ...ANSWER_IDENTITY, ...identity },
+      });
+      queryState.error = null;
+      render(
+        <CoreUpdateCheck
+          apiBase="http://localhost:3141"
+          context={makeContext(contextOverrides)}
+        />,
+      );
+      expect(
+        screen.queryByRole('button', { name: 'Restart server' }),
+      ).toBeNull();
+      expect(badgeText()).not.toBe('Ready to restart');
+      expect(screen.queryByText('Ready to restart')).toBeNull();
+    },
+  );
 
   test('a release newer than the staged one is offered for download again (review F7)', () => {
     serverUpdateQuery.data = pushed({

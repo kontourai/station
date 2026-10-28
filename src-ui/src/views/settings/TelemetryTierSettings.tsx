@@ -188,8 +188,8 @@ export function TelemetryTierSettings({
                     isPlugin
                       ? "Plugin counts can encode identifiers. Detailed adds a monthly publisher ID. The plugin's own notice is still required."
                       : publisher === 'kontour'
-                        ? 'Counts are sent once a day. Detailed needs a configured Kontour destination.'
-                        : 'Counts are sent once a day to a configured destination. Detailed adds a monthly-rotating ID, never your account.'
+                        ? 'Sends one daily count after notice. Detailed needs a configured Kontour destination.'
+                        : 'Sends one daily count after notice, to a configured destination. Detailed adds a monthly-rotating ID, never your account.'
                   }
                   control={
                     <select

@@ -384,9 +384,7 @@ function SharedAnswerContent({
       </article>
 
       {result.provenance === undefined ? (
-        <p className="shared-answer__status">
-          No provenance was recorded for this answer.
-        </p>
+        <p className="shared-answer__status">This share has no provenance.</p>
       ) : (
         <TurnProvenanceCard provenance={result.provenance} />
       )}

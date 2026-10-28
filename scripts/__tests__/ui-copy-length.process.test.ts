@@ -109,6 +109,21 @@ test('the CLI passes inherited and shrinking copy, refuses growth and new files,
   });
   expect(run().status).toBe(0);
 
+  // Copy moved out of JSX into a constant still counts, under a stable key.
+  writeFileSync(
+    join(cwd, 'src-ui/src/views/New.tsx'),
+    `export const N = () => <Row description="${VERBOSE}" />;\nexport const hint = '${VERBOSE}';`,
+  );
+  const hidden = run();
+  expect(hidden.status, hidden.stdout).toBe(1);
+  expect(hidden.stderr).toContain(
+    'src-ui/src/views/New.tsx: long-copy:literal:const (+1)',
+  );
+  expect(hidden.stderr).toContain(
+    'src-ui/src/views/New.tsx: multi-sentence:literal:const (+1)',
+  );
+  expect(hidden.stderr).not.toContain('attr:description (+');
+
   writeFileSync(baseline, JSON.stringify({ version: 1, files: null }));
   const malformed = run();
   expect(malformed.status).toBe(1);

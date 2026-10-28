@@ -495,7 +495,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     // one twice over here, since the sentence before it had just named the
     // Station. Naming it again is what the map does.
     if (effectivePendingExchange?.exchangeAttempt)
-      return `Pairing with ${serverLabel} needs review: access may have been granted but not saved. On that computer, revoke any access from this attempt, then start again.`;
+      return `Pairing with ${serverLabel} may have granted access without saving it; Station won’t resend it. On that computer, revoke that access, then start again.`;
     const waitMessage = waitingForTransport
       ? `Waiting to reach ${serverLabel} again. The request stays open.`
       : pairingStateCopy(

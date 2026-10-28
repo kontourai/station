@@ -185,7 +185,7 @@ async function expectNoHorizontalScroll(page: Page) {
   expect(overflow, 'no horizontal page scroll').toBeLessThanOrEqual(0);
 }
 
-const OLDER = 'Server is older than this app.';
+const OLDER = 'Server is older than this app (0.1.11-nightly.2465).';
 
 for (const theme of ['light', 'dark'] as const) {
   for (const viewport of ['desktop', 'phone'] as const) {

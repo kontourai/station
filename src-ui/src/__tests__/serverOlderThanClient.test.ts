@@ -184,11 +184,11 @@ describe('deriveServerOlderOffer: no dead button', () => {
 });
 
 describe('serverOlderNoticeContent', () => {
-  test('says only that the server is older when the section offers the update', () => {
-    // Both versions are already shown once: the server's in its section
-    // header, the app's in the app section.
+  test('names the app version, and nothing else, when the section offers the update', () => {
+    // The server's version is in its section header; the app's may be shown
+    // nowhere else (no app section on another origin, hidden mid-download).
     expect(serverOlderNoticeContent(deriveServerOlderOffer(facts()))).toEqual({
-      message: 'Server is older than this app.',
+      message: 'Server is older than this app (0.1.11-nightly.2465).',
       detail: undefined,
     });
   });

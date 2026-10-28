@@ -408,6 +408,10 @@ describe('Connect Station grant composition', () => {
       screen.getByRole('button', { name: 'Request selected access' }),
     );
     await waitFor(() => expect(wire.start).toHaveBeenCalledOnce());
+    // While pending, the boundary is stated: approval happens elsewhere.
+    expect(
+      (await screen.findByText(/Waiting for approval/)).textContent,
+    ).toContain('This device can’t approve itself.');
     fireEvent.click(screen.getByRole('button', { name: 'Check approval' }));
     await screen.findByText(/Peer access approved/);
     wire.get.mockRejectedValue(new Error('Operator access denied'));
@@ -418,9 +422,7 @@ describe('Connect Station grant composition', () => {
     });
     await screen.findByText(/Couldn't read the request status/);
     expect(screen.queryByText(/Peer access approved/)).toBeNull();
-    expect(
-      screen.queryByText(/Waiting for approval on the destination/),
-    ).toBeNull();
+    expect(screen.queryByText(/Waiting for approval/)).toBeNull();
     expect(wire.start).toHaveBeenCalledOnce();
   });
   test('a first Device can identify and pair without a controller scope while peer enrollment stays unavailable', async () => {
@@ -819,6 +821,7 @@ describe('Connect Station grant composition', () => {
         name: 'open the destination Station directly',
       }),
     ).toHaveProperty('href', 'https://destination.test/');
+    expect(screen.getByText('No access request was sent.')).toBeTruthy();
     expect(wire.start).not.toHaveBeenCalled();
     expect(wire.commit).not.toHaveBeenCalled();
     expect(

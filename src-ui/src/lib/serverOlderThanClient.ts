@@ -159,11 +159,12 @@ export function serverOlderNoticeContent(
   offer: ServerOlderOffer,
 ): { message: string; detail?: string } | null {
   if (offer.kind === 'none') return null;
-  // Both versions are shown once already: the server's in its section
-  // header, the app's in the app section. An offered update is the
-  // section's own button, so only a remedy the section lacks is added.
+  // The server's version is in its section header. The app's is named here:
+  // a web client on another origin has no app section, and the desktop one
+  // hides its version while an app update downloads. An offered update is
+  // the section's own button, so only a remedy the section lacks is added.
   return {
-    message: 'Server is older than this app.',
+    message: `Server is older than this app (${offer.client}).`,
     detail: offer.kind === 'manual' ? (offer.remedy ?? undefined) : undefined,
   };
 }

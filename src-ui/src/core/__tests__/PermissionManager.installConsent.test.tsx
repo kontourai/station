@@ -106,7 +106,9 @@ test('names the plugin as not yet installed, and offers Install rather than Appr
   // The trusted note says where that tier is actually decided, which is not
   // here: this prompt cannot authorize it.
   expect(
-    screen.getByText(/reviewed on a separate host-owned page after install/),
+    screen.getByText(
+      /reviewed separately after install, and plugin code can’t approve them/,
+    ),
   ).toBeTruthy();
 });
 
@@ -152,7 +154,12 @@ test('renders the pre-install copy when the only pending permission is trusted',
   expect(screen.queryByRole('button', { name: 'Review trusted access' })).toBe(
     null,
   );
-  expect(screen.getByText(/Installing does not grant them/)).toBeTruthy();
+  // The boundary fact: plugin code cannot approve trusted access itself.
+  expect(
+    screen.getByText(
+      /Installing does not grant them.*plugin code can’t approve them/,
+    ),
+  ).toBeTruthy();
 
   fireEvent.click(screen.getByRole('button', { name: 'Install' }));
   await waitFor(() => expect(results).toEqual([true]));
@@ -178,6 +185,11 @@ test('recovery review names retained activation and returns only a decision with
     screen.getByText(/has retained files awaiting activation/),
   ).toBeTruthy();
   expect(screen.queryByText(/has not been installed yet/)).toBeNull();
+  expect(
+    screen.getByText(
+      /This decision does not grant them.*plugin code can’t approve them/,
+    ),
+  ).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Recover plugin' }));
   await waitFor(() => expect(results).toEqual([true]));
   expect(fetchMock).not.toHaveBeenCalled();

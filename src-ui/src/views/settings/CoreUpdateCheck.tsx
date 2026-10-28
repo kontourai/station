@@ -570,6 +570,14 @@ export function CoreUpdateCheck({
     !!context &&
     context.reachability !== 'connected' &&
     context.reachability !== 'checking';
+  // The download/restart controls, for the server this view correlated.
+  const showStageApply =
+    stagedFlow &&
+    !!serverUpdateState?.supported &&
+    identityMatches &&
+    !comparisonSuperseded &&
+    !trackedServiceUpdate &&
+    !awaitingOutcomeRecheck;
   const badge = serverUpdateBadge({
     view,
     status,
@@ -577,11 +585,15 @@ export function CoreUpdateCheck({
     unreachable,
     superseded: comparisonSuperseded,
     updating: restarting || selfUpdating,
+    restartOffered: showStageApply,
   });
   // The version an update moves to: a downloaded release first, else a
-  // verified newer one. A superseded comparison offers neither.
+  // verified newer one. A superseded comparison offers neither, and a staged
+  // release counts only while Restart is offered for it.
   const stagedVersion =
-    serviceProgress?.state === 'staged' ? serviceProgress.version : null;
+    showStageApply && serviceProgress?.state === 'staged'
+      ? serviceProgress.version
+      : null;
   const targetVersion = comparisonSuperseded
     ? null
     : (stagedVersion ??
@@ -593,8 +605,10 @@ export function CoreUpdateCheck({
   const download = serviceProgress
     ? serviceUpdateDownload(serviceProgress)
     : null;
-  // Where the progress line goes: a measured download is the bar, a staged
-  // release is the header's badge and version, finished history is Details.
+  // Where the progress line goes: a measured download is the bar, finished
+  // history is Details, and a staged release has no line. While Restart is
+  // offered the header's badge and version carry it; otherwise (a mismatched
+  // identity or a superseded comparison) the card claims nothing about it.
   const progressHistory =
     !!serviceProgress && serviceProgressIsHistory(serviceProgress);
   const showProgressLine =
@@ -612,9 +626,9 @@ export function CoreUpdateCheck({
       )
     : [];
   const methodHint = stagedFlow
-    ? 'Checks this install’s signed release manifest. Download verifies the release while the server keeps running; Restart tries it and keeps the current version if it does not start.'
+    ? 'Checks the signed release manifest. Download verifies it; Restart keeps this version if it fails.'
     : status?.applyMethod === 'service-update'
-      ? 'Checks this install’s signed release manifest. Updating downloads and verifies the release, tries it, and keeps the current version if it does not start.'
+      ? 'Checks the signed release manifest. Updating verifies and tries it, keeping this version on failure.'
       : status && isArchiveInstall(status)
         ? 'Checks this install’s signed release manifest.'
         : status?.applyMethod === 'self-update'
@@ -622,8 +636,8 @@ export function CoreUpdateCheck({
           : status?.applyMethod === 'reinstall'
             ? 'Compares this install’s build stamp against its configured source ref.'
             : status?.installKind === 'source-checkout'
-              ? 'Pull latest changes from the git remote. Server restarts automatically after update.'
-              : 'Checks the connected Station server. Desktop release updates use the app’s signed update channel.';
+              ? 'Pulls from the git remote, then restarts the server.'
+              : 'Checks the connected server. Desktop app updates use the app’s signed update channel.';
 
   const checkButton = (
     <Button
@@ -645,13 +659,6 @@ export function CoreUpdateCheck({
         : 'Check for server updates'}
     </Button>
   );
-  const showStageApply =
-    stagedFlow &&
-    serverUpdateState?.supported &&
-    identityMatches &&
-    !comparisonSuperseded &&
-    !trackedServiceUpdate &&
-    !awaitingOutcomeRecheck;
 
   return (
     <div className="server-update">
