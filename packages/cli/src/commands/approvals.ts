@@ -438,7 +438,9 @@ async function runApprovalsList(
   // pending requests are listed, since approvals are not owned by an Agent.
   let provider: string | undefined;
   if (agentSlug) {
-    provider = await resolveApprovalsAgentProvider(apiBase, agentId(agentSlug));
+    provider =
+      (await resolveApprovalsAgentProvider(apiBase, agentId(agentSlug))) ??
+      undefined;
     if (!provider) {
       throw new Error(
         `Agent '${agentSlug}' is not bound to an approvals-capable external engine.`,
