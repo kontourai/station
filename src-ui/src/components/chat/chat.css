@@ -2884,10 +2884,10 @@
   min-height: 36px;
   margin-bottom: var(--k-space-1);
   padding: 0 var(--k-space-3);
-  border: var(--k-border-thin) solid var(--border-primary);
+  border: var(--k-border-thin) solid var(--k-line);
   border-radius: var(--k-radius-control);
-  background: var(--bg-input);
-  color: var(--text-primary);
+  background: var(--k-bg);
+  color: var(--k-text);
   font: inherit;
 }
 .station-switcher__profiles {
@@ -2924,14 +2924,14 @@
   min-height: 32px;
   padding: 0 var(--k-space-2);
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--k-radius-sm);
   background: transparent;
   color: var(--k-text-muted);
   font: inherit;
   cursor: pointer;
 }
 .station-switcher__remove:hover {
-  background: var(--bg-hover);
+  background: color-mix(in srgb, var(--k-text) 5%, var(--k-bg));
   color: var(--status-error);
 }
 .station-switcher__remove--armed,
@@ -2979,7 +2979,7 @@
   flex: 1;
   justify-content: center;
   padding: 0 var(--k-space-2);
-  color: var(--text-secondary);
+  color: var(--k-text-muted);
 }
 
 /* The Agent/Model/Mode rail has no fill of its own and sits flush on the

@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "runId": null,
-  "capturedAt": "2026-10-28T05:51:27.184Z",
+  "capturedAt": "2026-10-28T06:33:45.697Z",
   "expected": 91,
   "selection": [
     "station-switcher-dark-desktop",
     "station-switcher-light-desktop",
     "station-switcher-dark-mobile",
     "station-switcher-light-mobile",
-    "station-switcher-remove-dark-desktop"
+    "station-switcher-forget-dark-desktop"
   ],
   "screens": [
     {
@@ -20,7 +20,7 @@
         "height": 900
       },
       "error": null,
-      "sha256": "cad268bc0b3e89ff315f8ce89616456923c2e140f24ade84a9ebb64f9f8fcdee",
+      "sha256": "3ac3e9428fec397f78ec06134e7468a2338ff051921a212de5f8c2df57de4197",
       "controls": [
         {
           "label": "Station home",
@@ -147,7 +147,7 @@
           "disabled": false
         },
         {
-          "label": "Remove Media server",
+          "label": "Forget Media server",
           "disabled": false
         },
         {
@@ -155,7 +155,7 @@
           "disabled": false
         },
         {
-          "label": "Remove Build box",
+          "label": "Forget Build box",
           "disabled": false
         },
         {
@@ -163,7 +163,7 @@
           "disabled": false
         },
         {
-          "label": "Remove Laptop",
+          "label": "Forget Laptop",
           "disabled": false
         },
         {
@@ -171,11 +171,11 @@
           "disabled": false
         },
         {
-          "label": "Remove Old dev instance",
+          "label": "Forget Old dev instance",
           "disabled": false
         },
         {
-          "label": "Remove 2 unreachable",
+          "label": "Forget 2 unreachable",
           "disabled": false
         },
         {
@@ -206,7 +206,7 @@
           "controls": 30,
           "smallTargets": 19,
           "viewport": 1440,
-          "auditMs": 371
+          "auditMs": 364
         }
       }
     },
@@ -219,7 +219,7 @@
         "height": 900
       },
       "error": null,
-      "sha256": "e18648aa8d0529b9ab28f84830349bd2e1eba802aec3498ddeba20c2ee4ce010",
+      "sha256": "65baee026242af9b4be288e847299bb5c520470831100b913af74a0d10e809d3",
       "controls": [
         {
           "label": "Station home",
@@ -346,7 +346,7 @@
           "disabled": false
         },
         {
-          "label": "Remove Media server",
+          "label": "Forget Media server",
           "disabled": false
         },
         {
@@ -354,7 +354,7 @@
           "disabled": false
         },
         {
-          "label": "Remove Build box",
+          "label": "Forget Build box",
           "disabled": false
         },
         {
@@ -362,7 +362,7 @@
           "disabled": false
         },
         {
-          "label": "Remove Laptop",
+          "label": "Forget Laptop",
           "disabled": false
         },
         {
@@ -370,11 +370,11 @@
           "disabled": false
         },
         {
-          "label": "Remove Old dev instance",
+          "label": "Forget Old dev instance",
           "disabled": false
         },
         {
-          "label": "Remove 2 unreachable",
+          "label": "Forget 2 unreachable",
           "disabled": false
         },
         {
@@ -413,7 +413,7 @@
           "controls": 30,
           "smallTargets": 19,
           "viewport": 1440,
-          "auditMs": 330
+          "auditMs": 309
         }
       }
     },
@@ -426,7 +426,7 @@
         "height": 844
       },
       "error": null,
-      "sha256": "179e519b69360a79a06dd763fe063b2e0ce2af71a603e8dfdda4aec1e6d2405d",
+      "sha256": "028a2a0cbf9b11fed81031becbdc4526ff32192bf06089336cd412f5c53337b2",
       "controls": [
         {
           "label": "Toggle menu",
@@ -517,7 +517,7 @@
           "disabled": false
         },
         {
-          "label": "Remove Media server",
+          "label": "Forget Media server",
           "disabled": false
         },
         {
@@ -525,7 +525,7 @@
           "disabled": false
         },
         {
-          "label": "Remove Build box",
+          "label": "Forget Build box",
           "disabled": false
         },
         {
@@ -533,7 +533,7 @@
           "disabled": false
         },
         {
-          "label": "Remove Laptop",
+          "label": "Forget Laptop",
           "disabled": false
         },
         {
@@ -541,11 +541,11 @@
           "disabled": false
         },
         {
-          "label": "Remove Old dev instance",
+          "label": "Forget Old dev instance",
           "disabled": false
         },
         {
-          "label": "Remove 2 unreachable",
+          "label": "Forget 2 unreachable",
           "disabled": false
         },
         {
@@ -580,7 +580,7 @@
           "controls": 21,
           "smallTargets": 1,
           "viewport": 390,
-          "auditMs": 320
+          "auditMs": 274
         }
       }
     },
@@ -593,7 +593,7 @@
         "height": 844
       },
       "error": null,
-      "sha256": "11447e4e2ff116b8a12dfb5b232433fccde4c3ff07a201735f14a4b319410bd2",
+      "sha256": "eca263dcbdd473d7df8069a04fad2227378a7f57b7a1b03fbdad875426093f37",
       "controls": [
         {
           "label": "Toggle menu",
@@ -684,7 +684,7 @@
           "disabled": false
         },
         {
-          "label": "Remove Media server",
+          "label": "Forget Media server",
           "disabled": false
         },
         {
@@ -692,7 +692,7 @@
           "disabled": false
         },
         {
-          "label": "Remove Build box",
+          "label": "Forget Build box",
           "disabled": false
         },
         {
@@ -700,7 +700,7 @@
           "disabled": false
         },
         {
-          "label": "Remove Laptop",
+          "label": "Forget Laptop",
           "disabled": false
         },
         {
@@ -708,11 +708,11 @@
           "disabled": false
         },
         {
-          "label": "Remove Old dev instance",
+          "label": "Forget Old dev instance",
           "disabled": false
         },
         {
-          "label": "Remove 2 unreachable",
+          "label": "Forget 2 unreachable",
           "disabled": false
         },
         {
@@ -751,20 +751,20 @@
           "controls": 21,
           "smallTargets": 1,
           "viewport": 390,
-          "auditMs": 290
+          "auditMs": 296
         }
       }
     },
     {
-      "file": "station-switcher-remove-dark-desktop.png",
+      "file": "station-switcher-forget-dark-desktop.png",
       "ok": true,
-      "name": "station-switcher-remove-dark-desktop",
+      "name": "station-switcher-forget-dark-desktop",
       "viewport": {
         "width": 1440,
         "height": 900
       },
       "error": null,
-      "sha256": "5176f787bb1a3f1b5c8b1b969b6d42355e95091b9f4b32d46e2feadc22682bb2",
+      "sha256": "9e01b907b87b1b3a7d3d6bf57bce43f8643fbaa68f4cc99b241e945244a3f571",
       "controls": [
         {
           "label": "Station home",
@@ -891,7 +891,7 @@
           "disabled": false
         },
         {
-          "label": "Remove Media server",
+          "label": "Forget Media server",
           "disabled": false
         },
         {
@@ -899,7 +899,7 @@
           "disabled": false
         },
         {
-          "label": "Remove Build box",
+          "label": "Forget Build box",
           "disabled": false
         },
         {
@@ -907,7 +907,7 @@
           "disabled": false
         },
         {
-          "label": "Remove Laptop",
+          "label": "Forget Laptop",
           "disabled": false
         },
         {
@@ -915,11 +915,11 @@
           "disabled": false
         },
         {
-          "label": "Confirm removing Old dev instance",
+          "label": "Confirm forgetting Old dev instance",
           "disabled": false
         },
         {
-          "label": "Remove 2 unreachable",
+          "label": "Forget 2 unreachable",
           "disabled": false
         },
         {
@@ -946,7 +946,7 @@
             "detail": "serious: Elements must have their visible text as part of their accessible name (.start-composer__project)"
           },
           {
-            "identity": "axe:label-content-name-mismatch:button.station-switcher__remove[Confirm removing Old dev instance]",
+            "identity": "axe:label-content-name-mismatch:button.station-switcher__remove[Confirm forgetting Old dev instance]",
             "detail": "serious: Elements must have their visible text as part of their accessible name (.station-switcher__remove--armed)"
           }
         ],
@@ -954,7 +954,7 @@
           "controls": 30,
           "smallTargets": 19,
           "viewport": 1440,
-          "auditMs": 311
+          "auditMs": 320
         }
       }
     }
