@@ -1444,6 +1444,20 @@ a confirmed deferral.
 | `station.approval.duration` | Explicit registry settlement time | `action` | ms |
 | `station.skill.activation.duration` | `activate_skill` call duration, including failed reads | `skill` | ms |
 | `station.mcp.negotiation.duration` | Negotiation plus discovery duration | Negotiation attributes above | ms |
+| `station.runtime.event_loop_lag` | How late a 10-second runtime timer woke | None | ms |
+
+The lag histogram only sees a stall that overlaps a timer wake, and it is
+exported only with an OTel endpoint. Independently of OTel, a window whose
+event-loop delay reached one second writes an `Event loop stalled` warning to
+the server log (`<STATION_HOME>/logs/server/`). The warning carries
+`maxDelayMs` and `p99DelayMs`, plus what the process did during `elapsedMs`:
+`cpuUserMs`, `cpuSystemMs`, `majorPageFaults`, and `gcCount`, `gcTotalMs`,
+`gcMaxMs`, with `rssMb` and `heapUsedMb` at the end of the window. CPU time near
+the stall means the process was busy, and the GC totals show how much of that
+was garbage collection. Many major page faults with little CPU time mean memory
+was being read back from swap. Neither means a call blocked without using the
+CPU, or the host ran other work. The warning is written about 250 ms after the
+window ends, so it includes GC pauses that Node reports late.
 
 The cost counter has USD semantics in its producer but no declared instrument
 unit. Token counters likewise have no explicit unit property.
