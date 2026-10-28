@@ -1372,6 +1372,14 @@
 
     "src-server/services/terminal/__tests__/terminal-sessions.process.test.ts",
 
+    "src-server/services/terminal/terminal-gateway.ts",
+
+    "src-server/services/terminal/terminal-channel-connection.ts",
+
+    "src-server/adapters/pty-process-groups.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts",
+
     "packages/contracts/src/required-slots.ts",
 
     "src-server/services/plugins/required-slot-service.ts",

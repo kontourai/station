@@ -1579,6 +1579,537 @@ export const MUTATIONS = [
       },
     ],
   },
+  {
+    id: 'terminal-owned-shell-fallback',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure: 'kills the owned shell when the census refuses tty',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "        if (!this.exited) this.pty.kill('SIGKILL');",
+            '',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-remote-admission-guard',
+    test: 'src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts',
+    failure:
+      'production terminal gateway refuses paired remote devices until admission prerequisites exist',
+    files: [
+      {
+        path: 'src-server/runtime/routes/runtime-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'isOperatorInPersonNotAgent(request) && isRequestPrincipalCurrent(request);',
+            'isRequestPrincipalCurrent(request);',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-linux-tty-acceptance',
+    test: 'src-server/adapters/__tests__/pty-process-groups.test.ts',
+    failure: 'accepts concrete tty pts/3',
+    files: [
+      {
+        path: 'src-server/adapters/pty-process-groups.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '!/^(?:ttys[0-9]+|pts\\/[0-9]+)$/.test(currentTty) ||',
+            '!/^ttys[0-9]+$/.test(currentTty) ||',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-macos-tty-acceptance',
+    test: 'src-server/adapters/__tests__/pty-process-groups.test.ts',
+    failure: 'accepts concrete tty ttys003',
+    files: [
+      {
+        path: 'src-server/adapters/pty-process-groups.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '!/^(?:ttys[0-9]+|pts\\/[0-9]+)$/.test(currentTty) ||',
+            '!/^pts\\/[0-9]+$/.test(currentTty) ||',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-paused-backoff-cap',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure: 'paused observation retries cap backoff at one second',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'delay = Math.min(delay * 2, 1000);',
+            'delay *= 2;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-paused-stderr',
+    test: 'src-server/adapters/__tests__/node-pty-adapter.test.ts',
+    failure:
+      'exit 1 with stderr stays paused instead of declaring the child gone',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '!stdout.trim() &&\n            !stderr.trim();',
+            '!stdout.trim();',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-no-tty-census',
+    test: 'src-server/adapters/__tests__/pty-process-groups.test.ts',
+    failure: 'refuses a census with non-device tty',
+    files: [
+      {
+        path: 'src-server/adapters/pty-process-groups.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '!/^(?:ttys[0-9]+|pts\\/[0-9]+)$/.test(currentTty) ||',
+            'false ||',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-peer-pending-cap',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'pending sockets do not consume authenticated capacity and concurrent auth cannot exceed it',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-gateway.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '(this.pendingPeers.get(peer) ?? 0) >= 8 ||',
+            'false ||',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-auth-timeout-close',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'auth timeout terminates a peer that ignores the close handshake promptly',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-gateway.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'const terminate = setTimeout(() => ws.terminate(), 100);',
+            'const terminate = setTimeout(() => ws.terminate(), 30000);',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-http-incomplete-page',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'HTTP replay refuses an incomplete page below the byte bound',
+    files: [
+      {
+        path: 'src-server/routes/projects/terminal-session-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '(result.journal.records.at(-1)?.seq ?? fromSeq) <\n          result.journal.lastSeq',
+            'false',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-http-empty-reset',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'HTTP replay returns an empty retention reset instead of 413',
+    files: [
+      {
+        path: 'src-server/routes/projects/terminal-session-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '(!result.journal.reset || result.journal.records.length > 0)',
+            'true',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-data-backlog-pause',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure: 'aggregate channel credit fits the socket output backlog guard',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-channel-connection.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'value instanceof Uint8Array &&\n      this.ws.bufferedAmount > 32 * TERMINAL_WINDOW_BYTES',
+            'false',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-orphan-tty',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'close accounts for a reparented tty job on a real PTY',
+    files: [
+      {
+        path: 'src-server/adapters/pty-process-groups.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '.filter((row) => row.tty === tty)',
+            '.filter(() => false)',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-group-rescan',
+    test: 'src-server/adapters/__tests__/pty-process-groups.test.ts',
+    failure:
+      'rescans after freezing and kills a newly discovered reparented tty group',
+    files: [
+      {
+        path: 'src-server/adapters/pty-process-groups.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '      if (added) continue;',
+            '      void added;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-group-thaw-custody',
+    test: 'src-server/adapters/__tests__/pty-process-groups.test.ts',
+    failure:
+      'never continues a frozen group that has left the owned terminal census',
+    files: [
+      {
+        path: 'src-server/adapters/pty-process-groups.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '        if (\n          !remaining.has(group) ||\n          ![...members].some((pid) => rows.get(pid)?.group === group)\n        )\n          continue;',
+            '        if (false) continue;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-production-http-auth',
+    test: 'src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts',
+    failure: 'production terminal gateway authenticates through HTTP admission',
+    files: [
+      {
+        path: 'src-server/runtime/routes/runtime-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '          const response = await context.app.fetch(request, { incoming });\n          return response.status === 204 && authorizeTerminalRequest(request)\n            ? request\n            : undefined;',
+            '          return request;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-production-operation-scope',
+    test: 'src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts',
+    failure:
+      'production terminal gateway consumes the per-operation scope decision',
+    files: [
+      {
+        path: 'src-server/runtime/routes/runtime-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "            terminalScopeAllows(\n              context.environmentSecurityService.resolveGrantedScope(\n                principal.credential,\n              ) ?? '',\n              operation,\n            )",
+            '            true',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-quiet-revocation',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'quiet shell revocation is published without client input or PTY output',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-channel-connection.ts',
+        change: (source) =>
+          exactReplace(source, '    }, 1000);', '    }, 1000000);'),
+      },
+    ],
+  },
+  {
+    id: 'terminal-pending-cap',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'pending authentication has a separate global budget and releases a slot on success',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-gateway.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '        this.pendingSockets.size >= 32 ||',
+            '        false ||',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-authenticated-cap',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'pending sockets do not consume authenticated capacity and concurrent auth cannot exceed it',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-gateway.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '        this.connections.size >= 64 ||',
+            '        this.wss.clients.size >= 64 ||',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-auth-timeout-throttle',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure: 'auth timeouts count toward peer failure throttling',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-gateway.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '    const timeout = setTimeout(() => {\n      this.limiter.recordFailure(peer);',
+            '    const timeout = setTimeout(() => {',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-http-sanitizer',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure:
+      'HTTP replay filters active links while preserving safe links and text',
+    files: [
+      {
+        path: 'src-server/routes/projects/terminal-session-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '    const filter = new TerminalOutputSanitizer(TERMINAL_LINK_PROTOCOLS);',
+            '    const filter = new TerminalOutputSanitizer();',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-http-read-bound',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure:
+      'HTTP replay refuses an over-bound journal instead of silently truncating it',
+    files: [
+      {
+        path: 'src-server/routes/projects/terminal-session-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '    if (\n      bytes > 64 * 1024 ||\n      ((!result.journal.reset || result.journal.records.length > 0) &&\n        (result.journal.records.at(-1)?.seq ?? fromSeq) <\n          result.journal.lastSeq)\n    )',
+            '    if (false)',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-aggregate-credit-buffer',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure: 'aggregate channel credit fits the socket output backlog guard',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-channel-connection.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "    // Wire headers are outside channel credit. Pause data on socket backlog;\n    // the heartbeat retries the same journal sequence after the socket drains.\n    if (\n      value instanceof Uint8Array &&\n      this.ws.bufferedAmount > 32 * TERMINAL_WINDOW_BYTES\n    )\n      return false;\n    if (this.ws.bufferedAmount > 32 * TERMINAL_WINDOW_BYTES + 256 * 1024) {\n      this.ws.close(4429, 'terminal_output_capacity');\n      return false;\n    }",
+            "    if (this.ws.bufferedAmount > 256 * 1024) {\n      this.ws.close(4429, 'terminal_output_capacity');\n      return false;\n    }",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-socket-personal-token-rule',
+    test: 'src-server/security/__tests__/pairing-route-scopes.test.ts',
+    failure:
+      'terminal socket HTTP classification refuses personal tokens explicitly',
+    files: [
+      {
+        path: 'src-server/security/pairing-route-scopes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "    prefix: '/api/terminal/socket',\n    exact: true,\n    scope: PAIRING_SCOPE_TERMINAL_OPERATE,\n    origin: 'explicit',\n    personalTokens: 'refused',",
+            "    prefix: '/api/terminal/socket',\n    exact: true,\n    scope: PAIRING_SCOPE_TERMINAL_OPERATE,\n    origin: 'explicit',",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-socket-credential-kind',
+    test: 'src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts',
+    failure:
+      'production terminal socket refuses account credentials before HTTP forwarding',
+    files: [
+      {
+        path: 'src-server/runtime/routes/runtime-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '          if (\n            !(await credentialAuthorizedForScope(\n              context.environmentSecurityService,\n              PAIRING_SCOPE_TERMINAL_OPERATE,\n              credential,\n            ))\n          )\n            return undefined;',
+            '',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-global-admission',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure:
+      'global quotas evict ended and failed records without evicting a live session',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-sessions.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'await this.makeRoom(1, principal);',
+            'void principal;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-global-disk-retention',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure:
+      'aggregate journal payload and disk retention stay bounded across recreation',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-sessions.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (journal) await journal.discard();',
+            'if (journal) await journal.flush();',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-quota-project-authority',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure:
+      'quota eviction cannot delete an ended session outside the caller Project grant',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-sessions.ts',
+        change: (source) =>
+          exactReplace(
+            exactReplace(
+              source,
+              "        if (\n          principal !== undefined &&\n          !(await this.authority.authorize(principal, record, 'operate'))\n        )\n          continue;\n",
+              '',
+            ),
+            "      if (principal !== undefined)\n        await this.check(principal, victim, 'operate');\n",
+            '',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-owned-process-groups',
+    test: 'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+    failure: 'close terminates a nohup child process group',
+    files: [
+      {
+        path: 'src-server/adapters/node-pty-adapter.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'await terminatePtyProcessGroups(this.pid, () => !this.exited);',
+            "this.pty.kill('SIGKILL');",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-hyperlink-schemes',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'transport replay and live output admit only http and https hyperlink schemes',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-output-sanitizer.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'return this.hyperlinkProtocols.includes(new URL(uri).protocol);',
+            'return true;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'terminal-observer-reports',
+    test: 'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
+    failure:
+      'observer mouse and focus reports are discarded without typing or losing input order',
+    files: [
+      {
+        path: 'src-server/services/terminal/terminal-channel-connection.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (!canOperate && OBSERVER_REPORTS.test(work.data)) {',
+            'if (false) {',
+          ),
+      },
+    ],
+  },
 ];
 
 export function mutationCaught(result, root, expectedFailure) {
