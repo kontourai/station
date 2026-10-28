@@ -169,14 +169,18 @@ export function withHeavyCheckHeld(env, pid = process.pid) {
   };
 }
 
+function abortError() {
+  const error = new Error('canceled while waiting for a heavy-check slot');
+  error.name = 'AbortError';
+  return error;
+}
+
 function abortableSleep(ms, signal) {
   return new Promise((resolve, reject) => {
-    const canceled = () =>
-      reject(new Error('canceled while waiting for a heavy-check slot'));
-    if (signal?.aborted) return canceled();
+    if (signal?.aborted) return reject(abortError());
     const onAbort = () => {
       clearTimeout(timer);
-      canceled();
+      reject(abortError());
     };
     const timer = setTimeout(() => {
       signal?.removeEventListener('abort', onAbort);
@@ -187,37 +191,75 @@ function abortableSleep(ms, signal) {
 }
 
 /**
+ * Take a heavy-check slot for verification work that coordinator admission
+ * has already admitted, before that work's own execution clock starts.
+ * Resolves to the environment its children inherit (carrying this holder's
+ * marker) and a `release`. The wait is bounded by the configured wait and by
+ * `deadline`; it rejects with `FAIL:` naming the holders when that runs out,
+ * or with an `AbortError` when `signal` aborts. With no slot to take
+ * (hosted CI, or a live ancestor holding one) it returns synchronously.
+ *
+ * @param {{ label: string, env: NodeJS.ProcessEnv, signal?: AbortSignal, deadline?: number, now?: () => number }} admission
+ * @returns {{ env: NodeJS.ProcessEnv, release: () => void } | Promise<{ env: NodeJS.ProcessEnv, release: () => void }>}
+ */
+export function holdHeavyCheckSlot({
+  label,
+  env,
+  signal,
+  deadline,
+  now = Date.now,
+}) {
+  if (admittedWithoutSlot({ label, env })) return { env, release: () => {} };
+  return (async () => {
+    if (signal?.aborted) throw abortError();
+    const slot = await acquireHeavyCheckSlot({
+      label,
+      env,
+      sleep: (ms) => abortableSleep(ms, signal),
+      ...(Number.isFinite(deadline)
+        ? {
+            waitMs: Math.max(0, Math.min(resolveWaitMs(env), deadline - now())),
+          }
+        : {}),
+    });
+    return { env: withHeavyCheckHeld(env), release: slot.release };
+  })();
+}
+
+/**
  * Wrap a verification `execute({ signal, ... })` so it runs holding a
- * heavy-check slot. Callers wrap only work that coordinator admission has
- * already admitted. The wait runs inside the execution's deadline and abort
- * signal, and a refusal rejects, which the deadline runner turns into the
- * execution's failed result. `buildExecute(env)` builds the real execute
- * with the environment its children inherit, which carries this holder's
- * marker. If an execution is fenced because it never settled, its slot stays
- * held until this process exits.
+ * heavy-check slot, for work whose deadline already covers queueing (an
+ * ordinary coordinator lane). The wait runs inside that deadline and abort
+ * signal: a refusal rejects, which the deadline runner turns into the
+ * execution's failed result, and an abort is reported as SIGTERM like any
+ * other canceled execution. `buildExecute(env)` builds the real execute with
+ * the environment its children inherit. If an execution is fenced because it
+ * never settled, its slot stays held until this process exits.
  *
  * @param {{ label: string, env: NodeJS.ProcessEnv }} admission
  * @param {(env: NodeJS.ProcessEnv) => (run: any) => Promise<any>} buildExecute
  */
 export function withHeavyCheckSlot({ label, env }, buildExecute) {
   return (run) => {
+    const held = holdHeavyCheckSlot({ label, env, signal: run?.signal });
     // Without a slot to take, start the execution synchronously, as the
     // deadline runner's callers have always seen it start.
-    if (admittedWithoutSlot({ label, env }))
-      return buildExecute(env)({ ...run, env });
-    return (async () => {
-      const slot = await acquireHeavyCheckSlot({
-        label,
-        env,
-        sleep: (ms) => abortableSleep(ms, run?.signal),
-      });
-      const childEnv = slot.index >= 0 ? withHeavyCheckHeld(env) : env;
-      try {
-        return await buildExecute(childEnv)({ ...run, env: childEnv });
-      } finally {
-        slot.release();
-      }
-    })();
+    if (!(held instanceof Promise))
+      return buildExecute(held.env)({ ...run, env: held.env });
+    return held.then(
+      async ({ env: childEnv, release }) => {
+        try {
+          return await buildExecute(childEnv)({ ...run, env: childEnv });
+        } finally {
+          release();
+        }
+      },
+      (error) => {
+        if (error?.name === 'AbortError')
+          return { status: null, signal: 'SIGTERM' };
+        throw error;
+      },
+    );
   };
 }
 

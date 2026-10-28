@@ -552,6 +552,87 @@ describe('verification coordinator', () => {
       }
     });
 
+    test("a phase's execution clock starts only once its slot is held", async () => {
+      const temp = fixture();
+      const worktree = join(temp.root, 'worktree');
+      mkdirSync(worktree);
+      const slotDir = join(temp.root, 'heavy-check-slots');
+      holdOnlySlot(slotDir);
+      let clock = 1_000_000;
+      const freedAt = clock + 600_000;
+      // The other check finishes ten fake minutes later, longer than the
+      // first phase's whole execution budget.
+      const freed = setTimeout(() => {
+        clock = freedAt;
+        rmSync(join(slotDir, 'slot-0.lock'));
+      }, 400);
+      const startedAt: number[] = [];
+      try {
+        const result = await coordinateVerification({
+          laneId: 'full-regression',
+          root: temp.root,
+          cwd: worktree,
+          heartbeatMs: 1,
+          now: () => clock,
+          timeoutMs: 24 * 60 * 60_000,
+          collectProvenance: () => worktreeProvenance(worktree, 'heavy-clock'),
+          hostCpuSampler: async () =>
+            buildHostPressureSample({
+              busyPercent: 40,
+              cpuCount: 4,
+              sampleMs: 1,
+              sampledAt: clock,
+              threshold: 85,
+              source: 'override',
+            }),
+          env: heavyCheckEnv(slotDir, '20000'),
+          phaseRunner: async () => {
+            const job = verificationStatus({ root: temp.root, now: clock })
+              .jobs[0];
+            startedAt.push(job?.phase?.executionStartedAt);
+            return { status: 0 };
+          },
+        });
+        expect(result.receipt.terminal.passed).toBe(true);
+        expect(startedAt).toHaveLength(FULL_PHASE_IDS.length);
+        // Waiting for the slot did not spend the phase's execution budget.
+        expect(startedAt[0]).toBe(freedAt);
+      } finally {
+        clearTimeout(freed);
+        temp.remove();
+      }
+    });
+
+    test('a lane canceled while it waits for a slot settles as canceled', async () => {
+      const temp = fixture();
+      const slotDir = join(temp.root, 'heavy-check-slots');
+      holdOnlySlot(slotDir);
+      const controller = new AbortController();
+      const abort = setTimeout(() => controller.abort(), 300);
+      let calls = 0;
+      try {
+        const result = await coordinateVerification({
+          laneId: 'prepush',
+          root: temp.root,
+          heartbeatMs: 1,
+          wait: async () => {},
+          signal: controller.signal,
+          collectProvenance: () => provenance(`heavy-cancel-${temp.root}`),
+          env: heavyCheckEnv(slotDir, '600000'),
+          runner: async () => {
+            calls += 1;
+            return { status: 0 };
+          },
+        });
+        expect(calls).toBe(0);
+        expect(result.receipt.terminal.status).toBe('canceled');
+        expect(readdirSync(join(slotDir, 'queue'))).toEqual([]);
+      } finally {
+        clearTimeout(abort);
+        temp.remove();
+      }
+    }, 30_000);
+
     test('a reused receipt takes no slot, even while the pool is full', async () => {
       const temp = fixture();
       const slotDir = join(temp.root, 'heavy-check-slots');
