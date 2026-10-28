@@ -43,7 +43,9 @@ export function registerProjectReadTools(
   );
   server.tool(
     'get_project',
-    'Get project details, and checkoutFreshness: how far its checkout is behind its upstream, when the host reports it',
+    // The outside-agent dispatch registers this same description and never
+    // carries `checkoutFreshness`, so the description does not promise it.
+    'Get project details',
     { slug: z.string() },
     async ({ slug }) => jsonToolResult(await toToolEnvelope(reads.get(slug))),
   );
