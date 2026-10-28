@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
@@ -10,8 +11,36 @@ import { JsonFileStore } from '../../infra/json-store.js';
 import {
   conversationAcknowledgementKey,
   FileConversationAcknowledgementStore,
+  ownerDevicePredicate,
   PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY,
 } from '../conversation-acknowledgement-store.js';
+
+/** Paired devices as the pairing service records them. */
+const device = (
+  id: string,
+  over: Partial<PairedDevice> = {},
+): PairedDevice => ({
+  id,
+  name: id,
+  scope: 'orchestration:read orchestration:operate',
+  kind: 'device',
+  createdAt: 0,
+  revokedAt: null,
+  ...over,
+});
+const DEVICES: PairedDevice[] = [
+  device('owner-phone'),
+  device('account-phone', {
+    principalBinding: {
+      kind: 'account',
+      issuer: 'https://accounts.example',
+      subject: 'person-2',
+      displayName: 'Person Two',
+    } as PairedDevice['principalBinding'],
+  }),
+  device('revoked-phone', { revokedAt: 1 }),
+];
+const isOwnerDevice = ownerDevicePredicate(() => DEVICES);
 
 describe('FileConversationAcknowledgementStore', () => {
   test('treats an absent store as an honest empty state and writes the first acknowledgement', () => {
@@ -125,7 +154,7 @@ describe('FileConversationAcknowledgementStore', () => {
               'thread-a': '2026-10-28T04:41:06.065Z',
               'thread-b': '2026-10-01T00:00:00.000Z',
             },
-            'human:device:2e33be60': {
+            'human:device:owner-phone': {
               'thread-b': '2026-10-24T16:40:28.567Z',
               'session-failed:thread-c': '2026-10-20T00:00:00.000Z',
             },
@@ -137,7 +166,10 @@ describe('FileConversationAcknowledgementStore', () => {
           },
         }),
       );
-      const store = new FileConversationAcknowledgementStore(dir);
+      const store = new FileConversationAcknowledgementStore(
+        dir,
+        isOwnerDevice,
+      );
       const owner = store.getMany(PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY, [
         'thread-a',
         'thread-b',
@@ -219,20 +251,94 @@ describe('FileConversationAcknowledgementStore', () => {
   });
 });
 
+describe('FileConversationAcknowledgementStore eviction', () => {
+  test('past the bound, a version that does not parse goes first, then the oldest', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'station-ack-evict-'));
+    try {
+      const acknowledgements: Record<string, string> = {};
+      for (let index = 0; index < 1_998; index++)
+        acknowledgements[`thread-${index}`] = new Date(
+          Date.UTC(2026, 0, 1) + index * 1000,
+        ).toISOString();
+      // Last in file order, so order alone would not evict them first.
+      acknowledgements.oldest = '2020-01-01T00:00:00.000Z';
+      acknowledgements['not-a-time'] = 'garbage';
+      writeFileSync(
+        join(dir, 'conversation-acknowledgements.json'),
+        JSON.stringify({
+          version: 2,
+          acknowledgements: {
+            [PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY]: acknowledgements,
+          },
+        }),
+      );
+      const store = new FileConversationAcknowledgementStore(dir);
+      const ack = (conversationId: string) =>
+        store.acknowledge({
+          userId: PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY,
+          conversationId,
+          updatedAt: '2026-10-28T00:00:00.000Z',
+        });
+      const kept = (ids: string[]) => [
+        ...store.getMany(PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY, ids).keys(),
+      ];
+      ack('new-1');
+      expect(kept(['not-a-time', 'oldest', 'new-1'])).toEqual([
+        'oldest',
+        'new-1',
+      ]);
+      ack('new-2');
+      expect(kept(['oldest', 'thread-0', 'new-2'])).toEqual([
+        'thread-0',
+        'new-2',
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('conversationAcknowledgementKey', () => {
   test('maps the owner’s principals on a personal Station to the one owner key', () => {
     for (const principal of [
       'human:local:operator',
-      'human:device:2e33be60-58fd-435f-8226-cc2c07d93fab',
+      'human:device:owner-phone',
       // The OS account name an older composition passes.
       'brian',
     ]) {
       expect(
         conversationAcknowledgementKey(
           sessionReadAuthorityFromRequest(principal, undefined, undefined),
+          isOwnerDevice,
         ),
       ).toBe(PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY);
     }
+  });
+
+  test('decides a device principal from its record, not its id', () => {
+    for (const principal of [
+      // Bound to another person's account, reading as its device identity.
+      'human:device:account-phone',
+      'human:device:revoked-phone',
+      'human:device:unknown-phone',
+    ]) {
+      expect(
+        conversationAcknowledgementKey(
+          sessionReadAuthorityFromRequest(principal, undefined, undefined),
+          isOwnerDevice,
+        ),
+      ).toBe(principal);
+    }
+    // With no device records to read, no device is taken for the owner.
+    expect(
+      conversationAcknowledgementKey(
+        sessionReadAuthorityFromRequest(
+          'human:device:owner-phone',
+          undefined,
+          undefined,
+        ),
+      ),
+    ).toBe('human:device:owner-phone');
   });
 
   test('keys every other person on a personal Station by their own identity', () => {

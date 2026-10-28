@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
 import {
   isHostedSessionReadAuthority,
   type SessionReadAuthority,
@@ -6,6 +7,7 @@ import {
 import { DEVICE_IDENTITY_PROVIDER } from '../identity/identity-source.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 import { JsonFileStore } from '../infra/json-store.js';
+import { isPersonalFamilyDevice } from '../notifications/delivery/audience-resolver.js';
 
 const STORE_VERSION = 2 as const;
 const LEGACY_STORE_VERSION = 1 as const;
@@ -22,8 +24,15 @@ export const PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY = 'personal:owner';
 /** Principal kinds that are never a person viewing a conversation. */
 const NON_PERSON_KEY_PREFIXES = ['service:', 'agent:', 'tenant:'] as const;
 
-/** A paired device tied to no person: it reads as its own device identity. */
-const OWNER_DEVICE_PRINCIPAL_PREFIX = `human:${DEVICE_IDENTITY_PROVIDER}:`;
+/** A request carrying a paired device's own credential and no person's. */
+const DEVICE_PRINCIPAL_PREFIX = `human:${DEVICE_IDENTITY_PROVIDER}:`;
+
+/**
+ * Whether the paired device `deviceId` is one of the owner's own, read from
+ * its record (`ownerDevicePredicate`). Absent: no device is known to be the
+ * owner's, so each keeps its own record.
+ */
+export type IsOwnerDevice = (deviceId: string) => boolean;
 
 /**
  * The key a personal Station files `principalId`'s views under: the owner's
@@ -32,8 +41,10 @@ const OWNER_DEVICE_PRINCIPAL_PREFIX = `human:${DEVICE_IDENTITY_PROVIDER}:`;
  *
  * The owner is who Station already treats as one person for notification
  * focus (`audience-resolver.ts` `ownerPrincipals`): the local operator, and
- * each paired device tied to no person, which reads as `human:device:<id>`
- * (a device tied to a person reads as that person instead). A tailnet login
+ * each family device whose record is tied to no person (`isOwnerDevice`).
+ * The `human:device:<id>` id alone does not say so: a device bound to an
+ * account whose session is not current reads as its device identity too
+ * (`orchestration-request-principal.ts`), and is not the owner. A tailnet login
  * (`human:tailscale-serve:<login>`) or an account is its own person, even
  * the owner's own: nothing records that a tailnet identity is the operator,
  * so it keeps its own Just finished until accounts link identities. That
@@ -41,12 +52,17 @@ const OWNER_DEVICE_PRINCIPAL_PREFIX = `human:${DEVICE_IDENTITY_PROVIDER}:`;
  * clearing the owner's. An id with no principal kind is the OS account name
  * an older composition passes, which is the owner.
  */
-function personalAcknowledgementKey(principalId: string): string | undefined {
+function personalAcknowledgementKey(
+  principalId: string,
+  isOwnerDevice: IsOwnerDevice | undefined,
+): string | undefined {
   if (NON_PERSON_KEY_PREFIXES.some((prefix) => principalId.startsWith(prefix)))
     return undefined;
   if (
     principalId === LOCAL_OPERATOR_PRINCIPAL_ID ||
-    principalId.startsWith(OWNER_DEVICE_PRINCIPAL_PREFIX) ||
+    (principalId.startsWith(DEVICE_PRINCIPAL_PREFIX) &&
+      isOwnerDevice?.(principalId.slice(DEVICE_PRINCIPAL_PREFIX.length)) ===
+        true) ||
     !principalId.includes(':')
   )
     return PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY;
@@ -75,12 +91,31 @@ function personalAcknowledgementKey(principalId: string): string | undefined {
  */
 export function conversationAcknowledgementKey(
   authority: SessionReadAuthority,
+  isOwnerDevice?: IsOwnerDevice,
 ): string | undefined {
   if (isHostedSessionReadAuthority(authority)) {
     const tenantId = authority.tenantExecutionContext?.tenantId;
     return tenantId ? `tenant:${tenantId}` : undefined;
   }
-  return personalAcknowledgementKey(authority.userId);
+  return personalAcknowledgementKey(authority.userId, isOwnerDevice);
+}
+
+/**
+ * The owner-device rule `audience-resolver.ts` applies, over the current
+ * device records: a live family device (`isPersonalFamilyDevice`) with no
+ * person binding.
+ */
+export function ownerDevicePredicate(
+  listDevices: () => readonly PairedDevice[],
+): IsOwnerDevice {
+  return (deviceId) => {
+    const device = listDevices().find((candidate) => candidate.id === deviceId);
+    return (
+      device !== undefined &&
+      device.principalBinding === undefined &&
+      isPersonalFamilyDevice(device)
+    );
+  };
 }
 
 interface AcknowledgementStoreData {
@@ -90,6 +125,8 @@ interface AcknowledgementStoreData {
 }
 
 export interface ConversationAcknowledgementStore {
+  /** Which paired devices are the owner's, for `conversationAcknowledgementKey`. */
+  readonly isOwnerDevice?: IsOwnerDevice;
   getMany(
     userId: string,
     conversationIds: readonly string[],
@@ -99,6 +136,12 @@ export interface ConversationAcknowledgementStore {
     conversationId: string;
     updatedAt: string;
   }): void;
+}
+
+/** A version's time, or the earliest time when it does not parse. */
+function versionTime(version: string): number {
+  const time = Date.parse(version);
+  return Number.isFinite(time) ? time : Number.MIN_SAFE_INTEGER;
 }
 
 /**
@@ -126,6 +169,7 @@ function laterVersion(left: string | undefined, right: string): string {
  */
 function migrateLegacyAcknowledgements(
   acknowledgements: Record<string, Record<string, string>>,
+  isOwnerDevice: IsOwnerDevice | undefined,
 ): Record<string, Record<string, string>> {
   const migrated: Record<string, Record<string, string>> = {};
   for (const [key, versions] of Object.entries(acknowledgements)) {
@@ -133,7 +177,7 @@ function migrateLegacyAcknowledgements(
       migrated[key] = { ...versions };
       continue;
     }
-    const target = personalAcknowledgementKey(key);
+    const target = personalAcknowledgementKey(key, isOwnerDevice);
     if (!target) continue;
     const merged = migrated[target] ?? {};
     for (const [conversationId, version] of Object.entries(versions)) {
@@ -162,7 +206,10 @@ export class FileConversationAcknowledgementStore
 {
   private readonly store: JsonFileStore<AcknowledgementStoreData>;
 
-  constructor(dataDir: string) {
+  constructor(
+    dataDir: string,
+    readonly isOwnerDevice?: IsOwnerDevice,
+  ) {
     this.store = new JsonFileStore(
       join(dataDir, 'conversation-acknowledgements.json'),
       { version: STORE_VERSION, acknowledgements: {} },
@@ -175,7 +222,10 @@ export class FileConversationAcknowledgementStore
     const data = this.store.read();
     if (data.version === STORE_VERSION) return data.acknowledgements;
     if (data.version === LEGACY_STORE_VERSION) {
-      return migrateLegacyAcknowledgements(data.acknowledgements);
+      return migrateLegacyAcknowledgements(
+        data.acknowledgements,
+        this.isOwnerDevice,
+      );
     }
     return {};
   }
@@ -221,7 +271,8 @@ export class FileConversationAcknowledgementStore
     const entries = Object.entries(forUser);
     if (entries.length > MAX_ACKNOWLEDGEMENTS_PER_USER) {
       entries
-        .sort(([, left], [, right]) => Date.parse(left) - Date.parse(right))
+        // Oldest first; a version that does not parse goes first of all.
+        .sort(([, left], [, right]) => versionTime(left) - versionTime(right))
         .slice(0, entries.length - MAX_ACKNOWLEDGEMENTS_PER_USER)
         .forEach(([id]) => delete forUser[id]);
     }

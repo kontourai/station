@@ -2606,7 +2606,10 @@ export function createGlobalConversationRoutes(
       const provenanceById = eventStore?.readConversationForkProvenanceBatch?.(
         combined.map((item) => item.id),
       );
-      const acknowledgementKey = conversationAcknowledgementKey(authority);
+      const acknowledgementKey = conversationAcknowledgementKey(
+        authority,
+        acknowledgementStore?.isOwnerDevice,
+      );
       const acknowledgements = acknowledgementKey
         ? acknowledgementStore?.getMany(
             acknowledgementKey,
@@ -2708,7 +2711,10 @@ export function createGlobalConversationRoutes(
     }
     // The same key the inventory GET reads (`conversationAcknowledgementKey`):
     // what a person viewed on one device clears it on all of theirs.
-    const acknowledgementKey = conversationAcknowledgementKey(authority);
+    const acknowledgementKey = conversationAcknowledgementKey(
+      authority,
+      acknowledgementStore?.isOwnerDevice,
+    );
     if (!acknowledgementKey) {
       return c.json(
         {

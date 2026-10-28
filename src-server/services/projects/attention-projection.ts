@@ -210,7 +210,7 @@ export class AttentionProjectionService {
      */
     private readonly acknowledgementStore?: Pick<
       ConversationAcknowledgementStore,
-      'getMany' | 'acknowledge'
+      'getMany' | 'acknowledge' | 'isOwnerDevice'
     >,
     /**
      * The user id of the personal read authority used when a caller passes
@@ -463,7 +463,10 @@ export class AttentionProjectionService {
     ];
     // The inventory's key (`conversationAcknowledgementKey`), so a person's
     // acknowledgement on one device holds on every device they use.
-    const acknowledgementKey = conversationAcknowledgementKey(readAuthority);
+    const acknowledgementKey = conversationAcknowledgementKey(
+      readAuthority,
+      this.acknowledgementStore?.isOwnerDevice,
+    );
     const acknowledgements = acknowledgementKey
       ? this.acknowledgementStore?.getMany(
           acknowledgementKey,

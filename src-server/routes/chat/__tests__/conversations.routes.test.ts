@@ -3746,7 +3746,11 @@ describe('Global Conversation Routes', () => {
             .mockResolvedValue({ items: [runtimeItem], hasMore: false }),
         },
         () => 'brian',
-        new FileConversationAcknowledgementStore(dataDir),
+        // phone-1 is the owner's own paired device, by its record.
+        new FileConversationAcknowledgementStore(
+          dataDir,
+          (deviceId) => deviceId === 'phone-1',
+        ),
         authorityFor,
       );
       const inventoryAs = async (principal: string) =>
