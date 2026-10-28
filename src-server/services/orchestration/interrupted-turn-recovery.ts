@@ -589,8 +589,7 @@ export class InterruptedTurnRecovery {
                 );
           const ownInvocationId =
             record.intent?.invocationId ??
-            (derivedOwn?.start ?? ownDispatchStarts.at(-1))?.payload
-              .invocationId;
+            ownDispatchStarts.at(-1)?.payload.invocationId;
           const newestInvocationId = ownDispatchStarts[0]?.payload.invocationId;
           const reusedByNewerInvocation =
             !providerTurn &&

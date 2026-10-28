@@ -1628,14 +1628,31 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
   });
 
   test.each([
-    { shape: 'plain', earlierUse: 0, steered: false },
+    { shape: 'plain', earlierUse: 0, steered: false, captured: false },
     // The id's earlier use fills a per-turn page ahead of this dispatch.
-    { shape: 'a long earlier use of the id', earlierUse: 70, steered: false },
+    {
+      shape: 'a long earlier use of the id',
+      earlierUse: 70,
+      steered: false,
+      captured: false,
+    },
     // Steer starts carry no invocation and land after the reused start.
-    { shape: 'a steer after the reuse', earlierUse: 0, steered: true },
+    {
+      shape: 'a steer after the reuse',
+      earlierUse: 0,
+      steered: true,
+      captured: false,
+    },
+    // Only the captured intent names this dispatch's invocation.
+    {
+      shape: 'a captured dispatch whose start has no invocation',
+      earlierUse: 0,
+      steered: false,
+      captured: true,
+    },
   ])(
     'leaves a newer invocation that reuses the dead turn id running ($shape)',
-    async ({ earlierUse, steered }) => {
+    async ({ earlierUse, steered, captured }) => {
       const path = databasePath();
       const threadId = 'thread-reused-turn-id';
       const eventStore = bootAfterCrash({
@@ -1643,7 +1660,8 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
         threadId,
         provider: 'codex',
         boundaryState: 'accepted',
-        startInvocationId: 'invocation-1',
+        capturedInput: captured,
+        ...(captured ? {} : { startInvocationId: 'invocation-1' }),
         beforeTurnStarted: Array.from(
           { length: earlierUse },
           (_, index) =>
