@@ -323,8 +323,10 @@ row) and confirm. With two or more unreachable, **Forget N unreachable**
 forgets them together after a confirmation that names each one. The current Station cannot be
 forgotten here. On the desktop app, Stations other channels or development
 instances left in the shared profile file can be forgotten like any other;
-only the app's own local Station is refused, and every local-service profile
-is refused until the app has identified its own at startup.
+only the app's own local Station is refused, and the × is not offered for it.
+If the app cannot identify its own local Station at startup (its local service
+did not start, for example), every local-service profile stays protected until
+the app is restarted.
 
 Choose **Manage Stations** to inspect saved connections. Tap a row to reveal
 **Switch to this Station** and **Edit Station**; inspecting a row does not

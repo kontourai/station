@@ -1883,7 +1883,15 @@ describe('NativeStationProfileStorage', () => {
 
       // Until boot names this app's own Station, any of them might be it.
       await expect(forget('local-3')).rejects.toThrow("This app's own Station");
+      expect(storage.canRemoveProfile('station-profile:local-3')).toBe(false);
+      expect(storage.canRemoveProfile(HOSTED)).toBe(true);
       storage.selectProfileForProcess('nightly-local');
+      // The UI asks the same question before offering Forget.
+      expect(storage.canRemoveProfile('station-profile:local-3')).toBe(true);
+      expect(storage.canRemoveProfile('station-profile:nightly-local')).toBe(
+        false,
+      );
+      expect(storage.canRemoveProfile('station-profile:missing')).toBe(false);
 
       await forget('local-3');
       // Same service identity as nightly-local, but a different home.

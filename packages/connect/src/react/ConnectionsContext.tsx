@@ -292,6 +292,7 @@ export function ConnectionsProvider({
   makeDefaultProfile,
   updateSharedProfile,
   removeSharedProfile,
+  canRemoveSharedProfile,
   sharedProfilesVisibleToCli,
   prepareActiveConnection,
   retirePreparedConnection,
@@ -322,6 +323,8 @@ export function ConnectionsProvider({
   makeDefaultProfile?: ConnectionsContextType['makeDefaultProfile'];
   updateSharedProfile?: ConnectionsContextType['updateSharedProfile'];
   removeSharedProfile?: ConnectionsContextType['removeSharedProfile'];
+  /** Whether the host would accept removing this shared saved Station. */
+  canRemoveSharedProfile?: (connectionId: string) => boolean;
   sharedProfilesVisibleToCli?: boolean;
   /**
    * Optional host-owned preparation for a transient active-connection choice.
@@ -514,7 +517,8 @@ export function ConnectionsProvider({
         const connection = connections.find((candidate) => candidate.id === id);
         if (!connection || connection.injected || connection.nativeBrokerRoute)
           return false;
-        return !isSharedProfileId(id) || Boolean(removeShared);
+        if (!isSharedProfileId(id)) return true;
+        return Boolean(removeShared) && (canRemoveSharedProfile?.(id) ?? true);
       },
       forgetConnection: async (id) => {
         if (!isSharedProfileId(id)) {
@@ -684,6 +688,7 @@ export function ConnectionsProvider({
     makeDefaultProfile,
     updateSharedProfile,
     removeSharedProfile,
+    canRemoveSharedProfile,
     sharedProfilesVisibleToCli,
     prepareActiveConnection,
     retirePreparedConnection,

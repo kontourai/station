@@ -69,7 +69,10 @@ const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
  * HTTPS page cannot reach a plain-HTTP address other than loopback (mixed
  * content), so that failure would say nothing about the Station.
  */
-export function isProbeable(connection: SavedConnection): boolean {
+export function isProbeable(
+  connection: SavedConnection,
+  pageProtocol = window.location.protocol,
+): boolean {
   if (connection.brokerRoute || connection.nativeBrokerRoute) return false;
   let target: URL;
   try {
@@ -79,9 +82,7 @@ export function isProbeable(connection: SavedConnection): boolean {
   }
   if (target.protocol === 'https:') return true;
   if (target.protocol !== 'http:') return false;
-  return (
-    window.location.protocol !== 'https:' || LOOPBACK_HOSTS.has(target.hostname)
-  );
+  return pageProtocol !== 'https:' || LOOPBACK_HOSTS.has(target.hostname);
 }
 
 const probeCache = new Map<

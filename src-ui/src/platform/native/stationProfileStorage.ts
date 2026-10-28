@@ -257,6 +257,8 @@ export interface NativeStationProfileRepository {
   removeProfile(
     input: import('@kontourai/station-connect').SavedStationRemoval,
   ): Promise<void>;
+  /** Whether `removeProfile` would accept this Station, from the last read. */
+  canRemoveProfile(connectionId: string): boolean;
   getRelayRouteProfiles(): readonly StationProfile[];
   subscribeRelayRouteProfiles(listener: () => void): () => void;
   saveRelayRouteProfile(input: SaveRelayRouteProfileInput): Promise<string>;
@@ -1018,6 +1020,15 @@ export class NativeStationProfileStorage
       return;
     }
     throw new Error('saved Stations changed concurrently; retry.');
+  }
+
+  canRemoveProfile(connectionId: string): boolean {
+    const profile = this.profileStore.profiles.find(
+      (candidate) => profileConnectionId(candidate) === connectionId,
+    );
+    return Boolean(
+      profile && !profile.relayRoute && !this.isOwnStation(profile),
+    );
   }
 
   /**

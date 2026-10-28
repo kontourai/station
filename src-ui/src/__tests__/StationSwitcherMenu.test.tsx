@@ -13,6 +13,7 @@ import { navigationStore } from '../contexts/navigation-store';
 import { toastStore } from '../contexts/ToastContext';
 import {
   forgetStationProbe,
+  isProbeable,
   probeStation,
   recordStationUse,
 } from '../lib/stationSwitcher';
@@ -323,6 +324,7 @@ test('offers Forget only where it can succeed, and never mid-switch', async () =
   fireEvent.click(row(/^Laptop/));
   expect(select).toHaveBeenCalledOnce();
   expect(screen.queryByRole('menuitem', { name: 'Forget Laptop' })).toBeNull();
+  expect(screen.queryByRole('menuitem', { name: /unreachable/ })).toBeNull();
   fireEvent.keyDown(row(/^Laptop/), { key: 'Delete' });
   expect(screen.queryByText('Forget on this device?')).toBeNull();
   await act(async () => finishSwitch());
@@ -341,7 +343,7 @@ test('Escape backs out of an armed Forget before it closes the menu', () => {
   expect(close).toHaveBeenCalledOnce();
 });
 
-test('Space on a row selects it rather than typing into the filter', async () => {
+test('Space stays on its row to activate it, while a letter goes to the filter', async () => {
   const { select } = openMenu([station, laptop, ...extras]);
   const laptopRow = row(/^Laptop/);
   laptopRow.focus();
@@ -375,4 +377,70 @@ test('reuses an answer, but re-checks a Station that did not answer', async () =
   reachable.add('https://three.example.test');
   expect(await probeStation(extras[0].url)).toBe('online');
   expect(fetchMock).toHaveBeenCalledTimes(3);
+});
+
+test('the forget prompt is announced for a Station whose name has spaces', () => {
+  // Desktop ids embed the Station name, so they can contain spaces, which an
+  // id reference list would split.
+  const spaced = {
+    ...named('three', 'Old dev instance'),
+    id: 'station-profile:old dev instance',
+  };
+  openMenu([station, spaced]);
+  fireEvent.keyDown(row(/^Old dev instance/), { key: 'Delete' });
+  const confirm = screen.getByRole('menuitem', {
+    name: 'Forget Old dev instance',
+  });
+  const ids = (confirm.getAttribute('aria-describedby') ?? '').split(' ');
+  expect(ids).toHaveLength(1);
+  expect(document.getElementById(ids[0] ?? '')?.textContent).toBe(
+    'Forget on this device?',
+  );
+});
+
+test('never switches to a Station that is not running', () => {
+  const stopped: SavedConnection = {
+    ...named('local', 'Local Station'),
+    injected: true,
+    injectedStatus: 'stopped',
+  };
+  const { select } = openMenu([station, laptop, extras[0], extras[1], stopped]);
+  const filter = screen.getByRole('searchbox', { name: 'Find a Station' });
+  fireEvent.change(filter, { target: { value: 'local' } });
+  fireEvent.keyDown(filter, { key: 'Enter' });
+  expect(select).not.toHaveBeenCalled();
+});
+
+test('a touch screen keeps the keyboard down even when the previous Station is not running', () => {
+  vi.stubGlobal(
+    'matchMedia',
+    (query: string) =>
+      ({ matches: query === '(pointer: coarse)' }) as MediaQueryList,
+  );
+  const stopped: SavedConnection = {
+    ...named('local', 'Local Station'),
+    injected: true,
+    injectedStatus: 'stopped',
+  };
+  openMenu([station, stopped, ...extras]);
+  expect(document.activeElement).not.toBe(
+    screen.getByRole('searchbox', { name: 'Find a Station' }),
+  );
+  expect(document.activeElement).toBe(row(/^Build box/));
+});
+
+test('an HTTPS page does not probe a plain-HTTP address it could not reach', () => {
+  const lan = named('lan', 'LAN box');
+  expect(
+    isProbeable({ ...lan, url: 'http://192.168.1.20:3141' }, 'https:'),
+  ).toBe(false);
+  expect(isProbeable({ ...lan, url: 'http://127.0.0.1:3141' }, 'https:')).toBe(
+    true,
+  );
+  expect(
+    isProbeable({ ...lan, url: 'http://192.168.1.20:3141' }, 'http:'),
+  ).toBe(true);
+  expect(
+    isProbeable({ ...lan, url: 'https://lan.example.test' }, 'https:'),
+  ).toBe(true);
 });

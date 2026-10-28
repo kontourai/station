@@ -40,6 +40,7 @@ function storeWithSharedProfile() {
 function mount(
   store: ConnectionStore,
   removeSharedProfile?: (input: SavedStationRemoval) => Promise<void>,
+  canRemoveSharedProfile?: (connectionId: string) => boolean,
 ) {
   const captured: { value?: ReturnType<typeof useConnections> } = {};
   function Probe() {
@@ -51,6 +52,7 @@ function mount(
       store={store}
       defaultUrl="https://desk.example.test"
       {...(removeSharedProfile ? { removeSharedProfile } : {})}
+      {...(canRemoveSharedProfile ? { canRemoveSharedProfile } : {})}
     >
       <Probe />
     </ConnectionsProvider>,
@@ -99,5 +101,12 @@ describe('forgetConnection', () => {
       vi.fn(async () => {}),
     );
     expect(withHost.canForgetConnection('station-profile:Box')).toBe(true);
+    // The host can still refuse one it owns, such as the app's own Station.
+    const refusing = mount(
+      store,
+      vi.fn(async () => {}),
+      (id) => id !== 'station-profile:Box',
+    );
+    expect(refusing.canForgetConnection('station-profile:Box')).toBe(false);
   });
 });

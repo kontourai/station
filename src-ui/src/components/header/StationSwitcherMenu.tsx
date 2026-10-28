@@ -145,11 +145,11 @@ export function StationSwitcherMenu({
       filterRef.current.focus();
       return;
     }
-    menuRef.current
-      ?.querySelector<HTMLElement>(
-        '[data-station-row]:not([aria-checked="true"])',
-      )
-      ?.focus();
+    const previous = menuRef.current?.querySelector<HTMLElement>(
+      '[data-station-row]:not([aria-checked="true"]):not(:disabled)',
+    );
+    if (previous) previous.focus();
+    else if (coarse) menuRef.current?.focus();
   }, [menuRef]);
   useEffect(() => {
     let live = true;
@@ -170,7 +170,7 @@ export function StationSwitcherMenu({
   }, [connections, activeConnectionId]);
 
   const select = (connection: SavedConnection) => {
-    if (switchingRef.current || removing.has(connection.id)) return;
+    if (switchingRef.current || isUnavailable(connection)) return;
     if (connection.id === activeConnectionId) {
       onClose();
       return;
@@ -328,7 +328,7 @@ export function StationSwitcherMenu({
           />
         )}
         <div className="station-switcher__profiles">
-          {visible.map((connection) => {
+          {visible.map((connection, index) => {
             const current = connection.id === activeConnectionId;
             const unavailable = isUnavailable(connection);
             const probed = reachability[connection.id];
@@ -357,9 +357,7 @@ export function StationSwitcherMenu({
                   data-station-row=""
                   aria-checked={current}
                   aria-label={label ? `${name} — ${label}` : name}
-                  aria-describedby={
-                    armed ? `${promptId}-${connection.id}` : undefined
-                  }
+                  aria-describedby={armed ? `${promptId}-${index}` : undefined}
                   aria-keyshortcuts={
                     canForget(connection) ? 'Delete' : undefined
                   }
@@ -377,7 +375,7 @@ export function StationSwitcherMenu({
                     </span>
                     {shown && (
                       <span
-                        id={`${promptId}-${connection.id}`}
+                        id={`${promptId}-${index}`}
                         className="station-switcher__status"
                       >
                         {shown}
@@ -400,7 +398,7 @@ export function StationSwitcherMenu({
                     className={`station-switcher__remove${armed ? ' station-switcher__remove--armed' : ''}`}
                     aria-label={`Forget ${name}`}
                     aria-describedby={
-                      armed ? `${promptId}-${connection.id}` : undefined
+                      armed ? `${promptId}-${index}` : undefined
                     }
                     title={armed ? undefined : 'Forget'}
                     onBlur={() => {
