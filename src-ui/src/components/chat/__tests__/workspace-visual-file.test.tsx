@@ -163,6 +163,54 @@ test.each(['/assets/logo.svg', '/api/attachments/abc'])(
   },
 );
 
+// #4266: a reply's sentence naming files keeps its shape; only an image the
+// reply placed with `![…](…)` stands in for a picture.
+test('filenames in inline code stay inline code in their sentence', async () => {
+  readVisual.mockRejectedValue(
+    new WorkspaceVisualFileError(415, 'unsupported-type'),
+  );
+  const dir = path.replace('/index.html', '');
+  const view = mount(
+    `The helper found: \`${dir}/fake.png\`, \`${dir}/real.jpg\` and \`${dir}/ok.png\`.`,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const paragraph = view.container.querySelector('p');
+  expect(paragraph?.textContent).toContain('fake.png');
+  expect(paragraph?.textContent).toContain('ok.png');
+  expect(paragraph?.querySelectorAll('code')).toHaveLength(3);
+  expect(screen.queryByRole('note')).toBeNull();
+  expect(view.container.querySelector('.workspace-file-reply')).toBeNull();
+  expect(view.container.querySelector('img')).toBeNull();
+  expect(readVisual).not.toHaveBeenCalled();
+});
+
+test('a plain link Station cannot preview stays in its sentence with the reason', async () => {
+  readVisual.mockRejectedValue(
+    new WorkspaceVisualFileError(415, 'unsupported-type'),
+  );
+  const view = mount(
+    `See [the drafts](${path.replace('index.html', 'after.png')}) for detail.`,
+  );
+  const note = await screen.findByRole('note');
+  expect(note.textContent).toBe('(Only PNG images and HTML pages show here.)');
+  expect(
+    view.container.querySelector('.markdown-image-unavailable'),
+  ).toBeNull();
+  expect(view.container.textContent).toContain(
+    'See the drafts (Only PNG images and HTML pages show here.) for detail.',
+  );
+});
+
+test('an image of a JPEG says Station shows only PNG, without asking for it', async () => {
+  const view = mount(`![photo](${path.replace('index.html', 'real.jpg')})`);
+  const card = await screen.findByRole('note');
+  expect(card.textContent).toBe(
+    'photoOnly PNG images and HTML pages show here.',
+  );
+  expect(view.container.querySelector('img')).toBeNull();
+  expect(readVisual).not.toHaveBeenCalled();
+});
+
 test('a request that never got an answer is not reported as a missing file', async () => {
   readVisual.mockRejectedValue(new TypeError('Failed to fetch'));
   mount(`[Interactive mockup](${path})`);

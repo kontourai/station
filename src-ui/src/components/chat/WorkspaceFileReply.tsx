@@ -24,9 +24,14 @@ export function workspaceFilePath(href: string | undefined): string | null {
   return href.split('#')[0] || null;
 }
 
+/**
+ * A path Station's visual reader serves: an HTML page or a PNG image, the
+ * types `workspace-visual-file.ts` reads (it re-encodes PNG only). Any other
+ * image type is refused there, so it is not asked for.
+ */
 export function workspaceVisualPath(href: string | undefined): string | null {
   const path = workspaceFilePath(href);
-  return path && /\.(?:html?|png|jpe?g|gif|webp)$/i.test(path) ? path : null;
+  return path && /\.(?:html?|png)$/i.test(path) ? path : null;
 }
 
 /** Why a visual file could not be shown, for a reader. */
@@ -171,6 +176,17 @@ export function WorkspaceFileReply({
   const label = children || fileName;
   if (query.error) {
     const failure = visualFileFailureOf(query.error);
+    // #4266: a link stays in its sentence; only an image the reply placed
+    // gets the card that stands in for it.
+    if (variant === 'link')
+      return (
+        <span className="workspace-file-reply workspace-file-reply--unavailable">
+          {label}{' '}
+          <span className="workspace-file-reply__reason" role="note">
+            ({visualFileFailureText(failure)})
+          </span>
+        </span>
+      );
     return (
       <span className="workspace-file-reply">
         <VisualUnavailableCard

@@ -75,9 +75,13 @@ function mediaTypeOf(src: string): string {
 
 type ImageProps = ComponentPropsWithoutRef<'img'> & { node?: unknown };
 
-/** A file name with an extension that names no image or page type. */
-const NOT_AN_IMAGE_FILE =
-  /\.(?!(?:html?|png|jpe?g|gif|webp|svg|avif|bmp|ico)$)[a-z0-9]+$/i;
+/**
+ * A file name Station's visual reader does not show: any extension but HTML
+ * and PNG (`workspaceVisualPath`), save the vector and icon types a page
+ * serves itself. A JPEG, GIF or WebP in the Project is refused there, so it
+ * says so instead of rendering a broken image.
+ */
+const UNSHOWN_FILE = /\.(?!(?:html?|png|svg|avif|bmp|ico)$)[a-z0-9]+$/i;
 
 /**
  * A markdown image that opens the shared previewer (zoom, pinch) on click, so
@@ -119,16 +123,16 @@ function LegacyMarkdownImage({ src, alt, node: _node, ...props }: ImageProps) {
       </WorkspaceFileReply>
     );
   }
-  // #4266: in a Project chat, an image naming a file that is no image
-  // (`README.md`) says so, rather than leaving a broken image for a URL
-  // nothing serves. A path with no extension (an API route) or another image
-  // type keeps the plain image.
+  // #4266: in a Project chat, an image naming a file Station does not show
+  // (`README.md`, a JPEG) says so, rather than leaving a broken image for a
+  // URL nothing serves. A path with no extension (an API route) or a type a
+  // page serves itself (SVG) keeps the plain image.
   const filePath = workspaceFilePath(source);
   if (
     link?.projectSlug &&
     !localPath &&
     filePath &&
-    NOT_AN_IMAGE_FILE.test(filePath)
+    UNSHOWN_FILE.test(filePath)
   ) {
     return (
       <VisualUnavailableCard
