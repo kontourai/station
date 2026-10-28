@@ -120,10 +120,12 @@ describe('cli-mcp parity entry point', () => {
       unrelated,
     ];
     git('init', '--quiet', unrelated);
-    git(...commit, 'commit', '--quiet', '--allow-empty', '-m', 'head');
-    const tree = git('-C', unrelated, 'rev-parse', 'HEAD^{tree}');
-    // No parent: a root commit unrelated to HEAD.
+    // Plumbing only, so no global commit hook runs in the fixture. Two
+    // parentless commits: HEAD and origin/main are unrelated roots.
+    const tree = git('-C', unrelated, 'write-tree');
+    const head = git(...commit, 'commit-tree', tree, '-m', 'head');
     const orphan = git(...commit, 'commit-tree', tree, '-m', 'unrelated');
+    git('-C', unrelated, 'update-ref', 'HEAD', head);
     git('-C', unrelated, 'update-ref', 'refs/remotes/origin/main', orphan);
     const { status, output } = runGate(null, [], {
       ...gitEnv,
