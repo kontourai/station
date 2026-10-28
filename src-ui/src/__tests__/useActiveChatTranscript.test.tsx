@@ -2823,7 +2823,8 @@ describe('useActiveChatTranscript', () => {
             answer('e11', 'C.'),
             event('e12', 'turn.completed', {
               turnId: 'turn-6',
-              outputText: 'A. B. C.',
+              // The terminal text also ends with what the stream dropped.
+              outputText: 'A. B. C. D.',
             }),
           ],
         })
@@ -2848,8 +2849,9 @@ describe('useActiveChatTranscript', () => {
           events: [start, answer('e7', 'A. '), answer('e8', 'B. ')],
         }),
       );
+      // Whole again: the terminal text is adopted, its last words included.
       await waitFor(() =>
-        expect(assistantText(result.current.messages)).toBe('A. B. C.'),
+        expect(assistantText(result.current.messages)).toBe('A. B. C. D.'),
       );
     });
 
