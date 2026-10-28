@@ -33,6 +33,7 @@ import { StationRouteLearning } from './components/connections/useStationRoutes'
 import { DialogHistoryHostBoundary } from './components/DialogHistoryHost';
 import { Header } from './components/header/Header';
 import { LazyBoundary } from './components/LazyBoundary';
+import { NativeContextMenuGuard } from './components/NativeContextMenuGuard';
 import { ConnectionBannerSource } from './components/notifications/ConnectionBannerSource';
 import {
   SetupReturnNotice,
@@ -783,6 +784,7 @@ function App() {
                   componentProps={{}}
                   pending={null}
                 />
+                <NativeContextMenuGuard />
                 {/* Single floating voice affordance: the S2S pill. The separate STT
               FAB was unmounted here first — having both rendered two floating
               mics (opposite corners) whenever voice was enabled — and its

@@ -1,0 +1,7 @@
+{
+  "revision": "fc718a60a20625f07d41a0d6afb653a346337a01",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"MessageBubble now also tracks pointer up/cancel for the touch-selection rule; bubble ⋯ menus and their rows are unchanged, so composer and transcript claims stand.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

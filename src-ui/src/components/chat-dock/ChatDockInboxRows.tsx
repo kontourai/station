@@ -10,6 +10,7 @@ import {
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { useSessionWorkClaims } from '../../contexts/WorkClaimsContext';
+import { useContextMenuGesture } from '../../hooks/useContextMenuGesture';
 import { agentMark, workIdentityMarks } from '../../utils/identity-marks';
 import { relativeTime } from '../../utils/relativeTime';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
@@ -691,6 +692,16 @@ export function InboxRow({
         onDiscarded={(action) => onDraftDiscarded(item, action)}
       />
     ) : null;
+  // A phone row keeps most of its actions in the Details sheet; a hold on the
+  // row (or a right-click, on a touch-chrome row with a mouse) opens that
+  // sheet, as the Details button does. Hover chrome has no sheet: its actions
+  // are already beside the pointer that would right-click.
+  const gesture = useContextMenuGesture({
+    enabled: details,
+    onOpen: () => {
+      setDetailsOpen(true);
+    },
+  });
   const describedBy =
     tooltip && hover.anchor ? `${statusId} ${hoverCardId}` : statusId;
   return (
@@ -710,6 +721,7 @@ export function InboxRow({
       data-row-key={rowKey ?? item.id}
       data-status-rung={status.rung}
       data-lane={status.lane}
+      {...gesture}
       onPointerEnter={tooltip ? hover.onPointerEnter : undefined}
       onPointerLeave={tooltip ? hover.onPointerLeave : undefined}
       onFocus={tooltip ? hover.onFocus : undefined}
