@@ -307,6 +307,7 @@ import {
 import { parseStationTaskBasisCollection } from '@kontourai/station-contracts/task-basis';
 import {
   INTERNAL_SESSION_READ_SCOPE,
+  type SessionReadAuthority,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import {
@@ -2053,6 +2054,23 @@ export function configureRuntimeRoutes(
    * request (the operator's clients, devices, a bound operator caller,
    * Station's own server code), which keeps its own rules.
    */
+  /**
+   * Whose monitoring rows a request reads. Station's own writers stamp the
+   * acting principal; rows ingested over OTLP are stamped with this host's OS
+   * alias as "the instance's user" (`otlp-receiver.ts`). In a personal Station
+   * that user is the personal account, so its members read those rows too.
+   * Hosted callers, and principals outside the account, never do.
+   */
+  const readableMonitoringOwnerIds = (
+    authority: SessionReadAuthority,
+  ): readonly string[] => {
+    const owners =
+      context.orchestrationService.readableSessionOwnerIds(authority);
+    return authority.mode === 'personal' &&
+      owners.includes(LOCAL_OPERATOR_PRINCIPAL_ID)
+      ? [...owners, getCachedUser().alias]
+      : owners;
+  };
   const agentOwnerIdForRequest = (
     request: Request,
   ): string | null | undefined => {
@@ -9500,6 +9518,7 @@ export function configureRuntimeRoutes(
       projectHomeDir: context.configLoader.getProjectHomeDir(),
       readAuthorityForRequest: conversationReadAuthorityForRequest,
       eventOwnerForRequest: agentOwnerIdForRequest,
+      readableEventOwnerIds: readableMonitoringOwnerIds,
       canReadMonitoringEvent: (event, authority) => {
         const sessionId = monitoringSessionIdentity(event);
         return sessionId
@@ -10228,6 +10247,7 @@ export function configureRuntimeRoutes(
             )
           : true;
       },
+      readableEventOwnerIds: readableMonitoringOwnerIds,
     }),
   );
   context.app.route('/api/voice', createVoiceRoutes(context.voiceService));
