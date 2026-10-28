@@ -1744,6 +1744,7 @@ repo-wide default change.
 Examples:
 
 ```bash
+station approvals list --json
 station approvals list --agent=codex --thread=runtime-thread
 station approvals list --agent=codex --json
 station approvals list --agent=kiro --thread=kiro-thread
