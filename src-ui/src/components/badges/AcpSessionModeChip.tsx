@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import type { AdvertisedAcpMode } from '../../utils/acpSessionMode';
-import { ArrowDownGlyph } from '../icons/Glyph';
+import { ComposerChoice } from '../ComposerChoice';
 import { LazyBoundary } from '../LazyBoundary';
 import '../chat/chat.css';
 
@@ -29,10 +29,9 @@ export function AcpSessionModeChip({
 
   return (
     <>
-      <button
+      <ComposerChoice
         ref={triggerRef}
-        type="button"
-        className="choice-trigger chat-input__approval-chip chat-input__approval-chip--default"
+        className="chat-input__approval-chip chat-input__approval-chip--default"
         aria-haspopup="dialog"
         aria-expanded={isSheetOpen}
         aria-label={`Session mode: ${selectedLabel}. Engine advertised control.`}
@@ -40,20 +39,10 @@ export function AcpSessionModeChip({
           selected.description ? ` — ${selected.description}` : ''
         }`}
         onClick={() => setIsSheetOpen((open) => !open)}
-      >
-        {/* Captioned like its Agent and Model neighbours: a bare engine mode
-            name ("build", "plan") in the rail said nothing about what it
-            selects. */}
-        <span className="chat-input__chip-stack">
-          <span className="chat-input__chip-caption" aria-hidden="true">
-            Mode
-          </span>
-          <span className="chat-input__approval-chip-label" aria-hidden="true">
-            {selectedLabel}
-          </span>
-        </span>
-        <ArrowDownGlyph className="choice-caret" />
-      </button>
+        caption="Mode"
+        value={selectedLabel}
+        valueClassName="chat-input__approval-chip-label"
+      />
       {isSheetOpen && (
         <LazyBoundary
           load={loadSheet}

@@ -17,6 +17,7 @@ import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
 import { MODEL_NOT_REPORTED } from '../../utils/modelCapabilities';
 import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
+import { ComposerChoice } from '../ComposerChoice';
 import { AgentIcon } from '../icons/AgentIcon';
 import { ArrowDownGlyph, CloseGlyph } from '../icons/Glyph';
 import { displayableProjectIcon, ProjectIcon } from '../icons/ProjectIcon';
@@ -449,7 +450,10 @@ export function StartComposer({
           </p>
         )}
         <div className="start-composer__bar">
-          <fieldset className="start-composer__chips" aria-label="Chat setup">
+          <fieldset
+            className="composer-choices start-composer__chips"
+            aria-label="Chat setup"
+          >
             {agent.status === 'loading' ? (
               <span
                 className="start-composer__chip start-composer__chip--loading"
@@ -459,9 +463,8 @@ export function StartComposer({
                 <Skeleton variant="line" width="9rem" />
               </span>
             ) : (
-              <button
-                type="button"
-                className={`choice-trigger start-composer__chip start-composer__chip--agent${agent.needsSetup ? ' start-composer__chip--attention' : ''}`}
+              <ComposerChoice
+                className={`start-composer__chip start-composer__chip--agent${agent.needsSetup ? ' start-composer__chip--attention' : ''}`}
                 aria-haspopup="dialog"
                 aria-label={`Agent: ${startAgentChipText(agent)}${agent.needsSetup ? ', needs setup' : ''}${!onOpenModel && agent.status === 'ready' && agent.modelNote ? `. ${agent.modelNote}` : ''}`}
                 title={
@@ -470,29 +473,29 @@ export function StartComposer({
                     : undefined
                 }
                 onClick={(event) => onOpenAgents(event.currentTarget)}
-              >
-                {agent.agent && <AgentIcon agent={agent.agent} size="small" />}
-                <span className="start-composer__chip-text">{agentText}</span>
-                <ArrowDownGlyph className="choice-caret" />
-              </button>
+                caption="Agent"
+                value={agentText}
+                icon={
+                  agent.agent && <AgentIcon agent={agent.agent} size="small" />
+                }
+              />
             )}
             {onOpenModel && agent.status === 'ready' && (
-              <button
-                type="button"
-                className="choice-trigger start-composer__chip start-composer__chip--model"
+              <ComposerChoice
+                className="start-composer__chip start-composer__chip--model"
                 aria-haspopup="dialog"
                 aria-label={`Model: ${agent.modelLabel ?? MODEL_NOT_REPORTED}${agent.modelNote ? `. ${agent.modelNote}` : ''}`}
                 title={agent.modelNote}
                 disabled={!agent.agent}
                 onClick={(event) => onOpenModel(event.currentTarget)}
-              >
-                <span className="start-composer__chip-text">
-                  {agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED
+                caption="Model"
+                valueClassName="chat-input__model-name"
+                value={
+                  agent.modelLabel && agent.modelLabel !== MODEL_NOT_REPORTED
                     ? agent.modelLabel
-                    : 'Model'}
-                </span>
-                <ArrowDownGlyph className="choice-caret" />
-              </button>
+                    : 'Model'
+                }
+              />
             )}
             {agent.status === 'ready' &&
               (!agent.environmentId || agent.environmentId === 'current') &&

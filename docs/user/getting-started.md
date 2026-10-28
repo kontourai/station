@@ -216,7 +216,9 @@ which scope owns a choice. If your Device is not linked to a person, preferences
 remain local. Different Stations keep separate account preferences.
 
 The approval chip shows the known mode, including **Full access**, **Auto** or
-**Ask**. **Engine default** means the engine's active mode has not been confirmed.
+**Ask**. For Codex, inherited settings resolve to that mode when its reported
+approval policy and sandbox match a supported mode. **Default** means no
+supported active mode has been confirmed.
 Open the picker to see the source, the confirmed mode and whether a request takes
 effect next turn or requires restarting the session. A Claude chat started in a
 chosen mode by someone who may grant full access can switch to full access on
@@ -529,10 +531,10 @@ Project's model or the usual default applies and the Model chip's tooltip says
 why. The approval mode can be set for the Project (Ask first, Auto or full
 access) or follow your last chat there. It applies below the Agent's own mode
 and replaces your personal default for that engine, and full access is only
-reused when you can grant it. **Permissions** on the composer names where its
-mode came from, and opens the approval picker to choose this chat's mode
-before you start; picking **Default** there uses the Agent's, then the
-Station's default instead.
+reused when you can grant it. The composer's permissions button shows the
+requested mode. Open it to see where the mode came from or choose this chat's
+mode before you start. **Default** uses the engine's saved permissions;
+the active mode is confirmed after startup.
 
 Until Station has loaded your projects, the chips show placeholders and
 **Start** waits, so a start never runs in a project Station has guessed. If

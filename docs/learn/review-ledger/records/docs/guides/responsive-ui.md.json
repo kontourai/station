@@ -136,7 +136,11 @@
 
     "pnpm-lock.yaml#/packages",
 
-    "pnpm-lock.yaml#/snapshots"
+    "pnpm-lock.yaml#/snapshots",
+
+    "src-ui/src/components/ComposerChoice.tsx",
+
+    "src-ui/src/components/ComposerChoice.css"
   ],
 
   "checks": [

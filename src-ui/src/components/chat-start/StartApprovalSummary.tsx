@@ -8,7 +8,7 @@ import {
   approvalModeChipLabel,
   resolveEffectiveApprovalMode,
 } from '../../utils/approvalMode';
-import { ArrowDownGlyph } from '../icons/Glyph';
+import { ComposerChoice } from '../ComposerChoice';
 import { LazyBoundary } from '../LazyBoundary';
 
 /** The chat composer's own picker, loaded only when opened (ApprovalModeChip). */
@@ -73,17 +73,15 @@ export function StartApprovalSummary({
     return null;
   const label =
     resolved.source === 'project unavailable'
-      ? 'Set when the chat starts'
-      : resolved.mode === 'connection-default'
-        ? 'Engine settings'
-        : approvalModeChipLabel(resolved.mode);
+      ? 'Set at start'
+      : approvalModeChipLabel(resolved.mode);
   const title = `${
     resolved.source === 'session override'
       ? 'Chosen for this chat.'
       : resolved.source === 'project unavailable'
         ? "This project's new-chat settings could not be read here; Station applies them when the chat starts."
         : resolved.mode === 'connection-default'
-          ? 'The engine has not reported its active approval mode yet.'
+          ? 'Uses the engine’s saved permissions; the active mode is confirmed after startup.'
           : `Requested at startup, from ${resolved.source}.`
   }${
     resolved.source !== 'session override' &&
@@ -94,44 +92,31 @@ export function StartApprovalSummary({
         ? ' Your last chat here ran with full access, which is only reused when you can grant it.'
         : ''
   }`;
-  const visible = `Permissions: ${label}${
-    resolved.source === 'account default'
-      ? ' · your default'
-      : resolved.source === 'agent default'
-        ? ' · Agent default'
-        : resolved.source === 'project last used'
-          ? ' · last used here'
-          : resolved.source === 'project default'
-            ? ' · project default'
-            : resolved.source === 'station default'
-              ? ' · Station default'
-              : ''
-  }`;
-  const text = <span className="start-composer__chip-text">{visible}</span>;
+  const visible = `Permissions: ${label}`;
   if (!onPick)
     return (
-      <span
-        className="start-composer__chip start-composer__chip--status"
+      <ComposerChoice
+        className="start-composer__chip"
+        caption="Approval"
+        value={label}
+        aria-label={`${visible}. ${title}`}
         title={title}
-      >
-        {text}
-      </span>
+        disabled
+      />
     );
   return (
     <>
-      <button
+      <ComposerChoice
         ref={triggerRef}
-        type="button"
-        className="choice-trigger start-composer__chip start-composer__chip--approval"
+        className="start-composer__chip start-composer__chip--approval"
         aria-haspopup="dialog"
         aria-expanded={isSheetOpen}
         aria-label={`${visible}. ${title}`}
         title={title}
         onClick={() => setIsSheetOpen((open) => !open)}
-      >
-        {text}
-        <ArrowDownGlyph className="choice-caret" />
-      </button>
+        caption="Approval"
+        value={label}
+      />
       {isSheetOpen && (
         <LazyBoundary
           load={loadComposerModeSheet}
@@ -144,7 +129,9 @@ export function StartApprovalSummary({
             sourceNote:
               resolved.source === 'session override'
                 ? 'Only this chat'
-                : `From ${resolved.source === 'account default' ? 'your saved default' : resolved.source}`,
+                : resolved.mode === 'connection-default'
+                  ? 'Uses the engine’s saved permissions; confirmed after startup.'
+                  : `From ${resolved.source === 'account default' ? 'your saved default' : resolved.source}`,
             isNewSession: true,
             layer: sheetLayer,
           }}
