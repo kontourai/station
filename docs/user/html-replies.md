@@ -15,8 +15,8 @@ browser's effective WebRTC policy before loading authored content. It refuses an
 unsupported browser or enterprise override that prevents the restrictive policy,
 even when the profile file requests it.
 
-Local HTML pages and PNG images that a reply links (`[label](path)`) or
-embeds (`![alt](path)`) in a Project conversation also open inline. A path
+Local HTML pages and PNG images that a reply links to, or embeds as a
+Markdown image, in a Project conversation also open inline. A path
 named in a sentence or in inline code stays in its sentence. Station reads the
 file through that Project's workspace or a verified Git worktree of the same
 repository. HTML uses the same isolated viewer. An image's alt text is shown as

@@ -38,7 +38,7 @@
 }
 
 .child-work-transcript__markdown {
-  color: var(--text-primary);
+  color: var(--k-text);
   min-width: 0;
 }
 
