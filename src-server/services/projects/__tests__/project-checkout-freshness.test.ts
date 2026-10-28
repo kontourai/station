@@ -412,12 +412,23 @@ describe('project checkout freshness', () => {
     const { checkout, land } = fixture();
     land(2);
     git(checkout, ['fetch', '-q']);
+    const reader = createProjectCheckoutFreshnessReader({ ttlMs: 0 });
     git(checkout, ['config', 'branch.main.merge', 'refs/heads/main~1']);
-    const result = await createProjectCheckoutFreshnessReader().read(
-      checkout,
-      THRESHOLDS,
-    );
-    expect(result).toMatchObject({ status: 'unknown', reason: 'no-upstream' });
+    await expect(reader.read(checkout, THRESHOLDS)).resolves.toMatchObject({
+      status: 'unknown',
+      reason: 'no-upstream',
+    });
+    // A local "upstream" naming an object id rather than a ref.
+    git(checkout, ['config', 'branch.main.remote', '.']);
+    git(checkout, [
+      'config',
+      'branch.main.merge',
+      git(checkout, ['rev-parse', 'origin/main']),
+    ]);
+    await expect(reader.read(checkout, THRESHOLDS)).resolves.toMatchObject({
+      status: 'unknown',
+      reason: 'no-upstream',
+    });
   });
 
   test('a line break written into the upstream config cannot shift which remote is read', async () => {
