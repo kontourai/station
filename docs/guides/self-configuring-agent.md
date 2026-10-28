@@ -393,8 +393,8 @@ Session by its `sessionId`, without creating a task.
   the host proves the thread inactive and genuinely inputless, with no retained
   captured-input audit. A thread with capture history can therefore be idle
   while a requested settlement remains unverified. A turn that a Station
-  restart interrupted leaves the Session idle but settles nothing: it does not
-  satisfy `turn-settled`, and nothing acknowledges the requested work. Active requested work whose
+  restart interrupted leaves the Session idle but settles nothing: no
+  `settledTurn` reports it, and nothing acknowledges the requested work. Active requested work whose
   producer emits only untagged observations remains running and unacknowledged.
   A positively scoped terminal uses the actual current boundary or validated
   retirement witness and complete canonical scope; its invocation is never
