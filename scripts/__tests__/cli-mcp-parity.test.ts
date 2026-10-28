@@ -109,24 +109,29 @@ describe('cli-mcp parity entry point', () => {
     // HEAD and origin/main both exist but share no history, as in an
     // unrelated or too-shallow fetch: the tip is there to fall back to.
     const unrelated = makeTempDir('cli-mcp-parity-git-');
-    const commit = [
-      '-c',
-      'user.name=Parity',
-      '-c',
-      'user.email=parity@example.invalid',
-      '-c',
-      'commit.gpgsign=false',
-      '-C',
-      unrelated,
-    ];
     git('init', '--quiet', unrelated);
-    // Plumbing only, so no global commit hook runs in the fixture. Two
-    // parentless commits: HEAD and origin/main are unrelated roots.
-    const tree = git('-C', unrelated, 'write-tree');
-    const head = git(...commit, 'commit-tree', tree, '-m', 'head');
-    const orphan = git(...commit, 'commit-tree', tree, '-m', 'unrelated');
-    git('-C', unrelated, 'update-ref', 'HEAD', head);
-    git('-C', unrelated, 'update-ref', 'refs/remotes/origin/main', orphan);
+    // Plumbing with hooks pointed at an empty path, so no global hook
+    // (commit, index or reference-transaction) runs in the fixture.
+    const fixtureGit = (...args: string[]) =>
+      git(
+        '-c',
+        `core.hooksPath=${join(unrelated, 'no-hooks')}`,
+        '-c',
+        'user.name=Parity',
+        '-c',
+        'user.email=parity@example.invalid',
+        '-c',
+        'commit.gpgsign=false',
+        '-C',
+        unrelated,
+        ...args,
+      );
+    // Two parentless commits: HEAD and origin/main are unrelated roots.
+    const tree = fixtureGit('write-tree');
+    const head = fixtureGit('commit-tree', tree, '-m', 'head');
+    const orphan = fixtureGit('commit-tree', tree, '-m', 'unrelated');
+    fixtureGit('update-ref', 'HEAD', head);
+    fixtureGit('update-ref', 'refs/remotes/origin/main', orphan);
     const { status, output } = runGate(null, [], {
       ...gitEnv,
       GIT_DIR: join(unrelated, '.git'),
