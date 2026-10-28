@@ -1030,7 +1030,7 @@ export function CodingWorkbench({
 
   // ── One bar: the breadcrumb names the conversation, and Chat's own
   // toolbar (its project context, Open/New, the dock menu) renders into the
-  // bar's two slots beside it (#3046) rather than as a second row.
+  // bar's slots beside it (#3046) rather than as a second row.
   // The folded inbox's edge: a slim strip on the Chat column's left edge
   // that reopens the inbox (the reader's own choice) and carries the inbox's
   // "Needs you" count so a fold never hides that something is waiting. Fine
@@ -1040,11 +1040,17 @@ export function CodingWorkbench({
   const inboxEdge = wide && centerChat && !inboxOpen && !coarsePointer;
   const inboxEdgeName = inboxToggleLabel(false, inboxNeedsYou);
   const chatBar = centerChat && page === 'chat';
+  const [barStart, setBarStart] = useState<HTMLElement | null>(null);
   const [barLeading, setBarLeading] = useState<HTMLElement | null>(null);
   const [barTrailing, setBarTrailing] = useState<HTMLElement | null>(null);
   const chatBarSlots = useMemo(
-    () => ({ leading: barLeading, trailing: barTrailing, namesPane: true }),
-    [barLeading, barTrailing],
+    () => ({
+      start: barStart,
+      leading: barLeading,
+      trailing: barTrailing,
+      namesPane: true,
+    }),
+    [barStart, barLeading, barTrailing],
   );
   // The panel heads: the pane's own controls join the head row.
   const [sideHeadLeading, setSideHeadLeading] = useState<HTMLElement | null>(
@@ -1196,6 +1202,9 @@ export function CodingWorkbench({
               Skip to views
             </button>
           )}
+          {chatBar ? (
+            <div className="coding-workbench__bar-trailing" ref={setBarStart} />
+          ) : null}
           {isMobile ? (
             <nav
               className="coding-workbench__mobile-nav"
@@ -1791,6 +1800,7 @@ const CenterChat = memo(function CenterChat({
   onInboxNeedsYouChange,
 }: {
   slots: {
+    start: HTMLElement | null;
     leading: HTMLElement | null;
     trailing: HTMLElement | null;
     namesPane: boolean;

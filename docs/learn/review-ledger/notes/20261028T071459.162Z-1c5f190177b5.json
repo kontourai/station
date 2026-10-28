@@ -1,0 +1,7 @@
+{
+  "revision": "4520f1bab0603e7d08faf3fcc9af945336254e5d",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Review-fix round: stationProfileStorage.removeProfile now fails closed (refuses every local-service profile until boot names this app's own Station) and recognizes the own Station by name or by localService instanceId+baseDir. Searched this document for forget/remove, localService, bundled-profile or switcher claims: none; credential custody, authorization and pairing paths it describes are unchanged.","inputs":["docs/guides/self-configuring-agent.md","src-ui/src/platform/native/stationProfileStorage.ts"]}
+  ]
+}
