@@ -337,10 +337,18 @@ async function runCompletionPhaseSequence(input) {
         getLease().phase?.executionDeadlineAt ?? executionDeadlineAt;
       let raw;
       let timedOut = false;
-      // A refusal is this phase's failed result. A wait cut short by the lane
-      // deadline or a cancel aborts the lane, whose own deadline runner and
-      // cancellation decide how it ends.
-      if (heavyCheckRefusal) raw = { status: null, error: heavyCheckRefusal };
+      // A refusal is this phase's failed result. A cancel, or the lane's own
+      // deadline timer, aborts the wait and the lane decides how it ends. The
+      // wait's cap uses the wall clock, which can pass the lane deadline first
+      // (a host waking from sleep): that is still the deadline expiring.
+      if (heavyCheckRefusal)
+        raw = {
+          status: null,
+          error: heavyCheckRefusal,
+          ...(context.now() >= context.absoluteDeadline
+            ? { deadlineExpired: true }
+            : {}),
+        };
       else
         try {
           ({ raw, timedOut } = await runWithinDeadline({

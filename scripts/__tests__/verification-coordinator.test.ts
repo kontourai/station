@@ -608,7 +608,12 @@ describe('verification coordinator', () => {
       const slotDir = join(temp.root, 'heavy-check-slots');
       holdOnlySlot(slotDir);
       const controller = new AbortController();
-      const abort = setTimeout(() => controller.abort(), 300);
+      // Cancel once the waiter's ticket is queued, not after a fixed delay.
+      const abort = setInterval(() => {
+        const queue = join(slotDir, 'queue');
+        if (existsSync(queue) && readdirSync(queue).length > 0)
+          controller.abort();
+      }, 10);
       let calls = 0;
       try {
         const result = await coordinateVerification({
@@ -628,7 +633,7 @@ describe('verification coordinator', () => {
         expect(result.receipt.terminal.status).toBe('canceled');
         expect(readdirSync(join(slotDir, 'queue'))).toEqual([]);
       } finally {
-        clearTimeout(abort);
+        clearInterval(abort);
         temp.remove();
       }
     }, 30_000);
@@ -640,7 +645,12 @@ describe('verification coordinator', () => {
       const slotDir = join(temp.root, 'heavy-check-slots');
       holdOnlySlot(slotDir);
       const controller = new AbortController();
-      const abort = setTimeout(() => controller.abort(), 300);
+      // Cancel once the waiter's ticket is queued, not after a fixed delay.
+      const abort = setInterval(() => {
+        const queue = join(slotDir, 'queue');
+        if (existsSync(queue) && readdirSync(queue).length > 0)
+          controller.abort();
+      }, 10);
       const ran: string[] = [];
       try {
         // A canceled full-regression ends the way it does when canceled
@@ -669,7 +679,7 @@ describe('verification coordinator', () => {
           JSON.parse(readFileSync(join(slotDir, 'slot-0.lock'), 'utf8')).nonce,
         ).toBe('another-worktree');
       } finally {
-        clearTimeout(abort);
+        clearInterval(abort);
         temp.remove();
       }
     }, 30_000);
@@ -726,6 +736,55 @@ describe('verification coordinator', () => {
         temp.remove();
       }
     }, 60_000);
+
+    test('a phase refused after the lane deadline passed reports a timeout', async () => {
+      const temp = fixture();
+      const worktree = join(temp.root, 'worktree');
+      mkdirSync(worktree);
+      const slotDir = join(temp.root, 'heavy-check-slots');
+      holdOnlySlot(slotDir);
+      const day = 24 * 60 * 60_000;
+      let clock = 1_000_000;
+      // The lane clock jumps past its deadline (a host waking from sleep)
+      // while the wait's own short cap is still running on the wall clock.
+      const jump = setTimeout(() => {
+        clock += 2 * day;
+      }, 100);
+      const ran: string[] = [];
+      try {
+        const result = await coordinateVerification({
+          laneId: 'full-regression',
+          root: temp.root,
+          cwd: worktree,
+          heartbeatMs: 1,
+          now: () => clock,
+          timeoutMs: day,
+          collectProvenance: () => worktreeProvenance(worktree, 'heavy-sleep'),
+          hostCpuSampler: async () =>
+            buildHostPressureSample({
+              busyPercent: 40,
+              cpuCount: 4,
+              sampleMs: 1,
+              sampledAt: clock,
+              threshold: 85,
+              source: 'override',
+            }),
+          env: heavyCheckEnv(slotDir, '600'),
+          phaseRunner: async ({ phase }: { phase: { id: string } }) => {
+            ran.push(phase.id);
+            return { status: 0 };
+          },
+        });
+        expect(ran).toEqual([]);
+        expect(result.receipt.terminal).toMatchObject({
+          status: 'timed_out',
+          passed: false,
+        });
+      } finally {
+        clearTimeout(jump);
+        temp.remove();
+      }
+    }, 30_000);
 
     test('a reused receipt takes no slot, even while the pool is full', async () => {
       const temp = fixture();
