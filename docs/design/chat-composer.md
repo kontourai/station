@@ -120,10 +120,17 @@ button, hero or recent-chats list. Its Project control and, only when there is
 more than one Station, its **Run a task…** control join the chip row under the
 text beside the Agent, Model and Permissions chips. Setup, repair and read
 errors render in the draft body. New Task keeps its **Shaping a Task** chip and
-the fork keeps its replay disclosure and **Cancel fork**. Escape, focusing a
-chat, or opening a conversation leaves the draft and reports it dismissed.
-Collapsing the dock keeps the draft and its written text, and the idle
-auto-hide waits while a draft is open.
+the fork keeps its replay disclosure and **Cancel fork**. Escape, Back (the
+draft takes a history entry, as a dialog does), or the dock moving to any
+other chat (a tab, the inbox, a toast's Open, `?chat=`, browser history)
+dismisses the draft and hands back its text; focus returns to the control that
+opened it, else the chat composer. A plain New chat while a draft is open keeps
+that draft and focuses it; a request carrying a prompt, files, choices, a
+hand-off or a Task replaces it. Collapsing the dock, including a phone's setup
+journey, keeps the draft mounted but hidden, so all its state (text, files,
+chips, setup return) survives and it never starts again by itself. The chat
+it covers stays mounted, hidden and inert, and does not count as on screen
+for turn notifications while covered.
 The Project page opens on Overview and keeps its shared Project Room separate
 from direct Agent conversations. Separate Agent and Engine & model controls sit
 inside the composer beside Start and the overflow for visual skills. The Agent list retains each Agent's repair action: a row that cannot start is

@@ -852,7 +852,10 @@ test('new chat remains touch-usable and scrollable at 390x844', async ({
   const agentChip = startComposer(page).getByRole('button', {
     name: /^Agent:/,
   });
-  const start = startComposer(page).getByRole('button', { name: 'Start' });
+  const start = startComposer(page).getByRole('button', {
+    name: 'Start',
+    exact: true,
+  });
   // No keyboard is summoned on a phone before the person asks to type.
   await expect(
     startComposer(page).getByRole('textbox', {

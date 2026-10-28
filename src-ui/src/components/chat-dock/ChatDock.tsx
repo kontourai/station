@@ -65,7 +65,10 @@ import { UnsavedGuardOwnerContext } from '../../contexts/UnsavedGuardOwnerContex
 import { useDismissPhoneLayer } from '../../contexts/useDismissPhoneLayer';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useWorkObservation } from '../../contexts/work-observation';
-import { registerFullscreenChatSurface } from '../../hooks/orchestration/chatForeground';
+import {
+  registerChatDraftCover,
+  registerFullscreenChatSurface,
+} from '../../hooks/orchestration/chatForeground';
 import {
   ensureOrchestrationEventStream,
   resyncOrchestrationEventStream,
@@ -100,6 +103,8 @@ import { useProjectIcons } from '../../hooks/useProjectIcons';
 import { useWorkingChatFocus } from '../../hooks/useWorkingChatFocus';
 import {
   dockAcceptsNewChatIntent,
+  type NewChatIntent,
+  newChatIntentCarriesPayload,
   readNewChatIntent,
 } from '../../lib/newChatIntent';
 import {
@@ -838,6 +843,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     activeProjectSlug: dockChromeProjectSlug,
     setActiveProjectSlug,
   } = chrome;
+  // The dock body is on screen: open, or previewing a drag from Collapsed.
+  const workspaceShown = isPaneOpen || isCollapsedDragPreview;
 
   // Idle auto-collapse: collapse an open, idle dock down to the Collapsed bar.
   // This reuses the Collapsed snap path so the bar and its drag/resize handle
@@ -1077,10 +1084,21 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // dock: expanded when collapsed, and over a phone layer as focusing a chat
   // is (`useChatDockActions.focusSession`). A full-screen placement is
   // already showing.
-  const revealNewChatDraft = useEffectEvent(() => {
-    if (!showNewChatModal || isFullscreenPlacement) return;
+  const conversationSurfaceRef = useRef<HTMLDivElement>(null);
+  const revealDockForDraft = useCallback(() => {
+    if (isFullscreenPlacement) return;
     dismissPhoneLayer();
     if (!isDockOpen) setDockState(true, isMobile ? true : lastDockMaximized);
+  }, [
+    isFullscreenPlacement,
+    dismissPhoneLayer,
+    isDockOpen,
+    setDockState,
+    isMobile,
+    lastDockMaximized,
+  ]);
+  const revealNewChatDraft = useEffectEvent(() => {
+    if (showNewChatModal) revealDockForDraft();
   });
   useEffect(() => {
     if (newChatRequestEpoch > 0) revealNewChatDraft();
@@ -1099,6 +1117,63 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const leaveNewChatDraft = useCallback(() => {
     if (newChatDraftOpen.current) closeNewChatDraft();
   }, [closeNewChatDraft]);
+  // A plain New chat (the header, Cmd+T, the inbox, the palette) while a
+  // draft is open keeps that draft rather than wiping what it holds: it is
+  // shown and its text box focused. A request carrying something (a prompt,
+  // files, choices, a hand-off, a Task) still replaces it.
+  const requestNewChat = useCallback(
+    (intent?: NewChatIntent) => {
+      if (newChatDraftOpen.current && !newChatIntentCarriesPayload(intent)) {
+        revealDockForDraft();
+        requestAnimationFrame(() =>
+          conversationSurfaceRef.current
+            ?.querySelector<HTMLTextAreaElement>('.new-chat-modal textarea')
+            ?.focus(),
+        );
+        return;
+      }
+      setShowNewChatModal(true, intent);
+    },
+    [revealDockForDraft, setShowNewChatModal],
+  );
+  // Leaving the draft is also derived from state: when anything moves the
+  // dock to another chat (the `?chat=` sync, a toast's Open, browser
+  // Back/Forward), the draft no longer stands in front of the chat it opened
+  // over, so it is dismissed with its text. The fast paths above leave it
+  // first; a fork's own open is still in flight, so it is never cut short.
+  const draftOpenedOver = useRef<{
+    active: string | null;
+    imported: string | null;
+  } | null>(null);
+  // Captured per request (its epoch), not per active-chat change.
+  const captureDraftOpenedOver = useEffectEvent(() => {
+    draftOpenedOver.current = {
+      active: activeSessionId,
+      imported: importedSessionId,
+    };
+  });
+  useEffect(() => {
+    void newChatRequestEpoch;
+    captureDraftOpenedOver();
+  }, [newChatRequestEpoch]);
+  useEffect(() => {
+    const over = draftOpenedOver.current;
+    if (!showNewChatModal || !over || forkOperation.pending) return;
+    if (over.active !== activeSessionId || over.imported !== importedSessionId)
+      closeNewChatDraft();
+  }, [
+    showNewChatModal,
+    activeSessionId,
+    importedSessionId,
+    forkOperation.pending,
+    closeNewChatDraft,
+  ]);
+  // While the draft covers the chat, that chat is not on screen: its
+  // end-of-turn toasts and attention come back (`chatForeground`).
+  useEffect(() => {
+    if (!showNewChatModal) return;
+    return registerChatDraftCover();
+  }, [showNewChatModal]);
   // station#4525: the dock header's project binding is DockShell-owned state
   // (`chrome.activeProjectSlug`), not a derivation of the active session's
   // own `projectSlug` — that derivation was the actual reset mechanism (see
@@ -1212,7 +1287,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       );
     },
     onAuthError: () => requestAuth?.(),
-    onOpenNewChat: () => setShowNewChatModal(true),
+    onOpenNewChat: () => requestNewChat(),
     // station#1294 review (SHOULD-FIX-4): a send failing while the dock is
     // collapsed has nowhere visible to render the transcript notice — the
     // generic toast must not be suppressed in that case.
@@ -1704,7 +1779,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       setImportedSessionId,
     ],
   );
-  const conversationSurfaceRef = useRef<HTMLDivElement>(null);
   // The session context card: beside the transcript while the dock itself has
   // room for both, behind a header chip otherwise. A phone never shows it
   // inline: a row of its Chat actions sheet opens the rows as a bottom sheet.
@@ -1893,7 +1967,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       migratedTurnId?: string,
     ) => {
       if (!initialMessage?.trim() && !attachments?.length) {
-        setShowNewChatModal(true);
+        requestNewChat();
         return;
       }
       await startNewChatWithMessage({
@@ -1905,7 +1979,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
         openChatForAgent: openChatForAgentInScopedPane,
       });
     },
-    [activeSession, agents, openChatForAgentInScopedPane, setShowNewChatModal],
+    [activeSession, agents, openChatForAgentInScopedPane, requestNewChat],
   );
   // #3310: fires from the chat-settings menu; the transcript's summary card
   // observes progress/failure through the shared mutation key.
@@ -1913,8 +1987,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // New chats inherit the dock’s bound project, including explicit No project.
   const openNewChatDirect = useCallback(() => {
     setImportedSessionId(null);
-    setShowNewChatModal(true);
-  }, [setShowNewChatModal, setImportedSessionId]);
+    requestNewChat();
+  }, [requestNewChat, setImportedSessionId]);
   const openConversationInScopedPane = useCallback(
     (
       conversationId: string,
@@ -2104,7 +2178,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       if (!dockAcceptsNewChatIntent(intent, hasImmutableProjectScope)) return;
       // Tell the sender a dock took it, so it may hand its draft over.
       event.preventDefault();
-      setShowNewChatModal(true, intent);
+      requestNewChat(intent);
     };
     // station#1297: `HomeView.continueWork` / `ProjectSidebar` request focus
     // from outside the ChatDock subtree. The request used to carry only
@@ -2248,7 +2322,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     routeToScopedChatProject,
     scopedProjectSlug,
     setProjectFilter,
-    setShowNewChatModal,
     isFullscreenPlacement,
     isMobile,
     effectiveDockSlotPlacement,
@@ -2258,6 +2331,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     agentsLoaded,
     showSurface,
     setIsTaskSwitcherOpen,
+    requestNewChat,
   ]);
 
   // Sync activeChat (conversationId) from URL to local state
@@ -3054,7 +3128,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 sessions,
                 unreadCount,
                 focusSession: selectWorkingChat,
-                onNewChat: () => setShowNewChatModal(true),
+                onNewChat: () => requestNewChat(),
                 setShowChatSettings,
               }}
               // The region's own controls — placement, maximize, visibility,
@@ -3118,13 +3192,18 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             />
           )}
 
-          {(isPaneOpen || isCollapsedDragPreview) && (
+          {(workspaceShown || showNewChatModal) && (
             <>
               {/* The old second chrome bar (`ChatDockTabBar`) is retired on
                   desktop too (#3309) — mobile absorbed its rows into one bar
                   first (#1066), and the header above now carries its
                   controls. #1064's no-third-bar decision stands. */}
-              <div className="chat-dock__workspace">
+              {/* A collapsed dock keeps an open New chat draft mounted but
+                  hidden, so collapsing (or a phone's setup journey, which
+                  collapses it) never discards the draft's state or its
+                  setup-return banner. Only the draft stays; everything
+                  else here still mounts with the open dock. */}
+              <div className="chat-dock__workspace" hidden={!workspaceShown}>
                 {/* The right-mode dock is a ~400px column; the inbox panel's
                     240px floor would crush the conversation surface, so the
                     panel (and its toggle) only exist in bottom mode.
@@ -3133,11 +3212,12 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     duplicating the header's own expand/collapse toggle
                     (the "Collapse/Expand chat list" row of the header's More
                     menu since #1536 F, the single control for this now). */}
-                {inboxPanelMounts({
-                  isMobile,
-                  dockMode: effectiveDockSlotPlacement,
-                  isFullscreenPlacement,
-                }) &&
+                {workspaceShown &&
+                  inboxPanelMounts({
+                    isMobile,
+                    dockMode: effectiveDockSlotPlacement,
+                    isFullscreenPlacement,
+                  }) &&
                   inboxPresence.mounted && (
                     <LazyBoundary
                       load={loadChatDockInboxPanel}
@@ -3167,7 +3247,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       pending={null}
                     />
                   )}
-                {activeWorkPanel &&
+                {workspaceShown &&
+                  activeWorkPanel &&
                   !importedSessionId &&
                   activeSession?.projectSlug &&
                   !isMobile && (
@@ -3524,7 +3605,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       }
                     />
                   ) : null}
-                  {!showNewChatModal &&
+                  {workspaceShown &&
+                  !showNewChatModal &&
                   conversationOpenRecovery &&
                   !importedSessionId ? (
                     <LazyBoundary
@@ -3544,7 +3626,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       }
                     />
                   ) : null}
-                  {!showNewChatModal && importedSessionId ? (
+                  {workspaceShown && !showNewChatModal && importedSessionId ? (
                     <LazyBoundary
                       key={importedSessionId}
                       load={loadImportedConversationPane}
@@ -3568,136 +3650,153 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       pending={<SkeletonBlock count={1} label="Opening chat" />}
                     />
                   ) : null}
-                  {!showNewChatModal &&
+                  {/* The chat the draft opened over stays mounted under it,
+                      hidden and inert, so its form answers, reply text and
+                      scroll survive a draft that is dismissed. */}
+                  {workspaceShown &&
                   !conversationOpenRecovery &&
                   !importedSessionId ? (
-                    <ChatDockContentArea
-                      onNewChat={handleStartNewChatWithMessage}
-                      onRetryConversationOpen={retryActiveConversationOpen}
-                      activeSession={activeSession}
-                      workingDirectory={sessionDisplayCwd}
-                      activeOrchestrationSession={activeOrchestrationSession}
-                      activeOrchestrationSessionRead={
-                        activeOrchestrationSessionRead
-                      }
-                      onRetryOrchestrationSessions={() => {
-                        void refetchOrchestrationSessions();
-                      }}
-                      activeSessionId={activeSessionId}
-                      sessions={sessions}
-                      agents={agents}
-                      projects={projects}
-                      projectScope={
-                        scopedProjectSlug
-                          ? {
-                              slug: scopedProjectSlug,
-                              name:
-                                projects.find(
-                                  (project) =>
-                                    project.slug === scopedProjectSlug,
-                                )?.name ?? scopedProjectSlug,
-                            }
-                          : null
-                      }
-                      chatFontSize={chatFontSize}
-                      dockHeight={dockHeight}
-                      showStatsPanel={showStatsPanel}
-                      showContextMeter={contextMeterShown}
-                      showReasoning={showReasoning}
-                      showToolDetails={showToolDetails}
-                      modelSupportsAttachments={modelSupportsAttachments}
-                      fileAttachmentsSupported={fileAttachmentsSupported}
-                      modelProviderLabel={modelProviderLabel}
-                      modelProviders={modelProviders}
-                      agentDefaultModelId={agentDefaultModelId ?? null}
-                      agentApprovalModeDefault={agentApprovalModeDefault}
-                      stationApprovalModeDefault={
-                        appConfig?.defaultApprovalMode
-                      }
-                      toolPolicyDelivery={toolPolicyDelivery}
-                      availableModels={effectiveModels}
-                      executionModels={executionRoutes}
-                      onExecutionModelSelect={
-                        conversationBoundaryDialogs.openExecutionHandoff
-                      }
-                      modelsLoading={modelsLoading}
-                      chatInput={chatInput}
-                      onComposerEnabledChange={onComposerEnabledChange}
-                      secondaryActions={secondaryActions}
-                      onOpenAgentHandoff={() =>
-                        openConversationHandoff(composerAgentTriggerRef.current)
-                      }
-                      agentHandoffTriggerRef={composerAgentTriggerRef}
-                      isHistoryOpen={isHistoryOpen}
-                      onCloseHistory={closeHistory}
-                      onToggleStatsPanel={setShowStatsPanel}
-                      onTitleUpdate={handleTitleUpdate}
-                      onDeleteSession={removeSession}
-                      onFocusSession={focusSessionInPane}
-                      onOpenConversation={
-                        openUserSelectedConversationInScopedPane
-                      }
-                      onForkFromTurn={(source) => {
-                        const generation = ++forkGenerationRef.current;
-                        void Promise.all([
-                          import('./forkAttemptKey'),
-                          import('./forkSourceExecution'),
-                          import('../../hooks/orchestration/replay/controller'),
-                        ]).then(
-                          ([
-                            { getOrCreateForkAttemptKey },
-                            { resolveHistoricalForkExecution },
-                            {
-                              getConversationTimelineContext,
-                              returnToLatestConversation,
+                    <div
+                      className="chat-dock__covered-chat"
+                      hidden={showNewChatModal}
+                      inert={showNewChatModal}
+                    >
+                      <ChatDockContentArea
+                        onNewChat={handleStartNewChatWithMessage}
+                        onRetryConversationOpen={retryActiveConversationOpen}
+                        activeSession={activeSession}
+                        workingDirectory={sessionDisplayCwd}
+                        activeOrchestrationSession={activeOrchestrationSession}
+                        activeOrchestrationSessionRead={
+                          activeOrchestrationSessionRead
+                        }
+                        onRetryOrchestrationSessions={() => {
+                          void refetchOrchestrationSessions();
+                        }}
+                        activeSessionId={activeSessionId}
+                        sessions={sessions}
+                        agents={agents}
+                        projects={projects}
+                        projectScope={
+                          scopedProjectSlug
+                            ? {
+                                slug: scopedProjectSlug,
+                                name:
+                                  projects.find(
+                                    (project) =>
+                                      project.slug === scopedProjectSlug,
+                                  )?.name ?? scopedProjectSlug,
+                              }
+                            : null
+                        }
+                        chatFontSize={chatFontSize}
+                        dockHeight={dockHeight}
+                        showStatsPanel={showStatsPanel}
+                        showContextMeter={contextMeterShown}
+                        showReasoning={showReasoning}
+                        showToolDetails={showToolDetails}
+                        modelSupportsAttachments={modelSupportsAttachments}
+                        fileAttachmentsSupported={fileAttachmentsSupported}
+                        modelProviderLabel={modelProviderLabel}
+                        modelProviders={modelProviders}
+                        agentDefaultModelId={agentDefaultModelId ?? null}
+                        agentApprovalModeDefault={agentApprovalModeDefault}
+                        stationApprovalModeDefault={
+                          appConfig?.defaultApprovalMode
+                        }
+                        toolPolicyDelivery={toolPolicyDelivery}
+                        availableModels={effectiveModels}
+                        executionModels={executionRoutes}
+                        onExecutionModelSelect={
+                          conversationBoundaryDialogs.openExecutionHandoff
+                        }
+                        modelsLoading={modelsLoading}
+                        chatInput={chatInput}
+                        onComposerEnabledChange={onComposerEnabledChange}
+                        secondaryActions={secondaryActions}
+                        onOpenAgentHandoff={() =>
+                          openConversationHandoff(
+                            composerAgentTriggerRef.current,
+                          )
+                        }
+                        agentHandoffTriggerRef={composerAgentTriggerRef}
+                        isHistoryOpen={isHistoryOpen}
+                        onCloseHistory={closeHistory}
+                        onToggleStatsPanel={setShowStatsPanel}
+                        onTitleUpdate={handleTitleUpdate}
+                        onDeleteSession={removeSession}
+                        onFocusSession={focusSessionInPane}
+                        onOpenConversation={
+                          openUserSelectedConversationInScopedPane
+                        }
+                        onForkFromTurn={(source) => {
+                          const generation = ++forkGenerationRef.current;
+                          void Promise.all([
+                            import('./forkAttemptKey'),
+                            import('./forkSourceExecution'),
+                            import(
+                              '../../hooks/orchestration/replay/controller'
+                            ),
+                          ]).then(
+                            ([
+                              { getOrCreateForkAttemptKey },
+                              { resolveHistoricalForkExecution },
+                              {
+                                getConversationTimelineContext,
+                                returnToLatestConversation,
+                              },
+                            ]) => {
+                              if (generation !== forkGenerationRef.current)
+                                return;
+                              const timeline = getConversationTimelineContext();
+                              const conversationId =
+                                activeSession?.conversationId ??
+                                timeline?.sourceConversationId;
+                              if (!conversationId) return;
+                              const sourceExecution =
+                                resolveHistoricalForkExecution(
+                                  source.sessionId,
+                                  orchestrationSessions,
+                                );
+                              setForkSource({
+                                id: conversationId,
+                                agentSlug: source.agentSlug,
+                                turnId: source.turnId,
+                                projectSlug:
+                                  activeSession?.projectSlug ??
+                                  timeline?.sourceProjectSlug,
+                                projectName:
+                                  activeSession?.projectName ??
+                                  timeline?.sourceProjectName,
+                                model: source.model,
+                                modelSource: source.model
+                                  ? 'runtime'
+                                  : undefined,
+                                defaultModel: source.model,
+                                defaultModelSource: source.model
+                                  ? 'runtime'
+                                  : undefined,
+                                providerType:
+                                  source.provider ??
+                                  sourceExecution.providerType,
+                                providerId: sourceExecution.providerId,
+                                providerOptions:
+                                  sourceExecution.providerOptions,
+                                sourceSessionId: source.sessionId,
+                                idempotencyKey: getOrCreateForkAttemptKey(
+                                  conversationId,
+                                  source.turnId,
+                                ),
+                              });
+                              setForkOperation({ pending: false, error: null });
+                              if (timeline) returnToLatestConversation();
+                              setShowNewChatModal(true);
                             },
-                          ]) => {
-                            if (generation !== forkGenerationRef.current)
-                              return;
-                            const timeline = getConversationTimelineContext();
-                            const conversationId =
-                              activeSession?.conversationId ??
-                              timeline?.sourceConversationId;
-                            if (!conversationId) return;
-                            const sourceExecution =
-                              resolveHistoricalForkExecution(
-                                source.sessionId,
-                                orchestrationSessions,
-                              );
-                            setForkSource({
-                              id: conversationId,
-                              agentSlug: source.agentSlug,
-                              turnId: source.turnId,
-                              projectSlug:
-                                activeSession?.projectSlug ??
-                                timeline?.sourceProjectSlug,
-                              projectName:
-                                activeSession?.projectName ??
-                                timeline?.sourceProjectName,
-                              model: source.model,
-                              modelSource: source.model ? 'runtime' : undefined,
-                              defaultModel: source.model,
-                              defaultModelSource: source.model
-                                ? 'runtime'
-                                : undefined,
-                              providerType:
-                                source.provider ?? sourceExecution.providerType,
-                              providerId: sourceExecution.providerId,
-                              providerOptions: sourceExecution.providerOptions,
-                              sourceSessionId: source.sessionId,
-                              idempotencyKey: getOrCreateForkAttemptKey(
-                                conversationId,
-                                source.turnId,
-                              ),
-                            });
-                            setForkOperation({ pending: false, error: null });
-                            if (timeline) returnToLatestConversation();
-                            setShowNewChatModal(true);
-                          },
-                        );
-                      }}
-                      onOpenBackgroundTasks={showBackgroundTasks}
-                    />
+                          );
+                        }}
+                        onOpenBackgroundTasks={showBackgroundTasks}
+                      />
+                    </div>
                   ) : null}
                 </SplitPaneCompanion>
                 {sessionContextCardPresence.mounted &&

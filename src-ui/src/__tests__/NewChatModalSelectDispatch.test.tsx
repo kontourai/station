@@ -193,6 +193,8 @@ vi.mock('../hooks/useExecutionStationCatalog', async (importOriginal) => ({
     ],
     nameFor: (id: string) =>
       id === 'peer-kontour' ? 'Kontour' : 'This Station',
+    knownNameFor: (id: string) =>
+      id === 'peer-kontour' ? 'Kontour' : 'This Station',
     stationsUnavailable: false,
   }),
 }));

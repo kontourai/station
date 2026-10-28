@@ -3,6 +3,10 @@ import type { ProjectRunLocations } from '@kontourai/station-contracts/project';
 import type { InstalledSkillExperienceV1 } from '@kontourai/station-contracts/skill-experience';
 import { useSkillExperienceInventoryQuery } from '@kontourai/station-sdk';
 import {
+  applyReturnFocus,
+  captureReturnFocus,
+} from '@kontourai/station-shared/return-focus';
+import {
   sameSkillExperienceIdentity,
   skillExperienceInputDefaults,
   skillExperiencesCanExecute,
@@ -11,6 +15,8 @@ import React, {
   useCallback,
   useEffect,
   useEffectEvent,
+  useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -82,6 +88,8 @@ import {
   composeStartMessage,
 } from '../coding-layout/chatContextDraft';
 import '../chat-start/ChatStart.css';
+import { useDialogHistoryHost } from '../DialogHistoryHost';
+import { registerDialogHistory } from '../dialog-history';
 import { HomeFolderLabel } from '../HomeFolderLabel';
 import { ArrowDownGlyph, WarningGlyph } from '../icons/Glyph';
 import { LayoutIcon } from '../icons/LayoutIcon';
@@ -1498,14 +1506,19 @@ export function NewChatModal({
   }
 
   // "Start a chat in <Project> on <Station>": the project chip's own words
-  // and the Station the Agent chip will run on, never a guess while either
-  // is still being read.
-  const draftDestination =
-    projectChip.status === 'ready' && agentChip.status === 'ready'
-      ? ` ${startProjectPhrase(projectChip)} on ${stationChoices.nameFor(
-          agentChip.environmentId ?? 'current',
-        )}`
-      : '';
+  // and the Station the Agent chip will run on. Each part shows only once it
+  // is known; nothing is guessed while either is still being read.
+  const draftStation =
+    agentChip.status === 'ready'
+      ? stationChoices.knownNameFor(agentChip.environmentId ?? 'current')
+      : undefined;
+  const draftDestination = [
+    projectChip.status === 'ready' ? startProjectPhrase(projectChip) : null,
+    draftStation ? `on ${draftStation}` : null,
+  ]
+    .filter(Boolean)
+    .map((part) => ` ${part}`)
+    .join('');
   return (
     <NewChatDraftSurface
       ariaLabel={
@@ -2331,6 +2344,11 @@ export function NewChatModal({
  * the dock's region and placement as they are. Escape dismisses it, as
  * leaving the draft for another chat does; a menu opened from it handles
  * its own Escape first (`ResponsiveDialogSurface` stops propagation).
+ *
+ * Like a dialog it takes a history entry (`registerDialogHistory`, the
+ * mechanism `ResponsiveDialogSurface` uses), so a phone's Back dismisses the
+ * draft rather than leaving the page; and when it goes, focus returns to the
+ * control that opened it, else to the chat composer it covered.
  */
 function NewChatDraftSurface({
   children,
@@ -2345,11 +2363,54 @@ function NewChatDraftSurface({
   initialFocusRef?: React.RefObject<HTMLElement | null>;
   onClose: () => void;
 }) {
+  const sectionRef = useRef<HTMLElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const historyId = useId();
+  const historyHost = useDialogHistoryHost();
+  useEffect(
+    () =>
+      registerDialogHistory(historyId, () => onCloseRef.current(), historyHost),
+    [historyHost, historyId],
+  );
+  // Captured before the draft takes focus (layout effects run first), read
+  // when it unmounts.
+  const returnFocus = useRef<HTMLElement[]>([]);
+  useLayoutEffect(() => {
+    returnFocus.current = captureReturnFocus();
+  }, []);
+  // StrictMode replays the cleanup while the draft stays mounted: cancel that
+  // provisional restore, as `ResponsiveDialogSurface` does.
+  const restoreFrame = useRef<number | null>(null);
+  useEffect(() => {
+    if (restoreFrame.current !== null)
+      cancelAnimationFrame(restoreFrame.current);
+    const section = sectionRef.current;
+    const surface = section?.closest<HTMLElement>(
+      '.chat-dock__conversation-surface',
+    );
+    return () => {
+      restoreFrame.current = requestAnimationFrame(() => {
+        const composer = surface?.querySelector<HTMLElement>(
+          'textarea:not([disabled])',
+        );
+        applyReturnFocus(
+          returnFocus.current.length > 0
+            ? returnFocus.current
+            : composer
+              ? [composer]
+              : [],
+          section,
+        );
+      });
+    };
+  }, []);
   useEffect(() => {
     initialFocusRef?.current?.focus();
   }, [initialFocusRef]);
   return (
     <section
+      ref={sectionRef}
       className={`new-chat-modal${className ? ` ${className}` : ''}`}
       aria-label={ariaLabel}
       onKeyDown={(event) => {

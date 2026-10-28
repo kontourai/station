@@ -1489,7 +1489,7 @@ test('pasting an image into a Station-engine composer attaches it and sends it a
   );
 });
 
-test('a Task inventory outage does not block the mobile inbox or recent chats', async ({
+test('a Task inventory outage does not block the mobile inbox or New chat', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -1536,7 +1536,6 @@ test('a Task inventory outage does not block the mobile inbox or recent chats', 
   await menu.getByRole('button', { name: 'New chat', exact: true }).click();
   const newChat = page.getByRole('region', { name: 'New chat', exact: true });
   await expect(newChat).toBeVisible();
-  await expect(newChat.getByText('Could not load recent chats')).toHaveCount(0);
 });
 
 /**

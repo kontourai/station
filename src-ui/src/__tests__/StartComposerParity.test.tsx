@@ -1771,7 +1771,7 @@ describe("the dock's New chat is a draft, not a dialog", () => {
     ).toBe(false);
   });
 
-  test('with no project the line uses the chip’s words; a second Station adds the Station control', async () => {
+  test('with no project the line uses the chip’s words and names no Station before the device answers; a second Station adds the Station control', async () => {
     state.environments = [
       {
         profile: {
@@ -1785,10 +1785,9 @@ describe("the dock's New chat is a draft, not a dialog", () => {
     ];
     const ui = renderBoth();
     const dock = ui.dock();
+    // The device has not answered (undefined): no Station claim yet.
     expect(
-      await within(dock).findByText(
-        'Start a chat without a project on This Station',
-      ),
+      await within(dock).findByText('Start a chat without a project'),
     ).toBeTruthy();
     const chips = within(formOf(dock)).getByRole('group', {
       name: 'Chat setup',

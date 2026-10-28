@@ -55,6 +55,17 @@ export function useStationChoices({ enabled: wanted = true } = {}) {
     nameFor: (environmentId: string) =>
       stations.find((entry) => entry.id === environmentId)?.name ??
       'Selected Station',
+    /**
+     * The name only once it is known: this Station after the device has
+     * answered (until then there is no device claim to make), another only
+     * once the lists naming it have loaded. Never a placeholder.
+     */
+    knownNameFor: (environmentId: string) =>
+      environmentId === 'current'
+        ? device
+          ? currentStationName(device)
+          : undefined
+        : stations.find((entry) => entry.id === environmentId)?.name,
     stationsUnavailable: environments.isError || peers.isError,
   };
 }

@@ -2610,6 +2610,22 @@ button:hover {
   overflow: hidden;
 }
 
+/* A collapsed dock that holds a New chat draft keeps it mounted, hidden. */
+.chat-dock__workspace[hidden] {
+  display: none;
+}
+
+/* The chat a New chat draft covers: no box of its own while shown, so the
+   content area lays out exactly as before; hidden (and inert) under the
+   draft. */
+.chat-dock__covered-chat {
+  display: contents;
+}
+
+.chat-dock__covered-chat[hidden] {
+  display: none;
+}
+
 .chat-dock__conversation-surface {
   display: flex;
   flex: 1;

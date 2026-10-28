@@ -29,7 +29,7 @@ export function composerDraftContext(
   };
 }
 
-export const FORK_REPLAY_ONLY_DISCLOSURE =
+const FORK_REPLAY_ONLY_DISCLOSURE =
   'Station replays the selected transcript only. Engine cursor, tool state, and approval state do not carry.';
 
 export type DockStartComposerProps = Omit<
