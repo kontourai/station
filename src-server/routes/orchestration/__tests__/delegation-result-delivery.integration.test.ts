@@ -74,6 +74,8 @@ let indeterminateStarts = 0;
 let retryDelays: number[] = [];
 /** A conversation's current Session, when it has moved on from its first. */
 const currentSessions = new Map<string, string>();
+/** Sessions with captured-input history: never provably inputless. */
+const capturedInput = new Set<string>();
 /** Sessions whose turn the live coordinator holds before the log shows it. */
 const coordinatorBusy = new Set<string>();
 let sequence = 0;
@@ -95,7 +97,9 @@ function harness(path: string): Harness {
         })),
     headSequence: (threadId) => store.readSessionInventoryHighWater(threadId),
     readInputlessTurnDisposition: (threadId) =>
-      store.readInputlessTurnDisposition(threadId),
+      capturedInput.has(threadId)
+        ? { kind: 'unknown' }
+        : store.readInputlessTurnDisposition(threadId),
     readInvocationTerminal: (threadId, invocationId, turnId) =>
       store.readInvocationTerminal(threadId, invocationId, turnId),
     turnEvents: (threadId, turnId, methods, limit, invocationId) =>
@@ -410,6 +414,7 @@ describe('delegated task result delivery (#3158)', () => {
     startedTurns.clear();
     currentSessions.clear();
     coordinatorBusy.clear();
+    capturedInput.clear();
     steerOutcome = 'unsupported-engine';
     holdStarts = false;
     refuseStarts = undefined;
@@ -441,11 +446,18 @@ describe('delegated task result delivery (#3158)', () => {
   });
 
   test.each([
-    { shape: 'invocation-anchored', invocationId: 'invocation-1' },
-    { shape: 'unanchored', invocationId: undefined },
+    {
+      shape: 'invocation-anchored',
+      invocationId: 'invocation-1',
+      captured: false,
+    },
+    // Captured input: the interruption needs no inputless proof.
+    { shape: 'captured input', invocationId: 'invocation-1', captured: true },
+    { shape: 'unanchored', invocationId: undefined, captured: false },
   ])(
     'a child turn a restart interrupted tells its parent once ($shape)',
-    async ({ invocationId }) => {
+    async ({ invocationId, captured }) => {
+      if (captured) capturedInput.add(CHILD);
       const h = setup();
       await routes(h, PARENT, () => 'running').delegate();
       emit(h, CHILD, 'turn.started', {
