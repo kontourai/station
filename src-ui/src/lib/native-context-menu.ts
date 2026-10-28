@@ -1,3 +1,24 @@
+const NON_TEXT_INPUTS = [
+  'button',
+  'checkbox',
+  'color',
+  'file',
+  'image',
+  'radio',
+  'range',
+  'reset',
+  'submit',
+]
+  .map((type) => `:not([type="${type}"])`)
+  .join('');
+
+const NATIVE_MENU_TARGETS = [
+  `input${NON_TEXT_INPUTS}`,
+  'textarea',
+  '[contenteditable]:not([contenteditable="false"])',
+  '.xterm',
+].join(', ');
+
 /**
  * Whether a `contextmenu` belongs to the platform rather than to Station.
  *
@@ -11,8 +32,12 @@
  *   Inspect Element once the guard swallows the ordinary right-click. Only the
  *   mouse's right button (`button === 2`): Shift+F10 is the keyboard's own
  *   context-menu key on Windows and Linux, and must open Station's menu.
- * - An editable target: Cut, Copy, Paste, spelling and the input method live
- *   in the native menu, and Station has no replacement for them.
+ * - A text-entry target: Cut, Copy, Paste, spelling and the input method live
+ *   in the native menu, and Station has no replacement for them. A checkbox,
+ *   radio, range or button input has none of those, so it is not one.
+ * - The terminal (`.xterm`): xterm.js moves its hidden textarea under the
+ *   pointer on `contextmenu` so the native menu offers Copy and Paste, but the
+ *   event's target is the rows it drew, not that textarea.
  * - A press ON the selected text: the user selected it and asked for the menu
  *   that acts on it (Copy, Look Up, Share).
  */
@@ -26,12 +51,7 @@ export function wantsNativeContextMenu(event: {
   if (event.shiftKey && event.button === 2) return true;
   const target = event.target;
   if (!(target instanceof Element)) return false;
-  if (
-    target.closest(
-      'input, textarea, select, [contenteditable]:not([contenteditable="false"])',
-    )
-  )
-    return true;
+  if (target.closest(NATIVE_MENU_TARGETS)) return true;
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed) return false;
   // The keyboard's menu key has no pointer (engines report 0, 0): it acts on

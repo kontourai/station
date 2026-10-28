@@ -1,7 +1,14 @@
-import { Fragment, useEffect, useLayoutEffect, useState } from 'react';
+import {
+  Fragment,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 import type { ContextMenuPoint } from '../hooks/useContextMenuGesture';
 import { useMenuFocus } from '../hooks/useMenuFocus';
+import { hostLayerOf, OverlayLayerContext } from './overlay-layer';
 import './header/HeaderMenu.css';
 // The separator and danger-row rules are the overflow menu's; same family.
 import './ActionOverflowMenu.css';
@@ -39,15 +46,21 @@ export function contextMenuAnchor(
  * The panel and rows are the menu family's (`.menu-surface`, `.menu-row`), the
  * backdrop is the portalled menus' click-away button, and focus enters and
  * returns through `useMenuFocus`. Only placement is its own: at the point,
- * pulled back inside the viewport once it has a measured size.
+ * pulled back inside the viewport once it has a measured size, and on the
+ * layer just above whatever hosts `origin` (a link in a dialog, a file tree in
+ * a sheet) the way `ActionOverflowMenu` places its own, so it never opens
+ * behind the surface it was opened from.
  */
 export function ContextMenu({
   at,
+  origin,
   label,
   actions,
   onClose,
 }: {
   at: ContextMenuPoint;
+  /** The element the menu was opened from; it decides the menu's layer. */
+  origin: HTMLElement;
   /** The menu's accessible name ("Actions for app.ts"). */
   label: string;
   actions: readonly ContextMenuAction[];
@@ -55,6 +68,25 @@ export function ContextMenu({
 }) {
   const menuRef = useMenuFocus<HTMLDivElement>(true, onClose);
   const [position, setPosition] = useState({ left: at.x, top: at.y });
+  const overlay = useContext(OverlayLayerContext);
+  /** The menu's z-index when its host outranks the default layer. */
+  const [layer, setLayer] = useState<number | null>(null);
+
+  useLayoutEffect(() => {
+    const hostLayer = hostLayerOf(origin, overlay);
+    const ownLayer = Number.parseInt(
+      getComputedStyle(document.documentElement).getPropertyValue(
+        '--layer-navigation',
+      ),
+      10,
+    );
+    // +2: the backdrop takes +1, between the host and the menu.
+    setLayer(
+      Number.isFinite(ownLayer) && hostLayer >= ownLayer - 1
+        ? hostLayer + 2
+        : null,
+    );
+  }, [origin, overlay]);
 
   useLayoutEffect(() => {
     const box = menuRef.current?.getBoundingClientRect();
@@ -96,18 +128,16 @@ export function ContextMenu({
         type="button"
         tabIndex={-1}
         className="header-menu__dismiss-backdrop context-menu__backdrop"
+        style={layer === null ? undefined : { zIndex: layer - 1 }}
         aria-label="Close menu"
         onClick={(event) => {
           event.stopPropagation();
           onClose();
         }}
-        // A second right-click away from the menu closes it, as a native
-        // menu does, instead of reaching the app-wide guard.
-        onContextMenu={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          onClose();
-        }}
+        // No WebView menu over an open one. The menu stays open: on touch
+        // this is usually the platform's own long-press `contextmenu` for the
+        // hold that opened it, landing on this backdrop.
+        onContextMenu={(event) => event.preventDefault()}
       />
       <div
         ref={menuRef}
@@ -115,7 +145,7 @@ export function ContextMenu({
         role="menu"
         aria-label={label}
         tabIndex={-1}
-        style={position}
+        style={layer === null ? position : { ...position, zIndex: layer }}
       >
         {ordered.map((action, index) => (
           <Fragment key={action.key}>

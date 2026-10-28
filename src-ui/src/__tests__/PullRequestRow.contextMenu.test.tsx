@@ -102,6 +102,72 @@ describe('pull request row context menu', () => {
     expect(open).toBeTruthy();
   });
 
+  test('after a hold, a tap on the menu it opened is not swallowed', () => {
+    vi.useFakeTimers();
+    const { open, unlink } = renderRow();
+    fireEvent.pointerDown(open, {
+      pointerType: 'touch',
+      button: 0,
+      clientX: 10,
+      clientY: 10,
+    });
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    fireEvent.pointerUp(open, { pointerType: 'touch' });
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    // The menu is a body portal, but React bubbles its events through the
+    // row: the row must not read this press as a new hold or this click as
+    // the hold's trailing one.
+    const row = screen.getByRole('menuitem', { name: 'Unlink' });
+    fireEvent.pointerDown(row, { pointerType: 'touch', button: 0 });
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    fireEvent.pointerUp(row, { pointerType: 'touch' });
+    fireEvent.click(row);
+    expect(unlink).toHaveBeenCalledTimes(1);
+  });
+
+  test("the platform's own long-press contextmenu during a hold is refused and opens nothing new", () => {
+    vi.useFakeTimers();
+    const { open } = renderRow();
+    fireEvent.pointerDown(open, {
+      pointerType: 'touch',
+      button: 0,
+      clientX: 10,
+      clientY: 10,
+    });
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(screen.getAllByRole('menu')).toHaveLength(1);
+    // Android's recogniser fires after the timer, while the finger is down.
+    expect(rightClick(open, { button: 0 })).toBe(true);
+    expect(screen.getAllByRole('menu')).toHaveLength(1);
+  });
+
+  test('a long-press contextmenu that closed the menu first opens it again', () => {
+    vi.useFakeTimers();
+    const { open } = renderRow();
+    fireEvent.pointerDown(open, {
+      pointerType: 'touch',
+      button: 0,
+      clientX: 10,
+      clientY: 10,
+    });
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    // Chromium's long-press moved focus onto the backdrop, which closes it.
+    fireEvent.click(screen.getByRole('button', { name: /^Close more/ }));
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(rightClick(open, { button: 0 })).toBe(true);
+    expect(screen.getByRole('menu')).toBeTruthy();
+  });
+
   test('a touch hold opens the menu and swallows the click it ends in', () => {
     vi.useFakeTimers();
     const { open, onOpen } = renderRow();

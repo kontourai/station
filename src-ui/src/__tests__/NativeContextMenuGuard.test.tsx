@@ -149,6 +149,41 @@ describe('in the desktop and mobile apps', () => {
     expect(copied).toEqual(['https://example.com/docs']);
   });
 
+  test('an app-internal link gets no link menu (nothing to copy it to)', () => {
+    render(
+      <>
+        <NativeContextMenuGuard />
+        <a href={`${window.location.origin}/projects/alpha`}>Alpha</a>
+      </>,
+    );
+    expect(rightClick(screen.getByText('Alpha'))).toBe(true);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  test('a checkbox is not a text field: no WebView menu', () => {
+    render(
+      <>
+        <NativeContextMenuGuard />
+        <input type="checkbox" aria-label="Pick" />
+      </>,
+    );
+    expect(rightClick(screen.getByRole('checkbox', { name: 'Pick' }))).toBe(
+      true,
+    );
+  });
+
+  test('the terminal keeps the native menu xterm drives', () => {
+    render(
+      <>
+        <NativeContextMenuGuard />
+        <div className="xterm">
+          <div data-testid="rows">$ ls</div>
+        </div>
+      </>,
+    );
+    expect(rightClick(screen.getByTestId('rows'))).toBe(false);
+  });
+
   test('Escape and a click away close the link menu', () => {
     renderPage();
     rightClick(screen.getByText('Docs'));

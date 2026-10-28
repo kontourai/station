@@ -230,6 +230,8 @@ export function ActionOverflowMenu({
   reserveGlyphColumn?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const openRef = useRef(open);
+  openRef.current = open;
   const coarse = useCoarsePointer();
   const [position, setPosition] = useState<React.CSSProperties>({});
   /** The menu's z-index when its host outranks the default; see `placeMenu`. */
@@ -401,9 +403,11 @@ export function ActionOverflowMenu({
         // The same two branches the render below takes without a menu.
         if (!trigger || actions.length === 0) return false;
         if (inlineSingle && actions.length === 1) return false;
-        // Focus first, so `useMenuFocus` returns focus to the `⋯` on close
-        // (and a hover-revealed `⋯` shows, through `:focus-within`, while
-        // its menu is open).
+        // An open, not a toggle: one hold can ask twice (the platform's own
+        // long-press `contextmenu` after the hold timer), and focusing the
+        // trigger again would take focus out of the open menu and close it.
+        if (openRef.current) return true;
+        // Focus first, so `useMenuFocus` returns focus to the `⋯` on close.
         trigger.focus();
         setPosition(pressPosition(trigger, actions.length));
         setOpen(true);
@@ -536,13 +540,12 @@ export function ActionOverflowMenu({
                   event.stopPropagation();
                   setOpen(false);
                 }}
-                // A right-click away closes the menu, as a native menu's
-                // does, rather than falling through to the app-wide guard.
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  setOpen(false);
-                }}
+                // No WebView menu over an open one. The menu stays open: on
+                // touch this is usually the platform's own long-press
+                // `contextmenu` for the hold that opened it, landing on this
+                // backdrop, and it reaches the row's gesture (React bubbles
+                // portal events) as a repeat open.
+                onContextMenu={(event) => event.preventDefault()}
               />
               {/* The class names are the dock's because the RULES are: a
                   body-portalled, fixed menu that must outrank the dock is the

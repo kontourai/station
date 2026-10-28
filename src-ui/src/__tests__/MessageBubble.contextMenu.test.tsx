@@ -17,8 +17,18 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { ChatMessage } from '../types';
 import { selectTextAt } from './selection-stub';
 
+// Markdown reduced to its one construct these tests need: a `[text](url)` link.
 vi.mock('react-markdown', () => ({
-  default: ({ children }: { children?: string }) => <div>{children}</div>,
+  default: ({ children }: { children?: string }) => {
+    const link = /\[(.+)\]\((.+)\)/.exec(children ?? '');
+    return link ? (
+      <div>
+        <a href={link[2]}>{link[1]}</a>
+      </div>
+    ) : (
+      <div>{children}</div>
+    );
+  },
 }));
 vi.mock('remark-gfm', () => ({ default: () => null }));
 vi.mock('../components/chat/message-bubble/MessageRating', () => ({
@@ -154,6 +164,45 @@ describe('message bubble context menu', () => {
     });
     const text = screen.getByText('Partly selected');
     selectTextAt(text, { left: 200, top: 200, right: 300, bottom: 220 });
+    expect(rightClick(text)).toBe(true);
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  test('a link inside an answer keeps its own menu, not the bubble menu', async () => {
+    renderBubble({
+      role: 'assistant',
+      content: '[the docs](https://example.com/docs)',
+      sessionId: 'session-1',
+      turnId: 'turn-1',
+      answerEligible: true,
+    });
+    const trigger = await screen.findByRole('button', {
+      name: 'More answer actions',
+    });
+    expect(rightClick(screen.getByRole('link', { name: 'the docs' }))).toBe(
+      false,
+    );
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  test("a finger's long-press on a message is left to text selection", async () => {
+    renderBubble({
+      role: 'assistant',
+      content: 'Touch me',
+      sessionId: 'session-1',
+      turnId: 'turn-1',
+      answerEligible: true,
+    });
+    const trigger = await screen.findByRole('button', {
+      name: 'More answer actions',
+    });
+    const text = screen.getByText('Touch me');
+    fireEvent.pointerDown(text, { pointerType: 'touch', button: 0 });
+    // Android's recogniser fires `contextmenu` from the hold.
+    expect(rightClick(text)).toBe(false);
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    // A mouse afterwards is a right-click again.
+    fireEvent.pointerDown(text, { pointerType: 'mouse', button: 2 });
     expect(rightClick(text)).toBe(true);
     expect(trigger.getAttribute('aria-expanded')).toBe('true');
   });

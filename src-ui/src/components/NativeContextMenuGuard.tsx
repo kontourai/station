@@ -5,9 +5,17 @@ import { wantsNativeContextMenu } from '../lib/native-context-menu';
 import { hasTauriRuntime } from '../platform/native';
 import { ContextMenu } from './ContextMenu';
 
-/** Links the app's own menu can act on: the ones a copy is useful for. */
+/**
+ * Links the app's own menu can act on: the ones a copy is useful for. Not the
+ * app's own pages: on Windows and Android the Tauri origin is itself
+ * `http://tauri.localhost`, and a copied link into it opens nothing anywhere
+ * else.
+ */
 function isWebLink(anchor: HTMLAnchorElement): boolean {
-  return anchor.protocol === 'http:' || anchor.protocol === 'https:';
+  return (
+    (anchor.protocol === 'http:' || anchor.protocol === 'https:') &&
+    anchor.origin !== window.location.origin
+  );
 }
 
 /**
@@ -62,6 +70,7 @@ export function NativeContextMenuGuard() {
   return (
     <ContextMenu
       at={linkMenu.at}
+      origin={anchor}
       label="Link actions"
       onClose={() => setLinkMenu(null)}
       actions={[

@@ -33,9 +33,8 @@ const loadConnectedAttachAnswerToTaskButton = () =>
 /**
  * The bubble's right-click opens its ⋯ (`OverflowMenuHandle`): the same rows,
  * anchored to the same trigger. Focus goes to the trigger first so the menu
- * returns it there on close, and so a footer ⋯ that is revealed only on hover
- * stays shown (`:focus-within`) while its menu is open. No trigger (the phone
- * sheet's inline rows) means no menu to open.
+ * returns it there on close. No trigger (the phone sheet's inline rows) means
+ * no menu to open.
  */
 function useMenuHandle(
   handleRef: Ref<OverflowMenuHandle> | undefined,

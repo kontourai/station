@@ -11,7 +11,8 @@ const MOVE_TOLERANCE_PX = 8;
  * How long after a hold the trailing click is still swallowed. A bound rather
  * than a flag that waits for "the" click: iOS and Android disagree about
  * whether a completed hold produces a click at all, and a flag left standing
- * would eat the user's next keyboard activation of the same row.
+ * would eat the user's next keyboard activation of the same row. A new press
+ * on the item ends it early (`onPointerDown`).
  */
 const SUPPRESS_CLICK_MS = 700;
 
@@ -31,8 +32,20 @@ export interface ContextMenuGestureHandlers {
 }
 
 /**
- * An item's menu behind a right-click or a touch hold: a list row, a pane
- * head, a file in the tree.
+ * Whether the event happened in the item's own DOM. React delivers a portal's
+ * events through the component tree, so a menu or sheet the item opened (body
+ * portals) bubbles its presses and clicks through the item too; those are the
+ * menu's, never a new hold on the item or the trailing click of the last one.
+ */
+function inItem(event: React.SyntheticEvent<HTMLElement>): boolean {
+  return (
+    event.target instanceof Node && event.currentTarget.contains(event.target)
+  );
+}
+
+/**
+ * An item's menu behind a right-click or a touch hold: a list row, a message,
+ * a file in the tree.
  *
  * Not `useLongPress`, which is a single control whose CLICK it owns and whose
  * hold any pointer (a mouse too) can complete. An item here keeps its own
@@ -41,9 +54,10 @@ export interface ContextMenuGestureHandlers {
  * right button and a 500ms mouse hold on a row is the start of a drag.
  *
  * `onOpen` gets the item and, where there is one, the point the gesture
- * happened at. The keyboard's context-menu key has no pointer, and engines
- * report it as (0, 0); that arrives as `null` so a point-anchored menu can
- * fall back to the item instead of opening in the corner.
+ * happened at. Engines report the keyboard's context-menu key either at (0, 0)
+ * or at the focused element; (0, 0) arrives as `null` so a point-anchored menu
+ * can fall back to the item instead of opening in the corner. `onOpen` must be
+ * an OPEN, not a toggle: one hold can reach it twice (see `onContextMenu`).
  *
  * The native menu still wins where it is the useful one
  * (`wantsNativeContextMenu`): selected text, an editable field, Shift.
@@ -66,18 +80,16 @@ export function useContextMenuGesture({
   enabled?: boolean;
   /**
    * Off for an item that is mostly selectable text (a chat message), where a
-   * held finger means "select", not "menu".
+   * held finger means "select", not "menu". That covers the platform's own
+   * long-press `contextmenu` (Android) as well as the hold timer.
    */
   touchHold?: boolean;
 }): ContextMenuGestureHandlers {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const origin = useRef<ContextMenuPoint | null>(null);
-  /**
-   * When this press's hold opened the menu; 0 when it has not. A time, not a
-   * flag: the keyboard's context-menu key on the same item later has no press
-   * to reset a flag at, and must still open the menu.
-   */
-  const firedAt = useRef(0);
+  /** This press's hold has opened the menu and the finger is still down. */
+  const holding = useRef(false);
+  const lastPointerType = useRef<string | null>(null);
   const suppressUntil = useRef(0);
 
   const cancel = useCallback(() => {
@@ -90,34 +102,48 @@ export function useContextMenuGesture({
 
   const end = useCallback(() => {
     cancel();
-    if (firedAt.current) suppressUntil.current = Date.now() + SUPPRESS_CLICK_MS;
+    if (holding.current) suppressUntil.current = Date.now() + SUPPRESS_CLICK_MS;
+    holding.current = false;
   }, [cancel]);
 
   return {
     onContextMenu: (event) => {
-      if (!enabled || wantsNativeContextMenu(event)) return;
-      // Android fires its own `contextmenu` from a long-press, around the same
-      // threshold as the timer below. Whichever lands second must not open
-      // the menu a second time.
-      if (firedAt.current && Date.now() - firedAt.current < HOLD_MS * 2) return;
-      const midPress = origin.current !== null;
-      cancel();
-      if (midPress) {
-        firedAt.current = Date.now();
-        suppressUntil.current = Date.now() + SUPPRESS_CLICK_MS;
-      }
+      if (!enabled) return;
+      if (!touchHold && lastPointerType.current === 'touch') return;
+      if (wantsNativeContextMenu(event)) return;
       const point =
         event.clientX === 0 && event.clientY === 0
           ? null
           : { x: event.clientX, y: event.clientY };
+      // Android (and Chromium's own gesture recogniser) fires a `contextmenu`
+      // from the SAME long-press, usually after the timer below has opened
+      // the menu. It is refused to the platform and opens again rather than
+      // being ignored: the long-press can move focus onto the menu's backdrop
+      // first, and the menu closes on that focus move.
+      if (holding.current) {
+        event.preventDefault();
+        event.stopPropagation();
+        onOpen(event.currentTarget, origin.current ?? point);
+        return;
+      }
+      const midPress = origin.current !== null;
+      cancel();
       if (onOpen(event.currentTarget, point) === false) return;
+      if (midPress) {
+        holding.current = true;
+        suppressUntil.current = Date.now() + SUPPRESS_CLICK_MS;
+      }
       event.preventDefault();
       // Stopped so a nested item (a row inside a pane) opens ITS menu and not
       // every ancestor's as well.
       event.stopPropagation();
     },
     onPointerDown: (event) => {
-      firedAt.current = 0;
+      if (!inItem(event)) return;
+      lastPointerType.current = event.pointerType;
+      // A new press: whatever click the last hold ended in is not coming now.
+      suppressUntil.current = 0;
+      holding.current = false;
       if (!enabled || !touchHold) return;
       if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
       if (event.button !== 0) return;
@@ -127,26 +153,29 @@ export function useContextMenuGesture({
       origin.current = point;
       timer.current = setTimeout(() => {
         timer.current = null;
-        origin.current = null;
-        firedAt.current = Date.now();
+        holding.current = true;
         suppressUntil.current = Date.now() + SUPPRESS_CLICK_MS;
         onOpen(item, point);
       }, HOLD_MS);
     },
     onPointerMove: (event) => {
       const start = origin.current;
-      if (!start) return;
+      if (!start || timer.current === null || !inItem(event)) return;
       if (
         Math.hypot(event.clientX - start.x, event.clientY - start.y) >
         MOVE_TOLERANCE_PX
       )
         cancel();
     },
-    onPointerUp: end,
+    onPointerUp: (event) => {
+      if (inItem(event)) end();
+    },
     // A hold that turns into a scroll ends here, not in a menu.
-    onPointerCancel: end,
+    onPointerCancel: (event) => {
+      if (inItem(event)) end();
+    },
     onClickCapture: (event) => {
-      if (Date.now() >= suppressUntil.current) return;
+      if (!inItem(event) || Date.now() >= suppressUntil.current) return;
       suppressUntil.current = 0;
       event.preventDefault();
       event.stopPropagation();

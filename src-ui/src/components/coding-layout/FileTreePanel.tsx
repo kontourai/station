@@ -39,7 +39,11 @@ function parentDir(path: string): string {
   return i > 0 ? path.slice(0, i) : '';
 }
 
-type MenuState = { entry: FileEntry | null; at: ContextMenuPoint };
+type MenuState = {
+  entry: FileEntry | null;
+  at: ContextMenuPoint;
+  origin: HTMLElement;
+};
 type PromptState = {
   mode: 'create-file' | 'create-folder' | 'rename';
   entry: FileEntry | null;
@@ -62,7 +66,11 @@ const FileTreeNode = memo(function FileTreeNodeView({
   selectedPath: string | null;
   attachedPaths: Set<string>;
   onSelect: (intent: OpenFilePreviewIntent) => void;
-  onContextMenu: (entry: FileEntry, at: ContextMenuPoint) => void;
+  onContextMenu: (
+    entry: FileEntry,
+    at: ContextMenuPoint,
+    origin: HTMLElement,
+  ) => void;
 }) {
   const [open, setOpen] = useState(depth === 0);
 
@@ -76,7 +84,7 @@ const FileTreeNode = memo(function FileTreeNodeView({
   // the folder) under the menu the hold had just opened.
   const gesture = useContextMenuGesture({
     onOpen: (row, point) => {
-      onContextMenu(entry, contextMenuAnchor(row, point));
+      onContextMenu(entry, contextMenuAnchor(row, point), row);
     },
   });
 
@@ -220,7 +228,8 @@ export function FileTreePanel({
     null;
 
   const openMenu = useCallback(
-    (entry: FileEntry | null, at: ContextMenuPoint) => setMenu({ entry, at }),
+    (entry: FileEntry | null, at: ContextMenuPoint, origin: HTMLElement) =>
+      setMenu({ entry, at, origin }),
     [],
   );
 
@@ -392,7 +401,7 @@ export function FileTreePanel({
       aria-label="New file or folder"
       onClick={(e) => {
         const r = e.currentTarget.getBoundingClientRect();
-        openMenu(null, { x: r.left, y: r.bottom + 2 });
+        openMenu(null, { x: r.left, y: r.bottom + 2 }, e.currentTarget);
       }}
     >
       +
@@ -432,7 +441,7 @@ export function FileTreePanel({
           // Right-click on the empty area → root-level menu.
           if (e.target === e.currentTarget && !wantsNativeContextMenu(e)) {
             e.preventDefault();
-            openMenu(null, { x: e.clientX, y: e.clientY });
+            openMenu(null, { x: e.clientX, y: e.clientY }, e.currentTarget);
           }
         }}
       >
@@ -476,6 +485,7 @@ export function FileTreePanel({
       {menu && (
         <ContextMenu
           at={menu.at}
+          origin={menu.origin}
           label={
             menu.entry ? `Actions for ${menu.entry.name}` : 'File tree actions'
           }
