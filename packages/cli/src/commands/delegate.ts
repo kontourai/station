@@ -38,7 +38,7 @@ import type { StagedAttachmentReference } from '@kontourai/station-contracts/att
  * see `client/delegations.ts`'s module docblock.
  *
  * Dispatch: the sub-verb names (`attempt`, `status`, `events`, `continue`,
- * `respond`, `interrupt`, `targets`, `wait`) are only treated as an action
+ * `respond`, `interrupt`, `targets`, `wait`, `list`) are only treated as an action
  * word when `--agent` is not present. `create` is the only verb
  * that takes a target flag, so a bare `station delegate --agent=<slug>
  * status ...` prompt (whose text happens to start with a reserved word) is
@@ -160,7 +160,11 @@ function buildDelegateRespondCommand(
   )} <accept|acceptForSession|decline|cancel>`;
 }
 
-const RESERVED_ACTIONS = new Set([
+/**
+ * The supervision and discovery sub-verbs. A `--session` follow-up that
+ * starts with one is refused as ambiguous; see {@link RESERVED_ACTIONS}.
+ */
+const SUPERVISION_ACTIONS = new Set([
   'attempt',
   'status',
   'events',
@@ -169,8 +173,14 @@ const RESERVED_ACTIONS = new Set([
   'interrupt',
   'targets',
   'wait',
-  'list',
 ]);
+
+/**
+ * Every word read as a sub-verb without `--agent`. `list` is not refused
+ * after `--session`: it was never ambiguous there, and "list the files" is an
+ * ordinary follow-up.
+ */
+const RESERVED_ACTIONS = new Set([...SUPERVISION_ACTIONS, 'list']);
 
 function delegateContinuationCommand(conversationId: string): string {
   return `station delegate --session=${shellQuote(conversationId)} "<message>"`;
@@ -1358,7 +1368,10 @@ export async function runDelegateCommand(
         'Use --agent to start a new delegation or --session to continue a conversation, not both.',
       );
     }
-    if (parsed.positionals[0] && RESERVED_ACTIONS.has(parsed.positionals[0])) {
+    if (
+      parsed.positionals[0] &&
+      SUPERVISION_ACTIONS.has(parsed.positionals[0])
+    ) {
       throw new Error(
         '--session continues a conversation with a message; status, events, respond, and interrupt operate on the current Session/task by their positional id.',
       );

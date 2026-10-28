@@ -1872,6 +1872,26 @@ Nothing was sent at another approval mode.`);
     ]);
   });
 
+  test('a --session follow-up that starts with "list" is sent, not read as the list verb', async () => {
+    const { runCli } = await import('../cli.js');
+    await runCli([
+      'delegate',
+      '--session=conversation:ordinary',
+      'list',
+      'the',
+      'open',
+      'files',
+      '--json',
+      `--api-base=${apiBase}`,
+    ]);
+    expect(requestBodies).toEqual([
+      expect.objectContaining({
+        pathname: '/api/orchestration/chat/conversation%3Aordinary/continue',
+        body: expect.objectContaining({ message: 'list the open files' }),
+      }),
+    ]);
+  });
+
   test('canonical pending-request probe uses the accepted child without inventing a Task', async () => {
     const { runCli } = await import('../cli.js');
     const exit = vi

@@ -503,7 +503,24 @@ describe('station-control fork_conversation', () => {
       success: false,
       code: 'station_control_role_required',
     });
-    expect([forksOf('carol-p1'), forksOf('a-peer')]).toEqual([1, 0]);
+    // Across Projects: bound reaches where its owner may act, a copied
+    // credential of the same owner stays in its Session's Project.
+    const acrossBound = await fork(bound('carol-p1'), {
+      conversationId: 'carol-p1',
+      targetProjectSlug: 'project-2',
+    });
+    expect(acrossBound.body?.success, JSON.stringify(acrossBound.body)).toBe(
+      true,
+    );
+    const acrossCopied = await fork(delegated('carol-p1'), {
+      conversationId: 'carol-p1',
+      targetProjectSlug: 'project-2',
+    });
+    expect(acrossCopied.body, JSON.stringify(acrossCopied.body)).toMatchObject({
+      success: false,
+      code: 'station_control_out_of_scope',
+    });
+    expect([forksOf('carol-p1'), forksOf('a-peer')]).toEqual([2, 0]);
   });
 
   test('a fork never lands in a scope the caller could not otherwise reach', async () => {

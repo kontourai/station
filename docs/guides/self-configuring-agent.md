@@ -385,24 +385,24 @@ turn replays; engine cursor, tool state and approval state do not carry.
 `idempotencyKey` makes a retry return the same fork.
 
 It is a Project `execute` action at the authority table, and the fork route
-holds a caller that is not a bound operator to the dispatch scope above twice,
+holds every caller except a bound operator to the dispatch scope above twice,
 before it writes anything:
 
-- the source must be a conversation the scope admits with the owner's Project
-  `view` action: the caller's own, or another of the owner's in the caller's
-  Project (in the global space when the caller's Session has no Project). A
-  conversation a person only referenced is not enough here, and a
-  conversation with no started Session is refused;
-- the fork must land where the caller could start a Session itself (Project
-  `execute`).
+- the source must be the caller's own conversation or another of its owner's,
+  in a Project where the owner holds `view`. A conversation a person only
+  referenced is not enough here, and a conversation with no started Session
+  is refused;
+- the fork must land where the caller could start a Session itself, in a
+  Project where the owner holds `execute`.
 
-For a caller whose credential is not bound, both checks also hold it to its
-own Session's scope, so forking from Project 1 into Project 2, or from the
-global space into a Project, is refused. A bound caller that is not the
-operator is held only to its owner's Project actions, as for dispatch: it may fork across Projects where
-its owner holds `view` on the source and `execute` on the target, and never
-another owner's conversation. A bound operator caller keeps the operator's
-reach. Refusals carry the scope rule's codes (`station_control_out_of_scope`,
+A caller whose credential is not bound is also held to its own Session's
+scope: the source and the fork must both be in its Session's Project, or in
+the global space when its Session has none. Forking from Project 1 into
+Project 2, or from the global space into a Project, is refused. A bound caller
+that is not the operator is held only to its owner's Project actions, as for
+dispatch, so it may fork across those Projects, never another owner's
+conversation. A bound operator caller keeps the operator's reach. Refusals
+carry the scope rule's codes (`station_control_out_of_scope`,
 `station_control_role_required`, `station_control_assurance_insufficient`).
 A person forking through the UI or `station conversation fork` is not held to
 this rule. The
