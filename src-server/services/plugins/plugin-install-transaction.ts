@@ -2664,7 +2664,7 @@ function restorePluginOwnedIntegrations(
   }
 }
 
-export function removePluginOwnedIntegrations(
+function removePluginOwnedIntegrations(
   projectIntegrationsDir: string,
   pluginName: string,
 ): void {
