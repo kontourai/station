@@ -1203,6 +1203,89 @@ station sessions list codex
 station sessions interrupt codex runtime-thread --turn=turn-1
 ```
 
+#### Wait on, digest, read and search your own Sessions
+
+These four actions take a Session id, not an Agent. They are the CLI's
+form of the Station Control tools `wait_session`, `get_session_digest`,
+`read_conversation` and `search_sessions` (#3427), but they read as **you**,
+with the saved credential, never as an agent. The agent-only routes behind
+those tools keep refusing a request with no agent caller. Each accepts the
+shared target flags and `--json`. `--on` is refused: these reads answer on the
+targeted Station, so use `--station=<name>` to read another one.
+
+```
+station sessions wait <session-id> [--until=turn-settled|idle] [--after-cursor=<n>] [--timeout=<seconds>] [--json]
+station sessions digest <session-id> [--turn-limit=<n>] [--cursor=<cursor>] [--json]
+station sessions transcript <session-id> [--around=<message-id>|--cursor=<cursor>] [--limit=<n>] [--json]
+station sessions search <query...> [--continuation=<token>] [--json]
+```
+
+`wait` and `digest` need the **Session reads from the station CLI** Feature
+Preview (`session-cli-reads`, Settings → Advanced → Feature previews). While
+it is off they exit non-zero with the preview's own message. A Station that
+predates these reads is reported as one that needs updating, not as a missing
+Session. `transcript` and `search` use routes that already served people, so
+they need no preview.
+
+The extra actions are under `sessions` rather than a new `session` verb, so
+one verb owns Session reads. `read` already means the per-Agent read
+(`sessions read <agent> <session-id>`), so the paged, bounded transcript read
+is `transcript`.
+
+**`wait`** only observes. The Session keeps running whatever the wait does.
+It repeats bounded server-side waits (at most 50 seconds each) until the
+condition holds or `--timeout` (1–86400 seconds, default 3600) runs out.
+
+- `--until=turn-settled` (the default) waits for a turn to end after
+  `--after-cursor`. Without a cursor it waits for the turn running now, and if
+  nothing is running it reports the Session idle.
+- `--until=idle` waits until no turn is running.
+
+| Exit | Outcome |
+| --- | --- |
+| 0 | `completed` (the turn completed) or `idle` |
+| 3 | `failed` (the turn was aborted, failed or exited) or `restart-interrupted` |
+| 5 | `wait-timeout`: the budget ran out with the Session still running |
+| 6 | `superseded` (a newer Session serves the conversation; wait on `currentSessionId`) or `unknown` |
+| 2 | `observation-lost`: a read failed after the wait began |
+| 130 | `cancelled` (Ctrl-C) |
+
+A turn that a Station restart cut off is reported as `restart-interrupted`,
+with its `interruptedTurn`. It is never reported as settled, and never as a
+silent idle, because nothing proves its work completed. A wait that ends with
+`wait-timeout` prints the `eventCursor` to pass back as `--after-cursor`.
+`--json` prints one `{ ok, kind: "sessions.wait", data }` line, where `data`
+has the outcome, exit code, last state and turn fields, and a safe
+`lastError` category for `observation-lost`.
+
+**`digest`** is the Session's recorded summary, newest turn first, with no
+model summarizing it. It shows each turn's request, how it ended, tool use,
+files and pull requests. **`transcript`** is the paged transcript read,
+starting at a search hit with `--around`. **`search`** finds your
+conversation transcripts by phrase. A partial result lists its
+`incompleteSources` and prints a `--continuation` for the next page.
+
+### `activity`
+
+List your Sessions by most recent activity, the CLI's form of
+`list_project_activity` and `list_active_work` (#3427), read as you.
+
+```
+station activity [--project=<slug>] [--active-within=<minutes>] [--limit=<n>] [--cursor=<cursor>] [--json]
+```
+
+- Without `--project`, it lists every Session you may read in the Projects
+  you may view and in the global space.
+- `--project` narrows the list to that Project's Sessions. A Project you may
+  not view reads as not found, exactly like one that does not exist.
+- `--active-within` keeps only Sessions that are running a turn or were
+  active in that many minutes.
+
+Each row has the Session id, status word, whether a turn is running, its
+Project, title, worktree branch or folder, and any active work claims.
+Sessions on another Station or SSH Environment are never listed. It needs the
+same `session-cli-reads` Feature Preview as `sessions wait`.
+
 ### `conversation`
 
 Export a conversation as a portable thread, or in a provider-native format.
