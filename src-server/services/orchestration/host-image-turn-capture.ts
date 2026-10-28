@@ -23,13 +23,13 @@ const TURN_TEXT_EVENT_LIMIT = 5_000;
  * naming only the places this session's images can actually come from.
  */
 export function hostImageAgentInstruction(where: {
-  workingDirectory: boolean;
+  workingFolder: boolean;
   tmpdir: boolean;
 }): string | undefined {
   const place =
-    where.workingDirectory && where.tmpdir
+    where.workingFolder && where.tmpdir
       ? 'inside the working directory or $TMPDIR'
-      : where.workingDirectory
+      : where.workingFolder
         ? 'inside the working directory'
         : where.tmpdir
           ? 'inside $TMPDIR'
@@ -96,7 +96,7 @@ export class HostImageTurnCapture {
         this.logRefusal(threadId, directory, reason),
     });
     return hostImageAgentInstruction({
-      workingDirectory: roots.length > 0,
+      workingFolder: roots.length > 0,
       tmpdir: tmpdir !== undefined,
     });
   }

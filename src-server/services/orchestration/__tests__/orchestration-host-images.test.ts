@@ -230,7 +230,7 @@ describe('chat-host-images through OrchestrationService', () => {
     );
     // No temp root was launched (no TMPDIR policy here): only the folder.
     expect(adapter.turns[0].ambientContext).toContain(
-      hostImageAgentInstruction({ workingDirectory: true, tmpdir: false }),
+      hostImageAgentInstruction({ workingFolder: true, tmpdir: false }),
     );
     expect(adapter.turns[0].ambientContext).not.toContain('$TMPDIR');
 
@@ -308,7 +308,7 @@ describe('chat-host-images through OrchestrationService', () => {
         return `![shot](${saved})`;
       });
       expect(adapter.turns[0].ambientContext).toContain(
-        hostImageAgentInstruction({ workingDirectory: true, tmpdir: true }),
+        hostImageAgentInstruction({ workingFolder: true, tmpdir: true }),
       );
       const stored = store.latestEventByMethod(
         'thread-tmp',
@@ -333,7 +333,7 @@ describe('chat-host-images through OrchestrationService', () => {
     try {
       await replyTurn('thread-tmp-only', 'nothing', homedir());
       expect(adapter.turns[0].ambientContext).toContain(
-        hostImageAgentInstruction({ workingDirectory: false, tmpdir: true }),
+        hostImageAgentInstruction({ workingFolder: false, tmpdir: true }),
       );
       expect(adapter.turns[0].ambientContext).not.toContain(
         'working directory',
@@ -374,7 +374,7 @@ describe('chat-host-images through OrchestrationService', () => {
     const context = adapter.turns[0].ambientContext ?? '';
     expect(context).toContain(workloadBudgetEngineContext(limits));
     expect(context).toContain(
-      hostImageAgentInstruction({ workingDirectory: true, tmpdir: false }),
+      hostImageAgentInstruction({ workingFolder: true, tmpdir: false }),
     );
   });
 
