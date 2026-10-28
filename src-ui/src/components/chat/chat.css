@@ -2926,6 +2926,11 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The check mark says which is current; the shared accent text on the
+   selected fill is under contrast in the light theme. */
+.station-switcher__row[aria-checked="true"] .station-switcher__name {
+  color: var(--k-text);
+}
 .station-switcher__status {
   font-size: var(--k-text-xs);
   color: var(--k-text-muted);

@@ -132,7 +132,13 @@ export function useMenuFocus<T extends HTMLElement>(
     if (!isOpen) return;
     const container = containerRef.current;
     if (!container) return;
-    if (container.getAttribute('role') !== 'menu') return;
+    // A popover whose direct child is the menu (a filter field beside it, as
+    // the Station switcher has) owns the same pattern.
+    if (
+      container.getAttribute('role') !== 'menu' &&
+      !container.querySelector(':scope > [role="menu"]')
+    )
+      return;
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (

@@ -447,3 +447,18 @@ test('an HTTPS page does not probe a plain-HTTP address it could not reach', () 
     isProbeable({ ...lan, url: 'https://lan.example.test' }, 'https:'),
   ).toBe(true);
 });
+
+test('arrow keys step between Stations, beside a filter that sits outside the menu', () => {
+  recordStationUse('two');
+  recordStationUse('one');
+  openMenu([station, laptop, ...extras]);
+  const menu = screen.getByRole('menu', { name: 'Choose Station' });
+  // A menu may own only its items; the filter is its sibling.
+  expect(
+    menu.contains(screen.getByRole('searchbox', { name: 'Find a Station' })),
+  ).toBe(false);
+  const laptopRow = row(/^Laptop/);
+  laptopRow.focus();
+  fireEvent.keyDown(laptopRow, { key: 'ArrowDown' });
+  expect(document.activeElement).toBe(row(/^Build box/));
+});

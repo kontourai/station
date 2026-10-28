@@ -2489,7 +2489,7 @@ function stationSwitcherScreens(): Screen[] {
         await page.getByTestId('app-toolbar-connection').click();
         const menu = page.getByRole('menu', { name: 'Choose Station' });
         await expect(
-          menu.getByRole('searchbox', { name: 'Find a Station' }),
+          page.getByRole('searchbox', { name: 'Find a Station' }),
         ).toBeFocused();
         await expect(
           menu.getByRole('menuitemradio', { name: 'Media server — Online' }),
