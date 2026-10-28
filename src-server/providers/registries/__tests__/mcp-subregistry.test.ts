@@ -1,7 +1,5 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import curated from '../curated/station-mcp-subregistry.json' with {
   type: 'json',
 };
@@ -64,16 +62,8 @@ function streamed(body: string, status = 200) {
   );
 }
 
-const dirs: string[] = [];
-function cacheDir() {
-  const dir = mkdtempSync(join(tmpdir(), 'mcp-subregistry-'));
-  dirs.push(dir);
-  return dir;
-}
-afterEach(() => {
-  for (const dir of dirs.splice(0))
-    rmSync(dir, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
+const cacheDir = () => makeTempDir('mcp-subregistry-');
 
 function source(
   fetchImpl: typeof fetch,
@@ -429,13 +419,53 @@ describe('MCP subregistry offline copy', () => {
 });
 
 describe('Station curated MCP subregistry', () => {
-  const provider = () => {
+  const provider = (preRegisteredClients = false) => {
     const [curatedProvider] = mcpSubregistryIntegrationProviders(
       cacheDir(),
       {},
+      () => preRegisteredClients,
     );
     return curatedProvider;
   };
+
+  test('registering pre-registered client support makes blocked entries addable without editing the data', async () => {
+    const listed = Object.fromEntries(
+      (await provider(true).listAvailable()).map((item) => [
+        item.mcpServer!.name,
+        item.mcpServer!,
+      ]),
+    );
+    for (const name of [
+      'io.github.github/github-mcp-server',
+      'ai.kontour.station/gmail',
+    ])
+      expect(listed[name]).toMatchObject({
+        authMode: 'pre-registered-required',
+        qualification: { state: 'setup-required' },
+        unavailable: [],
+      });
+    expect(listed['app.linear/linear'].qualification.state).toBe('qualified');
+    expect(
+      await provider(true).getToolDef('ai-kontour-station--gmail'),
+    ).toMatchObject({
+      endpoint: 'https://gmailmcp.googleapis.com/mcp/v1',
+      contentTrust: 'untrusted',
+    });
+  });
+
+  test('the capability is read from the host registration at listing time', async () => {
+    const { registerToolServerOAuthCapability } = await import(
+      '../../../services/plugins/tool-server-oauth-capabilities.js'
+    );
+    const [hostDefault] = mcpSubregistryIntegrationProviders(cacheDir(), {});
+    const github = async () =>
+      (await hostDefault.listAvailable()).find(
+        (item) => item.id === 'io-github-github--github-mcp-server',
+      )!.mcpServer!;
+    expect((await github()).unavailable).toEqual([UNAVAILABLE.preRegistered]);
+    registerToolServerOAuthCapability('pre-registered-clients');
+    expect((await github()).unavailable).toEqual([]);
+  });
 
   test('every bundled entry parses and nothing is refused', async () => {
     const curatedProvider = provider();
@@ -533,6 +563,7 @@ describe('untrusted-content classification from curation', () => {
       remote: 'https://com.example/mcp',
       authMode: 'dcr',
       contentTrust: 'untrusted',
+      trustReadOnlyHints: true,
       checkedAt: '2026-10-28T00:00:00Z',
       summary: 'Checked.',
     };
@@ -552,6 +583,137 @@ describe('untrusted-content classification from curation', () => {
     });
     expect(await provider.getToolDef('com-example--mail')).toMatchObject({
       contentTrust: 'untrusted',
+      trustReadOnlyHints: true,
     });
+  });
+});
+
+describe('subregistry endpoint address policy', () => {
+  const remotes = {
+    loopback4: 'https://127.0.0.1/mcp',
+    loopback6: 'https://[::1]/mcp',
+    mapped: 'https://[::ffff:7f00:1]/mcp',
+    privateNet: 'https://10.0.0.5/mcp',
+    linkLocal: 'https://169.254.169.254/mcp',
+    ula: 'https://[fd00::1]/mcp',
+    localhost: 'https://localhost:8443/mcp',
+    mdns: 'https://printer.local/mcp',
+    decimal: 'https://2130706433/mcp',
+    public: 'https://mcp.example.com/mcp',
+  };
+  const listing = async (allowPrivateAddresses: boolean) => {
+    const provider = new McpSubregistryIntegrationProvider(
+      source(async () =>
+        streamed(
+          page(
+            Object.entries(remotes).map(([name, url]) =>
+              entry(`com.example/${name}`, {
+                remotes: [{ type: 'streamable-http', url }],
+              }),
+            ),
+          ),
+        ),
+      ),
+      () => ({ preRegisteredClients: false, allowPrivateAddresses }),
+    );
+    await provider.sync();
+    return {
+      provider,
+      byName: Object.fromEntries(
+        (await provider.listAvailable()).map((item) => [
+          item.mcpServer!.name.split('/')[1],
+          item.mcpServer!.unavailable,
+        ]),
+      ),
+    };
+  };
+
+  test('refuses local and private network endpoints from a catalog by default', async () => {
+    const { provider, byName } = await listing(false);
+    for (const name of Object.keys(remotes).filter((name) => name !== 'public'))
+      expect(byName[name], name).toEqual([UNAVAILABLE.privateAddress]);
+    expect(byName.public).toEqual([]);
+    expect(await provider.install('com-example--loopback4')).toEqual({
+      success: false,
+      message: UNAVAILABLE.privateAddress,
+    });
+    expect(await provider.getToolDef('com-example--loopback4')).toBeNull();
+  });
+
+  test('the operator opt-in allows them', async () => {
+    const { byName } = await listing(true);
+    for (const reasons of Object.values(byName)) expect(reasons).toEqual([]);
+    const [, configured] = mcpSubregistryIntegrationProviders(
+      cacheDir(),
+      {
+        STATION_MCP_SUBREGISTRY_URL: URL_BASE,
+        STATION_MCP_SUBREGISTRY_ALLOW_PRIVATE_ADDRESSES: '1',
+      },
+      () => false,
+    );
+    expect(configured).toBeDefined();
+  });
+});
+
+describe('subregistry refresh edge cases', () => {
+  test('a source that does not answer in time is refused with the timeout', async () => {
+    const hanging = source(
+      (_input, init) =>
+        new Promise<Response>((_, reject) =>
+          init?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('aborted', 'AbortError')),
+          ),
+        ),
+      { limits: { fetchTimeoutMs: 1000 } },
+    );
+    await hanging.refresh();
+    expect(hanging.status()).toMatchObject({
+      freshness: 'none',
+      lastError: 'The subregistry did not answer within 1 seconds.',
+    });
+  });
+
+  test('an empty page that names a next page is followed, not taken as the end', async () => {
+    const pages = source(async (input) => {
+      const cursor = new URL(String(input)).searchParams.get('cursor');
+      return streamed(
+        cursor === 'p2' ? page([entry('com.example/later')]) : page([], 'p2'),
+      );
+    });
+    await pages.refresh();
+    expect(pages.status()).toMatchObject({
+      lastError: null,
+      freshness: 'live',
+    });
+    expect(pages.servers().map((server) => server.name)).toEqual([
+      'com.example/later',
+    ]);
+  });
+
+  test('endless empty pages are refused at the page bound', async () => {
+    let calls = 0;
+    const endless = source(
+      async () => {
+        calls += 1;
+        return streamed(page([], `c${calls}`));
+      },
+      { limits: { maxPages: 3 } },
+    );
+    await endless.refresh();
+    expect(endless.status()).toMatchObject({
+      freshness: 'none',
+      lastError: 'The subregistry has more than 3 pages.',
+    });
+    expect(calls).toBe(3);
+  });
+
+  test('a repeated cursor is refused', async () => {
+    const looping = source(async () =>
+      streamed(page([entry('com.example/a')], 'same')),
+    );
+    await looping.refresh();
+    expect(looping.status().lastError).toBe(
+      'The subregistry repeated a page cursor.',
+    );
   });
 });

@@ -3,9 +3,10 @@
  *
  * An integration can be classified as returning content written by others
  * (`ToolDef.contentTrust: 'untrusted'`, such as email). Once a turn has read
- * such content, a tool that its server does not declare read-only takes the
- * person's untrusted-content permission for that tool: `ask` by default,
- * changeable per integration and per tool to `allow` or `deny`. This module
+ * such content, each later tool call takes the person's untrusted-content
+ * permission for that tool: their per-tool entry, then their integration
+ * default, otherwise `ask`. A server's read-only hint can exempt a tool only
+ * when nobody set an entry and the server's hints are trusted. This module
  * holds the turn state and the pure decision; the staged pre-tool evaluator
  * applies it, so the existing approval request, guardian and delegation
  * rules answer an `ask` exactly as they answer any other.
@@ -21,15 +22,13 @@ import type {
   ToolDef,
   UntrustedContentChange,
   UntrustedContentPermission,
-  UntrustedContentPermissions,
 } from '@kontourai/station-contracts/tool';
 import type { InvocationContext } from '../../runtime/types.js';
 
-export const UNTRUSTED_CONTENT_CHANGE_LIMIT = 50;
+const UNTRUSTED_CONTENT_CHANGE_LIMIT = 50;
 
-/** Absent configuration means ask. */
-export const DEFAULT_UNTRUSTED_CONTENT_PERMISSION: UntrustedContentPermission =
-  'ask';
+/** Conversations remembered per lineage set; the oldest is forgotten first. */
+const CONVERSATION_MEMORY_LIMIT = 10_000;
 
 function turnKey(invocation: InvocationContext): string {
   // A turn without a conversation shares its Agent's key, so concurrent
@@ -41,23 +40,54 @@ function turnKey(invocation: InvocationContext): string {
   ]);
 }
 
+/** Insertion-ordered set that forgets its oldest member past a bound. */
+class BoundedSet {
+  private readonly members = new Set<string>();
+
+  add(value: string | undefined): void {
+    if (!value) return;
+    this.members.delete(value);
+    this.members.add(value);
+    if (this.members.size > CONVERSATION_MEMORY_LIMIT)
+      this.members.delete(this.members.values().next().value!);
+  }
+
+  has(value: string | undefined): boolean {
+    return value !== undefined && this.members.has(value);
+  }
+}
+
 /**
- * Which turns have read untrusted content. A mark may still be resolving
- * (the classification is read from the integration's stored definition), so
- * a reader awaits every pending mark for its turn before answering.
+ * Which turns have read untrusted content, shared by every Agent's hooks so
+ * delegation carries it both ways.
+ *
+ * A mark may still be resolving (the classification is read from the
+ * integration's stored definition), so a reader awaits every pending mark
+ * for its turn before answering. Beyond the turn, two in-process records
+ * follow a delegation: a conversation that has read untrusted content makes
+ * every child it delegates to start marked, and a child that reads it marks
+ * its parent and root conversations, so a parent turn that reads a delegated
+ * result is marked too. Both are memory only and do not survive a restart.
  */
 export class UntrustedContentLedger {
   private readonly turns = new Map<string, Promise<boolean>[]>();
+  private readonly conversationsRead = new BoundedSet();
+  private readonly descendantsRead = new BoundedSet();
 
   mark(invocation: InvocationContext, untrusted: Promise<boolean>): void {
     const key = turnKey(invocation);
     // A failed classification read counts as untrusted: fail toward asking.
     const settled = untrusted.catch(() => true);
     this.turns.set(key, [...(this.turns.get(key) ?? []), settled]);
-    // Only untrusted reads are kept, so ordinary calls never grow the map
-    // even when a framework does not end the turn.
     void settled.then((read) => {
-      if (read) return;
+      if (read) {
+        this.conversationsRead.add(invocation.conversationId);
+        this.descendantsRead.add(invocation.delegation?.parentConversationId);
+        this.descendantsRead.add(invocation.delegation?.rootConversationId);
+        return;
+      }
+      // Only untrusted reads are kept, so ordinary calls never grow the map
+      // even when a framework does not end the turn.
       const remaining = this.turns.get(key)?.filter((mark) => mark !== settled);
       if (remaining?.length) this.turns.set(key, remaining);
       else this.turns.delete(key);
@@ -65,9 +95,21 @@ export class UntrustedContentLedger {
   }
 
   async hasRead(invocation: InvocationContext): Promise<boolean> {
+    const delegation = invocation.delegation;
+    if (
+      delegation &&
+      (this.conversationsRead.has(delegation.parentConversationId) ||
+        this.conversationsRead.has(delegation.rootConversationId))
+    )
+      return true;
     const pending = this.turns.get(turnKey(invocation));
     if (!pending) return false;
     return (await Promise.all(pending)).some(Boolean);
+  }
+
+  /** Whether a child this conversation delegated to has read it. */
+  hasDescendantRead(conversationId: string | undefined): boolean {
+    return this.descendantsRead.has(conversationId);
   }
 
   /** The turn ended; its content no longer counts for the next one. */
@@ -76,60 +118,71 @@ export class UntrustedContentLedger {
   }
 }
 
+/** The ledger every Agent's hooks share unless a caller supplies its own. */
+export const sharedUntrustedContentLedger = new UntrustedContentLedger();
+
 /**
  * The permission for one tool in a turn that has read untrusted content.
- * `undefined` means the rule does not apply: the server declares the tool
- * read-only.
+ * `undefined` means the rule does not apply: nobody set an entry, and the
+ * server, whose hints are trusted, declares the tool read-only.
+ *
+ * An unreadable definition (`undefined`) has no entries and no trusted
+ * hints, so it asks.
  */
 export function untrustedContentDecision(
-  def: Pick<ToolDef, 'probe' | 'untrustedContentPermissions'> | undefined,
+  def:
+    | Pick<
+        ToolDef,
+        | 'probe'
+        | 'untrustedContentPermissions'
+        | 'contentTrust'
+        | 'trustReadOnlyHints'
+      >
+    | undefined,
   toolName: string,
 ): UntrustedContentPermission | undefined {
-  const declared = def?.probe?.tools?.find((tool) => tool.name === toolName);
-  if (declared?.readOnly === true) return undefined;
   const permissions = def?.untrustedContentPermissions;
-  return (
-    permissions?.tools?.[toolName] ??
-    permissions?.default ??
-    DEFAULT_UNTRUSTED_CONTENT_PERMISSION
-  );
+  const chosen = permissions?.tools?.[toolName] ?? permissions?.default;
+  if (chosen) return chosen;
+  // MCP annotations are the server's own claim; an untrusted server's claim
+  // counts only when a catalog or the person said to trust it.
+  const hintsTrusted =
+    def !== undefined &&
+    (def.contentTrust !== 'untrusted' || def.trustReadOnlyHints === true);
+  const declared = def?.probe?.tools?.find((tool) => tool.name === toolName);
+  if (hintsTrusted && declared?.readOnly === true) return undefined;
+  return 'ask';
 }
 
-export interface UntrustedContentUpdate {
-  contentTrust?: 'untrusted' | 'trusted';
-  untrustedContentPermissions?: UntrustedContentPermissions;
-}
-
-function samePermissions(
-  a: UntrustedContentPermissions | undefined,
-  b: UntrustedContentPermissions | undefined,
-): boolean {
+function same(a: unknown, b: unknown): boolean {
   return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
 
 /**
- * The definition after a person's change, with a receipt appended when the
- * classification or a permission actually changed. Receipts are bounded to
- * the most recent {@link UNTRUSTED_CONTENT_CHANGE_LIMIT}. A submitted
- * receipt list is never taken from the caller.
+ * The definition to store, with receipts taken from the stored copy (never
+ * from the caller) and one appended when the classification, a permission or
+ * the hint setting changed. Receipts are bounded to the most recent 50.
  */
 export function withUntrustedContentChange(
-  existing: ToolDef,
+  existing: ToolDef | undefined,
   next: ToolDef,
   by: string | undefined,
   now: Date,
 ): ToolDef {
-  const result: ToolDef = {
-    ...next,
-    untrustedContentChanges: existing.untrustedContentChanges,
-  };
-  if (!result.untrustedContentChanges) delete result.untrustedContentChanges;
-  const trustChanged = existing.contentTrust !== next.contentTrust;
-  const permissionsChanged = !samePermissions(
-    existing.untrustedContentPermissions,
+  const result: ToolDef = { ...next };
+  delete result.untrustedContentChanges;
+  if (existing?.untrustedContentChanges?.length)
+    result.untrustedContentChanges = existing.untrustedContentChanges;
+  const trustChanged =
+    (existing?.contentTrust ?? 'trusted') !== (next.contentTrust ?? 'trusted');
+  const permissionsChanged = !same(
+    existing?.untrustedContentPermissions,
     next.untrustedContentPermissions,
   );
-  if (!trustChanged && !permissionsChanged) return result;
+  const hintsChanged =
+    (existing?.trustReadOnlyHints ?? false) !==
+    (next.trustReadOnlyHints ?? false);
+  if (!trustChanged && !permissionsChanged && !hintsChanged) return result;
   const change: UntrustedContentChange = {
     at: now.toISOString(),
     ...(by ? { by } : {}),
@@ -138,9 +191,12 @@ export function withUntrustedContentChange(
     ...(permissionsChanged
       ? { permissions: next.untrustedContentPermissions ?? {} }
       : {}),
+    ...(hintsChanged
+      ? { trustReadOnlyHints: next.trustReadOnlyHints ?? false }
+      : {}),
   };
   result.untrustedContentChanges = [
-    ...(existing.untrustedContentChanges ?? []),
+    ...(result.untrustedContentChanges ?? []),
     change,
   ].slice(-UNTRUSTED_CONTENT_CHANGE_LIMIT);
   return result;

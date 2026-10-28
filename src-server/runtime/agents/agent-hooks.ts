@@ -22,7 +22,8 @@ import { extractToolFilePath } from '../../services/agents/agent-policy-service.
 import type { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import {
-  UntrustedContentLedger,
+  sharedUntrustedContentLedger,
+  type UntrustedContentLedger,
   untrustedContentDecision,
 } from '../../services/plugins/untrusted-content-policy.js';
 import { toolDenials } from '../../telemetry/metrics.js';
@@ -95,8 +96,23 @@ export interface AgentHooksDeps {
   ) => Promise<UnattendedGrantResolution>;
   toolNameMapping: Map<string, MCPToolNameMappingEntry>;
   workItemCapture?: WorkItemCapture;
+  /** #3483: defaults to the ledger shared by every Agent's hooks. */
+  untrustedContentLedger?: UntrustedContentLedger;
   logger: any;
 }
+
+/**
+ * station-control tools whose result can carry a delegated child's output
+ * back into the parent's turn.
+ */
+const DELEGATED_RESULT_TOOLS = new Set([
+  'delegate_task',
+  'get_task',
+  'get_task_events',
+  'continue_task',
+  'respond_to_task_request',
+  'list_delegated_tasks',
+]);
 
 // ── Factory ────────────────────────────────────────────
 
@@ -122,14 +138,16 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
     (tool: ToolCallContext) => Promise<boolean>
   >();
   // #3483: turns that have read content an integration classifies untrusted.
-  const untrustedContent = new UntrustedContentLedger();
+  const untrustedContent =
+    deps.untrustedContentLedger ?? sharedUntrustedContentLedger;
   const provenanceOf = (tool: ToolCallContext) =>
     tool.mcp?.provenance ?? deps.toolNameMapping.get(tool.toolName)?.provenance;
   // Read fresh on each call so a person's change applies to the next call.
+  // A rejected read stays rejected: callers fail toward asking.
   const storedDefinition = (integrationId: string) =>
-    Promise.resolve()
-      .then(() => deps.configLoader.loadIntegration(integrationId))
-      .catch(() => undefined);
+    Promise.resolve().then(() =>
+      deps.configLoader.loadIntegration(integrationId),
+    );
 
   let hooks: IAgentHooks & {
     requestApproval?: (tool: ToolCallContext) => Promise<boolean>;
@@ -180,7 +198,8 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
       if (!provenance)
         return untrustedContentDecision(undefined, tool.toolName);
       return untrustedContentDecision(
-        await storedDefinition(provenance.integrationId),
+        // No readable definition: no entries and no trusted hints, so ask.
+        await storedDefinition(provenance.integrationId).catch(() => undefined),
         provenance.originalToolName,
       );
     },
@@ -238,15 +257,24 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
       });
 
       const provenance = provenanceOf(tool);
-      if (provenance)
+      if (provenance) {
         untrustedContent.mark(
           invocation,
-          // An unreadable definition is unclassified, not untrusted: one
-          // unreadable file must not put every later call behind a question.
+          // An unreadable definition rejects, which the ledger counts as
+          // untrusted: a classification Station cannot read fails to asking.
           storedDefinition(provenance.integrationId).then(
-            (def) => def?.contentTrust === 'untrusted',
+            (def) => def.contentTrust === 'untrusted',
           ),
         );
+        // A delegated child's output that read untrusted content brings it
+        // into this turn.
+        if (
+          provenance.integrationId === 'station-control' &&
+          DELEGATED_RESULT_TOOLS.has(provenance.originalToolName) &&
+          untrustedContent.hasDescendantRead(invocation.conversationId)
+        )
+          untrustedContent.mark(invocation, Promise.resolve(true));
+      }
 
       deps.workItemCapture?.capture({
         tool,

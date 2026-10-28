@@ -10,6 +10,7 @@
  * entries are always unqualified.
  */
 
+import { BlockList, isIP } from 'node:net';
 import { join } from 'node:path';
 import type {
   InstallResult,
@@ -19,6 +20,7 @@ import type {
   RegistryMcpSourceStatus,
 } from '@kontourai/station-contracts/catalog';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
+import { hasToolServerOAuthCapability } from '../../services/plugins/tool-server-oauth-capabilities.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 import type { IIntegrationRegistryProvider } from '../provider-interfaces.js';
 import curatedSubregistry from './curated/station-mcp-subregistry.json' with {
@@ -48,7 +50,80 @@ export const UNAVAILABLE = {
     'Declares request headers that Station does not send from a catalog.',
   preRegistered:
     'Sign-in needs an OAuth client you register with the provider. Station cannot use one yet.',
+  privateAddress:
+    'The endpoint is a local or private network address, which catalogs cannot add by default.',
 } as const;
+
+/**
+ * Loopback, private, link-local, shared, reserved and multicast ranges. A
+ * catalog names an endpoint Station will connect to on the person's behalf,
+ * so a catalog cannot point it at this host or its network unless the
+ * operator opts in. A public name that resolves to such an address is not
+ * caught here.
+ */
+const PRIVATE_RANGES = (() => {
+  const list = new BlockList();
+  for (const [network, prefix] of [
+    ['0.0.0.0', 8],
+    ['10.0.0.0', 8],
+    ['100.64.0.0', 10],
+    ['127.0.0.0', 8],
+    ['169.254.0.0', 16],
+    ['172.16.0.0', 12],
+    ['192.0.0.0', 24],
+    ['192.168.0.0', 16],
+    ['198.18.0.0', 15],
+    ['224.0.0.0', 4],
+    ['240.0.0.0', 4],
+  ] as const)
+    list.addSubnet(network, prefix, 'ipv4');
+  for (const [network, prefix] of [
+    ['::', 128],
+    ['::1', 128],
+    ['fc00::', 7],
+    ['fe80::', 10],
+    ['ff00::', 8],
+  ] as const)
+    list.addSubnet(network, prefix, 'ipv6');
+  return list;
+})();
+
+/** Whether a URL's host is a local or private network address. */
+function isPrivateNetworkHost(url: string): boolean {
+  const host = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host.endsWith('.local')
+  )
+    return true;
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(host)?.[1];
+  if (mapped) return PRIVATE_RANGES.check(mapped, 'ipv4');
+  const family = isIP(host);
+  if (family === 4) return PRIVATE_RANGES.check(host, 'ipv4');
+  if (family === 6) {
+    // `::ffff:7f00:1` is the hex spelling of an IPv4-mapped address.
+    const hex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
+    if (hex) {
+      const high = Number.parseInt(hex[1], 16);
+      const low = Number.parseInt(hex[2], 16);
+      return PRIVATE_RANGES.check(
+        `${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`,
+        'ipv4',
+      );
+    }
+    return PRIVATE_RANGES.check(host, 'ipv6');
+  }
+  return false;
+}
+
+/** Host-side facts a listing depends on, read at listing time. */
+export interface McpListingPolicy {
+  /** The tool-server OAuth flow can use a client the person registered. */
+  preRegisteredClients: boolean;
+  /** The operator allows catalog endpoints on local or private networks. */
+  allowPrivateAddresses: boolean;
+}
 
 function chosenRemote(server: McpSubregistryServer) {
   if (server.curation)
@@ -66,9 +141,9 @@ function chosenRemote(server: McpSubregistryServer) {
 }
 
 /** What Station shows and enforces for one entry. Pure. */
-export function mcpServerListing(
+function mcpServerListing(
   server: McpSubregistryServer,
-  options: { stale: boolean },
+  options: { stale: boolean } & McpListingPolicy,
 ): RegistryMcpServerListing {
   const unavailable: string[] = [];
   if (server.status !== 'active') unavailable.push(UNAVAILABLE[server.status]);
@@ -92,8 +167,10 @@ export function mcpServerListing(
     // Re-checked here, not trusted from the parser, because this URL is what
     // becomes the stored endpoint.
     const url = parseHttpsUrl(remote.url, 'remote', []);
-    if (url) usable = { transport: 'streamable-http', url };
-    else unavailable.push(UNAVAILABLE.noRemote);
+    if (!url) unavailable.push(UNAVAILABLE.noRemote);
+    else if (!options.allowPrivateAddresses && isPrivateNetworkHost(url))
+      unavailable.push(UNAVAILABLE.privateAddress);
+    else usable = { transport: 'streamable-http', url };
     if (remote.headers.some((header) => header.secret || header.required)) {
       if (!server.curation) authMode = 'token';
       unavailable.push(UNAVAILABLE.secretHeader);
@@ -101,7 +178,7 @@ export function mcpServerListing(
       unavailable.push(UNAVAILABLE.literalHeader);
     }
   }
-  if (authMode === 'pre-registered-required')
+  if (authMode === 'pre-registered-required' && !options.preRegisteredClients)
     unavailable.push(UNAVAILABLE.preRegistered);
   if (authMode === 'token' && !unavailable.includes(UNAVAILABLE.secretHeader))
     unavailable.push(UNAVAILABLE.secretHeader);
@@ -113,7 +190,13 @@ export function mcpServerListing(
     authMode,
     qualification: server.curation
       ? {
-          state: unavailable.length === 0 ? 'qualified' : 'blocked',
+          state:
+            unavailable.length > 0
+              ? 'blocked'
+              : // Station's check completed dynamic registration only.
+                authMode === 'pre-registered-required'
+                ? 'setup-required'
+                : 'qualified',
           summary: server.curation.summary,
           checkedAt: server.curation.checkedAt,
         }
@@ -123,6 +206,9 @@ export function mcpServerListing(
       : {}),
     ...(server.curation?.contentTrust
       ? { contentTrust: server.curation.contentTrust }
+      : {}),
+    ...(server.curation?.trustReadOnlyHints
+      ? { trustReadOnlyHints: true }
       : {}),
     ...(server.websiteUrl ? { websiteUrl: server.websiteUrl } : {}),
     unavailable,
@@ -135,7 +221,13 @@ export class McpSubregistryIntegrationProvider
   readonly registryKey: string;
   readonly displayName: string;
 
-  constructor(readonly source: McpSubregistrySource) {
+  constructor(
+    readonly source: McpSubregistrySource,
+    private readonly policy: () => McpListingPolicy = () => ({
+      preRegisteredClients: false,
+      allowPrivateAddresses: false,
+    }),
+  ) {
     this.registryKey = `mcp-subregistry:${source.id}`;
     this.displayName = source.displayName;
   }
@@ -148,10 +240,11 @@ export class McpSubregistryIntegrationProvider
     await this.source.ready();
     this.source.refreshIfStale();
     const stale = this.source.isStale();
+    const policy = this.policy();
     return this.source.servers().map((server) => ({
       id: mcpServerIntegrationId(server.name),
       server,
-      listing: mcpServerListing(server, { stale }),
+      listing: mcpServerListing(server, { stale, ...policy }),
       stale,
     }));
   }
@@ -215,6 +308,7 @@ export class McpSubregistryIntegrationProvider
       ...(entry.listing.contentTrust
         ? { contentTrust: entry.listing.contentTrust }
         : {}),
+      ...(entry.listing.trustReadOnlyHints ? { trustReadOnlyHints: true } : {}),
       timeouts: { startupMs: 15_000, requestMs: 60_000 },
     };
   }
@@ -228,7 +322,7 @@ export class McpSubregistryIntegrationProvider
  * The configured MCP subregistry URL, or `undefined` when unset. A value
  * that is not an https URL is refused rather than ignored.
  */
-export function configuredMcpSubregistryUrl(
+function configuredMcpSubregistryUrl(
   env: NodeJS.ProcessEnv = process.env,
 ): string | undefined {
   const raw = env.STATION_MCP_SUBREGISTRY_URL?.trim();
@@ -239,8 +333,15 @@ export function configuredMcpSubregistryUrl(
   return url;
 }
 
+const hostHasPreRegisteredClients = () =>
+  hasToolServerOAuthCapability('pre-registered-clients');
+
 let cached:
-  | { key: string; providers: McpSubregistryIntegrationProvider[] }
+  | {
+      key: string;
+      providers: McpSubregistryIntegrationProvider[];
+      hasPreRegisteredClients: () => boolean;
+    }
   | undefined;
 
 /**
@@ -252,7 +353,17 @@ let cached:
 export function mcpSubregistryIntegrationProviders(
   homeDir = resolveHomeDir(),
   env: NodeJS.ProcessEnv = process.env,
+  hasPreRegisteredClients: () => boolean = hostHasPreRegisteredClients,
 ): McpSubregistryIntegrationProvider[] {
+  const allowPrivateAddresses = ['on', '1', 'true', 'yes'].includes(
+    env.STATION_MCP_SUBREGISTRY_ALLOW_PRIVATE_ADDRESSES?.trim().toLowerCase() ??
+      '',
+  );
+  // Read per listing, so a capability registered after startup applies.
+  const policy = () => ({
+    preRegisteredClients: hasPreRegisteredClients(),
+    allowPrivateAddresses,
+  });
   const curatedOff = ['off', '0', 'false', 'no'].includes(
     env.STATION_MCP_CURATED_REGISTRY?.trim().toLowerCase() ?? '',
   );
@@ -263,8 +374,18 @@ export function mcpSubregistryIntegrationProviders(
   } catch (error) {
     urlError = (error as Error).message;
   }
-  const key = JSON.stringify([homeDir, curatedOff, url, urlError]);
-  if (cached?.key === key) return cached.providers;
+  const key = JSON.stringify([
+    homeDir,
+    curatedOff,
+    url,
+    urlError,
+    allowPrivateAddresses,
+  ]);
+  if (
+    cached?.key === key &&
+    cached.hasPreRegisteredClients === hasPreRegisteredClients
+  )
+    return cached.providers;
   const providers: McpSubregistryIntegrationProvider[] = [];
   if (!curatedOff)
     providers.push(
@@ -275,6 +396,7 @@ export function mcpSubregistryIntegrationProviders(
           origin: 'station',
           bundled: [JSON.stringify(curatedSubregistry)],
         }),
+        policy,
       ),
     );
   if (url || urlError)
@@ -288,8 +410,9 @@ export function mcpSubregistryIntegrationProviders(
           ...(url ? { url } : { refusal: urlError }),
           cacheDir: join(homeDir, 'cache', 'mcp-subregistry'),
         }),
+        policy,
       ),
     );
-  cached = { key, providers };
+  cached = { key, providers, hasPreRegisteredClients };
   return providers;
 }

@@ -9,7 +9,10 @@
         "version": "1.0.2",
         "websiteUrl": "https://linear.app",
         "remotes": [
-          { "type": "streamable-http", "url": "https://mcp.linear.app/mcp" }
+          {
+            "type": "streamable-http",
+            "url": "https://mcp.linear.app/mcp"
+          }
         ]
       },
       "_meta": {
@@ -30,7 +33,10 @@
         "version": "1.0.1",
         "websiteUrl": "https://developers.notion.com/docs/mcp",
         "remotes": [
-          { "type": "streamable-http", "url": "https://mcp.notion.com/mcp" }
+          {
+            "type": "streamable-http",
+            "url": "https://mcp.notion.com/mcp"
+          }
         ]
       },
       "_meta": {
@@ -95,7 +101,7 @@
         "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
         "name": "ai.kontour.station/gmail",
         "title": "Gmail",
-        "description": "Search, read, label and draft messages in your Gmail mailbox.",
+        "description": "Search and read Gmail threads. Drafting needs the gmail.compose scope; labeling needs gmail.modify.",
         "version": "mcp-v1",
         "websiteUrl": "https://developers.google.com/workspace/gmail/api/guides/configure-mcp-server",
         "remotes": [
@@ -112,10 +118,12 @@
           "launchStage": "developer-preview",
           "contentTrust": "untrusted",
           "checkedAt": "2026-10-28T13:00:00Z",
-          "summary": "Google lists this endpoint as Developer Preview; Google has not published it to the official MCP Registry, so Station names it in its own namespace. Its authorization server (accounts.google.com) has no dynamic client registration: bring your own Google Cloud OAuth client and keep to read-only scopes. Email is content written by others, so Station asks before tools that send or change things by default; you can change that per tool."
+          "summary": "Google lists this endpoint as Developer Preview and has not published it to the official MCP Registry, so Station names it in its own namespace. Its authorization server (accounts.google.com) has no dynamic client registration: bring your own Google Cloud OAuth client. gmail.readonly covers search and read; drafting needs gmail.compose and labeling needs gmail.modify. Google's tool list has no send tool. Email is content written by others, so in Station-engine sessions Station asks before tools that send or change things by default; you can change that per tool."
         }
       }
     }
   ],
-  "metadata": { "count": 5 }
+  "metadata": {
+    "count": 5
+  }
 }

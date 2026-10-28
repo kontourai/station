@@ -132,7 +132,14 @@ export interface ToolDef {
    * not declare read-only. Absent means `ask`.
    */
   untrustedContentPermissions?: UntrustedContentPermissions;
-  /** Server-written receipts for changes to the two fields above. */
+  /**
+   * #3483: honor this server's read-only tool hints (MCP `readOnlyHint`) for
+   * the untrusted-content permission even though `contentTrust` is
+   * `untrusted`. Hints from an untrusted server are otherwise ignored, since
+   * the server controls them. A catalog or the person sets it.
+   */
+  trustReadOnlyHints?: boolean;
+  /** Server-written receipts for changes to the three fields above. */
   untrustedContentChanges?: UntrustedContentChange[];
 }
 
@@ -141,6 +148,8 @@ export interface ToolDef {
  * - `allow`: untrusted content adds nothing; the tool's usual permission
  *   decides, so an always-allow for the tool runs it without a question.
  * - `deny`: the call is refused.
+ *
+ * A person's entry always wins, including over a server's read-only hint.
  */
 export type UntrustedContentPermission = 'ask' | 'allow' | 'deny';
 
@@ -157,6 +166,7 @@ export interface UntrustedContentChange {
   by?: string;
   contentTrust?: 'untrusted' | 'trusted';
   permissions?: UntrustedContentPermissions;
+  trustReadOnlyHints?: boolean;
 }
 
 export interface ToolCredentialOwnership {

@@ -162,6 +162,7 @@ export const MCP_QUALIFICATION_LABELS: Record<
   string
 > = {
   qualified: 'Station qualified',
+  'setup-required': 'Checked, needs your OAuth client',
   blocked: 'Checked, not available yet',
   unqualified: 'Unqualified',
 };

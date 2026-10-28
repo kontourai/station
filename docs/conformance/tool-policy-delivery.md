@@ -199,8 +199,11 @@ Managed calls without an approval channel are denied.
 On the Station engine only, a turn that has read a tool result from an
 integration with `contentTrust: "untrusted"` runs one more stage after the
 Project tool policy and before authored Ask rules: the called tool's
-`untrustedContentPermissions` entry, `ask` when absent, for tools its server
-does not declare read-only. `ask` is answered exactly like an effective
+`untrustedContentPermissions` entry, then its integration default, then
+`ask`. A read-only hint exempts a tool only when no entry is set and the
+server's hints are trusted (not an `untrusted` server, or
+`trustReadOnlyHints`). Delegation shares the mark between parent and child
+conversations. `ask` is answered exactly like an effective
 authored Ask above, `deny` refuses with `untrusted_content_denied`, and
 `allow` leaves the decision to the later stages. External engines build their
 evaluator without this stage, so Claude Code, Codex and ACP do not deliver it

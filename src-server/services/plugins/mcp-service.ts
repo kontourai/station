@@ -442,7 +442,10 @@ export class MCPService {
     }
   }
 
-  async saveIntegration(def: ToolDef): Promise<void> {
+  async saveIntegration(
+    def: ToolDef,
+    options?: { changedBy?: string },
+  ): Promise<void> {
     if (
       (def as OwnershipTaggedToolDef)[CONTRIBUTED_INTEGRATION_DEFINITION] ===
       true
@@ -489,7 +492,11 @@ export class MCPService {
         )
       : withPreservedBindings;
     const write = async () => {
-      await this.configLoader.saveIntegration(def.id, persisted);
+      await this.configLoader.saveIntegration(
+        def.id,
+        persisted,
+        ...(options ? [options] : []),
+      );
       if (!existing)
         recordIntegrationOrigin(
           this.configLoader.getProjectHomeDir(),

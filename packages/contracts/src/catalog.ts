@@ -158,6 +158,9 @@ export type RegistryMcpAuthMode =
 /**
  * - `qualified`: Station checked the endpoint and authorization mode against
  *   the live server, and its connect flow can be used today.
+ * - `setup-required`: checked and addable, but sign-in needs an OAuth client
+ *   the person registers with the provider, a path Station's check did not
+ *   complete.
  * - `blocked`: Station checked the entry, but cannot deliver it yet; the
  *   reasons are in `unavailable`.
  * - `unqualified`: Station has not checked the entry. Every entry from a
@@ -166,6 +169,7 @@ export type RegistryMcpAuthMode =
  */
 export type RegistryMcpQualificationState =
   | 'qualified'
+  | 'setup-required'
   | 'blocked'
   | 'unqualified';
 
@@ -192,6 +196,8 @@ export interface RegistryMcpServerListing {
    * person can change; see docs/design/mcp-subregistry-curation.md.
    */
   contentTrust?: 'untrusted';
+  /** Station's curation trusts this server's read-only tool hints. */
+  trustReadOnlyHints?: boolean;
   websiteUrl?: string;
   /** Why Add is refused. Empty means the entry can be added. */
   unavailable: string[];

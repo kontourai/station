@@ -308,6 +308,7 @@ export const integrationSchema = z.object({
   // #3483: the person's classification and outbound-after-untrusted-content
   // permissions. Change receipts are server-written and never accepted here.
   contentTrust: z.enum(['untrusted', 'trusted']).optional(),
+  trustReadOnlyHints: z.boolean().optional(),
   untrustedContentPermissions: z
     .object({
       default: untrustedContentPermissionSchema.optional(),

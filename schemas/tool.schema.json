@@ -347,10 +347,14 @@
     "untrustedContentPermissions": {
       "$ref": "#/definitions/untrustedContentPermissions"
     },
+    "trustReadOnlyHints": {
+      "type": "boolean",
+      "description": "Honor this server's read-only tool hints for the untrusted-content permission even when contentTrust is untrusted (#3483)."
+    },
     "untrustedContentChanges": {
       "type": "array",
       "maxItems": 50,
-      "description": "Server-written receipts for changes to contentTrust and untrustedContentPermissions.",
+      "description": "Server-written receipts for changes to contentTrust, untrustedContentPermissions and trustReadOnlyHints.",
       "items": {
         "type": "object",
         "required": ["at"],
@@ -361,7 +365,10 @@
             "type": "string",
             "enum": ["untrusted", "trusted"]
           },
-          "permissions": { "$ref": "#/definitions/untrustedContentPermissions" }
+          "permissions": {
+            "$ref": "#/definitions/untrustedContentPermissions"
+          },
+          "trustReadOnlyHints": { "type": "boolean" }
         },
         "additionalProperties": false
       }

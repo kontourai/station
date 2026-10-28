@@ -25,7 +25,7 @@ const logger = createLogger({ name: 'mcp-subregistry' });
 export const STATION_CURATION_META_KEY = 'ai.kontour.station/curation';
 const OFFICIAL_META_KEY = 'io.modelcontextprotocol.registry/official';
 
-export const SUPPORTED_SERVER_SCHEMAS: ReadonlySet<string> = new Set([
+const SUPPORTED_SERVER_SCHEMAS: ReadonlySet<string> = new Set([
   'https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json',
   'https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json',
 ]);
@@ -91,6 +91,8 @@ export interface McpStationCuration {
   summary: string;
   launchStage?: 'preview' | 'developer-preview';
   contentTrust?: 'untrusted';
+  /** Station trusts the server's own read-only tool hints. */
+  trustReadOnlyHints?: boolean;
 }
 
 /** One server entry that passed validation. Unknown fields are not carried. */
@@ -256,6 +258,11 @@ function parseCuration(
   if (value.contentTrust !== undefined && value.contentTrust !== 'untrusted')
     reasons.push(`${field}.contentTrust must be "untrusted" when present`);
   if (
+    value.trustReadOnlyHints !== undefined &&
+    typeof value.trustReadOnlyHints !== 'boolean'
+  )
+    reasons.push(`${field}.trustReadOnlyHints must be true or false`);
+  if (
     remote === undefined ||
     checkedAt === undefined ||
     summary === undefined ||
@@ -273,6 +280,7 @@ function parseCuration(
     ...(value.contentTrust === 'untrusted'
       ? { contentTrust: 'untrusted' as const }
       : {}),
+    ...(value.trustReadOnlyHints === true ? { trustReadOnlyHints: true } : {}),
   };
 }
 
@@ -456,7 +464,7 @@ export function mcpServerIntegrationId(name: string): string {
  * single active-latest choice the source marks; names that cannot be
  * resolved to one version, and names whose ids collide, are refused.
  */
-export function selectMcpServerVersions(servers: McpSubregistryServer[]): {
+function selectMcpServerVersions(servers: McpSubregistryServer[]): {
   servers: McpSubregistryServer[];
   refused: McpSubregistryRefusal[];
 } {
@@ -571,7 +579,7 @@ interface CachedIndex {
  * Parses a complete set of pages into one selection. Fails whole when any
  * page fails or the records across pages pass the server bound.
  */
-export function parseMcpSubregistryPages(
+function parseMcpSubregistryPages(
   pages: readonly string[],
   options: { maxServers: number; trustCuration: boolean },
 ):
@@ -775,6 +783,7 @@ export class McpSubregistrySource {
     timer.unref?.();
     try {
       const pages: string[] = [];
+      const seenCursors = new Set<string>();
       let cursor: string | undefined;
       for (;;) {
         if (pages.length === this.limits.maxPages) {
@@ -794,15 +803,15 @@ export class McpSubregistrySource {
         });
         if (!page.ok) throw new SubregistryRefusedError(page.reason);
         pages.push(body);
-        if (
-          page.nextCursor === undefined ||
-          page.servers.length + page.refused.length === 0
-        )
-          break;
-        if (page.nextCursor === cursor)
+        // Only a missing cursor ends the list. An empty page that still
+        // names a next page is followed, within the page bound, so a gap
+        // cannot publish a partial index as complete.
+        if (page.nextCursor === undefined) break;
+        if (seenCursors.has(page.nextCursor))
           throw new SubregistryRefusedError(
             'The subregistry repeated a page cursor.',
           );
+        seenCursors.add(page.nextCursor);
         cursor = page.nextCursor;
       }
       const parsed = this.parse(pages);

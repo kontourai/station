@@ -31,7 +31,6 @@ import {
   MCPToolDisabledError,
   type ToolServerAccountActor,
 } from '../../services/plugins/mcp-service.js';
-import { withUntrustedContentChange } from '../../services/plugins/untrusted-content-policy.js';
 import {
   integrationIconAssetReads,
   mcpUiRenderPermissionAllows,
@@ -124,6 +123,11 @@ export interface McpUiCallDeps {
    * person-owned integration then refuses rather than guessing.
    */
   resolveAccountPrincipalId?: (c: Context) => string | undefined;
+  /**
+   * #3483: the authenticated request principal, for attributing permission
+   * changes. Unlike the account owner above it answers for hosted requests.
+   */
+  resolveRequestPrincipalId?: (c: Context) => string | undefined;
 }
 
 /**
@@ -220,6 +224,11 @@ export function createToolRoutes(
   mcpUiCallDeps: McpUiCallDeps = {},
 ) {
   const app = new Hono();
+  // #3483: who a definition write is attributed to, when known.
+  const attribution = (c: Context): [] | [{ changedBy: string }] => {
+    const changedBy = mcpUiCallDeps.resolveRequestPrincipalId?.(c);
+    return changedBy ? [{ changedBy }] : [];
+  };
   app.use('*', async (c, next) => {
     const path = c.req.path.replace(/^\/integrations/, '') || '/';
     const management =
@@ -449,11 +458,14 @@ export function createToolRoutes(
         toolServerCredentialWrites.add(Object.keys(env).length, {
           operation: 'create',
         });
-      await mcpService.saveIntegration({
-        ...safe,
-        ...(env ? { secretEnv: env } : {}),
-        enabled: false,
-      } as ToolDef);
+      await mcpService.saveIntegration(
+        {
+          ...safe,
+          ...(env ? { secretEnv: env } : {}),
+          enabled: false,
+        } as ToolDef,
+        ...attribution(c),
+      );
       return c.json({ success: true });
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
@@ -887,20 +899,9 @@ export function createToolRoutes(
       if (!Object.hasOwn(update, 'secretEnv') && existing.env) {
         merged.env = existing.env;
       }
-      // #3483: a change to the untrusted-content classification or
-      // permissions is a permission change and leaves a receipt.
-      const recorded = withUntrustedContentChange(
-        existing,
-        merged,
-        mcpUiCallDeps.resolveAccountPrincipalId?.(c),
-        new Date(),
-      );
-      if (
-        recorded.untrustedContentChanges?.length !==
-        existing.untrustedContentChanges?.length
-      )
-        toolDefinitionOps.add(1, { op: 'untrusted-content-permission' });
-      await mcpService.saveIntegration(recorded);
+      // #3483: the config writer records untrusted-content permission
+      // changes; the authenticated request principal is who made them.
+      await mcpService.saveIntegration(merged, ...attribution(c));
       return c.json({ success: true });
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 400);

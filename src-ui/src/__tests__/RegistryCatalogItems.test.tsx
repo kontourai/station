@@ -174,7 +174,7 @@ describe('MCP subregistry entries (#3483)', () => {
       expect(screen.getByText(label)).toBeTruthy();
     // A default the person can change, never a prohibition.
     expect(
-      screen.getByText(/Asks before tools that send or change things/),
+      screen.getByText(/In Station-engine sessions, asks before tools/),
     ).toBeTruthy();
     const button = screen.getByRole('button', { name: 'Unavailable' });
     expect((button as HTMLButtonElement).disabled).toBe(true);

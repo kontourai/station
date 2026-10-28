@@ -1,6 +1,7 @@
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { MCPToolProvenanceGeneration } from '../../../services/orchestration/mcp-tool-provenance.js';
+import { UntrustedContentLedger } from '../../../services/plugins/untrusted-content-policy.js';
 import {
   type MCPToolNameMappingEntry,
   normalizeLoadedMCPTools,
@@ -24,6 +25,12 @@ const { toolDenials } = await import('../../../telemetry/metrics.js');
  */
 function setup(
   overrides: { mail?: Partial<ToolDef>; tracker?: Partial<ToolDef> } = {},
+  options: {
+    ledger?: UntrustedContentLedger;
+    invocation?: Record<string, unknown>;
+    /** Integration ids whose stored definition read fails (EIO). */
+    unreadable?: string[];
+  } = {},
 ) {
   const generation = new MCPToolProvenanceGeneration();
   const mapping = new Map<string, MCPToolNameMappingEntry>();
@@ -41,8 +48,9 @@ function setup(
       }),
       { debug: vi.fn() },
     );
-  load('mail', ['read_message']);
+  load('mail', ['read_message', 'send_reply']);
   load('tracker', ['search', 'create_issue']);
+  load('station-control', ['get_task_events']);
   const runtimeName = (integrationId: string, tool: string) =>
     [...mapping.entries()].find(
       ([, entry]) =>
@@ -58,9 +66,23 @@ function setup(
         ok: true,
         toolCount: 1,
         checkedAt: '2026-10-28T00:00:00Z',
-        tools: [{ name: 'read_message', readOnly: true }],
+        tools: [
+          { name: 'read_message', readOnly: true },
+          // The server's own claim; it is untrusted like the rest of it.
+          { name: 'send_reply', readOnly: true },
+        ],
       },
       ...overrides.mail,
+    },
+    'station-control': {
+      id: 'station-control',
+      kind: 'mcp',
+      probe: {
+        ok: true,
+        toolCount: 1,
+        checkedAt: '2026-10-28T00:00:00Z',
+        tools: [{ name: 'get_task_events', readOnly: true }],
+      },
     },
     tracker: {
       id: 'tracker',
@@ -84,12 +106,16 @@ function setup(
     spec: {
       name: 'Assistant',
       prompt: '',
-      tools: { autoApprove: ['mcp/mail/*', 'mcp/tracker/*'] },
+      tools: {
+        autoApprove: ['mcp/mail/*', 'mcp/tracker/*', 'mcp/station-control/*'],
+      },
     },
     appConfig: {},
     configLoader: {
       loadAgent: vi.fn(),
       loadIntegration: vi.fn(async (id: string) => {
+        if (options.unreadable?.includes(id))
+          throw Object.assign(new Error('EIO: i/o error'), { code: 'EIO' });
         if (!definitions[id]) throw new Error('not found');
         return definitions[id];
       }),
@@ -97,6 +123,7 @@ function setup(
     agentFixedTokens: new Map(),
     memoryAdapters: new Map(),
     toolNameMapping: mapping,
+    untrustedContentLedger: options.ledger ?? new UntrustedContentLedger(),
     logger,
   } as any);
   const requester = vi.fn<(tool: unknown) => Promise<boolean>>();
@@ -104,7 +131,8 @@ function setup(
   const invocation = {
     agentSlug: 'assistant',
     conversationId: 'conversation-1',
-  };
+    ...options.invocation,
+  } as { agentSlug: string; conversationId: string };
   const call = (integrationId: string, tool: string, id = tool) => ({
     toolName: runtimeName(integrationId, tool),
     toolCallId: id,
@@ -248,5 +276,179 @@ describe('untrusted-content ledger', () => {
     expect(
       (ledger as any).turns.get(JSON.stringify(['a', 'c', null])),
     ).toHaveLength(2);
+  });
+});
+
+describe("a person's entries win over a server's read-only hints", () => {
+  const readOnlyCreate: Partial<ToolDef> = {
+    probe: {
+      ok: true,
+      toolCount: 2,
+      checkedAt: '2026-10-28T00:00:00Z',
+      tools: [
+        { name: 'search', readOnly: true },
+        { name: 'create_issue', readOnly: true },
+      ],
+    },
+  };
+
+  test('an integration-wide deny refuses a tool its server calls read-only', async () => {
+    const { requester, readMail, createIssue } = setup({
+      tracker: {
+        ...readOnlyCreate,
+        untrustedContentPermissions: { default: 'deny' },
+      },
+    });
+    await readMail();
+    expect(await createIssue()).toMatchObject({
+      allowed: false,
+      policyDenied: true,
+    });
+    expect(requester).not.toHaveBeenCalled();
+  });
+
+  test('a per-tool deny refuses it too', async () => {
+    const { readMail, createIssue } = setup({
+      tracker: {
+        ...readOnlyCreate,
+        untrustedContentPermissions: { tools: { create_issue: 'deny' } },
+      },
+    });
+    await readMail();
+    expect(await createIssue()).toMatchObject({
+      allowed: false,
+      policyDenied: true,
+    });
+  });
+
+  test('with no entry, a trusted server’s read-only hint still exempts the tool', async () => {
+    const { requester, readMail, createIssue } = setup({
+      tracker: readOnlyCreate,
+    });
+    await readMail();
+    expect(await createIssue()).toBe(true);
+    expect(requester).not.toHaveBeenCalled();
+  });
+
+  test("an untrusted server's own read-only hint does not exempt its tool", async () => {
+    const { hooks, invocation, requester, call, readMail } = setup();
+    await readMail();
+    requester.mockResolvedValueOnce(false);
+    expect(
+      await hooks.beforeToolCall!(call('mail', 'send_reply'), invocation),
+    ).toMatchObject({
+      allowed: false,
+    });
+    expect(requester).toHaveBeenCalledTimes(1);
+  });
+
+  test('trusting the hints, by catalog or person, honors them again', async () => {
+    const { hooks, invocation, requester, call, readMail } = setup({
+      mail: { trustReadOnlyHints: true },
+    });
+    await readMail();
+    expect(
+      await hooks.beforeToolCall!(call('mail', 'send_reply'), invocation),
+    ).toBe(true);
+    expect(requester).not.toHaveBeenCalled();
+  });
+});
+
+describe('an unreadable classification fails toward asking', () => {
+  test('a result from a server whose definition cannot be read marks the turn', async () => {
+    const { requester, readMail, createIssue } = setup(
+      {},
+      { unreadable: ['mail'] },
+    );
+    await readMail();
+    requester.mockResolvedValueOnce(false);
+    expect(await createIssue()).toMatchObject({ allowed: false });
+    expect(requester).toHaveBeenCalledTimes(1);
+  });
+
+  test("an unreadable called tool's definition asks instead of using its hints", async () => {
+    const { requester, readMail, createIssue } = setup(
+      {},
+      { unreadable: ['tracker'] },
+    );
+    await readMail();
+    requester.mockResolvedValueOnce(true);
+    expect(await createIssue()).toBe(true);
+    expect(requester).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('delegation carries untrusted content both ways', () => {
+  const delegationFrom = (parentConversationId: string) => ({
+    conversationId: 'child-conversation',
+    delegation: {
+      mode: 'isolated-child',
+      depth: 1,
+      maxDepth: 2,
+      parentAgentSlug: 'assistant',
+      parentConversationId,
+      rootAgentSlug: 'assistant',
+      rootConversationId: parentConversationId,
+    },
+  });
+
+  test("a child starts marked when its parent's conversation read untrusted content", async () => {
+    const ledger = new UntrustedContentLedger();
+    const parent = setup({}, { ledger });
+    await parent.readMail();
+    await new Promise((resolve) => setImmediate(resolve));
+    const child = setup(
+      {},
+      { ledger, invocation: delegationFrom('conversation-1') },
+    );
+    child.hooks.registerApprovalRequester(
+      'child-conversation',
+      child.requester,
+    );
+    child.requester.mockResolvedValueOnce(false);
+    expect(await child.createIssue()).toMatchObject({ allowed: false });
+    expect(child.requester).toHaveBeenCalledTimes(1);
+  });
+
+  test("a parent turn that reads a child's result is marked when the child read untrusted content", async () => {
+    const ledger = new UntrustedContentLedger();
+    const parent = setup({}, { ledger });
+    const child = setup(
+      {},
+      { ledger, invocation: delegationFrom('conversation-1') },
+    );
+    child.hooks.registerApprovalRequester(
+      'child-conversation',
+      child.requester,
+    );
+    await child.readMail();
+    await new Promise((resolve) => setImmediate(resolve));
+    // Before reading the child's result the parent turn is clean.
+    expect(await parent.createIssue()).toBe(true);
+    const result = parent.call('station-control', 'get_task_events');
+    expect(await parent.hooks.beforeToolCall!(result, parent.invocation)).toBe(
+      true,
+    );
+    parent.hooks.afterToolCall!(
+      result,
+      { output: 'child summary' },
+      parent.invocation,
+    );
+    parent.requester.mockResolvedValueOnce(false);
+    expect(await parent.createIssue()).toMatchObject({ allowed: false });
+    expect(parent.requester).toHaveBeenCalledTimes(1);
+  });
+
+  test('a clean child result leaves the parent turn unmarked', async () => {
+    const ledger = new UntrustedContentLedger();
+    const parent = setup({}, { ledger });
+    const result = parent.call('station-control', 'get_task_events');
+    parent.hooks.afterToolCall!(
+      result,
+      { output: 'child summary' },
+      parent.invocation,
+    );
+    expect(await parent.createIssue()).toBe(true);
+    expect(parent.requester).not.toHaveBeenCalled();
   });
 });

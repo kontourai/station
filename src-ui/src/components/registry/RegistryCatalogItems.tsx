@@ -168,7 +168,9 @@ export function RegistryCatalogDetail({
           </>
         ) : (
           <Button
-            variant="primary"
+            // A refused item has no primary action; a muted control reads
+            // as unavailable rather than as a pending primary.
+            variant={installRefusal ? 'secondary' : 'primary'}
             size="sm"
             disabled={pending || checkingInstalled || !!installRefusal}
             onClick={() => {

@@ -67,6 +67,9 @@ namespace, is **unqualified**.
 Qualification is derived, not written:
 
 - **qualified**: Station checked it and nothing refuses Add.
+- **setup-required**: checked and addable, but sign-in needs an OAuth
+  client the person registers with the provider, a path Station's own check
+  did not complete.
 - **blocked**: Station checked it and something Station cannot do yet
   refuses Add, for example an authorization mode it does not support.
 - **unqualified**: from a source other than Station's curation.
@@ -89,15 +92,30 @@ Google's (`accounts.google.com`) authorization servers publish no
 registration endpoint. A signed-in tool call has not been verified for any
 entry.
 
-Pre-registered OAuth clients are a separate lane. When Station can use one,
-GitHub and Gmail become addable by changing nothing in their records. Gmail
-also needs your own Google Cloud OAuth client marked for AI agents, and
-read-only scopes are recommended; those are Google's requirements.
+Pre-registered OAuth clients are a separate lane. The listing reads one host
+capability, `pre-registered-clients`
+([source](../../src-server/services/plugins/tool-server-oauth-capabilities.ts)),
+at listing time. Nothing registers it yet; the change that adds
+pre-registered client support registers it with one
+`registerToolServerOAuthCapability('pre-registered-clients')` call, and
+GitHub and Gmail then list as **setup-required** with nothing changed in
+their records. Gmail also needs your own Google Cloud OAuth client marked
+for AI agents. Google's tool reference lists search, read, label and draft
+tools and no send tool: `gmail.readonly` covers search and read, drafting
+needs `gmail.compose`, and labeling needs `gmail.modify`.
 
 An added entry is stored as an ordinary remote tool server, turned off, with
 `credentialOwnership: { owner: "principal" }`, so each person signs in to
 their own account. The registry entry's name and version are recorded as its
 origin.
+
+A catalog cannot add an endpoint on this host or its network: loopback,
+private, link-local, shared, reserved and multicast addresses (IPv4, IPv6,
+IPv4-mapped IPv6, and `localhost`, `*.localhost`, `*.local` names) are
+listed with that reason. An operator can allow them with
+`STATION_MCP_SUBREGISTRY_ALLOW_PRIVATE_ADDRESSES=1`. A public name that
+resolves to a private address is not caught at listing time. Tool servers
+added by hand under **Connections → Tools** are unaffected.
 
 An operator can add one network subregistry with `STATION_MCP_SUBREGISTRY_URL`
 (https only). Its entries are unqualified. Pointed at the official registry's
@@ -114,11 +132,24 @@ can change, not a fixed gate.
   default when added; the person can set `trusted` for a server they trust.
 - **Permission.** `ToolDef.untrustedContentPermissions` holds a `default`
   and per-tool entries, each `ask`, `allow` or `deny`. Absent means `ask`.
-  It applies to the server's tools that the server does not declare
-  read-only (MCP `readOnlyHint`, recorded by the probe).
+- **Order.** The called tool's own entry, then its integration's `default`.
+  Only when neither is set can a server's read-only hint (MCP
+  `readOnlyHint`, recorded by the probe) exempt the tool, and only when that
+  server's hints are trusted: its `contentTrust` is not `untrusted`, or
+  `trustReadOnlyHints` is set by a catalog or the person. MCP annotations
+  are the server's own claim, so an untrusted server's hints count for
+  nothing by default. Otherwise the answer is `ask`.
 - **When it applies.** After a tool from an `untrusted` server returns in a
   turn, every later call in that turn takes the called tool's permission.
-  The turn ends when the invocation finishes.
+  The turn ends when the invocation finishes. A result whose server
+  definition cannot be read counts as untrusted, and a called tool whose
+  definition cannot be read asks.
+- **Delegation.** A conversation that has read untrusted content marks every
+  child it delegates to from the start. A child that reads it marks its
+  parent and root conversations, and the parent's next result read from a
+  delegation tool (`delegate_task`, `get_task`, `get_task_events`,
+  `continue_task`, `respond_to_task_request`, `list_delegated_tasks`) marks
+  that parent turn.
 
 The [staged pre-tool evaluator](../../src-server/runtime/agents/pre-tool-policy.ts)
 answers the permission before tool grants:
@@ -131,19 +162,32 @@ answers the permission before tool grants:
   in the Agent's `autoApprove` then runs the tool without a question.
 
 Changes go through the existing integration save
-(`PUT /api/integrations/:id`), which is operator-gated. When the
-classification or a permission changes, the route appends a receipt
-(`untrustedContentChanges`: time, person, new value), keeps the last 50, and
-ignores receipts in the request.
+(`PUT /api/integrations/:id`, operator-gated) or any other definition write.
+The config writer, `ConfigLoader.saveIntegration` and `updateIntegration`,
+keeps the stored receipts (`untrustedContentChanges`), ignores receipts in
+the request, and appends one (time, the authenticated request principal when
+known, new value) whenever the classification, a permission or
+`trustReadOnlyHints` changes, so a whole-definition replacement cannot erase
+the history. The last 50 are kept.
 
 ### Coverage and gaps
 
 - **Enforced:** tools the Station engine dispatches through its hooks
-  ([agent-hooks.ts](../../src-server/runtime/agents/agent-hooks.ts)).
+  ([agent-hooks.ts](../../src-server/runtime/agents/agent-hooks.ts)). The
+  Registry says so: "In Station-engine sessions, asks before tools that send
+  or change things by default."
 - **Not enforced on external engines.** Claude Code, Codex and ACP sessions
   build their evaluator in `StationRuntime.resolveExternalPreToolPolicy`
   without this stage, and their tool results are not reported to Station's
   hooks per turn. Station shows no claim of coverage there.
+- **MCP prompts.** A prompt from an untrusted server (`/<server>:<prompt>`)
+  is fetched by the composer and sent as the person's own message; the turn
+  is not marked. Marking it needs the prompt's origin carried with the
+  message into the turn, which this change does not add.
+- **Delegation memory.** The delegation records live in the server's memory
+  (the most recent 10,000 conversations per record) and do not survive a
+  restart. A delegated child on an external engine does not report its
+  reads.
 - **Tools without integration settings.** A tool not loaded from an
   integration (Station's built-in bash, file editor, HTTP request) takes the
   default `ask` in a marked turn and has no per-tool setting yet.

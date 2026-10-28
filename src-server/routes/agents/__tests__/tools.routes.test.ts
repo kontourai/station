@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import {
   loadIntegrationConfig,
@@ -1447,86 +1448,131 @@ describe('Tool Routes', () => {
 });
 
 describe('untrusted-content permission changes (#3483)', () => {
-  const put = (app: ReturnType<typeof createToolRoutes>, body: unknown) =>
-    app.request('/mail', {
-      method: 'PUT',
+  const makeTempDir = trackTempDirs();
+  const request = (
+    app: ReturnType<typeof createToolRoutes>,
+    method: 'PUT' | 'POST',
+    body: unknown,
+  ) =>
+    app.request(method === 'PUT' ? '/mail' : '/', {
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
 
-  test('a change records who made it, and a caller cannot write receipts', async () => {
+  test('PUT and POST attribute the change to the authenticated request principal', async () => {
     const svc = createMockMCPService();
-    svc.getIntegration.mockResolvedValue({
-      id: 'mail',
-      kind: 'mcp',
-      contentTrust: 'untrusted',
-    });
+    svc.getIntegration.mockResolvedValue({ id: 'mail', kind: 'mcp' });
     const app = createToolRoutes(svc as any, vi.fn(), {
-      resolveAccountPrincipalId: () => 'person-1',
+      // The connected-account resolver answers undefined for hosted
+      // requests; attribution must not depend on it.
+      resolveAccountPrincipalId: () => undefined,
+      resolveRequestPrincipalId: () => 'person-1',
     });
-    const response = await put(app, {
-      contentTrust: 'trusted',
-      untrustedContentPermissions: { tools: { send_draft: 'allow' } },
-      untrustedContentChanges: [{ at: '2000-01-01T00:00:00Z', by: 'forged' }],
+    expect(
+      (await request(app, 'PUT', { contentTrust: 'trusted' })).status,
+    ).toBe(200);
+    expect(svc.saveIntegration.mock.calls[0][1]).toEqual({
+      changedBy: 'person-1',
     });
-    expect(response.status).toBe(200);
-    const saved = svc.saveIntegration.mock.calls[0][0];
-    expect(saved.untrustedContentChanges).toEqual([
+    expect(
+      (
+        await request(app, 'POST', {
+          id: 'mail',
+          kind: 'mcp',
+          transport: 'streamable-http',
+          endpoint: 'https://mail.example.test/mcp',
+          contentTrust: 'untrusted',
+        })
+      ).status,
+    ).toBe(200);
+    expect(svc.saveIntegration.mock.calls[1][1]).toEqual({
+      changedBy: 'person-1',
+    });
+  });
+
+  const def = {
+    id: 'mail',
+    kind: 'mcp' as const,
+    transport: 'streamable-http' as const,
+    endpoint: 'https://mail.example.test/mcp',
+  };
+
+  test('the config writer records changes, keeps history across replacement and ignores caller receipts', async () => {
+    const loader = new ConfigLoader({
+      projectHomeDir: makeTempDir('station-untrusted-content-'),
+    });
+    await loader.saveIntegration('mail', { ...def, contentTrust: 'untrusted' });
+    await loader.saveIntegration(
+      'mail',
+      {
+        ...def,
+        contentTrust: 'untrusted',
+        untrustedContentPermissions: { tools: { send_draft: 'deny' } },
+      },
+      { changedBy: 'person-1' },
+    );
+    // A whole-definition replacement (POST, registry reinstall) that carries
+    // forged receipts and drops the setting.
+    await loader.saveIntegration(
+      'mail',
+      {
+        ...def,
+        untrustedContentChanges: [
+          { at: '2000-01-01T00:00:00.000Z', by: 'forged' },
+        ],
+      },
+      { changedBy: 'person-2' },
+    );
+    const stored = await loader.loadIntegration('mail');
+    expect(stored.untrustedContentChanges).toEqual([
+      { at: expect.any(String), contentTrust: 'untrusted' },
       {
         at: expect.any(String),
         by: 'person-1',
+        permissions: { tools: { send_draft: 'deny' } },
+      },
+      {
+        at: expect.any(String),
+        by: 'person-2',
         contentTrust: 'trusted',
-        permissions: { tools: { send_draft: 'allow' } },
+        permissions: {},
       },
     ]);
   });
 
-  test('an unrelated edit leaves no receipt', async () => {
-    const svc = createMockMCPService();
-    svc.getIntegration.mockResolvedValue({
-      id: 'mail',
-      kind: 'mcp',
-      contentTrust: 'untrusted',
+  test('an unrelated write leaves no receipt, and update callbacks keep history', async () => {
+    const loader = new ConfigLoader({
+      projectHomeDir: makeTempDir('station-untrusted-content-'),
     });
-    const app = createToolRoutes(svc as any, vi.fn());
-    await put(app, { description: 'Mail' });
-    expect(svc.saveIntegration.mock.calls[0][0].untrustedContentChanges).toBe(
-      undefined,
-    );
+    await loader.saveIntegration('mail', { ...def, contentTrust: 'untrusted' });
+    await loader.saveIntegration('mail', {
+      ...def,
+      contentTrust: 'untrusted',
+      description: 'Mail',
+    });
+    await loader.updateIntegration('mail', (current) => ({
+      ...current,
+      untrustedContentChanges: [],
+      trustReadOnlyHints: true,
+    }));
+    expect(
+      (await loader.loadIntegration('mail')).untrustedContentChanges,
+    ).toEqual([
+      { at: expect.any(String), contentTrust: 'untrusted' },
+      { at: expect.any(String), trustReadOnlyHints: true },
+    ]);
   });
 
-  test('the stored definition accepts the classification, permissions and receipts', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'station-untrusted-content-'));
-    try {
-      const loader = new ConfigLoader({ projectHomeDir: home });
-      const def = {
-        id: 'mail',
-        kind: 'mcp' as const,
-        transport: 'streamable-http' as const,
-        endpoint: 'https://mail.example.test/mcp',
-        contentTrust: 'untrusted' as const,
-        untrustedContentPermissions: {
-          default: 'ask' as const,
-          tools: { send_draft: 'deny' as const },
-        },
-        untrustedContentChanges: [
-          {
-            at: '2026-10-28T00:00:00.000Z',
-            by: 'person-1',
-            contentTrust: 'untrusted' as const,
-          },
-        ],
-      };
-      await loader.saveIntegration('mail', def);
-      expect(await loader.loadIntegration('mail')).toMatchObject(def);
-      await expect(
-        loader.saveIntegration('mail', {
-          ...def,
-          untrustedContentPermissions: { default: 'sometimes' as any },
-        }),
-      ).rejects.toThrow();
-    } finally {
-      await rm(home, { recursive: true, force: true });
-    }
+  test('the stored definition refuses an unknown permission value', async () => {
+    const loader = new ConfigLoader({
+      projectHomeDir: makeTempDir('station-untrusted-content-'),
+    });
+    await expect(
+      loader.saveIntegration('mail', {
+        ...def,
+        untrustedContentPermissions: { default: 'sometimes' as any },
+      }),
+    ).rejects.toThrow();
   });
 });

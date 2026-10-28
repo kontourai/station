@@ -1500,6 +1500,9 @@ and account. Portable preparation and reproducible recipes remain owned by
 
 - **Station qualified**: Station checked the endpoint and sign-in, and
   **Add** works today.
+- **Checked, needs your OAuth client**: addable, but you enter an OAuth
+  client you registered with the provider before signing in. Shown only once
+  Station supports such clients.
 - **Checked, not available yet**: the card lists why, for example sign-in
   that needs an OAuth client you register with the provider.
 - **Unqualified**: from a source Station has not checked.
@@ -1513,14 +1516,19 @@ servers, the bounds and the evidence.
 
 An operator can add one more subregistry with `STATION_MCP_SUBREGISTRY_URL`.
 Its entries are unqualified. When it cannot be reached, its last saved copy
-is shown as offline and cannot be added from until it is refreshed.
+is shown as offline and cannot be added from until it is refreshed. A
+catalog entry pointing at this host or a private network (for example
+`127.0.0.1`, `10.0.0.5` or `localhost`) cannot be added unless the operator
+sets `STATION_MCP_SUBREGISTRY_ALLOW_PRIVATE_ADDRESSES=1`.
 
 ### Tools after untrusted content
 
-Some servers return content written by others, such as email. In a turn
-that has read such content, Station asks before running a tool that its
-server does not declare read-only, even one the Agent auto-approves. You can
-change that per server and per tool in its settings:
+Some servers return content written by others, such as email. In a
+Station-engine turn that has read such content, Station asks before running
+a tool, even one the Agent auto-approves, unless the tool's trusted server
+declares it read-only. A server classified untrusted cannot exempt its own
+tools that way unless you set `trustReadOnlyHints`. You can change it per
+server and per tool in its settings; your entry always wins:
 
 ```json
 {
@@ -1535,7 +1543,8 @@ change that per server and per tool in its settings:
 `allow` means untrusted content adds no question and the tool's usual
 permission applies; `deny` refuses. Set `contentTrust` to `trusted` for a
 server whose content you trust. Each change is recorded with who made it.
-Station applies this on its own engine only; see the
+Delegated children share the mark both ways. Station applies this on its own
+engine only, and not yet to MCP prompts from an untrusted server; see the
 [coverage notes](../design/mcp-subregistry-curation.md#coverage-and-gaps).
 
 ## Connect an OAuth MCP server to an Agent

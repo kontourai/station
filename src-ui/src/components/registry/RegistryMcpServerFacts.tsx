@@ -12,6 +12,7 @@ const QUALIFICATION_TONES: Record<
   SemanticTone
 > = {
   qualified: 'positive',
+  'setup-required': 'caution',
   blocked: 'caution',
   unqualified: 'neutral',
 };
@@ -60,8 +61,8 @@ export function RegistryMcpServerFacts({
       </div>
       {listing.contentTrust === 'untrusted' && (
         <p className="page__subtitle">
-          Asks before tools that send or change things, by default. You can
-          change this.
+          In Station-engine sessions, asks before tools that send or change
+          things by default. You can change this.
         </p>
       )}
       {listing.unavailable.length > 0 ? (
@@ -76,7 +77,9 @@ export function RegistryMcpServerFacts({
       ) : (
         !installed && (
           <p className="page__subtitle">
-            Adds it turned off. Turn it on and sign in under Connections.
+            {listing.qualification.state === 'setup-required'
+              ? 'Adds it turned off. Enter your OAuth client in its settings, then sign in.'
+              : 'Adds it turned off. Turn it on and sign in under Connections.'}
           </p>
         )
       )}

@@ -4711,6 +4711,13 @@ export function configureRuntimeRoutes(
         context.configLoader.getProjectHomeDir(),
       ),
       resolveAccountPrincipalId: resolveConnectedAccountPrincipalId,
+      resolveRequestPrincipalId: (c) => {
+        try {
+          return resolveOrchestrationRequestPrincipal(c).id;
+        } catch {
+          return undefined;
+        }
+      },
       // MCP-UI tool calls with `approvalPolicy: 'require'` block on a real inbox
       // approval before executing (the existing managed-approval registry +
       // inbox surface); the spec-compliant tool result is returned only after.
