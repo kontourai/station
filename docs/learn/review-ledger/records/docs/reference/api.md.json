@@ -606,7 +606,9 @@
 
     "src-server/routes/orchestration/task-review-station-control.ts",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts"
+    "src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts",
+
+    "src-server/services/projects/project-checkout-freshness.ts"
   ],
 
   "checks": [
