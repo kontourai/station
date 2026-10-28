@@ -135,10 +135,7 @@ function prepareSendTransaction(options: {
   composed?: boolean;
 }): SendTransaction {
   const originalMessages = options.state?.messages ?? [];
-  // A composed message holds none of the composer's files.
-  const attachmentStages = options.composed
-    ? undefined
-    : options.state?.attachmentStages;
+  const attachmentStages = options.state?.attachmentStages;
   const composed = options.composed ? ({ composed: true } as const) : {};
   // A resend of the same key (a replay of a kept row, a Retry) is the same
   // message: it keeps its one bubble instead of gaining a second.

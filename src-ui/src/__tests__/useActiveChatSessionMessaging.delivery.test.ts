@@ -1406,6 +1406,29 @@ describe('useSendMessage: a composed message leaves the composer alone', () => {
     ).toBe(true);
   });
 
+  it('a discarded Continue puts nothing in the composer and says only that it was not sent', async () => {
+    activeChatsStore.updateChat(chat, { input: '', attachments: [] });
+    await outboundDispatch.syncHeld([
+      {
+        clientTurnId: KEY,
+        sessionId: chat,
+        agentSlug: 'codex',
+        content: 'Continue please',
+      },
+    ]);
+    await outboundDispatch.discard(KEY);
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await composed(result.current);
+    });
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    const state = activeChatsStore.getSnapshot()[chat];
+    expect(state?.input).toBe('');
+    expect(state?.ephemeralMessages?.at(-1)?.content).toBe(
+      'This message was discarded, so it was not sent.',
+    );
+  });
+
   it('while a turn is running it is neither sent, steered nor queued', async () => {
     activeChatsStore.updateChat(chat, {
       status: 'sending',
