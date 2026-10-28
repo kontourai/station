@@ -907,6 +907,7 @@
 .coding-workbench__tool-overlay[data-sheet] {
   align-items: flex-end;
   padding: var(--k-space-2);
+  padding-bottom: max(var(--k-space-2), env(safe-area-inset-bottom, 0px));
 }
 
 .coding-workbench__tool-overlay[data-sheet] .coding-workbench__tool-sheet {
