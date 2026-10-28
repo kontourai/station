@@ -313,7 +313,7 @@ test.describe('subagent transcript cards', () => {
         '.subagent-card__elapsed',
         '.subagent-card__chevron',
       ])
-        expect(Math.abs((await centre(selector)) - row)).toBeLessThanOrEqual(2);
+        expect(Math.abs((await centre(selector)) - row)).toBeLessThanOrEqual(1);
       await group.screenshot({
         path: testInfo.outputPath(
           `subagent-roster-collapsed-mobile-${theme}.png`,
