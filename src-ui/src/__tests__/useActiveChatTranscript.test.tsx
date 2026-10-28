@@ -2936,7 +2936,8 @@ describe('useActiveChatTranscript', () => {
             answer('e20', 'E.'),
             event('e21', 'turn.completed', {
               turnId: 'turn-6',
-              outputText: 'A. B. C. D. E.',
+              // Ends with words the stream dropped (F.).
+              outputText: 'A. B. C. D. E. F.',
             }),
           ],
         })
@@ -2967,6 +2968,7 @@ describe('useActiveChatTranscript', () => {
       // The hole (D.) is not pulled in from the terminal text, and what is
       // held is not repeated.
       expect(assistantText(result.current.messages)).not.toContain('D.');
+      expect(assistantText(result.current.messages)).not.toContain('F.');
       expect(assistantText(result.current.messages).split('A.')).toHaveLength(
         2,
       );
@@ -2980,9 +2982,11 @@ describe('useActiveChatTranscript', () => {
         }),
       );
       // The fill reached what is held: the turn is whole again, once.
+      // Its terminal text is adopted again: the dropped last words show.
       await waitFor(() =>
-        expect(assistantText(result.current.messages)).toContain('D.'),
+        expect(assistantText(result.current.messages)).toContain('F.'),
       );
+      expect(assistantText(result.current.messages)).toContain('D.');
       expect(assistantText(result.current.messages).split('A.')).toHaveLength(
         2,
       );
