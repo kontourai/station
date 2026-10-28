@@ -34,8 +34,7 @@ function Harness({
   );
 }
 
-const composer = () =>
-  document.querySelector<HTMLTextAreaElement>('textarea')!;
+const composer = () => document.querySelector<HTMLTextAreaElement>('textarea')!;
 
 /**
  * The composer as a chat that has just opened reports it: off, then on. A

@@ -104,8 +104,7 @@ export function useWorkingChatFocus({
     let settle: number | undefined;
     if (canFocus && composer && !composer.disabled && !composer.readOnly) {
       if (document.activeElement !== composer) composer.focus();
-      if (ready)
-        settle = window.setTimeout(() => setPending(null), SETTLE_MS);
+      if (ready) settle = window.setTimeout(() => setPending(null), SETTLE_MS);
     }
     const onFocusIn = (event: FocusEvent) => {
       if (!ours(event.target)) setPending(null);
