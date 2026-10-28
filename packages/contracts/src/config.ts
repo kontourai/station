@@ -69,6 +69,17 @@ export interface AppConfig {
    * Station states no posture" — it is NOT a fourth posture.
    */
   defaultApprovalMode?: ApprovalMode;
+  /**
+   * A Project's checkout reads as stale at this many commits behind its
+   * upstream (`resolveProjectCheckoutStaleThresholds` in
+   * `@kontourai/station-contracts/project-checkout-freshness`). Absent: 50.
+   */
+  checkoutStaleAfterCommits?: number;
+  /**
+   * ...or once its upstream has held a commit it lacks for this many days.
+   * Absent: 3.
+   */
+  checkoutStaleAfterDays?: number;
   logLevel?: 'trace' | 'debug' | 'info' | 'warn' | 'error';
   /**
    * When a Station service run by the fixed launcher downloads an available

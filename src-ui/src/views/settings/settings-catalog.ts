@@ -519,6 +519,20 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['defaultMaxTurns'],
   },
   {
+    id: 'checkout-stale-after-commits',
+    title: 'Stale checkout after commits',
+    section: 'agent-runs',
+    keywords: ['git', 'behind', 'upstream', 'pull'],
+    configKeys: ['checkoutStaleAfterCommits'],
+  },
+  {
+    id: 'checkout-stale-after-days',
+    title: 'Stale checkout after days',
+    section: 'agent-runs',
+    keywords: ['git', 'behind', 'upstream', 'pull'],
+    configKeys: ['checkoutStaleAfterDays'],
+  },
+  {
     id: 'default-max-output-tokens',
     title: 'Default max output tokens',
     section: 'agent-runs',

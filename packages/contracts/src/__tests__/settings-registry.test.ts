@@ -294,6 +294,10 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
         // #3386: confirmed against `attachedSessionsOutsideProjectsEnabled`
         // (`!== false`) — absent follows them.
         'attachedSessionsOutsideProjects',
+        // Confirmed against `resolveProjectCheckoutStaleThresholds`, which
+        // falls through to 50 commits and 3 days.
+        'checkoutStaleAfterCommits',
+        'checkoutStaleAfterDays',
         'defaultChatFontSize',
         'defaultMaxTurns',
         // #2144 slice 2: confirmed against `resolveWorkspaceIsolationMode`

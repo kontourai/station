@@ -9,6 +9,7 @@ import type {
   ProjectIconCandidate,
 } from '@kontourai/station-contracts/project';
 import type { ProjectChatDefaultsView } from '@kontourai/station-contracts/project-chat-defaults';
+import type { ProjectCheckoutFreshness } from '@kontourai/station-contracts/project-checkout-freshness';
 import type {
   useIntegrationsQuery,
   useKnowledgeRootsQuery,
@@ -54,6 +55,12 @@ const sdkMocks = vi.hoisted(() => ({
     | undefined,
   chatDefaults: undefined as ProjectChatDefaultsView | undefined,
   chatDefaultsQuery: vi.fn(),
+  // Station-wide previews the host reports, and the checkout freshness read.
+  previews: [] as Array<{ id: string; enabled: boolean }>,
+  checkoutFreshness: undefined as ProjectCheckoutFreshness | null | undefined,
+  checkoutFreshnessError: null as Error | null,
+  checkoutFreshnessQuery: vi.fn(),
+  checkoutFreshnessRefetch: vi.fn(),
 }));
 
 const navigationMocks = vi.hoisted(() => ({
@@ -256,6 +263,17 @@ vi.mock('@kontourai/station-sdk', () => ({
       isPending: !sdkMocks.chatDefaults,
     };
   },
+  useFeaturePreviewsQuery: () => ({ data: sdkMocks.previews }),
+  useProjectCheckoutFreshnessQuery: (...args: unknown[]) => {
+    sdkMocks.checkoutFreshnessQuery(...args);
+    const enabled = (args[1] as { enabled?: boolean } | undefined)?.enabled;
+    return {
+      data: enabled ? sdkMocks.checkoutFreshness : undefined,
+      error: enabled ? sdkMocks.checkoutFreshnessError : null,
+      isFetching: false,
+      refetch: sdkMocks.checkoutFreshnessRefetch,
+    };
+  },
   useAgentsQuery: () => ({
     data: [
       {
@@ -372,6 +390,16 @@ function expectPageFullRoot(container: HTMLElement) {
     true,
   );
 }
+
+// Every suite here renders the Workspace section, so the stale checkout
+// warning's state starts empty for each test.
+beforeEach(() => {
+  sdkMocks.previews = [];
+  sdkMocks.checkoutFreshness = undefined;
+  sdkMocks.checkoutFreshnessError = null;
+  sdkMocks.checkoutFreshnessQuery.mockClear();
+  sdkMocks.checkoutFreshnessRefetch.mockClear();
+});
 
 describe('ProjectSettingsView (#250 shell port)', () => {
   beforeEach(() => {
@@ -1212,6 +1240,87 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     expect(screen.getByRole('dialog').textContent).toContain(
       'no longer have a live Project workspace',
     );
+  });
+
+  describe('stale checkout warning', () => {
+    const stale: ProjectCheckoutFreshness = {
+      version: 'station.project-checkout-freshness/v1',
+      status: 'stale',
+      staleBecause: ['commits'],
+      thresholds: { commits: 50, days: 3 },
+      branch: 'main',
+      upstream: 'origin/main',
+      behind: 183,
+      ahead: 0,
+      updateCommand: 'git -C /Users/me/dev/demo pull --ff-only',
+      checkedAt: '2026-10-28T12:00:00.000Z',
+    };
+    const enablePreview = () => {
+      sdkMocks.previews = [{ id: 'stale-project-checkout', enabled: true }];
+    };
+
+    test('does not read or show anything while the preview is off', () => {
+      sdkMocks.checkoutFreshness = stale;
+      renderProjectSettings();
+      expect(screen.queryByTestId('project-checkout-stale')).toBeNull();
+      expect(sdkMocks.checkoutFreshnessQuery).toHaveBeenCalledWith(
+        'demo',
+        expect.objectContaining({ enabled: false }),
+      );
+    });
+
+    test('shows how far behind the checkout is and the command, in the Workspace section', () => {
+      enablePreview();
+      sdkMocks.checkoutFreshness = stale;
+      renderProjectSettings();
+      const notice = screen.getByTestId('project-checkout-stale');
+      expect(notice.closest('#section-workspace')).not.toBeNull();
+      expect(notice.textContent).toContain(
+        'Checkout is 183 commits behind origin/main',
+      );
+      expect(notice.textContent).toContain(
+        'git -C /Users/me/dev/demo pull --ff-only',
+      );
+      expect(notice.textContent).not.toContain('will refuse');
+    });
+
+    test('warns that the pull will refuse when the checkout has its own commits', () => {
+      enablePreview();
+      sdkMocks.checkoutFreshness = { ...stale, ahead: 1 };
+      renderProjectSettings();
+      expect(
+        screen.getByTestId('project-checkout-stale').textContent,
+      ).toContain('It also has 1 local commit, so this pull will refuse');
+    });
+
+    test('shows nothing for a checkout that is not stale or cannot be judged', () => {
+      enablePreview();
+      sdkMocks.checkoutFreshness = {
+        ...stale,
+        status: 'not-stale',
+        staleBecause: [],
+        behind: 4,
+      };
+      const { unmount } = renderProjectSettings();
+      expect(screen.queryByTestId('project-checkout-stale')).toBeNull();
+      unmount();
+      sdkMocks.checkoutFreshness = {
+        version: 'station.project-checkout-freshness/v1',
+        status: 'unknown',
+        reason: 'no-upstream',
+        checkedAt: '2026-10-28T12:00:00.000Z',
+      };
+      renderProjectSettings();
+      expect(screen.queryByTestId('project-checkout-stale')).toBeNull();
+    });
+
+    test('a failed read offers a retry that reads again', () => {
+      enablePreview();
+      sdkMocks.checkoutFreshnessError = new Error('Station is unreachable');
+      renderProjectSettings();
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      expect(sdkMocks.checkoutFreshnessRefetch).toHaveBeenCalledTimes(1);
+    });
   });
 });
 

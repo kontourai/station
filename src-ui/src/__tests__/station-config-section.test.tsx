@@ -70,6 +70,9 @@ const KEYS_THE_DISSOLVED_CARD_RENDERED = [
   'reviewGuidesEnabled',
   'reviewGuideModel',
   'reviewGuideInstructions',
+  // When the stale checkout warning reads a Project's checkout as stale.
+  'checkoutStaleAfterCommits',
+  'checkoutStaleAfterDays',
 ] as const;
 
 test('#2182: the split renders every key the one card used to, and no other', () => {

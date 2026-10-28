@@ -85,6 +85,8 @@ export const STATION_SETTING_KEYS_BY_SECTION = {
     'defaultMaxOutputTokens',
     'defaultWorkspaceIsolation',
     'workspaceCheckpoints',
+    'checkoutStaleAfterCommits',
+    'checkoutStaleAfterDays',
     'usageLimitAutoResume',
     'reviewGuidesEnabled',
     'reviewGuideModel',

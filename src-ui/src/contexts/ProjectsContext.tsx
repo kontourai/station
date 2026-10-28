@@ -10,6 +10,7 @@ import type {
   ProjectChatDefaultSelection,
   ProjectChatDefaultsView,
 } from '@kontourai/station-contracts/project-chat-defaults';
+import type { ProjectCheckoutFreshness } from '@kontourai/station-contracts/project-checkout-freshness';
 import type { ProjectIdentityView } from '@kontourai/station-contracts/project-identity';
 import type { ProjectMemberAction } from '@kontourai/station-contracts/project-membership';
 import type {
@@ -22,6 +23,7 @@ import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/worksp
 import {
   type ProjectReadQueryConfig,
   useProjectChatDefaultsQuery,
+  useProjectCheckoutFreshnessQuery,
   useProjectIdentityQuery,
   useProjectQuery,
   useProjectRunLocationsQuery,
@@ -130,6 +132,32 @@ export function useScopedProjectChatDefaultsQuery(
     isFetching: boolean;
     /** No answer and no error yet (a disabled read stays pending). */
     isPending: boolean;
+  };
+}
+
+/**
+ * How far the Project's checkout is behind its upstream. The server
+ * remembers each answer for a minute, so asking more often buys nothing.
+ */
+export function useScopedProjectCheckoutFreshnessQuery(
+  slug: string | null | undefined,
+  config?: AppProjectReadConfig<ProjectCheckoutFreshness | null>,
+) {
+  const requestScope = useHostRequestAuthorityScope();
+  const { namespace } = useAuthorityPersistence();
+  return useProjectCheckoutFreshnessQuery(slug ?? '', {
+    staleTime: 60_000,
+    ...config,
+    enabled: !!slug && (config?.enabled ?? true),
+    requestScope,
+    requireRequestScope: true,
+    durableAuthorityId: namespace ?? undefined,
+  }) as {
+    /** `null`: the host does not answer it (preview off, older host, member). */
+    data?: ProjectCheckoutFreshness | null;
+    error: unknown;
+    isFetching: boolean;
+    refetch: () => Promise<unknown>;
   };
 }
 

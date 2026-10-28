@@ -290,6 +290,8 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'smooth-answer-reveal': 'account',
   'chat-show-reasoning': 'account',
   'chat-show-tool-details': 'account',
+  'checkout-stale-after-commits': 'station',
+  'checkout-stale-after-days': 'station',
   'chat-dock-auto-hide': 'account',
   'chat-auto-float-browser': 'device',
   'diff-style': 'account',

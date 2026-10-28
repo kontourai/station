@@ -43,6 +43,7 @@ import {
   deleteProject as deleteProjectRaw,
   getProject,
   getProjectChatDefaults,
+  getProjectCheckoutFreshness,
   getProjectLayout,
   getProjectResolution,
   isRepositoryBusyError,
@@ -317,6 +318,54 @@ export function useProjectChatDefaultsQuery(
         });
       const apiBase = await _getApiBase();
       return getProjectChatDefaults(apiBase, slug, { signal });
+    },
+    {
+      ...config,
+      enabled: !unavailable && !!slug && (config?.enabled ?? true),
+    },
+  );
+}
+
+/**
+ * `GET /api/projects/:slug/checkout-freshness`, scoped like {@link
+ * useProjectChatDefaultsQuery} and outside the persisted `'projects'`
+ * prefix: a reload must ask the checkout again. `null` when the host does
+ * not answer it.
+ */
+export const PROJECT_CHECKOUT_FRESHNESS_QUERY_KEY_PREFIX =
+  'project-checkout-freshness';
+
+export function useProjectCheckoutFreshnessQuery(
+  slug: string,
+  config?: ProjectReadQueryConfig<any>,
+) {
+  const requestScope = captureProjectScope(config?.requestScope);
+  const scoped = requestScope !== undefined;
+  const unavailable = config?.requireRequestScope === true && !scoped;
+  const queryKey = unavailable
+    ? [PROJECT_CHECKOUT_FRESHNESS_QUERY_KEY_PREFIX, 'unavailable', slug]
+    : scoped
+      ? [
+          PROJECT_CHECKOUT_FRESHNESS_QUERY_KEY_PREFIX,
+          requestScope.apiBase,
+          stableAuthoritySegment(
+            requestScope.authorityKey,
+            config?.durableAuthorityId,
+          ),
+          slug,
+        ]
+      : [PROJECT_CHECKOUT_FRESHNESS_QUERY_KEY_PREFIX, slug];
+  return useApiQuery(
+    queryKey,
+    async (signal) => {
+      if (unavailable) throw new StationRequestAuthorityError();
+      if (scoped)
+        return getProjectCheckoutFreshness(requestScope.apiBase, slug, {
+          requestScope,
+          signal,
+        });
+      const apiBase = await _getApiBase();
+      return getProjectCheckoutFreshness(apiBase, slug, { signal });
     },
     {
       ...config,

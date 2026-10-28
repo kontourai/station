@@ -549,6 +549,30 @@ export const APP_SETTINGS_REGISTRY = [
     defaultValue: 200,
   }),
   defineSetting({
+    key: 'checkoutStaleAfterCommits',
+    scope: 'station',
+    descriptor: { kind: 'number', min: 1, integer: true },
+    label: 'Stale checkout after commits',
+    help: 'The stale checkout warning appears once a Project’s checkout is this many commits behind its upstream.',
+    description:
+      'Commits behind its upstream branch at which a Project’s checkout reads as stale. Used by the Stale checkout warning preview.',
+    // `resolveProjectCheckoutStaleThresholds` falls through to
+    // DEFAULT_CHECKOUT_STALE_AFTER_COMMITS.
+    defaultValue: 50,
+  }),
+  defineSetting({
+    key: 'checkoutStaleAfterDays',
+    scope: 'station',
+    descriptor: { kind: 'number', min: 1, integer: true },
+    label: 'Stale checkout after days',
+    help: 'The stale checkout warning appears once a Project’s checkout has lacked an upstream commit for this many days.',
+    description:
+      'Days a Project’s checkout may lack a commit on its upstream branch before it reads as stale. Used by the Stale checkout warning preview.',
+    // `resolveProjectCheckoutStaleThresholds` falls through to
+    // DEFAULT_CHECKOUT_STALE_AFTER_DAYS.
+    defaultValue: 3,
+  }),
+  defineSetting({
     key: 'defaultMaxOutputTokens',
     scope: 'station',
     descriptor: { kind: 'number', min: 1, integer: true },

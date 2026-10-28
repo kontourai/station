@@ -1,0 +1,30 @@
+/* The wrapper is always mounted; it adds space only when the notice shows. */
+.project-settings__checkout-freshness:not(:empty) {
+  margin-top: var(--k-space-4);
+}
+
+.project-settings__checkout-freshness .page-callout__body p {
+  margin: 0 0 var(--k-space-2);
+}
+
+.project-checkout-stale__command {
+  margin: 0 0 var(--k-space-2);
+  padding: var(--k-space-2) var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-bg);
+  color: var(--k-text);
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-sm);
+  white-space: pre-wrap;
+  /* A long host path wraps rather than widening the page at 390px. */
+  overflow-wrap: anywhere;
+}
+
+.project-settings__checkout-freshness
+  .page-callout__body
+  p.project-checkout-stale__meta {
+  margin-bottom: 0;
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+}

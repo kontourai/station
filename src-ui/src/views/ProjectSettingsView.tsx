@@ -48,6 +48,7 @@ import { AgentsSection } from './project-settings/AgentsSection';
 import { KnowledgeSection } from './project-settings/KnowledgeSection';
 import { LayoutsSection } from './project-settings/LayoutsSection';
 import { NewChatDefaultsSection } from './project-settings/NewChatDefaultsSection';
+import { ProjectCheckoutFreshnessNotice } from './project-settings/ProjectCheckoutFreshnessNotice';
 import { ProjectSourcesSection } from './project-settings/ProjectSourcesSection';
 import { ToolsSection } from './project-settings/ToolsSection';
 import type { ProjectForm } from './project-settings/types';
@@ -477,6 +478,9 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                 </div>
               )}
             </div>
+          </div>
+          <div className="project-settings__checkout-freshness">
+            <ProjectCheckoutFreshnessNotice slug={slug} />
           </div>
         </PageSection>
 
