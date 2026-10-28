@@ -246,7 +246,11 @@
 
     "scripts/heavy-check-slot.mjs",
 
-    "scripts/lib/slot-holder-exec.mjs"
+    "scripts/lib/slot-holder-exec.mjs",
+
+    "scripts/lib/verification-coordinator.mjs",
+
+    "scripts/lib/verification-completion-phases.mjs"
   ],
 
   "checks": [
