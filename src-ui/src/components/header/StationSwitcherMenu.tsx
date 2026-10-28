@@ -194,7 +194,7 @@ export function StationSwitcherMenu({
         });
       }
     }
-    if (failed.length) showError(`Could not remove ${failed.join('; ')}`);
+    if (failed.length) showError(`Could not forget ${failed.join('; ')}`);
   };
 
   const unreachable = ordered.filter(
@@ -324,7 +324,7 @@ export function StationSwitcherMenu({
             // A healthy peer says so with its dot alone; text is for the
             // active Station and for anything that needs attention.
             const shown = armed
-              ? 'Remove from this device?'
+              ? 'Forget on this device?'
               : label === 'Online' || label === 'Checking…'
                 ? ''
                 : label;
@@ -361,15 +361,15 @@ export function StationSwitcherMenu({
                     data-roving-skip=""
                     tabIndex={-1}
                     // Armed by Delete on the row, the confirm takes focus so
-                    // Enter removes and Tab/Escape walk away from it.
+                    // Enter forgets and Tab/Escape walk away from it.
                     ref={(node) => {
                       if (armed) node?.focus();
                     }}
                     className={`station-switcher__remove${armed ? ' station-switcher__remove--armed' : ''}`}
                     aria-label={
-                      armed ? `Confirm removing ${name}` : `Remove ${name}`
+                      armed ? `Confirm forgetting ${name}` : `Forget ${name}`
                     }
-                    title={armed ? undefined : 'Remove'}
+                    title={armed ? undefined : 'Forget'}
                     onBlur={() => {
                       if (armed) setArmedId(null);
                     }}
@@ -378,7 +378,7 @@ export function StationSwitcherMenu({
                       else setArmedId(connection.id);
                     }}
                   >
-                    {armed ? 'Remove' : '×'}
+                    {armed ? 'Forget' : '×'}
                   </button>
                 )}
               </div>
@@ -400,8 +400,8 @@ export function StationSwitcherMenu({
             }}
           >
             {bulkArmed
-              ? `Confirm: remove ${unreachable.length} Stations`
-              : `Remove ${unreachable.length} unreachable`}
+              ? `Confirm: forget ${unreachable.length} Stations`
+              : `Forget ${unreachable.length} unreachable`}
           </button>
         )}
         <div className="station-switcher__footer">

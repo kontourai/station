@@ -192,6 +192,6 @@
     "station-switcher-light-desktop": ["src-ui/src/components/header/StationSwitcherMenu.tsx"],
     "station-switcher-dark-mobile": ["src-ui/src/components/header/StationSwitcherMenu.tsx"],
     "station-switcher-light-mobile": ["src-ui/src/components/header/StationSwitcherMenu.tsx"],
-    "station-switcher-remove-dark-desktop": ["src-ui/src/components/header/StationSwitcherMenu.tsx"]
+    "station-switcher-forget-dark-desktop": ["src-ui/src/components/header/StationSwitcherMenu.tsx"]
   }
 }

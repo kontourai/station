@@ -2378,7 +2378,7 @@ function inventoryDrilldownScreens(): Screen[] {
 /**
  * The Station switcher with a desktop's worth of saved Stations: the active
  * one, two that answer and two whose connections are refused, at 390 and 1440
- * in both themes, plus the inline remove confirmation. Every extra Station is
+ * in both themes, plus the inline forget confirmation. Every extra Station is
  * routed here, because the gallery answers the public handshake on any
  * origin. Extra profiles join the gallery's own seed only on this screen's
  * URL, and only once, since init scripts outlive the screen.
@@ -2396,11 +2396,11 @@ function stationSwitcherScreens(): Screen[] {
   shots.push({ viewport: DESKTOP, theme: 'dark', armed: true });
   return shots.map(({ viewport, theme, armed }): Screen => {
     const device = viewport === MOBILE ? 'mobile' : 'desktop';
-    const name = `station-switcher${armed ? '-remove' : ''}-${theme}-${device}`;
+    const name = `station-switcher${armed ? '-forget' : ''}-${theme}-${device}`;
     let cleanups: (() => Promise<void>)[] = [];
     return {
       name,
-      title: `Station switcher${armed ? ' — remove' : ''}, ${theme} (${device})`,
+      title: `Station switcher${armed ? ' — forget' : ''}, ${theme} (${device})`,
       path: '/?gallery=station-switcher',
       viewport,
       beforeGoto: async (page) => {
@@ -2472,7 +2472,7 @@ function stationSwitcherScreens(): Screen[] {
           menu.getByRole('menuitemradio', { name: 'Media server — Online' }),
         ).toBeVisible();
         await expect(
-          menu.getByRole('menuitem', { name: 'Remove 2 unreachable' }),
+          menu.getByRole('menuitem', { name: 'Forget 2 unreachable' }),
         ).toBeVisible();
         if (armed) {
           await menu
@@ -2480,7 +2480,7 @@ function stationSwitcherScreens(): Screen[] {
             .press('Delete');
           await expect(
             menu.getByRole('button', {
-              name: 'Confirm removing Old dev instance',
+              name: 'Confirm forgetting Old dev instance',
             }),
           ).toBeFocused();
         }

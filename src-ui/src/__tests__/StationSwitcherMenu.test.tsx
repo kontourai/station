@@ -236,13 +236,13 @@ test('filters by typing, and Enter switches to the best match', async () => {
 test('removes a Station after an inline confirmation, never the active one', async () => {
   const { forget } = openMenu();
   expect(
-    screen.queryByRole('button', { name: 'Remove Workstation' }),
+    screen.queryByRole('button', { name: 'Forget Workstation' }),
   ).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Remove Laptop' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Forget Laptop' }));
   expect(forget).not.toHaveBeenCalled();
-  expect(screen.getByText('Remove from this device?')).toBeTruthy();
+  expect(screen.getByText('Forget on this device?')).toBeTruthy();
   fireEvent.click(
-    screen.getByRole('button', { name: 'Confirm removing Laptop' }),
+    screen.getByRole('button', { name: 'Confirm forgetting Laptop' }),
   );
   await act(async () => {});
   expect(forget).toHaveBeenCalledExactlyOnceWith(laptop);
@@ -257,7 +257,7 @@ test('Delete on a row arms its removal, and a refused removal keeps the row', as
   openMenu([station, laptop], forget);
   fireEvent.keyDown(row(/^Laptop/), { key: 'Delete' });
   const confirm = screen.getByRole('button', {
-    name: 'Confirm removing Laptop',
+    name: 'Confirm forgetting Laptop',
   });
   expect(document.activeElement).toBe(confirm);
   fireEvent.click(confirm);
@@ -273,12 +273,12 @@ test('offers to remove every unreachable Station at once', async () => {
   reachable.add('https://three.example.test');
   const { forget } = openMenu([station, laptop, ...extras]);
   const bulk = await screen.findByRole('menuitem', {
-    name: 'Remove 3 unreachable',
+    name: 'Forget 3 unreachable',
   });
   fireEvent.click(bulk);
   expect(forget).not.toHaveBeenCalled();
   fireEvent.click(
-    screen.getByRole('menuitem', { name: 'Confirm: remove 3 Stations' }),
+    screen.getByRole('menuitem', { name: 'Confirm: forget 3 Stations' }),
   );
   await act(async () => {});
   expect(forget.mock.calls.map(([connection]) => connection.name)).toEqual([

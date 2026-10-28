@@ -317,12 +317,12 @@ answered; **Unreachable** means nothing did within a few seconds. Answering
 proves only that the address responds, not that this device still has access.
 Stations reached through a broker route are not checked.
 
-Remove a Station from this device with the × beside it (Delete on a focused
-row) and confirm. With two or more unreachable, **Remove N unreachable**
-removes them together after one confirmation. The current Station is not
-removable here. On the desktop app, Stations other channels or development
-instances left in the shared profile file can be removed like any other; only
-the app's own local Station is refused.
+Forget a Station on this device with the × beside it (Delete on a focused
+row) and confirm. With two or more unreachable, **Forget N unreachable**
+forgets them together after one confirmation. The current Station cannot be
+forgotten here. On the desktop app, Stations other channels or development
+instances left in the shared profile file can be forgotten like any other;
+only the app's own local Station is refused.
 
 Choose **Manage Stations** to inspect saved connections. Tap a row to reveal
 **Switch to this Station** and **Edit Station**; inspecting a row does not
