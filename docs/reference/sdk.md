@@ -179,7 +179,9 @@ withhold stale provenance.
 summary. Pass the captured `ApiRequestScope` to partition account state by
 Station and principal authority and refuse a request after that authority changes.
 `useStartIntegrationOAuthMutation()` accepts `{id, projectSlug?, scopes?}` and
-returns an `authorizationUrl`; `scopes` is the person's choice for that sign-in. `useFinishIntegrationOAuthMutation()` accepts
+returns an `authorizationUrl`; `scopes` is the person's choice for that sign-in,
+and an empty list requests the server's advertised scopes instead of the
+integration default. `useFinishIntegrationOAuthMutation()` accepts
 `{id, projectSlug?, callbackUrl}` for remote sign-in completion, evicts settled
 mutation variables and refreshes account/integration queries. Existing endpoint
 ownership checks still apply; a successful catalog install does not sign in.
