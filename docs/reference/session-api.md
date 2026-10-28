@@ -394,9 +394,10 @@ one. See [TurnDeduplicator](../architecture/module-map.md#turndeduplicator) for
 the exact submission scope, unsupported-input refusal and mixed-version limits.
 
 A send that names its own idempotency key (`clientTurnId`, up to 200
-characters) and its `conversationId` can be looked up afterwards, for example
-by a device whose connection dropped before the answer arrived, or that was
-closed mid-send:
+characters, not starting `memory-continue-`, which Station reserves for its
+own continuation after a memory kill and refuses with `400`) and its
+`conversationId` can be looked up afterwards, for example by a device whose
+connection dropped before the answer arrived, or that was closed mid-send:
 
 ```
 GET /api/orchestration/conversations/<conversationId>/turn-deliveries/<clientTurnId>[?projectSlug=<slug>]

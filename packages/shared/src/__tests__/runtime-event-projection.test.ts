@@ -3531,3 +3531,41 @@ describe('projectRuntimeEventsToMessages — a turn that ended with nothing to s
     ).toEqual([]);
   });
 });
+
+describe("Station's continuation after a memory kill", () => {
+  const KEY = `memory-continue-${'a'.repeat(40)}`;
+  const internal = {
+    version: 1,
+    actor: { kind: 'internal' },
+    reported: { surface: 'unknown' },
+  };
+  const userRow = (extra: Record<string, unknown>) =>
+    projectRuntimeEventsToMessages([
+      ev({
+        method: 'turn.started',
+        turnId: 'continue',
+        prompt: 'Continue the task from where it stopped.',
+        ...extra,
+      }),
+    ]).find((message) => message.role === 'user');
+
+  it('is marked as Station’s: its own origin and a continuation send key', () => {
+    expect(
+      userRow({ clientTurnId: KEY, clientOrigin: internal })?.metadata
+        ?.stationMemoryContinuation,
+    ).toBe(true);
+  });
+
+  it('is not marked for a person, or for a key that is not exactly one', () => {
+    expect(
+      userRow({
+        clientTurnId: KEY,
+        clientOrigin: { ...internal, actor: { kind: 'human' } },
+      })?.metadata?.stationMemoryContinuation,
+    ).toBeUndefined();
+    expect(
+      userRow({ clientTurnId: `${KEY}0`, clientOrigin: internal })?.metadata
+        ?.stationMemoryContinuation,
+    ).toBeUndefined();
+  });
+});

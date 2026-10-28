@@ -4173,6 +4173,13 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'DELETE',
       path: '/api/orchestration/conversations/:conversationId/inbox/:clientTurnId',
     },
+    // Continue after a memory kill: sends one Station-authored message to a
+    // conversation the caller may read, through its inbox and that inbox's
+    // own sender check, like any other send at the operate tier.
+    {
+      method: 'POST',
+      path: '/api/orchestration/conversations/:conversationId/memory-continuation',
+    },
     // A conversation's usage tree: read-only, re-checks the Session read ACL
     // for the conversation and for every session in it, and returns only
     // usage figures this Station recorded for sessions the caller can already
@@ -4797,6 +4804,14 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/api/system/verify-bedrock' },
     { method: 'POST', path: '/api/system/verify-managed-runtime' },
     { method: 'GET', path: '/api/system/voice-port' },
+    // Workload memory budgets of this Station's own host: the budgets, their
+    // sources and host memory (read tier), and the operator's saved budgets
+    // (the family's operate tier, like the feature-preview switch; the write
+    // is also behind its Feature Preview). The session read answers only for
+    // the verified station-control caller's own session.
+    { method: 'GET', path: '/api/system/workload' },
+    { method: 'PUT', path: '/api/system/workload/settings' },
+    { method: 'GET', path: '/api/system/workload/session' },
     { method: 'GET', path: '/api/tasks' },
     { method: 'POST', path: '/api/tasks' },
     { method: 'GET', path: '/api/tasks/:taskId' },

@@ -1,5 +1,107 @@
 [
   {
+    "timestampUtc": "2026-10-28T01:43:33Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2492",
+    "sha": "b43bf4983801c9450b11b4f27457a64107bbd6e5",
+    "artifactBuiltAt": "2026-10-28T00:56:56.590Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40610686604",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40610686604)"
+    ],
+    "changelog": {
+      "previousSha": "091ef3d8d3e895c3d7f8f321dbe856f9198be6cd",
+      "groups": {
+        "feat": [
+          "[#4257](https://github.com/kontourai/station/pull/4257) feat(workload): kill the command not the engine on OOM, auto-continue memory deaths, budget-aware engines",
+          "[#4091](https://github.com/kontourai/station/pull/4091) feat(telemetry): add companion control, private Insights and incidents"
+        ],
+        "fix": [
+          "[#4256](https://github.com/kontourai/station/pull/4256) fix(ui): show and open a sent image in its bubble while the reply streams",
+          "[#4252](https://github.com/kontourai/station/pull/4252) fix(ci): bind preview policy reads and diagnose Nightly fence failures",
+          "[#4255](https://github.com/kontourai/station/pull/4255) fix: keep continuations in their Conversation, restage Send again attachments, bound macOS Keychain waits"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
+    "timestampUtc": "2026-10-28T01:43:30Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2492",
+    "sha": "b43bf4983801c9450b11b4f27457a64107bbd6e5",
+    "artifactBuiltAt": "2026-10-28T00:55:57.596Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40610686604",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 40610686604)"
+    ],
+    "changelog": {
+      "previousSha": "091ef3d8d3e895c3d7f8f321dbe856f9198be6cd",
+      "groups": {
+        "feat": [
+          "[#4257](https://github.com/kontourai/station/pull/4257) feat(workload): kill the command not the engine on OOM, auto-continue memory deaths, budget-aware engines",
+          "[#4091](https://github.com/kontourai/station/pull/4091) feat(telemetry): add companion control, private Insights and incidents"
+        ],
+        "fix": [
+          "[#4256](https://github.com/kontourai/station/pull/4256) fix(ui): show and open a sent image in its bubble while the reply streams",
+          "[#4252](https://github.com/kontourai/station/pull/4252) fix(ci): bind preview policy reads and diagnose Nightly fence failures",
+          "[#4255](https://github.com/kontourai/station/pull/4255) fix: keep continuations in their Conversation, restage Send again attachments, bound macOS Keychain waits"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
+    "timestampUtc": "2026-10-28T00:56:51Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2492.40610686604",
+    "sha": "b43bf4983801c9450b11b4f27457a64107bbd6e5",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40610686604",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2492.40610686604 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "091ef3d8d3e895c3d7f8f321dbe856f9198be6cd",
+      "groups": {
+        "feat": [
+          "[#4257](https://github.com/kontourai/station/pull/4257) feat(workload): kill the command not the engine on OOM, auto-continue memory deaths, budget-aware engines",
+          "[#4091](https://github.com/kontourai/station/pull/4091) feat(telemetry): add companion control, private Insights and incidents"
+        ],
+        "fix": [
+          "[#4256](https://github.com/kontourai/station/pull/4256) fix(ui): show and open a sent image in its bubble while the reply streams",
+          "[#4252](https://github.com/kontourai/station/pull/4252) fix(ci): bind preview policy reads and diagnose Nightly fence failures",
+          "[#4255](https://github.com/kontourai/station/pull/4255) fix: keep continuations in their Conversation, restage Send again attachments, bound macOS Keychain waits"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
     "timestampUtc": "2026-10-27T18:04:28Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2491.2",

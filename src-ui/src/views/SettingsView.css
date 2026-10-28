@@ -1529,3 +1529,13 @@
   gap: var(--k-space-2);
   padding-bottom: var(--k-space-2);
 }
+
+/* Workload memory budgets (Host options, behind its Feature Preview). */
+.workload-budgets__status {
+  margin-bottom: var(--k-space-4);
+}
+.workload-budgets__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}

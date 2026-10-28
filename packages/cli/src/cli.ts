@@ -431,6 +431,7 @@ const SURFACE_COMMANDS = [
   'insights',
   'acp',
   'voice',
+  'workload',
 ] as const;
 
 const INDIVIDUAL_COMMANDS = [
