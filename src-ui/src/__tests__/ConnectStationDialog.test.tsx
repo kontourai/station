@@ -821,7 +821,9 @@ describe('Connect Station grant composition', () => {
         name: 'open the destination Station directly',
       }),
     ).toHaveProperty('href', 'https://destination.test/');
-    expect(screen.getByText('Station didn’t send an access request.')).toBeTruthy();
+    expect(
+      screen.getByText('Station didn’t send an access request.'),
+    ).toBeTruthy();
     expect(wire.start).not.toHaveBeenCalled();
     expect(wire.commit).not.toHaveBeenCalled();
     expect(
