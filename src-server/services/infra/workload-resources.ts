@@ -219,13 +219,84 @@ function limitsFrom(budget: ResolvedWorkloadMemoryBudget): WorkloadLimits {
   };
 }
 
+/**
+ * The workload slice's CPU weight. The slice sits directly under the user
+ * manager, a sibling of the `app.slice` that holds the server's unit, so
+ * under contention that subtree (default weight 100) gets 100/125 = 80% of
+ * the CPU the two compete for. Weights are work-conserving: an idle control
+ * plane leaves the CPU to workloads. IOWeight is not set: a user manager is
+ * normally delegated only the cpu, memory and pids controllers.
+ */
+const WORKLOAD_SLICE_CPU_WEIGHT = 25;
+
 function sliceProperties(value: WorkloadLimits): string[] {
   return [
     `MemoryMax=${value.totalMemoryMaxBytes}`,
     'MemorySwapMax=1073741824',
     `CPUQuota=${value.cpuQuotaPercent}%`,
+    `CPUWeight=${WORKLOAD_SLICE_CPU_WEIGHT}`,
     `TasksMax=${value.totalTasksMax}`,
   ];
+}
+
+/**
+ * The server's resident working set under agent load with headroom: a busy
+ * server measured about 1.1 GiB (810 MiB resident plus 330 MiB swapped), so
+ * the earlier 512 MiB protected less than half of it.
+ */
+const CONTROL_PLANE_MEMORY_LOW_BYTES = 1536 * MIB;
+/** Protection never exceeds this share of host RAM. */
+const CONTROL_PLANE_MEMORY_LOW_HOST_DIVISOR = 8;
+
+/**
+ * Properties for the server's own unit. Resource pressure should select
+ * workloads before the control plane; this is protection under the host
+ * policy, not a global OOM guarantee.
+ *
+ * - `MemorySwapMax=0`: the server's anonymous memory stays resident. A swapped
+ *   page faulted back in on the event loop stalls every request, and this
+ *   limit holds whatever the ancestors set, unlike `MemoryLow`.
+ * - `MemoryLow`: the working set above, at most 1/8 of host RAM so the
+ *   protection cannot starve a small host. The kernel caps a cgroup's
+ *   effective protection by its ancestors', and a user manager cannot set
+ *   `user.slice` or `user@.service`, so it takes effect only where the host
+ *   protects those ancestors.
+ * - `ManagedOOMPreference=avoid`: systemd-oomd picks other candidates first.
+ */
+function controlPlaneProperties(hostMemoryBytes: number): string[] {
+  const hostShareMiB = Math.floor(
+    hostMemoryBytes / MIB / CONTROL_PLANE_MEMORY_LOW_HOST_DIVISOR,
+  );
+  const memoryLow = Math.min(
+    CONTROL_PLANE_MEMORY_LOW_BYTES,
+    hostShareMiB * MIB,
+  );
+  return [
+    `MemoryLow=${memoryLow}`,
+    'MemorySwapMax=0',
+    'ManagedOOMPreference=avoid',
+  ];
+}
+
+/** Applies the workload slice's limits and the server unit's protection. */
+async function configureControlGroups(
+  workloadSlice: string,
+  unit: string,
+  value: WorkloadLimits,
+  hostMemoryBytes: number,
+): Promise<void> {
+  await runManager([
+    'set-property',
+    '--runtime',
+    workloadSlice,
+    ...sliceProperties(value),
+  ]);
+  await runManager([
+    'set-property',
+    '--runtime',
+    unit,
+    ...controlPlaneProperties(hostMemoryBytes),
+  ]);
 }
 
 const manager = {
@@ -524,21 +595,7 @@ export async function initializeWorkloadResources(
       );
     const prefix = `stationworkload${digest(serviceUnit)}`;
     slice = `${prefix}.slice`;
-    await runManager([
-      'set-property',
-      '--runtime',
-      slice,
-      ...sliceProperties(limits),
-    ]);
-    // Resource pressure should select workloads before the control plane.
-    // This is protection under the host policy, not a global OOM guarantee.
-    await runManager([
-      'set-property',
-      '--runtime',
-      serviceUnit,
-      'MemoryLow=536870912',
-      'ManagedOOMPreference=avoid',
-    ]);
+    await configureControlGroups(slice, serviceUnit, limits, totalmem());
     await reapPreviousOwners(prefix);
     const birth = lookupProcessBirthFingerprintCached(process.pid);
     if (!birth)
@@ -1212,6 +1269,8 @@ export const __workloadTestHooks = {
     version?: number;
     /** null: the host has no setsid(1) or sleep(1). */
     holderBinaries?: HolderBinaries | null;
+    /** Stands in for the host's physical memory (default: this host's). */
+    hostMemoryBytes?: number;
   }): Promise<void> {
     manager.run = options.run;
     cgroupRoot = options.cgroupRoot;
@@ -1230,12 +1289,12 @@ export const __workloadTestHooks = {
     limits = resolveLimits(savedSettings);
     const prefix = `stationworkload${digest(serviceUnit)}`;
     slice = `${prefix}.slice`;
-    await runManager([
-      'set-property',
-      '--runtime',
+    await configureControlGroups(
       slice,
-      ...sliceProperties(limits),
-    ]);
+      serviceUnit,
+      limits,
+      options.hostMemoryBytes ?? totalmem(),
+    );
     state = 'ready';
     installScopeLauncher(
       prefix,

@@ -265,6 +265,7 @@ describe('workload manager budgets (fake systemd manager)', () => {
     options: {
       settings?: object;
       holderBinaries?: { setsid: string; sleep: string } | null;
+      hostMemoryBytes?: number;
     } = {},
   ) {
     const home = tempDir();
@@ -287,6 +288,9 @@ describe('workload manager budgets (fake systemd manager)', () => {
       ...(options.holderBinaries === undefined
         ? {}
         : { holderBinaries: options.holderBinaries }),
+      ...(options.hostMemoryBytes === undefined
+        ? {}
+        : { hostMemoryBytes: options.hostMemoryBytes }),
       run: async (args) => {
         calls.push(args);
         if (args[0] === 'set-property' && control.failSetProperty)
@@ -398,6 +402,56 @@ describe('workload manager budgets (fake systemd manager)', () => {
     await expect(
       applyWorkloadBudgetSettings({ memoryMiB: 1000, totalMemoryMiB: 700 }),
     ).rejects.toBeInstanceOf(WorkloadSettingsRejectedError);
+  });
+
+  /** The `set-property` call the manager received for one unit. */
+  const setPropertyFor = (calls: string[][], unit: string) =>
+    calls.find((call) => call[0] === 'set-property' && call[2] === unit);
+
+  test('the control plane unit is protected ahead of the workload slice', async () => {
+    // The host measured in the evidence: 15402 MiB of RAM.
+    const { calls, slice } = await start({ hostMemoryBytes: 15402 * MIB });
+    expect(setPropertyFor(calls, 'station-test.service')).toEqual([
+      'set-property',
+      '--runtime',
+      'station-test.service',
+      // 1536 MiB, under the 1925 MiB that 1/8 of this host allows.
+      'MemoryLow=1610612736',
+      'MemorySwapMax=0',
+      'ManagedOOMPreference=avoid',
+    ]);
+    // The slice yields CPU to the server's subtree under contention.
+    expect(setPropertyFor(calls, slice)).toContain('CPUWeight=25');
+  });
+
+  test('on a small host the control plane protection clips to 1/8 of RAM', async () => {
+    const { calls } = await start({ hostMemoryBytes: 2 * GIB });
+    const service = setPropertyFor(calls, 'station-test.service');
+    expect(service).toContain(`MemoryLow=${256 * MIB}`);
+    expect(service).toContain('MemorySwapMax=0');
+  });
+
+  test('a host size that is not whole MiB rounds the protection down', async () => {
+    const { calls } = await start({ hostMemoryBytes: 4 * GIB + 7 * MIB + 17 });
+    // floor(4103 MiB / 8) = 512 MiB.
+    expect(setPropertyFor(calls, 'station-test.service')).toContain(
+      `MemoryLow=${512 * MIB}`,
+    );
+  });
+
+  test('a settings change re-applies the slice CPU weight', async () => {
+    process.env = { ...env };
+    delete process.env.STATION_WORKLOAD_MEMORY_MIB;
+    delete process.env.STATION_WORKLOAD_TOTAL_MEMORY_MIB;
+    const { calls, slice } = await start();
+    await applyWorkloadBudgetSettings({ memoryMiB: 700, totalMemoryMiB: 1000 });
+    expect(calls.at(-1)).toEqual(
+      expect.arrayContaining([
+        slice,
+        'CPUWeight=25',
+        `MemoryMax=${1000 * MIB}`,
+      ]),
+    );
   });
 
   test('the environment still wins over a saved setting', async () => {
