@@ -221,6 +221,12 @@ function installRecoveryListeners(): void {
  * and the authority query subtree register their client on mount, so list
  * refresh remains available without a mounted dock. #2309 Phase B, a server-pushed conversation
  * activity record, supersedes this.
+ *
+ * A blocking request opening or resolving moves the session in and out of
+ * `review_pending` (the server folds `pendingReview` from these two events),
+ * and nothing else may follow: a resolved approval resumes the same turn with
+ * tool and content frames only. Without them here the inbox kept a resolved
+ * approval in "Needs you" until some later boundary or the 60s poll.
  */
 const SESSION_READ_MODEL_FACT_METHODS: ReadonlySet<string> = new Set([
   'session.started',
@@ -228,6 +234,8 @@ const SESSION_READ_MODEL_FACT_METHODS: ReadonlySet<string> = new Set([
   'session.state-changed',
   'child-work.updated',
   'turn.started',
+  'request.opened',
+  'request.resolved',
   'runtime.error',
   'session.exited',
   'turn.completed',
