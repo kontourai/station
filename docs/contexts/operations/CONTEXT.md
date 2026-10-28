@@ -20,12 +20,20 @@ _Avoid_: RAG
 A stored knowledge item with source, namespace, path, chunk count, metadata, and enhancement status.
 _Avoid_: file when ingestion metadata matters
 
-**Scheduled job**:
-A configured job with a cron, interval or one-time schedule that can also be run manually. A normal job invokes an Agent; an external monitor observes its source and can request a bounded Task dispatch.
-_Avoid_: cron string when Station behavior matters
+**Automation**:
+A scheduled job, as the product names it: a cron, interval or one-time schedule, an optional automation target, and how its result is delivered. It can also be run manually. A targeted automation runs each time as a framed Station turn in its conversation, on that conversation's engine. A job with no target invokes a Station-engine Agent and writes its output to a file; an external monitor observes its source and can request a bounded Task dispatch.
+_Avoid_: cron string when Station behavior matters; "scheduled job" in user-facing copy
+
+**Automation target**:
+The conversation an automation's runs land in: an existing one, or a dedicated one its first run starts. A run acts as the recorded creator, under the conversation's approval mode, and is never replayed when its outcome is unknown.
+_Avoid_: "new conversation per run"
+
+**Check-back**:
+A one-time follow-up an agent schedules into its own conversation, at most a day ahead. The chat lists check-backs with the automations targeting it.
+_Avoid_: wake-up in user-facing copy
 
 **Scheduled run**:
-A run produced by a scheduled job.
+A run produced by an automation. A targeted run settles from its turn's terminal event; a late targeted occurrence is recorded missed instead of run.
 _Avoid_: interactive session
 
 **Job log**:
@@ -83,7 +91,8 @@ _Avoid_: source doc unless it is intended for review
 ## Relationships
 
 - Knowledge namespaces shape agent context inside projects.
-- Scheduled jobs can produce scheduled runs, job logs, notifications, and receipts.
+- Automations produce scheduled runs, job logs, notifications, and receipts; a targeted run also produces a turn in its conversation.
+- Check-backs and targeted automations hand their turn to the same conversation inbox.
 - Terminal processes can support agent work but are not evidence unless captured as command evidence.
 - Telemetry describes operations; verification lanes check their declared scope.
 - Generated artifacts may support receipts but usually should not be edited like source.
@@ -94,6 +103,7 @@ _Avoid_: source doc unless it is intended for review
 | --- | --- | --- |
 | Knowledge storage, retrieval, and context | [KnowledgeService](../../../src-server/services/knowledge/knowledge-service.ts) | [Knowledge](../../guides/knowledge.md) |
 | Job ownership and run accounting | [SchedulerService](../../../src-server/services/scheduling/scheduler-service.ts) | [Monitoring](../../guides/monitoring.md) and [Starter Work](../../guides/starter-work.md) |
+| Targeted automation runs | [ScheduledConversationRuns](../../../src-server/services/scheduling/scheduled-conversation-runs.ts) | [Automations](../../user/automations.md) and [the decision](../../decisions/automations-unify-schedules.md) |
 | Stored notifications and source actions | [NotificationService](../../../src-server/services/notifications/notification-service.ts) | [Notification delivery design](../../design/notification-delivery.md), with its stated implementation limits |
 | Desktop alert delivery | [Native feed consumer](../../../src-desktop/src/notification_feed.rs) | [Desktop alerts](../../guides/desktop-tray.md#desktop-alerts-while-the-window-is-hidden); OS results and user attention remain distinct |
 | Voice session lifecycle | [VoiceSession](../../../src-server/voice/voice-session.ts) | [Voice examples](../../../examples/README.md) |

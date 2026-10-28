@@ -14,6 +14,14 @@
 > source only and reran no tests or GitHub delivery. Section 9 records the owner
 > decisions; the foundations do not prove the complete automation journey.
 
+> **Automation is the umbrella.** Since
+> [the automations decision](../decisions/automations-unify-schedules.md),
+> Automations is the product surface for scheduled work: a scheduler job with
+> an optional target runs each time as a turn in a conversation, on any engine,
+> and agent check-backs are listed with it. That part ships. The GitHub event
+> sources, rules and episodes below (slices S2–S6) remain this proposal; they
+> are a future trigger for the same automations, not a separate product.
+
 Status: **proposal.** It extends the existing
 [inbound webhook](../../src-server/routes/webhooks/inbound-webhooks.ts) and
 [scheduler](../../packages/contracts/src/scheduler.ts) paths with one model:
@@ -173,7 +181,11 @@ This introduces no contract break.
   `station-webhook`) in the shared ledger, and they stay ephemeral. A later,
   additive `InboundWebhookToken.rules?` can attach rules.
 - Scheduler jobs stay `SchedulerJob`s; they are already schedule-source
-  rules. `SchedulerEvent`s such as `job.failed` become `station-event`
+  rules, and are the automations users see today. A job's `target` (an
+  existing or dedicated conversation) is the delivery an `agent-turn` rule
+  action would reuse: a framed Station turn on the conversation's inbox, as
+  [ScheduledConversationRuns](../../src-server/services/scheduling/scheduled-conversation-runs.ts)
+  sends it. `SchedulerEvent`s such as `job.failed` become `station-event`
   sources for `notify`.
 - The monitor Task path is generalized, not copied:
   `MonitorTaskDispatchIntent` becomes `UnattendedTaskEnvelope`, and
