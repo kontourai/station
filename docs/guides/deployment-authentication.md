@@ -48,7 +48,10 @@ or TLS. Solo local operation still requires neither accounts nor a provider when
 these opt-ins are absent.
 
 The operator enables sharing in a Project's **People and access** section,
-chooses a role and creates a single-use invitation link. Share the link manually;
+on the host or from a paired browser signed in with an operator passkey, which
+confirms each enable with the passkey
+([Turn on Project sharing from a paired browser](operator-passkeys.md#turn-on-project-sharing-from-a-paired-browser)).
+The owner then chooses a role and creates a single-use invitation link. Share the link manually;
 no email is sent. The default link may be accepted by any authenticated person
 who possesses it, once, before its expiry. Cancel a pending link from that same
 section. An optional email restriction requires provider-verified contact
@@ -374,7 +377,11 @@ The audited POST leaves beneath `/api/projects/:slug/access` are
 Read the current administration response for its exact Project scope and member
 revisions before submitting a change. Current membership must independently
 permit the action: an operate grant does not turn a viewer into an admin, and
-ownership transfer remains owner-only. Enabling sharing is operator-only.
+ownership transfer remains owner-only. Enabling sharing needs Station operator
+authority: the operator credential, a `home-possession` grant, or an operator
+passkey session that confirms that enable with a fresh passkey on the consent
+origin. A Project role never grants it. `GET .../access/enablement` reports
+which of these applies to the caller.
 Stale revisions and replaced Project scopes refuse rather than overwrite.
 
 Administration views and invitation tokens recheck current account, Device,

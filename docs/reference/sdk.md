@@ -2655,10 +2655,18 @@ exact Station/local/portable Project scope, members and invitations. Commands
 enable sharing, invite or revoke invitations, change a member, or transfer
 ownership. Capture the returned scope and member revision for writes; do not
 reconstruct authority from a slug or email. Enabling requires the expected local
-Project ID and current Station operator authority.
+Project ID and current Station operator authority. For a paired Device with an
+operator passkey session, `changeProjectAccess` returns
+`{ kind: 'step-up-required', transaction }` instead (#4306). Nothing has changed
+until the passkey confirmation on the consent origin, whose HTTPS review URL must
+share the API base's host name. `getProjectSharingEnablement` reports how the
+caller may enable (`direct`, `operator-passkey`, `operator-sign-in` or
+`unavailable`), and `getProjectSharingStepUpStatus` reads the pending review.
+A host older than #4306 fails the enablement read.
 
 `@kontourai/station-sdk/project-access` also exports `useProjectAccess(slug,
-requestScope)`. Its query keys include the selected Station and authority, and
+requestScope)` and `useProjectSharingEnablement(slug, requestScope, enabled)`.
+Their query keys include the selected Station and authority, and
 its mutations capture that scope before asynchronous work. Do not persist
 administrative projections or invitation tokens in application caches. Project
 administration grants no Station settings, device or compute authority.

@@ -5733,7 +5733,7 @@ session with step-up can mint or revoke another person's tokens. The desktop's
 local grant lists them; its current write refusal status is tracked in
 [#4109](https://github.com/kontourai/station/issues/4109). A token is refused
 (`403`) on a Project’s member-administration
-routes (`GET /api/projects/:slug/access` and `POST
+routes (`GET /api/projects/:slug/access`, `GET .../access/enablement` and `POST
 /api/projects/:slug/access/**`).
 
 A person tied by a Station local account can hold a token too (#3586). It

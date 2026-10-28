@@ -6,7 +6,8 @@ on the host. A session reads paired devices and the operator's own passkey and
 current-session metadata, and requests step-up for writes. A device-access change
 requires a fresh passkey confirmation on the separate consent origin for that exact action
 ([#3257 S4](https://github.com/kontourai/station/issues/3257)). There is no
-step-up window. The host and separately granted device-administration channels
+step-up window. Turning on sharing for a Project uses the same per-action
+confirmation. The host and separately granted device-administration channels
 remain independent.
 
 ## Before you start
@@ -131,6 +132,33 @@ on the host instead.
    repeat an indeterminate write.
 
 ![Cancelled review with outcome text and no action buttons](../learn/media/operator-s4-step-up-cancelled.png)
+
+## Turn on Project sharing from a paired browser
+
+Turning on sharing for a Project needs Station operator authority. Without an
+operator session, only the host (the Desktop or the operator credential) can do
+it. A signed-in operator session can do it from any paired browser with one
+passkey confirmation per Project
+([#4306](https://github.com/kontourai/station/issues/4306)).
+
+1. The browser must be paired with permission to operate (`orchestration:operate`).
+   Sign in as operator as above.
+2. Open the Project's **Settings → People and access**. If you are not signed
+   in, the section offers **Sign in as operator**. Once you are, it offers
+   **Enable Project sharing**.
+3. Choose **Enable Project sharing**. A separate consent-origin review opens.
+   It names the Project and the **Owner**: the identity this browser acts as.
+   Behind Tailscale Serve with WhoIs that is your tailnet identity, so your
+   other tailnet devices manage the Project too. A browser with no person
+   identity owns the Project as itself. Revoking it later leaves the Project
+   without a reachable owner, so transfer ownership to another member first.
+4. Choose **Confirm with passkey**. The section shows the Project's members
+   once the confirmation is committed. **Cancel**, an expired review, a
+   revoked passkey or Device, or an ended session applies nothing.
+
+After that, the owner manages invitations and members through ordinary Project
+roles. Those actions need no operator session. A Project admin or owner never
+gains operator authority from that role.
 
 Group changes and operator-managed personal-token API actions also require per-action
 step-up. The passkey session cannot read `GET /api/pairing/people`, so **Settings →

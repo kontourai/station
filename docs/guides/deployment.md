@@ -737,8 +737,10 @@ behavior is unchanged. The origin is never added to `ALLOWED_ORIGINS`.
 
 With this origin set, a paired browser can enroll an operator passkey and sign
 in for read-only device inventory access; see [Operator passkeys](operator-passkeys.md).
-The host-scoped session cookie also reaches the same-host app origin; it grants
-only the three documented reads. No passkey ceremony runs on the app origin.
+The host-scoped session cookie also reaches the same-host app origin. There it
+grants the documented reads and lets a request open a per-action review, such as
+turning on Project sharing. Nothing applies until a passkey confirmation on the
+consent origin. No passkey ceremony runs on the app origin.
 
 #### Troubleshooting the pairing path
 
