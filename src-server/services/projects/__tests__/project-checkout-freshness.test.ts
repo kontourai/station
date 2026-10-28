@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   renameSync,
   rmSync,
   statSync,
@@ -397,6 +398,41 @@ describe('project checkout freshness', () => {
     git(other, ['push', '-q', 'origin', ':refs/heads/gone']);
     git(other, ['push', '-q', 'origin', 'main:refs/heads/gone/x']);
     git(checkout, ['fetch', '-q', '--prune']);
+    // A branch spelled like the pruned ref, which a revision parser would
+    // guess its way to.
+    git(checkout, ['branch', 'refs/remotes/origin/gone', 'main']);
+    const result = await createProjectCheckoutFreshnessReader().read(
+      checkout,
+      THRESHOLDS,
+    );
+    expect(result).toMatchObject({ status: 'unknown', reason: 'no-upstream' });
+  });
+
+  test('an upstream configured as a revision rather than a ref is no-upstream', async () => {
+    const { checkout, land } = fixture();
+    land(2);
+    git(checkout, ['fetch', '-q']);
+    git(checkout, ['config', 'branch.main.merge', 'refs/heads/main~1']);
+    const result = await createProjectCheckoutFreshnessReader().read(
+      checkout,
+      THRESHOLDS,
+    );
+    expect(result).toMatchObject({ status: 'unknown', reason: 'no-upstream' });
+  });
+
+  test('a line break written into the upstream config cannot shift which remote is read', async () => {
+    const { checkout, land } = fixture();
+    land(1);
+    git(checkout, ['fetch', '-q']);
+    // `git config` refuses this; a member can still write the file.
+    const config = join(checkout, '.git', 'config');
+    writeFileSync(
+      config,
+      readFileSync(config, 'utf8').replace(
+        /merge = refs\/heads\/main/,
+        'merge = "refs/heads/main\\nupstream"',
+      ),
+    );
     const result = await createProjectCheckoutFreshnessReader().read(
       checkout,
       THRESHOLDS,

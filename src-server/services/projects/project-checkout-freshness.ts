@@ -200,20 +200,26 @@ async function readFacts(repository: ReadRepository): Promise<RepositoryFacts> {
   const branch = head.replace(/^refs\/heads\//, '');
   // The configured upstream, whether or not its ref exists, and its remote
   // as configured; empty for none. A branch cannot have a branch under it,
-  // so this pattern names one ref.
+  // so this pattern names one ref. NUL-separated: the config these come
+  // from is member-written, and a value can hold a line break but no NUL.
   const [upstreamRef = '', remote = ''] = (
     await git([
       'for-each-ref',
-      '--format=%(upstream)%0a%(upstream:remotename)',
+      '--format=%(upstream)%00%(upstream:remotename)',
       head,
     ])
-  ).split('\n');
-  if (!upstreamRef) return { kind: 'unknown', reason: 'no-upstream' };
-  // Whether exactly that ref exists, without reading the object it names: a
-  // ref whose commit is missing is a damaged repository, which the reads
-  // below fail on (`unreadable`), not an absent upstream.
+  ).split('\0');
+  // A plain branch or remote-tracking ref name: nothing a revision parser
+  // would read more into (`main~1`, a bare object id), and no line break.
+  if (!/^refs\/(?:heads|remotes)\/[^\s~^:?*[\\]+$/.test(upstreamRef))
+    return { kind: 'unknown', reason: 'no-upstream' };
+  // Whether exactly that ref exists. `show-ref --verify` takes the full name
+  // as written, with no guessing at other refs, and reads it by name (so a
+  // case-insensitive file system finds it whatever the folder's case). It
+  // exits 1 for a missing ref; a missing object (a damaged repository) is
+  // another failure, `unreadable` rather than an absent upstream.
   try {
-    await git(['rev-parse', '--verify', '--quiet', upstreamRef]);
+    await git(['show-ref', '--verify', '--quiet', upstreamRef]);
   } catch (error) {
     if (exitCode(error) === 1)
       return { kind: 'unknown', reason: 'no-upstream' };
