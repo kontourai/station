@@ -408,53 +408,48 @@ describe('SessionEventReads session window sequence space', () => {
       }
     },
   );
-});
 
-describe('SessionEventReads mid-turn newest window', () => {
-  test('session and conversation windows carry the history-gap mark on the prompt they add', async () => {
+  test('a capped newest window tells both readers its turn start is detached', async () => {
     const store = createStore();
-    const threadId = 'gap-window';
+    const threadId = 'detached-window';
     try {
       seedRoot(store, threadId);
-      const base = {
+      const fields = {
         provider: 'claude' as const,
         threadId,
-        turnId: 'long',
-        createdAt: '2026-10-28T00:00:00.000Z',
+        turnId: 'turn',
+        createdAt: '2026-09-29T00:00:00.000Z',
       };
       store.appendEvent({
-        ...base,
-        eventId: 'gap-start',
+        ...fields,
+        eventId: 'detached-start',
         method: 'turn.started',
-        prompt: 'Long task',
-      });
-      for (let index = 0; index < 200; index++)
+        prompt: 'Question',
+      } as never);
+      for (let index = 0; index < 180; index++)
         store.appendEvent({
-          ...base,
-          eventId: `gap-delta-${index}`,
+          ...fields,
+          eventId: `detached-${index}`,
           method: 'content.text-delta',
-          itemId: 'text',
+          itemId: 'answer',
           delta: 'x',
-        });
+        } as never);
       const reads = readsFor(store, threadId);
       const options = {
         authority: INTERNAL_SESSION_READ_SCOPE,
         turnLimit: 10,
         direction: 'newest' as const,
       };
-      for (const window of [
-        await reads.readSessionEventWindow(threadId, options),
-        await reads.readConversationEventWindow(threadId, options),
-      ]) {
-        expect(window?.hasMore).toBe(true);
-        expect(window?.events[0]).toMatchObject({
-          event: { eventId: 'gap-start' },
-          historyGapAfter: true,
-        });
-        expect(
-          window?.events.filter((item) => item.historyGapAfter),
-        ).toHaveLength(1);
-      }
+      const session = await reads.readSessionEventWindow(threadId, options);
+      const conversation = await reads.readConversationEventWindow(
+        threadId,
+        options,
+      );
+      expect(session).not.toBeNull();
+      expect(conversation).not.toBeNull();
+      expect(session?.turnStartDetached).toBe(true);
+      expect(conversation?.turnStartDetached).toBe(true);
+      expect(session?.nextCursor).toBeDefined();
     } finally {
       store.close();
     }

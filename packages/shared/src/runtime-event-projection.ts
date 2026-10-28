@@ -220,9 +220,10 @@ export interface ProjectRuntimeEventsOptions {
    */
   markEndedTurns?: boolean;
   /**
-   * Event ids of `turn.started` events the window added out of range
-   * (`OrchestrationSequencedEvent.historyGapAfter`): their turn's middle is
-   * not in these events. Its terminal `outputText` is then never adopted —
+   * Event ids of `turn.started` events held without the rest of their turn:
+   * a `turnStartDetached` window re-added them, and no read has reached them
+   * in range yet (`useSessionEventWindow`). Their turn's middle is not in
+   * these events. Its terminal `outputText` is then never adopted —
    * the text it would add is in the missing events, and adopting it would
    * repeat the text the window already shows.
    */

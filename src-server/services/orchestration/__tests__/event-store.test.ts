@@ -967,6 +967,197 @@ describe('EventStore', () => {
     }
   });
 
+  test.each([
+    { deltas: 180, detached: true },
+    { deltas: 10, detached: false },
+    // The byte budget, not the count, cuts this page.
+    { deltas: 40, detached: true, size: 2_000 },
+    // Only the `turn.started` itself was left out: re-adding it closes the page.
+    { deltas: 149, detached: false },
+  ])(
+    'a newest page reports a detached turn start only across omitted rows ($deltas deltas)',
+    ({
+      deltas,
+      detached,
+      size = 1,
+    }: {
+      deltas: number;
+      detached: boolean;
+      size?: number;
+    }) => {
+      const threadId = `detached-${deltas}-${size}`;
+      const fields = {
+        provider: 'codex' as const,
+        threadId,
+        turnId: 'turn',
+        itemId: 'answer',
+        createdAt: '2026-09-12T00:00:00Z',
+      };
+      store.appendEvent({
+        ...fields,
+        eventId: `${threadId}-start`,
+        method: 'turn.started',
+        prompt: 'Question',
+      });
+      for (let i = 0; i < deltas; i++)
+        store.appendEvent({
+          ...fields,
+          eventId: `${threadId}-delta-${i}`,
+          method: 'content.text-delta',
+          delta: 'x'.repeat(size),
+        });
+      const read = (cursor?: string) =>
+        store.listConversationEventWindowByTurn([threadId], {
+          direction: 'newest',
+          turnLimit: 1,
+          cursor,
+        });
+      const first = read();
+      expect(first.events[0].method).toBe('turn.started');
+      expect(first.turnStartDetached === true).toBe(detached);
+      // Far under the count limit: only the byte budget can have cut it.
+      if (size > 1) expect(first.events.length).toBeLessThan(deltas);
+      if (!detached) return;
+      // The cursor reads the gap: its page holds the rest of the turn and is
+      // contiguous, so together the two pages are the whole turn.
+      const gap = read(first.nextCursor);
+      expect(gap.turnStartDetached).toBeUndefined();
+      expect(
+        new Set([...first.events, ...gap.events].map((event) => event.id)).size,
+      ).toBe(deltas + 1);
+    },
+  );
+
+  test.each([
+    // A steer re-announces the turn; it is not the turn's start.
+    { label: 'steered', before: 200, steer: true, after: 20 },
+    // The oldest row that fit is turnless; the turn behind it is anchored.
+    { label: 'turnless oldest', before: 100, steer: false, after: 148 },
+    // A steer is not a turn: counting it would push the start out of range.
+    {
+      label: 'steered before the cap',
+      before: 20,
+      steer: true,
+      after: 200,
+      turnLimit: 1,
+    },
+  ])(
+    'a capped newest page re-adds the original turn start ($label)',
+    ({
+      label,
+      before,
+      steer,
+      after,
+      turnLimit = 10,
+    }: {
+      label: string;
+      before: number;
+      steer: boolean;
+      after: number;
+      turnLimit?: number;
+    }) => {
+      const threadId = `anchor-${label}`;
+      const fields = {
+        provider: 'codex' as const,
+        threadId,
+        turnId: 'turn',
+        itemId: 'answer',
+        createdAt: '2026-09-12T00:00:00Z',
+      };
+      const delta = (index: number) =>
+        store.appendEvent({
+          ...fields,
+          eventId: `${threadId}-delta-${index}`,
+          method: 'content.text-delta',
+          delta: 'x',
+        });
+      store.appendEvent({
+        ...fields,
+        eventId: `${threadId}-start`,
+        method: 'turn.started',
+        prompt: 'Question',
+      });
+      for (let i = 0; i < before; i++) delta(i);
+      if (steer)
+        store.appendEvent({
+          ...fields,
+          eventId: `${threadId}-steer`,
+          method: 'turn.started',
+          inputKind: 'steer',
+          prompt: 'Steer',
+        } as never);
+      else
+        store.appendEvent({
+          provider: 'codex',
+          threadId,
+          eventId: `${threadId}-idle`,
+          method: 'session.state-changed',
+          from: 'running',
+          to: 'idle',
+          createdAt: '2026-09-12T00:00:00Z',
+        } as never);
+      for (let i = before; i < before + after; i++) delta(i);
+      const page = store.listConversationEventWindowByTurn([threadId], {
+        direction: 'newest',
+        turnLimit,
+      });
+      expect(page.events[0].id).toBe(`${threadId}-start`);
+      expect(page.turnStartDetached).toBe(true);
+      if (!steer) expect(page.events[1].turnId).toBeUndefined();
+    },
+  );
+
+  // A steer is published after the engine accepts it, so it can land after
+  // the next turn started. Its turn's own start then lies before the range,
+  // and the steer must not be re-added in its place.
+  test('a capped newest page never re-adds a late steer as its turn start', () => {
+    const threadId = 'late-steer';
+    const base = {
+      provider: 'codex' as const,
+      threadId,
+      itemId: 'answer',
+      createdAt: '2026-09-12T00:00:00Z',
+    };
+    store.appendEvent({
+      ...base,
+      turnId: 'turn-1',
+      eventId: 'late-steer-start-1',
+      method: 'turn.started',
+      prompt: 'First',
+    });
+    store.appendEvent({
+      ...base,
+      turnId: 'turn-2',
+      eventId: 'late-steer-start-2',
+      method: 'turn.started',
+      prompt: 'Second',
+    });
+    store.appendEvent({
+      ...base,
+      turnId: 'turn-1',
+      eventId: 'late-steer-steer-1',
+      method: 'turn.started',
+      inputKind: 'steer',
+      prompt: 'Steer',
+    } as never);
+    for (let i = 0; i < 200; i++)
+      store.appendEvent({
+        ...base,
+        turnId: 'turn-1',
+        eventId: `late-steer-delta-${i}`,
+        method: 'content.text-delta',
+        delta: 'x',
+      });
+    const page = store.listConversationEventWindowByTurn([threadId], {
+      direction: 'newest',
+      turnLimit: 1,
+    });
+    expect(page.events.map((event) => event.id)).not.toContain(
+      'late-steer-steer-1',
+    );
+    expect(page.turnStartDetached).toBeUndefined();
+  });
+
   test('newest paging pins its watermark and lineage while rejecting malformed cursors', () => {
     const base = {
       provider: 'codex' as const,
@@ -1039,116 +1230,6 @@ describe('EventStore', () => {
         ),
       ).toThrow();
     }
-  });
-
-  test('a newest page that starts mid-turn marks the prompt it adds as a history gap, and the page that reaches it does not', () => {
-    const base = {
-      provider: 'codex' as const,
-      threadId: 'gap-thread',
-      turnId: 'long-turn',
-      itemId: 'gap-item',
-      createdAt: '2026-10-28T00:00:00Z',
-    };
-    store.appendEvent({
-      ...base,
-      eventId: 'gap-start',
-      method: 'turn.started',
-      prompt: 'Run the long task',
-    });
-    for (let i = 0; i < 200; i++)
-      store.appendEvent({
-        ...base,
-        eventId: `gap-delta-${i}`,
-        method: 'content.text-delta',
-        delta: 'x',
-      });
-    for (const read of [
-      (cursor?: string) =>
-        store.listEventWindowByTurn(base.threadId, {
-          turnLimit: 10,
-          direction: 'newest',
-          cursor,
-        }),
-      (cursor?: string) =>
-        store.listConversationEventWindowByTurn([base.threadId], {
-          turnLimit: 10,
-          direction: 'newest',
-          cursor,
-        }),
-    ]) {
-      const first = read();
-      expect(first.hasMore).toBe(true);
-      expect(first.events[0]).toMatchObject({
-        id: 'gap-start',
-        historyGapAfter: true,
-      });
-      expect(first.events[1].id).not.toBe('gap-delta-0');
-      expect(
-        first.events.filter((event) => event.historyGapAfter),
-      ).toHaveLength(1);
-      const second = read(first.nextCursor);
-      expect(second.events[0].id).toBe('gap-start');
-      expect(second.events[0].historyGapAfter).toBeUndefined();
-      expect(second.events[1].id).toBe('gap-delta-0');
-    }
-  });
-
-  test('a newest page whose oldest event carries no turn id still carries its turn prompt', () => {
-    const base = {
-      provider: 'codex' as const,
-      threadId: 'turnless-oldest',
-      itemId: 'turnless-item',
-      createdAt: '2026-10-28T00:00:00Z',
-    };
-    store.appendEvent({
-      ...base,
-      turnId: 'turn-x',
-      eventId: 'turnless-start',
-      method: 'turn.started',
-      prompt: 'Spawn helpers',
-    });
-    for (let i = 0; i < 100; i++)
-      store.appendEvent({
-        ...base,
-        turnId: 'turn-x',
-        eventId: `turnless-early-${i}`,
-        method: 'content.text-delta',
-        delta: 'x',
-      });
-    store.appendEvent({
-      ...base,
-      eventId: 'turnless-child',
-      method: 'child-work.updated',
-      delta: {
-        kind: 'upsert',
-        item: {
-          producer: 'engine-subagent',
-          reporterThreadId: base.threadId,
-          childId: 'helper',
-          status: 'running',
-          parent: { turnId: 'turn-x', toolCallId: 'spawn' },
-        },
-      },
-    } as CanonicalRuntimeEvent);
-    // The newest page holds 149 events, so the turnless event is its oldest.
-    for (let i = 0; i < 148; i++)
-      store.appendEvent({
-        ...base,
-        turnId: 'turn-x',
-        eventId: `turnless-late-${i}`,
-        method: 'content.text-delta',
-        delta: 'y',
-      });
-    const page = store.listEventWindowByTurn(base.threadId, {
-      turnLimit: 10,
-      direction: 'newest',
-    });
-    expect(page.events[1].id).toBe('turnless-child');
-    expect(page.events[1].turnId).toBeUndefined();
-    expect(page.events[0]).toMatchObject({
-      id: 'turnless-start',
-      historyGapAfter: true,
-    });
   });
 
   test('appends canonical events with monotonically increasing per-thread sequence numbers', () => {

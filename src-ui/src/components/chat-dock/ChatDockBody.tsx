@@ -611,6 +611,11 @@ export function ChatDockBody({
   const unverifiedOpen = openPhase === 'unverified';
   const recoveryOpen = openPhase === 'read-only' || unverifiedOpen;
   const busyOpen = openPhase === 'busy';
+  // A chat reopened mid-turn resolves `busy`: it cannot start a continuation,
+  // but its open turn still takes Steer or Queue, as it does in the tab that
+  // started it. Only a busy wait this tab sees no turn for (a missed
+  // terminal) stays draft-only behind its Check again notice.
+  const busyWaitBlocksSend = busyOpen && !isTurnInFlight(activeSession);
   const resolvingOpen = openPhase === 'resolving';
   const transcript = useActiveChatTranscript(apiBase, activeSession);
   const streamStatus = useChatStreamStatus(apiBase, activeSession.replay);
@@ -1742,9 +1747,6 @@ export function ChatDockBody({
             emptyState: historyFailureNotice,
             historyNotice: historyElisionNotice,
             hasOlderMessages: transcript.enabled && transcript.hasMore,
-            olderMessagesGapTurnId: transcript.enabled
-              ? transcript.historyGapTurnId
-              : undefined,
             // #2316: the pending-approvals strip derives from the window's
             // events inside the lazily loaded list.
             approvalEvents: transcript.enabled ? transcript.events : undefined,
@@ -2503,8 +2505,10 @@ export function ChatDockBody({
             attachments={chatInput.attachments}
             textareaRef={chatInput.textareaRef}
             onEnabledChange={onComposerEnabledChange}
-            disabled={!agent || recoveryOpen || resolvingOpen || busyOpen}
-            allowDraftWhileDisabled={busyOpen && !!agent}
+            disabled={
+              !agent || recoveryOpen || resolvingOpen || busyWaitBlocksSend
+            }
+            allowDraftWhileDisabled={busyWaitBlocksSend && !!agent}
             turnInFlight={isTurnInFlight(activeSession)}
             busyFollowUp={busyFollowUp}
             busySteeringKind={nativeSteering ? 'native' : 'safe-stop'}
@@ -2600,7 +2604,7 @@ export function ChatDockBody({
             sendBlockedReason={
               recoveryOpen && !unverifiedOpen
                 ? 'This conversation is available read-only. Retry resolution or start a new chat.'
-                : recoveryOpen || resolvingOpen || busyOpen
+                : recoveryOpen || resolvingOpen || busyWaitBlocksSend
                   ? // The banner above already says this; repeating the SENTENCE
                     // under the composer is what made one ordinary reload read as
                     // three separate problems. `undefined` leaves the composer

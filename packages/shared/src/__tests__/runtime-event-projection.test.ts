@@ -220,7 +220,7 @@ describe('projectRuntimeEventsToMessages', () => {
     expect(rendered).not.toContain('A.');
   });
 
-  it('#4266: a turn whose prompt the window marks as a history gap adopts no outputText, even with no text before its last tool', () => {
+  it('#4266: a turn whose start the window holds detached adopts no outputText, even with no text before its last tool', () => {
     const events = [
       ev({
         method: 'turn.started',

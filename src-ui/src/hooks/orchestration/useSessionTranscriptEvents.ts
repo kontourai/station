@@ -127,22 +127,11 @@ export function useSessionTranscriptEvents(
         ),
     [stitchedEvents],
   );
-  // Turns whose window holds only their prompt and tail (#4266).
-  const partialTurnStartEventIds = useMemo(
-    () =>
-      new Set(
-        stitchedEvents.flatMap((item) =>
-          item.historyGapAfter && item.event.eventId
-            ? [item.event.eventId]
-            : [],
-        ),
-      ),
-    [stitchedEvents],
-  );
 
   return {
     events,
-    partialTurnStartEventIds,
+    // #4266: turns the window holds only as their start and tail.
+    partialTurnStartEventIds: window.partialTurnStartEventIds,
     hasMore: window.hasMore,
     loadOlder: window.loadOlder,
     settled: window.settled,

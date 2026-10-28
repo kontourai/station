@@ -11,7 +11,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import type { ReactElement, ReactNode } from 'react';
+import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   COPY_TOAST_FAILURE,
@@ -145,81 +145,6 @@ describe('ChatMessageList', () => {
     fireEvent.scroll(log);
     expect(
       screen.getByRole('button', { name: 'Scroll to bottom' }),
-    ).toBeTruthy();
-  });
-
-  test('#4266: a page that starts mid-turn renders the prompt, then Earlier messages, then the tail', () => {
-    const session = {
-      ...resizeSession(),
-      messages: [
-        {
-          role: 'user' as const,
-          content: 'Run the long task',
-          turnId: 'long',
-          timestamp: 1,
-        },
-        {
-          role: 'assistant' as const,
-          content: 'The tail of the work.',
-          turnId: 'long',
-          timestamp: 2,
-        },
-      ],
-    };
-    const queryClient = new QueryClient();
-    const wrapper = ({ children }: { children: ReactNode }) => (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    );
-    const { rerender } = render(
-      <ChatMessageList
-        activeSession={session}
-        fontSize={14}
-        showReasoning={false}
-        showToolDetails={false}
-        hasOlderMessages
-        olderMessagesGapTurnId="long"
-        onLoadOlder={vi.fn(async () => {})}
-      />,
-      { wrapper },
-    );
-    const order = () => {
-      const log = screen.getByRole('log');
-      const nodes = [
-        screen.getByText('Run the long task'),
-        screen.getByRole('button', { name: 'Earlier messages' }),
-        screen.getByText('The tail of the work.'),
-      ];
-      expect(nodes.every((node) => log.contains(node))).toBe(true);
-      return nodes.map((node) =>
-        nodes.filter(
-          (other) =>
-            other !== node &&
-            other.compareDocumentPosition(node) &
-              Node.DOCUMENT_POSITION_PRECEDING,
-        ),
-      );
-    };
-    // Each node precedes exactly the nodes after it in reading order.
-    const [prompt, control, tail] = order();
-    expect(prompt).toHaveLength(2);
-    expect(control).toHaveLength(1);
-    expect(tail).toHaveLength(0);
-    expect(screen.getAllByText('Run the long task')).toHaveLength(1);
-    // Older turns, not a turn's middle: the control leads the transcript.
-    rerender(
-      <ChatMessageList
-        activeSession={session}
-        fontSize={14}
-        showReasoning={false}
-        showToolDetails={false}
-        hasOlderMessages
-        onLoadOlder={vi.fn(async () => {})}
-      />,
-    );
-    const button = screen.getByRole('button', { name: 'Earlier messages' });
-    expect(
-      button.compareDocumentPosition(screen.getByText('Run the long task')) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 

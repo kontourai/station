@@ -373,6 +373,11 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         : { ...serverWindow, reload: retryHistory },
     [replayHistory, serverWindow, session.id, retryHistory],
   );
+  // #4266: turns the window holds only as their start and tail; a replay's
+  // tape is whole.
+  const partialTurnStartEventIds = replayHistory
+    ? undefined
+    : serverWindow.partialTurnStartEventIds;
   const subscribeLive = useCallback(
     (listener: () => void) => subscribeSequencedLiveEvents(apiBase, listener),
     [apiBase],
@@ -625,11 +630,6 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     const agentPresentationBySessionId = new Map(
       (window.sessionLineage ?? []).map((entry) => [entry.sessionId, entry]),
     );
-    const partialTurnStartEventIds = new Set(
-      stitchedEvents.flatMap((item) =>
-        item.historyGapAfter && item.event.eventId ? [item.event.eventId] : [],
-      ),
-    );
     const projectedRows = projectRuntimeEventsToMessages(
       stitchedEvents
         .map((item) => item.event)
@@ -639,7 +639,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       {
         stableIds: true,
         markEndedTurns: true,
-        partialTurnStartEventIds,
+        ...(partialTurnStartEventIds ? { partialTurnStartEventIds } : {}),
         ...(liveOpenTurnThread
           ? {
               liveOpenTurn: {
@@ -1006,24 +1006,15 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     changedFilesByTurn,
     window.events,
     stitchedEvents,
+    partialTurnStartEventIds,
     window.sessionLineage,
     window.handoffs,
     window.contextBoundaries,
   ]);
 
-  // #4266: the turn whose middle the next older page holds. Its prompt is in
-  // the window, so the load-more control belongs under that prompt.
-  const historyGapTurnId = useMemo(
-    () =>
-      [...stitchedEvents].reverse().find((item) => item.historyGapAfter)?.event
-        .turnId,
-    [stitchedEvents],
-  );
-
   return {
     ...window,
     events: stitchedEvents,
-    ...(historyGapTurnId ? { historyGapTurnId } : {}),
     enabled,
     catchingUp: !replay && (serverWindow.catchingUp || liveGap),
     openTurnProjected,

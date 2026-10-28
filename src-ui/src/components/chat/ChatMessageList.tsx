@@ -109,12 +109,6 @@ interface ChatMessageListProps {
   emptyState?: React.ReactNode;
   historyNotice?: React.ReactNode;
   hasOlderMessages?: boolean;
-  /**
-   * #4266: the turn whose prompt the window holds without its middle. The
-   * older page continues that turn, so its control renders under the
-   * prompt, not above it.
-   */
-  olderMessagesGapTurnId?: string;
   historyLoading?: boolean;
   suppressActivity?: boolean;
   /**
@@ -256,7 +250,6 @@ function ChatMessageListComponent({
   emptyState,
   historyNotice,
   hasOlderMessages,
-  olderMessagesGapTurnId,
   historyLoading,
   suppressActivity,
   statusShownElsewhere,
@@ -556,17 +549,6 @@ function ChatMessageListComponent({
   }, [activeSession.id, messages, transcriptChildren, approvalEvents]);
   const transcriptRowsRef = useRef(transcriptRows);
   transcriptRowsRef.current = transcriptRows;
-  // The prompt row the older page continues (#4266). Without one, older
-  // pages hold earlier turns and the control sits above the transcript.
-  const historyGapRowId = useMemo(() => {
-    if (!hasOlderMessages || !olderMessagesGapTurnId) return undefined;
-    return transcriptRows.find(
-      (row) =>
-        row.kind !== 'subagent' &&
-        row.message.role === 'user' &&
-        row.message.turnId === olderMessagesGapTurnId,
-    )?.id;
-  }, [hasOlderMessages, olderMessagesGapTurnId, transcriptRows]);
   // #342: the user turns, from the whole row model — a virtualized transcript
   // mounts only the rows near the reader. Kept by identity while no turn's
   // summary changes, so streaming text does not re-render the rail.
@@ -1519,19 +1501,6 @@ function ChatMessageListComponent({
     return renderDefaultMessage(msg, idx, rowId);
   };
 
-  const historyControls = hasOlderMessages ? (
-    <div className="session-history-controls">
-      <button
-        type="button"
-        className="button button--secondary session-history-controls__more"
-        disabled={historyLoading}
-        onClick={() => void loadOlder()}
-      >
-        {historyLoading ? 'Loading earlier messages…' : 'Earlier messages'}
-      </button>
-    </div>
-  ) : null;
-
   const renderTranscriptRow = (row: ChildTranscriptRow) => {
     if (row.kind === 'subagent')
       return (
@@ -1560,7 +1529,6 @@ function ChatMessageListComponent({
         >
           {renderMessage(row.message, row.index, row.id)}
         </TranscriptTurnContext.Provider>
-        {row.id === historyGapRowId && historyControls}
       </div>
     );
   };
@@ -1755,7 +1723,20 @@ function ChatMessageListComponent({
             onPointerDown={onReaderInput}
             onKeyDown={onReaderInput}
           >
-            {hasOlderMessages && !historyGapRowId && historyControls}
+            {hasOlderMessages && (
+              <div className="session-history-controls">
+                <button
+                  type="button"
+                  className="button button--secondary session-history-controls__more"
+                  disabled={historyLoading}
+                  onClick={() => void loadOlder()}
+                >
+                  {historyLoading
+                    ? 'Loading earlier messages…'
+                    : 'Earlier messages'}
+                </button>
+              </div>
+            )}
             {historyNotice}
             {transcriptRows.length === 0 && !isStreaming ? (
               (emptyState ?? (
