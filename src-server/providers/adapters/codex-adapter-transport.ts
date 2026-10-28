@@ -68,7 +68,7 @@ import {
   refuseCodexApprovalReply,
 } from './codex-approval-delivery.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
-import { CodexStderrTail, withCodexStderrTail } from './codex-stderr-tail.js';
+import { CodexStderrTail, withCodexStderrLine } from './codex-stderr-tail.js';
 
 type JsonRpcRequest = {
   id?: JsonRpcId;
@@ -287,14 +287,14 @@ export class CodexAdapterTransport {
       this.settleAcknowledgementWatches(record);
       const nowIso = this.now().toISOString();
       // A request still pending here is usually startup (`initialize`,
-      // `thread/start`): the stderr tail is what says why.
+      // `thread/start`): the newest ERROR on stderr is what says why.
       const interruptedTurnId = this.rejectPendingRpcRequests(
         record,
         () =>
           new Error(
-            withCodexStderrTail(
+            withCodexStderrLine(
               `Codex app-server exited before responding (${signal ? `signal: ${signal}` : `code: ${code ?? 'unknown'}`})`,
-              stderrTail.text(),
+              stderrTail.lastErrorLine(),
             ),
           ),
       );
@@ -1304,9 +1304,11 @@ export class CodexAdapterTransport {
       nowIso,
       memoryExhausted && outcome
         ? memoryExhaustedMessage(outcome)
-        : withCodexStderrTail(
+        : // The whole tail is in `details`; the message quotes only the
+          // newest ERROR not already reported as a `configWarning`.
+          withCodexStderrLine(
             `Codex app-server exited before the turn finished (${signal ? `signal: ${signal}` : `code: ${code ?? 'unknown'}`}).`,
-            stderrTail,
+            record.stderrTail?.lastErrorLine(),
           ),
       {
         skipSynthesis: interruptWasInFlight,

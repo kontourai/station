@@ -237,17 +237,49 @@ describe('CodexAdapterTransport', () => {
         expect(events.map((event) => event.method)).toContain('session.exited'),
       );
       const failure = events.find((event) => event.method === 'runtime.error');
-      expect(failure.message).toContain(
-        'Codex app-server exited before the turn finished (code: 1).',
+      // #4266: the message quotes the newest ERROR line, not the whole tail.
+      expect(failure.message).toBe(
+        'Codex app-server exited before the turn finished (code: 1).\nstderr: 2026-10-27T18:02:11.204Z ERROR codex_core::config: project config was not loaded',
       );
-      // Each line kept trimmed, in order.
-      expect(failure.message).toContain(
+      // The whole tail, each line kept trimmed and in order, is in details.
+      expect(failure.details.stderrTail).toContain(
         'not trusted.\nMark the folder trusted to load it.',
       );
       expect(failure.details.stderrTail).toContain(
         'continuing with user config only',
       );
       expect(JSON.stringify(failure)).not.toContain(ESC);
+    });
+
+    test('an exit does not quote again what a configWarning already reported (#4266)', async () => {
+      const { transport, processHandle, record, events } = stderrRecord(
+        'thread-stderr-reported',
+      );
+      record.activeTurnId = 'turn-1';
+      processHandle.stderr.write(`${UNTRUSTED_PROJECT_STDERR}\n`);
+      await flushStderr();
+      transport.handleStdoutLine(
+        record,
+        JSON.stringify({
+          method: 'configWarning',
+          params: {
+            summary:
+              'Project config was not loaded: the folder is not trusted.',
+          },
+        }),
+      );
+      processHandle.exitCode = 1;
+      processHandle.emit('exit', 1, null);
+      await vi.waitFor(() =>
+        expect(events.map((event) => event.method)).toContain('session.exited'),
+      );
+      const failure = events.find((event) => event.method === 'runtime.error');
+      expect(failure.message).toBe(
+        'Codex app-server exited before the turn finished (code: 1).',
+      );
+      expect(failure.details.stderrTail).toContain(
+        'project config was not loaded',
+      );
     });
 
     test('the tail explains a startup that fails before Codex answers', async () => {

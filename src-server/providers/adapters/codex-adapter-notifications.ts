@@ -436,6 +436,9 @@ export function handleCodexNotification(
       if (!summary) return;
       const details = boundedConfigWarningText(notification.params.details);
       const path = boundedConfigWarningText(notification.params.path);
+      // Its stderr copy then need not be quoted again in a failure's text.
+      record.stderrTail?.noteReported(summary);
+      record.stderrTail?.noteReported(details);
       publish({
         eventId: crypto.randomUUID(),
         provider: 'codex',
