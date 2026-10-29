@@ -355,7 +355,7 @@ describe('#4007 a Task document refuses what it cannot hold, explicitly and up f
     const room = await setup();
 
     const freezes = vi.spyOn(room.revisionEvidence, 'recordPublication');
-    let current = 'd'.repeat(4_000);
+    let current = 'd'.repeat(200_000);
     let linked = true;
     for (let index = 0; index < 20 && linked; index += 1) {
       expect(await room.edit(current)).toMatchObject({ kind: 'committed' });
