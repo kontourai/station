@@ -472,43 +472,43 @@ export class MCPService {
       return;
     }
     this.assertMutableIntegration(def.id);
-    let existing: ToolDef | undefined;
-    try {
-      existing = await this.configLoader.loadIntegration(def.id);
-    } catch (error) {
-      if (!isMissingIntegrationError(error)) throw error;
-    }
-    if (
-      Object.hasOwn(def, 'secretEnvRefs') &&
-      !sameSecretEnvRefs(def.secretEnvRefs, existing?.secretEnvRefs)
-    ) {
-      throw new Error(
-        'Secret bindings can be changed only through the operator binding API.',
-      );
-    }
-    if (
-      existing?.secretEnvRefs &&
-      Object.keys(existing.secretEnvRefs).length > 0 &&
-      changesBoundChildExecutionIdentity(existing, def)
-    ) {
-      throw new Error(
-        'Unbind secret bindings before changing an integration execution configuration.',
-      );
-    }
-    const identityChanged =
-      existing !== undefined &&
-      toolServerOAuthResourceIdentity(existing) !==
-        toolServerOAuthResourceIdentity(def);
-    const withPreservedBindings = existing?.secretEnvRefs
-      ? { ...def, secretEnvRefs: { ...existing.secretEnvRefs } }
-      : def;
-    const persisted = identityChanged
-      ? withAuthorizationRequired(
-          withPreservedBindings,
-          'Tool server endpoint changed',
-        )
-      : withPreservedBindings;
     const write = async () => {
+      let existing: ToolDef | undefined;
+      try {
+        existing = await this.configLoader.loadIntegration(def.id);
+      } catch (error) {
+        if (!isMissingIntegrationError(error)) throw error;
+      }
+      if (
+        Object.hasOwn(def, 'secretEnvRefs') &&
+        !sameSecretEnvRefs(def.secretEnvRefs, existing?.secretEnvRefs)
+      ) {
+        throw new Error(
+          'Secret bindings can be changed only through the operator binding API.',
+        );
+      }
+      if (
+        existing?.secretEnvRefs &&
+        Object.keys(existing.secretEnvRefs).length > 0 &&
+        changesBoundChildExecutionIdentity(existing, def)
+      ) {
+        throw new Error(
+          'Unbind secret bindings before changing an integration execution configuration.',
+        );
+      }
+      const identityChanged =
+        existing !== undefined &&
+        toolServerOAuthResourceIdentity(existing) !==
+          toolServerOAuthResourceIdentity(def);
+      const withPreservedBindings = existing?.secretEnvRefs
+        ? { ...def, secretEnvRefs: { ...existing.secretEnvRefs } }
+        : def;
+      const persisted = identityChanged
+        ? withAuthorizationRequired(
+            withPreservedBindings,
+            'Tool server endpoint changed',
+          )
+        : withPreservedBindings;
       await this.configLoader.saveIntegration(
         def.id,
         persisted,
