@@ -402,6 +402,7 @@ export function configureRuntimeSupportServices(
     context.configLoader.getProjectHomeDir(),
     60_000,
     {
+      projectMembership: context.projectMembership,
       onAsyncDispatchError: (operation, error) =>
         context.logger.warn('Notification async adapter failed', {
           operation,
