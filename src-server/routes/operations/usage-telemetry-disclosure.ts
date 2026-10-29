@@ -7,10 +7,7 @@ import { parseTelemetryFeedback } from '@kontourai/station-shared/product-teleme
 import { type Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { requestMayBeAnAgent } from '../../security/coding-authority.js';
-import {
-  grantedPairingScope,
-  type PairingScopeContextStore,
-} from '../../security/pairing-route-scopes.js';
+import { grantedPairingScope } from '../../security/pairing-route-scopes.js';
 import { requestFromPluginPane } from '../../security/plugin-pane-context.js';
 import type { CurrentRuntimeRequestPrincipalSecurity } from '../../security/runtime-request-security.js';
 import { telemetryChoiceCapabilities } from '../../security/telemetry-choice-authority.js';
@@ -48,7 +45,7 @@ export function createUsageTelemetryDisclosureRoutes(
           capabilities: telemetryChoiceCapabilities(
             c.req.raw,
             security,
-            grantedPairingScope(c as unknown as PairingScopeContextStore),
+            grantedPairingScope(c),
           ),
         }
       : disclosure;
