@@ -106,6 +106,7 @@ test('authorized conversation window carries the coordinator decision', async ()
 });
 
 test('reader without send authority is not eligible to continue', async () => {
+  const mayContinue = vi.fn(() => false);
   const route = new Hono().route(
     '/api/orchestration',
     createOrchestrationRoutes(
@@ -122,7 +123,8 @@ test('reader without send authority is not eligible to continue', async () => {
         memoryContinuation: {
           continuationEligibility: () => ({ eligible: true, turnId: 'turn-1' }),
         },
-        threadInbox: { mayContinue: () => false },
+        threadInbox: { mayContinue },
+        mayRequestMemoryContinuation: () => true,
       } as never,
     ),
   );
@@ -131,6 +133,7 @@ test('reader without send authority is not eligible to continue', async () => {
   );
   expect(response.status).toBe(200);
   expect((await response.json()).data.memoryContinuation.eligible).toBe(false);
+  expect(mayContinue).toHaveBeenCalledWith('c-1', 'reader');
 });
 
 test('read-only credential cannot be offered continuation through the HTTP scope boundary', async () => {
