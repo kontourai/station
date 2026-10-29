@@ -56,9 +56,10 @@ test('trust controls fit and remain usable in both themes and widths', async () 
             .evaluate((element) => getComputedStyle(element).fontSize),
         ).toBe(
           await page
-            .locator('.editor-label')
-            .first()
-            .evaluate((element) => getComputedStyle(element).fontSize),
+            .locator('.integration-trust-history')
+            .evaluate((element) =>
+              getComputedStyle(element).getPropertyValue('--k-text-md').trim(),
+            ),
         );
         expect(
           await page.evaluate(
