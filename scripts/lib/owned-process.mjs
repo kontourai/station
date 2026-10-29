@@ -16,9 +16,12 @@ const coordinatorIdentities = new Map();
  * (#2675): a cold Windows PowerShell start can outlast one 1.5s probe, and a
  * single attempt then refused every owned command. Still exact-or-null; no
  * PID-only fallback. A process's birth never changes, so an exact result is
- * kept: the retrying, synchronous lookup is paid once per process, before any
- * command's guard is waiting on this one, instead of once per command while
- * earlier commands' guards wait for their resume. A miss is not kept.
+ * kept: commands on this default path cannot start a guard until it is
+ * known, so later ones no longer block while earlier guards wait for their
+ * resume. A miss is not kept and is retried. The first lookup is still
+ * synchronous: an owned process started before it through another path
+ * (`executeOwnedProcess`, or a caller's own `resolveParentIdentity`) can be
+ * delayed by it.
  */
 export function resolveCoordinatorIdentity(pid, dependencies = {}) {
   const known = coordinatorIdentities.get(pid);
