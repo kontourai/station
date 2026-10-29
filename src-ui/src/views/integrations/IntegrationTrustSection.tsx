@@ -247,9 +247,7 @@ export function IntegrationTrustSection({
                 </li>
               ))}
           </ol>
-        ) : (
-          <p>No recorded changes.</p>
-        )}
+        ) : null}
       </details>
     </section>
   );
