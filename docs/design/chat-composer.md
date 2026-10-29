@@ -62,7 +62,10 @@ transcript unmounts far-off answers; one that returns is read again, because the
 Basis read re-checks access for each new chip. Pending or failed, it stays
 **Basis** and still opens.
 During an authorized active-turn continuation wait, the composer accepts and
-preserves a draft. Sending and queueing stay blocked until continuation is writable.
+preserves a draft. While this tab sees the turn in flight (a chat reopened
+mid-turn), Send steers or queues into that turn as it does in the tab that
+started it. A wait with no turn in flight here keeps Send blocked behind Check
+again until continuation is writable.
 The shared popover shell opens toward the roomier viewport edge, including when
 the dock is maximized. Slash commands, `/model` and `@` file results all open
 through one anchored popup outside the composer, so no composer clipping can cut
@@ -98,6 +101,9 @@ These frozen comparisons record #3490's redesign at the revisions in the media
 manifest. Later Project identity marks, server run-location updates, Agent
 grouping and Engine & model overrides are not pictured; the images are not captures or visual qualification of the current
 composer.
+The **⋯** they show held only **Use a visual skill**; that action now appears
+only while the `visual-skills` Feature Preview is on, so by default the
+current composer has no **⋯**.
 
 The Project comparison captures also precede the shared Project Room and
 Overview-first navigation. They retain their original revisions. Direct Agent
@@ -108,8 +114,8 @@ source and workspace controls, with specialist management still in Settings.
 New chat opens the shared start composer in Home or the chat dock. The Project
 page opens on Overview and keeps its shared Project Room separate from direct
 Agent conversations. Project and Station controls sit above the text box;
-separate Agent and Engine & model controls sit inside it beside Start and the overflow
-for visual skills. The Agent list retains each Agent's repair action: a row that cannot start is
+separate Agent and Engine & model controls sit inside it beside Start and, while
+the `visual-skills` Feature Preview is on, the overflow for visual skills. The Agent list retains each Agent's repair action: a row that cannot start is
 dimmed and disabled with its one fixing button, and shows a state badge only
 when it has no fix of its own; a ready row shows none. Custom Agents keep a
 short purpose. The engine that runs an Agent
@@ -405,7 +411,7 @@ These controls are owned by [ChatInputArea](../../src-ui/src/components/chat/Cha
 
 ### Turn navigation
 
-A live transcript with six or more user turns gets turn navigation (#342;
+A live transcript gets turn navigation from its first user turn (#342;
 [TranscriptTurnRail](../../src-ui/src/components/chat/TranscriptTurnRail.tsx)).
 Its user turns are derived from the whole transcript row model
 ([transcriptTurnLandmarks](../../src-ui/src/components/chat/transcriptTurnLandmarks.ts)),
@@ -601,7 +607,17 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   that differs from Default ("Own settings", or "Ask · kept"), and its name
   says the pick was not applied. A newly recorded decision clears that. Any other ACP engine
   shows **Approval: Set by engine**, which opens a read-only explanation and
-  offers no mode. An engine's advertised Mode (OpenCode's build or plan agent)
+  offers no mode. Codex's Default likewise names the engine's own settings
+  ("Engine default — Codex's own settings"), and its description states what
+  an unconfigured Codex does there, as a bound on which commands run unasked:
+  none that uses the network or writes outside the chat's folder and temp.
+  Hosted web search and MCP tool calls are not sandboxed commands and fall
+  outside that bound (EXECUTED against
+  codex-cli 0.164.0 with policy `on-request`: read-only for a host session in
+  a folder with no trust entry; workspace-write without network, temp
+  writable, for a trusted host folder and under Station's `station-workspace`
+  profile).
+  An engine's advertised Mode (OpenCode's build or plan agent)
   is a separate picker beside it, never a replacement for it. While Station
   governs OpenCode it offers only build and plan; on OpenCode's own settings
   it lists every agent. A refusal because Station's approval mode cannot

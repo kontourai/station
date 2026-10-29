@@ -381,3 +381,45 @@ test('Escape dismisses a hover preview while focus stays in the composer', async
     await browser.close();
   }
 });
+
+test.each([
+  { width: 390, theme: 'dark' },
+  { width: 390, theme: 'light' },
+  { width: 1440, theme: 'dark' },
+  { width: 1440, theme: 'light' },
+])(
+  'short conversation navigation at $width px in $theme',
+  async ({ width, theme }) => {
+    const { browser, page, errors } = await turnRailBrowserFixture({
+      turns: 2,
+      viewport: { width, height: 844 },
+      dockHeight: 844,
+    });
+    try {
+      await page.evaluate((value) => {
+        document.documentElement.dataset.theme = value;
+      }, theme);
+      await settledScrollTop(page);
+      const rail = page.getByRole('navigation', { name: 'Conversation turns' });
+      expect(await rail.isVisible()).toBe(width >= 560);
+      expect(await page.locator('.transcript-turn-rail__tick').count()).toBe(2);
+      if (width < 560) {
+        const previous = page.getByRole('button', { name: 'Previous turn' });
+        expect(await previous.isVisible()).toBe(true);
+        const box = (await previous.boundingBox())!;
+        expect(box.width).toBeGreaterThanOrEqual(44);
+        expect(box.height).toBeGreaterThanOrEqual(44);
+      }
+      if (width < 560) {
+        await page.getByRole('button', { name: 'Previous turn' }).click();
+        await settledScrollTop(page);
+        expect(
+          await page.getByTestId('transcript-turn-announcement').textContent(),
+        ).toContain('Turn 1 of 2');
+      }
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  },
+);

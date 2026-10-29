@@ -1459,6 +1459,13 @@ caller to the same rule for a stored conversation, which has no Session record
 to read: it asks `target` for the Project named in the conversation's own
 metadata (global when it names none) and passes that to the shared rule, after
 the owner check (which a bound operator caller skips). A named Project Station cannot read refuses.
+The [fork route](../../src-server/routes/chat/conversations.ts)
+(`fork_conversation`) applies the rule twice before it writes: the source as a
+Conversation target with Project `view`, then the fork's Project as a new
+Session target with `execute`, so an agent forks only what its scope admits
+and only into a scope where it could start a Session. The
+[mounted fork test](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-fork-conversation.test.ts)
+drives each caller kind through it.
 
 **Start-time repeat.** The resolved directory is still a string when the engine
 starts. For a new Session and any caller except a bound operator, the route
@@ -1602,7 +1609,12 @@ and principal, which is no more than `send_to_session` allows the same caller.
 A child transition (today `settled`) is read from the persisted lifecycle fold
 after the event bus publishes it, and again at startup. Each transition is one
 durable row in `EventStore`, holding the text composed from the child's stored
-output. That row is the consumption record shared with `get_task`: the recorded
+output. A dispatched child turn that a Station restart interrupted settles nothing, so
+it gets its own row instead, keyed by the recovery abort's event id: it tells
+the parent the task was cut off and quotes no output, since that turn's text
+cannot be attributed to the run without inferring an invocation from a turn
+id; a turn the engine opened on its own gets none. Every transition row,
+settled or interrupted, is the consumption record shared with `get_task`: the recorded
 parent's read of its own child at rest consumes it. `interrupt_task` from the
 recorded parent, or from the delegating owner in person, cancels it and
 suppresses the one turn it stops. An interrupt that names a turn suppresses only
@@ -2542,7 +2554,10 @@ owners do not retry or fall back to PID-only authority. The lease can represent
 multiple runtime owners, while individual callers can impose stricter same-home policy.
 [StationRuntime](../../src-server/runtime/bootstrap/station-runtime.ts) retains
 its lease through persistence shutdown. CLI wrappers also check lifecycle
-observations for useful offline diagnostics. These checks do not stop an
+observations for useful offline diagnostics. CLI clean and reset hold maintenance
+ownership through their home removal or archive rename; clean also keeps it
+through owned build-output cleanup. A live or unverifiable runtime lease refuses
+these mutations. These checks do not stop an
 unrelated external writer that ignores Station's ownership protocol.
 
 Traversal is sorted and rejects symlinks/non-regular entries. Defaults cap an
@@ -4616,7 +4631,12 @@ Missing files/history can yield no events; other filesystem failures propagate.
 Malformed JSON or invalid timestamps are skipped, so a successful read does not
 prove every stored line was included. The current query returns no skipped-line
 completeness receipt. HTTP history pushes visibility, dimension filters and the
-requested limit into the reader. A bounded heap retains the newest matching
+requested limit into the reader. Without an explicitly named user, history and
+`/api/insights` read the rows owned by the request principal's session-owner
+set (itself plus, in personal mode, the operator and paired devices of its
+personal conversation account); the live stream applies the same set to owned
+rows. Personal account members also read rows OTLP ingest stamps with the
+host's OS alias. A bounded heap retains the newest matching
 rows by timestamp, up to 10,000 rows and 8 MiB, while a chunk reader caps work
 at 32 MiB scanned and 1 MiB per line before parsing. Dropped rows or an exhausted
 scan/line budget return `truncated: true`. A truncated scan identifies the latest

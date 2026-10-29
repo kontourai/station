@@ -1,0 +1,47 @@
+{
+  "revision": "30e447581c503ea234d45259c8684db2d700ebda",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Checked the only changes here: one module-map sentence and one api.md bullet about monitoring/insights row owner scope. This document makes no claim that cites them; no prose change.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Checked the only changes here: one module-map sentence and one api.md bullet about monitoring/insights row owner scope. This document makes no claim that cites them; no prose change.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Checked the only changes here: one module-map sentence and one api.md bullet about monitoring/insights row owner scope. This document makes no claim that cites them; no prose change.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Checked the only changes here: one module-map sentence and one api.md bullet about monitoring/insights row owner scope. This document makes no claim that cites them; no prose change.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked the only changes here: one module-map sentence and one api.md bullet about monitoring/insights row owner scope. This document makes no claim that cites them; no prose change.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Re-checked the Monitoring history owner-scope sentence after the fix round: the owner set now covers paired devices (personalConversationOwnerIds includes revoked devices as historical owners) and the live /events stream applies it to rows owned via userId or station.user.id.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Checked the only changes here: one module-map sentence and one api.md bullet about monitoring/insights row owner scope. This document makes no claim that cites them; no prose change.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/terminal.md","note":"Checked the only changes here: one module-map sentence and one api.md bullet about monitoring/insights row owner scope. This document makes no claim that cites them; no prose change.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/glossary.md","note":"Checked the only changes here: one module-map sentence and one api.md bullet about monitoring/insights row owner scope. This document makes no claim that cites them; no prose change.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked the only changes here: one module-map sentence and one api.md bullet about monitoring/insights row owner scope. This document makes no claim that cites them; no prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Checked the local monitoring events row and the station.user.id key against the live-stream owner change in monitoring.ts; still accurate, no prose change.","inputs":["docs/guides/monitoring.md","src-server/routes/operations/monitoring.ts","src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the only changes here: one module-map sentence and one api.md bullet about monitoring/insights row owner scope. This document makes no claim that cites them; no prose change.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Checked the only changes here: one module-map sentence and one api.md bullet about monitoring/insights row owner scope. This document makes no claim that cites them; no prose change.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/api.md","note":"Re-checked the Get Usage Insights owner bullet against insights.ts, monitoring.ts and canReadMonitoringEvent: paired devices including revoked ones count, unowned rows never count, producer rows stay token-owner only.","inputs":["docs/reference/api.md","src-server/routes/operations/monitoring.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Checked that /monitoring/events still owns per-user and tenant authorization for station insights events after the live-stream owner change; no prose change.","inputs":["docs/reference/cli.md","src-server/routes/operations/monitoring.ts"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Checked the only changes here: one module-map sentence and one api.md bullet about monitoring/insights row owner scope. This document makes no claim that cites them; no prose change.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"station-docs-content.ts was regenerated from the reviewed module-map and api.md wording; checked the shipped topics carry only those sentence changes.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked the only changes here: one module-map sentence and one api.md bullet about monitoring/insights row owner scope. This document makes no claim that cites them; no prose change.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Checked the only changes here: one module-map sentence and one api.md bullet about monitoring/insights row owner scope. This document makes no claim that cites them; no prose change.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Checked the only changes here: one module-map sentence and one api.md bullet about monitoring/insights row owner scope. This document makes no claim that cites them; no prose change.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked the only changes here: one module-map sentence and one api.md bullet about monitoring/insights row owner scope. This document makes no claim that cites them; no prose change.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

@@ -8,8 +8,8 @@
  * (`src-server/services/orchestration/orchestration-session-state.ts:174-184`): a
  * `request.opened` event is pending unless a later `request.resolved` event
  * for the same `requestId` exists. `--thread=<id>` scopes to one thread's
- * events; without it, every orchestration session for `--agent`'s provider
- * is read (the same N+1 pattern `session-client.ts`'s `listSessions`/
+ * events; without it, every orchestration session (narrowed to `--agent`'s
+ * provider when `--agent` is given) is read (the same N+1 pattern `session-client.ts`'s `listSessions`/
  * `readSession` already use) and pending requests are aggregated across all
  * of them.
  *
@@ -250,11 +250,14 @@ export async function listPendingForThread(
 
 async function listPendingForProvider(
   apiBase: string,
-  provider: string,
+  provider: string | undefined,
 ): Promise<PendingApproval[]> {
   const sessions =
     await listOrchestrationSessions<Array<Record<string, unknown>>>(apiBase);
-  const matching = sessions.filter((session) => session.provider === provider);
+  const matching =
+    provider === undefined
+      ? sessions
+      : sessions.filter((session) => session.provider === provider);
 
   const pending: PendingApproval[] = [];
   for (const session of matching) {
@@ -415,10 +418,6 @@ async function runApprovalsList(
 ): Promise<void> {
   const agentSlug =
     typeof parsed.flags.agent === 'string' ? parsed.flags.agent : undefined;
-  if (!agentSlug) {
-    throw new Error('Missing required flag: --agent=<slug>');
-  }
-
   const threadId =
     typeof parsed.flags.thread === 'string' ? parsed.flags.thread : undefined;
   const jsonMode = parsed.flags.json === true;
@@ -435,14 +434,18 @@ async function runApprovalsList(
     );
   }
 
-  const provider = await resolveApprovalsAgentProvider(
-    apiBase,
-    agentId(agentSlug),
-  );
-  if (!provider) {
-    throw new Error(
-      `Agent '${agentSlug}' is not bound to an approvals-capable external engine.`,
-    );
+  // `--agent` narrows to one engine's sessions; without it every session's
+  // pending requests are listed, since approvals are not owned by an Agent.
+  let provider: string | undefined;
+  if (agentSlug) {
+    provider =
+      (await resolveApprovalsAgentProvider(apiBase, agentId(agentSlug))) ??
+      undefined;
+    if (!provider) {
+      throw new Error(
+        `Agent '${agentSlug}' is not bound to an approvals-capable external engine.`,
+      );
+    }
   }
 
   if (watch) {

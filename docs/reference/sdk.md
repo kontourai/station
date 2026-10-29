@@ -267,6 +267,14 @@ is separate. Missing or unavailable provenance means unknown. Parent references
 do not grant read access. See the [Session API](session-api.md) for continuity
 and authorization limits. This export requires a published version containing it.
 
+`listWorkClaims(apiBase, options?)` reads the active work claims of the
+Sessions the requester may read (`GET /api/orchestration/work-claims`, a
+person's read; agents read claims through Station Control). Each entry is a
+`WorkClaimView` from `@kontourai/station-contracts/work-claims`; an entry the
+contract cannot parse fails the read rather than being dropped. A Station
+older than the route answers 404. This export requires a published version
+containing it.
+
 `fetchSSE` accepts `initialLastEventId` for a replacement stream. It sends that
 cursor as `Last-Event-ID` on the first request and continues updating the cursor
 from accepted SSE frames during transport retries. Callers should provide the

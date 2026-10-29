@@ -217,7 +217,11 @@ remain local. Different Stations keep separate account preferences.
 
 The approval chip shows the known mode, including **Full access**, **Auto** or
 **Ask**. **Engine default** means the engine's active mode has not been confirmed.
-Open the picker to see the source, the confirmed mode and whether a request takes
+For Codex the picker says what that is: your own Codex settings. If you set
+none, no command Codex runs uses the network or writes outside the chat's
+folder and temporary directories without asking; it may ask before other
+writes too. Codex's web search and MCP tools are not commands and are not
+covered by this. Open the picker to see the source, the confirmed mode and whether a request takes
 effect next turn or requires restarting the session. A Claude chat started in a
 chosen mode by someone who may grant full access can switch to full access on
 its next turn. A chat left on Claude's own settings, one that started before
@@ -478,7 +482,8 @@ first; the controls show what **Start** will use:
   can be chosen too. Its chats run in your home folder, or, for an ACP
   engine, in that engine's own Working Directory or else a private folder
   Station makes for the chat; the chip and list say which.
-- **⋯** holds **Use a visual skill**.
+- **⋯** holds **Use a visual skill** while the **Visual skills** Feature
+  Preview is on; with it off there is no **⋯**.
 
 **Run a task…** opens **Run on a Station** with your message, Project and any explicit
 Station/engine/model/options choice kept. Its tooltip names the current Station
@@ -512,6 +517,13 @@ which names the default it returns to. Station does not start a chat on a Model
 its engine does not offer: a default that an engine advertising its own model
 list left out is skipped, and a kept choice that list no longer contains is
 refused at **Start** with the message kept, so you can choose another.
+
+Project settings keeps workspace details and chat defaults together. Use
+**Save** to apply workspace, identity, model, new-chat, execution, Agent, and
+tool changes. Layouts, Sources, People and access, and Project knowledge
+have their own actions, which apply immediately. Background refreshes preserve
+unsaved edits. Clearing the working directory removes the configured folder;
+a Project that requires worktree isolation still needs a valid Git directory.
 
 A Project can choose how its new chats start, in Project settings → **New
 chats**. **Use the AI model above** starts each new chat on the Project's AI
@@ -657,6 +669,10 @@ project page shows its initials. A row for work on another Station shows
 neither, since its project belongs to that Station.
 
 ### Prepare a visual skill
+
+Visual skills are a Feature Preview: turn on **Visual skills** in
+**Settings → Advanced → Feature previews** first. Off, the start composer and
+the agent list offer none, even if one is installed.
 
 Choose **⋯** then **Use a visual skill** in the start composer to browse
 installed visual skills, including when only one Agent is ready. A card describes its purpose, example and owning plugin. Choose
