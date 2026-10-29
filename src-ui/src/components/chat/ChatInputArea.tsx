@@ -1184,12 +1184,13 @@ export function ChatInputArea({
             </span>
             <ArrowDownGlyph className="choice-caret" />
           </button>
-          {/* A reset the conversation cannot take at all is not offered. A
-              reset that is only waiting (a turn running, queued messages being
-              checked) stays in place, so the row does not shift every turn,
-              and carries its reason as its description: the composer row has
-              no room for the sentence, the running turn is already visible,
-              and the picker states the same reason as text. */}
+          {/* A reset the conversation cannot take at all is not offered. While
+              the reset is only temporarily blocked (any shared handoff reason:
+              a turn running, queued or offline messages unresolved, or their
+              state still being checked or unavailable) it stays in place,
+              disabled, so the row does not shift every turn, and carries the
+              reason as its description: the composer row has no room for the
+              sentence, and the picker states the same reason as text. */}
           {isOverride && modelResetOffered && (
             <>
               <button

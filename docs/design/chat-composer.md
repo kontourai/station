@@ -153,9 +153,11 @@ On an engine override, **Use Agent defaults** returns to the authored engine and
 model through that handoff when the switch is open. Whenever it is not, the
 picker's reset is disabled with the reason (the open resolution's refusal reads
 "This conversation can’t change its engine right now."). The composer's reset
-chip is not shown when the open resolution denies changes; while a turn runs or
-queued messages are checked it stays in place, unavailable, with the reason as
-its accessible description, so the row does not shift each turn. It never falls
+chip is not shown when the open resolution denies changes. While the reset is
+temporarily blocked (a turn running, or queued or offline messages unresolved,
+still being checked or with their state unavailable) the chip stays in place,
+disabled, with the reason as its accessible description, and the picker states
+the reason as text, so the row does not shift each turn. It never falls
 back to a model-only reset that would leave the engine override in place. In a
 new-start
 picker, resetting also clears an explicit Station choice, restoring configured

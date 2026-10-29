@@ -1911,8 +1911,9 @@
   white-space: nowrap;
 }
 
-/* Waiting on the running turn or the queue check: kept in place so the row
-   does not shift, and read as unavailable. */
+/* Temporarily blocked (a turn running, or queued or offline messages
+   unresolved): kept in place so the row does not shift, and read as
+   unavailable. */
 .chat-input__meta .chat-input__model-reset[aria-disabled="true"] {
   cursor: default;
   opacity: 0.6;
