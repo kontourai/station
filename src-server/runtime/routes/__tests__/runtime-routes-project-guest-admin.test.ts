@@ -1939,6 +1939,42 @@ describe('project guest administration over the production composition', () => {
       ),
     ).toEqual({ sharing: 'off', canEnable: true });
 
+    const pairing = h.security.devicePairing;
+    const offer = pairing.createOffer({
+      endpoint: ORIGIN,
+      scope: 'orchestration:read',
+    });
+    const pending = pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Home read only',
+      requesterPosition: 'off-box',
+    });
+    pairing.confirmRequest(pending.requestId, { kind: 'local-grant' });
+    const paired = pairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: pending.requestId,
+      locality: 'home-possession',
+      mintKind: 'local-grant',
+    });
+    const readOnly = h.guestHeaders(paired.credential, 'fixture_account=owner');
+    expect(
+      await refusal(await h.request('/api/projects/fresh/access', readOnly())),
+    ).toEqual({ sharing: 'undisclosed', canEnable: false });
+    expect(
+      (
+        await h.request(
+          '/api/projects/fresh/access/enable',
+          readOnly({
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ localProjectId: fresh.id }),
+          }),
+        )
+      ).status,
+    ).toBe(403);
+
     // The owner's own account on a paired phone without home possession:
     // told nothing about sharing, and told it cannot enable.
     const { credential: phoneCredential } = h.pairAccountBound(

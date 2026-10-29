@@ -36,6 +36,20 @@ import {
 import { deploymentAccountPrincipal } from '../../services/identity/deployment-authentication-service.js';
 import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 
+export function accountBoundProjectRouteMayPass(
+  method: string,
+  path: string,
+): boolean {
+  return !(
+    (path === '/api/projects' || path.startsWith('/api/projects/')) &&
+    method !== 'GET' &&
+    method !== 'HEAD' &&
+    !isAccountBoundGuestAdminWrite(path, method) &&
+    !isAccountBoundRoomLeaf(path, method) &&
+    !isAccountBoundLayoutLeaf(path, method)
+  );
+}
+
 /** Structural Hono context — the gate reads/answers, never dispatches. */
 interface GateContext {
   env: unknown;
@@ -386,14 +400,7 @@ export function installAccountBoundDeviceGate(
           { error: { code: 'account_bound_device_route_forbidden' } },
           403,
         );
-      if (
-        (path === '/api/projects' || path.startsWith('/api/projects/')) &&
-        method !== 'GET' &&
-        method !== 'HEAD' &&
-        !isAccountBoundGuestAdminWrite(path, method) &&
-        !isAccountBoundRoomLeaf(path, method) &&
-        !isAccountBoundLayoutLeaf(path, method)
-      ) {
+      if (!accountBoundProjectRouteMayPass(method, path)) {
         return c.json(
           { error: { code: 'account_bound_device_route_forbidden' } },
           403,

@@ -80,6 +80,7 @@ export function createProjectMembershipRoutes(
   service: ProjectMembershipService | undefined,
   authority: (request: Request) => ProjectMembershipAuthority,
   invitationOrigin?: string,
+  mayEnableRoute: (request: Request, slug: string) => boolean = () => false,
 ) {
   const app = new Hono();
   async function perform<T>(
@@ -203,7 +204,12 @@ export function createProjectMembershipRoutes(
         ...(invitationOrigin ? { invitationOrigin } : {}),
       }),
       (data) => managementRelease(data.scope, data.actingPrincipal.id),
-      (owner, access) => owner.accessRefusal(c.req.param('slug'), access),
+      (owner, access) =>
+        owner.accessRefusal(
+          c.req.param('slug'),
+          access,
+          mayEnableRoute(c.req.raw, c.req.param('slug')),
+        ),
     ),
   );
   app.post('/:slug/access/enable', (c) =>

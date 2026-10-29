@@ -124,11 +124,15 @@ export class ProjectMembershipService {
   async accessRefusal(
     slug: string,
     authority: ProjectMembershipAuthority,
+    mayEnableRoute: boolean,
   ): Promise<ProjectAccessRefusalDetails> {
     const undisclosed = { sharing: 'undisclosed', canEnable: false } as const;
     try {
       await authority.operator();
-      if ((await authority.current()).principal.kind !== 'human')
+      if (
+        !mayEnableRoute ||
+        (await authority.current()).principal.kind !== 'human'
+      )
         return undisclosed;
     } catch (error) {
       if (error instanceof ProjectMembershipRefusal) return undisclosed;
