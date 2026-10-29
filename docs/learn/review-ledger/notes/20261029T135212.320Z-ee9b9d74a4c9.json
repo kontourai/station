@@ -1,0 +1,27 @@
+{
+  "revision": "796a519c619dbac6434f8b4cc983e4a16c37b20d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Round 4 threads callerAccess to the reply bubble (ChatMessageList -> MessageBubble -> MessageContent, and the live turnHandlers bubble) so error hints follow one rule (chatErrorHintFor with per-translation callerHints). No claim in this document depends on error-hint copy or that prop. No prose change.","inputs":["docs/architecture/module-map.md","src-ui/src/hooks/orchestration/turnHandlers.ts"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Round 4 threads callerAccess to the reply bubble (ChatMessageList -> MessageBubble -> MessageContent, and the live turnHandlers bubble) so error hints follow one rule (chatErrorHintFor with per-translation callerHints). No claim in this document depends on error-hint copy or that prop. No prose change.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/chat/message-bubble/MessageContent.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Rewrote the hint sentence: one rule on every surface (error card, live and reloaded reply bubble, send-failure notice) replaces a hint recommending something the caller was refused with a hand-written alternative or drops it. Pinned by ChatDockBody.terminalSessionMarker (card and reloaded bubble through the real list), turnHandlers.terminalSession (live bubble), MessageContent.runtimeErrorTranslation and useActiveChatSessionMessaging tests.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDockBody.tsx","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/chat/MessageBubble.tsx","src-ui/src/components/chat/message-bubble/MessageContent.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Round 4 threads callerAccess to the reply bubble (ChatMessageList -> MessageBubble -> MessageContent, and the live turnHandlers bubble) so error hints follow one rule (chatErrorHintFor with per-translation callerHints). No claim in this document depends on error-hint copy or that prop. No prose change.","inputs":["docs/design/placement.md","src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/glossary.md","note":"contracts.md gained the same-operate-tier note for Continue after a memory kill; nothing in this document depends on it. No prose change.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"contracts.md gained the same-operate-tier note for Continue after a memory kill; nothing in this document depends on it. No prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/config.md","note":"Round 4 threads callerAccess to the reply bubble (ChatMessageList -> MessageBubble -> MessageContent, and the live turnHandlers bubble) so error hints follow one rule (chatErrorHintFor with per-translation callerHints). No claim in this document depends on error-hint copy or that prop. No prose change.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"Added the note that Continue posts /api/orchestration/conversations/:id/memory-continuation while callerAccess.continue is computed for /chat/:id/continue, relying on both being orchestration:operate; checked against pairing-route-scopes.ts (the memory-continuation leaf inherits the operate tier). chatErrorTranslation callerHints is internal to src-ui.","inputs":["docs/reference/contracts.md","src-ui/src/components/chat-dock/ChatDockBody.tsx","src-ui/src/utils/chatErrorTranslation.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Round 4 threads callerAccess to the reply bubble (ChatMessageList -> MessageBubble -> MessageContent, and the live turnHandlers bubble) so error hints follow one rule (chatErrorHintFor with per-translation callerHints). No claim in this document depends on error-hint copy or that prop. No prose change.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Round 4 threads callerAccess to the reply bubble (ChatMessageList -> MessageBubble -> MessageContent, and the live turnHandlers bubble) so error hints follow one rule (chatErrorHintFor with per-translation callerHints). No claim in this document depends on error-hint copy or that prop. No prose change.","inputs":["docs/user/workspace-checkpoints.md","src-ui/src/components/chat/MessageBubble.tsx"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"contracts.md gained the same-operate-tier note for Continue after a memory kill; nothing in this document depends on it. No prose change.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

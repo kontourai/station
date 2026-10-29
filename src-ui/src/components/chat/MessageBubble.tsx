@@ -118,6 +118,11 @@ export interface MessageBubbleSession {
   projectSlug?: string;
   /** Present once a conversation can span replacement execution Sessions. */
   conversationId?: string;
+  /**
+   * The server's open-read answer on what this caller may do here; error
+   * copy in the bubble picks its hint by it (`chatErrorHintFor`).
+   */
+  callerAccess?: { continue: boolean; startChat: boolean };
   /** `activeSession.messages.length` — the row only needs to know if it is last. */
   messageCount: number;
   isThinking?: boolean;
@@ -1058,6 +1063,7 @@ function MessageBubbleComponent({
             showReasoning={showReasoning}
             showToolDetails={showToolDetails}
             isStreamingMessage={false}
+            callerAccess={activeSession.callerAccess}
           />
           {metadataControls}
           {metadataIdentity}
@@ -1190,6 +1196,7 @@ function MessageBubbleComponent({
               showReasoning={showReasoning}
               showToolDetails={showToolDetails}
               isStreamingMessage={isStreamingMessage}
+              callerAccess={activeSession.callerAccess}
               foldWork={foldWork}
               onToolApproval={
                 onToolApproval ? handleContentToolApproval : undefined

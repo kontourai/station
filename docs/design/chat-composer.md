@@ -145,8 +145,26 @@ coding app's default profile, and does not edit saved Agent defaults. Known
 capability incompatibilities remain visible with a refusal reason; live resource
 and adapter delivery checks still decide admission. In an existing conversation,
 changing or resetting the engine opens an explicit handoff with the real draft
-and the existing context/write-identity confirmation. **Use Agent defaults**
-returns to the authored engine and model through that handoff. In a new-start
+and the existing context/write-identity confirmation. There the picker lists
+only the other engines this client can start (an unready or incompatible one is
+left out rather than shown with a refusal), lists none when the conversation's
+open resolution does not allow changes (read-only, unverified, busy on the
+server or still resolving), and shows them disabled with the reason while a
+turn, queued message or pending check blocks the switch; the handoff's
+**Switch to …** action is disabled for the same reasons ([entry
+point](../../src-ui/src/components/chat-dock/ChatDockBody.tsx),
+[dialog](../../src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx)).
+On an engine override, **Use Agent defaults** returns to the authored engine and
+model through that handoff when the switch is open. Whenever it is not, the
+picker's reset is disabled with the reason (the open resolution's refusal reads
+"This conversation can’t change its engine right now."). The composer's reset
+chip is not shown when the open resolution denies changes. While the reset is
+temporarily blocked (a turn running, or queued or offline messages unresolved,
+still being checked or with their state unavailable) the chip stays in place,
+disabled, with the reason as its accessible description, and the picker states
+the reason as text, so the row does not shift each turn. It never falls
+back to a model-only reset that would leave the engine override in place. In a
+new-start
 picker, resetting also clears an explicit Station choice, restoring configured
 placement defaults rather than leaving a remote destination without its verified
 binding. An explicit This Station choice is carried independently of engine
@@ -328,6 +346,45 @@ Retry refreshes the capability observation before reloading. The desktop
 inbox footer offers Refresh, which reconnects the same stream and re-reads the
 session list and conversation inventory; when the last read failed, the footer
 says the rows are the last known list.
+
+A conversation's pane offers only what this caller can do there, as the
+server's open read for that conversation reports it. When it says this caller
+may not continue the conversation (`callerAccess.continue`), the composer is
+disabled with "You can read this chat but can't send to it." and no
+placeholder, a busy wait keeps no draft, the failure banner drops its "send a
+message" note, the error card offers neither Send again nor Continue, and an
+empty chat shows "This chat is empty" instead of inviting typing. When it
+says this caller may not start a chat (`callerAccess.startChat`), the pane's
+own new-chat offers are withheld: the recovery notices' Start new chat, the
+terminal-session and error-card New chat and Switch agent actions, the
+refused queued turn's New chat, the workspace-refused composer's Start new
+chat (the composer is then disabled with "This chat can only continue in its
+original workspace, and you can't start a new chat here."), and Enable it in
+a new chat. Error hints follow one default-deny rule on every chat error copy
+surface (the error card, the reply bubble live and after a reload, and the
+send-failure notice). Full access sees each hint unchanged. A caller refused a
+send or a new chat sees only a hint the error's translation declares for that
+kind of caller (a hand-written alternative, or the hint itself where it asks
+for nothing the caller lacks); any other hint is not shown. A declared hint
+never recommends something that caller was refused, and an unconfirmed session
+start keeps its "Station may already have started this session" warning for
+every caller. The live bubble's hint is fixed when the error arrives and
+refreshes when the chat reloads. Not covered: the approval-delivery failure
+line on a tool call, which has its own copy. A read-only verdict says only
+"Retry resolution to check again." A session
+that cannot take another message (`terminalSession`) offers Send again to no
+caller. A failed retry from the picker keeps the last answer for that
+conversation. Not gated: the app-wide New chat entry points (toolbar,
+shortcut, inbox, task switcher), because the answer is per conversation, and
+Fork from turn, which posts `POST /agents/:slug/conversations/:id/fork`, a
+route the answer does not cover. The client does not re-derive scopes; when
+the server sent no answer, everything shows and the server still enforces.
+The answer is as of the last open read, so a scope changed mid-session shows
+on the next one. The agent-turn
+toast's session chord (⌘1/Ctrl+1) and the composer menu's command-launcher
+chord are not shown on a coarse primary pointer. A touch tablet with a hardware
+keyboard loses them too; Station has no keyboard-presence signal, and that
+limit is accepted.
 
 The pill uses compact state labels such as Sending, Starting, Working,
 Thinking, and Reconnecting; it does not expand to display tool names.

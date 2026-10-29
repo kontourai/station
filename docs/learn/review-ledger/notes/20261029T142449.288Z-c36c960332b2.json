@@ -1,0 +1,7 @@
+{
+  "revision": "d00b8f40f6948501b190b7c074a1d09de87deeef",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Comment-only change in chat.css and ChatInputArea; no placement claim affected.","inputs":["docs/design/placement.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}
