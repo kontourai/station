@@ -502,9 +502,6 @@ export const surveyFlowReviewUnavailableProjects = meter.createCounter(
       'Projects excluded from the Survey flow-review aggregate, by reason',
   },
 );
-export const promptOps = meter.createCounter('station.prompt.operations', {
-  description: 'Prompt CRUD operations',
-});
 
 // ── Providers ──
 export const providerOps = meter.createCounter('station.provider.operations', {
@@ -868,6 +865,31 @@ export const attachmentBlobBytesReclaimed = meter.createCounter(
   },
 );
 
+/**
+ * Runtime event content stored out of line by EventStore
+ * (docs/design/event-content-spill.md), by method and provider.
+ */
+export const eventContentBytesSpilled = meter.createCounter(
+  'station.orchestration.event_content_bytes_spilled',
+  {
+    description:
+      'Bytes of large runtime event values stored out of line, in place of which the event keeps a reference',
+    unit: 'By',
+  },
+);
+export const eventContentValuesSpilled = meter.createCounter(
+  'station.orchestration.event_content_values_spilled',
+  {
+    description: 'Distinct runtime event values stored out of line',
+  },
+);
+export const eventContentOrphansSwept = meter.createCounter(
+  'station.orchestration.event_content_orphans_swept',
+  {
+    description:
+      'Out-of-line event content rows removed at open because their thread has no events',
+  },
+);
 export const attachmentBytesStripped = meter.createCounter(
   'station.chat.attachment_bytes_stripped',
   {
@@ -881,7 +903,7 @@ export const attachmentBlobRequests = meter.createCounter(
   'station.chat.attachment_blob_requests',
   {
     description:
-      'GET /api/attachments requests by outcome (served/not_found/rejected)',
+      'GET /api/attachments requests by outcome (served/not_modified/not_found/rejected)',
   },
 );
 
@@ -1997,7 +2019,7 @@ export const acpResumeSessions = meter.createCounter(
   'station.acp.resume_sessions',
   {
     description:
-      "ACP sessions resumed via session/load with Station tool servers re-delivered (#895; attrs: connectionId, outcome: 'loaded'|'load-unsupported')",
+      "ACP sessions reattached via session/resume or session/load with Station tool servers re-delivered (#895; attrs: connectionId, outcome: 'resumed'|'loaded'|'load-unsupported')",
   },
 );
 
@@ -2345,14 +2367,14 @@ export const webPushSends = meter.createCounter('station.web_push.sends', {
 /**
  * `/api/orchestration/events` connect/disconnect lifecycle, by op
  * (`connect`/`disconnect`) — backs `OrchestrationStreamPresence`'s
- * per-user live-subscriber count, which the push-on-completion gate below
- * queries to decide whether anyone is actually watching a session.
+ * per-user live-subscriber count (no longer a notification gate; see
+ * `turn-completion-notifications.ts`).
  */
 export const orchestrationStreamPresenceOps = meter.createCounter(
   'station.orchestration.stream_presence_ops',
   {
     description:
-      'Orchestration /events SSE connect/disconnect lifecycle events backing the per-user presence gate',
+      'Orchestration /events SSE connect/disconnect lifecycle events backing per-user stream presence',
   },
 );
 
@@ -2385,13 +2407,12 @@ export const connectedClientPresenceOps = meter.createCounter(
 /**
  * A turn's completion/abort notification-scheduling decision, by outcome
  * (`done`/`failed`, omitted for an `error` result) and gate result
- * (`scheduled` when nobody was watching, `skipped_connected` when the
- * owning user had a live stream open, `skipped_no_recipient` when the
- * session has no owner who may read it, `error` when the listener's own
- * defensive try/catch caught a throw — see `turn-completion-notifications.ts`).
- * Only a `scheduled` decision ever reaches `NotificationService.schedule`
- * (and, via the notification delivery router's Web Push channel, a Web Push
- * send).
+ * (`scheduled`, `skipped_no_recipient` when the session has no owner who
+ * may read it, `skipped_external` for a read-only attached session, the
+ * listener's other `skipped_*` reasons, `error` when its own defensive
+ * try/catch caught a throw — see `turn-completion-notifications.ts`).
+ * Only `scheduled` reaches `NotificationService.scheduleEnveloped`; the
+ * delivery router then decides each surface (focus, preferences).
  */
 export const turnCompletionNotificationOps = meter.createCounter(
   'station.orchestration.turn_completion_notification_ops',
@@ -2564,6 +2585,14 @@ export const consentListenerState = meter.createCounter(
   },
 );
 
+export const transcriptTailRecoveries = meter.createCounter(
+  'station.memory.transcript_tail_recoveries',
+  {
+    description:
+      'Reads that observe an unterminated station-agent transcript tail (kind observed), and appends that repair one (completed|quarantined) (station#3564). Counts reads, not distinct tears: every read of a still-torn transcript counts. Never a path or message content',
+  },
+);
+
 export function registerObservableGauges(callbacks: {
   activeAgents: () => number;
   mcpConnections: () => number;
@@ -2580,3 +2609,11 @@ export function registerObservableGauges(callbacks: {
     })
     .addCallback((obs) => obs.observe(callbacks.mcpConnections()));
 }
+
+export const outsideAgentMcpOutcomes = meter.createCounter(
+  'station.outside_agent.mcp.outcomes',
+  {
+    description:
+      'Outside-agent MCP admission outcomes; no credentials or arguments',
+  },
+);

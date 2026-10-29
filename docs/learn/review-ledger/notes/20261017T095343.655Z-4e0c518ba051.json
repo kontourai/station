@@ -1,0 +1,11 @@
+{
+  "revision": "c5c47111d3ab70ddd4671afaf589829360a25de6",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Scoped integration review at c5c47111d3a after merging #3670/main86f71c9. Traced loaded/standalone child-row projection, TranscriptChildren provider, completion-notice filtering and the childWorkKey plus backgroundTaskNotice union through active-chats state/store and childWorkHandlers. Every represented child still owns one card; unrepresented completion notices retain compact typed background details. Placement prose remains accurate; no new native/provider claim. The 172-test focused set passed; browser qualification is recorded separately.","inputs":["docs/design/placement.md","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/hooks/orchestration/childWorkHandlers.ts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Scoped source review of the merged active-chats-state ephemeral message type and spread-based producer at c5c47111d3a. Both child identity and typed background notice metadata survive; replay membership, persistence exclusion, effect fences and synthetic-key handling are unchanged. The transcript keeps its child context and main focusable log target. Existing replay explanation remains accurate; this note is source inspection, not fresh native or live-provider proof.","inputs":["docs/design/session-tape-replay.md"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Scoped review of ChatMessageList merged provider nesting at c5c47111d3a: UIBlockActionsContext still owns real form submission and replay readOnly state; TranscriptChildrenContext remains nested around rows, toolbar and summary; the log also retains main tabIndex=-1 for read-only focus. No form sender, draft identity, validation or acceptance contract changed. The existing current-implementation boundary and dated design classification remain accurate; mounted form-draft and streaming tests are part of the passing 172-test focused set.","inputs":["docs/design/ai-ui-bridge-expansion.md"]}
+  ]
+}

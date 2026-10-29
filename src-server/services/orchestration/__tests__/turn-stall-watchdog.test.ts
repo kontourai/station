@@ -10,7 +10,7 @@ describe('TurnStallWatchdog', () => {
     vi.useRealTimers();
   });
 
-  // Delta-review F1 (archive#4054 round 2): the suspension path honors the same
+  // archive#4054: the suspension path honors the same
   // stale-turn identity gate as the terminal paths. A delayed request.opened
   // naming a SUPERSEDED turn must neither suspend nor clear the observation
   // of the turn actually running.
@@ -384,7 +384,7 @@ describe('TurnStallWatchdog', () => {
     expect(onStall).toHaveBeenCalledWith('t1', 'turn-1');
   });
 
-  // archive#3451 finding H2: the SECOND documented non-terminal runtime.error
+  // archive#3451: the SECOND documented non-terminal runtime.error
   // publisher — orchestration-service's adapter-stream-restart error — is
   // provider-agnostic (any adapter) and carries NO turnId (session-scoped).
   // Before this fix, isDeferredRetriableTurnError's codex-only scoping meant
@@ -535,7 +535,7 @@ describe('TurnStallWatchdog', () => {
     expect(onStall).not.toHaveBeenCalled();
   });
 
-  // Review MEDIUM 1: the discriminating case for the STRUCTURAL exclusion,
+  // The discriminating case for the STRUCTURAL exclusion,
   // not the "no known publisher sets turnId" fact alone. No current
   // publisher sets a turnId on session.exited, so the test above (turnId:
   // undefined) cannot tell a structural exclusion apart from the ordinary
@@ -603,14 +603,14 @@ describe('TurnStallWatchdog', () => {
     expect(onStall).toHaveBeenCalledWith('t1', 'turn-2');
   });
 
-  // Review HIGH 1 (archive#3594): the issue's own scenario, reachable through
+  // archive#3594: the issue's own scenario, reachable through
   // the SUSPENDED state specifically. A turn awaiting a human moves its entry
   // out of `watched` into `suspended` (see `:264-271`), so an
   // `isStaleForAnotherTurn` that consulted only `watched` found nothing to
   // protect and let a stale terminal for an earlier, superseded turn clear
   // the suspension outright — after which the eventual `request.resolved`
   // found nothing to resume, and the genuinely running (merely paused) turn
-  // was never watched again. Executed repro from the independent review:
+  // was never watched again. The executed reproduction:
   //   turn.started(t1) -> turn.started(t2) -> request.opened(t2)
   //     -> turn.completed(t1) [stale] -> request.resolved(t2) -> advance
   //   pre-fix: onStall never fires, watch is gone.
@@ -725,7 +725,7 @@ describe('TurnStallWatchdog', () => {
       expect(onStall).not.toHaveBeenCalled();
     });
 
-    // Review MEDIUM 1's structural exclusion applies in the suspended state
+    // The session.exited structural exclusion applies in the suspended state
     // too: session.exited (no turnId) always clears, even mid-suspension.
     test('session.exited (no turnId) still clears a SUSPENDED watch', () => {
       const watchdog = new TurnStallWatchdog();
@@ -756,7 +756,7 @@ describe('TurnStallWatchdog', () => {
     });
   });
 
-  // Review HIGH 1 (archive#2959): a turn awaiting a human (approval prompt, input
+  // archive#2959: a turn awaiting a human (approval prompt, input
   // request) is alive but deliberately silent for as long as the human takes.
   // The watch suspends on request.opened — no expiry however long the human
   // is away — and re-arms only on request.resolved.
@@ -788,5 +788,171 @@ describe('TurnStallWatchdog', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // An open tool call is running known work (a long build, an agent's own
+  // blocking wait loop) on adapters that report nothing until it completes.
+  // The window must not fire while any call is open, and must re-arm from the
+  // last call's completion.
+  describe('open tool calls', () => {
+    const at = (second: number) =>
+      `2026-10-20T12:00:${String(second).padStart(2, '0')}.000Z`;
+
+    test('an open tool call suppresses silence for any duration; tool.completed re-arms the window', () => {
+      const watchdog = new TurnStallWatchdog();
+      const onStall = vi.fn();
+      const onProgress = vi.fn();
+      const callbacks = { onStall, onProgress };
+      watchdog.observe(
+        { method: 'turn.started', threadId: 't', turnId: 'turn-1' },
+        1_000,
+        callbacks,
+      );
+      watchdog.observe(
+        {
+          method: 'tool.started',
+          threadId: 't',
+          turnId: 'turn-1',
+          toolCallId: 'call-1',
+          createdAt: at(1),
+        },
+        1_000,
+        callbacks,
+      );
+      expect(watchdog.size).toBe(0);
+      // An hour-long silent tool run: nothing may fire.
+      vi.advanceTimersByTime(60 * 60 * 1000);
+      expect(onStall).not.toHaveBeenCalled();
+      // The observation still names the call's start as the last progress.
+      expect(onProgress).toHaveBeenLastCalledWith({
+        threadId: 't',
+        turnId: 'turn-1',
+        lastProgressEventAt: at(1),
+      });
+
+      watchdog.observe(
+        {
+          method: 'tool.completed',
+          threadId: 't',
+          turnId: 'turn-1',
+          toolCallId: 'call-1',
+          createdAt: at(2),
+        },
+        1_000,
+        callbacks,
+      );
+      expect(watchdog.size).toBe(1);
+      vi.advanceTimersByTime(999);
+      expect(onStall).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(onStall).toHaveBeenCalledWith('t', 'turn-1');
+    });
+
+    test('stays disarmed until the LAST open call completes, through interleaved progress', () => {
+      const watchdog = new TurnStallWatchdog();
+      const onStall = vi.fn();
+      const tool = (
+        method: 'tool.started' | 'tool.completed',
+        toolCallId: string,
+      ) =>
+        watchdog.observe(
+          { method, threadId: 't', turnId: 'turn-1', toolCallId },
+          1_000,
+          onStall,
+        );
+      watchdog.observe(
+        { method: 'turn.started', threadId: 't', turnId: 'turn-1' },
+        1_000,
+        onStall,
+      );
+      tool('tool.started', 'a');
+      tool('tool.started', 'b');
+      tool('tool.completed', 'a');
+      // Text while `b` still runs restarts nothing that could fire.
+      watchdog.observe(
+        { method: 'content.text-delta', threadId: 't', turnId: 'turn-1' },
+        1_000,
+        onStall,
+      );
+      vi.advanceTimersByTime(10_000);
+      expect(onStall).not.toHaveBeenCalled();
+      tool('tool.completed', 'b');
+      vi.advanceTimersByTime(1_000);
+      expect(onStall).toHaveBeenCalledWith('t', 'turn-1');
+    });
+
+    test('a call that completes during an approval wait does not keep the resumed window disarmed', () => {
+      const watchdog = new TurnStallWatchdog();
+      const onStall = vi.fn();
+      const observe = (event: Parameters<TurnStallWatchdog['observe']>[0]) =>
+        watchdog.observe(event, 1_000, onStall);
+      observe({ method: 'turn.started', threadId: 't', turnId: 'turn-1' });
+      observe({
+        method: 'tool.started',
+        threadId: 't',
+        turnId: 'turn-1',
+        toolCallId: 'call-1',
+      });
+      observe({ method: 'request.opened', threadId: 't', turnId: 'turn-1' });
+      observe({
+        method: 'tool.completed',
+        threadId: 't',
+        turnId: 'turn-1',
+        toolCallId: 'call-1',
+      });
+      observe({ method: 'request.resolved', threadId: 't', turnId: 'turn-1' });
+      vi.advanceTimersByTime(1_000);
+      expect(onStall).toHaveBeenCalledWith('t', 'turn-1');
+    });
+
+    test("a new turn does not inherit the previous turn's unfinished calls", () => {
+      const watchdog = new TurnStallWatchdog();
+      const onStall = vi.fn();
+      watchdog.observe(
+        { method: 'turn.started', threadId: 't', turnId: 'turn-1' },
+        1_000,
+        onStall,
+      );
+      watchdog.observe(
+        {
+          method: 'tool.started',
+          threadId: 't',
+          turnId: 'turn-1',
+          toolCallId: 'never-closed',
+        },
+        1_000,
+        onStall,
+      );
+      watchdog.observe(
+        { method: 'turn.started', threadId: 't', turnId: 'turn-2' },
+        1_000,
+        onStall,
+      );
+      vi.advanceTimersByTime(1_000);
+      expect(onStall).toHaveBeenCalledWith('t', 'turn-2');
+    });
+
+    test('a call naming a superseded turn does not disarm the current turn', () => {
+      const watchdog = new TurnStallWatchdog();
+      const onStall = vi.fn();
+      watchdog.observe(
+        { method: 'turn.started', threadId: 't', turnId: 'turn-2' },
+        1_000,
+        onStall,
+      );
+      vi.advanceTimersByTime(500);
+      watchdog.observe(
+        {
+          method: 'tool.started',
+          threadId: 't',
+          turnId: 'turn-1',
+          toolCallId: 'late',
+        },
+        1_000,
+        onStall,
+      );
+      vi.advanceTimersByTime(500);
+      expect(onStall).toHaveBeenCalledWith('t', 'turn-2');
+    });
   });
 });

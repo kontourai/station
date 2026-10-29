@@ -1,0 +1,7 @@
+{
+  "revision": "e9576aeb0a06d84b69a1c19cf763bafb4a939a4e",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Release advisory fixture correction: traced unchanged release.yml full-regression dependency through preflight+advisory and unchanged TestFlight upload through deliver+advisory. Corrected only the two existing independent workflow-contract expectations that still described pre4066 topology; preserve exact-source, signing/provider authority, Nightly skip and real advisory failure controls. Original relevant baseline19PASS/2FAIL reproduces these expectations; restored relevant release suites, types and workflow validation are separate local evidence, not provider or full hosted qualification.","inputs":["docs/guides/releasing.md","scripts/__tests__/promotion-full-regression-workflow.test.ts","scripts/__tests__/native-release-promotion.test.ts"]}
+  ]
+}

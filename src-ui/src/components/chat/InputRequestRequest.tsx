@@ -1,4 +1,5 @@
 import { respondToRequest } from '@kontourai/station-sdk/client';
+import { toolRequestIsPlanReview } from '@kontourai/station-shared/tool-request-preview';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import type { PendingApprovalRequest } from '../../hooks/orchestration/pendingRequestRows';
@@ -17,8 +18,13 @@ export function InputRequestRequest({
 }) {
   const scope = useHostRequestAuthorityScope();
   const { namespace, status } = useAuthorityPersistence();
-  const { inputRequest, approvalId, approvalThreadId, approvalEventId } =
-    request;
+  const {
+    inputRequest,
+    approvalId,
+    approvalThreadId,
+    approvalEventId,
+    approvalToolName,
+  } = request;
   if (
     !scope ||
     !inputRequest ||
@@ -52,6 +58,7 @@ export function InputRequestRequest({
       key={requestKey}
       form={inputRequest}
       draftKey={draftKey}
+      planReview={toolRequestIsPlanReview(approvalToolName)}
       onRespond={async (action, content) => {
         await respondToRequest(
           scope.apiBase,

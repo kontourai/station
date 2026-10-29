@@ -1,0 +1,7 @@
+{
+  "revision": "ec57d04a6409934fc5bb54c38c65c8309ba62ef0",
+
+  "notes": [
+    {"path":"docs/design/operator-device-access.md","note":"Bounded PR3746 repair at ec57d04a640: reviewed current-state preamble delta against host pairing offer/confirm routes and DevicePairingService scope introduction guard. Host browser Device administration cannot newly convey protected promotion scopes, while coding:exec and approval:full-access remain explicit Device-use grants. Dated passkey proposal and unrelated source contracts were not requalified; source delta only, 253 focused pairing tests passed and server-tests typecheck passed.","inputs":["docs/design/operator-device-access.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

@@ -330,7 +330,7 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
     });
   });
 
-  test('capacity evicts an oldest resolved claim but never unresolved claims', async () => {
+  test('capacity evicts an oldest resolved claim to an expired tombstone but never unresolved claims', async () => {
     // Eviction is a property of "more rows than the cap", not of the number
     // 2000. Inserting 2000 real SQLite rows made this test exceed its 5s
     // budget under host load and fail intermittently — a test that reds at
@@ -367,6 +367,11 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
     seedTurnRows(filePath, [
       { key: 'old-dead', value: null, createdAt: 1, owner: deadOwner },
       { key: 'old-resolved', value: 'conversation-old', createdAt: 2 },
+      ...Array.from({ length: CHAT_TURN_DEDUP_MAX_ENTRIES }, (_, index) => ({
+        key: `resolved-${index}`,
+        value: `conversation-${index}`,
+        createdAt: index + 10,
+      })),
       ...Array.from(
         { length: CHAT_TURN_DEDUP_MAX_ENTRIES - 3 },
         (_, index) => ({
@@ -378,11 +383,9 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
       ),
     ]);
 
-    // The overflow claim MUST run against the same reduced cap. With the
-    // default 2000 the row count never exceeds it, `prune()` returns on a
-    // negative overflow, and nothing is evicted -- `old-dead` would then
-    // succeed through ordinary dead-owner reclamation in `claim()` and the
-    // test would assert a true thing for the wrong reason.
+    // Resolved pressure exceeds Station's replay floor by one. Unresolved
+    // rows no longer erode that floor; they must survive the real eviction.
+    // Reopening with the default cap would not exercise the overflow.
     const store = new ChatTurnDedupStore(filePath, CHAT_TURN_DEDUP_MAX_ENTRIES);
     expect(store.claim('new-turn')).toEqual({ claimed: true });
 
@@ -397,9 +400,25 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
       expect(keys).not.toContain('chat:12:old-resolved');
       expect(keys).toContain('chat:8:old-live');
       expect(keys).toContain('chat:8:old-dead');
+      for (let index = 0; index < CHAT_TURN_DEDUP_MAX_ENTRIES; index += 1) {
+        expect(keys).toContain(`chat:10:resolved-${index}`);
+      }
+      // #3559: the evicted row leaves a tombstone outside the capped table.
+      expect(
+        after
+          .prepare(
+            'SELECT dedup_key FROM orchestration_turn_dedup_expired WHERE dedup_key = ?',
+          )
+          .get('chat:12:old-resolved'),
+      ).toEqual({ dedup_key: 'chat:12:old-resolved' });
     } finally {
       after.close();
     }
+    // #3559: an evicted key answers expired, never a fresh claim.
+    expect(store.claim('old-resolved')).toEqual({
+      claimed: false,
+      outcome: 'expired',
+    });
 
     expect(store.claim('old-live')).toEqual({
       claimed: false,
@@ -523,13 +542,16 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
       store.resolve(`turn-${index}`, `conversation-${index}`);
     }
 
-    // The oldest entries were evicted; the most recent ones remain claimable
-    // (i.e. still recognized — re-claiming them reports claimed:false since
-    // they're still present).
+    // The most recent entries still replay their conversation.
     expect(store.claim(`turn-${CHAT_TURN_DEDUP_MAX_ENTRIES}`)).toEqual({
       claimed: false,
       conversationId: `conversation-${CHAT_TURN_DEDUP_MAX_ENTRIES}`,
     });
-    expect(store.claim('turn-0')).toEqual({ claimed: true });
+    // #3559: inverted. The oldest entry was evicted, and an evicted key
+    // answers expired: a late retry of it must never run the agent again.
+    expect(store.claim('turn-0')).toEqual({
+      claimed: false,
+      outcome: 'expired',
+    });
   });
 });

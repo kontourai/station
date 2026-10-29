@@ -1,0 +1,7 @@
+{
+  "revision": "da594305fdc738ffe666301495fbc1feae75d888",
+
+  "notes": [
+    {"path":"docs/design/session-tape-replay.md","note":"Reviewed replay membership, shared event fold, observation, captured-history and runtime identities against the active-chats-state change in #3671. childWorkKey is local ephemeral-notice identity, excluded from persistence with ephemeralMessages; no capture, replay membership, archive bounds or send behavior changed. Existing prose remains accurate and its recorded runtime evidence was not renewed.","inputs":["docs/design/session-tape-replay.md","src-ui/src/contexts/active-chats-state.ts"]}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "revision": "a7c64e887889757c989ede98cae7e36ab10e0951",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"LayoutView.tsx only gains types (prompt: AgentQuickPrompt, the agent prop without an any cast); the module's ownership and behaviour described here are unchanged.","inputs":["docs/architecture/module-map.md","src-ui/src/views/LayoutView.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"LayoutView.tsx only gains types (prompt: AgentQuickPrompt, the agent prop without an any cast); no placement behaviour described here changes.","inputs":["docs/design/placement.md","src-ui/src/views/LayoutView.tsx"]}
+  ]
+}

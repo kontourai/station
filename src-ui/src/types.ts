@@ -11,6 +11,8 @@ import type {
 } from '@kontourai/station-contracts/agent-identity';
 import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
 import type { BoardReference } from '@kontourai/station-contracts/board';
+import type { ChatHostImageMap } from '@kontourai/station-contracts/chat-host-images';
+import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import type {
   InputRequestForm,
   InputRequestRecord,
@@ -24,7 +26,10 @@ import type { ExecutionMode } from '@kontourai/station-contracts/tool';
 import type { TurnChangedFiles } from '@kontourai/station-contracts/turn-changed-files';
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
 import type { RegistryCatalogTab } from '@kontourai/station-sdk';
-import type { ToolRequestSessionGrant } from '@kontourai/station-shared/tool-request-preview';
+import type {
+  ToolRequestServerGrant,
+  ToolRequestSessionGrant,
+} from '@kontourai/station-shared/tool-request-preview';
 import type {
   ChatActivityHint,
   ChatBackgroundTask,
@@ -163,6 +168,8 @@ export interface ChatMessage {
    * `addEphemeralMessage`/`createEphemeralMessageState`, which always sets
    * this; there is no writer that sets it on any other message. */
   ephemeral?: boolean;
+  /** Child identity on a local completion notice, for inline-card deduplication. */
+  childWorkKey?: string;
   showContinue?: boolean;
   timestamp?: number;
   traceId?: string;
@@ -172,6 +179,22 @@ export interface ChatMessage {
    * step it stopped otherwise reads as cancelled for no reason.
    */
   steerInterruptedRun?: boolean;
+  /**
+   * A check-back Station sent into the chat (the agent scheduled it): sent
+   * as the person, written by nobody. The bubble shows it as Station's.
+   */
+  stationCheckBack?: boolean;
+  /**
+   * Station's own continuation after the engine was killed for exceeding its
+   * memory budget: written by Station, not the person.
+   */
+  stationMemoryContinuation?: boolean;
+  /**
+   * #3419: the agent that sent this user-role row, from the server's own
+   * record. Its presence is what makes the row an incoming agent message
+   * rather than the person's; `content` is the sender's own words.
+   */
+  sender?: ClientOriginSender;
   fromPrompt?: boolean;
   contentParts?: Array<{
     type:
@@ -200,6 +223,8 @@ export interface ChatMessage {
     input?: any;
     result?: any;
     output?: any;
+    htmlReply?: import('@kontourai/station-contracts/html-reply').HtmlReplyReference;
+    stationControlRefusal?: import('@kontourai/station-contracts/station-control-refusal').StationControlRefusalView;
     error?: string;
     errorText?: string;
     state?: string;
@@ -210,10 +235,18 @@ export interface ChatMessage {
     approvalThreadId?: string;
     /** #2316: see `MessagePart.approvalEventId`. */
     approvalEventId?: string;
+    /** See `MessagePart.approvalContentEvent`. */
+    approvalContentEvent?: import('@kontourai/station-contracts/runtime-events').CanonicalRuntimeEvent;
+    /** See `MessagePart.spilledText`. */
+    spilledText?: import('@kontourai/station-shared/conversation-message').MessagePart['spilledText'];
+    /** See `MessagePart.contentThreadId`. */
+    contentThreadId?: string;
     /** See `MessagePart.approvalToolName`. */
     approvalToolName?: string;
     /** #2915: see `MessagePart.approvalSessionGrant`. */
     approvalSessionGrant?: ToolRequestSessionGrant;
+    /** See `MessagePart.approvalServerGrant`. */
+    approvalServerGrant?: ToolRequestServerGrant;
     /**
      * #3390: an open form request (a harness question or a tool server's
      * elicitation), answered on the pending-requests card.
@@ -228,6 +261,8 @@ export interface ChatMessage {
       | 'user-denied'
       | 'policy-denied';
     activityAt?: string;
+    /** When the call started (ISO), from its `tool.started`; see `MessagePart.startedAt`. */
+    startedAt?: string;
     progressMessage?: string;
     /** archive#3769: the durable projection's own runtime.error marker — see
      * `MessagePart.runtimeError` in `packages/shared/src/conversation-message.ts`. */
@@ -255,6 +290,8 @@ export interface ChatMessage {
   }>;
   /** archive#1410: the canonical turn this assistant row projects, when known. */
   turnId?: string;
+  /** chat-host-images: host image paths this turn's reply named, by path. */
+  hostImages?: ChatHostImageMap;
   /** Execution Session that produced this historical assistant row. */
   sessionId?: string;
   /**
@@ -267,6 +304,12 @@ export interface ChatMessage {
   agentIcon?: string;
   /** True only for a normally completed assistant turn. */
   answerEligible?: boolean;
+  /** How this row's turn ended, on its last row; absent while open. */
+  turnEnded?: 'completed' | 'aborted';
+  /** The engine's or Station's stop reason, raw, on an empty stopped row. */
+  turnEndedReason?: string;
+  /** Who stopped that turn, when Station recorded it. */
+  turnStoppedBy?: 'person' | 'stall' | 'restart';
   /**
    * archive#1410: the turn's provenance envelope exactly as the server sent
    * it. Untyped on purpose — see `TurnProvenanceCard`, which narrows it
@@ -306,6 +349,7 @@ export interface UnacknowledgedDecision {
 }
 
 export interface ChatSession {
+  taskShaping?: boolean;
   skillExperienceDraft?: import('./lib/skill-experience-draft').SkillExperienceDraft;
   skillExperienceDraftInvalid?: boolean;
   skillExperienceActive?: boolean;
@@ -347,6 +391,17 @@ export interface ChatSession {
     createdAt: number;
     status: 'pending' | 'invoking' | 'accepted' | 'failed' | 'may-have-started';
     lastError?: string;
+    /** See ChatUIState.outboundQueuedTurns (active-chats-state.ts). */
+    deliveryCheck?: {
+      outcome: import('@kontourai/station-contracts/orchestration').TurnDeliveryOutcome;
+      checkedAt: number;
+    };
+    /** Written for another Station (its API base); waits for it. */
+    waitingForStation?: string;
+    /** Held by another window or a closed one; sent only by the user. */
+    heldElsewhere?: true;
+    /** The window holding this copy is proven closed. */
+    heldByClosedWindow?: true;
   }>;
   status: ChatSessionStatus;
   isThinking?: boolean;
@@ -360,8 +415,11 @@ export interface ChatSession {
   lastAppliedApprovalMode?: ApprovalMode;
   /** See ChatUIState.approvalEscalationRejected (active-chats-state.ts, #2436). */
   approvalEscalationRejected?: boolean;
+  /** #3290: the engine's latest turn could not take the recorded posture. */
+  approvalTakeoverFailed?: boolean;
   /** See ChatUIState.queuedApprovalMode (active-chats-state.ts, #2436). */
   queuedApprovalMode?: ApprovalMode;
+  queuedApprovalDefaultNamespace?: string;
   /** See ChatUIState.approvalPosture (active-chats-state.ts, #2436). */
   approvalPosture?: ApprovalMode;
   approvalPostureSequence?: number;
@@ -392,6 +450,11 @@ export interface ChatSession {
   conversationActivity?: import('@kontourai/station-contracts/orchestration').ConversationTurnActivity;
   /** #2309: see ChatUIState.sendAwaitingTurnStart (active-chats-state.ts). */
   sendAwaitingTurnStart?: boolean;
+  /**
+   * The send awaiting its turn start is one Station's delivery lookup said it
+   * has (`received`): the session may still be starting.
+   */
+  pendingSendStationHasIt?: boolean;
   /** #2309: see ChatUIState.queueDrainSettling (active-chats-state.ts). */
   queueDrainSettling?: boolean;
   /** #2309: see ChatUIState.stopSettledTurnId (active-chats-state.ts). */
@@ -408,6 +471,8 @@ export interface ChatSession {
   executionMode?: ExecutionMode;
   executionScope?: 'project' | 'global';
   agentConnectionId?: EngineConnectionId;
+  /** See ChatUIState.agentConnectionObservedFor (active-chats-state.ts). */
+  agentConnectionObservedFor?: string;
   providerId?: string;
   defaultProviderId?: string;
   currentModeId?: string | null;
@@ -445,6 +510,9 @@ export interface Tool {
   id: string;
   name: string;
   displayName?: string;
+  source?: string;
+  origin?: import('@kontourai/station-contracts/tool').ToolOrigin;
+  builtin?: boolean;
   description?: string;
   kind?: 'mcp' | 'builtin' | 'custom';
   transport?: string;
@@ -456,11 +524,15 @@ export interface Tool {
   toolName?: string;
   group?: string;
   title?: string;
+  readOnly?: boolean;
+  classificationSource?: 'station' | 'publisher';
+  probe?: import('@kontourai/station-contracts/tool').ToolServerProbeResult;
   tools?: {
     name: string;
     toolName?: string;
     description?: string;
     readOnly?: boolean;
+    classificationSource?: 'station' | 'publisher';
     group?: string;
     title?: string;
     disabled?: boolean;
@@ -504,6 +576,7 @@ export type NavigationView =
   | { type: 'developer'; tab?: DeveloperTab }
   | { type: 'schedule' }
   | { type: 'settings' }
+  | { type: 'appearance' }
   | { type: 'profile' }
   | { type: 'notifications' }
   | { type: 'task'; taskId: string }

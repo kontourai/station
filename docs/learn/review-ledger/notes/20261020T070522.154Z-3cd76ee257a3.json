@@ -1,0 +1,7 @@
+{
+  "revision": "3e39453486c127f275bc78ca43d6011a0b6535ab",
+
+  "notes": [
+    {"path":"README.md","note":"The cli.md delta adds three tasks usage lines; README links the CLI reference for commands and makes no claim about tasks usage lines, so it remains accurate.","inputs":["README.md","docs/reference/cli.md"]}
+  ]
+}

@@ -27,6 +27,8 @@ import {
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { openOutsideHostChannel } from '../../../packages/cli/src/commands/outside-host-channel.js';
+import type { ProfileCredentialStore } from '../../../packages/cli/src/commands/profile-credentials.js';
 import { PairingFailureLimiter } from '../../security/pairing-failure-limiter.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import { OperatorPasskeyEnrollmentService } from '../../services/identity/operator-passkey-enrollment.js';
@@ -68,7 +70,11 @@ import {
  * implementation, which on Windows sets and reads back both ACLs (and throws
  * if either is not current-user protected).
  */
-const windowsTrust = vi.hoisted(() => ({ real: false, hardened: 0 }));
+const windowsTrust = vi.hoisted(() => ({
+  real: false,
+  hardened: 0,
+  phase: 'idle',
+}));
 vi.mock(
   '@kontourai/station-shared/windows-path-trust',
   async (importOriginal) => {
@@ -76,21 +82,39 @@ vi.mock(
       await importOriginal<
         typeof import('@kontourai/station-shared/windows-path-trust')
       >();
+    const runTrust = (operation: string, run: () => void) => {
+      const call = ++windowsTrust.hardened;
+      const started = performance.now();
+      const report = (event: string) => {
+        if (process.platform === 'win32')
+          console.info(
+            `[local-grant-trust] ${JSON.stringify({ event, operation, call, phase: windowsTrust.phase, elapsedMs: Math.round(performance.now() - started) })}`,
+          );
+      };
+      report('started');
+      let outcome = 'threw';
+      try {
+        run();
+        outcome = 'returned';
+      } finally {
+        report(outcome);
+      }
+    };
     return {
       ...actual,
       ensureWindowsDirectoriesTrusted: (
         ...args: Parameters<typeof actual.ensureWindowsDirectoriesTrusted>
       ) => {
         if (!windowsTrust.real) return;
-        windowsTrust.hardened += 1;
-        actual.ensureWindowsDirectoriesTrusted(...args);
+        runTrust('directory', () =>
+          actual.ensureWindowsDirectoriesTrusted(...args),
+        );
       },
       hardenWindowsPathsTrusted: (
         ...args: Parameters<typeof actual.hardenWindowsPathsTrusted>
       ) => {
         if (!windowsTrust.real) return;
-        windowsTrust.hardened += 1;
-        actual.hardenWindowsPathsTrusted(...args);
+        runTrust('empty-file', () => actual.hardenWindowsPathsTrusted(...args));
       },
     };
   },
@@ -130,6 +154,7 @@ type TestBindings = HttpBindings & {
 
 function createHarness(
   options: {
+    environmentId?: string;
     maxActiveOffers?: number;
     maxActiveCredentialsWithoutVerifiedIdentity?: number;
     localGrant?: boolean;
@@ -162,7 +187,7 @@ function createHarness(
   mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
   const pairing = new DevicePairingService({
     homeDir,
-    environmentId: ENVIRONMENT_ID,
+    environmentId: options.environmentId ?? ENVIRONMENT_ID,
     maxActiveOffers: options.maxActiveOffers,
     maxActiveCredentialsWithoutVerifiedIdentity:
       options.maxActiveCredentialsWithoutVerifiedIdentity,
@@ -271,6 +296,7 @@ function createHarness(
           principal.credential === MASTER_CREDENTIAL
         );
       }),
+    resolvePublicIngressOrigin: options.resolvePublicIngressOrigin,
     relayEnrollment,
     operatorPasskeys: options.operatorPasskeys,
   });
@@ -2050,7 +2076,7 @@ describe('device pairing routes', () => {
     expect(result).not.toHaveProperty('credential');
 
     const setCookie = exchange.headers.get('set-cookie');
-    expect(setCookie).toContain('__Host-station-device=');
+    expect(setCookie).toMatch(/^__Host-station-device-[a-f0-9]{16}=/);
     expect(setCookie).toContain('HttpOnly');
     expect(setCookie).toContain('Secure');
     expect(setCookie).toContain('SameSite=Strict');
@@ -2454,21 +2480,26 @@ describe('device scope change (station#3816)', () => {
     },
   );
 
-  test('promotion to consent:decide works; a default-grant-only token is refused with its own code', async () => {
+  test('explicit promotion includes companion management; default-grant-only tokens remain refused', async () => {
     const harness = createHarness();
     const paired = await pairDevice(harness, 'Phone');
 
-    const promoted = await harness.request(
-      `/api/pairing/devices/${paired.device.id}/scope`,
-      harness.json(
-        { scope: ['orchestration:read', 'consent:decide'] },
-        MASTER_CREDENTIAL,
-      ),
-    );
-    expect(promoted.status).toBe(200);
-    expect(((await promoted.json()) as PairedDevice).scope).toBe(
-      'orchestration:read consent:decide',
-    );
+    for (const token of ['consent:decide', 'telemetry:manage']) {
+      const promoted = await harness.request(
+        `/api/pairing/devices/${paired.device.id}/scope`,
+        harness.json(
+          { scope: ['orchestration:read', token] },
+          MASTER_CREDENTIAL,
+        ),
+      );
+      expect(promoted.status).toBe(200);
+      expect(await promoted.json()).toMatchObject({
+        scope: `orchestration:read ${token}`,
+      });
+      expect(harness.pairing.identifyDevice(paired.credential)?.scope).toBe(
+        `orchestration:read ${token}`,
+      );
+    }
 
     // access:manage has no legitimate promotion path: its holder population
     // is inherited and permanently ambiguous, and the contracts say it must
@@ -3275,13 +3306,25 @@ describe('local self-authorization grant exchange (station#1715)', () => {
   });
 
   test('writes the secret file 0600 and mints a different value on every configure (boot)', async () => {
+    const started = performance.now();
+    const phase = (name: string) => {
+      windowsTrust.phase = name;
+      if (process.platform === 'win32')
+        console.info(
+          `[local-grant-boot] ${JSON.stringify({ phase: name, elapsedMs: Math.round(performance.now() - started) })}`,
+        );
+    };
     windowsTrust.real = true;
     windowsTrust.hardened = 0;
     let first: ReturnType<typeof createHarness>;
     let second: ReturnType<typeof createHarness>;
     try {
+      phase('configure-first');
       first = createHarness({ localGrant: true });
+      phase('first-configured');
+      phase('configure-second');
       second = createHarness({ localGrant: true });
+      phase('second-configured');
     } finally {
       windowsTrust.real = false;
     }
@@ -3298,11 +3341,13 @@ describe('local self-authorization grant exchange (station#1715)', () => {
 
     // The first harness's own secret keeps working against its own instance;
     // rotation is per-process/per-configure, not a global invalidation.
+    phase('request-started');
     const response = await first.request(
       PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
       first.json({ secret: firstSecret, deviceName: 'This Mac' }),
       LOOPBACK_PEER,
     );
+    phase('request-returned');
     expect(response.status).toBe(200);
   });
 });
@@ -3803,6 +3848,71 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
   });
 
   describe('launcher UI bootstrap capability (station#2093)', () => {
+    test('two Stations on one browser host keep independent sessions and revoking one leaves the other usable', async () => {
+      const first = createHarness({
+        uiBootstrapToken: 'first-launcher-token',
+        environmentId: 'station-first',
+      });
+      const second = createHarness({
+        uiBootstrapToken: 'second-launcher-token',
+        environmentId: 'station-second',
+      });
+      const jar = new Map<string, string>();
+      for (const [harness, token] of [
+        [first, 'first-launcher-token'],
+        [second, 'second-launcher-token'],
+      ] as const) {
+        const response = await harness.request(
+          PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Origin: 'https://station.example.test',
+            },
+            body: JSON.stringify({ token }),
+          },
+        );
+        expect(response.status).toBe(200);
+        const cookie = response.headers.get('set-cookie')!.split(';')[0]!;
+        const separator = cookie.indexOf('=');
+        jar.set(cookie.slice(0, separator), cookie.slice(separator + 1));
+      }
+      const cookie = [...jar]
+        .map(([name, value]) => `${name}=${value}`)
+        .join('; ');
+      expect(
+        (await first.request('/api/projects', { headers: { Cookie: cookie } }))
+          .status,
+      ).toBe(200);
+      expect(
+        (await second.request('/api/projects', { headers: { Cookie: cookie } }))
+          .status,
+      ).toBe(200);
+      const firstCredential = [...jar.values()].find((candidate) =>
+        first.pairing.identifyDevice(candidate),
+      );
+      expect(firstCredential).toBeDefined();
+      expect(
+        (
+          await first.request('/api/projects', {
+            headers: { Cookie: `${cookie}; station-device=${firstCredential}` },
+          })
+        ).status,
+      ).toBe(401);
+      const [device] = first.pairing.listDevices();
+      expect(device).toBeDefined();
+      first.pairing.revokeDevice(device!.id, 'operator-credential');
+      expect(
+        (await first.request('/api/projects', { headers: { Cookie: cookie } }))
+          .status,
+      ).toBe(401);
+      expect(
+        (await second.request('/api/projects', { headers: { Cookie: cookie } }))
+          .status,
+      ).toBe(200);
+    });
+
     test('exchanges an explicit one-time capability for an HttpOnly browser session without trusting proxy position', async () => {
       // The proxy hop here attests an OFF-BOX client (archive#3876): the
       // browser is a phone on the UI port, so the session it mints is a
@@ -3832,9 +3942,10 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
         environmentId: ENVIRONMENT_ID,
         delivery: 'browser-cookie',
       });
-      const proxiedCredential = /(?:__Host-)?station-device=([^;]+)/.exec(
-        bootstrap.headers.get('set-cookie') ?? '',
-      )?.[1];
+      const proxiedCredential =
+        /(?:__Host-)?station-device(?:-[a-f0-9]{16})?=([^;]+)/.exec(
+          bootstrap.headers.get('set-cookie') ?? '',
+        )?.[1];
       expect(proxiedCredential).toEqual(expect.any(String));
       expect(
         harness.pairing.credentialLocality(proxiedCredential as string),
@@ -3894,9 +4005,10 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
         directPeer,
       );
       expect(response.status).toBe(200);
-      const credential = /(?:__Host-)?station-device=([^;]+)/.exec(
-        response.headers.get('set-cookie') ?? '',
-      )?.[1];
+      const credential =
+        /(?:__Host-)?station-device(?:-[a-f0-9]{16})?=([^;]+)/.exec(
+          response.headers.get('set-cookie') ?? '',
+        )?.[1];
       expect(credential).toEqual(expect.any(String));
       return harness.pairing.credentialLocality(credential as string);
     };
@@ -4012,9 +4124,10 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       );
 
       expect(bootstrap.status).toBe(200);
-      const credential = /(?:__Host-)?station-device=([^;]+)/.exec(
-        bootstrap.headers.get('set-cookie') ?? '',
-      )?.[1];
+      const credential =
+        /(?:__Host-)?station-device(?:-[a-f0-9]{16})?=([^;]+)/.exec(
+          bootstrap.headers.get('set-cookie') ?? '',
+        )?.[1];
       expect(credential).toEqual(expect.any(String));
       expect(harness.pairing.credentialLocality(credential as string)).toBe(
         'home-possession',
@@ -4177,7 +4290,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     // endpoint as `http://<node>.ts.net` — which createOffer rejects. That is
     // why those apps could not pair over the tailnet at all (archive#3645).
     const TAILNET_URL =
-      'http://kontour.python-smelt.ts.net/.well-known/station/v1/pairing/access-request';
+      'http://station.example.ts.net/.well-known/station/v1/pairing/access-request';
 
     const directRequest = (
       harness: ReturnType<typeof createHarness>,
@@ -4200,7 +4313,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     test('records the resolved public origin when Host is our own ingress', async () => {
       const harness = createHarness({
         resolvePublicIngressOrigin: async () => [
-          'https://kontour.python-smelt.ts.net',
+          'https://station.example.ts.net',
         ],
       });
       const recorded = vi.spyOn(harness.pairing, 'requestAccess');
@@ -4209,7 +4322,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
 
       expect(response.status).toBe(202);
       expect(recorded.mock.calls[0]?.[0]).toMatchObject({
-        endpoint: 'https://kontour.python-smelt.ts.net',
+        endpoint: 'https://station.example.ts.net',
       });
     });
 
@@ -4220,18 +4333,18 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       // request never used.
       const harness = createHarness({
         resolvePublicIngressOrigin: async () => [
-          'https://kontour.python-smelt.ts.net',
+          'https://station.example.ts.net',
         ],
       });
       const recorded = vi.spyOn(harness.pairing, 'requestAccess');
 
       await directRequest(
         harness,
-        'http://other-node.python-smelt.ts.net/.well-known/station/v1/pairing/access-request',
+        'http://other-node.example.ts.net/.well-known/station/v1/pairing/access-request',
       );
 
       expect(recorded.mock.calls[0]?.[0]).toMatchObject({
-        endpoint: 'http://other-node.python-smelt.ts.net',
+        endpoint: 'http://other-node.example.ts.net',
       });
     });
 
@@ -4250,18 +4363,18 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
         used: boolean;
       }> = [
         {
-          hostHeader: 'kontour.python-smelt.ts.net:8444',
-          resolvedOrigins: ['https://kontour.python-smelt.ts.net:8444'],
+          hostHeader: 'station.example.ts.net:8444',
+          resolvedOrigins: ['https://station.example.ts.net:8444'],
           used: true,
         },
         {
-          hostHeader: 'kontour.python-smelt.ts.net',
-          resolvedOrigins: ['https://kontour.python-smelt.ts.net:8444'],
+          hostHeader: 'station.example.ts.net',
+          resolvedOrigins: ['https://station.example.ts.net:8444'],
           used: false,
         },
         {
-          hostHeader: 'kontour.python-smelt.ts.net:443',
-          resolvedOrigins: ['https://kontour.python-smelt.ts.net'],
+          hostHeader: 'station.example.ts.net:443',
+          resolvedOrigins: ['https://station.example.ts.net'],
           used: false,
         },
       ];
@@ -4288,20 +4401,20 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       // that authority for the later credential exchange.
       const harness = createHarness({
         resolvePublicIngressOrigin: async () => [
-          'https://kontour.python-smelt.ts.net:3773',
-          'https://kontour.python-smelt.ts.net:8444',
+          'https://station.example.ts.net:3773',
+          'https://station.example.ts.net:8444',
         ],
       });
       const recorded = vi.spyOn(harness.pairing, 'requestAccess');
 
       const response = await directRequest(
         harness,
-        'http://kontour.python-smelt.ts.net:8444/.well-known/station/v1/pairing/access-request',
+        'http://station.example.ts.net:8444/.well-known/station/v1/pairing/access-request',
       );
 
       expect(response.status).toBe(202);
       expect(recorded.mock.calls[0]?.[0]).toMatchObject({
-        endpoint: 'https://kontour.python-smelt.ts.net:8444',
+        endpoint: 'https://station.example.ts.net:8444',
       });
     });
 
@@ -4316,7 +4429,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       await directRequest(harness);
       expect(recorded).toHaveBeenCalledTimes(1);
       expect(recorded.mock.calls[0]?.[0]).toMatchObject({
-        endpoint: 'http://kontour.python-smelt.ts.net',
+        endpoint: 'http://station.example.ts.net',
       });
     });
 
@@ -4326,7 +4439,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       const harness = createHarness({
         resolvePublicIngressOrigin: async () => {
           consulted += 1;
-          return ['https://kontour.python-smelt.ts.net'];
+          return ['https://station.example.ts.net'];
         },
       });
       const recorded = vi.spyOn(harness.pairing, 'requestAccess');
@@ -4372,7 +4485,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     test('an attested proxy request records the resolved public origin', async () => {
       const harness = createHarness({
         resolvePublicIngressOrigin: async () => [
-          'https://kontour.python-smelt.ts.net',
+          'https://station.example.ts.net',
         ],
       });
       const recorded = vi.spyOn(harness.pairing, 'requestAccess');
@@ -4387,7 +4500,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       expect(response.requestId).toBeTruthy();
       expect(recorded).toHaveBeenCalledTimes(1);
       expect(recorded.mock.calls[0]?.[0]).toMatchObject({
-        endpoint: 'https://kontour.python-smelt.ts.net',
+        endpoint: 'https://station.example.ts.net',
       });
     });
 
@@ -4398,8 +4511,8 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       // selected by a forwarded header or other client input.
       const harness = createHarness({
         resolvePublicIngressOrigin: async () => [
-          'https://kontour.python-smelt.ts.net:3773',
-          'https://kontour.python-smelt.ts.net:8444',
+          'https://station.example.ts.net:3773',
+          'https://station.example.ts.net:8444',
         ],
       });
       const recorded = vi.spyOn(harness.pairing, 'requestAccess');
@@ -4410,7 +4523,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       });
 
       expect(recorded.mock.calls[0]?.[0]).toMatchObject({
-        endpoint: 'https://kontour.python-smelt.ts.net:3773',
+        endpoint: 'https://station.example.ts.net:3773',
       });
     });
 
@@ -4429,7 +4542,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
 
       expect(recorded).toHaveBeenCalledTimes(1);
       expect(recorded.mock.calls[0]?.[0]).not.toMatchObject({
-        endpoint: 'https://kontour.python-smelt.ts.net',
+        endpoint: 'https://station.example.ts.net',
       });
     });
 
@@ -4920,4 +5033,112 @@ describe('operator passkey host routes in the runtime auth boundary (#3257)', ()
       registry.close();
     }
   });
+});
+
+describe('host HTTPS pairing endpoint suggestions', () => {
+  test('requires authentication, returns daemon mappings only, and reports unavailable as empty', async () => {
+    const resolver = vi.fn(async () => ['https://host.tailnet.ts.net']);
+    const h = createHarness({ resolvePublicIngressOrigin: resolver });
+    const denied = await h.request('/api/pairing/endpoint-suggestions');
+    expect(denied.status).toBe(401);
+    expect(resolver).not.toHaveBeenCalled();
+    const reply = await h.request('/api/pairing/endpoint-suggestions', {
+      ...h.json(undefined, MASTER_CREDENTIAL),
+      method: 'GET',
+    });
+    expect(reply.status).toBe(200);
+    expect(await reply.json()).toEqual({
+      endpoints: ['https://host.tailnet.ts.net'],
+      source: 'tailscale-serve',
+    });
+    const absent = createHarness();
+    const empty = await absent.request('/api/pairing/endpoint-suggestions', {
+      ...absent.json(undefined, MASTER_CREDENTIAL),
+      method: 'GET',
+    });
+    expect(await empty.json()).toEqual({
+      endpoints: [],
+      source: 'tailscale-serve',
+    });
+  });
+  test('refuses a principal revoked while the daemon lookup is in flight', async () => {
+    let current = true;
+    const h = createHarness({
+      isRequestPrincipalCurrent: () => current,
+      resolvePublicIngressOrigin: async () => {
+        current = false;
+        return ['https://host.tailnet.ts.net'];
+      },
+    });
+    const reply = await h.request('/api/pairing/endpoint-suggestions', {
+      ...h.json(undefined, MASTER_CREDENTIAL),
+      method: 'GET',
+    });
+    expect(reply.status).toBe(401);
+    expect(await reply.json()).toEqual({ error: 'unauthorized' });
+  });
+});
+
+test('outside host CLI channels reuse live keyring credentials without growing devices or spending the desktop mint budget', async () => {
+  const h = createHarness({ localGrant: true });
+  const values = new Map<string, string>();
+  const credentialStore: ProfileCredentialStore = {
+    get: (ref) => values.get(ref.id),
+    set: (ref, value) => {
+      values.set(ref.id, value);
+    },
+    delete: (ref) => {
+      values.delete(ref.id);
+    },
+    status: (ref) => (values.has(ref.id) ? 'available' : 'missing'),
+  };
+  const request = vi.fn(
+    async (_base: string, path: string, init?: RequestInit) => {
+      const response = await h.request(path, init, '127.0.0.219');
+      expect(response.status, await response.clone().text()).toBe(200);
+      return response.json();
+    },
+  );
+  const open = () =>
+    openOutsideHostChannel({
+      home: dirname(dirname(h.localGrantSecretPath)),
+      apiBase: 'http://127.0.0.1:47819',
+      request,
+      credentialStore,
+    });
+  for (let i = 0; i < 8; i++) {
+    await open();
+    expect(h.pairing.listDevices()).toHaveLength(1);
+  }
+  expect(h.pairing.listDevices()).toHaveLength(1);
+  expect(
+    request.mock.calls.filter(
+      (call) => call[1] === PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
+    ),
+  ).toHaveLength(1);
+  const firstCredential = [...values.values()][0]!;
+  // A fresh CLI process reads the same keyring ref; cache loss remints under the same identity.
+  values.clear();
+  await open();
+  expect(
+    h.pairing.listDevices().filter((device) => device.revokedAt === null),
+  ).toHaveLength(1);
+  expect(h.pairing.isLocalGrantMintedCredential(firstCredential)).toBe(false);
+  const current = h.pairing
+    .listDevices()
+    .find((device) => device.revokedAt === null)!;
+  h.pairing.revokeDevice(current.id, 'operator-credential');
+  await open();
+  expect(
+    h.pairing.listDevices().filter((device) => device.revokedAt === null),
+  ).toHaveLength(1);
+  // Three CLI mints leave the other two slots in the shared 5/min budget available.
+  for (let i = 0; i < 2; i++) {
+    const desktop = await h.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
+      h.json({ secret: h.readLocalGrantSecret(), deviceName: 'Desktop' }),
+      '127.0.0.219',
+    );
+    expect(desktop.status).toBe(200);
+  }
 });

@@ -1,5 +1,6 @@
 /**
- * Phase 4 portability helpers.
+ * Guidance portability helpers: AGENTS.md and MCP configuration export and
+ * import.
  *
  * Ownership boundary:
  * - canonical Station config remains the source of truth
@@ -108,7 +109,7 @@ export function collectGuidanceLosses(appConfig: AppConfig): PortabilityLoss[] {
       code: 'omitted-field' as const,
       scope: 'app-config' as const,
       path: key,
-      message: `AGENTS.md export omits app config field '${key}' because it is outside the Phase 4a guidance projection.`,
+      message: `AGENTS.md export omits app config field '${key}' because it is outside the guidance projection.`,
       severity: 'warning' as const,
     }));
 }
@@ -366,7 +367,7 @@ export function parseAgentsMd(text: string): ParseAgentsMdResult {
     exportEnd === -1
   ) {
     throw new Error(
-      'No Station export block found in AGENTS.md. Phase 4a import currently supports Station-exported AGENTS.md files only.',
+      'No Station export block found in AGENTS.md. Import currently supports Station-exported AGENTS.md files only.',
     );
   }
 

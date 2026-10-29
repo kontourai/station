@@ -1,0 +1,21 @@
+{
+  "revision": "7e1d8b4bc9e356761064b76697e99f467afc77c7",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Round 6: color-theme-apply now un-claims a failed active sheet at once even while another family is pending; the module-map claim that a failed sheet is not claimed, is marked data-color-theme-failed and is re-requested only on selection change or retryColorTheme() still holds (checked lines 556-560).","inputs":["docs/architecture/module-map.md","src-ui/src/lib/color-theme-apply.ts","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Round 6: color-theme-apply un-claims a failed startup sheet regardless of pending families, and the store change is comment-only; checked the startup/first-render paragraph (failed color-theme render releases animation, offers reload) still matches.","inputs":["docs/guides/theming.md","src-ui/src/lib/color-theme-apply.ts","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Round 6: device-settings-store.ts changed only a comment (release mark inherited for one microtask); no claim in this doc about the store's account hold or release timing changed.","inputs":["docs/design/placement.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Round 6: device-settings-store.ts changed only a comment (release mark inherited for one microtask); no claim in this doc about the store's account hold or release timing changed.","inputs":["docs/design/settings-architecture.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Round 6: device-settings-store.ts changed only a comment (release mark inherited for one microtask); no claim in this doc about the store's account hold or release timing changed.","inputs":["docs/guides/keyboard-shortcuts.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Round 6: device-settings-store.ts changed only a comment (release mark inherited for one microtask); no claim in this doc about the store's account hold or release timing changed.","inputs":["docs/guides/responsive-ui.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Round 6: device-settings-store.ts changed only a comment (release mark inherited for one microtask); no claim in this doc about the store's account hold or release timing changed.","inputs":["docs/patterns/backend.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Round 6: device-settings-store.ts changed only a comment (release mark inherited for one microtask); no claim in this doc about the store's account hold or release timing changed.","inputs":["docs/patterns/frontend.md","src-ui/src/lib/device-settings-store.ts"]}
+  ]
+}

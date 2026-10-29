@@ -1,0 +1,15 @@
+{
+  "revision": "bf1dbe6c50bda15d004411dee9c4d91122e55f2e",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Bounded transitive review: the configuration-reference change only adds server-log query draining to its existing batching paragraph. The configuration parsing/time-zone findings linked here are unaffected; no runtime claim is renewed.","inputs":["docs/architecture/abstraction-review.md","docs/reference/config.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Bounded transitive review: config logging now names query draining; telemetry-destination setting scopes, controls and delivery-status guidance linked here are unchanged. This is not a full settings-consumer qualification.","inputs":["docs/design/settings-architecture.md","docs/reference/config.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Bounded transitive review: SDK reference now accurately describes native envelope-header forwarding. The guide still routes clients to versioned API/SDK contracts and separately evidenced authentication; no integration or deployment recipe changed.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Bounded transitive review: the canonical SDK reference correction preserves the public stable-export and consumer-test instructions. No SDK app-internal import or new public export was introduced.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/reference/deploy-ledger.md","note":"Executed renderLedgerMarkdown over the recorded deploy-ledger JSON and confirmed exact equality with the committed Markdown projection. The schema, source/provider caveats and historical entries remain qualified. No live release state or current provider acceptance was reverified.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

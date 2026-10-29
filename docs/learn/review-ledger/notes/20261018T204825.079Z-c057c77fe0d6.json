@@ -1,0 +1,7 @@
+{
+  "revision": "31cae8d36bdb3044985cef3a9ed2b6887d9c5ebd",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"CI delta review at 31cae8d36bd: inspected the engine-matrix CLI helper's makeTempDir-created output directory and its sole readdir call. Classified that bounded report fixture in path-read-pin-boundary rather than registering a repository scan; detection and repo-scan scheduling remain unchanged. Both policy suites passed, both reverted fixes produced the intended assertion failures, and restored suites passed. No guide prose change is needed; this is the existing temporary-fixture distinction.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts"]}
+  ]
+}

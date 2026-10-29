@@ -1,0 +1,7 @@
+{
+  "revision": "b93fd066dbc1577b65be98885afc136e18b27c69",
+
+  "notes": [
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"Reviewed the queue-repair delta at b93fd066dbc. It changes only tests: retire the removed sidebar consumer/mocks while preserving real-fold dock/mobile approval status, lane and chat project identity; assert the Customize tour anchor on the rendered footer button instead of JSX spelling; remove only the retired sidebar-sections entry from the exhaustive settings write-authority map. Independent report-only review found no blocker. Local baseline reproduced all three queue failures; repaired61/61 passed. Temporary faults changed approval wording to Idle, renamed Customize anchor, and mis-scoped approval-guardian to device: six intended failures included each named retained assertion; production files restored byte-identically and61/61 passed again. Original screenshot/capture claims and panel assessment are unchanged. This is local owner-boundary evidence, not fresh hosted merge-candidate qualification.","inputs":["docs/reviews/workspace-map-20261015/README.md","src-ui/src/__tests__/ProjectSidebarFooter.test.tsx"]}
+  ]
+}

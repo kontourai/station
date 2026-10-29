@@ -94,6 +94,13 @@ const BASH: FoldEvent = {
   toolCallId: 'c1',
   toolName: 'Bash',
 };
+const BASH_DONE: FoldEvent = {
+  method: 'tool.completed',
+  itemId: 'c1',
+  toolCallId: 'c1',
+  toolName: 'Bash',
+  status: 'success',
+};
 const APPROVAL: FoldEvent = {
   method: 'request.opened',
   requestId: 'r1',
@@ -128,8 +135,12 @@ const SEQUENCES = {
     events: [TURN, BASH],
     options: { runningChildren: 3 },
   },
-  /** The watchdog's default window is 180s; the turn has been silent 6m. */
-  silentRun: { events: [TURN, BASH], options: { silentForMs: 360_000 } },
+  /** The watchdog's default window is 180s; the turn has been silent 6m
+   *  since its last tool finished. An open tool call is not silence. */
+  silentRun: {
+    events: [TURN, BASH, BASH_DONE],
+    options: { silentForMs: 360_000 },
+  },
   approvalInOpenTurn: { events: [TURN, BASH, APPROVAL] },
   detachedApproval: {
     events: [TURN, BASH, APPROVAL],
@@ -304,40 +315,39 @@ const SUMMARIES: Record<FoldFixtureName, FoldSummary> = {
     conversationActivity: {
       conversationId: 'T',
       currentThreadId: 'T',
-      asOfSequence: 2,
+      asOfSequence: 3,
       openTurn: {
         turnId: 't1',
         threadId: 'T',
         startedAt: '2026-09-30T10:00:03.000Z',
       },
-      runningTools: [
-        {
-          name: 'Bash',
-          callId: 'c1',
-          startedAt: '2026-09-30T10:00:04.000Z',
-        },
-      ],
       progressSilence: {
-        detectedAt: '2026-09-30T10:03:04.000Z',
+        detectedAt: '2026-09-30T10:03:05.000Z',
         windowMs: 180000,
-        silentSinceEventAt: '2026-09-30T10:00:04.000Z',
+        silentSinceEventAt: '2026-09-30T10:00:05.000Z',
         provider: 'claude',
       },
-      lastActivityAt: '2026-09-30T10:00:04.000Z',
+      lastActivityAt: '2026-09-30T10:00:05.000Z',
+      lastTool: {
+        name: 'Bash',
+        callId: 'c1',
+        outcome: 'success',
+        completedAt: '2026-09-30T10:00:05.000Z',
+      },
     },
     draft: false,
     turnProgress: {
       threadId: 'T',
       turnId: 't1',
-      lastProgressEventAt: '2026-09-30T10:00:04.000Z',
+      lastProgressEventAt: '2026-09-30T10:00:05.000Z',
       progressSilence: {
-        detectedAt: '2026-09-30T10:03:04.000Z',
+        detectedAt: '2026-09-30T10:03:05.000Z',
         windowMs: 180000,
-        silentSinceEventAt: '2026-09-30T10:00:04.000Z',
+        silentSinceEventAt: '2026-09-30T10:00:05.000Z',
         provider: 'claude',
       },
     },
-    updatedAt: '2026-09-30T10:00:04.000Z',
+    updatedAt: '2026-09-30T10:00:05.000Z',
   },
   approvalInOpenTurn: {
     threadId: 'T',

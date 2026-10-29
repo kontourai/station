@@ -3,9 +3,13 @@ import { existsSync, lstatSync, opendirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type {
+  ProviderRuntimeEvent as CanonicalRuntimeEvent,
+  ProviderRuntimeErrorEvent,
+} from '@kontourai/station-contracts/runtime-events';
 import { isRecord } from '../../utils/is-record.js';
 import { PARAGRAPH_BREAK } from '../adapters/paragraph-boundary.js';
+import { providerFailure } from '../provider-failure.js';
 import {
   boundedPrompt,
   projectBoundedToolOutput,
@@ -647,10 +651,11 @@ function mapCodexRecord(
         ...base,
         eventId: id(events.length, 'turn-error'),
         method: 'runtime.error',
+        ...providerFailure('provider_error'),
         turnId,
         severity: 'error',
         message: errorMessage,
-      });
+      } satisfies ProviderRuntimeErrorEvent);
     }
     events.push({
       ...base,

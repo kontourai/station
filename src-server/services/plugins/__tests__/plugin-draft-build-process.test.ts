@@ -1,5 +1,5 @@
 /**
- * Epic #2323 S3 review round 3: a draft build runs in a disposable process.
+ * Epic #2323 S3: a draft build runs in a disposable process.
  *
  * A FIFO `package.json` is read by esbuild's own resolver, where no Station
  * check sees it, and blocks esbuild's Go service in a syscall. In-process
@@ -23,7 +23,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildPluginDraft } from '@kontourai/station-shared/build';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   buildPluginDraftInChildProcess,
   draftBuildChildEnv,
@@ -310,7 +310,7 @@ describe.skipIf(process.platform === 'win32')('draft build process', () => {
     return dir;
   }
 
-  // Round 4 MEDIUM: the child is detached into its own session, so a server
+  // The child is detached into its own session, so a server
   // that dies mid-build (crash, SIGKILL) used to leave it and its blocked
   // esbuild service running under init. Only PIDs this test spawned (or that
   // descend from them) are signalled.
@@ -415,7 +415,7 @@ describe.skipIf(process.platform === 'win32')('draft build process', () => {
     TEST_TIMEOUT_MS,
   );
 
-  // Round 4 LOW: the child gets a minimal environment, never the server's
+  // The child gets a minimal environment, never the server's
   // provider keys. Read from the running child's own environment, found by
   // the pid this test recorded.
   test(
@@ -458,6 +458,50 @@ describe.skipIf(process.platform === 'win32')('draft build process', () => {
         await building;
       } finally {
         delete process.env[sentinel];
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  // #561: the build child is detached, and its deadline lives in this
+  // process, so a SIGKILLed server used to leave no registry record for the
+  // startup sweep. The record exists while the child runs and is released
+  // once its whole group (the child and its esbuild service) has exited.
+  test(
+    'a running build child is registered, and the record is released after its group exits',
+    async () => {
+      const registryDir = tempDir('station-draft-owned-registry-');
+      vi.stubEnv('STATION_OWNED_PROCESS_REGISTRY', registryDir);
+      const controller = new AbortController();
+      let pid: number | undefined;
+      try {
+        const building = buildPluginDraftInChildProcess(
+          {
+            pluginDir: blockingPlugin(),
+            outdir: join(tempDir('station-draft-proc-out-'), '1'),
+            registrationKey: 'k:1',
+            manifest,
+            signal: controller.signal,
+          },
+          { onSpawn: (spawned) => (pid = spawned) },
+        );
+        expect(await waitFor(() => pid !== undefined)).toBe(true);
+        const childPid = pid as number;
+        expect(await waitFor(() => descendantsOf(childPid).length > 0)).toBe(
+          true,
+        );
+        const recordFile = join(registryDir, `engine-${childPid}.json`);
+        expect(existsSync(recordFile)).toBe(true);
+        expect(alive(childPid)).toBe(true);
+
+        controller.abort();
+        await building;
+
+        expect(await waitFor(() => !alive(childPid, true))).toBe(true);
+        expect(await waitFor(() => !existsSync(recordFile))).toBe(true);
+      } finally {
+        if (pid !== undefined) killRecordedGroup(pid);
+        vi.unstubAllEnvs();
       }
     },
     TEST_TIMEOUT_MS,

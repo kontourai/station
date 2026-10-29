@@ -19,6 +19,10 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  packageTelemetryCompanion,
+  verifyTelemetryCompanion,
+} from '../package-telemetry-companion.mjs';
 import { stageBundledRegistry } from './bundled-registry.mjs';
 import { createPackagedReleaseManifest } from './container-release-metadata.mjs';
 import {
@@ -220,7 +224,7 @@ function runTar(args, options = {}) {
   });
 }
 
-function stageNodeRuntime(target, distributionBytes, runtimeDir) {
+export function stageNodeRuntime(target, distributionBytes, runtimeDir) {
   // Extract from a private copy written from the verified bytes, never by
   // reopening the path that was hashed.
   const scratch = mkdtempSync(join(tmpdir(), 'station-node-extract-'));
@@ -412,6 +416,7 @@ function treeFootprint(root) {
  *                           plus the station-build.json `station start` reads
  *   dist-ui/                the built UI, served by every instance
  *   schemas/                the server's data schemas
+ *   telemetry-companion/    optional build-only receiver/deployment payload; not installed
  *   node_modules/           the desktop stager's pruned runtime closure
  *
  * The runtime dependency closure is staged by the same function that stages
@@ -423,6 +428,8 @@ async function stagePortableServerTree({
   target,
   nodeDistributionBytes,
   release,
+  includeTelemetryCompanion,
+  companionQualificationReceipt,
 }) {
   const uiIndex = join(projectRoot, 'dist-ui', 'index.html');
   if (!existsSync(uiIndex)) {
@@ -461,6 +468,20 @@ async function stagePortableServerTree({
     recursive: true,
   });
   stageBundledRegistry({ projectRoot, outputRoot: stageRoot });
+  if (includeTelemetryCompanion) {
+    const output = join(stageRoot, '.companion-package');
+    const candidate = await packageTelemetryCompanion(output, {
+      projectRoot,
+      qualificationReceiptPath: companionQualificationReceipt,
+    });
+    const manifest = await verifyTelemetryCompanion(candidate.directory);
+    if (manifest.source !== release.sha)
+      throw new Error(
+        'Companion payload source differs from the server archive',
+      );
+    renameSync(candidate.directory, join(stageRoot, 'telemetry-companion'));
+    rmSync(output, { recursive: true });
+  }
   stageNodeRuntime(target, nodeDistributionBytes, join(stageRoot, 'runtime'));
   stageLaunchers(projectRoot, stageRoot);
   // As in a source release (whose tarball is the repository), the archive
@@ -554,6 +575,22 @@ export function assertBuildSourceIsCheckout({ sha, git }) {
   }
 }
 
+/**
+ * @param {{
+ *   projectRoot?: string,
+ *   outputDir?: string,
+ *   platform?: NodeJS.Platform,
+ *   arch?: NodeJS.Architecture,
+ *   tag: string,
+ *   sha: string,
+ *   createdAt?: string,
+ *   nodeDistribution?: string,
+ *   keepStage?: boolean,
+ *   expectedRing?: string,
+ *   includeTelemetryCompanion?: boolean,
+ *   companionQualificationReceipt?: string,
+ * }} options
+ */
 export async function buildPortableServerArchive({
   projectRoot = REPO_ROOT,
   outputDir = resolve(projectRoot, 'dist-portable-server'),
@@ -565,7 +602,11 @@ export async function buildPortableServerArchive({
   nodeDistribution,
   keepStage = false,
   expectedRing,
+  includeTelemetryCompanion = false,
+  companionQualificationReceipt,
 }) {
+  if (companionQualificationReceipt && !includeTelemetryCompanion)
+    throw new Error('Companion qualification requires the companion payload');
   const target = resolvePortableServerTarget(
     platform,
     arch,
@@ -605,6 +646,8 @@ export async function buildPortableServerArchive({
       target,
       nodeDistributionBytes: distributionBytes,
       release,
+      includeTelemetryCompanion,
+      companionQualificationReceipt,
     });
     const archivePath = createPortableArchive({
       stageParent,

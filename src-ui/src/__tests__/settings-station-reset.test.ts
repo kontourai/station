@@ -76,11 +76,20 @@ describe('buildStationResetPlan', () => {
     // someone opting out — and the registry default is `true`. Clearing it
     // would turn telemetry back on under the word "reset".
     const plan = buildStationResetPlan(
-      fileProvenance('telemetryEnabled', 'registryUrl'),
+      fileProvenance('telemetryEnabled', 'telemetryTier', 'registryUrl'),
     );
 
     expect(plan.delta).toEqual({ registryUrl: null });
     expect(plan.delta).not.toHaveProperty('telemetryEnabled');
+    expect(plan.delta).not.toHaveProperty('telemetryTier');
+    const saved = {
+      telemetryTier: { operator: 'off', kontour: 'off' },
+      registryUrl: 'https://registry.test',
+    };
+    expect({ ...saved, ...plan.delta }.telemetryTier).toEqual({
+      operator: 'off',
+      kontour: 'off',
+    });
     expect(RESETTABLE_STATION_SETTING_KEYS).not.toContain('telemetryEnabled');
     expect(plan.labels).not.toContain('Usage telemetry');
   });
@@ -135,6 +144,9 @@ describe('buildStationResetPlan', () => {
     // file can see. The ordered literal fixes the SET too, and the set is
     // what a reset depends on.
     expect([...RESETTABLE_STATION_SETTING_KEYS]).toEqual([
+      // System. #3851: the Automatic server download select SystemSection
+      // renders; clearing it (`null`) restores `after-24h`.
+      'serverUpdateDownloadPolicy',
       // Station host
       'terminalShell',
       'mcpUiHost',
@@ -146,6 +158,11 @@ describe('buildStationResetPlan', () => {
       'registryUrl',
       'disableDefaultSkillRegistries',
       'distributionProfile',
+      // Telemetry destinations and credential references are Station settings.
+      'productTelemetryEndpoint',
+      'productTelemetryKeyRef',
+      'otelTelemetryEndpoint',
+      'otelTelemetryKeyRef',
       // Permissions
       'approvalGuardian',
       'defaultApprovalMode',
@@ -159,8 +176,13 @@ describe('buildStationResetPlan', () => {
       'workspaceCheckpoints',
       // #3188: resume a usage-limit stop at the provider's reset.
       'usageLimitAutoResume',
+      'reviewGuidesEnabled',
+      'reviewGuideModel',
+      'reviewGuideInstructions',
       // Chat
       'defaultChatFontSize',
+      // Pairing: restore the Station's default-off LAN publication choice.
+      'lanDiscoveryEnabled',
     ]);
   });
 });

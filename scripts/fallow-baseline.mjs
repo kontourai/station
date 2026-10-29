@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { main as fallowCeiling } from './fallow-ceiling.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 /** Each baseline fallow writes: the subcommand and its checked-in file. */
@@ -82,4 +83,19 @@ export function runFallowBaselines({
   return 0;
 }
 
-if (invokedDirectly(import.meta.url)) process.exitCode = runFallowBaselines();
+// One command regenerates every recorded allowance: the three fallow
+// baselines the code-health gate reads, then the dead-code ceiling
+// (scripts/fallow-ceiling.mjs) from a fresh whole-tree analysis.
+if (invokedDirectly(import.meta.url)) {
+  process.exitCode = runFallowBaselines();
+  if (!process.exitCode) {
+    try {
+      process.exitCode = fallowCeiling(['--write']);
+    } catch (error) {
+      console.error(
+        `fallow-ceiling: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      process.exitCode = 1;
+    }
+  }
+}

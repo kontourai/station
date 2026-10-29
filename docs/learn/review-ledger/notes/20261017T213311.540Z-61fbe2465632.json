@@ -1,0 +1,7 @@
+{
+  "revision": "0129222fc9ca587bb7dbdbd4cf143e5ae2dbd1ce",
+
+  "notes": [
+    {"path":"docs/user/pull-request-guides.md","note":"Final boundary review: expand the stored checkout path with resolve(expandTilde(...)) before existing hardened repository custody; absolute resolved inputs are unchanged. Converted both guide-related test fixtures to trackTempDirs without changing behavioral assertions. The user guide remains accurate; no new public behavior or runtime model qualification is claimed.","inputs":["docs/user/pull-request-guides.md","src-server/services/pull-requests/pull-request-review-guide.ts"]}
+  ]
+}

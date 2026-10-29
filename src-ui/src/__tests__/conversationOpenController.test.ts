@@ -88,6 +88,40 @@ describe('#749 conversation open controller', () => {
     expect(open).not.toHaveBeenCalled();
     expect(findTab).not.toHaveBeenCalled();
   });
+  test('a saved fork is writable before first send without establishing a provider Session', async () => {
+    const resolution: ConversationOpenResolution = {
+      status: 'fork-ready',
+      conversation: { ...conversation, source: 'store' },
+      transcript: { available: true, owner: 'fork-context', messageCount: 2 },
+      canContinue: true,
+      answerability: { answerable: true },
+      recoveryActions: [],
+    };
+    const open = vi.fn(async () => true);
+    const result = await commitConversationOpen({
+      resolution,
+      open,
+      projectName: () => 'Station',
+      findTab: () => 'fork-tab',
+    });
+    expect(result.kind).toBe('opened');
+    const patch = conversationOpenPatch(resolution);
+    expect(patch.currentSessionId).toBeUndefined();
+    expect(patch.orchestrationSessionStarted).toBe(false);
+    expect(conversationOpenPhase({ conversationOpenState: resolution })).toBe(
+      'writable',
+    );
+    expect(
+      conversationOpenPhase({
+        conversationOpenState: {
+          ...resolution,
+          canContinue: false,
+          continuationPending: true,
+        },
+      }),
+    ).toBe('busy');
+  });
+
   test('one policy gates composer, inventory, Basis, and actions', () => {
     expect(conversationCanMutate({})).toBe(true);
     expect(conversationCanMutate({ conversationOpenPending: true })).toBe(

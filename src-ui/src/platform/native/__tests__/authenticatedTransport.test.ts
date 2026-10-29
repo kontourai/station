@@ -6,12 +6,14 @@ import { pairingScopePresetString } from '@kontourai/station-contracts';
 import {
   authenticatedFetch,
   ChatHttpError,
+  fetchSSE,
   sendExecutionMessage,
   setClientCredentialResolver,
 } from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { completeVerifiedPairing } from '../../../../../packages/connect/src/react/pairingCompletion.js';
+import { classifyUndeliverableSend } from '../../../lib/outboundQueue';
 import { nativePairingExchangeTransport } from '../pairingTransport';
 
 type BrokerMessage =
@@ -21,7 +23,7 @@ type BrokerMessage =
       headers: Record<string, string>;
       bodyLength?: number | null;
     }
-  | { type: 'chunk'; bytes: number[] }
+  | ArrayBuffer
   | { type: 'end' }
   | { type: 'error'; code: string; detail?: string };
 
@@ -197,10 +199,7 @@ describe('native authenticated transport', () => {
             status: 401,
             headers: { 'content-type': 'application/json' },
           });
-          emit({
-            type: 'chunk',
-            bytes: [...new TextEncoder().encode('{"error":"denied"}')],
-          });
+          emit(new TextEncoder().encode('{"error":"denied"}').buffer);
           emit({ type: 'end' });
         });
       }
@@ -219,6 +218,55 @@ describe('native authenticated transport', () => {
     expect(requestCall).toBeTruthy();
     expect(JSON.stringify(requestCall)).not.toContain(secretCanary);
     expect(JSON.stringify(requestCall)).not.toMatch(/authorization|cookie/i);
+  });
+
+  test('uploads every byte as base64, preserving a sliced typed-array body', async () => {
+    const source = new Uint8Array(65540);
+    for (let index = 0; index < source.length; index++)
+      source[index] = index % 256;
+    const body = source.subarray(1, 65538);
+    bridge.invoke.mockImplementation(async (command: string, args) => {
+      if (command !== 'station_native_http_request') return;
+      expect(typeof args.request.body).toBe('string');
+      const decoded = Uint8Array.from(atob(args.request.body), (character) =>
+        character.charCodeAt(0),
+      );
+      expect(decoded).toEqual(body);
+      queueMicrotask(() => {
+        emit({ type: 'response', status: 204, headers: {}, bodyLength: 0 });
+        emit({ type: 'end' });
+      });
+    });
+    expect(
+      (
+        await nativeAuthenticatedTransport(
+          'https://station.example.test/api/upload',
+          {
+            method: 'POST',
+            body,
+          },
+        )
+      ).status,
+    ).toBe(204);
+  });
+
+  test('rejects malformed control messages instead of treating them as response data', async () => {
+    bridge.invoke.mockImplementation(async (command: string) => {
+      if (command === 'station_native_http_request')
+        queueMicrotask(() => {
+          bridge.channels.at(-1)?.({
+            type: 'response',
+            status: 200,
+            headers: { malformed: 42 },
+          } as never);
+        });
+    });
+    await expect(
+      nativeAuthenticatedTransport('https://station.example.test/api/agents'),
+    ).rejects.toMatchObject({
+      code: 'transport',
+      message: 'Native Station request failed: invalid native response message',
+    });
   });
 
   test('rechecks captured authority before native dispatch and after body serialization', async () => {
@@ -336,10 +384,7 @@ describe('native authenticated transport', () => {
             headers: { 'content-type': 'application/json' },
             bodyLength: new TextEncoder().encode(partialJson).length + 1,
           });
-          emit({
-            type: 'chunk',
-            bytes: [...new TextEncoder().encode(partialJson)],
-          });
+          emit(new TextEncoder().encode(partialJson).buffer);
           emit({ type: 'end' });
         });
       }
@@ -382,6 +427,62 @@ describe('native authenticated transport', () => {
     expect(JSON.stringify(bridge.invoke.mock.calls)).not.toMatch(
       /authorization|bearer|credential/i,
     );
+  });
+
+  test('repeated SDK stall cancels keep the native bridge in-use count bounded', async () => {
+    vi.useFakeTimers();
+    const origin = 'https://native-stall.example.test';
+    const active = new Set<string>();
+    let highWater = 0;
+    let attempts = 0;
+    setClientCredentialResolver(() => ({
+      origin,
+      transport: nativeAuthenticatedTransport,
+    }));
+    bridge.invoke.mockImplementation(
+      async (
+        command: string,
+        args: { request?: { requestId: string }; requestId?: string },
+      ) => {
+        if (command === 'station_native_http_cancel') {
+          active.delete(args.requestId!);
+        } else if (command === 'station_native_http_request') {
+          active.add(args.request!.requestId);
+          highWater = Math.max(highWater, active.size);
+          attempts += 1;
+          queueMicrotask(() => {
+            emit({
+              type: 'response',
+              status: 200,
+              headers: { 'Content-Type': 'text/event-stream' },
+            });
+            emit(new TextEncoder().encode('data: ready\n\n').buffer);
+          });
+        }
+      },
+    );
+    const messages = vi.fn();
+    const stream = fetchSSE(`${origin}/api/events`, {
+      authentication: 'required',
+      retryDelayMs: 1,
+      maxRetryDelayMs: 1,
+      onMessage: messages,
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      for (let index = 0; index < 16; index += 1) {
+        await vi.advanceTimersByTimeAsync(75_010);
+        expect(attempts).toBe(index + 2);
+        expect(active.size).toBe(1);
+      }
+      expect(messages).toHaveBeenCalledTimes(17);
+      expect(highWater).toBe(1);
+    } finally {
+      stream.close();
+      await stream.completed;
+      setClientCredentialResolver();
+    }
+    expect(active.size).toBe(0);
   });
 
   test('aborts a quiet stream after response headers and cancels native I/O', async () => {
@@ -479,7 +580,7 @@ describe('native authenticated transport', () => {
     expect(bridge.invoke).toHaveBeenCalledTimes(2);
     bridge.invoke.mockImplementation(async () => {
       emit({ type: 'response', status: 200, headers: {} });
-      emit({ type: 'chunk', bytes: [...new TextEncoder().encode('accepted')] });
+      emit(new TextEncoder().encode('accepted').buffer);
       emit({ type: 'end' });
     });
     await vi.advanceTimersByTimeAsync(500);
@@ -489,7 +590,7 @@ describe('native authenticated transport', () => {
     const attempts = bridge.invoke.mock.calls.map(([, args]) => args.request);
     expect(attempts[0]).toMatchObject({
       method: 'POST',
-      body: [...new TextEncoder().encode('send once')],
+      body: btoa('send once'),
       expectedBindingId: 'captured-binding',
     });
     expect(attempts[1]).toEqual(attempts[0]);
@@ -818,7 +919,7 @@ describe('native authenticated transport', () => {
               status: response.status,
               headers: Object.fromEntries(response.headers.entries()),
             });
-            if (bytes.length > 0) emit({ type: 'chunk', bytes });
+            if (bytes.length > 0) emit(new Uint8Array(bytes).buffer);
             emit({ type: 'end' });
           });
         }
@@ -939,10 +1040,7 @@ describe('Station envelope marker through the native broker (#3166)', () => {
           status: reply.status,
           headers: reply.headers,
         });
-        emit({
-          type: 'chunk',
-          bytes: [...new TextEncoder().encode(JSON.stringify(reply.body))],
-        });
+        emit(new TextEncoder().encode(JSON.stringify(reply.body)).buffer);
         emit({ type: 'end' });
       });
     });
@@ -973,6 +1071,29 @@ describe('Station envelope marker through the native broker (#3166)', () => {
 
   afterEach(() => {
     setClientCredentialResolver();
+  });
+
+  test('SDK network-change failures retain uncertain delivery for queue recovery without replay', async () => {
+    const origin = 'https://network-change.station.test';
+    useNativeTransport(origin);
+    bridge.invoke.mockImplementation(async (command: string) => {
+      if (command === 'station_native_http_request') {
+        queueMicrotask(() => emit({ type: 'error', code: 'network_changed' }));
+      }
+    });
+    const error = await sendExecutionMessage(origin, {
+      agentId: 'writer',
+      message: 'hello',
+      idempotencyKey: 'network-change-k1',
+    } as never).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(TypeError);
+    expect(error).toMatchObject({ code: 'network_changed' });
+    expect(classifyUndeliverableSend(error)).toBe('send-unconfirmed');
+    expect(
+      bridge.invoke.mock.calls.filter(
+        ([command]) => command === 'station_native_http_request',
+      ),
+    ).toHaveLength(1);
   });
 
   test('a marked Station refusal is recognised as Station’s own answer', async () => {
@@ -1026,5 +1147,49 @@ describe('Station envelope marker through the native broker (#3166)', () => {
     // taught the SDK that this origin marks its answers.
     expect(error.status).toBe(403);
     expect(error.stationEnvelope).toBe(false);
+  });
+});
+
+describe('profile changes before native dispatch', () => {
+  beforeEach(() => {
+    bridge.invoke.mockReset();
+    bridge.channels.length = 0;
+  });
+  test.each(['invoke', 'channel'])(
+    'routes an unscoped %s refusal to credential recovery without replay',
+    async (path) => {
+      bridge.invoke.mockImplementation(async (command: string) => {
+        if (command !== 'station_native_http_request') return;
+        if (path === 'invoke')
+          throw { code: 'request_binding_stale', message: 'stale' };
+        emit({ type: 'error', code: 'request_binding_stale' });
+      });
+      await expect(
+        nativeAuthenticatedTransport(
+          'https://station.example.test/api/agents',
+          {
+            method: 'POST',
+            body: 'create',
+          },
+        ),
+      ).rejects.toMatchObject({ code: 'credential_binding_changed' });
+      expect(
+        bridge.invoke.mock.calls.filter(
+          ([command]) => command === 'station_native_http_request',
+        ),
+      ).toHaveLength(1);
+    },
+  );
+
+  test('preserves scoped stale receipts without adopting ambient authority', async () => {
+    bridge.invoke.mockImplementation(async (command: string) => {
+      if (command === 'station_native_http_request')
+        emit({ type: 'error', code: 'request_binding_stale' });
+    });
+    await expect(
+      nativeAuthenticatedTransport('https://station.example.test/api/agents', {
+        expectedBindingId: 'captured-binding',
+      } as RequestInit),
+    ).rejects.toMatchObject({ code: 'request_binding_stale' });
   });
 });

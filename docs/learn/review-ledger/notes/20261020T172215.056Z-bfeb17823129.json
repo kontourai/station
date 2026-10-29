@@ -1,0 +1,7 @@
+{
+  "revision": "c3b9a9f64061869cd8a4c0cd940c0420737372dd",
+
+  "notes": [
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"#3800 round 5: confinementRoot is now sessionConfinementRoot (named Project containing the cwd, else the deepest configured Project containing it, else the server-admitted workspace, else empty for a folder outside every Project, which trusts no .codex since a non-host session is never the operator's own); native adoption stamps it with its verified place; Codex subagents share the parent process and cwd per captured collab traffic. Removed the no-Project residual. Traced to session-project-identity.ts, orchestration-service.ts withSessionConfinementRoot and attached-session-adoption.ts.","inputs":["docs/design/approval-posture-server-ordered.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

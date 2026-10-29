@@ -1,0 +1,7 @@
+{
+  "revision": "9badffb575695a6107656ba9cf8b4bdf88c2a811",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Fix round 4: reread the Agents and transcript placement claims against the canonical spawn-prefix row projection, standalone row insertion and both ChatMessageList rendering paths. Empty-at-spawn segments keep a stable standalone card before later prose or turns; existing tool and assistant-row placement, loaded-child retention and notice suppression remain. Mounted invariant covers recorded Codex completion/interruption, steer/queued variants, two children, Claude, Muse and the shared original 65-call history fixture. The seven suites passed 109 tests plus 1 TODO; removing standalone insertion at a63d5fbc572 made the invariant fail on zero-card assertions, then restoration passed 34/34. Three Chromium journeys passed at desktop and 390px, and standalone captures were visually inspected. Provider captures are replay evidence, not a new live provider qualification.","inputs":["docs/design/placement.md","src-ui/src/__tests__/ChatMessageList.subagentCards.test.tsx","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/chat/transcript-child-work.ts"]}
+  ]
+}

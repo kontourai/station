@@ -1,0 +1,13 @@
+{
+  "revision": "a353083bc9adfbd4f3f12f7d413d593e1e4cfa5c",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"PR 3778 review follow-up, bounded health-scheduling review: trigger now reports whether it started a run; skipped hidden or queued triggers do not consume the hook resume dedupe timestamp. Real useConnectionStatus tests execute hidden focus/pageshow then visible within 50 ms, followed by 120 seconds of fake time. Connect owner/hook baseline and restored runs pass 38 tests; reverting F1 fails both new cases. No physical WebView claim or other Connect contract change.","inputs":["docs/reference/connect.md","packages/connect/src/core/ConnectionHealthCoordinator.ts","packages/connect/src/react/useConnectionStatus.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"PR 3778 review follow-up, bounded coding preview and host-caller review: missing files retain 500 with typed not-found and relative-path text; regular-file admission precedes open using lstat metadata after containment checks. Preview buffers grow from observed size, sniff only the first 8 KiB, and refuse max+1 rather than truncate. Route tests include real FIFO/directory admission, call-through filesystem reads, post-fstat growth, and allocation counts. Reviewed F2 live overlapping open/rehydrate and F3 tool/lifecycle plan flush as restorations of the existing host behavior, with no public launch signature change. Hardware, browser layout and hosted checks are unverified.","inputs":["docs/reference/sdk.md","src-server/routes/projects/coding.ts","src-server/services/projects/file-tree-service.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"PR 3778 review follow-up: rechecked the public SDK/API routing and evidence table against the refined coding preview limits/refusals. It still routes callers to the same authoritative references and does not imply hosted, tenant, filesystem sandbox or provider qualification. No prose change needed; deployment claims are outside this bounded review.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"PR 3778 review follow-up: the complete SDK instructions still route public behavior changes to docs/reference/sdk.md, forbid app-internal plugin dependencies, and require cache plus waiting-caller assertions for races. The preview documentation and actual guarded-open/rehydrate overlap test satisfy that route. No instruction change needed.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

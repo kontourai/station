@@ -1,0 +1,7 @@
+{
+  "revision": "185d4699bdbc855ca4d47e8ce0fb1740c4805f82",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the Connections coverage claim against reconnect fixture repairs at 185d4699b: toolbar probe deduplication and recovery, phone Station-details access and touch target, saved credentialed Station switching through Manage Stations, and identity repair into Request access remain browser assertions. The recovered URL forwards real runner inventory but explicitly leaves catalog/release discovery unavailable and aborts event streams; this proves selection and repair UI, not pairing completion or live event recovery. Focused browser evidence passed the four reconnect cases across the final two targeted runs; the wider selection remains partially failing. Existing matrix wording is accurate as representative ownership with fixture and execution limits; no prose change needed.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/connect-reconnect-banner.spec.ts"]}
+  ]
+}

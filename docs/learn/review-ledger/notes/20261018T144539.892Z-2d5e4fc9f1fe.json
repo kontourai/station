@@ -1,0 +1,7 @@
+{
+  "revision": "b1b5e3e5ade3d676ba711dddd69bbcb64092ec78",
+
+  "notes": [
+    {"path":"docs/privacy-policy.md","note":"PR #3820 round 1 at b1b5e3e5ade: Reviewed product inventory conditions and data destinations against the service status metadata delta and Lite notice route refusal. No observation field, identifier, recipient, retention or permission is added; Full availability is status metadata only. Non-Lite receipt rejection strengthens the existing notice condition. Existing inventory and provider limits remain accurate.","inputs":["docs/privacy-policy.md","src-server/services/usage-telemetry-service.ts"]}
+  ]
+}

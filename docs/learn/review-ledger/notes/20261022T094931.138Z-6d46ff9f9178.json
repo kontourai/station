@@ -1,0 +1,7 @@
+{
+  "revision": "d0924f51a3f61192fc659824d0826037eb3f0084",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed Windows workflow keeper after real Windows execution: native cargo.cmd fixture preserves the -- separator that a PowerShell function consumed. It checks the exact full test selection with actual native exit/output for one passing test, zero tests and failure; production history test and CI command unchanged. Pinned archive staging keeper remains separate. Final Windows execution of this fixture is pending at record time.","inputs":["docs/guides/testing.md","scripts/__tests__/windows-resource-staging.test.ts"]}
+  ]
+}

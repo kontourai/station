@@ -5,10 +5,13 @@
  * `src-ui/src/contexts/onboarding-setup-store.ts` (subscribe/getSnapshot/
  * notify for `useSyncExternalStore`).
  *
- * Everything lives in ONE localStorage key (`ENVELOPE_STORAGE_KEY`):
+ * Device values and legacy portable choices live in ONE localStorage key (`ENVELOPE_STORAGE_KEY`):
  * `{ version, values }`, where `values` is a PARTIAL `DeviceSettings` — only
  * keys that have ever been explicitly set are present; every other key
  * resolves through `DEVICE_SETTINGS_REGISTRY`'s `defaultValue`.
+ *
+ * An authority-bound account overlay supplies portable preferences while signed
+ * in. Account reads and writes never enter this origin-wide envelope.
  *
  * On first construction (no envelope present yet), the store runs a
  * one-time migration: for every registered setting with a present prior
@@ -25,6 +28,11 @@
  */
 
 import {
+  ACCOUNT_PREFERENCE_KEYS,
+  type AccountPreferences,
+  type AccountPreferencesPatch,
+} from '@kontourai/station-contracts/account-preferences';
+import {
   DEVICE_SETTINGS_REGISTRY,
   type DeviceSettingDefinition,
   type DeviceSettings,
@@ -39,7 +47,16 @@ import {
   parseRegionArrangementRecord,
   toRegionArrangementRecord,
 } from '../regions/region-arrangement-record';
-import { parseCodingSessionPanelsRecord } from './coding-panels-record';
+import { isRecord } from '../utils/isRecord';
+import { applyAccountPreferencePatch } from './account-preference-values';
+import {
+  APPEARANCE_KEYS,
+  type Appearance,
+  type AppearanceSource,
+  bootAppearanceFrom,
+  readAppearanceCache,
+} from './appearance-cache';
+import { parseLayoutPanelsRecord } from './layout-panels-record';
 
 const ENVELOPE_STORAGE_KEY = 'station-device-settings-v1';
 
@@ -63,8 +80,10 @@ const PRIOR_DEVICE_SETTINGS_EVENT = 'station-device-settings-changed';
  * path at all, and without this ladder step their `station.device-settings`
  * root would silently orphan and their customizations would read back as
  * registry defaults.
+ * v2 -> v3 retires the pre-release global Coding panel preference; generic
+ * Panel choices within a Layout start from their registered defaults.
  */
-const CURRENT_ENVELOPE_VERSION = 2;
+const CURRENT_ENVELOPE_VERSION = 3;
 
 export interface DeviceSettingsEnvelope {
   version: number;
@@ -152,10 +171,6 @@ function removeRaw(key: string): void {
   }
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
 /**
  * Parses a raw prior shared-root string (archive#settings-revamp slice 3
  * archive#1359 convergence) into a plain object, or `null` when the raw value is
@@ -168,7 +183,7 @@ function parsePriorSettingsRoot(
   if (raw === null) return null;
   try {
     const parsed: unknown = JSON.parse(raw);
-    return isPlainObject(parsed) ? parsed : null;
+    return isRecord(parsed) ? parsed : null;
   } catch {
     return null;
   }
@@ -202,7 +217,7 @@ export function parsePriorValue<K extends keyof DeviceSettings>(
     case 'composite': {
       try {
         const parsed: unknown = JSON.parse(raw);
-        if (isPlainObject(parsed)) {
+        if (isRecord(parsed)) {
           return {
             ...(defaultValue as object),
             ...parsed,
@@ -276,7 +291,7 @@ function validateFeatureSettings(
 
   const sounds = candidate.notificationSounds;
   if (sounds !== undefined) {
-    if (!isPlainObject(sounds)) return { valid: false };
+    if (!isRecord(sounds)) return { valid: false };
     for (const category of NOTIFICATION_SOUND_CATEGORIES) {
       if (
         Object.hasOwn(sounds, category) &&
@@ -377,7 +392,7 @@ const COMPOSITE_RECORD_PARSERS: {
   [K in keyof DeviceSettings]?: (
     candidate: unknown,
   ) => DeviceSettings[K] | null;
-} = { codingPanels: parseCodingSessionPanelsRecord };
+} = { layoutPanels: parseLayoutPanelsRecord };
 
 function validateImportedValue<K extends keyof DeviceSettings>(
   definition: DeviceSettingDefinition<K>,
@@ -396,17 +411,30 @@ function validateImportedValue<K extends keyof DeviceSettings>(
         : { valid: false };
     case 'string':
       if (candidate === null) {
-        // `accentColor` and `chatDockProjectSlug` are the nullable
-        // string-kind device settings — `null` is each one's legitimate
-        // "no override"/"no project bound" value (archive#4525).
-        return definition.key === 'accentColor' ||
-          definition.key === 'chatDockProjectSlug'
+        // A string-kind setting whose default is `null` is nullable, and
+        // `null` is its legitimate unset value: `accentColor` ("no
+        // override"), `chatDockProjectSlug` ("no project bound",
+        // archive#4525), and the color-theme flavor and accent ("the
+        // family default"). Derived from the registry rather than listed
+        // here, so a new nullable setting cannot be forgotten.
+        return definition.defaultValue === null
           ? { valid: true, value: null as DeviceSettings[K] }
           : { valid: false };
       }
-      return typeof candidate === 'string'
-        ? { valid: true, value: candidate as DeviceSettings[K] }
-        : { valid: false };
+      // The descriptor's bounds are part of what an import must satisfy;
+      // the color-theme ids share the account server's pattern, so an
+      // imported value is never one that fails the whole account patch.
+      if (
+        typeof candidate !== 'string' ||
+        (descriptor.minLength !== undefined &&
+          candidate.length < descriptor.minLength) ||
+        (descriptor.maxLength !== undefined &&
+          candidate.length > descriptor.maxLength) ||
+        (descriptor.pattern !== undefined &&
+          !new RegExp(descriptor.pattern).test(candidate))
+      )
+        return { valid: false };
+      return { valid: true, value: candidate as DeviceSettings[K] };
     case 'number': {
       if (candidate === null) {
         // `chatFontSize` is the one nullable number-kind device setting —
@@ -439,7 +467,7 @@ function validateImportedValue<K extends keyof DeviceSettings>(
       return { valid: true, value: candidate as DeviceSettings[K] };
     }
     case 'composite': {
-      if (!isPlainObject(candidate)) return { valid: false };
+      if (!isRecord(candidate)) return { valid: false };
 
       if (definition.key === 'featureSettings') {
         const outcome = validateFeatureSettings(candidate);
@@ -534,7 +562,7 @@ function sanitizeImportedValues(values: unknown): {
 } {
   const result: Partial<DeviceSettings> = {};
   const droppedKeys: (keyof DeviceSettings)[] = [];
-  if (!isPlainObject(values)) return { values: result, droppedKeys };
+  if (!isRecord(values)) return { values: result, droppedKeys };
 
   for (const definition of DEVICE_SETTINGS_REGISTRY) {
     if (!Object.hasOwn(values, definition.key)) continue;
@@ -551,9 +579,9 @@ function sanitizeImportedValues(values: unknown): {
 
 function isPlainEnvelopeShape(value: unknown): value is DeviceSettingsEnvelope {
   return (
-    isPlainObject(value) &&
+    isRecord(value) &&
     typeof value.version === 'number' &&
-    isPlainObject(value.values)
+    isRecord(value.values)
   );
 }
 
@@ -654,6 +682,15 @@ function migrateEnvelopeV1ToV2(
  * the time a future version reaches this loop it is only ever from the
  * general boot-time load path, which must never throw.)
  */
+/** Retire the pre-release, globally scoped panel preference without guessing a Layout. */
+function migrateEnvelopeV2ToV3(
+  envelope: DeviceSettingsEnvelope,
+): DeviceSettingsEnvelope {
+  const values: Record<string, unknown> = { ...envelope.values };
+  delete values.codingPanels;
+  return { version: 3, values };
+}
+
 function runMigrationLadder(raw: unknown): DeviceSettingsEnvelope {
   if (!isPlainEnvelopeShape(raw)) {
     return { version: CURRENT_ENVELOPE_VERSION, values: {} };
@@ -663,6 +700,9 @@ function runMigrationLadder(raw: unknown): DeviceSettingsEnvelope {
     switch (envelope.version) {
       case 1:
         envelope = migrateEnvelopeV1ToV2(envelope);
+        break;
+      case 2:
+        envelope = migrateEnvelopeV2ToV3(envelope);
         break;
       default:
         envelope = { ...envelope, version: envelope.version + 1 };
@@ -676,10 +716,38 @@ const DEFINITIONS_BY_KEY = new Map(
 );
 
 class DeviceSettingsStore {
+  private persistenceFailed = false;
+  private account:
+    | {
+        values: AccountPreferences | undefined;
+        write: (patch: AccountPreferencesPatch) => void;
+        writable: boolean;
+        /** A definite no-person answer arrived while bound: hold nothing. */
+        released: boolean;
+      }
+    | undefined;
+  /**
+   * The account whose binding ended released, for a re-bind in the same
+   * microtask (the boundary's effect cleanup and re-run happen in one
+   * synchronous React commit): it inherits the release. Cleared in a
+   * microtask, so a later sign-in holds again.
+   */
+  private releasedRebind: { owner: string | undefined } | undefined;
   private envelope: DeviceSettingsEnvelope;
   private snapshot: DeviceSettings;
   private listeners = new Set<Listener>();
   private hydratedState: boolean;
+  /**
+   * The account appearance this device last rendered, in force until this
+   * page knows whose appearance applies (lib/appearance-cache.ts).
+   */
+  private bootAppearance: Appearance | null = null;
+  /**
+   * Whose appearance `bootAppearance` holds when the account binding set it
+   * (its authority namespace); `null` for the startup cache, which is per
+   * origin. A binding for a different namespace releases a held appearance.
+   */
+  private bootAppearanceOwner: string | null = null;
 
   constructor() {
     // Hydration is synchronous in this environment (localStorage reads are
@@ -690,6 +758,7 @@ class DeviceSettingsStore {
     // through without changing the public shape.
     this.hydratedState = false;
     this.envelope = this.loadOrMigrate();
+    this.bootAppearance = bootAppearanceFrom(readAppearanceCache());
     this.snapshot = this.resolve();
     this.hydratedState = true;
 
@@ -706,7 +775,15 @@ class DeviceSettingsStore {
     const raw = readRaw(ENVELOPE_STORAGE_KEY);
     if (raw !== null) {
       try {
-        return runMigrationLadder(JSON.parse(raw));
+        const decoded: unknown = JSON.parse(raw);
+        const migrated = runMigrationLadder(decoded);
+        if (
+          isPlainEnvelopeShape(decoded) &&
+          decoded.version < CURRENT_ENVELOPE_VERSION
+        ) {
+          writeRaw(ENVELOPE_STORAGE_KEY, JSON.stringify(migrated));
+        }
+        return migrated;
       } catch {
         return { version: CURRENT_ENVELOPE_VERSION, values: {} };
       }
@@ -818,11 +895,35 @@ class DeviceSettingsStore {
     for (const definition of DEVICE_SETTINGS_REGISTRY) {
       result[definition.key] = this.resolveValue(this.envelope, definition.key);
     }
+    if (this.account?.values) {
+      for (const key of ACCOUNT_PREFERENCE_KEYS) {
+        result[key] = Object.hasOwn(this.account.values, key)
+          ? this.account.values[key]
+          : DEFINITIONS_BY_KEY.get(key)!.defaultValue;
+      }
+      const features = {
+        ...this.resolveValue(this.envelope, 'featureSettings'),
+      };
+      for (const key of ['smoothReveal', 'bufferedDelivery'] as const) {
+        features[key] =
+          this.account.values[key] ??
+          (
+            DEFINITIONS_BY_KEY.get('featureSettings')!
+              .defaultValue as DeviceSettings['featureSettings']
+          )[key];
+      }
+      result.featureSettings = features;
+    }
+    if (!this.account?.values && this.bootAppearance)
+      for (const key of APPEARANCE_KEYS) result[key] = this.bootAppearance[key];
     return result as unknown as DeviceSettings;
   }
 
   private persist(): void {
-    writeRaw(ENVELOPE_STORAGE_KEY, JSON.stringify(this.envelope));
+    this.persistenceFailed = !writeRaw(
+      ENVELOPE_STORAGE_KEY,
+      JSON.stringify(this.envelope),
+    );
   }
 
   private notify(): void {
@@ -876,6 +977,8 @@ class DeviceSettingsStore {
    */
   reloadFromStorage = (): void => {
     this.envelope = this.loadOrMigrate();
+    this.bootAppearance = bootAppearanceFrom(readAppearanceCache());
+    this.bootAppearanceOwner = null;
     this.snapshot = this.resolve();
     this.notify();
   };
@@ -889,7 +992,113 @@ class DeviceSettingsStore {
 
   isHydrated = (): boolean => this.hydratedState;
 
+  isPersistenceFailed = (): boolean => this.persistenceFailed;
+
   getEnvelope = (): DeviceSettingsEnvelope => this.envelope;
+
+  /** Where the resolved appearance comes from right now. */
+  getAppearanceSource = (): AppearanceSource | 'cache' =>
+    this.account?.values ? 'account' : this.bootAppearance ? 'cache' : 'device';
+
+  /**
+   * The account boundary found no person (or the device's own appearance was
+   * chosen): stop showing the cached account appearance.
+   */
+  releaseBootAppearance = (): void => {
+    // Signed out while the account boundary is still mounted (an in-app
+    // sign-out): when it unmounts it must not hold this person's appearance.
+    if (this.account) this.account.released = true;
+    if (!this.bootAppearance) return;
+    this.bootAppearance = null;
+    this.bootAppearanceOwner = null;
+    this.snapshot = this.resolve();
+    this.notify();
+  };
+
+  /** A device write to an appearance key is a choice: the cache yields to it. */
+  private yieldBootAppearance(keys: readonly string[]): void {
+    if (
+      this.bootAppearance &&
+      keys.some((key) => (APPEARANCE_KEYS as readonly string[]).includes(key))
+    ) {
+      this.bootAppearance = null;
+      this.bootAppearanceOwner = null;
+    }
+  }
+
+  /** Account values never enter the origin-wide device envelope. */
+  bindAccountPreferences = (
+    values: AccountPreferences | undefined,
+    write: (patch: AccountPreferencesPatch) => void,
+    writable = true,
+    owner?: string,
+  ): (() => void) => {
+    const binding = {
+      values,
+      write,
+      writable,
+      released:
+        this.releasedRebind !== undefined &&
+        this.releasedRebind.owner === owner,
+    };
+    this.account = binding;
+    // An appearance held for one account never stands in for another.
+    if (
+      this.bootAppearanceOwner !== null &&
+      owner !== this.bootAppearanceOwner
+    ) {
+      this.bootAppearance = null;
+      this.bootAppearanceOwner = null;
+    }
+    // The account answered: its values, not the cache, are the appearance
+    // from here on, including after this binding ends.
+    if (values) {
+      this.bootAppearance = null;
+      this.bootAppearanceOwner = null;
+    }
+    this.snapshot = this.resolve();
+    this.notify();
+    return () => {
+      if (this.account !== binding) return;
+      // The binding ends whenever the account boundary unmounts: sign-out,
+      // but also an authority re-check after a dropped connection, which
+      // remounts it moments later. Neither is a definite "no person" by
+      // itself, so the account's appearance is held, exactly like the boot
+      // cache, until the account answers again, the device's own appearance
+      // is chosen, or a definite no-person answer releases it.
+      if (binding.released) {
+        const marker = { owner };
+        this.releasedRebind = marker;
+        queueMicrotask(() => {
+          if (this.releasedRebind === marker) this.releasedRebind = undefined;
+        });
+      } else if (binding.values) {
+        const { theme, colorTheme, colorThemeFlavor, colorThemeAccent } =
+          this.snapshot;
+        this.bootAppearance = {
+          theme,
+          colorTheme,
+          colorThemeFlavor,
+          colorThemeAccent,
+        };
+        this.bootAppearanceOwner = owner ?? null;
+      }
+      this.account = undefined;
+      this.snapshot = this.resolve();
+      this.notify();
+    };
+  };
+
+  private writeAccountPatch(patch: AccountPreferencesPatch): void {
+    const account = this.account;
+    if (!account) return;
+    if (account.writable && account.values) {
+      account.values = applyAccountPreferencePatch(account.values, patch);
+      this.snapshot = this.resolve();
+      this.notify();
+    }
+    account.write(patch);
+  }
 
   /**
    * Adopts an imported envelope wholesale: throws
@@ -901,7 +1110,7 @@ class DeviceSettingsStore {
    * so the caller can report them.
    */
   importEnvelope = (input: unknown): DeviceSettingsImportResult => {
-    const candidateVersion = isPlainObject(input) ? input.version : undefined;
+    const candidateVersion = isRecord(input) ? input.version : undefined;
     if (
       typeof candidateVersion === 'number' &&
       candidateVersion > CURRENT_ENVELOPE_VERSION
@@ -910,13 +1119,27 @@ class DeviceSettingsStore {
     }
     const laddered = runMigrationLadder(input);
     const { values, droppedKeys } = sanitizeImportedValues(laddered.values);
+    this.yieldBootAppearance(Object.keys(values));
     this.applyEnvelope({ version: CURRENT_ENVELOPE_VERSION, values });
     return { droppedKeys };
   };
 
   /** Shallow-merges a partial value set into the FRESHLY-read persisted envelope (read-merge-write, not a blind overwrite from this tab's stale snapshot). */
   merge = (partial: Partial<DeviceSettings>): void => {
+    if (this.account) {
+      const device = { ...partial };
+      const patch: AccountPreferencesPatch = {};
+      for (const key of ACCOUNT_PREFERENCE_KEYS) {
+        if (!Object.hasOwn(device, key)) continue;
+        Object.assign(patch, { [key]: device[key] });
+        delete device[key];
+      }
+      if (Object.keys(patch).length > 0) this.writeAccountPatch(patch);
+      if (Object.keys(device).length === 0) return;
+      partial = device;
+    }
     const fresh = this.readPersistedEnvelope();
+    this.yieldBootAppearance(Object.keys(partial));
     this.applyEnvelope({
       ...fresh,
       values: { ...fresh.values, ...partial },
@@ -926,13 +1149,60 @@ class DeviceSettingsStore {
   get = <K extends keyof DeviceSettings>(key: K): DeviceSettings[K] =>
     this.snapshot[key];
 
+  /** Transform one setting from its current persisted value, including unseen cross-tab changes. */
+  update = <K extends keyof DeviceSettings>(
+    key: K,
+    transform: (current: DeviceSettings[K]) => DeviceSettings[K],
+  ): void => {
+    const fresh = this.readPersistedEnvelope();
+    const current =
+      this.account &&
+      ACCOUNT_PREFERENCE_KEYS.some((candidate) => candidate === key)
+        ? this.snapshot[key]
+        : this.resolveValue(fresh, key);
+    this.set(key, transform(current));
+  };
+
   /** Read-merge-write; a value equal to the current FRESH value is a true no-op — no snapshot replacement, no persist, no notify. */
   set = <K extends keyof DeviceSettings>(
     key: K,
     value: DeviceSettings[K],
   ): void => {
+    if (
+      this.account &&
+      ACCOUNT_PREFERENCE_KEYS.some((candidate) => candidate === key)
+    ) {
+      if (!valuesEqual(this.snapshot[key], value))
+        this.writeAccountPatch({ [key]: value });
+      return;
+    }
+    if (this.account && key === 'featureSettings') {
+      const features = value as DeviceSettings['featureSettings'];
+      const patch: AccountPreferencesPatch = {};
+      for (const field of ['smoothReveal', 'bufferedDelivery'] as const) {
+        if (features[field] !== this.snapshot.featureSettings[field])
+          patch[field] = features[field] ?? null;
+      }
+      if (Object.keys(patch).length > 0) this.writeAccountPatch(patch);
+      value = {
+        ...features,
+        smoothReveal: this.resolveValue(this.envelope, 'featureSettings')
+          .smoothReveal,
+        bufferedDelivery: this.resolveValue(this.envelope, 'featureSettings')
+          .bufferedDelivery,
+      } as DeviceSettings[K];
+    }
     const fresh = this.readPersistedEnvelope();
     const currentValue = this.resolveValue(fresh, key);
+    if (this.bootAppearance && APPEARANCE_KEYS.some((k) => k === key)) {
+      // Even an unchanged device value is chosen over the cached one.
+      this.yieldBootAppearance([key]);
+      if (valuesEqual(currentValue, value)) {
+        this.snapshot = this.resolve();
+        this.notify();
+        return;
+      }
+    }
     if (valuesEqual(currentValue, value)) return;
 
     this.applyEnvelope({
@@ -957,7 +1227,25 @@ class DeviceSettingsStore {
    * the same true no-op `reset` already was.
    */
   resetMany = (keys: readonly (keyof DeviceSettings)[]): void => {
+    if (this.account) {
+      const patch: AccountPreferencesPatch = {};
+      for (const key of ACCOUNT_PREFERENCE_KEYS)
+        if (keys.includes(key)) patch[key] = null;
+      if (Object.keys(patch).length > 0) this.writeAccountPatch(patch);
+      keys = keys.filter(
+        (key) =>
+          !ACCOUNT_PREFERENCE_KEYS.some((candidate) => candidate === key),
+      );
+    }
     const fresh = this.readPersistedEnvelope();
+    if (
+      this.bootAppearance &&
+      keys.some((key) => APPEARANCE_KEYS.some((k) => k === key))
+    ) {
+      this.yieldBootAppearance(keys);
+      this.snapshot = this.resolve();
+      this.notify();
+    }
     const stored = keys.filter((key) => Object.hasOwn(fresh.values, key));
     if (stored.length === 0) return;
     const nextValues = { ...fresh.values };
@@ -979,7 +1267,12 @@ export const deviceSettingsStore = new DeviceSettingsStore();
 export function resolveBootTheme(
   envelopeRaw: string | null,
   priorRaw: string | null,
+  appearanceRaw: string | null = null,
 ): 'light' | 'dark' {
+  // The account appearance this device last rendered wins, as in
+  // startup-theme.js (lib/appearance-cache.ts).
+  const cached = bootAppearanceFrom(appearanceRaw);
+  if (cached) return cached.theme;
   if (envelopeRaw !== null) {
     try {
       const parsed = JSON.parse(envelopeRaw);

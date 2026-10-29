@@ -247,7 +247,7 @@ describe('NotificationHistory', () => {
 
     const headings = screen.getAllByRole('heading', { level: 2 });
     // archive#3222: the section names the badge's own number, so a reader
-    // arriving from "Notifications (1 need attention)" is shown one row and
+    // arriving from "Notifications, 1 need attention" is shown one row and
     // told that is all of them.
     expect(headings.map((heading) => heading.textContent?.trim())).toEqual([
       'Needs attention (1)',
@@ -255,6 +255,71 @@ describe('NotificationHistory', () => {
     ]);
     expect(screen.getAllByText('Approval needed')).toHaveLength(1);
     expect(screen.getByText('Job failed')).toBeTruthy();
+  });
+
+  /**
+   * #765 D5: a pending pairing request projects as an attention item and keeps
+   * its stored notification. The popover used to suppress only approval
+   * mirrors, so the pairing row rendered twice: actionable under "Needs
+   * attention" and again as passive activity — and, because suppression ran
+   * inside the row budget, the duplicate could also displace a real activity
+   * row the reader was supposed to see.
+   */
+  test('suppresses a pending pairing mirror before the recent-activity row budget', () => {
+    const timestamp = Date.parse(new Date().toISOString());
+    attention = {
+      pendingCount: 1,
+      items: [
+        {
+          id: 'device-pairing:pair-1',
+          kind: 'device-pairing',
+          title: 'A device is asking to pair',
+          body: 'Test Phone is waiting for approval on this Station.',
+          createdAt: new Date(timestamp).toISOString(),
+          updatedAt: new Date(timestamp).toISOString(),
+          deviceName: 'Test Phone',
+          viewerCanDecide: true,
+          openHref: '/connections',
+          source: { requestId: 'pair-1', notificationId: 'pairing-notif' },
+        },
+      ],
+    };
+    notifications = [
+      {
+        id: 'pairing-notif',
+        source: 'device-pairing',
+        category: 'pairing-request',
+        title: 'A device is asking to pair',
+        priority: 'high',
+        status: 'delivered',
+        createdAt: new Date(timestamp).toISOString(),
+        updatedAt: new Date(timestamp).toISOString(),
+      },
+      ...Array.from({ length: 6 }, (_, index) => ({
+        id: `ordinary-${index}`,
+        source: 'scheduler' as const,
+        category: 'job' as const,
+        title: `Job ${index}`,
+        priority: 'normal' as const,
+        status: 'delivered' as const,
+        createdAt: new Date(timestamp - (index + 1) * 1000).toISOString(),
+        updatedAt: new Date(timestamp - (index + 1) * 1000).toISOString(),
+      })),
+    ];
+
+    render(
+      <NotificationHistory
+        isOpen={true}
+        onClose={vi.fn()}
+        onViewAll={vi.fn()}
+      />,
+    );
+
+    // One row, in attention only.
+    expect(screen.getAllByText('A device is asking to pair')).toHaveLength(1);
+    // All five activity slots go to real activity. Without suppression the
+    // mirror would have taken one of them and only four of these would render.
+    expect(screen.getAllByText(/^Job \d$/)).toHaveLength(5);
   });
 
   test('keeps the recent activity section visible when attention is the only content', () => {

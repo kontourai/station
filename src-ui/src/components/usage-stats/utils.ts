@@ -1,10 +1,15 @@
-export function getAverageCostPerMessage(lifetime: {
-  totalCost: number;
-  totalMessages: number;
-}): number {
-  return lifetime.totalMessages > 0
-    ? lifetime.totalCost / lifetime.totalMessages
-    : 0;
+export function formatRecordedCost(stats: {
+  cost: number;
+  reportedCostUsd?: number;
+  estimatedCostUsd?: number;
+}): string {
+  if (
+    stats.reportedCostUsd === undefined &&
+    stats.estimatedCostUsd === undefined &&
+    stats.cost === 0
+  )
+    return 'Not reported';
+  return `$${stats.cost.toFixed(2)}`;
 }
 
 export function getTotalUsageConversations(lifetime: {
@@ -33,26 +38,6 @@ export function getUsageModelDisplayName(
   return modelInfo?.name || modelId;
 }
 
-export function getUsageAgentsForModel({
-  agentSlug,
-  agents,
-  modelId,
-  modelOriginalId,
-}: {
-  agentSlug?: string;
-  agents: any[];
-  modelId: string;
-  modelOriginalId?: string;
-}) {
-  if (agentSlug) {
-    return agents.filter((agent) => agent.slug === agentSlug);
-  }
-
-  return agents.filter(
-    (agent) => agent.model === modelId || agent.model === modelOriginalId,
-  );
-}
-
 export function getAgentModelBreakdown({
   agentStats,
   models,
@@ -70,6 +55,8 @@ export function getAgentModelBreakdown({
       displayName: getUsageModelDisplayName(models, modelId),
       messages: stats.messages,
       cost: stats.cost,
+      reportedCostUsd: stats.reportedCostUsd,
+      estimatedCostUsd: stats.estimatedCostUsd,
     }))
     .sort((a, b) => b.messages - a.messages);
 }

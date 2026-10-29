@@ -1,0 +1,7 @@
+{
+  "revision": "05bf6fcb7df26f19660cdca7e84e24368ba79d98",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed account approval inheritance and first-send ownership after merging main into Task shaping. The caller retains verified-account and loading/saving refusal checks, clears inherited defaults on account changes, and applies Task shaping ambient context after those guards. All 101 messaging tests passed; no new provider claim.","inputs":["docs/design/settings-architecture.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

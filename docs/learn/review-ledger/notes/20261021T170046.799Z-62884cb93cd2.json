@@ -1,0 +1,7 @@
+{
+  "revision": "11c7acac13ad24eb73af7740c0ec969739ec0653",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Fix-round re-review: the Cursor-protocol handlers now label the sending connection, publish both requests as forms named by method, show the whole plan before approval and update the plan only on approval; checked this document for claims about those paths; none affected; no prose change.","inputs":["docs/reference/contracts.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

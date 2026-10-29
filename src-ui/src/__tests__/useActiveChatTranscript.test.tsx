@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import { TURN_INTERRUPTED_MESSAGE } from '@kontourai/station-shared/runtime-event-projection';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ChatSession } from '../types';
@@ -160,9 +161,131 @@ describe('useActiveChatTranscript', () => {
           .map((row) => row.content)
           .join(''),
       ).toBe('AB');
+      const messages = view.result.current.messages;
+      const events = view.result.current.events;
+      act(() =>
+        recordSequencedLiveEvent(
+          apiBase,
+          {
+            ...event('e4', 'content.text-delta', {
+              threadId: 'another-thread',
+              delta: 'unrelated',
+            }).event,
+          } as Parameters<typeof recordSequencedLiveEvent>[1],
+          4,
+        ),
+      );
+      expect(view.result.current.messages).toBe(messages);
+      expect(view.result.current.events).toBe(events);
+      act(() =>
+        recordSequencedLiveEvent(
+          apiBase,
+          {
+            ...event('e5', 'content.text-delta', {
+              threadId: id,
+              turnId: 'turn-fresh',
+              itemId: 'answer',
+              delta: 'C',
+            }).event,
+          } as Parameters<typeof recordSequencedLiveEvent>[1],
+          5,
+        ),
+      );
+      expect(
+        view.result.current.messages.find((row) => row.role === 'assistant')
+          ?.content,
+      ).toBe('ABC');
     } finally {
       view.unmount();
       activeChatsStore.removeChat(id);
+    }
+  });
+  // Navigating back to a streaming chat re-reads the newest window, which is
+  // capped: a long turn comes back as its `turn.started` plus its tail. The
+  // live frames this document already holds for the middle of the turn must
+  // fill that gap, not be dropped as older than the page's watermark.
+  test('a remount mid-stream keeps live frames the capped window left out', async () => {
+    const id = 'remount-gap';
+    const apiBase = 'http://remount-gap.test';
+    activeChatsStore.initChat(id, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Remount gap',
+      conversationId: id,
+      orchestrationSessionStarted: true,
+    });
+    activeChatsStore.updateChat(id, {
+      conversationActivity: {
+        conversationId: id,
+        asOfSequence: 6,
+        openTurn: {
+          turnId: 'turn-gap',
+          threadId: id,
+          startedAt: '2026-09-24T00:00:00.000Z',
+        },
+      },
+      orchestrationTurnOpen: true,
+    });
+    const delta = (sequence: number, text: string) => ({
+      ...event(`e${sequence}`, 'content.text-delta', {
+        threadId: id,
+        turnId: 'turn-gap',
+        itemId: 'answer',
+        delta: text,
+      }),
+      sequence,
+    });
+    const streamed = [
+      delta(2, 'A'),
+      delta(3, 'B'),
+      delta(4, 'C'),
+      delta(5, 'D'),
+      delta(6, 'E'),
+    ];
+    for (const item of streamed)
+      recordSequencedLiveEvent(
+        apiBase,
+        item.event as Parameters<typeof recordSequencedLiveEvent>[1],
+        item.sequence,
+      );
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 6,
+      hasMore: true,
+      events: [
+        {
+          ...event('e1', 'turn.started', {
+            threadId: id,
+            turnId: 'turn-gap',
+            prompt: 'Question',
+          }),
+          sequence: 1,
+        },
+        delta(5, 'D'),
+        delta(6, 'E'),
+      ],
+    });
+    const session = {
+      ...baseSession,
+      ...activeChatsStore.getSnapshot()[id],
+      id,
+    } as ChatSession;
+    const view = renderHook(() => useActiveChatTranscript(apiBase, session));
+    try {
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      expect(
+        view.result.current.messages
+          .filter((row) => row.role === 'assistant')
+          .map((row) => row.content)
+          .join(''),
+      ).toBe('ABCDE');
+      expect(view.result.current.events.map((item) => item.sequence)).toEqual([
+        1, 2, 3, 4, 5, 6,
+      ]);
+    } finally {
+      view.unmount();
+      activeChatsStore.removeChat(id);
+      resetSequencedLiveEventsForTests();
     }
   });
   test('evicted live frames keep the transcript catching up until a newer window loads', async () => {
@@ -1084,6 +1207,151 @@ describe('useActiveChatTranscript', () => {
     expect(filePart?.url).toBeUndefined();
   });
 
+  test('a turn that ended with nothing to show keeps a row saying how it ended, and why when Station stopped it', async () => {
+    const stallText =
+      'Stopped after the turn-stall window elapsed with no observed progress, then the cooperative cancel budget expired.';
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 20,
+      hasMore: false,
+      events: [
+        event('e1', 'turn.started', { turnId: 'turn-1', prompt: 'quiet' }),
+        event('e2', 'turn.completed', { turnId: 'turn-1' }),
+        // The person's Stop: Station's record says so, whatever the reason.
+        event('e3', 'turn.started', { turnId: 'turn-2', prompt: 'stop me' }),
+        event('e4', 'session.stop-settled', {
+          turnId: 'turn-2',
+          outcome: 'forced',
+          initiatedBy: 'user',
+        }),
+        event('e5', 'turn.aborted', {
+          turnId: 'turn-2',
+          reason: 'Stopped after the cooperative cancel budget expired.',
+        }),
+        // Stall detection stopped it cooperatively: the engine's abort says
+        // only "interrupted", and Station's record lands after it.
+        event('e6', 'turn.started', { turnId: 'turn-3', prompt: 'stall' }),
+        event('e7', 'turn.aborted', {
+          turnId: 'turn-3',
+          reason: 'interrupted',
+        }),
+        event('e8', 'session.stop-settled', {
+          turnId: 'turn-3',
+          outcome: 'cooperative',
+          initiatedBy: 'stall',
+        }),
+        // Forced after a stall: the long reason is the tooltip.
+        event('e9', 'turn.started', { turnId: 'turn-4', prompt: 'stall 2' }),
+        event('e10', 'session.stop-settled', {
+          turnId: 'turn-4',
+          outcome: 'forced',
+          initiatedBy: 'stall',
+        }),
+        event('e11', 'turn.aborted', { turnId: 'turn-4', reason: stallText }),
+        // Recovery after Station restarted mid-turn.
+        event('e12', 'turn.started', { turnId: 'turn-5', prompt: 'crash' }),
+        event('e13', 'turn.aborted', {
+          turnId: 'turn-5',
+          reason: TURN_INTERRUPTED_MESSAGE,
+          recoveryTerminal: true,
+        }),
+        // Recovery's notice right after it: the row already says it.
+        event('e13n', 'session.state-changed', {
+          interruptedTurnBoundary: { boundaryId: 'boundary-5' },
+          reason: TURN_INTERRUPTED_MESSAGE,
+        }),
+        // A partial answer stays intact; the separate notice explains the restart.
+        event('e13x', 'turn.started', { turnId: 'turn-5c', prompt: 'crash 3' }),
+        event('e13y', 'content.text-delta', {
+          turnId: 'turn-5c',
+          delta: 'partial answer',
+        }),
+        event('e13z', 'turn.aborted', {
+          turnId: 'turn-5c',
+          reason: TURN_INTERRUPTED_MESSAGE,
+          recoveryTerminal: true,
+        }),
+        event('e13w', 'session.state-changed', {
+          interruptedTurnBoundary: { boundaryId: 'boundary-5c' },
+          reason: TURN_INTERRUPTED_MESSAGE,
+        }),
+        // Recovery's marker decides it, not the reason's wording.
+        event('e13a', 'turn.started', { turnId: 'turn-5b', prompt: 'crash 2' }),
+        event('e13b', 'turn.aborted', {
+          turnId: 'turn-5b',
+          reason: 'interrupted',
+          recoveryTerminal: true,
+        }),
+        // An engine's own token.
+        event('e14', 'turn.started', { turnId: 'turn-6', prompt: 'early' }),
+        event('e15', 'turn.aborted', {
+          turnId: 'turn-6',
+          reason: 'engine-ended-before-start',
+        }),
+        // A notice no row above already says stays.
+        event('e15n', 'session.state-changed', {
+          interruptedTurnBoundary: { boundaryId: 'boundary-6' },
+          reason: TURN_INTERRUPTED_MESSAGE,
+        }),
+        // Still open: no row until it draws something.
+        event('e16', 'turn.started', { turnId: 'turn-7', prompt: 'open' }),
+      ],
+    });
+
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(result.current.messages).toHaveLength(19));
+    const { endedTurnMarker, endedTurnStopDetail } = await import(
+      '../components/chat/message-bubble/visibleContent'
+    );
+    expect(
+      result.current.messages
+        .filter((message) => message.role === 'assistant')
+        .map((message) => [
+          message.turnId,
+          message.contentParts?.length ?? 0,
+          endedTurnMarker(message),
+          endedTurnStopDetail(message),
+        ]),
+    ).toEqual([
+      ['turn-1', 0, 'No reply', undefined],
+      // The engine's reason is not drawn as text in its place.
+      ['turn-2', 0, 'Stopped', undefined],
+      ['turn-3', 0, 'Stopped', { text: 'No progress for too long' }],
+      [
+        'turn-4',
+        0,
+        'Stopped',
+        { text: 'No progress for too long', title: stallText },
+      ],
+      ['turn-5', 0, 'Stopped', { text: 'Station restarted mid-turn' }],
+      ['turn-5c', 1, 'Stopped', undefined],
+      ['turn-5b', 0, 'Stopped', { text: 'Station restarted mid-turn' }],
+      ['turn-6', 0, 'Stopped', { text: 'The agent exited before starting' }],
+    ]);
+    expect(
+      result.current.messages.filter((message) => message.role === 'user'),
+    ).toHaveLength(11);
+    expect(
+      result.current.messages.find(
+        (message) =>
+          message.role === 'assistant' && message.turnId === 'turn-5c',
+      )?.content,
+    ).toBe('partial answer');
+    // Empty rows explain their restart; partial answers keep a separate notice.
+    const notices = result.current.messages.filter((message) =>
+      message.content?.includes('[TURN_INTERRUPTED]'),
+    );
+    expect(
+      notices.map(
+        (notice) =>
+          result.current.messages[result.current.messages.indexOf(notice) - 1]
+            ?.turnId,
+      ),
+    ).toEqual(['turn-5c', 'turn-6']);
+  });
+
   test('station#3415: a durable mid-turn compaction reaches the dock as a system row after its one-row turn', async () => {
     fetchWindow.mockResolvedValueOnce({
       protocolVersion: 1,
@@ -1218,7 +1486,32 @@ describe('useActiveChatTranscript', () => {
     expect(fetchWindow).not.toHaveBeenCalled();
   });
 
-  test('manual history Retry clears a cached handshake failure and loads the transcript', async () => {
+  test('superseded capability reads cannot consume recovery or leave a retry after unmount', async () => {
+    vi.useFakeTimers();
+    let finish!: (value: boolean | undefined) => void;
+    const capability = new Promise<boolean | undefined>((resolve) => {
+      finish = resolve;
+    });
+    fetchCapability.mockReturnValue(capability);
+    const { result, unmount } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    act(() => {
+      void result.current.reload();
+      void result.current.reload();
+    });
+    await act(async () => finish(undefined));
+    expect(claimRecovery).toHaveBeenCalledTimes(1);
+    expect(result.current.error?.message).toBe(
+      'Session history transport failed.',
+    );
+    const requests = fetchCapability.mock.calls.length;
+    unmount();
+    await act(async () => vi.advanceTimersByTimeAsync(60_000));
+    expect(fetchCapability).toHaveBeenCalledTimes(requests);
+  });
+
+  test('manual history Retry keeps failed observation unavailable until the recovered transcript arrives', async () => {
     let cachedFailure = true;
     fetchCapability.mockImplementation(async () =>
       cachedFailure ? undefined : true,
@@ -1226,7 +1519,7 @@ describe('useActiveChatTranscript', () => {
     invalidateCapability.mockImplementation(() => {
       cachedFailure = false;
     });
-    fetchWindow.mockResolvedValue({
+    const recoveredWindow = {
       protocolVersion: 1,
       watermark: 1,
       hasMore: false,
@@ -1236,7 +1529,12 @@ describe('useActiveChatTranscript', () => {
           prompt: 'Recovered chat',
         }),
       ],
+    };
+    let resolveRecovery!: (page: typeof recoveredWindow) => void;
+    const recovery = new Promise<typeof recoveredWindow>((resolve) => {
+      resolveRecovery = resolve;
     });
+    fetchWindow.mockReturnValue(recovery);
     const { result } = renderHook(() =>
       useActiveChatTranscript('http://station.test', baseSession),
     );
@@ -1244,6 +1542,15 @@ describe('useActiveChatTranscript', () => {
     expect(fetchWindow).not.toHaveBeenCalled();
     act(() => {
       result.current.reload();
+    });
+    await waitFor(() => expect(fetchWindow).toHaveBeenCalledOnce());
+    expect(result.current.loading).toBe(true);
+    expect(result.current.error?.message).toBe(
+      'Session history transport failed.',
+    );
+    await act(async () => {
+      resolveRecovery(recoveredWindow);
+      await recovery;
     });
     await waitFor(() =>
       expect(
@@ -2450,6 +2757,504 @@ describe('useActiveChatTranscript', () => {
     expect(result.current.hasMore).toBe(false);
   });
 
+  // A capped newest page can be its turn's `turn.started` plus its tail. The
+  // host says so (`turnStartDetached`) and its cursor reads the gap, which
+  // the reader fills itself: the middle of the turn must not wait for a
+  // scroll to the top, and must not depend on live frames this tab missed.
+  describe('a detached turn start', () => {
+    const turnEvents = (from: number, to: number) =>
+      Array.from({ length: to - from + 1 }, (_, offset) => {
+        const sequence = from + offset;
+        return sequence === 6
+          ? event('e6', 'turn.started', { turnId: 'turn-6', prompt: 'Q6' })
+          : event(`e${sequence}`, 'content.text-delta', {
+              turnId: sequence < 6 ? 'turn-1' : 'turn-6',
+              itemId: `answer-${sequence < 6 ? 1 : 6}`,
+              delta: `${sequence} `,
+            });
+      });
+    const turn9 = (from: number, to: number) => [
+      ...(from === 9
+        ? [event('e9', 'turn.started', { turnId: 'turn-9', prompt: 'Q9' })]
+        : []),
+      ...Array.from({ length: to - Math.max(from, 10) + 1 }, (_, offset) =>
+        event(`e${Math.max(from, 10) + offset}`, 'content.text-delta', {
+          turnId: 'turn-9',
+          itemId: 'answer-9',
+          delta: `${Math.max(from, 10) + offset} `,
+        }),
+      ),
+    ];
+    const sequences = (events: readonly { sequence: number }[]) =>
+      events.map((item) => item.sequence);
+    const cursorOf = (call: number) =>
+      (fetchWindow.mock.calls[call]?.[2] as { cursor?: string } | undefined)
+        ?.cursor;
+
+    test('a fresh read fills the gap and leaves Load older after it', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'gap',
+          turnStartDetached: true,
+          events: [...turnEvents(6, 6), ...turnEvents(11, 12)],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'older-turns',
+          events: turnEvents(6, 10),
+        });
+      const { result } = renderHook(() =>
+        useActiveChatTranscript('http://detached-fresh.test', baseSession),
+      );
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([
+          6, 7, 8, 9, 10, 11, 12,
+        ]),
+      );
+      expect(cursorOf(1)).toBe('gap');
+      expect(result.current.hasMore).toBe(true);
+      await act(async () => result.current.loadOlder());
+      expect(cursorOf(2)).toBe('older-turns');
+    });
+
+    test('a reload with older pages loaded fills the gap this tab never streamed', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: true,
+          nextCursor: 'older',
+          events: turnEvents(3, 5),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: false,
+          events: turnEvents(1, 2),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'gap',
+          turnStartDetached: true,
+          events: [...turnEvents(6, 6), ...turnEvents(11, 12)],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: false,
+          events: turnEvents(1, 10),
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://detached-reload.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.hasMore).toBe(true));
+      await act(async () => result.current.loadOlder());
+      expect(sequences(result.current.events)).toEqual([1, 2, 3, 4, 5]);
+
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual(
+          Array.from({ length: 12 }, (_, index) => index + 1),
+        ),
+      );
+      expect(cursorOf(3)).toBe('gap');
+      expect(result.current.hasMore).toBe(false);
+    });
+
+    test('a reload that lands above what is held on a turn boundary reads down to it', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: true,
+          nextCursor: 'older',
+          events: turnEvents(3, 5),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: false,
+          events: turnEvents(1, 2),
+        })
+        // Contiguous and not detached: it simply starts at turn 9's start,
+        // above the newest event this reader holds.
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'below-9',
+          events: turn9(9, 12),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: false,
+          events: turnEvents(1, 8),
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://boundary-reload.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.hasMore).toBe(true));
+      await act(async () => result.current.loadOlder());
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual(
+          Array.from({ length: 12 }, (_, index) => index + 1),
+        ),
+      );
+      expect(cursorOf(3)).toBe('below-9');
+    });
+
+    // The fill completes the newest turn; it is not the reader asking for
+    // older history. A later reload still replaces the newest page, so a
+    // long-mounted chat does not accumulate every event it ever filled.
+    test('a fill does not make later reloads keep everything', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'gap',
+          turnStartDetached: true,
+          events: [...turnEvents(6, 6), ...turnEvents(11, 12)],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'older-turns',
+          events: turnEvents(6, 10),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 14,
+          hasMore: true,
+          nextCursor: 'below-8',
+          // Turn 6 is now the older turn the page cuts; turn 13 is whole.
+          turnStartDetached: true,
+          events: [
+            ...turnEvents(6, 6),
+            ...turnEvents(8, 12),
+            event('e13', 'turn.started', { turnId: 'turn-13', prompt: 'Q13' }),
+            event('e14', 'content.text-delta', {
+              turnId: 'turn-13',
+              itemId: 'answer-13',
+              delta: '14',
+            }),
+          ],
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://fill-then-reload.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([
+          6, 7, 8, 9, 10, 11, 12,
+        ]),
+      );
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([
+          6, 8, 9, 10, 11, 12, 13, 14,
+        ]),
+      );
+      expect(fetchWindow).toHaveBeenCalledTimes(3);
+    });
+
+    // A finished turn is followed by a turnless `session.state-changed`, and a
+    // steer re-announces the turn mid-way: neither may hide where it started.
+    test('a finished, steered turn still reads whole', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 13,
+          hasMore: true,
+          nextCursor: 'gap',
+          turnStartDetached: true,
+          events: [
+            ...turnEvents(6, 6),
+            event('e11', 'turn.started', {
+              turnId: 'turn-6',
+              inputKind: 'steer',
+              prompt: 'Steer',
+            }),
+            ...turnEvents(12, 12),
+            event('e13', 'session.state-changed', {
+              from: 'running',
+              to: 'idle',
+            }),
+          ],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 13,
+          hasMore: false,
+          events: turnEvents(6, 10),
+        });
+      const { result } = renderHook(() =>
+        useActiveChatTranscript('http://finished-steered.test', baseSession),
+      );
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([
+          6, 7, 8, 9, 10, 11, 12, 13,
+        ]),
+      );
+      expect(cursorOf(1)).toBe('gap');
+    });
+
+    test('a fill a newer reload cut short is still owed', async () => {
+      let resolveFirstFill: ((page: unknown) => void) | undefined;
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: true,
+          nextCursor: 'older',
+          events: turnEvents(3, 5),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: false,
+          events: turnEvents(1, 2),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'below-9',
+          events: turn9(9, 12),
+        })
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveFirstFill = resolve;
+            }),
+        )
+        // The next reload lands on held events (9..12), so on its own it
+        // would see nothing missing.
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 14,
+          hasMore: true,
+          nextCursor: 'below-9-again',
+          events: turn9(9, 14),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 14,
+          hasMore: false,
+          events: turnEvents(1, 8),
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://owed-fill.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.hasMore).toBe(true));
+      await act(async () => result.current.loadOlder());
+      rerender({ revision: 1 });
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(4));
+      rerender({ revision: 2 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual(
+          Array.from({ length: 14 }, (_, index) => index + 1),
+        ),
+      );
+      expect(cursorOf(5)).toBe('below-9-again');
+      // The superseded fill's late answer changes nothing.
+      await act(async () => {
+        resolveFirstFill?.({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: false,
+          events: turnEvents(6, 6),
+        });
+      });
+      expect(sequences(result.current.events)).toHaveLength(14);
+      expect(result.current.hasMore).toBe(false);
+
+      // Paid: the next reload that lands on held events reads nothing more.
+      fetchWindow.mockResolvedValueOnce({
+        protocolVersion: 1,
+        watermark: 16,
+        hasMore: true,
+        nextCursor: 'below-9-third',
+        events: turn9(9, 16),
+      });
+      rerender({ revision: 3 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toHaveLength(16),
+      );
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      expect(fetchWindow).toHaveBeenCalledTimes(7);
+    });
+
+    test('a fill cut short before older pages were loaded owes nothing later', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'gap',
+          turnStartDetached: true,
+          events: [...turnEvents(6, 6), ...turnEvents(11, 12)],
+        })
+        // The fill's read: Load older aborts it before it answers.
+        .mockImplementationOnce(() => new Promise(() => {}))
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: false,
+          events: turnEvents(6, 10),
+        })
+        // Turn 6 is now the older turn cut; turn 13 is whole, and the page
+        // overlaps what is held.
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 14,
+          hasMore: true,
+          nextCursor: 'below-11',
+          turnStartDetached: true,
+          events: [
+            ...turnEvents(6, 6),
+            ...turnEvents(11, 12),
+            event('e13', 'turn.started', { turnId: 'turn-13', prompt: 'Q13' }),
+            event('e14', 'content.text-delta', {
+              turnId: 'turn-13',
+              itemId: 'answer-13',
+              delta: '14',
+            }),
+          ],
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://cut-short-unloaded.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(2));
+      await act(async () => result.current.loadOlder());
+      expect(sequences(result.current.events)).toEqual([
+        6, 7, 8, 9, 10, 11, 12,
+      ]);
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toHaveLength(9),
+      );
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      expect(fetchWindow).toHaveBeenCalledTimes(4);
+    });
+
+    test('a page that cuts only an older turn reads nothing more', async () => {
+      // Turn 1 is cut (its start re-added), turn 6 is whole: nothing the
+      // reader is looking at is missing, so the gap waits for Load older.
+      fetchWindow.mockResolvedValueOnce({
+        protocolVersion: 1,
+        watermark: 8,
+        hasMore: true,
+        nextCursor: 'gap-in-turn-1',
+        turnStartDetached: true,
+        events: [
+          event('e1', 'turn.started', { turnId: 'turn-1', prompt: 'Q1' }),
+          ...turnEvents(5, 8),
+        ],
+      });
+      const { result } = renderHook(() =>
+        useActiveChatTranscript('http://older-cut.test', baseSession),
+      );
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([1, 5, 6, 7, 8]),
+      );
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      expect(fetchWindow).toHaveBeenCalledTimes(1);
+      expect(result.current.hasMore).toBe(true);
+    });
+
+    test('Load older still pages after a reload moved the head', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: true,
+          nextCursor: 'older-a',
+          events: turnEvents(4, 5),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: true,
+          nextCursor: 'older-b',
+          events: turnEvents(3, 3),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 7,
+          hasMore: true,
+          nextCursor: 'newest-only',
+          // A real newest page overlaps what was already newest.
+          events: turnEvents(4, 7),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: false,
+          events: turnEvents(1, 2),
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://older-after-reload.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.hasMore).toBe(true));
+      await act(async () => result.current.loadOlder());
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([3, 4, 5, 6, 7]),
+      );
+      await act(async () => result.current.loadOlder());
+      expect(cursorOf(3)).toBe('older-b');
+      expect(sequences(result.current.events)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+      expect(fetchWindow).toHaveBeenCalledTimes(4);
+      expect(result.current.hasMore).toBe(false);
+    });
+  });
+
   test('retains loaded older pages and ignores a stale terminal refresh', async () => {
     let resolveStale: ((page: Record<string, unknown>) => void) | undefined;
     let resolveLatest: ((page: Record<string, unknown>) => void) | undefined;
@@ -2676,6 +3481,126 @@ describe('useActiveChatTranscript', () => {
       await Promise.resolve();
     });
     vi.unstubAllGlobals();
+  });
+
+  // An ACP `session/load` history replay was once persisted as turn-less
+  // content between the resumed `session.started` and the next turn. Shapes
+  // follow the stored events (content scrubbed); the replayed row must not
+  // sink below the newer turns.
+  test('a stored resume replay stays above the turns that follow it', async () => {
+    const acp = (
+      sequence: number,
+      createdAt: string,
+      fields: Record<string, unknown>,
+    ) => ({
+      sequence,
+      event: {
+        eventId: `acp-${sequence}`,
+        provider: 'acp',
+        threadId: 'thread-1',
+        createdAt,
+        ...fields,
+      },
+    });
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 12,
+      hasMore: false,
+      events: [
+        acp(1, '2026-10-13T20:30:00.000Z', {
+          method: 'turn.started',
+          turnId: 'turn-a',
+          prompt: 'first question',
+          attachments: [],
+        }),
+        acp(2, '2026-10-13T20:30:05.000Z', {
+          method: 'content.text-delta',
+          turnId: 'turn-a',
+          itemId: 'msg_a',
+          delta: 'first answer',
+        }),
+        acp(3, '2026-10-13T20:30:06.000Z', {
+          method: 'turn.completed',
+          turnId: 'turn-a',
+          finishReason: 'stop',
+        }),
+        acp(4, '2026-10-13T23:35:07.000Z', {
+          method: 'session.started',
+          sessionId: 'thread-1',
+          initialState: 'created',
+        }),
+        acp(5, '2026-10-13T23:35:08.901Z', {
+          method: 'content.reasoning-delta',
+          itemId: 'msg_a',
+          delta: 'replayed thinking',
+        }),
+        acp(6, '2026-10-13T23:35:08.913Z', {
+          method: 'content.text-delta',
+          itemId: 'msg_a',
+          delta: 'replayed first answer',
+        }),
+        acp(7, '2026-10-13T23:35:08.914Z', {
+          method: 'tool.started',
+          itemId: 'call_replay',
+          toolCallId: 'call_replay',
+          toolName: 'list_projects',
+          toolKind: 'other',
+          arguments: {},
+        }),
+        acp(8, '2026-10-13T23:35:08.915Z', {
+          method: 'tool.completed',
+          itemId: 'call_replay',
+          toolCallId: 'call_replay',
+          toolName: 'list_projects',
+          toolKind: 'other',
+          status: 'success',
+          output: '[]',
+        }),
+        acp(9, '2026-10-13T23:35:10.456Z', {
+          method: 'session.configured',
+          sessionId: 'thread-1',
+        }),
+        acp(10, '2026-10-13T23:35:10.666Z', {
+          method: 'turn.started',
+          turnId: 'turn-b',
+          prompt: 'second question',
+          attachments: [],
+        }),
+        acp(11, '2026-10-13T23:35:22.000Z', {
+          method: 'content.text-delta',
+          turnId: 'turn-b',
+          itemId: 'msg_b',
+          delta: 'second answer',
+        }),
+        acp(12, '2026-10-13T23:35:59.934Z', {
+          method: 'turn.completed',
+          turnId: 'turn-b',
+          finishReason: 'stop',
+        }),
+      ],
+    });
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(result.current.messages).toHaveLength(5));
+
+    const rows = result.current.messages.map((row) => ({
+      role: row.role,
+      turnId: row.turnId,
+      content: row.content,
+    }));
+    expect(rows.map((row) => row.content)).toEqual([
+      'first question',
+      'first answer',
+      'replayed first answer',
+      'second question',
+      'second answer',
+    ]);
+    expect(rows.at(-1)).toEqual({
+      role: 'assistant',
+      turnId: 'turn-b',
+      content: 'second answer',
+    });
   });
 
   test('decorates a retained live answer after transcript merging', async () => {
@@ -3109,5 +4034,126 @@ describe('useActiveChatTranscript live failure marker (UX audit V3)', () => {
     expect(carriers[0]?.content).toBe(
       '[SYSTEM_EVENT] [CHAT_ERROR] The response stream failed.',
     );
+  });
+});
+
+// The open turn renders from the projection when its `turn.started` is in the
+// window. Its started-without-outcome calls are in flight only because the
+// server says the turn is still open; the hook is what tells the projection.
+describe('useActiveChatTranscript — calls of the open turn', () => {
+  beforeEach(() => {
+    resetSequencedLiveEventsForTests();
+    vi.clearAllMocks();
+    fetchWindow.mockReset();
+    recoveryBudget.clear();
+    fetchCapability.mockResolvedValue(true);
+    fetchConversationWindow.mockImplementation((...args: unknown[]) =>
+      fetchWindow(...args),
+    );
+  });
+
+  const mountWithOpenCall = async (
+    id: string,
+    turnOpen: boolean,
+    serverTurnId = 'turn-open',
+  ) => {
+    activeChatsStore.initChat(id, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Open call',
+      conversationId: id,
+      orchestrationSessionStarted: true,
+    });
+    if (turnOpen) {
+      activeChatsStore.updateChat(id, {
+        conversationActivity: {
+          conversationId: id,
+          asOfSequence: 2,
+          openTurn: {
+            turnId: serverTurnId,
+            threadId: id,
+            startedAt: '2026-09-24T00:00:00.000Z',
+          },
+        },
+        orchestrationTurnOpen: true,
+        openTurnId: serverTurnId,
+      });
+    }
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 2,
+      hasMore: false,
+      events: [
+        {
+          ...event('e1', 'turn.started', {
+            threadId: id,
+            turnId: 'turn-open',
+            prompt: 'Run the tests',
+          }),
+          sequence: 1,
+        },
+        {
+          ...event('e2', 'tool.started', {
+            threadId: id,
+            turnId: 'turn-open',
+            toolCallId: 'cmd-1',
+            toolName: 'Bash',
+            arguments: { command: 'npm test' },
+          }),
+          sequence: 2,
+        },
+      ],
+    });
+    const session = {
+      ...baseSession,
+      ...activeChatsStore.getSnapshot()[id],
+      id,
+    } as ChatSession;
+    const view = renderHook(() =>
+      useActiveChatTranscript(`http://${id}.test`, session),
+    );
+    await waitFor(() => expect(view.result.current.settled).toBe(true));
+    const part = view.result.current.messages
+      .flatMap((message) => message.contentParts ?? [])
+      .find((candidate) => candidate.toolCallId === 'cmd-1');
+    return { view, part };
+  };
+
+  test('a call still open in the live open turn projects as running', async () => {
+    const id = 'open-call-live';
+    const { view, part } = await mountWithOpenCall(id, true);
+    try {
+      expect(view.result.current.openTurnProjected).toBe(true);
+      expect(part?.state).toBe('running');
+      expect(part?.startedAt).toBe('2026-08-09T00:00:02.000Z');
+    } finally {
+      view.unmount();
+      activeChatsStore.removeChat(id);
+    }
+  });
+
+  test('the same call reads as unproven when the server reports no open turn', async () => {
+    const id = 'open-call-dead';
+    const { view, part } = await mountWithOpenCall(id, false);
+    try {
+      expect(view.result.current.openTurnProjected).toBe(false);
+      expect(part?.state).toBe('call');
+    } finally {
+      view.unmount();
+      activeChatsStore.removeChat(id);
+    }
+  });
+
+  test('the window’s unterminated turn is not the server’s open one: its calls are not claimed running', async () => {
+    // The window ends inside turn A ('turn-open', no terminal in this read)
+    // while the server says turn B is the one executing.
+    const id = 'open-call-other-turn';
+    const { view, part } = await mountWithOpenCall(id, true, 'turn-b');
+    try {
+      expect(part?.state).toBe('call');
+    } finally {
+      view.unmount();
+      activeChatsStore.removeChat(id);
+    }
   });
 });

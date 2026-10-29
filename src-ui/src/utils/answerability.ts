@@ -51,11 +51,6 @@ function answerabilityViewFor(
   return notice ? { status: 'unanswerable', notice } : { status: 'answerable' };
 }
 
-/** True only for an OBSERVED negative. An unknown or unjoinable row is not. */
-export function isUnanswerableView(view: AnswerabilityView): boolean {
-  return view.status === 'unanswerable';
-}
-
 /**
  * The session a session-backed row is decorated by. Deliberately reads the
  * summary's own member rather than a re-fold of `lifecycleState` — the

@@ -1015,33 +1015,117 @@ describe('screenshot-diff.mjs as a real child process (exit codes)', () => {
     expect(manifest.screens).toHaveLength(2);
   });
 
-  it('a clean diff exits 0', () => {
-    const { galleryDir, baselinePath } = seed();
-    runScript(
-      ['baseline', `--gallery=${galleryDir}`, `--out=${baselinePath}`],
-      dir,
-    );
-    const result = runScript(
-      ['diff', `--gallery=${galleryDir}`, `--baseline=${baselinePath}`],
-      dir,
-    );
-    expect(result.status).toBe(0);
-    expect(result.stdout).toMatch(/OK: 2\/2 compared/);
-  });
+  it.each([{ flags: [] }, { flags: ['--report-only'] }])(
+    'a clean diff stays quiet with $flags',
+    ({ flags }) => {
+      const { galleryDir, baselinePath } = seed();
+      runScript(
+        ['baseline', `--gallery=${galleryDir}`, `--out=${baselinePath}`],
+        dir,
+      );
+      const result = runScript(
+        [
+          'diff',
+          `--gallery=${galleryDir}`,
+          `--baseline=${baselinePath}`,
+          ...flags,
+        ],
+        dir,
+      );
+      expect(result.status).toBe(0);
+      expect(result.stdout).toMatch(/OK: 2\/2 compared/);
+      expect(result.stdout).not.toContain('REVIEW:');
+    },
+  );
 
-  it('a real pixel change exits 1 and names the screen', () => {
+  it.each([
+    { mode: 'strict', flags: [], status: 1, verdict: /FAILED \(1\): a/ },
+    {
+      mode: 'advisory',
+      flags: ['--report-only'],
+      status: 0,
+      verdict: /REVIEW: 1 changed/,
+    },
+  ])(
+    '$mode pixel changes retain diff evidence and an honest summary',
+    ({ flags, status, verdict }) => {
+      const { galleryDir, baselinePath } = seed();
+      runScript(
+        ['baseline', `--gallery=${galleryDir}`, `--out=${baselinePath}`],
+        dir,
+      );
+      const original = readFileSync(baselinePath, 'utf8');
+      writeFileSync(join(galleryDir, 'a.png'), solidPng(60, 40, [1, 1, 1]));
+      const summary = join(dir, 'summary.md');
+      const result = runScript(
+        [
+          'diff',
+          `--gallery=${galleryDir}`,
+          `--baseline=${baselinePath}`,
+          `--summary=${summary}`,
+          ...flags,
+        ],
+        dir,
+      );
+      expect(result.status).toBe(status);
+      expect(result.stdout).toMatch(verdict);
+      expect(result.stdout).not.toContain('OK:');
+      expect(readFileSync(summary, 'utf8')).toMatch(verdict);
+      expect(existsSync(join(galleryDir, 'diffs/a.diff.png'))).toBe(true);
+      expect(readFileSync(baselinePath, 'utf8')).toBe(original);
+    },
+  );
+
+  it.each([
+    'failed',
+    'missing',
+    'missing-png',
+    'corrupt-png',
+    'empty-baseline',
+    'partial',
+    'dimensions',
+    'new-missing-png',
+  ])('advisory mode handles %s without swallowing broken evidence', (fault) => {
     const { galleryDir, baselinePath } = seed();
     runScript(
       ['baseline', `--gallery=${galleryDir}`, `--out=${baselinePath}`],
       dir,
     );
-    writeFileSync(join(galleryDir, 'a.png'), solidPng(60, 40, [1, 1, 1]));
+    const capturePath = join(galleryDir, 'capture.json');
+    const capture = JSON.parse(readFileSync(capturePath, 'utf8'));
+    if (fault === 'failed') capture.screens[1].ok = false;
+    if (fault === 'missing') capture.screens.pop();
+    if (fault === 'partial') capture.selection = ['a', 'b'];
+    if (fault === 'new-missing-png')
+      capture.screens.push({ name: 'new', file: 'new.png', ok: true });
+    if (fault === 'missing-png') rmSync(join(galleryDir, 'a.png'));
+    if (fault === 'corrupt-png')
+      writeFileSync(join(galleryDir, 'a.png'), 'invalid');
+    if (fault === 'empty-baseline')
+      writeFileSync(baselinePath, JSON.stringify({ screens: [] }));
+    if (fault === 'dimensions')
+      writeFileSync(join(galleryDir, 'a.png'), solidPng(61, 40, [1, 1, 1]));
+    writeFileSync(capturePath, JSON.stringify(capture));
     const result = runScript(
-      ['diff', `--gallery=${galleryDir}`, `--baseline=${baselinePath}`],
+      [
+        'diff',
+        `--gallery=${galleryDir}`,
+        `--baseline=${baselinePath}`,
+        '--report-only',
+      ],
       dir,
     );
-    expect(result.status).toBe(1);
-    expect(result.stdout).toMatch(/FAILED \(1\): a/);
+    expect(result.status).toBe(fault === 'dimensions' ? 0 : 1);
+    expect(result.stdout).not.toContain('OK:');
+    if (fault === 'dimensions')
+      expect(result.stdout).toContain('dimensions 60x40 -> 61x40');
+    if (fault === 'failed') expect(result.stdout).toContain('capture-failed');
+    if (fault === 'missing')
+      expect(result.stdout).toContain('missing-from-gallery');
+    if (fault.endsWith('missing-png'))
+      expect(result.stderr).toContain('ENOENT');
+    if (fault === 'empty-baseline') expect(result.stdout).toContain('REFUSED');
+    if (fault === 'partial') expect(result.stderr).toContain('partial gallery');
   });
 
   it('an --screens name absent from this capture exits 1 (not a silent exit-0 pass)', () => {

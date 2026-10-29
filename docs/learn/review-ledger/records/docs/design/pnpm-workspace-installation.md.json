@@ -14,10 +14,6 @@
 
     "config/dependency-lifecycle-allowlist.json",
 
-    "package.json",
-
-    "pnpm-lock.yaml",
-
     "pnpm-workspace.yaml",
 
     "scripts/__tests__/dependency-lifecycle.test.ts",
@@ -60,7 +56,17 @@
 
     "scripts/release-sbom-context.mjs",
 
-    "scripts/workspace-dependency-provenance.mjs"
+    "scripts/workspace-dependency-provenance.mjs",
+
+    "package.json#/scripts",
+
+    "package.json#/engines",
+
+    "package.json#/packageManager",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots"
   ],
 
   "checks": [

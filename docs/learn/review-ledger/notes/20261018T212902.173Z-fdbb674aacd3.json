@@ -1,0 +1,7 @@
+{
+  "revision": "30f9389c72c20e04279711771d2deff94494581a",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed optional transcript discovery against main.tsx's PlatformSessionGate before QueryClientProvider, LocalUiSessionGate's sample branch, and UnpairedSampleWorkspace's real MessageContent. Optional context reads and empty queries preserve local rows and stable child ancestry. Connected frame and provider-free tests pass; three independent fault injections fail and restore green; real isolated browser sample renders. App authority and transport restrictions unchanged.","inputs":["docs/design/mcp-ui-host.md","examples/mcp-ui-demo/server.mjs","src-server/security/pairing-route-scopes.ts","src-server/services/orchestration/event-store.ts","src-server/tools/station-control-mcp-server.ts","src-ui/src/__tests__/MCPToolUIFrame.test.tsx","src-ui/src/components/chat/TranscriptAppTools.tsx","src-ui/src/hooks/orchestration/conversationTranscriptParts.ts"]}
+  ]
+}

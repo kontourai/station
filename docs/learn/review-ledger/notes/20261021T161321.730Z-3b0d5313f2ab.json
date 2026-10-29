@@ -1,0 +1,7 @@
+{
+  "revision": "76766fd0391094e0d6a144b32ce50e02028e7822",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Added Cursor plan review to toolRequestNeedsPerson and the immediate skipped/rejected answers for a denyApprovals child; checked against acp-adapter and tool-request-preview.","inputs":["docs/conformance/tool-policy-delivery.md","packages/shared/src/tool-request-preview.ts","pnpm-lock.yaml#/packages","src-server/providers/adapters/acp-adapter-events.ts","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

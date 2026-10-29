@@ -1,0 +1,7 @@
+{
+  "revision": "e8a8e03ef739acf4f5aedb537c8514e8c7a044a5",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Added that every mount and key switch makes its own inventory read and refetchOnMount is forced to 'always'; data is released after a read during that mount succeeds. Checked against useProtected in packages/sdk/src/session-inventory.ts (success latch keyed by query hash, key-switch read effect) and the lifecycle tests.","inputs":["docs/reference/sdk.md","packages/sdk/src/session-inventory.ts"]}
+  ]
+}

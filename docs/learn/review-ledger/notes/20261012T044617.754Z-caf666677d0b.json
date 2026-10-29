@@ -1,0 +1,7 @@
+{
+  "revision": "28e824e856b1d160adae03edb47fa548681c2fe5",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"#3564 re-review of the file-memory claims (conversation list/read, deletion, clear-history, analytics rescan). Messages stay NDJSON lines under sessions/. A torn tail is now repaired before append and its fragment moved to .ndjson.torn, which is not a transcript, so rescan and read are unchanged. Conversation delete also removes .torn, consistent with 'deleting file-memory history'. No prose change needed.","inputs":["docs/reference/api.md","src-server/adapters/file/memory-adapter-messages.ts"]}
+  ]
+}

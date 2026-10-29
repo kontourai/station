@@ -21,9 +21,11 @@ const PROMOTED_DEVICE_CREDENTIAL = 'P'.repeat(43);
 const STANDARD_DEVICE_CREDENTIAL = 'S'.repeat(43);
 
 function makeCredentials() {
-  return {
+  const credentials = {
     verifyOperatorCredential: (candidate: string) =>
       candidate === OPERATOR_CREDENTIAL,
+    resolveGrantedScope: (candidate: string): string | undefined =>
+      credentials.identifyDevice(candidate)?.scope,
     identifyDevice: (candidate: string) => {
       if (candidate === PROMOTED_DEVICE_CREDENTIAL) {
         return { scope: 'orchestration:read consent:decide' };
@@ -36,6 +38,7 @@ function makeCredentials() {
       return null;
     },
   };
+  return credentials;
 }
 
 function target(fingerprint = 'fp-1'): ConsentTargetSnapshot {

@@ -3,7 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, type Page } from '@playwright/test';
 import { build } from 'esbuild';
-import { test } from './helpers/fixture-audit';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const text = 'Alpha **selected words** omega.';
@@ -15,7 +15,7 @@ test.beforeAll(async () => {
       resolveDir: ROOT,
       loader: 'tsx',
       contents: `
-      import { useRef, useState, useSyncExternalStore } from 'react';
+      import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
       import { createRoot } from 'react-dom/client';
       import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
       import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -23,13 +23,34 @@ test.beforeAll(async () => {
       import { SourceQuoteDrafts } from './src-ui/src/components/chat/SourceQuoteDrafts';
       import { MarkdownRenderer } from './src-ui/src/components/chat/MarkdownRenderer';
       import { chatDraftsStore } from './src-ui/src/contexts/chat-drafts-store';
-      import { composeQuotedReply } from './src-ui/src/utils/answer-quotes';
+      import { KeyboardShortcutsProvider } from './src-ui/src/contexts/KeyboardShortcutsContext';
+      import { NavigationProvider } from './src-ui/src/contexts/NavigationContext';
+      import { RegionModelProvider, useRegionModel } from './src-ui/src/contexts/RegionModelContext';
+      import { DOCK_REGION_IDS } from './src-ui/src/regions/region-model';
+      import { composeQuotedReply, quoteHref } from './src-ui/src/utils/answer-quotes';
+      import { ProjectKnowledgeViewerModal } from './src-ui/src/views/project-page/ProjectKnowledgeViewerModal';
       window.quoteAuthority = true;
       setClientCredentialResolver(() => ({ origin: "http://station.test", requestAuthority: { apiBase: "http://station.test", authorityKey: "fixture", isCurrent: () => window.quoteAuthority } }));
       const messages = [{ id: 'answer-a', sessionId: 'session-a', turnId: 'turn-a', role: 'assistant', answerEligible: true, content: ${JSON.stringify(text)} }];
+      // A quote saved in a knowledge document, read in the Project page's own
+      // viewer, owned as ProjectKnowledgeSection owns it.
+      const documentQuote = { version: 1, origin: 'http://station.test', sessionId: 'session-a', turnId: 'turn-a', messageId: 'answer-a', revision: 'a'.repeat(64), excerpt: 'selected words' };
+      const knowledgeDocument = { id: 'doc-decisions', filename: 'decisions.md', chunkCount: 1, createdAt: '2026-10-19T00:00:00.000Z' };
+      // App's region shells register a host while a region surface can render,
+      // which is what makes a reveal a write of the real model rather than a
+      // deep link. Chat is drawn where the model put it, and only there.
+      function ChatRegion() {
+        const model = useRegionModel(); const register = model.registerRegionSurfaceHost;
+        useEffect(() => register(), [register]);
+        const [used, setUsed] = useState(false);
+        const id = DOCK_REGION_IDS.find((region) => model.regions[region].visible && model.regions[region].occupant === 'chat');
+        return id ? <section aria-label="Chat" data-region={id} data-maximized={String(model.regions[id].maximized)}>
+          <button onClick={() => setUsed(true)}>{used ? 'Chat is in use' : 'Reply in Chat'}</button>
+        </section> : null;
+      }
       function Harness() {
         const root = useRef(null); const [input, setInput] = useState('Keep existing draft');
-        const [sent, setSent] = useState(''); const [epoch, setEpoch] = useState(0);
+        const [sent, setSent] = useState(''); const [epoch, setEpoch] = useState(0); const [viewing, setViewing] = useState(false);
         const quotes = useSyncExternalStore(chatDraftsStore.subscribe, () => chatDraftsStore.getQuotes('reply-a'));
         return <main data-epoch={epoch} style={{padding:24,position:'relative',zIndex:'var(--layer-dock)'}}>
           <div ref={root}><div data-quote-source-message="answer-a"><MarkdownRenderer>{messages[0].content}</MarkdownRenderer></div></div>
@@ -39,9 +60,12 @@ test.beforeAll(async () => {
           <button onClick={() => { setSent(composeQuotedReply(input,quotes)); chatDraftsStore.clear('reply-a'); }}>Send reply</button>
           <button onClick={() => { window.quoteAuthority=false; setEpoch(epoch+1); }}>Revoke access</button>
           <section aria-label="Sent reply"><MarkdownRenderer>{sent}</MarkdownRenderer></section>
+          <button onClick={() => setViewing(true)}>View decisions.md</button>
+          {viewing && <ProjectKnowledgeViewerModal doc={knowledgeDocument} content={'See [the reviewed answer](' + quoteHref(documentQuote) + ') for why.'} loading={false} onClose={() => setViewing(false)} />}
+          <ChatRegion />
         </main>;
       }
-      createRoot(document.getElementById('root')).render(<QueryClientProvider client={new QueryClient()}><Harness /></QueryClientProvider>);
+      createRoot(document.getElementById('root')).render(<QueryClientProvider client={new QueryClient()}><KeyboardShortcutsProvider><NavigationProvider><RegionModelProvider><Harness /></RegionModelProvider></NavigationProvider></KeyboardShortcutsProvider></QueryClientProvider>);
     `,
     },
     bundle: true,
@@ -72,7 +96,7 @@ test.beforeAll(async () => {
   const styles = await build({
     stdin: {
       contents:
-        '@import "./src-ui/src/index.css"; @import "./src-ui/src/components/chat/chat.css";',
+        '@import "./src-ui/src/index.css"; @import "./src-ui/src/components/chat/chat.css"; @import "./src-ui/src/views/ProjectPage.css";',
       resolveDir: ROOT,
       loader: 'css',
     },
@@ -96,12 +120,17 @@ test.beforeAll(async () => {
 async function mount(
   page: Page,
   response: () => { status?: number; revision?: string; text?: string },
+  path = '/',
 ) {
-  await page.route('http://station.test/', (route) =>
-    route.fulfill({
-      contentType: 'text/html',
-      body: '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="root"></div></body></html>',
-    }),
+  // Registered first, so it answers only what the routes below do not model.
+  await page.route('http://station.test/**', rejectUnexpectedFixtureRequest);
+  await page.route(
+    (url) => url.origin === 'http://station.test' && url.pathname === '/',
+    (route) =>
+      route.fulfill({
+        contentType: 'text/html',
+        body: '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="root"></div></body></html>',
+      }),
   );
   await page.route(
     'http://station.test/api/orchestration/sessions/session-a/turns/turn-a/quote-source',
@@ -124,7 +153,7 @@ async function mount(
       });
     },
   );
-  await page.goto('http://station.test/');
+  await page.goto(`http://station.test${path}`);
   await page.addStyleTag({ content: stylesheet });
   await page.addScriptTag({ content: script });
   await page.evaluate(() => document.fonts.ready);
@@ -184,12 +213,84 @@ test('selection produces removable context and a sent quote keeps its source lin
   );
   await expect(page.getByRole('dialog')).toHaveCSS('opacity', '1');
   await page.screenshot({ path: testInfo.outputPath('quote-source.png') });
+  const chat = page.getByRole('region', { name: 'Chat', exact: true });
+  await expect(chat).toHaveCount(0);
+  await page
+    .getByRole('button', { name: 'Open source conversation', exact: true })
+    .click();
+  // Shown, not only named: Chat is on screen and an ordinary click reaches it.
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(chat).toBeVisible();
+  await expect(page).toHaveURL(/chat=session-a/);
+  await expect(page).toHaveURL(/#station-message=answer-a$/);
+  await chat
+    .getByRole('button', { name: 'Reply in Chat', exact: true })
+    .click();
+  await expect(
+    chat.getByRole('button', { name: 'Chat is in use', exact: true }),
+  ).toBeVisible();
+});
+
+test('a Chat already full screen stays full screen when a quote opens its source', async ({
+  page,
+}) => {
+  await mount(page, () => ({}), '/?dock=open&maximize=true');
+  const chat = page.getByRole('region', { name: 'Chat', exact: true });
+  await expect(chat).toHaveAttribute('data-maximized', 'true');
+  await selectAndQuote(page, false);
+  await page.getByRole('button', { name: 'Inspect source' }).click();
   await page
     .getByRole('button', { name: 'Open source conversation', exact: true })
     .click();
   await expect(page).toHaveURL(/chat=session-a/);
-  await expect(page).toHaveURL(/#station-message=answer-a$/);
+  await expect(page).toHaveURL(/maximize=true/);
+  await expect(chat).toHaveAttribute('data-maximized', 'true');
 });
+
+// The Project page's knowledge viewer covers the whole page, Chat included,
+// so the open closes it through its owner before Chat is shown.
+for (const [device, viewport] of [
+  ['a phone', { width: 390, height: 844 }],
+  ['a desktop', { width: 1280, height: 900 }],
+] as const) {
+  test(`on ${device}, opening a knowledge document's quoted source leaves the document and shows Chat unobscured`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await mount(page, () => ({}));
+    await page
+      .getByRole('button', { name: 'View decisions.md', exact: true })
+      .click();
+    const closeDocument = page.getByRole('button', {
+      name: 'Close knowledge document',
+      exact: true,
+    });
+    await expect(closeDocument).toBeVisible();
+    await page
+      .getByRole('button', { name: 'the reviewed answer', exact: true })
+      .click();
+    await expect(page.getByRole('dialog')).toContainText(
+      'Source revision is unchanged',
+    );
+    const chat = page.getByRole('region', { name: 'Chat', exact: true });
+    await expect(chat).toHaveCount(0);
+    await page
+      .getByRole('button', { name: 'Open source conversation', exact: true })
+      .click();
+    await expect(closeDocument).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(chat).toBeVisible();
+    await expect(page).toHaveURL(/chat=session-a/);
+    await expect(page).toHaveURL(/#station-message=answer-a$/);
+    // An ordinary click reaches Chat: nothing is left over it.
+    await chat
+      .getByRole('button', { name: 'Reply in Chat', exact: true })
+      .click();
+    await expect(
+      chat.getByRole('button', { name: 'Chat is in use', exact: true }),
+    ).toBeVisible();
+  });
+}
 
 test('changed or denied source never replaces the saved quote or displays cached current text', async ({
   page,

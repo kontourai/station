@@ -112,6 +112,34 @@ The [application-channel tests](../../packages/connect/src/__tests__/application
 exercise the Fetch adapter through frames and the server request boundary;
 they do not establish physical native-client or relay-only acceptance.
 
+### Bounded response credit window
+
+The reliable ordered `station.application-channel/v1` frames retain their exact
+shapes. A window-capable server reserves the response header
+`x-station-application-flow: credit-window-v1`, overwriting any application value.
+The Fetch adapter consumes that advertisement and removes it from the returned
+headers. Without that exact value it uses the original one-credit behavior;
+an older client can continue sending one credit at a time to a newer server.
+This is an additive v1 extension, not a binary-frame protocol or a larger request
+body allowance.
+
+A negotiated client keeps at most four chunk credits in flight, bounded by its
+response stream's remaining capacity. Each credit still permits one 16 KiB chunk
+or EOF. An unread response has at most four chunks (64 KiB) of client read-ahead;
+the server retains its existing 1 MiB producer-chunk bound and channel send
+capacity. Credit received while an asynchronous producer read is pending is
+queued within the four-credit bound. Trailing credits already in flight at EOF
+are bounded and ignored. Cancellation closes the channel and cancels the
+producer; errors, unauthorized extra chunks and credit floods still refuse.
+The shared application channel serves browser and native relay transports.
+
+The simulated 128 KiB transfer in the application-channel tests uses 100 ms RTT:
+request/headers plus nine data/EOF rounds take 1,000 ms with one credit, versus
+request/headers plus three rounds (400 ms) with the window. This excludes ICE,
+signaling, DTLS, real congestion and native IPC. Request bodies remain capped
+at 16 KiB; base64 remains canonical, with padding bits checked directly rather
+than decoding and re-encoding for comparison.
+
 ## Optional native application transport
 
 The `/native-application` source entry exports
@@ -137,8 +165,27 @@ SDP string is used for signaling, its digest and Station proof verification;
 later candidates never cause a second offer. These source-level conditions do
 not establish connectivity or installed iOS enrollment success.
 
+Pending native signaling answers are read immediately, then after 100, 200,
+400, 800 and at most 1,000 ms between reads. A shortened host deadline remains
+binding; a delay that would reach it refuses without another read. Cancellation
+and authoritative trust checks remain active between polls. Slower pending polls
+trade up to one second of answer-discovery latency for fewer broker requests.
+
+The native broker request transport shares a bounded TCP/TLS agent across
+signaling, ICE and grant-maintenance calls for the exact serialized grant digest
+and timeout. Any grant, routing scope, installation surface, trust generation,
+credential or expiry change replaces the cached agent. Only one current pool
+is retained, with at most two idle connections and a 15-second idle reuse limit.
+Credentials and signed request proofs are supplied afresh on every HTTP call;
+no application authority is cached in this pool. Existing fixed targets,
+redirect refusal, response limits and post-I/O authority checks still apply.
+
 Host transcripts and browser RTC connectivity are separate observations. The
-host permits one Device proof per handle; account proofs come from the separate
+host permits one Device proof per handle; this change retains one request per
+native peer. Reusing it would require a versioned host lifecycle with fresh
+per-request proofs, a server-enforced single Device identity per peer, account
+and grant retirement, and liveness/network-change handling. Keeping the current
+RTC object alive alone cannot safely provide that contract. Account proofs come from the separate
 structured provider and their complete exchange body is prepared before this
 transport freezes it. Host read expiry may shorten a prior deadline, while an
 extension or expired read is refused. The adapter retains bounded peer leases
@@ -230,7 +277,10 @@ redacted.
 
 `ConnectionHealthCoordinator` shares one sequential probe across UI consumers,
 uses bounded exponential retry with jitter, cancels when the environment or
-subscriber set changes, and wakes on browser online/visibility signals. The
+subscriber set changes, and wakes on browser online/visibility signals. In a
+hidden document it pauses polling and retries; `useConnectionStatus` probes
+again on foreground visibility, focus or pageshow. Non-DOM consumers keep their
+normal polling cadence. The
 last verified profile/session data may remain visible during a transient
 outage. Health snapshots do not themselves make all consumers read-only. The
 SDK transport can reject non-safe HTTP methods before dispatch when a host's
@@ -244,6 +294,18 @@ features still own their availability checks. See the
 about a shared stale-connection mutation policy. The optional guard's absence
 alone does not establish that a particular stale operation can succeed.
 This health coordinator does not queue mutations.
+
+Each run also records `routes` on the snapshot: one `ConnectionRouteResult`
+per route with `in-use`, `failed` (with its reason), `blocked` (the page cannot
+use it, with its reason) or `not-checked` (ranked after the route that
+answered, so never probed). `connectionRoutes.ts` classifies a route by its
+address (`connectionRouteKind`, `CONNECTION_ROUTE_LABELS`) and backs three
+`ConnectionStore` operations: `applyAdvertisedRoutes` merges a Station's own
+report only when its `environmentId` matches the saved one, marking learned
+endpoints `source: 'advertised'` and pruning those it stops reporting except
+the one in use; `addRoute` and `removeRoute` change the routes a user added.
+Relay, SSH-tunnel and native shared profiles keep their single route
+([Station routes](../design/station-routes.md)).
 Station's separate chat outbound queue has its own admission and replay rules;
 this is not a promise that the whole application has no queue.
 
@@ -394,8 +456,8 @@ persisted. The result is cached between invalidations.
 #### `getActive(): SavedConnection | null`
 
 Returns the resolved usable active connection. Resolution considers explicit
-selection, host-injected selection, matching mobile/default and managed-loopback
-profiles, then a non-broker saved fallback. It can return `null`; an unprepared
+selection, host-injected selection, a matching managed-loopback profile,
+then a non-broker saved fallback. It can return `null`; an unprepared
 broker route is not automatically activated.
 
 #### `add(name: string, url: string): SavedConnection`
@@ -569,12 +631,31 @@ the public environment identity and checks a fresh nonce/HMAC response against
 that home's operator credential. These checks do not make an independently
 untrusted destination safe. Select the home and listener you operate.
 
+With no explicit target, host approval first discovers the live loopback listener
+in the CLI's selected Station home. This takes precedence over project and
+saved-default Stations. `--station`, `--api-base`, and `STATION_TARGET` remain
+explicit selections; a remote target is refused rather than redirected to a
+local instance. If discovery finds no listener, existing saved-local and port
+selection still applies. The CLI verifies the listener's environment identity
+and fresh proof before sending any operator credential.
+
 The command loads the operator credential inside the host process, sends it
 only to the loopback Station API, asks for interactive confirmation, and prints
 only request metadata. It refuses a non-loopback `--api-base`. For scripted SSH,
 `--latest --force` is available as an explicit noninteractive choice; it should
 be used only after reviewing `access list`. `access deny` uses the same local,
 non-secret boundary.
+
+The host's launcher sign-in session on the same computer may create invitations, decide pending
+requests and manage paired devices while its grant retains `access:manage`.
+This authority comes from the server's private host-possession and
+`ui-bootstrap` mint record, not from an ordinary paired Device carrying that
+scope. Invited Devices do not inherit it. It does not grant operator identity,
+passkey management or the native desktop consent broker's local-grant authority.
+The host browser cannot introduce protected management or consent scopes into
+an invitation, a pending request's final approved scope, or another Device's
+permissions. Ordinary Device-use grants, including running commands and full
+access, remain available; protected promotions keep their separate operator path.
 
 At the end of onboarding or in the Connections modal, choose **Connect another device** to invite a phone
 to the selected Station server. The existing client and the phone both connect
@@ -584,8 +665,8 @@ The panel warns when the address is a loopback one, and remembers the last
 reachable address an offer was created with for that Station, offering it back
 as the field's starting value the next time (#2228).
 Choose **Create pairing code**, scan with the phone camera to open the selected
-installed Station channel, then review and approve the request. For Station’s
-in-app scanner, select **Scanner inside Station** above the QR instead.
+installed Station channel, then redeem the invitation. Creating it approves
+the selected access; no second approval is needed. For Station’s in-app scanner, select **Scanner inside Station** above the QR instead.
 **Paired devices → Approve another device** also opens the invitation panel.
 The selected client channel controls both the app-opening QR and any published
 mobile download links. Public store and beta invitation URLs are maintained in
@@ -604,10 +685,21 @@ and mixed-content restrictions still apply. The
 QR contains that offer only—never a bearer credential. A 10-character manual
 code plus the Station address is available when camera access is unavailable.
 
+For another browser, set **Browser app address** to a reachable Station web
+address and choose **Copy browser link**. That address must serve the web UI
+and proxy this same Station’s API. Its origin can differ from the API listener;
+the browser invitation uses the selected web origin for pairing and the session
+cookie. The link carries the offer in its fragment, opens the invitation review even in an
+unpaired browser and removes the proof from visible history before proceeding.
+The CLI equivalent is `station environment offer --browser-url=<web-origin>`.
+App links and raw scanner payloads remain available for installed Station apps.
+
 On the other device, choose **Scan a QR code** or **Enter a pairing code**, and
-name the device. The host must confirm the displayed name and scope. Only then
-can the browser atomically exchange the offer once for a random device
-credential. When
+name the device. An invitation approved at creation can be exchanged once for
+a random device credential. Legacy offers and offers created with
+`station environment offer --require-approval` still require the host to confirm
+the displayed name and scope before exchange. Unsolicited **Request access**
+requests always require approval. When
 the Station endpoint is the browser's own origin, the server returns only safe
 device/environment metadata and stores that credential in a host-only,
 persistent `HttpOnly` `SameSite=Strict` cookie. Closing and reopening the phone
@@ -624,17 +716,31 @@ other devices. Existing streams have their own revalidation boundaries; this is
 not a guarantee that revocation closes every already admitted socket. It does
 not recall data already delivered or guarantee cancellation of effects already
 dispatched. Ordinary paired
-credentials cannot create pairing offers or revoke other devices. A device
-explicitly granted `access:approve` can list and decide pending requests; that
-does not grant device-inventory or offer-management access. The native desktop's
-local grant, minted using proof of Station-home possession, can manage pairing
-within its current scope. Browser launcher grants do not inherit that authority.
+credentials cannot create pairing offers. An explicitly promoted
+`access:devices` Device can list, change scopes, revoke and remove revoked
+records using the same authenticated principal in the Paired devices panel.
+Only the operator can grant or remove `access:devices`; a person-bound holder
+also needs the Admin group ceiling, and account-bound guest route restrictions
+remain independent. Other scopes, including `approval:full-access`, do not
+confer administration. See [device administration](api.md#administer-paired-device-access).
+A paired browser can also sign in with an operator passkey on the separate
+consent origin for inventory reads. Its device-bound session can request an
+access-change transaction (202); only a fresh passkey confirmation on the consent
+origin commits it. The panel opens that review and polls its server-owned status,
+without a credential paste field or a reusable step-up window. **Cancel** on the
+review records terminal denial, and the panel shows **Cancelled**. See
+[Operator passkeys](../guides/operator-passkeys.md).
+A device explicitly granted `access:approve` can list and decide pending requests (a
+device tied to a person only while that person's Station group is Admin); that
+does not grant device-inventory or offer-management access. The native desktop's local grant, minted using proof of Station-home possession, can manage pairing within its current scope. A host-browser `ui-bootstrap` grant has only the exact Device-administration leaves described above; it does not gain the native desktop consent broker's `local-grant` authority.
 
 The host-managed `station environment credential rotate` path replaces the
 operator credential, preserves the environment ID and paired-device registry,
-and prints the new secret to stdout after confirmation. Keep that output out of
+invalidates operator sessions while retaining enrolled passkeys, and prints the
+new secret to stdout after confirmation. Keep that output out of
 logs and shared terminals. `station environment reset` replaces the environment
-ID and operator credential and clears paired-device authority; its output is
+ID and operator credential and clears paired-device authority and personal
+access tokens; its output is
 metadata rather than the new credential. Both support explicit `--force` to
 bypass the prompt. The separately installed CLI refuses these operations when
 no host security service is supplied; use the host's repository launcher or
@@ -723,7 +829,10 @@ authority. Protocol refusals use a separate direct-socket-peer audit budget
 cap. Exhaustion suppresses only audits while every refusal receives 400/426.
 Refusals neither consult nor consume the authentication budget.
 The separate native Rust pairing exchange and direct fetch callers
-remain undeclared; terminal/voice WebSockets are outside this HTTP check.
+remain undeclared; legacy terminal/voice WebSockets are outside this HTTP check.
+The additive personal-operator terminal gateway runs its credential through
+HTTP admission; it has not acquired a Connect client or remote-device route.
+See the [terminal boundary](../design/terminal.md#transport-implementation-boundary-3994-part-b1).
 
 See the [remote access threat model](../security/remote-access-threat-model.md)
 for the protocol, public/protected surface matrix, and operator recovery steps.
@@ -768,6 +877,8 @@ const {
   apiBase,            // string — active URL (backward-compat alias)
   addConnection,      // (name, url) => SavedConnection
   removeConnection,   // (id) => void
+  forgetConnection,   // (id) => Promise<void>; a shared profile goes through the host, and rejects when none can forget it
+  canForgetConnection,// (id) => boolean; false for the host-supplied Station, a native relay route, or a shared profile no host can forget
   updateConnection,   // (id, changes) => void
   setActiveConnection,// (id) => Promise<void>; host transport preparation can reject
   setApiBase,         // (url) => void — upsert by URL and activate
@@ -834,6 +945,7 @@ interface ConnectionStatusResult {
   blocked: boolean;           // true on a terminal failure (e.g. authentication-failed);
                                // the automatic retry ladder is paused until recheck(),
                                // a credential change, or the browser regaining network
+  routes: ReadonlyArray<ConnectionRouteResult>; // per-route outcome of the last check
   recheck: () => void;        // manually trigger a check
 }
 ```
@@ -895,6 +1007,31 @@ return isDetecting
 
 ---
 
+### One-time exchange recovery
+
+`completePendingPairing` atomically commits an IndexedDB claim before sending an
+exchange. Strict transaction durability must be supported; unavailable storage
+blocks the send. Independent tabs share this authority on nonsecure HTTP origins
+without depending on Web Locks. Redirects are refused. A lost response, abort,
+invalid response or failed local credential/profile custody retains an
+`indeterminate` hold. Ordinary pending-slot clear/save does not erase it.
+
+Only the exact unconsumed `request_not_confirmed` 409 or `rate_limited` 429
+response permits a retry. Held attempts survive expiry. Completed/retired
+receipts are retained until their original offer expiry, with the host remaining
+the expiry authority. `restoreHeldPairingExchanges` returns `{status, held}`;
+available empty inventory differs from unavailable/corrupt or partial recovery.
+Explicit retirement follows operator review/revocation and does not itself revoke
+remote access. Browser storage or device loss is outside this persistence guarantee.
+
+The optional `renderPairingEndpointSuggestions` modal slot accepts host-owned
+content with `{apiBase, request, onSuggest}`. Station's host UI fetches the
+permission-protected raw endpoint inventory with React Query and shows an exact
+HTTPS address with an explicit Use action. It never overwrites entered/remembered
+addresses automatically. Host QR creation requires reachable HTTPS/nonloopback;
+the decoder retains HTTPS and strict HTTP loopback compatibility. Native LAN
+HTTP uses the separate direct access flow instead of secret QR invitations.
+
 ### Connection candidate providers
 
 Native shells and trusted host adapters can register LAN DNS-SD, tailnet, or
@@ -938,7 +1075,23 @@ interface UseConnectionCandidatesResult {
 Candidate URLs are reduced to HTTP/HTTPS origins. URLs containing credentials,
 invalid names, and malformed results are discarded. Tailnet candidates
 rank ahead of LAN and desktop-host hints, and duplicate origins collapse to one
-suggestion. A failing provider is isolated from healthy providers.
+suggestion. A failing provider is isolated from healthy providers. Provider registration is
+reactive: removal or replacement cancels stale scan results. Scans default to an
+18-second outer deadline. Providers distinguish available, empty,
+permission-required, permission-denied, unavailable, timed-out, cancelled and failed.
+
+Native iOS and Android 14+ shells register the system DNS-SD provider for
+`_station._tcp.local.`. It validates TXT version/transport and resolved private
+host/port hints, cancels on background or disposal, and sends no HTTP probes.
+Android 17 first runs native permission admission, without creating a scan.
+Returning from its local-network prompt leaves an explicit **Check again**;
+permission completion cannot publish candidates or begin browsing. Missing
+permission is refused by `discover` itself. Hide/pause cancellation remains
+mandatory for an actual scan. Earlier Android versions keep QR/manual connection paths. The host publishes only
+when its local operator enables discovery; current publication uses the bound API
+port and private IPv4 interface. Selecting a result enters the existing access
+review, including explicit exact-origin consent for LAN HTTP and host approval.
+It never navigates directly to an advertised page or grants trust.
 
 **example**
 
@@ -949,7 +1102,7 @@ const { candidates, refresh } = useConnectionCandidates();
 
 Plain browsers do not register a provider by default and never enumerate a
 guessed subnet or probe a hard-coded port. Manual address and pairing-code
-entry remain available under Advanced connection options.
+entry remain available under Other ways to connect.
 
 The former `useNetworkDiscovery` and `DiscoveredServer` exports remain as
 deprecated source-compatibility adapters. The hook reads the same registered
@@ -961,6 +1114,11 @@ should use `useConnectionCandidates`.
 ## components
 
 ### `ConnectionManagerModal`
+
+The optional `renderConnectionDetails(connection)` callback renders host-owned
+controls inside an expanded saved Station row. It receives the row's public
+connection metadata and does not select the Station or grant access. Station uses
+it for extension management on the current Station.
 
 Full-featured modal for managing connections. Includes one-time host/device
 pairing, manual endpoint add, and provider-backed connection suggestions.
@@ -1116,3 +1274,20 @@ triangle. This richer UI state is distinct from `ConnectionStatus`.
 ```tsx
 <ConnectionStatusDot status="connected" size={10} />
 ```
+
+## Browser session isolation on one host
+
+New browser sessions use an HttpOnly cookie whose name includes a stable hash
+of the Station environment identity. Signing in to another Station on the same
+host no longer replaces that cookie. HTTPS retains the `__Host-` prefix,
+Secure, Path=/ and SameSite=Strict; loopback HTTP retains its separate naming.
+The name is a namespace, not authentication: each Station still validates the
+credential, scope, locality and revocation through its own authority.
+
+Legacy cookie names remain readable. With several Station cookies present,
+the reader accepts exactly one credential recognized by the current Station;
+ambiguous current credentials, duplicate names and malformed Station cookies
+are refused. The same selection is used by consent, notification registration
+and secure application-session adoption. Unrelated browser cookies do not
+grant Station authority. A fresh launcher link can also be opened in an
+existing access screen without reloading; consumed links are never replayed.

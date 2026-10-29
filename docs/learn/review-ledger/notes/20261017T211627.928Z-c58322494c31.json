@@ -1,0 +1,13 @@
+{
+  "revision": "c5f2882382e752c9a54f6bb2ccae8fc9db0c7f49",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Reviewed the additive pull request guide slice: head-bound contract and SDK clients, operator-authorized route/MCP generation, managed-model settings, temporary checkout cleanup, strict excerpts, stale stripping and read-only stop UI. Existing unrelated guide/SDK behavior is unchanged. Seam fixtures passed; external engine, live model and GitLab runtime are NOT_VERIFIED.","inputs":["docs/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the additive pull request guide slice: head-bound contract and SDK clients, operator-authorized route/MCP generation, managed-model settings, temporary checkout cleanup, strict excerpts, stale stripping and read-only stop UI. Existing unrelated guide/SDK behavior is unchanged. Seam fixtures passed; external engine, live model and GitLab runtime are NOT_VERIFIED.","inputs":["docs/reference/contracts.md","packages/contracts/package.json","packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the additive pull request guide slice: head-bound contract and SDK clients, operator-authorized route/MCP generation, managed-model settings, temporary checkout cleanup, strict excerpts, stale stripping and read-only stop UI. Existing unrelated guide/SDK behavior is unchanged. Seam fixtures passed; external engine, live model and GitLab runtime are NOT_VERIFIED.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/pull-request-review.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Reviewed the additive pull request guide slice: head-bound contract and SDK clients, operator-authorized route/MCP generation, managed-model settings, temporary checkout cleanup, strict excerpts, stale stripping and read-only stop UI. Existing unrelated guide/SDK behavior is unchanged. Seam fixtures passed; external engine, live model and GitLab runtime are NOT_VERIFIED.","inputs":["docs/user/pull-request-guides.md","packages/contracts/src/pull-request-review-guide.ts","src-server/routes/pull-requests/pull-request-routes.ts","src-server/services/pull-requests/pull-request-review-guide-normalize.ts","src-server/services/pull-requests/pull-request-review-guide-store.ts","src-server/services/pull-requests/pull-request-review-guide.ts","src-server/tools/station-control-review-guide-tools.ts","src-ui/src/components/coding-layout/PullRequestGuide.tsx"]}
+  ]
+}

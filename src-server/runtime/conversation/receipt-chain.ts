@@ -2,7 +2,7 @@
  * archive#1398 — the hash-chained receipt substrate shared by BOTH sides
  * (`docs/design/inference-fleet.md` §3.4, §10 OQ-3/OQ-4).
  *
- * Extracted in the security-review round for two reasons that are the same
+ * Extracted into one module for two reasons that are the same
  * reason: the consuming Station's routing log and the serving Station's
  * serve log must make the SAME integrity claims, and they must be readable
  * with the same verdict vocabulary. Two hand-written chains drift, and a
@@ -16,8 +16,8 @@
  * canonicalized content, `previousReceiptId` links it to the one before, and
  * `signature` stays `null`.
  *
- * **What the chain alone cannot see, and the anchor fixes** (security review,
- * M-6). A per-record digest catches an edit. A backward link catches a
+ * **What the chain alone cannot see, and the anchor fixes.** A per-record
+ * digest catches an edit. A backward link catches a
  * DELETED middle record, because the record after it no longer links. Neither
  * catches TAIL truncation: drop the newest N records and every survivor still
  * matches its own digest and still links to its predecessor, so a naive
@@ -208,8 +208,8 @@ export async function readChainedReceipts<TSealed extends ChainedReceipt>(
   maxScannedRecords: number,
   emptyMessage: string,
 ): Promise<ChainedReceiptPage<TSealed>> {
-  // ORDER MATTERS, and it is the safe direction (security review round 2,
-  // M-2). Reading the log first and the anchor second lets a concurrent
+  // ORDER MATTERS, and it is the safe direction. Reading the log first and
+  // the anchor second lets a concurrent
   // append land between the two reads, so a healthy log is compared against
   // an anchor that has already counted the new record — and reports
   // "truncated" for a log nobody touched. A false alarm on a tamper-detection

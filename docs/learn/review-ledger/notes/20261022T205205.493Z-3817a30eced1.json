@@ -1,0 +1,21 @@
+{
+  "revision": "daf5b9e5680e465774883ec44aac649ff02bdd07",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Reviewed merged config/logging delta against ConfigLoader watcher-ready/error/poll callers and FsServerLogStore flushSync/close/day rollover plus process-exit registration. Five-second safety poll uses full ctime signature; buffered writes survive failed reopen/write. Corrected conflict resolution: server-log queries do not drain the pending batch. Source inspection only; no server performance or crash execution claimed.","inputs":["docs/reference/config.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed merged monitoring helper delta against systemRuntimeRequests and monitoring route window.truncated propagation. Array helper retains array shape without a caller-default presentation limit; server row/byte/scan budgets still apply. Window helper is required for completeness disclosure. No new SDK public export/type or installed client proof.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Bounded merge review: changed config reference describes watcher safety polling and log drain boundaries, not a new domain abstraction. Existing retained architecture findings, owner/projection distinctions and historical probes remain as written; this review does not refresh unrelated execution evidence.","inputs":["docs/architecture/abstraction-review.md","docs/reference/config.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Bounded merge review: config reference safety poll and logging flush corrections do not change setting scopes, persisted fields, Save/Discard authority or per-publisher partial-save behavior. The updated reference now states actual ctime/signature fallback and buffered-log failure boundaries.","inputs":["docs/design/settings-architecture.md","docs/reference/config.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Bounded merge review: SDK monitoring export guidance still routes users to the public SDK/API contract. MonitoringEventWindow discloses truncation; array-only convenience cannot promise complete exports. No integration recipe, authentication, lifecycle or schema change in this repair.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"SDK instructions still correctly route public behavior documentation to the reference and require consumer/race evidence. Merged monitoring helper comment/reference clarifies existing server budgets and truncation disclosure; no app-internal import, new public export or instruction policy change.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed desktop-rust workflow update: mandatory Kotlin baseline remains. Opt-in native controls now read failed-test summaries to handle child-process output; they additionally catch sent-request replay and timestamp ambiguity, restore exact owned bytes and rerun green. No push token/signature/provider contract or physical delivery change.","inputs":["docs/design/notification-delivery.md",".github/workflows/desktop-rust.yml"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed desktop-rust manual-dispatch contract: optional native_review_faults exercises eight named regression failures after the normal green baseline and restores exact bytes before rerunning green. Test summaries support process-isolated tests. Existing focused/hosted/device evidence distinctions remain accurate.","inputs":["docs/guides/testing.md"]}
+  ]
+}

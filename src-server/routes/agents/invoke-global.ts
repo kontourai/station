@@ -185,25 +185,12 @@ export async function invokeGlobalPrompt(
       ctx.orchestrationEventStore.nativeInvocationStarter(),
       { kind: 'global-structure', sourceId: 'global' },
       async () => {
-        const generated = await (
-          structureAgent as {
-            generateObject(
-              prompt: string,
-              schema: unknown,
-              options: unknown,
-            ): Promise<{
-              object: unknown;
-              usage?: {
-                promptTokens?: number;
-                completionTokens?: number;
-                totalTokens?: number;
-              };
-            }>;
-          }
-        ).generateObject(
+        if (!structureAgent.generateObject)
+          throw new Error('The runtime does not support structured output.');
+        const generated = await structureAgent.generateObject(
           `${textResult.text}\n\nFormat the above information as structured JSON.`,
-          jsonSchema(schema),
           {
+            structuredOutputSchema: jsonSchema(schema),
             conversationId: tempConversationId,
             userId: INVOKE_GLOBAL_SERVICE_PRINCIPAL.id,
           },
@@ -212,7 +199,10 @@ export async function invokeGlobalPrompt(
         return generated;
       },
     );
-    objectResult = structured.value;
+    objectResult = {
+      object: structured.value.object,
+      usage: structured.value.usage,
+    };
     structureRunId = structured.runId;
   } catch (error) {
     if (error instanceof NativeInvocationPartialError) throw error;

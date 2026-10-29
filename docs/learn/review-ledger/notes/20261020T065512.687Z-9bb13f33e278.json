@@ -1,0 +1,17 @@
+{
+  "revision": "5663ca5d598583709194d6437598f8728fa9cb8a",
+
+  "notes": [
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"#3800 follow-up: Codex section now names both spawn pins (writable_roots, approvals_reviewer=user) and the unclosed residual (other project keys incl. MCP commands; nested .codex writable by a confined Codex session); Seatbelt section now says every .codex/.claude at any depth of every writable grant, case-insensitive, incl. temp-prepared moves. Checked against codex-confinement.ts, seatbelt.ts sbplNamedSegmentDeny/seatbeltGrants/seatbeltWriteGrantKinds, real-kernel tests and codex-cli 0.162.1 probes.","inputs":["docs/design/approval-posture-server-ordered.md","src-server/providers/adapters/codex-confinement.ts","src-server/security/confinement/confinement-provider.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#3800 follow-up: approvalsReviewer is left to Codex config only for host sessions; non-host app-servers get -c approvals_reviewer=\"user\" (codexConfinementConfigArgs); auto_review sentence scoped to host. EXECUTED: a planted auto_review is reported for host, user for workspace.","inputs":["docs/conformance/tool-policy-delivery.md","package.json#/dependencies/@agentclientprotocol~1sdk","package.json#/dependencies/@anthropic-ai~1claude-agent-sdk","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/guides/connections.md","note":"#3800 follow-up: confined Claude cannot create/change any .claude/.codex at any depth (SEATBELT_ENGINE_CONFIG_NAMES); non-host Codex sessions are started with approvals_reviewer=\"user\". Wording avoids claiming every escalation reaches a person.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/design/automations.md","note":"#3800 follow-up: only the linked confinement section changed (named denies, reviewer pin); no automation claim depends on it.","inputs":["docs/design/automations.md","docs/design/approval-posture-server-ordered.md"]},
+
+    {"path":"docs/design/hosted-execution-isolation.md","note":"#3800 follow-up: confinement-provider.ts grants gained writeDeniedNames; this document only links the provider contract and makes no claim about grant fields.","inputs":["docs/design/hosted-execution-isolation.md","src-server/security/confinement/confinement-provider.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"#3800 follow-up: connections.md sentences on confined sessions changed; machine-relationship claims unaffected.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

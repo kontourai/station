@@ -1,0 +1,7 @@
+{
+  "revision": "f97db9f6312141323d30b5cddf9ae72c56f772d4",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Executed 62 focused evidence/comparator tests PASS. Injected stale-review-key reuse: evidence tests caught it with two intended assertion failures; restored exact committed source and all six evidence tests PASS. Read-only lint passes with inherited warnings. Verified normal-merge citation union retained upstream screenshot/pr-CI sources plus Gallery report owners. Renderer provenance remains caller-established; no capture reuse, baseline change, visual cure or promotion qualification claim.","inputs":["docs/guides/testing.md"]}
+  ]
+}

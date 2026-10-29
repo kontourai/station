@@ -6,10 +6,12 @@ import {
 } from '../views/settings/composite-editors';
 
 describe('composite editor completeness (station#settings-revamp slice 3)', () => {
-  test('every composite-kind APP_SETTINGS_REGISTRY key is either in COMPOSITE_EDITORS or DEFERRED_COMPOSITE_KEYS', () => {
+  test('every user-facing composite-kind APP_SETTINGS_REGISTRY key is either in COMPOSITE_EDITORS or DEFERRED_COMPOSITE_KEYS', () => {
     const deferred = new Set(DEFERRED_COMPOSITE_KEYS);
     const unclassified = APP_SETTINGS_REGISTRY.filter(
-      (definition) => definition.descriptor.kind === 'composite',
+      (definition) =>
+        definition.descriptor.kind === 'composite' &&
+        definition.userFacing !== false,
     )
       .map((definition) => definition.key as string)
       .filter((key) => !(key in COMPOSITE_EDITORS) && !deferred.has(key));

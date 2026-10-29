@@ -1,17 +1,26 @@
 import type { PersistedChatAttachment } from './chat-attachment.js';
+import type { ChatHostImageSource } from './chat-host-images.js';
 import type { ChildWorkDelta } from './child-work.js';
 import type { ClientOrigin } from './client-origin.js';
+import type { HtmlReplyReference } from './html-reply.js';
 import type { PrincipalRef } from './principal.js';
 import {
   type ApprovalMode,
   type EngineId,
   PROVIDER_CODEX,
 } from './provider.js';
+import type { ProviderFailure } from './provider-failure.js';
+import type {
+  RuntimeEventContentRef,
+  RuntimeEventSpilledContent,
+  SpillableText,
+} from './runtime-event-content.js';
 import type {
   SessionLifecycleState,
   SessionTransitionReason,
   SessionTransitionSource,
 } from './session-lifecycle.js';
+import type { StationControlRefusalView } from './station-control-refusal.js';
 import type {
   WorkflowNextActionStatus,
   WorkflowPhase,
@@ -74,6 +83,10 @@ export const SERVER_EVENTS = {
   NOTIFICATION_CLEARED: 'notification:cleared',
   OPERATIONAL_EVENT: 'operational:event',
   ORCHESTRATION_EVENT: 'orchestration:event',
+  /** Committed inbox transition; conversation read authority required. */
+  ORCHESTRATION_INBOX_CHANGED: 'orchestration:inbox-changed',
+  /** Empty wire invalidation for the captured pre-deletion read audience only. */
+  ORCHESTRATION_SESSIONS_CHANGED: 'orchestration:sessions-changed',
   /** A live session projection changed without creating a runtime event. */
   ORCHESTRATION_SESSION_PROJECTION_UPDATED:
     'orchestration:session-projection-updated',
@@ -92,6 +105,12 @@ export const SERVER_EVENTS = {
   PLUGINS_GRANTS_CHANGED: 'plugins:grants-changed',
   PLUGINS_UPDATES_AVAILABLE: 'plugins:updates-available',
   RUNTIME_HEALTH_CHANGED: 'runtime:health-changed',
+  /**
+   * The server's own update state changed (#3851): availability, staging
+   * progress, the apply-when-idle intent, or the download policy. Payload is
+   * `ServerUpdateState` (`@kontourai/station-contracts/system-status`).
+   */
+  SERVER_UPDATE_CHANGED: 'server-update:changed',
   SYSTEM_STATUS_CHANGED: 'system:status-changed',
   UI_NAVIGATE: 'ui:navigate',
 } as const;
@@ -191,6 +210,8 @@ export const SERVER_EVENT_BROADCAST_SAFETY: {
   // Wraps a `CanonicalRuntimeEvent` — threadId/turnId/prompt/output content.
   // Gated elsewhere (`canUserReadSession`); never this route.
   [SERVER_EVENTS.ORCHESTRATION_EVENT]: 'scoped',
+  [SERVER_EVENTS.ORCHESTRATION_SESSIONS_CHANGED]: 'scoped',
+  [SERVER_EVENTS.ORCHESTRATION_INBOX_CHANGED]: 'scoped',
   // `{threadId}` names one session, so this follows the same ownership gate
   // as canonical orchestration events on the dedicated stream.
   [SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED]: 'scoped',
@@ -225,6 +246,13 @@ export const SERVER_EVENT_BROADCAST_SAFETY: {
   [SERVER_EVENTS.PLUGINS_GRANTS_CHANGED]: 'scoped',
   [SERVER_EVENTS.PLUGINS_UPDATES_AVAILABLE]: 'scoped',
   [SERVER_EVENTS.RUNTIME_HEALTH_CHANGED]: 'broadcast',
+  // `ServerUpdateState`: this install's versions, release-check result,
+  // update progress (launcher reason codes and the staging installer's last
+  // error line) and the apply-when-idle version. No thread, session, user or
+  // conversation: the same install facts the `/api/system/core-update` read
+  // routes serve. The running turns a restart would interrupt are NOT in it;
+  // they carry titles and are read per caller from `/core-update/running-turns`.
+  [SERVER_EVENTS.SERVER_UPDATE_CHANGED]: 'broadcast',
   [SERVER_EVENTS.SYSTEM_STATUS_CHANGED]: 'broadcast',
   // `{ path: string }` — not identity-carrying content by itself, but every
   // recipient ACTS on it (their own UI navigates). A hosted deployment has
@@ -270,6 +298,11 @@ export interface CanonicalRuntimeEventBase {
   threadId: string;
   createdAt: string;
   turnId?: string;
+  /**
+   * Server-owned invocation identity, supplied only with an originating
+   * request/stream association. Attribution, never authority or a client key.
+   */
+  invocationId?: string;
   itemId?: string;
   requestId?: string;
   sessionState?: SessionLifecycleState;
@@ -291,6 +324,13 @@ export interface CanonicalRuntimeEventBase {
    * is not (attribution, never authorization).
    */
   principal?: PrincipalRef;
+  /**
+   * Set only by EventStore when it stored one or more of this event's large
+   * content values out of line (docs/design/event-content-spill.md). Those
+   * fields then hold a `RuntimeEventContentRef`; resolve it before treating
+   * the value as complete. Never accepted from a producer.
+   */
+  spilledContent?: RuntimeEventSpilledContent;
 }
 
 export interface SessionStartedEvent extends CanonicalRuntimeEventBase {
@@ -364,7 +404,16 @@ export interface SessionExitedEvent extends CanonicalRuntimeEventBase {
 export interface TurnStartedEvent extends CanonicalRuntimeEventBase {
   method: 'turn.started';
   turnId: string;
-  prompt?: string;
+  prompt?: SpillableText;
+  /**
+   * The idempotency key of the send this turn came from
+   * (`OrchestrationSendTurnInput.clientTurnId`), stamped by Station when the
+   * accepted send produced this event — never by an adapter. Lets the sending
+   * client match its own message to the turn exactly. Absent on events
+   * persisted before it existed, on steers, and on turns no keyed send
+   * produced (an engine-opened turn, another app's transcript).
+   */
+  clientTurnId?: string;
   /** Distinguishes input appended inside an already-running turn. */
   inputKind?: 'steer';
   /**
@@ -388,7 +437,7 @@ export interface TurnStartedEvent extends CanonicalRuntimeEventBase {
    * normal send-turn composition choke point instead of persisting a second
    * copy of the composed model input.
    */
-  ambientContext?: string;
+  ambientContext?: SpillableText;
   metadata?: Record<string, unknown>;
 }
 
@@ -404,7 +453,7 @@ export interface TurnCompletedEvent extends CanonicalRuntimeEventBase {
    * stop. It does not change the turn's outcome: the turn still completed.
    */
   stopReason?: string;
-  outputText?: string;
+  outputText?: SpillableText;
   /**
    * station#1182: additive, back-compat (absent on every event persisted
    * before this field existed). Carries `reportedModel` when an adapter can
@@ -518,6 +567,24 @@ export interface ContentTextDeltaEvent extends CanonicalRuntimeEventBase {
   delta: string;
 }
 
+/**
+ * Images the turn's reply named by host path, copied into the attachment
+ * store once the turn settled (`chat-host-images` Feature Preview; see
+ * `chat-host-images.ts`). Station writes this event itself after the turn's
+ * `turn.completed`; one from an engine is discarded.
+ *
+ * `attachments` carry data URLs only on the way in: the EventStore stores
+ * the bytes, binds each to this thread and persists `blobRef` instead, as
+ * for a `tool.completed`'s images. `sources` maps each named path to an
+ * attachment or to the reason it was not kept.
+ */
+export interface ContentHostImagesEvent extends CanonicalRuntimeEventBase {
+  method: 'content.host-images';
+  turnId: string;
+  attachments?: PersistedChatAttachment[];
+  sources: ChatHostImageSource[];
+}
+
 export interface ContentReasoningDeltaEvent extends CanonicalRuntimeEventBase {
   method: 'content.reasoning-delta';
   /**
@@ -605,7 +672,17 @@ export interface ToolOutputReceipt {
 }
 
 export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
+  /** Bounded page display reference retained independently of output excerpts. */
+  htmlReply?: HtmlReplyReference;
+  /**
+   * A station-control tool's refusal, read from its whole result before a
+   * history window cut it to an excerpt (which no longer parses). Bounded;
+   * see `station-control-refusal.ts`.
+   */
+  stationControlRefusal?: StationControlRefusalView;
   method: 'tool.completed';
+  /** Station stamps this from an already-open tool definition, never from result metadata. */
+  mcpAppResourceUri?: string;
   itemId: string;
   toolCallId: string;
   toolName: string;
@@ -676,7 +753,7 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
    */
   status: 'success' | 'error' | 'cancelled' | 'unresolved';
   output?: unknown;
-  error?: string;
+  error?: SpillableText;
   /** See {@link ToolProgressEvent.outputReceipt}. */
   outputReceipt?: ToolOutputReceipt;
   /**
@@ -724,7 +801,7 @@ export interface RequestOpenedEvent extends CanonicalRuntimeEventBase {
   blocking?: boolean;
   requestType: 'approval' | 'permission' | 'confirmation' | 'input';
   title: string;
-  description?: string;
+  description?: SpillableText;
   payload?: Record<string, unknown>;
   purpose?: string;
 }
@@ -798,7 +875,10 @@ export interface RequestDeliveryEvent extends CanonicalRuntimeEventBase {
   engineStatus?: ApprovalStatus;
 }
 
-export interface RuntimeErrorEvent extends CanonicalRuntimeEventBase {
+/** Stored events and third-party plugins may predate failure classification. */
+export interface RuntimeErrorEvent
+  extends CanonicalRuntimeEventBase,
+    Partial<ProviderFailure> {
   method: 'runtime.error';
   severity: Extract<RuntimeSeverity, 'error'>;
   message: string;
@@ -1165,7 +1245,9 @@ export interface WorkflowStateChangedEvent extends CanonicalRuntimeEventBase {
 export type PlanEntryStatus = 'pending' | 'in_progress' | 'completed';
 
 export interface PlanEntry {
-  content: string;
+  /** A single entry too large to keep inline is stored out of line
+   * (docs/design/event-content-spill.md). */
+  content: SpillableText;
   status: PlanEntryStatus;
 }
 
@@ -1178,7 +1260,7 @@ export interface PlanEntry {
  */
 export interface PlanUpdatedEvent extends CanonicalRuntimeEventBase {
   method: 'plan.updated';
-  entries: PlanEntry[];
+  entries: PlanEntry[] | RuntimeEventContentRef;
 }
 
 /**
@@ -1226,6 +1308,8 @@ export interface ConversationForkedEvent extends CanonicalRuntimeEventBase {
   sourceSessionId?: string;
   /** Native provider fork is exceptional; Station transcript replay is explicit. */
   continuation?: 'native' | 'replay-seed';
+  /** Immutable, actor-bound imported context in this EventStore; not a provider Session. */
+  contextDigest?: string;
 }
 
 export type CanonicalRuntimeEvent =
@@ -1240,6 +1324,7 @@ export type CanonicalRuntimeEvent =
   | SessionApprovalModeSetEvent
   | ContentTextDeltaEvent
   | ContentReasoningDeltaEvent
+  | ContentHostImagesEvent
   | ToolStartedEvent
   | ToolProgressEvent
   | ToolCompletedEvent
@@ -1259,3 +1344,16 @@ export type CanonicalRuntimeEvent =
   | ExtensionEvent
   | ChildWorkUpdatedEvent
   | ConversationForkedEvent;
+
+/** Built-in adapter writers must classify failures; legacy stored readers remain compatible. */
+export type ProviderRuntimeErrorEvent = RuntimeErrorEvent & ProviderFailure;
+
+/** A session-source fragment whose emitter supplies the common envelope. */
+export type ProviderRuntimeErrorBody = Omit<
+  ProviderRuntimeErrorEvent,
+  'eventId' | 'provider' | 'threadId' | 'createdAt'
+>;
+
+export type ProviderRuntimeEvent =
+  | Exclude<CanonicalRuntimeEvent, RuntimeErrorEvent | ContentHostImagesEvent>
+  | ProviderRuntimeErrorEvent;

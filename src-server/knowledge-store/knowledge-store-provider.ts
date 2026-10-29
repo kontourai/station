@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 /**
  * `KnowledgeStoreProvider` — the K2 seam Station's services/routes consume
  * (docs/design/knowledge-foundation.md K2 section). Holds the root registry
@@ -27,6 +28,8 @@ import type {
   UpdateEvidence,
   UpdateFields,
 } from '@kontourai/station-contracts/knowledge-store';
+import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge-root-identity';
+import { FileStorageConflictError } from '../domain/project-file-transactions.js';
 import { isSafePathSegment } from '../knowledge-index/path-safety.js';
 import {
   knowledgeStoreRecordOps,
@@ -77,8 +80,19 @@ function observeRootOperation(attributes: Record<string, string>): void {
  * dependency so this module doesn't have to import the full storage-adapter surface. */
 export interface KnowledgeStoreRootPersistence {
   listKnowledgeStoreRoots(): KnowledgeStoreRoot[];
-  saveKnowledgeStoreRoot(root: KnowledgeStoreRoot): Promise<void> | void;
-  removeKnowledgeStoreRoot(id: string): Promise<void> | void;
+  withKnowledgeStoreRoot?<T>(
+    expected: KnowledgeStoreRoot,
+    operation: (root: KnowledgeStoreRoot) => Promise<T>,
+  ): Promise<T>;
+  /** createOnly must refuse an existing ID atomically rather than replacing it. */
+  saveKnowledgeStoreRoot(
+    root: KnowledgeStoreRoot,
+    options?: { createOnly?: boolean; expectedRoot?: KnowledgeStoreRoot },
+  ): Promise<void> | void;
+  removeKnowledgeStoreRoot(
+    id: string,
+    expected?: KnowledgeStoreRoot,
+  ): Promise<void> | void;
   /** Explicit opt-in; ordinary list/get is NOT a zero-write observation fallback. */
   observeKnowledgeStoreRoots?(): KnowledgeRootObservation;
 }
@@ -89,8 +103,12 @@ type RecordsChangedListener = (event: {
 }) => void;
 
 export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
+  readonly withRootRevision?: KnowledgeStoreProviderContract['withRootRevision'];
   private readonly registry = new KnowledgeAdapterRegistry();
-  private readonly adapterInstances = new Map<string, KnowledgeStoreAdapter>();
+  private readonly adapterInstances = new Map<
+    string,
+    { rootKey: string; adapter: KnowledgeStoreAdapter }
+  >();
   private readonly listeners = new Set<RecordsChangedListener>();
   private readonly observationPolicy?: {
     stationHome: string;
@@ -101,6 +119,12 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
     private readonly persistence: KnowledgeStoreRootPersistence,
     observationPolicy?: KnowledgeRecordObservationPolicy,
   ) {
+    const withRoot = persistence.withKnowledgeStoreRoot?.bind(persistence);
+    if (withRoot)
+      this.withRootRevision = (expected, operation) =>
+        withRoot(expected, async () =>
+          operation(await this.adapterFor(expected.id)),
+        );
     if (observationPolicy) {
       const authorize = observationPolicy.authorize;
       this.observationPolicy = {
@@ -129,25 +153,63 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
   }
 
   async createRoot(
-    input: Omit<KnowledgeStoreRoot, 'id' | 'createdAt'>,
+    input: Omit<KnowledgeStoreRoot, 'id' | 'createdAt' | 'registrationId'>,
   ): Promise<KnowledgeStoreRoot> {
-    const id = this.generateRootId(input);
+    const captured = { ...input, scope: { ...input.scope } };
+    for (let attempt = 0; attempt < 16; attempt += 1) {
+      const root: KnowledgeStoreRoot = {
+        ...captured,
+        id: this.generateRootId(captured),
+        registrationId: randomUUID(),
+        createdAt: new Date().toISOString(),
+      };
+      try {
+        await this.persistence.saveKnowledgeStoreRoot(root, {
+          createOnly: true,
+        });
+      } catch (error) {
+        if (error instanceof FileStorageConflictError) continue;
+        throw error;
+      }
+      observeRootOperation({ op: 'create', scope: root.scope.kind });
+      return root;
+    }
+    throw new FileStorageConflictError(
+      'Knowledge source registry changed repeatedly. Refresh before trying again.',
+    );
+  }
+
+  async attachRootToProject(
+    expected: KnowledgeStoreRoot,
+    projectSlug: string,
+    projectId: string,
+  ): Promise<KnowledgeStoreRoot> {
+    if (expected.scope.kind !== 'project' || expected.projectId !== undefined)
+      throw new FileStorageConflictError(
+        'Only an unbound legacy Project store can be attached.',
+      );
     const root: KnowledgeStoreRoot = {
-      ...input,
-      id,
-      createdAt: new Date().toISOString(),
+      ...expected,
+      scope: { kind: 'project', projectSlug },
+      projectId,
+      registrationId: randomUUID(),
     };
-    await this.persistence.saveKnowledgeStoreRoot(root);
-    observeRootOperation({
-      op: 'create',
-      scope: root.scope.kind,
+    await this.persistence.saveKnowledgeStoreRoot(root, {
+      expectedRoot: { ...expected, scope: { ...expected.scope } },
     });
+    this.adapterInstances.delete(root.id);
     return root;
   }
 
-  async removeRoot(rootId: string): Promise<void> {
+  async removeRoot(
+    rootId: string,
+    expected?: KnowledgeStoreRoot,
+  ): Promise<void> {
+    const pinned = expected
+      ? { ...expected, scope: { ...expected.scope } }
+      : undefined;
     const root = await this.getRoot(rootId);
-    await this.persistence.removeKnowledgeStoreRoot(rootId);
+    await this.persistence.removeKnowledgeStoreRoot(rootId, pinned);
     this.adapterInstances.delete(rootId);
     observeRootOperation({
       op: 'remove',
@@ -156,7 +218,7 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
   }
 
   private generateRootId(
-    input: Omit<KnowledgeStoreRoot, 'id' | 'createdAt'>,
+    input: Omit<KnowledgeStoreRoot, 'id' | 'createdAt' | 'registrationId'>,
   ): string {
     const base =
       input.scope.kind === 'personal'
@@ -354,11 +416,11 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
   }
 
   async adapterFor(rootId: string): Promise<KnowledgeStoreAdapter> {
-    const cached = this.adapterInstances.get(rootId);
-    if (cached) return cached;
-
     const root = await this.getRoot(rootId);
     if (!root) throw new Error(`Knowledge store root '${rootId}' not found`);
+    const rootKey = knowledgeRootIncarnationKey(root);
+    const cached = this.adapterInstances.get(rootId);
+    if (cached?.rootKey === rootKey) return cached.adapter;
 
     const descriptor = this.registry.get(root.adapterId);
     if (!descriptor) {
@@ -373,7 +435,7 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
       rootId,
       root.adapterId,
     );
-    this.adapterInstances.set(rootId, wrapped);
+    this.adapterInstances.set(rootId, { rootKey, adapter: wrapped });
     return wrapped;
   }
 

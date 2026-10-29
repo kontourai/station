@@ -5,6 +5,7 @@ import {
   type WorkspaceFilePreviewPaneState,
 } from '@kontourai/station-contracts/workspace-file-preview';
 import { toWorkspacePaneStateKey } from '@kontourai/station-contracts/workspace-pane';
+import { removeFencedRecord } from '../regions/pane-fence';
 import type { WorkspacePaneHostOpenPreparation } from './WorkspacePaneHostOpenContext';
 import { workspacePaneHostReferenceDocuments } from './workspacePaneHostStorage';
 
@@ -110,11 +111,16 @@ function reclaimFilePreviewPaneStateCapacity(
   for (const key of storageKeys(storage)) {
     const inspected = inspectStoredState(storage, key);
     if (!inspected) {
-      try {
-        storage.removeItem(key);
-      } catch {
-        /* optional browser storage */
-      }
+      // A corrupt record still names its occurrence; its fence goes too,
+      // once the record is gone.
+      const stateKey = storedStateKey(key);
+      if (stateKey) removeFencedRecord(storage, stateKey, key);
+      else
+        try {
+          storage.removeItem(key);
+        } catch {
+          /* optional browser storage */
+        }
       continue;
     }
     valid.set(inspected.stateKey, inspected.state);
@@ -123,11 +129,9 @@ function reclaimFilePreviewPaneStateCapacity(
   const referenced = referencedFilePreviewStateKeys(storage, valid);
   for (const [stateKey, key] of storageKeyByStateKey) {
     if (referenced.has(stateKey)) continue;
-    try {
-      storage.removeItem(key);
-    } catch {
-      /* optional browser storage */
-    }
+    // The occurrence is gone with its state; so is its Station fence, once
+    // the state is.
+    removeFencedRecord(storage, stateKey, key);
   }
 }
 
@@ -290,17 +294,23 @@ export function createFilePreviewPaneStatePreparation(
   };
 }
 
+/**
+ * Remove a preview occurrence's state, and with it the occurrence's Station
+ * fence (`pane-fence.ts`) once the state is gone: a preview's state key is
+ * its instance id, and an occurrence with no state has nothing a fence could
+ * protect. A state that could not be removed keeps its fence.
+ */
 export function removeFilePreviewPaneState(
   storage: FilePreviewPaneStateStorage,
   stateKey: string,
 ): boolean {
-  try {
-    storage.removeItem(filePreviewPaneStateStorageKey(stateKey));
-    notifyFilePreviewPaneState();
-    return true;
-  } catch {
-    return false;
-  }
+  const gone = removeFencedRecord(
+    storage,
+    stateKey,
+    filePreviewPaneStateStorageKey(stateKey),
+  );
+  if (gone) notifyFilePreviewPaneState();
+  return gone;
 }
 
 /** Removes only after strict live and persisted host references have cleared. */

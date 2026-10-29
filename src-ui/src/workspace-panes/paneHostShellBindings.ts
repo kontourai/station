@@ -3,7 +3,7 @@ import type {
   PaneUnavailableReason,
 } from '@kontourai/station-contracts/workspace-pane-host-contract';
 import { APP_DESTINATION_REGISTRY } from '../app-shell/destination-registry';
-import { BANNER_PRIORITY, bannerStore } from '../contexts/banner-store';
+import { toastStore } from '../contexts/ToastContext';
 
 /**
  * The shell half of the pane-host contract, shared by BOTH transports
@@ -169,15 +169,11 @@ export function presentPaneUnavailable(
   if (!isPaneRouteSlug(projectSlug)) return null;
   const presentation = PANE_UNAVAILABLE_PRESENTATION[reason];
   if (!presentation) return null;
-  bannerStore.present({
-    id: presentation.bannerId,
-    occurrence: projectSlug,
-    priority: BANNER_PRIORITY.info,
-    tone: 'info',
-    ariaLive: 'polite',
+  toastStore.upsert({
+    dedupeKey: `${presentation.bannerId}:${projectSlug}`,
     message: presentation.notice,
-    dismissible: true,
-    userInitiated: true,
+    tone: 'info',
+    recallText: presentation.notice,
   });
   return { kind: 'project-workspace', projectSlug };
 }

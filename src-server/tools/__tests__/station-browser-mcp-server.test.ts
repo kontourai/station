@@ -22,14 +22,19 @@ const registered = (server: McpServer) =>
   ).sort();
 
 const BROWSER_TOOLS = [
+  'browser_capture_to_task',
   'browser_click',
   'browser_close',
+  'browser_color_scheme',
+  'browser_drag',
   'browser_evaluate',
+  'browser_hover',
   'browser_navigate',
   'browser_open',
   'browser_press',
   'browser_resize',
   'browser_scroll',
+  'browser_select',
   'browser_snapshot',
   'browser_status',
   'browser_type',

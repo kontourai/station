@@ -1,0 +1,23 @@
+{
+  "revision": "dae37ce484954293ac6bd3a9d0d99cd611b33f8c",
+
+  "notes": [
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"#3563 delta round: event-store.ts claimRecoveryDispatch's compare-and-set now also requires NOT RECOVERY_SOURCE_TERMINATED (the startup repair's rule), merged with #3613's typed scans. No claim about recovery claims or cancellation; unchanged.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"#3563 delta round: event-store.ts claimRecoveryDispatch's compare-and-set now also requires NOT RECOVERY_SOURCE_TERMINATED (the startup repair's rule), merged with #3613's typed scans. No claim about recovery claim eligibility; unchanged.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"#3563 delta round: event-store.ts claimRecoveryDispatch's compare-and-set now also requires NOT RECOVERY_SOURCE_TERMINATED (the startup repair's rule), merged with #3613's typed scans. Composer reads turn events only; unchanged.","inputs":["docs/design/chat-composer.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"#3563 delta round: event-store.ts claimRecoveryDispatch's compare-and-set now also requires NOT RECOVERY_SOURCE_TERMINATED (the startup repair's rule), merged with #3613's typed scans. Re-read after #3613's edit: the legal transitions, CAS result vocabulary, startup-only bulk reconcilePrepared and typed-scan paragraph stay true; the doc does not enumerate claim guards, and a claim refused for an ended source is a stale CAS like any other; unchanged.","inputs":["docs/design/event-store-ledger-migration.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"#3563 delta round: event-store.ts claimRecoveryDispatch's compare-and-set now also requires NOT RECOVERY_SOURCE_TERMINATED (the startup repair's rule), merged with #3613's typed scans. History reads untouched; unchanged.","inputs":["docs/design/project-task-room-history.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"#3563 delta round: event-store.ts claimRecoveryDispatch's compare-and-set now also requires NOT RECOVERY_SOURCE_TERMINATED (the startup repair's rule), merged with #3613's typed scans. Evidence binding untouched; unchanged.","inputs":["docs/design/revision-bound-evidence.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/shared-working-state.md","note":"#3563 delta round: event-store.ts claimRecoveryDispatch's compare-and-set now also requires NOT RECOVERY_SOURCE_TERMINATED (the startup repair's rule), merged with #3613's typed scans. Its recovery ports are the working-state grant owner, not RecoveryLedger; unchanged.","inputs":["docs/design/shared-working-state.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"#3563 delta round: event-store.ts claimRecoveryDispatch's compare-and-set now also requires NOT RECOVERY_SOURCE_TERMINATED (the startup repair's rule), merged with #3613's typed scans. No metric or log name changed; unchanged.","inputs":["docs/guides/monitoring.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#3563 delta round: event-store.ts claimRecoveryDispatch's compare-and-set now also requires NOT RECOVERY_SOURCE_TERMINATED (the startup repair's rule), merged with #3613's typed scans. No configuration key changed; unchanged.","inputs":["docs/reference/config.md","src-server/services/orchestration/event-store.ts"]}
+  ]
+}

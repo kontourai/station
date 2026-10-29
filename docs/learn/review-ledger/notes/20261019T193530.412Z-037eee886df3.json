@@ -1,0 +1,7 @@
+{
+  "revision": "1b43213f41c8013cd0562deb215482be5460d335",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"native-platform-boundary.mjs only renamed an internal helper (escape to decodeEscape) for lint; no behavior or documented claim changed.","inputs":["docs/design/native-capabilities.md","scripts/native-platform-boundary.mjs"]}
+  ]
+}

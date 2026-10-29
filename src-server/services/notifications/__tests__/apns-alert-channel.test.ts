@@ -201,7 +201,7 @@ async function harness(
     devicePairing: pairing,
     webPushService: { send: webPushSend },
     canUserReadSession: () => true,
-    listNotifications: async () => [],
+    getNotification: async () => undefined,
     apnsAlert: {
       devicePairing: pairing,
       signingKey: keys,

@@ -1,0 +1,7 @@
+{
+  "revision": "c2eb5d6ebcfdf439baf8ddbb23c35a8efec1acbb",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed Gallery advisory pixel mode, strict local default, capture integrity failures, hosted artifact review and route-fixture lifetime through capture. Focused CLI/workflow tests passed; current-head hosted repeatability pending.","inputs":["docs/guides/testing.md",".github/workflows/gallery-pr-check.yml",".github/workflows/nightly-gallery.yml","scripts/__tests__/ci-workflow-contract.test.ts","tests/screenshots.spec.ts","scripts/screenshot-diff.mjs","scripts/__tests__/screenshot-diff.test.ts"]}
+  ]
+}

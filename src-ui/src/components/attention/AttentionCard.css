@@ -104,59 +104,6 @@
   margin-left: 16px;
 }
 
-.attention-item__actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.attention-item__action {
-  font-family: var(--font-sans);
-  min-height: 44px;
-  padding: 7px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--border-primary);
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-  cursor: pointer;
-  font-size: var(--text-base);
-  font-weight: 600;
-  transition:
-    transform var(--motion-fast) var(--ease-standard),
-    border-color var(--motion-fast) var(--ease-standard);
-}
-
-.attention-item__action:hover:not(:disabled) {
-  transform: translateY(-1px);
-  border-color: var(--border-secondary);
-}
-
-.attention-item__action:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.attention-item__action--primary {
-  background: var(--accent-primary);
-  border-color: var(--accent-primary);
-  color: var(--text-on-accent);
-}
-
-.attention-item__action--danger {
-  /* --error-fill, not the --status-error foreground alias: white on
-     dark's #ff6b6b is 2.78:1 (station#1125's defect via the alias). */
-  background: var(--error-fill);
-  border-color: var(--error-fill);
-  color: white;
-}
-
-.attention-item__action--ghost {
-  background: transparent;
-  color: var(--text-muted);
-}
-
 .attention-answer {
   display: grid;
   gap: 8px;
@@ -235,8 +182,29 @@
   min-height: 44px;
 }
 
+.attention-item__footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  margin-top: var(--k-space-3);
+}
+.attention-item__footer .attention-open-link,
+.attention-item__footer .attention-dismiss-link {
+  margin: 0;
+}
+.attention-item__footer > .tool-requests-panel,
+.attention-item__footer > .attention-answer,
+.attention-item__footer > .attention-error,
+.attention-item__footer > .attention-item__detail {
+  flex-basis: 100%;
+  min-width: 0;
+}
+
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .attention-item__actions {
+  .notice-actions,
+  .attention-item__footer {
     justify-content: flex-start;
   }
 }

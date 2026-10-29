@@ -96,6 +96,11 @@ export function filterMonitoringEvents(
   });
 }
 
+/** Whether an external telemetry producer delivered this row. */
+function isProducerEvent(event: MonitoringEvent): boolean {
+  return typeof event[K.TELEMETRY_PRODUCER] === 'string';
+}
+
 export function getHistoricalAgentSlugs(
   filteredEvents: MonitoringEvent[],
   activeAgents: AgentStats[],
@@ -105,14 +110,31 @@ export function getHistoricalAgentSlugs(
     // events from the picker entirely — an option nobody can choose is how
     // they became invisible in the first place.
     ...new Set(
-      filteredEvents.map((e) =>
-        monitoringAgentName(e as Record<string, unknown>),
-      ),
+      filteredEvents
+        // Producer rows are not Station's agents; they get their own group.
+        .filter((e) => !isProducerEvent(e))
+        .map((e) => monitoringAgentName(e as Record<string, unknown>)),
     ),
   ].filter(
     (slug): slug is string =>
       !activeAgents.some((agent) => agent.slug === slug),
   );
+}
+
+/**
+ * The agent names external telemetry producers reported (already namespaced
+ * as `producer:<token name>:<agent>` at ingest), listed apart from Station's.
+ */
+export function getProducerAgentSlugs(
+  filteredEvents: MonitoringEvent[],
+): { slug: string; producer: string }[] {
+  const seen = new Map<string, string>();
+  for (const event of filteredEvents) {
+    if (!isProducerEvent(event)) continue;
+    const slug = monitoringAgentName(event as Record<string, unknown>);
+    if (!seen.has(slug)) seen.set(slug, event[K.TELEMETRY_PRODUCER] as string);
+  }
+  return [...seen].map(([slug, producer]) => ({ slug, producer }));
 }
 
 export function getMonitoringAgentCountLabel(
@@ -124,7 +146,8 @@ export function getMonitoringAgentCountLabel(
     filteredEvents,
     stats?.agents || [],
   ).length;
-  return `${activeCount} Configured${historicalCount > 0 ? ` • ${historicalCount} Historical` : ''}`;
+  const externalCount = getProducerAgentSlugs(filteredEvents).length;
+  return `${activeCount} Configured${historicalCount > 0 ? ` • ${historicalCount} Historical` : ''}${externalCount > 0 ? ` • ${externalCount} External` : ''}`;
 }
 
 export function getRunningConversations(

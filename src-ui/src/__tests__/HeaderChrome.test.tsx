@@ -16,8 +16,24 @@ vi.mock('../components/header/HeaderActions', () => ({
   HeaderActions: () => null,
 }));
 
-vi.mock('../components/header/LayoutSwitcher', () => ({
-  LayoutSwitcher: () => null,
+const { setLayout } = vi.hoisted(() => ({ setLayout: vi.fn() }));
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [{ slug: 'demo', name: 'Demo Project' }] }),
+}));
+vi.mock('../contexts/NavigationContext', () => ({
+  useNavigationActions: () => ({ setLayout }),
+}));
+vi.mock('@kontourai/station-sdk', () => ({
+  useProjectLayoutsQuery: (slug: string) => ({
+    data:
+      slug === 'demo'
+        ? [
+            { slug: 'coding', name: 'Coding' },
+            { slug: 'tasks', name: 'Tasks' },
+          ]
+        : [],
+    refetch: vi.fn(),
+  }),
 }));
 
 let productName = 'Station';
@@ -44,7 +60,6 @@ vi.mock('../components/header/useHeaderViewModel', () => ({
     helpPrompts: [],
     openConnectionModal: vi.fn(),
     openProfile: vi.fn(),
-    settingsShortcut: '',
     showHelp: false,
     showNotifications: false,
     showOverflow: false,
@@ -67,7 +82,7 @@ describe('Header chrome accessibility', () => {
   test('exactly one home control: the logo is the labelled link, the wordmark is not a tab stop', () => {
     breadcrumb = null;
     productName = 'Station';
-    render(<Header onToggleSettings={vi.fn()} onNavigate={onNavigate} />);
+    render(<Header onNavigate={onNavigate} />);
 
     // The wordmark can wrap out of view on a narrow row (a hidden tab stop
     // would be invisible focus), so the logo - always visible - is the link.
@@ -100,7 +115,7 @@ describe('Header chrome accessibility', () => {
     (_channel, name) => {
       breadcrumb = null;
       productName = name;
-      render(<Header onToggleSettings={vi.fn()} onNavigate={onNavigate} />);
+      render(<Header onNavigate={onNavigate} />);
 
       expect(screen.getByRole('link', { name: `${name} home` })).toBe(
         document.querySelector('.app-toolbar__logo'),
@@ -113,7 +128,7 @@ describe('Header chrome accessibility', () => {
 
   test('a section breadcrumb with a route behind it is a keyboard link', () => {
     breadcrumb = { section: 'Agents', sectionRoot: { type: 'agents' } };
-    render(<Header onToggleSettings={vi.fn()} onNavigate={onNavigate} />);
+    render(<Header onNavigate={onNavigate} />);
 
     const crumb = screen.getByText('Agents');
     expect(crumb.getAttribute('role')).toBe('link');
@@ -124,10 +139,19 @@ describe('Header chrome accessibility', () => {
 
   test('a section breadcrumb with NO route is plain text — no role, no tab stop', () => {
     breadcrumb = { section: 'Settings' };
-    render(<Header onToggleSettings={vi.fn()} onNavigate={onNavigate} />);
+    render(<Header onNavigate={onNavigate} />);
 
     const crumb = screen.getByText('Settings');
     expect(crumb.getAttribute('role')).toBeNull();
     expect(crumb.getAttribute('tabindex')).toBeNull();
   });
+});
+
+test('the header displays the project name while layout navigation retains its slug', () => {
+  breadcrumb = { projectSlug: 'demo', layoutSlug: 'tasks' };
+  render(<Header onNavigate={onNavigate} />);
+  expect(screen.getByRole('link', { name: 'Demo Project' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Switch layout' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Coding' }));
+  expect(setLayout).toHaveBeenCalledWith('demo', 'coding');
 });

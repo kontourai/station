@@ -4,25 +4,19 @@ interface ProjectSidebarHeaderProps {
   homeLabel: string;
   /** Release-channel presentation is intentionally separate from the title. */
   channelBadge?: string;
-  collapsed: boolean;
   isMobile: boolean;
   onCloseMobile: () => void;
   onGoHome: () => void;
-  onToggleCollapse: () => void;
 }
 
 export function ProjectSidebarHeader({
   appName,
   homeLabel,
   channelBadge,
-  collapsed,
   isMobile,
   onCloseMobile,
   onGoHome,
-  onToggleCollapse,
 }: ProjectSidebarHeaderProps) {
-  const collapseLabel = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
-
   return (
     <div className="sidebar__header" data-tauri-drag-region>
       <button
@@ -45,32 +39,6 @@ export function ProjectSidebarHeader({
           )}
         </span>
       </button>
-      {!isMobile && (
-        <button
-          type="button"
-          className="sidebar__collapse-button"
-          aria-label={collapseLabel}
-          title={collapseLabel}
-          onClick={(event) => {
-            event.stopPropagation();
-            onToggleCollapse();
-          }}
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d={collapsed ? 'm9 18 6-6-6-6' : 'm15 18-6-6 6-6'} />
-          </svg>
-        </button>
-      )}
       {isMobile && (
         <button
           type="button"

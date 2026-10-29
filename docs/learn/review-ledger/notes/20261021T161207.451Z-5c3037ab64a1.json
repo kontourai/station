@@ -1,0 +1,7 @@
+{
+  "revision": "76766fd0391094e0d6a144b32ce50e02028e7822",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Reviewed Extension Rendering and Inbound extension requests against the adapter, the reviewed inbound table and the Cursor module; added cursor/update_todos plan folding, the Cursor blocking-request table, unattended and unreadable outcomes, bounds, and the no-mode-switch limit.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter-events.ts","src-server/providers/adapters/acp-adapter.ts","src-shared/extension-notification-bindings.ts"]}
+  ]
+}

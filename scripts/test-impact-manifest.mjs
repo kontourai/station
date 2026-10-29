@@ -72,13 +72,11 @@ const SCOPED_INSTRUCTION_EDGES = Object.freeze(
  * that exercise the transport's OWN behaviour — streams, authentication and
  * native transport order, credential wake, timeouts, origin headers, failure
  * mapping, request authority, portability. The transport's CONSUMERS' unit
- * and component suites leave the fast lane — and still run before merge:
+ * and component suites leave the fast lane — and run in main/release full qualification:
  * `mergeQueueRegression: true` puts the path in the fast-checks plan's
- * `mergeQueueRegressionPaths`, and the required `Merge-queue regression`
- * check runs the full-regression corpus on any merge-queue candidate whose
- * plan names one (scripts/merge-queue-regression-decision.mjs). Fast feedback
- * covers the module's own behaviour; the queue covers everything that
- * imports it.
+ * `mergeQueueRegressionPaths` (legacy schema name). The integration check
+ * records that remaining coverage explicitly; it does not run the full
+ * corpus. Main/release qualification covers everything that imports it.
  *
  * Deliberately NOT a `test-full` lane. Any lane switches the whole diff to
  * deferred execution (`executionSelection` in `run-changed-verification.mjs`):
@@ -113,8 +111,8 @@ const SDK_TRANSPORT_EDGES = Object.freeze(
       mergeQueueRegression: true,
       reason:
         'SDK transport: own-behaviour suites; its import graph is too broad ' +
-        'for the fast lane, so consumers are covered by the merge-queue ' +
-        'full regression (#2301)',
+        'for the fast lane, so consumers are covered by ' +
+        'main/release full qualification (#2301)',
     }),
   ),
 );
@@ -131,8 +129,8 @@ const SDK_TRANSPORT_EDGES = Object.freeze(
  * and unmeasured against the window. Revisit only if a barrel-only change
  * overruns. Each module here gets the same shape as the
  * transport: the suites that exercise the module's own behaviour run in the
- * fast lane, and its consumers run in the required merge-queue full
- * regression. Tests-only edges, never a lane (see SDK_TRANSPORT_EDGES).
+ * fast lane, and its consumers run in main/release full
+ * qualification. Tests-only edges, never a lane (see SDK_TRANSPORT_EDGES).
  */
 const SDK_BROAD_MODULE_EDGES = Object.freeze([
   Object.freeze({
@@ -145,7 +143,7 @@ const SDK_BROAD_MODULE_EDGES = Object.freeze([
     ]),
     reason:
       'SDK error-message mapping: own-behaviour suites; consumers run in ' +
-      'the merge-queue full regression (#2326)',
+      'the main/release full qualification (#2326)',
   }),
   Object.freeze({
     pattern: 'packages/sdk/src/client/chatHttpError.ts',
@@ -158,13 +156,13 @@ const SDK_BROAD_MODULE_EDGES = Object.freeze([
     ]),
     reason:
       'SDK chat HTTP error: own-behaviour suites; consumers run in the ' +
-      'merge-queue full regression (#2326)',
+      'main/release full qualification (#2326)',
   }),
   // The client barrel has NO suite of its own: nothing asserts which modules
   // it re-exports (publicBarrel.test.ts covers the PACKAGE root barrel, not
   // this one). The portability scan only proves its import syntax stays
   // portable. A dropped re-export is caught by the consumers that import it,
-  // which run in the merge-queue full regression — before merge, not here.
+  // which run in the main/release full qualification — outside the merge queue.
   Object.freeze({
     pattern: 'packages/sdk/src/client/index.ts',
     mergeQueueRegression: true,
@@ -173,7 +171,7 @@ const SDK_BROAD_MODULE_EDGES = Object.freeze([
     ]),
     reason:
       'SDK client barrel: portability scan only (no own export-contract ' +
-      'suite exists); consumers run in the merge-queue full regression (#2326)',
+      'suite exists); consumers run in the main/release full qualification (#2326)',
   }),
 ]);
 
@@ -188,7 +186,7 @@ const SDK_BROAD_MODULE_EDGES = Object.freeze([
  * its session work-item, revision-evidence, credential-application and
  * recovery ledgers, the transcript search queries, and the attachment route
  * through the real runtime wiring. Its consumers run in the required
- * merge-queue full regression, as do these store suites, which leave the
+ * main/release full qualification, as do these store suites, which leave the
  * fast lane: the resource-heavy event-store-batched-projection.large and
  * event-store-wal-preservation.process (either would take most of the lane),
  * and the adoption-ledger, turn-deduplicator and session-attachment-barrier
@@ -202,6 +200,7 @@ const ORCHESTRATION_STORE_EDGES = Object.freeze([
     tests: Object.freeze([
       'src-server/routes/orchestration/__tests__/attachments.routes.test.ts',
       'src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts',
+      'src-server/services/orchestration/__tests__/event-store-append-statements.test.ts',
       'src-server/services/orchestration/__tests__/event-store-corruption-watch.test.ts',
       'src-server/services/orchestration/__tests__/event-store-quarantine.test.ts',
       'src-server/services/orchestration/__tests__/event-store-tool-images.test.ts',
@@ -216,8 +215,8 @@ const ORCHESTRATION_STORE_EDGES = Object.freeze([
     ]),
     reason:
       'orchestration event store: own-behaviour suites; its import graph is ' +
-      'too broad for the fast lane, so consumers run in the merge-queue full ' +
-      'regression (#2610)',
+      'too broad for the fast lane, so consumers run in ' +
+      'main/release full qualification (#2610)',
   }),
   Object.freeze({
     pattern: 'src-server/services/orchestration/transcript-search-queries.ts',
@@ -229,7 +228,7 @@ const ORCHESTRATION_STORE_EDGES = Object.freeze([
     ]),
     reason:
       'transcript search queries: own-behaviour suites; reached through the ' +
-      'event store, so consumers run in the merge-queue full regression (#2610)',
+      'event store, so consumers run in the main/release full qualification (#2610)',
   }),
 ]);
 
@@ -252,7 +251,7 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
     // so its related graph is most of the UI and server corpus, and a
     // matrix-only change ran fast-checks past its 12-minute budget with zero
     // failures. The suites that exercise the matrix's own declarations run
-    // here; its consumers run in the required merge-queue full regression.
+    // here; its consumers run in main/release full qualification.
     pattern: 'packages/contracts/src/engine-capability-matrix.ts',
     mergeQueueRegression: true,
     tests: [
@@ -269,7 +268,7 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
     reason:
       'engine capability declarations: own-behaviour suites; the import ' +
       'graph is too broad for the fast lane, so consumers run in the ' +
-      'merge-queue full regression (#2458)',
+      'main/release full qualification (#2458)',
   },
   {
     pattern: 'src-server/services/orchestration/attached-session-adoption.ts',
@@ -436,7 +435,7 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
     reason: 'public documentation admission is governed data',
   }),
   Object.freeze({
-    pattern: 'docs-kit.json',
+    pattern: 'corpus.json',
     tests: Object.freeze(['scripts/__tests__/docs-kit-manifest.test.ts']),
     reason: 'the docs-kit bundle must publish exactly the admitted public docs',
   }),
@@ -656,6 +655,26 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
         'the import graph (#2176)',
     }),
   ),
+  // The color-theme artifacts are read by path: the drift test regenerates
+  // and compares them, and the cascade test serves the real public files to
+  // Chromium. Neither reaches them through the import graph.
+  ...[
+    'src-ui/public/color-themes/**',
+    'src-ui/public/startup-theme.js',
+    'src-ui/src/color-themes.startup.generated.css',
+  ].map((pattern) =>
+    Object.freeze({
+      pattern,
+      supplemental: true,
+      tests: Object.freeze([
+        'src-ui/src/__tests__/color-theme-artifacts.test.ts',
+        'src-ui/src/__tests__/color-theme-cascade.test.ts',
+      ]),
+      reason:
+        'generated color-theme artifact read by path in the drift and ' +
+        'cascade tests, outside the import graph',
+    }),
+  ),
   // The rest read one named file each, by a path the scan cannot resolve (a
   // `test.each` parameter, a cwd-relative literal, a directory copied into a
   // temp plugin), and import nothing that reaches it.
@@ -772,6 +791,8 @@ const COMPOSITION_EDGES = Object.freeze([
 export const REPO_SCAN_SUITES = Object.freeze([
   'packages/basis-pane/src/__tests__/package-boundary.test.ts',
   'packages/board-pane/src/__tests__/package-boundary.test.ts',
+  // Walks examples/*/src for the SDK values the station dev mock must provide.
+  'packages/cli/src/__tests__/dev-sdk-mock-parity.test.ts',
   'packages/sdk/src/__tests__/body-read-deadline.scan.test.ts',
   // Walks packages/sdk/src/client. Its packages/sdk/src/client/** edge selects
   // it, but a diff that escalates with more than 32 explicit tests runs none
@@ -785,6 +806,8 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
   'scripts/__tests__/classify-ci-change.scan.test.ts',
   'scripts/__tests__/content-integrity-gate.scan.test.ts',
+  // Walks tests/ to refuse a whole-URL glob for the server update check (#3851).
+  'scripts/__tests__/core-update-route.test.ts',
   'scripts/__tests__/dialog-surface-class-guard.test.ts',
   'scripts/__tests__/docs-index-reachability.test.ts',
   'scripts/__tests__/docs-reference-gate.test.ts',
@@ -797,6 +820,8 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/product-docs-source-links.test.ts',
   // Copies the whole tracked tree and runs the repo-governance lane CLI on it.
   'scripts/__tests__/proof-family-route-error-egress.test.ts',
+  // Inventories contracts/server failure codes and strict runtime.error writers.
+  'scripts/__tests__/provider-failure-inventory.test.ts',
   'scripts/__tests__/publish-surface.test.ts',
   'scripts/__tests__/random-uuid-guard.test.ts',
   // Discovers server-owned history roots so e2e isolation covers new engines.
@@ -805,6 +830,9 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/sdk-error-message-ratchet.test.ts',
   'scripts/__tests__/test-import-existence-gate.scan.test.ts',
   'scripts/__tests__/test-temp-dir-ratchet.scan.test.ts',
+  // Walks packages/sdk/src and src-ui/src for hasCapability gates and
+  // .capabilities.<flag> reads that must have a flag-table row (#4177).
+  'src-server/capabilities/__tests__/client-capability-gates.scan.test.ts',
   // Walks src-server/knowledge-store and src-server/services/knowledge for raw
   // fs mutations that bypass the file-transaction seam.
   'src-server/knowledge-store/adapters/__tests__/file-transactions.test.ts',
@@ -879,6 +907,20 @@ export const SPAWNED_SCRIPT_EDGES = Object.freeze([
     reason: EXECUTED_SCRIPT_EDGE_REASON,
   }),
   Object.freeze({
+    pattern: 'scripts/monument-import-boundary-gate.mjs',
+    related: true,
+    tests: Object.freeze([
+      'scripts/__tests__/monument-import-boundary-gate.test.ts',
+    ]),
+    reason: EXECUTED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/monument-pack-smoke.mjs',
+    related: true,
+    tests: Object.freeze(['scripts/__tests__/monument-pack-smoke.test.ts']),
+    reason: EXECUTED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
     pattern: 'scripts/test-realtime-wait-gate.mjs',
     related: true,
     tests: Object.freeze(['scripts/__tests__/test-realtime-wait-gate.test.ts']),
@@ -923,6 +965,37 @@ export const SPAWNED_SCRIPT_EDGES = Object.freeze([
 ]);
 
 export const TEST_IMPACT_MANIFEST = Object.freeze([
+  {
+    pattern: 'packages/agent-runtime/**',
+    tests: [
+      'packages/agent-runtime/src/__tests__/frameworks.test.ts',
+      'packages/agent-runtime/src/__tests__/journal.test.ts',
+      'packages/agent-runtime/src/__tests__/stream.test.ts',
+      'packages/agent-runtime/src/__tests__/bodies.test.ts',
+      'packages/agent-runtime/src/__tests__/body-process.test.ts',
+      'packages/agent-runtime/src/__tests__/r1-ownership.test.ts',
+      'packages/agent-runtime/src/__tests__/r1-first-template.test.ts',
+      'packages/agent-runtime/src/__tests__/r1-stream.test.ts',
+      'packages/agent-runtime/src/__tests__/r1-public-cancel.test.ts',
+      'packages/agent-runtime/src/__tests__/r1-pinned-equality.test.ts',
+      'packages/agent-runtime/src/__tests__/r1-codecs.test.ts',
+      'packages/agent-runtime/src/__tests__/r1-outbox.test.ts',
+      'packages/agent-runtime/src/__tests__/r1-retention.test.ts',
+      'packages/agent-runtime/src/__tests__/r1-native-controls.test.ts',
+      'packages/agent-runtime/src/__tests__/r2-admission.test.ts',
+      'packages/agent-runtime/src/__tests__/r2-retention.test.ts',
+      'packages/agent-runtime/src/__tests__/r2-receipts.test.ts',
+      'packages/agent-runtime/src/__tests__/r3-ready.test.ts',
+      'packages/agent-runtime/src/__tests__/r4-replay.test.ts',
+    ],
+    reason:
+      'model runtime protocol, immutable body and actual framework consumers',
+  },
+  {
+    pattern: 'scripts/agent-runtime-import-boundary-gate.mjs',
+    tests: ['scripts/__tests__/agent-runtime-import-boundary-gate.test.ts'],
+    reason: 'experimental package import isolation',
+  },
   {
     pattern: 'src-desktop/Cargo.toml',
     tests: ['scripts/__tests__/tauri-webdriver-boundary.test.ts'],
@@ -1278,6 +1351,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
   },
   {
     pattern: 'src-server/services/starter-work/starter-registry.ts',
+    related: true,
     tests: ['scripts/__tests__/documentation-foundations.test.ts'],
     reason: 'Starter documentation runtime source',
   },
@@ -1371,6 +1445,44 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     ],
     reason: 'generated contributor command Interface',
   },
+  // These suites exercise validator policy in disposable repositories rather
+  // than validate Station's current docs. Readiness keeps the real-repository
+  // suites in docs:foundations:test; tooling changes conservatively select all
+  // three here, including child-process and schema inputs outside import graphs.
+  ...[
+    'scripts/**',
+    'schemas/**',
+    '.github/workflows/docs-freshness-sweep.yml',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: [
+      'scripts/__tests__/documentation-impact.test.ts',
+      'scripts/__tests__/documentation-freshness.test.ts',
+      'scripts/__tests__/documentation-review-notes.test.ts',
+    ],
+    reason: 'documentation validator framework self-tests',
+  })),
+  // Dependency and test-runtime configuration changes already escalate. Keep
+  // framework qualification there without expanding bounded inline selections.
+  ...[
+    'package.json',
+    'package-lock.json',
+    'pnpm-lock.yaml',
+    'pnpm-workspace.yaml',
+    '.npmrc',
+    'vitest.config.ts',
+    'vitest.setup.ts',
+    'vitest.global-setup.ts',
+    'vite.config.ts',
+    'tsconfig.json',
+    'tsconfig.scripts.json',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    deferredLanes: ['test-full'],
+    reason: 'documentation validator framework runtime qualification',
+  })),
   {
     // Spawned as child processes, outside the import graph (#2923, #2924).
     pattern: 'scripts/check-documentation-freshness.mjs',
@@ -1400,7 +1512,10 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
   },
   {
     pattern: '.github/workflows/docs-freshness-sweep.yml',
-    tests: ['scripts/__tests__/documentation-freshness.test.ts'],
+    tests: [
+      'scripts/__tests__/documentation-freshness.test.ts',
+      'scripts/__tests__/documentation-foundations.test.ts',
+    ],
     reason: 'Nightly freshness sweep schedule and permissions',
   },
   {
@@ -1456,6 +1571,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     tests: [
       'scripts/__tests__/documentation-foundations.test.ts',
       'scripts/__tests__/public-doc-contract-examples.test.ts',
+      'scripts/__tests__/install-script.test.ts',
     ],
     reason: 'getting-started runtime source contract',
   },
@@ -1644,6 +1760,18 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     whenAll: ['packages/contracts/src/operational-event.ts'],
     tests: ['packages/contracts/src/__tests__/operational-event.test.ts'],
     reason: 'operational event root export',
+  },
+  {
+    // A manifest must never reach Vitest related discovery: Vitest's default
+    // forceRerunTriggers match every `package.json`, so a hosted checkout
+    // selects the whole corpus while a checkout under a dot-directory selects
+    // nothing (#3860's queue runs exceeded the shard budget that way).
+    pattern: 'packages/basis-pane/package.json',
+    tests: [
+      'packages/basis-pane/src/__tests__/task-basis-collection-boundary.test.ts',
+      'scripts/__tests__/basis-mcp-apps.test.ts',
+    ],
+    reason: 'published Basis pane exports and dependency floor',
   },
   {
     pattern: 'packages/sdk/package.json',
@@ -2055,7 +2183,7 @@ const spawnedScriptEdgeCache = new Map();
  * entry shim such as `scripts/lib/module-entry.mjs` is imported by most
  * spawned scripts: a one-line edit selected 75 files and took `test:changed`
  * past ci:fast's 900 s budget (#2621). The deferral keeps the coverage (the
- * merge queue's full regression runs them) without the inline cost.
+ * main/release full qualification runs them) without the inline cost.
  */
 export const SPAWNED_SCRIPT_FANOUT_LIMIT = 16;
 const SPAWNED_SCRIPT_DEFERRAL_REASON =
@@ -2208,9 +2336,9 @@ export function buildTestImpactManifest(options) {
 
 /**
  * Changed paths whose consumers the fast lane deliberately leaves to the
- * merge queue: a path an unconditional `mergeQueueRegression` edge owns. The
- * fast-checks plan records them, and a merge-queue candidate that names any
- * runs the full regression (scripts/merge-queue-regression-decision.mjs).
+ * full-qualification corpus: a path an unconditional `mergeQueueRegression`
+ * edge owns. The legacy field stays in the fast-checks plan so bounded
+ * integration reports its deferred consumer coverage truthfully.
  *
  * @param {readonly string[]} paths
  * @param {readonly ImpactEdge[]} [manifest]

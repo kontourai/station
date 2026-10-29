@@ -96,7 +96,7 @@ function humanizeContributionSlug(slug: string): string {
  * what had arrived or to reach it (#1536 G2). This is the same manifest data
  * the chips render, and it carries the `layoutSlug` the Add Layout flow needs.
  *
- * Review M4: each entry is NAMED — its own display name when the payload
+ * Each entry is NAMED — its own display name when the payload
  * carries one (panes always do; a layout will once the route sends it), and a
  * humanized identifier otherwise. It used to pass the raw slug through under
  * the field called `name`, so the section promised things and rendered

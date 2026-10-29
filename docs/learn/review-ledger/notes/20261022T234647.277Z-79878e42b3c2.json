@@ -1,0 +1,7 @@
+{
+  "revision": "71ae52ac2d2959f6566d7f1b25b58c844bd14a92",
+
+  "notes": [
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed iOS path observer, resume event caller, independent checkout generation versus response-wait epoch, complete NW interface types and accepted callback-dependent freshness gap. Socket tests cover startup/resume retirement, ongoing uploads and registered response waits. Focused polling and workflow tests passed; hosted Rust fault controls and iOS build pending; physical devices and real Network.framework-to-IPC delivery NOT_VERIFIED.","inputs":["docs/guides/native-shell-verification.md","src-desktop/src/ios_network_path.rs","src-desktop/src/lib.rs","src-desktop/src/native_http_transport.rs"]}
+  ]
+}

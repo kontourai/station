@@ -28,6 +28,7 @@
  * adapter Station could not probe is an unknown, not an absence.
  */
 
+import type { ACPEngineInstallRecipe } from '@kontourai/station-contracts/acp';
 import type { EngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import type {
   DevicePresentation,
@@ -69,6 +70,8 @@ export interface FirstRunEngineOption {
   selectable: boolean;
   /** Why this row reads the way it does. Absent only for a plain `available`. */
   note?: string;
+  /** How to install it on the host. Only an `undetected` catalogue row carries one. */
+  install?: ACPEngineInstallRecipe;
 }
 
 interface FirstRunEnablePlanItem {
@@ -94,7 +97,10 @@ export type FirstRunEnableOutcome =
   | (FirstRunEnableOutcomeBase & { status: 'created' })
   | (FirstRunEnableOutcomeBase & { status: 'existing' })
   | (FirstRunEnableOutcomeBase & { status: 'warned'; warnings: string[] })
-  | (FirstRunEnableOutcomeBase & { status: 'failed'; message: string });
+  | (FirstRunEnableOutcomeBase & { status: 'failed'; message: string })
+  // The engine's first start is still running on the server: not set up and
+  // not failed. Not retried here (a retry would restart that start).
+  | (FirstRunEnableOutcomeBase & { status: 'starting' });
 
 const STATE_ORDER: Record<FirstRunEngineState, number> = {
   available: 0,
@@ -242,6 +248,7 @@ function toOption(
     // host and says where the CLI would have to be installed. It still claims
     // nothing about installation state — see `notReadyNote`'s restraint.
     note: hostActionCopy('engine-missing', devicePresentation),
+    ...(engine.install ? { install: engine.install } : {}),
   };
 }
 
@@ -415,10 +422,26 @@ export function firstRunEnableSuccessOutcome(
   return { ...base, status: created ? 'created' : 'existing' };
 }
 
+/**
+ * The SDK's `EngineStillStartingError`, read by name so a caller does not
+ * need the class at runtime (tests mock the SDK module).
+ */
+export function isEngineStillStarting(error: unknown): boolean {
+  return error instanceof Error && error.name === 'EngineStillStartingError';
+}
+
 export function firstRunEnableFailureOutcome(
   item: FirstRunEnablePlanItem,
   error: unknown,
 ): FirstRunEnableOutcome {
+  if (isEngineStillStarting(error)) {
+    return {
+      engineId: item.engineId,
+      name: item.name,
+      agentName: item.name,
+      status: 'starting',
+    };
+  }
   return {
     engineId: item.engineId,
     name: item.name,
@@ -447,6 +470,8 @@ export function firstRunEnableOutcomeMessage(
       return `${outcome.name}: already set up as “${outcome.agentName}”.`;
     case 'warned':
       return `${outcome.name}: ${outcome.warnings.join(' ')}`;
+    case 'starting':
+      return `${outcome.name}: still starting for the first time. If it connects while Station is running, its Agent is added then; otherwise set it up again later.`;
     default:
       return `${outcome.name}: could not be set up. ${outcome.message}`;
   }
@@ -482,13 +507,15 @@ export function summarizeFirstRunEnableOutcomes(
   const existing = outcomes.filter((o) => o.status === 'existing').length;
   const warned = outcomes.filter((o) => o.status === 'warned').length;
   const failed = outcomes.filter((o) => o.status === 'failed').length;
+  const starting = outcomes.filter((o) => o.status === 'starting').length;
   const parts: string[] = [];
   if (created > 0) parts.push(`${created} set up`);
   if (existing > 0) parts.push(`${existing} already set up`);
   if (warned > 0) parts.push(`${warned} saved with warnings`);
   if (failed > 0) parts.push(`${failed} could not be set up`);
+  if (starting > 0) parts.push(`${starting} still starting`);
   return {
-    needsAcknowledgement: warned + failed > 0,
+    needsAcknowledgement: warned + failed + starting > 0,
     message: parts.length > 0 ? `${parts.join(' · ')}.` : 'Nothing to set up.',
   };
 }

@@ -5,6 +5,7 @@ import type {
 import type { LayoutCatalogItem } from '@kontourai/station-contracts/distribution';
 import type { LayoutComponentRef } from '@kontourai/station-contracts/layout';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
+import type { ApiRequestScope } from '../client/http';
 import {
   type MutationOptions,
   type QueryConfig,
@@ -22,6 +23,7 @@ import {
   type KitStandardView,
   type RegistrySourceAction,
   requestIntegration,
+  requestIntegrationAccount,
   requestRegistryCatalogAction,
   requestRegistryIntegrationAction,
   requestRegistryLayoutAction,
@@ -72,6 +74,7 @@ export interface LayoutRegistryActionInput {
  * consumers receive the resolved same-origin `iconUrl` only when it is valid.
  */
 export interface IntegrationViewModel extends ToolDef {
+  origin?: import('@kontourai/station-contracts/tool').ToolOrigin;
   /** Names of configured secret env vars; values and backing refs never cross the API. */
   secretEnvKeys?: string[];
   /** Same-origin, output-only URL for Station-validated local raster art. */
@@ -350,13 +353,16 @@ export function useDeleteIntegrationMutation(
 }
 
 export function useReconnectIntegrationMutation(
-  options?: MutationOptions<void, string>,
+  options?: MutationOptions<IntegrationViewModel, string>,
 ) {
   return useApiMutation(
     async (id: string) => {
-      await requestIntegration<void>(`/${encodeURIComponent(id)}/reconnect`, {
-        method: 'POST',
-      });
+      return requestIntegration<IntegrationViewModel>(
+        `/${encodeURIComponent(id)}/reconnect`,
+        {
+          method: 'POST',
+        },
+      );
     },
     {
       invalidateKeys: [['integrations']],
@@ -364,6 +370,90 @@ export function useReconnectIntegrationMutation(
       onError: options?.onError,
     },
   );
+}
+
+export function useIntegrationAccountQuery(
+  id: string,
+  projectSlug?: string,
+  requestScope?: ApiRequestScope,
+) {
+  return useApiQuery<
+    import('@kontourai/station-contracts/tool').ToolAccountStatus
+  >(
+    [
+      'integration-account',
+      id,
+      projectSlug ?? null,
+      requestScope?.apiBase ?? null,
+      requestScope?.authorityKey ?? null,
+    ],
+    () =>
+      requestIntegrationAccount(
+        `/${encodeURIComponent(id)}/account${projectSlug ? `?projectSlug=${encodeURIComponent(projectSlug)}` : ''}`,
+        requestScope,
+      ),
+    { cancelWhenInactive: true, staleTime: 0, refetchOnMount: 'always' },
+  );
+}
+
+export function useStartIntegrationOAuthMutation() {
+  return useApiMutation(
+    ({ id, projectSlug, requestScope }: IntegrationAccountInput) =>
+      requestIntegrationAccount<{ authorizationUrl: string }>(
+        `/${encodeURIComponent(id)}/oauth/authorize`,
+        requestScope,
+        'POST',
+        { mode: 'remote', projectSlug },
+      ),
+    { invalidateKeys: [['integration-account'], ['integrations']] },
+  );
+}
+
+/** Disconnects only the authenticated caller's selected integration account. */
+export function useDisconnectIntegrationAccountMutation() {
+  return useApiMutation(
+    ({ id, projectSlug, requestScope }: IntegrationAccountInput) =>
+      requestIntegrationAccount<
+        import('@kontourai/station-contracts/tool').ToolAccountStatus
+      >(
+        `/${encodeURIComponent(id)}/account${projectSlug ? `?projectSlug=${encodeURIComponent(projectSlug)}` : ''}`,
+        requestScope,
+        'DELETE',
+      ),
+    { invalidateKeys: [['integration-account'], ['integrations']] },
+  );
+}
+
+export function useFinishIntegrationOAuthMutation() {
+  return useApiMutation(
+    ({
+      id,
+      callbackUrl,
+      projectSlug,
+      requestScope,
+    }: {
+      id: string;
+      callbackUrl: string;
+      projectSlug?: string;
+      requestScope?: ApiRequestScope;
+    }) =>
+      requestIntegrationAccount(
+        `/${encodeURIComponent(id)}/oauth/callback`,
+        requestScope,
+        'POST',
+        { callbackUrl, projectSlug },
+      ),
+    {
+      invalidateKeys: [['integration-account'], ['integrations']],
+      evictSettledVariables: true,
+    },
+  );
+}
+
+interface IntegrationAccountInput {
+  id: string;
+  projectSlug?: string;
+  requestScope?: ApiRequestScope;
 }
 
 export function useSetIntegrationEnabledMutation(

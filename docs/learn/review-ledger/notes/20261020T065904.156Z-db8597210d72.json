@@ -1,0 +1,15 @@
+{
+  "revision": "aec973e725b8341f62a723f94fe09db1b9e32788",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"The cli.md delta adds three tasks usage lines; this document's only claim about the CLI reference is the distribution/command-admission row, which is unaffected.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"The cli.md delta adds three tasks usage lines (basis, get-output, keep-output); the triage design makes no claim about tasks usage lines, so it remains accurate.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/authoring-skill-experiences.md","note":"help.ts delta adds [--json] to the tasks basis usage line only; the guide cites cli.md for build/install commands and makes no claim about tasks usage lines.","inputs":["docs/guides/authoring-skill-experiences.md","packages/cli/src/help.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The cli.md delta adds three tasks usage lines; the guide only links the CLI reference as the source of exact commands, which stays true.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"help.ts adds [--json] to the tasks basis usage line and cli.md gains three tasks usage lines; the README links cli.md sections (invocation, chat, environment) and makes no claim about tasks usage lines.","inputs":["packages/cli/README.md","docs/reference/cli.md","packages/cli/src/help.ts"]}
+  ]
+}

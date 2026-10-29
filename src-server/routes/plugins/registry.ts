@@ -2,7 +2,9 @@ import type {
   PluginInstallationRevision,
   PluginManifest,
 } from '@kontourai/station-contracts/plugin';
+import { recordIntegrationOrigin } from '../../services/plugins/integration-origin.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
+import { ensurePluginInstallTrustMigration } from '../../services/plugins/plugin-install-trust-migration.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
 import { observePluginGrantRevisions } from '../../services/plugins/plugin-permissions.js';
@@ -81,12 +83,14 @@ import {
   type PluginPrincipalResolution,
   projectLayoutCatalogItems,
 } from './plugin-identity-enumeration.js';
+import { pluginInstallTrustErrorResponse } from './plugin-install-trust-errors.js';
 import {
   personOnly,
   refuseInternalControlCaller,
 } from './plugin-person-approval.js';
 
 interface RegistryRouteDeps {
+  authorizeOperator?: (c: Context) => Promise<void>;
   /**
    * Caller resolution for the operator-only plugin-catalog routes (#2067).
    * Absent means this composition is not serving authenticated HTTP callers,
@@ -174,6 +178,28 @@ export function createRegistryRoutes(
   const app = new Hono();
   const projectHomeDir = configLoader.getProjectHomeDir();
   const sources = registrySourceManager(projectHomeDir);
+  app.use('*', async (c, next) => {
+    if (
+      c.req.method === 'POST' &&
+      ['/integrations/install', '/plugins/install', '/agents/install'].includes(
+        c.req.path.replace(/^\/api\/registry/, ''),
+      ) &&
+      deps?.authorizeOperator
+    ) {
+      try {
+        await deps.authorizeOperator(c);
+      } catch {
+        return c.json(
+          {
+            success: false,
+            error: 'Only the Station operator can install sources.',
+          },
+          403,
+        );
+      }
+    }
+    await next();
+  });
   const manageSources = operatorOnly(deps?.visibility, 'manage marketplaces');
   app.get(
     '/sources',
@@ -585,6 +611,26 @@ export function createRegistryRoutes(
       // authority as installing a plugin.
       const commandRefused = refuseUngrantedCommandChoice(c);
       if (commandRefused) return commandRefused;
+      // #2998: this copy writes no install trust record. Freeze the pre-d1
+      // migration set first, so the copied tree is `unrecorded` and is
+      // never grandfathered by a later migration attempt.
+      try {
+        await ensurePluginInstallTrustMigration({
+          projectHomeDir,
+          ...(deps?.packageMcpJournal
+            ? { packageMcpJournal: deps.packageMcpJournal }
+            : {}),
+        });
+      } catch (error: unknown) {
+        return c.json(
+          {
+            success: false,
+            code: 'plugin-trust-records-unavailable',
+            message: errorMessage(error),
+          },
+          503,
+        );
+      }
       const result = await getAgentRegistryProvider().install(id);
       if (result.success) {
         // Refresh ACP modes so the new agent appears
@@ -724,11 +770,18 @@ export function createRegistryRoutes(
       const { id } = getBody(c);
       registryOps.add(1, { operation: 'install-integration', item: id });
 
-      const result = await getIntegrationRegistryProvider().install(id);
+      const provider = getIntegrationRegistryProvider();
+      const installed = provider.installWithDefinition
+        ? await provider.installWithDefinition(id)
+        : {
+            result: await provider.install(id),
+            definition: (await provider.getToolDef(id)) ?? undefined,
+          };
+      const result = installed.result;
       if (!result.success) return c.json(result, 500);
 
       // Auto-generate integration.json from provider metadata
-      const toolDef = await getIntegrationRegistryProvider().getToolDef(id);
+      const toolDef = installed.definition;
       if (toolDef) {
         let existing:
           | Awaited<ReturnType<ConfigLoader['loadIntegration']>>
@@ -753,6 +806,12 @@ export function createRegistryRoutes(
         // binding authority. It can never author a reference.
         delete persisted.secretEnvRefs;
         await configLoader.saveIntegration(toolDef.id, persisted);
+        if ('origin' in installed && installed.origin)
+          recordIntegrationOrigin(
+            configLoader.getProjectHomeDir(),
+            persisted,
+            installed.origin,
+          );
       }
 
       return c.json(result);
@@ -1340,6 +1399,12 @@ export function createRegistryRoutes(
         settled.status as ContentfulStatusCode,
       );
     } catch (error: unknown) {
+      // #2998: the same closed install trust outcomes as the direct install.
+      const trustRefusal = pluginInstallTrustErrorResponse(error);
+      if (trustRefusal) {
+        const { status, message, ...fields } = trustRefusal;
+        return c.json({ success: false, ...fields, message }, status);
+      }
       if (isRegistryAcquisitionRefusal(error))
         return c.json(
           {

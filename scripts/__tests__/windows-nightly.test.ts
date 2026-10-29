@@ -10,6 +10,13 @@ import {
 const sourceSha = 'a'.repeat(40);
 const version = '0.1.11-nightly.2443.2';
 const bytes = Buffer.from('a signed archive');
+/** A Tauri updater signature file body naming `version` in its trusted comment. */
+function signedFor(version: string, label = 'archive'): string {
+  return Buffer.from(
+    `untrusted comment: signature from tauri secret key\nRUQ${label}\ntrusted comment: timestamp:1700000000\tfile:${label}\tversion:${version}\nZ2xvYmFs\n`,
+  ).toString('base64');
+}
+const signed = signedFor(version);
 function build(platform: string) {
   return {
     platform,
@@ -18,7 +25,7 @@ function build(platform: string) {
     bytes,
     sha256: createHash('sha256').update(bytes).digest('hex'),
     assetName: `station-${version}-${platform === 'darwin-aarch64' ? 'macos-aarch64.app.tar.gz' : 'windows-x86_64-setup.exe'}`,
-    signature: 'signed',
+    signature: signed,
     platformSigningState: 'VERIFIED',
     updaterSigningState: 'VERIFIED',
   };
@@ -153,18 +160,18 @@ it('requires attested Windows signature, payload and packaged provenance facts',
 it('binds the Windows feed entry to the same version and updater signature', () => {
   const manifest = assembleNightlyDesktopManifest(input());
   expect(() =>
-    assertWindowsNightlyManifest(manifest, version, Buffer.from('signed')),
+    assertWindowsNightlyManifest(manifest, version, Buffer.from(signed)),
   ).not.toThrow();
   expect(() =>
     assertWindowsNightlyManifest(manifest, version, Buffer.from('wrong')),
   ).toThrow();
   Object.assign(manifest.platforms, {
     'windows-x86_64': {
-      signature: 'signed',
+      signature: signed,
       url: 'https://example.com/other-setup.exe',
     },
   });
   expect(() =>
-    assertWindowsNightlyManifest(manifest, version, Buffer.from('signed')),
+    assertWindowsNightlyManifest(manifest, version, Buffer.from(signed)),
   ).toThrow();
 });

@@ -1,0 +1,9 @@
+{
+  "revision": "22356111da11730ca16f73afdfad15941d0630ac",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Reviewed the docs-kit.json tagline change. The guide's docs-kit claims (manifest tracks public-docs.json sources and sections, docs-kit-manifest.test.ts drift check, PR: Docs kit) concern structure, not the tagline text, and remain accurate.","inputs":["docs/guides/documentation.md","docs-kit.json"]},
+
+    {"path":"docs/pages/README.md","note":"Reviewed the docs-kit.json tagline change. The Pages build description (manifest mirrors the public docs list, README landing page, fail-open bundle step, publish:false manual) does not mention the tagline and remains accurate.","inputs":["docs/pages/README.md","docs-kit.json"]}
+  ]
+}

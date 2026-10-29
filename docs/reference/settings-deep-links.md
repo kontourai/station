@@ -3,13 +3,23 @@
 On phones, the **Settings section** picker lists topics; computers show the
 same topics in a navigation rail. Both stay within Settings. General is the
 default. Customize opens management destinations from a separate sidebar-footer
-button beside Schedule and Settings. Route changes still use the
-unsaved-changes guard.
+button beside Schedule and Settings, or from Sidebar utilities when the
+workspace map is collapsed. Route changes still use the
+unsaved-changes guard. When a dialog is open, section navigation updates its
+selection without scrolling or focusing the page behind that dialog.
 
 The Settings catalog assigns stable ids and deep links to its controls. A
 link opens the owning section and attempts to reveal the control. Platform
 restrictions and delayed rendering can prevent that reveal. This reference
 explains the URL, catalog endpoint, and how to use its results.
+
+**General → Your account** has the stable section id `account-preferences`.
+Its personal engine defaults have ids `personal-codex-approval`,
+`personal-claude-approval` and `personal-muse-approval`; migration is
+`account-preference-sync`. Portable settings retain their existing ids and now
+report `account` scope. This means account storage on the connected Station when
+identity is verified, with a device-local fallback for callers without a person.
+See [the settings architecture](../design/settings-architecture.md#account-preferences-and-device-settings).
 
 ## The URL shape
 
@@ -52,16 +62,37 @@ than assemble them.
 
 Moves so far:
 
+- The Quiet tree workspace map retires `sidebar-sections`: chats and composer
+  drafts remain in the chat dock. Old links take the missing-highlight path
+  described above; stored device values and preference backups still round-trip.
+
 - #2144: a `chat` section now holds the chat controls that used to sit under
   `appearance` (`chat-font-size` and `smooth-answer-reveal`), alongside five
   controls that previously had no Settings row at all
   (`chat-show-reasoning`, `chat-show-tool-details`, `chat-dock-auto-hide`,
   `diff-style`, `diff-wrap`).
+- Color themes: the theme and accent controls moved to the Appearance page
+  (`/appearance`, listed in Customize). The `theme` and `accent-color` rows
+  stay in `appearance` with their ids, as links to that page (Theme also keeps
+  the light/dark toggle), so `highlight=theme` and `highlight=accent-color`
+  still reveal a row and Settings search still finds them.
 - #2182: `agent-defaults` is now `agent-runs`, and `station-config` is gone
   entirely — its sixteen controls moved to `host-runtime`, `sources` (new),
   `telemetry` (new), `permissions` (new), `agent-runs` and `chat`. The retired
   `/developer/config` path now redirects to `/settings` with no `view` at all,
   because a redirect cannot choose one of six.
+
+### Developer previews
+
+Advanced → Developer tools reveals five independent, default-off device opt-ins:
+`experimental-flow`, `experimental-readiness`, `experimental-trust`,
+`experimental-station-routes`, and `experimental-sheet-gestures`.
+`surface-trust` is visible only with the Trust preview enabled, and the
+Devices page's `station-routes` section only with the Station routes preview. Search and the
+command palette omit hidden preview settings. A deep link to an opted-out
+control announces that the tool is off rather than waiting for a missing row.
+The registry remains a build-wide inventory; its presence does not mean a row
+is available on this device.
 
 ### Platform and rendering limits
 
@@ -92,7 +123,7 @@ Read `GET /config/app` for values.
       {
         "id": "default-max-turns",
         "label": "Default max turns",
-        "help": "Station stops an agent run once it has taken this many steps.",
+        "help": "Set the fallback step limit for VoltAgent runs; Strands and native engines do not apply this setting.",
         "scope": "station",
         "section": "agent-runs",
         "route": "/settings?view=agent-runs&highlight=default-max-turns",
@@ -108,7 +139,7 @@ Read `GET /config/app` for values.
 | `id` | Stable control identity; the `highlight` parameter. |
 | `label` | The control's heading as Settings renders it. |
 | `help` | One sentence stating what is different about Station because this setting holds the value it holds. Absent when the control has no registry definition behind it. |
-| `scope` | Which authority owns an edit: `station`, `defaults`, `device`, `mixed`, `temporary`, or `informational` (`informational` and `temporary` are not persisted settings). |
+| `scope` | Which authority owns an edit: `account`, `station`, `defaults`, `device`, `mixed`, `temporary`, or `informational` (`informational` and `temporary` are not persisted settings). |
 | `section` | The settings section; the `view` parameter. |
 | `route` | The deep link, already assembled. Prefer this over building the URL. |
 | `configKey` | The primary `AppConfig` or device-settings key behind the control, when it has one. |

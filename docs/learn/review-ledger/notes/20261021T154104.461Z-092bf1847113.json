@@ -1,0 +1,7 @@
+{
+  "revision": "744fe82edb7562060ee56109e87def56fa5fa3dd",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"L1: depends on connections.md, whose only change is the Add an engine steps (Retry check, Add and set up, unchecked command-backed engine sign-in). This guide links Connections for setup steps and device/pairing relationships; its claims are unaffected. No prose change.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

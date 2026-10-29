@@ -6,11 +6,12 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
-import type {
-  Notification,
-  NotificationEnvelopeV1,
-  ScheduleNotificationOpts,
-  SurfaceId,
+import {
+  type Notification,
+  type NotificationEnvelopeV1,
+  type ScheduleNotificationOpts,
+  type SurfaceId,
+  TURN_COMPLETION_NOTIFICATION_SOURCE,
 } from '@kontourai/station-contracts/notification';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
@@ -162,7 +163,7 @@ export const INTERNAL_NOTIFICATION_SOURCES: ReadonlySet<string> = new Set([
   'approval-inbox',
   'device-pairing',
   'scheduler',
-  'turn-completion',
+  TURN_COMPLETION_NOTIFICATION_SOURCE,
 ]);
 
 /**
@@ -176,7 +177,7 @@ export const INTERNAL_NOTIFICATION_SOURCES: ReadonlySet<string> = new Set([
  */
 const CARD_MARK_WRITER_SOURCES: ReadonlySet<string> = new Set([
   'approval-inbox',
-  'turn-completion',
+  TURN_COMPLETION_NOTIFICATION_SOURCE,
 ]);
 
 /** Provider ids a provider may not register under: they name REST/agent writes. */
@@ -511,6 +512,7 @@ export class NotificationService {
   }> {
     let displaced: string | undefined;
     let remaining = 0;
+    let actionsChanged = false;
     const now = new Date().toISOString();
     const { notification, created, updated } = await this.mutate((all) => {
       // Dedupe by tag. The fresh read happens while holding the mutation
@@ -589,6 +591,9 @@ export class NotificationService {
           const outcome = classifyNotificationCategory(opts.category);
           const defaultTtl = outcome ? NOTIFICATION_TTL_MS[outcome] : undefined;
           const ttl = opts.ttl ?? defaultTtl ?? existing.ttl;
+          actionsChanged =
+            JSON.stringify(existing.actions ?? null) !==
+            JSON.stringify(opts.actions ?? null);
           if (opts.actions === undefined) delete existing.actions;
           if (opts.body === undefined) delete existing.body;
           Object.assign(existing, {
@@ -678,8 +683,13 @@ export class NotificationService {
       else if (notification.status === 'delivered')
         this.scheduleExpiryTimer(notification);
       // An enveloped record's content change must reach every client (and
-      // the delivery router); legacy dedupe updates stay silent as before.
-      if (envelope) {
+      // the delivery router). A legacy record's dedupe update stays silent
+      // unless its actions changed: open clients render the buttons from the
+      // stored record, so a card rewritten to offer fewer actions (an
+      // approval that now needs its content loaded) must tell them to
+      // refetch. The delivery router treats such an update as a settle, not
+      // a content edit (it needs an envelope), so nothing is sent again.
+      if (envelope || actionsChanged) {
         this.eventBus.emit(
           SERVER_EVENTS.NOTIFICATION_UPDATED,
           toPublicNotification(notification) as unknown as Record<
@@ -866,6 +876,14 @@ export class NotificationService {
     } catch (error) {
       const restored = await this.releaseActionLease(id, reservation.id);
       if (restored) this.scheduleExpiryTimer(restored);
+      try {
+        await provider?.handleActionFailed?.(id, actionId, error);
+      } catch (followUpError) {
+        logger.warn('Notification provider failed to follow up an action', {
+          id,
+          error: followUpError,
+        });
+      }
       throw error;
     }
 
@@ -901,6 +919,11 @@ export class NotificationService {
       SERVER_EVENTS.NOTIFICATION_UPDATED,
       toPublicNotification(n) as unknown as Record<string, unknown>,
     );
+  }
+
+  async get(id: string): Promise<Notification | undefined> {
+    const notification = (await this.read()).find((n) => n.id === id);
+    return notification ? toPublicNotification(notification) : undefined;
   }
 
   async list(opts?: {

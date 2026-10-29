@@ -18,6 +18,9 @@ import {
 } from './useActiveChatSessions';
 import { useIsMobile } from './useIsMobile';
 
+// Focus adopts cleanup ownership without invalidating healthy hydration.
+const hydratingTabs = new Map<string, symbol>();
+
 interface DerivedSession {
   id: string;
   conversationId?: string;
@@ -54,6 +57,7 @@ export interface OpenConversationOptions
   signal?: AbortSignal;
   /** Synchronous route commit immediately before focus; false cancels reentry. */
   beforeFocus?: () => boolean;
+  isCurrent?: () => boolean;
 }
 
 export function useChatDockActions({
@@ -72,6 +76,7 @@ export function useChatDockActions({
 
   const focusSession = useCallback(
     (sessionId: string, revealDock = true) => {
+      hydratingTabs.delete(sessionId);
       setActiveSessionId(sessionId);
       // archive#3782: the chat's durable identity, never `null` — focusing a
       // chat that has not been promoted to a conversation yet must still leave
@@ -110,6 +115,7 @@ export function useChatDockActions({
 
   const removeSession = useCallback(
     (sessionId: string) => {
+      hydratingTabs.delete(sessionId);
       removeChat(sessionId);
       if (activeSessionId === sessionId) {
         const remaining = sessions.filter((s) => s.id !== sessionId);
@@ -286,6 +292,13 @@ export function useChatDockActions({
                 : {}),
             }
           : reopenedExecution;
+      const owner = Symbol();
+      let createdId: string | undefined;
+      const ownsTab = () =>
+        createdId !== undefined && hydratingTabs.get(createdId) === owner;
+      const cleanup = (id: string) => {
+        if (ownsTab()) removeChat(id);
+      };
       const sessionId = await openConversationAction(
         conversationId,
         agentSlug,
@@ -308,7 +321,18 @@ export function useChatDockActions({
         },
         options.conversationUpdatedAt,
         options.hydrateMessages,
+        {
+          initialized: (id) => {
+            createdId = id;
+            hydratingTabs.set(id, owner);
+          },
+          current: () =>
+            !options.signal?.aborted && options.isCurrent?.() !== false,
+          cleanup,
+        },
       );
+      const stillOwned = ownsTab();
+      if (stillOwned && createdId) hydratingTabs.delete(createdId);
       // archive#1312: `null` means the conversation's messages
       // failed to fetch (agent exists, but the fetch 404'd/errored) —
       // `useOpenConversation` already tore the just-created tab back down.
@@ -316,11 +340,11 @@ export function useChatDockActions({
       // silently landing on a permanently empty tab.
       if (sessionId === null) return false;
       if (options.signal?.aborted) {
-        removeChat(sessionId);
+        if (stillOwned) removeChat(sessionId);
         return false;
       }
       if (options.beforeFocus && !options.beforeFocus()) {
-        removeChat(sessionId);
+        if (stillOwned) removeChat(sessionId);
         return false;
       }
       setActiveSessionId(sessionId);

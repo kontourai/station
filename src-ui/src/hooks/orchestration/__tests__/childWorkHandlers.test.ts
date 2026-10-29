@@ -36,6 +36,10 @@ function tuple(type: 'task/registry' | 'task/settled', payload: unknown) {
 const chat = () => activeChatsStore.getSnapshot()[threadId];
 const announcements = () =>
   (chat()?.ephemeralMessages ?? []).map((message) => message.content);
+const notices = () =>
+  (chat()?.ephemeralMessages ?? []).map(
+    (message) => message.backgroundTaskNotice,
+  );
 
 describe('child-work client path (legacy Claude tuples → contract reducer)', () => {
   test('#3308 a reconnect between the two Claude terminals still takes the final usage', () => {
@@ -227,6 +231,10 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
     expect(announcements()).toEqual([
       'Background task failed — Deep dive\n\ncrashed',
     ]);
+    // The card renders the registry's own fields, not the prose above.
+    expect(notices()).toEqual([
+      { status: 'failed', title: 'Deep dive', summary: 'crashed' },
+    ]);
   });
 
   test('a stopped backgrounded task with only a transcript file announces the stop heading', () => {
@@ -236,7 +244,9 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
       status: 'cancelled',
       outputFile: '/tmp/a.jsonl',
     });
-    expect(announcements()).toEqual(['⏹ Background task stopped']);
+    expect(announcements()).toEqual(['Background task stopped']);
+    // No title and no summary were reported, so the notice carries neither.
+    expect(notices()).toEqual([{ status: 'cancelled' }]);
   });
 
   test('#2459: a settle with no observed outcome is never announced as finished', () => {
@@ -260,6 +270,10 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
     expect(announcements()).toEqual([
       'Background task ended — outcome unknown — Mystery\n\npartial notes',
       'Background task stop requested — not confirmed — Runaway\n\nstill going?',
+    ]);
+    expect(notices().map((notice) => notice?.status)).toEqual([
+      'unresolved',
+      'stopped-unconfirmed',
     ]);
   });
 

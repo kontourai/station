@@ -16,7 +16,7 @@
  * subject is the panel's own `useCallback` dependency list.
  */
 
-import { render } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ChatSession } from '../types';
 
@@ -80,6 +80,7 @@ vi.mock('../components/chat/ChatMessageList', () => ({
 import { ACPChatPanel } from '../components/acp-connections/ACPChatPanel';
 import { ActiveChatsProvider } from '../contexts/ActiveChatsContext';
 import { activeChatsStore } from '../contexts/active-chats-store';
+import { conversationPartToContentParts } from '../hooks/orchestration/conversationTranscriptParts';
 
 describe('ACPChatPanel transcript identity across an agent swap', () => {
   beforeEach(() => {
@@ -98,6 +99,48 @@ describe('ACPChatPanel transcript identity across an agent swap', () => {
       title: '',
       projectSlug: 'station',
     });
+  });
+
+  test('a mounted hidden panel ignores other chats but observes its own messages and removal', () => {
+    activeChatsStore.initChat('other-tab', {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Other tab',
+    });
+    render(
+      <ActiveChatsProvider>
+        <ACPChatPanel
+          projectSlug="station"
+          agentSlug="codex"
+          tabId="tab-1"
+          isActive={false}
+        />
+      </ActiveChatsProvider>,
+    );
+    expect(screen.getByTestId('acp-messages')).toBeTruthy();
+    const renders = capture.sessions.length;
+    act(() =>
+      activeChatsStore.updateChat('other-tab', { input: 'typing elsewhere' }),
+    );
+    expect(capture.sessions).toHaveLength(renders);
+    act(() =>
+      activeChatsStore.updateChat(SESSION_ID, {
+        messages: [
+          {
+            id: 'answer',
+            role: 'assistant',
+            content: 'Current answer',
+            contentParts: conversationPartToContentParts({
+              type: 'text',
+              text: 'Current answer',
+            }),
+          },
+        ],
+      }),
+    );
+    expect(capture.sessions.at(-1)?.messages[0].content).toBe('Current answer');
+    act(() => activeChatsStore.removeChat(SESSION_ID));
+    expect(screen.getByText('Initializing...')).toBeTruthy();
   });
 
   test('a new agentSlug re-selects the transcript with no store write', () => {

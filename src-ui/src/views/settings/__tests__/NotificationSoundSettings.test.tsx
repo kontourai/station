@@ -51,6 +51,9 @@ describe('NotificationSoundSettings', () => {
 
   test('persists the changed category and previews it without entering the notification delivery seam', () => {
     render(<NotificationSoundSettings />);
+    fireEvent.click(
+      screen.getByText('Notification sounds', { selector: 'summary' }),
+    );
 
     fireEvent.change(
       screen.getByRole('combobox', { name: 'Job failures sound' }),
@@ -69,6 +72,9 @@ describe('NotificationSoundSettings', () => {
 
   test('labels stopped turns separately and keeps their default sound quiet', () => {
     render(<NotificationSoundSettings />);
+    fireEvent.click(
+      screen.getByText('Notification sounds', { selector: 'summary' }),
+    );
 
     expect(
       (

@@ -10,6 +10,13 @@ const ORCHESTRATION_TRANSFER_FIXTURE_VERSION = 1;
 export const ORCHESTRATION_TRANSFER_THREAD_ID = 'transfer-budget-thread';
 export const ORCHESTRATION_TRANSFER_OWNER = 'transfer-budget-owner';
 const TOOL_OUTPUT_BYTES = 48 * 1024;
+/**
+ * The heavy turn's tool outputs stay just under EventStore's stored-event
+ * target (16 KiB, docs/design/event-content-spill.md), so they are carried
+ * inline. Larger outputs are stored out of line and the turn would no longer
+ * be heavy on the wire, leaving the replay-budget fallback phase untested.
+ */
+const HEAVY_TOOL_OUTPUT_BYTES = 15 * 1024;
 
 function seededText(seed: string, bytes: number): string {
   let value = '';
@@ -87,7 +94,12 @@ export function heavyTransferEvents(): CanonicalRuntimeEvent[] {
         ...heavyTurn,
         toolCallId: `heavy-${tool}`,
         toolName: tool % 2 === 0 ? 'station-native' : 'external-engine',
-        output: seededText(`heavy:${tool}`, TOOL_OUTPUT_BYTES),
+        // The final pair's output is large enough to be stored out of line,
+        // so the short replay proves the wire carries its reference.
+        output: seededText(
+          `heavy:${tool}`,
+          tool === 19 ? TOOL_OUTPUT_BYTES : HEAVY_TOOL_OUTPUT_BYTES,
+        ),
       }),
     );
   }

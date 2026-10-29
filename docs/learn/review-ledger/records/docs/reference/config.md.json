@@ -18,8 +18,6 @@
 
     "packages/contracts/src/settings-registry.ts",
 
-    "pnpm-lock.yaml",
-
     "schemas/agent.schema.json",
 
     "src-server/constants.ts",
@@ -136,7 +134,59 @@
 
     "src-ui/src/components/chat/FilePartPreview.tsx",
 
-    "src-server/services/agents/agent-audience.ts"
+    "src-server/services/agents/agent-audience.ts",
+
+    "src-server/domain/telemetry-configuration.ts",
+
+    "src-server/telemetry-delivery-state.ts",
+
+    "src-server/telemetry.ts",
+
+    "src-server/services/usage-telemetry-service.ts",
+
+    "src-ui/src/views/integrations/TelemetryDestinationGrants.tsx",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots",
+
+    "packages/shared/src/mcp-tool-selection.ts",
+
+    "src-server/runtime/tools/tool-approval.ts",
+
+    "packages/contracts/src/tool-library.ts",
+
+    "src-server/services/plugins/tool-library-service.ts",
+
+    "src-server/routes/tool-library.ts",
+
+    "src-server/runtime/routes/tool-library-runtime.ts",
+
+    "src-server/services/projects/project-native-tools.ts",
+
+    "src-server/domain/telemetry-build-constants.ts",
+
+    "packages/contracts/src/plugin-telemetry.ts",
+
+    "packages/shared/src/plugin-telemetry.ts",
+
+    "src-server/services/plugin-telemetry-service.ts",
+
+    "src-server/services/plugins/plugin-telemetry-admission.ts",
+
+    "src-server/routes/operations/telemetry-events.ts",
+
+    "packages/sdk/src/client/plugin-telemetry.ts",
+
+    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts",
+
+    "schemas/app.schema.json",
+
+    "src-server/services/projects/project-s3-sources.ts",
+
+    "src-server/services/projects/task-room-attachments.ts",
+
+    "src-server/services/connections/lan-discovery.ts"
   ],
 
   "checks": [

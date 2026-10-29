@@ -89,8 +89,8 @@ The proxy checks current target registrations on new connection decisions.
 ## Agent authority and human input
 
 The built-in [station-browser tools](../../src-server/tools/station-browser-mcp-server.ts)
-provide status, open, close, navigate, resize, snapshot, click, type, press,
-scroll, wait and evaluation operations through
+provide status, open, close, navigate, resize, snapshot, click, hover, drag,
+select, type, press, scroll, color-scheme emulation, wait and evaluation operations through
 [browser-agent routes](../../src-server/routes/browser-agent.ts). They require
 a verified, bound calling Session, its recorded owner and Project, and current
 operator/admin standing. Bearer-exposed or delegated-custody credentials do not
@@ -105,6 +105,36 @@ same-user process can read) and agents connected over ACP with an HTTP-header to
 to one Session, so those engines are not offered the tools and a browser call
 from them is refused `caller-not-bound`. This is deliberate; it is not a gap in
 MCP support. Offering them would need a new bound channel, not a wiring change.
+
+**Approval posture.** Only `browser_status`, which reads Station's own records,
+may run without a prompt. Every other station-browser tool reads or drives a
+logged-in page: `browser_snapshot` and `browser_wait_for` return the page's
+content as much as `browser_click` and `browser_type` act on it. They are all
+treated as sensitive (#90 N2), so they prompt in every approval mode. Auto mode
+and an agent's `tools.autoApprove` pattern of `*` or `station-*` never cover
+them. Only a pattern that names `station-browser` itself, such as
+`station-browser_*`, does. Answering the first prompt of a Claude Session with
+**Allow the Station browser for this session** covers every later
+station-browser tool call in that one Session, so a browser check is one
+approval instead of one per tool. It does not carry to another Session, does
+not cover any other tool or MCP server, and ends with the Session. The
+per-tool **Allow … for this session** choice remains, and covers only that
+tool. It covers subagents inside the same Session, as the per-tool choice does.
+The server-wide choice creates neither an independent per-tool grant nor an
+SDK permission rule. If a later engine `init` report revokes the server's
+authenticity, even the same browser tool prompts again.
+The choice appears only for a call Station can show is the built-in
+server's own; a look-alike server never gets it. Besides the name checks, the
+engine's own `init` report must list exactly one server called
+`station-browser`, with source `sdk` (an in-process server only Station can
+register). Agents that author no tool servers keep Claude's MCP discovery
+(`.mcp.json`, user config), and which server wins a shared name is decided in
+the compiled Claude CLI, which could not be read here, so a missing source, a
+second server of that name or a non-`sdk` source means no choice is offered
+or honoured. The check is repeated at each `init` the engine sends (how often that is has not been confirmed), and Station does not
+turn on strict MCP config to get it. It is offered on the approval
+toast, the inline card and the inbox card, not in the CLI, which has no
+interactive approval prompt.
 
 `browser_status` lists the caller's sessions newest-created first, at most 20
 per page (`limit` 1–20; a larger or fractional limit or a malformed `cursor`
@@ -126,8 +156,43 @@ session whose history no longer keeps it is refused rather than assumed.
 [BrowserAutomation](../../src-server/services/browser/browser-automation.ts)
 selects only the caller's authorized Project profile. Its control operations
 use the shared lease and check the captured fence around asynchronous steps.
+The [Browser Agent decision](../decisions/browser-agent-actions-and-bound-channel.md)
+describes the proposed cross-engine binding and remaining action slices. Existing
+passthrough tokens have not been promoted to bound credentials.
+
+`browser_hover` accepts the same ref, locator or viewport CSS-pixel point as
+click. `browser_drag` takes `source` and `target` objects in that shape and sends
+a left-button pointer drag with twelve intermediate moves. Both ends must be
+visible together; it does not synthesize HTML drag data or transfer files.
+`browser_select` takes a ref or locator for a native `<select>` and exactly one
+`value` or `label`. It selects one enabled, exact matching option, clears the
+other selections and emits `input` and `change`; duplicate matches, disabled
+options/optgroups, selects disabled directly or by an ancestor fieldset, and
+non-select targets are refused `not-selectable`. The select is hit-tested; a
+covering element is refused `obscured` before selection. This Station-owned isolated-world operation does not require
+page evaluation permission. Its history records the selection method and text
+length, not the chosen value or label.
+
+`browser_color_scheme` accepts `scheme: "light"`, `"dark"` or `"system"`.
+It emulates the page's `prefers-color-scheme` media feature; system clears that
+override and follows the server browser's preference, not the viewer's Device.
+The override survives navigation on that target until changed or the browser
+session is reopened. Each human control claim sends a target-local reset to
+system through the live-surface binder; reset failures are logged. It is not a
+saved profile preference. These four actions are sensitive tools and claim the
+same control lease as click. Media history records each request once sent to
+CDP, including interrupted or failed requests; the entry does not prove the
+requested theme took effect. Other successful actions record their outcome. A
+human holder refuses the operation before page-changing steps.
+
 Human input with a current epoch can preempt an Agent; Agents cannot preempt
-a live human holder. Watching needs no control lease. The pane's control line
+a live human holder. A human takeover invalidates existing snapshot refs,
+including after hand-back. A snapshot taken while a human holds control, or
+whose read overlaps any human hold, returns no usable refs, even when the same
+human reclaims control without advancing the epoch. A read without a bound
+lease also returns no usable refs. These snapshots omit actionable ref labels
+from their text. Take a fresh snapshot after hand-back to act
+by ref again. Watching needs no control lease. The pane's control line
 says who is driving in one word (**Agent** or **You**) with the float-over-chat's
 rule (the lease holder, or an Agent whose last input is under ten seconds old).
 There is no Take control button: a click or key on the page takes control, and
@@ -146,6 +211,59 @@ requests cannot. Enabled scripts act with the page's privileges and may keep
 running after the tool call ends. Even without evaluation, dynamic pages can
 move targets between checking and input. Do not treat a tool response or a
 screenshot as independent verification of the application under test.
+
+## Capture a Screen for Task review
+
+`browser_capture_to_task {browserSessionId?, label?}` saves the viewport in the
+calling Session's bound Task. It is a sensitive `station-browser` tool, with
+the same approval prompt and bound-caller requirements as `browser_snapshot`.
+The Task comes from the execution binding; arguments cannot select a Task.
+Omit the browser selector only when exactly one live session is available in
+the caller's Project profile. The reply includes `{captureId, commit, digest}`
+and an image content block so the Agent sees the captured pixels.
+
+The [capture service](../../src-server/services/projects/task-browser-capture.ts)
+checks the Task workspace before and after the screenshot. Commit changes
+first: dirty or untracked files cause `workspace-changed`. Gitlinks cause
+`workspace-unobservable` because the hardened pin does not inspect submodule
+contents. An unavailable workspace is also unobservable. A changed commit,
+workspace or browser generation during capture is refused. This observation
+does not lock workspace writers or prove the page was built from that commit.
+
+The person API requires Browser **view** standing for the session and paired
+`orchestration:operate` scope to persist the Screen:
+`POST /api/tasks/:taskId/review/captures` takes
+`{sourceKind:'browser', sourceSessionId, label?, operationId?}`.
+`GET /api/tasks/:taskId/review/capture-sessions` lists live sessions the person
+may view in that Task's Project. Choose **Capture** beside **Screens** in
+**Task → Review** to open the picker. Entries show the URL host and a short
+page path; local files show their filename. A malformed URL is shown as an
+unavailable page. Enable the **Task review** feature preview in
+[Settings](../user/settings.md#feature-previews) first. Supply a stable operation ID for retries; when
+omitted, each request creates a new capture.
+
+The picker, capture eligibility and bound Agent Task check resolve the Task's
+stored Project slug or ID through the current Project registry with
+`localProjectIdFor`. Browser standing and sessions use the resulting opaque
+Project ID; the persisted Task review scope keeps the Task's stored identity.
+
+Captures appear as Screen items in `GET /review`. Region anchors use normalized
+rectangles validated by the review contract. Image bytes live outside Project
+roots in `<STATION_HOME>/task-captures/sha256/`; migration 023 stores append-only
+metadata scoped to the Task's creation time. Task count and home capacity are
+checked before requesting a screenshot; publication rechecks the limits under
+their owning locks. A refused metadata write removes only a newly written blob
+while holding the home lock, preserving shared digests. Non-HTTP page URLs are
+omitted from capture metadata; HTTP URLs omit queries and fragments. The content route
+`GET /api/tasks/:taskId/review/captures/:captureId/content` reauthorizes the Task,
+verifies the SHA-256 digest, and serves an explicit image Content-Type with
+`X-Content-Type-Options: nosniff`. Another Task's capture returns 404.
+
+Refusals include `caller-not-bound`, `no_task_binding`, `workspace-changed`,
+`workspace-unobservable`, `screenshot-too-large`, `capture-limit`,
+`capture-home-limit`, `capture-unavailable` and `capture-corrupt`. Screenshots
+use the registry's 16 MiB limit and PNG/JPEG fallback. Capture records are kept
+for this increment; there is no reclaim/delete API.
 
 ## Page dialogs, console, screenshots and new windows
 
@@ -199,11 +317,30 @@ otherwise it is refused `403`. Agents have no console tool.
 session (a second request joins the one in flight), and offers **Save image**
 and, where the viewer's clipboard accepts PNGs, **Copy image**.
 
-The session has one tab. A `target=_blank` link or `window.open` loads in
-the same tab and the popup target is closed by the
-[Chromium host](../../src-server/services/browser/hosts/chromium-server-host.ts);
-the history records the navigation as `link-followed`. In-pane tabs are not
-implemented.
+A workspace Browser pane keeps an ordered set of up to twelve session tabs.
+Select a tab to watch its exact server session; arrow keys select adjacent tabs
+and Alt+Left/Right reorders them. **New tab** opens a blank session. Closing a
+tab closes that server session; **Reopen tab** creates a new session from its
+last recorded, redacted URL. It does not restore POST data, secrets removed from
+the recorded URL, page history or the closed session's authority. The last tab
+can be ended through **Close session**.
+
+A `target=_blank` link or `window.open` is admitted as its actual Chromium
+target, with a separate session in the opener's Project/profile and an opener
+reference. Its original request continues without replaying a GET in the
+opener. The pane discovers admitted popups and selects their tabs. Selecting a
+tab does not change an Agent tool's explicit session target. Empty popups that
+never provide a URL, disallowed URLs and popups beyond the profile's twelve
+live/opening-session bound are closed. Browser policy still denies unsupported
+navigation and Station's own listeners; popup adoption does not grant network
+or Agent authority.
+
+The human address field accepts search text using DuckDuckGo. URL-shaped input
+continues through the strict server URL policy; Agent URLs retain that policy
+without search inference. Back/forward availability comes from the live browser's
+navigation history, with its generation. **Stop loading**, **Reload without
+cache**, and **Rotate viewport** are available in the actions menu. Tab titles
+are bounded observations from Chromium, rather than app or security identity.
 
 The pane's chrome is one row: the address field (host and path, with back,
 forward and reload inside it), the driver chip, **Console** (with a count of
@@ -226,7 +363,8 @@ committed URL; leaving the field restores navigation while retaining its draft.
 
 ## State, evidence and remaining limits
 
-Pane state `2.0` stores the Project ID and server browser-session reference.
+Pane state `2.0` stores the Project ID, selected server session and optional
+ordered session IDs. Existing single-session `2.0` records remain valid.
 The [legacy migration](../../src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx)
 opens or restores a session for a `1.0` preview URL, then persists the new
 reference after attachment. Native handles, process identity and control grants
@@ -260,3 +398,11 @@ fixture page, not a public site, and did not use a physical phone's
 on-screen keyboard, a real Agent, a device, a saturated connection pool, or
 a release package. Earlier documentation reviews used synthetic
 acquisition/host/producer seams only.
+
+The tab/navigation and popup-admission changes have service/route and mounted
+UI fixture coverage. This Linux host had no installed Chromium, so its real-host
+suite skipped; these changes have no new real-browser, mobile or native-shell
+receipt. Named/incognito profile management, file transfer, native authentication
+handoff, annotations/recordings, document preview and connection admission remain
+separate acceptance work under #90. The epic must remain open until its remaining
+behavior and platform receipts exist.

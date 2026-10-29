@@ -1,0 +1,7 @@
+{
+  "revision": "381819009f338806c574afb085f1b57627ae2f30",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Round 3 integration reviewed against 381819009f3: unchanged conformance explanation accurately limits this probe to MCP selection, nativeToolPolicy remains unverified, and captured Claude Skill plus successful completion plus independent script evidence is required. Read-only and vacuous-inventory mutations reach the real evaluator and fail assertions; restoring passes. Full real-route delivery confirms persisted selection and cleanup with a fake native adapter and local MCP, not external passthrough or live native policy enforcement.","inputs":["docs/conformance/tool-policy-delivery.md","scripts/__tests__/engine-delivery-probes.test.ts","scripts/engine-delivery-probes.ts"]}
+  ]
+}

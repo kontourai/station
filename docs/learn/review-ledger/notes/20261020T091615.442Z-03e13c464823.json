@@ -1,0 +1,7 @@
+{
+  "revision": "947175776f6338b0ed51eda75991edd87379b8cc",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Re-read the rewritten formatter-verifier paragraph against the final test file: the fixture is now typed and node-forge-only, the installed-tree controls it names (drift, unaccounted copies, caller-directory, file, symlink and case-equivalent shadows) all exist there, and a residual carrying patchBinding is refused as an unknown field (test 'does not let a residual carry installed-byte evidence'). No prose change from the previous review.","inputs":["docs/guides/dependency-security.md","scripts/__tests__/dependency-patch-binding.test.ts"]}
+  ]
+}

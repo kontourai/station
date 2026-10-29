@@ -1,0 +1,7 @@
+{
+  "revision": "5a7c95145118c7fa43bcd77f8e67c433d443f7f7",
+
+  "notes": [
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed the browser MCP registration, route admission, automation control fencing and action history at 5a7c9514511. Updated hover/drag/select/media inventory and human takeover ref expiry. Real installed Chromium exercised hover, pointer drag, select value and label, disabled optgroup refusal and dark/light/system matchMedia; synthetic owner tests cover human-holder refusals and interruptions. Cross-engine binding remains proposed; upload/dialog/recording/environment-port limits remain explicit in ADR 0022.","inputs":["docs/guides/browser-workspace.md","src-server/routes/browser-agent.ts","src-server/services/browser/browser-automation.ts","src-server/services/browser/browser-session-registry.ts","src-server/tools/station-control-browser-tools.ts"]}
+  ]
+}

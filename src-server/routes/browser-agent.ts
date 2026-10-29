@@ -15,6 +15,8 @@
  * Answers are always a typed `{ ok, ... }` envelope the tool hands to the
  * model, refusals included.
  */
+import { randomUUID } from 'node:crypto';
+import { parseTaskReviewCreateCaptureRequest } from '@kontourai/station-contracts/task-review';
 import { Hono } from 'hono';
 import { readBoundedRequestBody } from '../security/bounded-request-body.js';
 import {
@@ -29,6 +31,12 @@ import {
 import type { BrowserViewport } from '../services/browser/browser-host.js';
 import type { BrowserProjectSettingsStore } from '../services/browser/browser-project-settings.js';
 import type { BrowserSessionRecord } from '../services/browser/browser-session-registry.js';
+import type { ProjectTaskRoomRuntime } from '../services/orchestration/project-task-room-runtime.js';
+import {
+  type TaskBrowserCapture,
+  TaskBrowserCaptureError,
+  type TaskCaptureBrowserRegistry,
+} from '../services/projects/task-browser-capture.js';
 import type { StationControlCaller } from '../tools/station-control-shared.js';
 
 const MAX_BODY_BYTES = 40 * 1024;
@@ -47,6 +55,10 @@ export interface BrowserAgentRoutesDeps {
     | 'navigate'
     | 'resize'
     | 'snapshot'
+    | 'hover'
+    | 'drag'
+    | 'selectOption'
+    | 'colorScheme'
     | 'click'
     | 'type'
     | 'press'
@@ -54,6 +66,13 @@ export interface BrowserAgentRoutesDeps {
     | 'waitFor'
     | 'evaluate'
   >;
+  taskCapture?: {
+    logger: { warn(message: string, meta?: Record<string, unknown>): void };
+    localProjectIdFor(identity: string): string | undefined;
+    registry: TaskCaptureBrowserRegistry;
+    captures: TaskBrowserCapture;
+    runtime: Pick<ProjectTaskRoomRuntime, 'sessionTaskReviewAccess'>;
+  };
   settings: Pick<BrowserProjectSettingsStore, 'evaluateAllowed'>;
   /** Whether a Chromium is set up (found on the system or downloaded). */
   browserReady(): boolean;
@@ -229,6 +248,78 @@ export function createBrowserAgentRoutes(deps: BrowserAgentRoutesDeps) {
             body.viewport as BrowserViewport,
           ),
         );
+      case 'capture-to-task': {
+        if (
+          Object.keys(body).some(
+            (key) => key !== 'browserSessionId' && key !== 'label',
+          ) ||
+          (id !== undefined && (typeof id !== 'string' || id.length > 80))
+        )
+          return c.json(invalid('Give only browserSessionId and label.'));
+        const input = parseTaskReviewCreateCaptureRequest({
+          sourceKind: 'browser',
+          sourceSessionId: id ?? 'selected',
+          label: body.label,
+          operationId: randomUUID(),
+        });
+        if (!input)
+          return c.json(invalid('Invalid capture label or browser session.'));
+        const capture = deps.taskCapture;
+        if (!capture)
+          return c.json({
+            ok: false,
+            code: 'capture-unavailable',
+            message: 'Task captures are unavailable.',
+          });
+        const access = await capture.runtime.sessionTaskReviewAccess(
+          authority.sessionId,
+        );
+        if (
+          access.kind !== 'granted' ||
+          capture.localProjectIdFor(access.write.projectId) !==
+            authority.projectId
+        )
+          return c.json({
+            ok: false,
+            code: 'no_task_binding',
+            message: 'This Session has no current Task binding.',
+          });
+        try {
+          const result = await capture.captures.capture(
+            access,
+            {
+              ...input,
+              sourceSessionId: typeof id === 'string' ? id : undefined,
+            },
+            capture.registry,
+            (session) => session.principalKey === authority.profileKey,
+          );
+          return c.json({
+            ok: true,
+            captureId: result.capture.captureId,
+            commit: result.capture.commit,
+            digest: result.capture.digest,
+            screenshot: result.screenshot,
+          });
+        } catch (error) {
+          if (error instanceof TaskBrowserCaptureError) {
+            if (error.cause !== undefined)
+              capture.logger.warn('task review agent capture failed', {
+                taskId: access.write.taskId,
+                errorName:
+                  error.cause instanceof Error
+                    ? error.cause.name
+                    : typeof error.cause,
+              });
+            return c.json({
+              ok: false,
+              code: error.code,
+              message: error.response.error,
+            });
+          }
+          throw error;
+        }
+      }
       case 'snapshot':
         return c.json(
           await automation.snapshot(authority, id, {
@@ -249,6 +340,35 @@ export function createBrowserAgentRoutes(deps: BrowserAgentRoutesDeps) {
           }),
         );
       }
+      case 'hover': {
+        const target = targetFrom(body.target);
+        if (!target) return c.json(invalid('Give a target.'));
+        return c.json(await automation.hover(authority, id, target));
+      }
+      case 'drag': {
+        const source = targetFrom(body.source);
+        const target = targetFrom(body.target);
+        if (!source || !target)
+          return c.json(invalid('Give source and target.'));
+        return c.json(await automation.drag(authority, id, source, target));
+      }
+      case 'select': {
+        const target = targetFrom(body.target);
+        if (!target || 'x' in target)
+          return c.json(invalid('Give an element ref or locator.'));
+        return c.json(
+          await automation.selectOption(authority, id, target, {
+            ...(body.value !== undefined
+              ? { value: body.value as string }
+              : {}),
+            ...(body.label !== undefined
+              ? { label: body.label as string }
+              : {}),
+          }),
+        );
+      }
+      case 'color-scheme':
+        return c.json(await automation.colorScheme(authority, id, body.scheme));
       case 'type':
         return c.json(
           await automation.type(authority, id, {

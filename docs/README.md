@@ -15,6 +15,8 @@ row that matches the job you are doing.
 | Maintainers and agents | [../AGENTS.md](../AGENTS.md), [strategy/README.md](strategy/README.md), [glossary.md](glossary.md) | Repository only |
 | API and CLI consumers | [reference/api.md](reference/api.md), [reference/cli.md](reference/cli.md), [reference/contracts.md](reference/contracts.md) | Repository only |
 
+Read [Pull request guides](user/pull-request-guides.md) for shared AI-written review tours.
+
 ## Choose a path
 
 ### Learn the whole application
@@ -34,6 +36,9 @@ and [Station concepts](user/concepts.md) to understand the product, its
 local-first data boundary, and its work vocabulary. These pages describe
 outcomes and user-visible behavior without depending on a particular external
 engine.
+
+The [visual replies guide](user/html-replies.md) explains publishing, preview,
+page retention and the sandbox boundary.
 
 ### Developer and operator
 
@@ -70,12 +75,20 @@ clearly mark the stale document.
 
 ## Repository Documentation
 
+- **[Walkthrough imports](guides/walkthroughs.md)** — local recording manifests, CLI/MCP reads, limits and staged media dependency composition.
 - **[Guides](guides/)** — task-oriented operator, plugin, and contributor docs.
+- **[Feature previews](guides/feature-previews.md)** — ship unfinished capabilities off by default, gate every entry point, and keep the offered-preview user table in sync.
 - **[Starter Work](guides/starter-work.md)** — how first-use actions bind to real Tasks, Sessions, approvals, and Scheduler receipts, including recovery.
+- **[Local speech and media tools](guides/local-speech.md)** — consented tool downloads, local transcription, limits and platform evidence.
 - **[Browser workspace](guides/browser-workspace.md)** — server-owned browser sessions, profile and target boundaries, Agent permissions and live viewing.
 - **[Mobile device workspace](guides/mobile-device-workspace.md)** — managed or SSH device hosts, shared live viewing/control, and the separate single-frame API.
+- **[Outside-agent OAuth](reference/outside-agent-oauth.md)** — inert R3 protocol contract and exposure limits; R6 owns enablement.
 - **[Reference](reference/)** — API, CLI, config, SDK, and contract details.
-- **[Monitoring](guides/monitoring.md)** — recording paths, Profile usage and paired people, retention, dashboard limits, and the generated [metric declarations](reference/metrics.md).
+- **[Monitoring](guides/monitoring.md)** — recording paths, Profile usage and paired people, retention, companion host prerequisites, dashboard limits, and the generated [metric declarations](reference/metrics.md).
+- **[Canonical usage export](guides/monitoring.md#canonical-usage-export-source)** — verified-person source consent, committed-order receipts and invalidations, bounded durable sync/indexing, saved Personal views and restore activation; deployed, clone/mirror and native acceptance remain separate.
+- **[Product telemetry](reference/usage-telemetry.md)** — disclosed observations, saved destinations, exact instance key grants, current-process health and connection checks; the [standalone receiver](../packages/telemetry-broker/README.md) owns durable product ingestion. Collector delivery and personal receipt analytics retain separate contracts.
+- **[Cedar policy foundation](reference/cedar-policy.md)** — server-local evaluator contract, bounds and packaged probe.
+- **[Backlog disposition policy](reference/backlog-disposition-policy.md)** — how every open issue is classified and which labels the backlog audit accepts.
 - **[Settings deep links](reference/settings-deep-links.md)** — the `?view=&highlight=` URL shape, the registry endpoint that enumerates every control, and the rule for answering with one.
 - **[Architecture](architecture/)** — current module boundaries and ownership.
 - **[Cloud move](design/cloud-move.md)** — setup preview, AWS preparation, and
@@ -96,8 +109,10 @@ clearly mark the stale document.
   historical lookup; GitHub issues and pull requests remain the authority for
   live work.
 - **[Patterns](patterns/)** — frontend and backend implementation conventions.
-- **[ADRs](adr/)** — numbered architecture decision records; supersession is
-  recorded inside the record or by a named successor.
+- **[Decisions](decisions/index.md)** — one living record per decision subject,
+  checked by Corpus; new decisions go here.
+- **[ADRs](adr/)** — numbered architecture decision records, frozen as history;
+  supersession is recorded inside the record or by a named successor.
 - **[Contexts](contexts/)** — per-area `CONTEXT.md` files routed from
   [../CONTEXT-MAP.md](../CONTEXT-MAP.md).
 - **[Conformance](conformance/)** — external-contract conformance notes.
@@ -107,23 +122,31 @@ clearly mark the stale document.
   isolated transport/enrollment checks and explicit remaining collaboration acceptance.
 - **[Self-hosted routing broker](guides/self-hosted-broker.md)** — loopback-only,
   metadata-only routing control plane and its current qualification boundary.
-- **[Testing](testing/)** — supplementary testing records; the canonical
-  guide is [guides/testing.md](guides/testing.md).
+- **[Testing](testing/)** — supplementary testing records, such as the
+  [PR browser smoke contract](testing/browser-smoke.md); the canonical guide
+  is [guides/testing.md](guides/testing.md), and the
+  [E2E coverage matrix](guides/e2e-coverage-matrix.md) maps app surfaces to
+  their Playwright evidence.
+- **[UI review evidence](reviews/workspace-map-20261015/README.md)** — workspace
+  map screenshots, review results, capture revisions, and verification limits.
 - **[Third-party](third-party/)** — vendored/external integration notes.
 - **[UI](ui/)** — ratchet and exception baselines consumed by `scripts/*-ratchet.mjs`
   (data files, not prose).
 - **[Pages](pages/)** — the public-site source boundary (see below).
 
 Root-level records: [glossary.md](glossary.md) (vocabulary authority),
-[architecture.md](architecture.md) (defers to the module map),
-[acp-chat-architecture.md](acp-chat-architecture.md) (historical proposal),
-[strands-migration.md](strands-migration.md) (historical assessment),
-[privacy-policy.md](privacy-policy.md), and
-a historical audit retained in the repository archive.
+[architecture.md](architecture.md) (defers to the module map), and
+[privacy-policy.md](privacy-policy.md). The historical
+[ACP chat proposal](design/acp-chat-architecture.md) and
+[Strands migration assessment](design/strands-migration.md) now live with the
+design records. The pre-public repository audit,
+`docs/repo-audit-2026-06-26.md`, stays in the maintainers' archive repository
+(`kontourai/station-archive`, referenced as `archive#N`).
 User-facing docs not named in the audience table:
 [user/native-recovery.md](user/native-recovery.md),
 [user/workspace-checkpoints.md](user/workspace-checkpoints.md),
-[user/work-board.md](user/work-board.md), and
+[user/work-board.md](user/work-board.md),
+[user/personal-boards.md](user/personal-boards.md), and
 [user/contributing.md](user/contributing.md).
 
 ## Public Site
@@ -137,7 +160,7 @@ source boundary is:
 
 - `docs/pages/index.html` and `docs/pages/styles.css` for the marketing home.
 - `docs/pages/public-docs.json` for the exact Markdown allowlist.
-- the root `docs-kit.json`, which mirrors that allowlist for the
+- the root `corpus.json`, which mirrors that allowlist for the
   `docs-bundle.json` the shared Kontour docs hub and docs MCP read, and adds
   the agent-facing [shipped manual](reference/station-docs.md) to the bundle
   only.

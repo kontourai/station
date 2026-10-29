@@ -34,14 +34,20 @@ import {
   monitoringSessionIdentity,
 } from '../../monitoring/monitoring-session-identity.js';
 import { readFleetRoutingReceipts } from '../../runtime/conversation/fleet-routing-receipt-log.js';
+import {
+  EventHistoryLimitError,
+  type RuntimeEventPage,
+  type RuntimeEventQueryOptions,
+} from '../../runtime/conversation/runtime-event-log.js';
 import { readFleetServeReceipts } from '../../services/inference/fleet-serve-receipt-log.js';
+import { isTelemetryProducerName } from '../../services/telemetry-producers/telemetry-producer-store.js';
 import {
   stationControlRefusal,
   stationControlRefusalBody,
 } from '../../tools/station-control-policy.js';
 import { streamSSE } from '../sse-response.js';
 
-/** Ceiling for an explicitly requested history limit; omission is unbounded. */
+/** Ceiling for an explicitly requested history limit; reader budgets also apply. */
 const MAX_EVENT_QUERY_LIMIT = 5000;
 
 export interface MonitoringDeps {
@@ -65,8 +71,9 @@ export interface MonitoringDeps {
   queryEventsFromDisk: (
     start: number,
     end: number,
-    userId: string,
-  ) => Promise<any[]>;
+    owner: string | readonly string[],
+    options?: RuntimeEventQueryOptions,
+  ) => Promise<any[] | RuntimeEventPage>;
   /**
    * Station home for this instance. Optional only because several older
    * callers construct these routes without one; the fleet receipt leaf says
@@ -95,6 +102,33 @@ export interface MonitoringDeps {
    * for no one and reads no rows.
    */
   eventOwnerForRequest?: (request: Request) => string | null | undefined;
+  /**
+   * Every row owner the request's principal may read: itself plus, in a
+   * personal Station, the rest of its personal conversation account (the
+   * local operator and each approved device). The same owner set session
+   * reads use (`OrchestrationService.readableSessionOwnerIds`).
+   */
+  readableEventOwnerIds?: (
+    authority: SessionReadAuthority,
+  ) => readonly string[];
+}
+
+/**
+ * The row owners a monitoring read may return. An explicitly named user is
+ * read exactly, as before. Otherwise the request's principal decides: rows
+ * are stamped with principal ids (`human:device:<id>`, `human:local:operator`),
+ * so the host's OS username never matched them and every reader came back
+ * empty. The alias is only a fallback for compositions with no authority.
+ */
+export function monitoringReadOwnerIds(
+  requestedUserId: string | undefined,
+  authority: SessionReadAuthority | undefined,
+  deps: Pick<MonitoringDeps, 'readableEventOwnerIds'>,
+): readonly string[] {
+  if (requestedUserId !== undefined) return [requestedUserId];
+  if (authority)
+    return deps.readableEventOwnerIds?.(authority) ?? [authority.userId];
+  return [getCachedUser().alias];
 }
 
 /** Shared by both receipt leaves so they cannot bound differently. */
@@ -374,7 +408,11 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
         403,
       );
     }
-    const userId = fixedOwner ?? requestedUserId ?? getCachedUser().alias;
+    const ownerIds = monitoringReadOwnerIds(
+      fixedOwner ?? requestedUserId,
+      authority,
+      deps,
+    );
 
     // If time range specified, return historical events as JSON
     if (startTime || endTime) {
@@ -400,25 +438,29 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
         );
       }
 
-      const filteredEvents = await deps.queryEventsFromDisk(start, end, userId);
-
-      // Slicing lives HERE, not in a second reader (archive#3076). The rows
-      // behind the insights rollup are these rows, and this handler already
-      // owns the two authorization layers they require: the per-user filter
-      // inside queryEventsFromDisk and the tenant predicate in
-      // filterMonitoringEvents. A parallel export elsewhere would have to
-      // re-derive both, and an export that re-derives an authorization check
-      // is an export that eventually gets one wrong.
+      // CLI and SDK exports share this authorized history route (archive#3076).
+      // Apply both authority layers and content filters before retaining a tail.
       const dimension = {
         agent: c.req.query('agent'),
         tool: c.req.query('tool'),
         engine: c.req.query('engine'),
         conversation: c.req.query('conversation'),
+        producer: c.req.query('producer'),
       };
       const toolsOnly = c.req.query('tools') === 'true';
-      // Limits are opt-in. The UI requests a bounded window and discloses
-      // truncation; CLI/SDK export callers may still request all matching rows.
-      // Apply the cap only after both authorization layers and content filters.
+      if (
+        dimension.producer !== undefined &&
+        !isTelemetryProducerName(dimension.producer)
+      ) {
+        return c.json(
+          {
+            success: false,
+            error: 'producer must be a telemetry producer name.',
+          },
+          400,
+        );
+      }
+      // The reader owns the bounded tail; omitted limits still obey its budgets.
       const rawLimit = c.req.query('limit');
       const requestedLimit = Number.parseInt(rawLimit ?? '', 10);
       if (rawLimit !== undefined && !(requestedLimit > 0)) {
@@ -435,12 +477,28 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
           ? undefined
           : Math.min(requestedLimit, MAX_EVENT_QUERY_LIMIT);
 
-      const matching = filterMonitoringEvents(
-        filteredEvents,
-        authority,
-        deps,
-      ).filter((event) => {
+      const matches = (event: any) => {
+        if (!filterMonitoringEvents([event], authority, deps).length)
+          return false;
         const record = event as Record<string, unknown>;
+        // A Station filter (agent, engine, tool, conversation, tools-only)
+        // never matches an external producer's row, whatever names it
+        // reported; naming the producer selects only its rows. Unfiltered
+        // reads list everything. `tools` is a Station filter because its
+        // callers compare the rows with Station's own tool totals.
+        const producer = record[K.TELEMETRY_PRODUCER];
+        if (dimension.producer !== undefined) {
+          if (producer !== dimension.producer) return false;
+        } else if (
+          typeof producer === 'string' &&
+          (toolsOnly ||
+            dimension.agent !== undefined ||
+            dimension.tool !== undefined ||
+            dimension.engine !== undefined ||
+            dimension.conversation !== undefined)
+        ) {
+          return false;
+        }
         if (toolsOnly && record[K.OP_NAME] !== OP.EXECUTE_TOOL) return false;
         if (
           dimension.agent !== undefined &&
@@ -467,7 +525,26 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
           return false;
         }
         return true;
-      });
+      };
+      let filteredEvents: any[];
+      let readerTruncated = false;
+      try {
+        const page = await deps.queryEventsFromDisk(start, end, ownerIds, {
+          limit,
+          matches,
+        });
+        filteredEvents = Array.isArray(page) ? page : page.events;
+        readerTruncated = !Array.isArray(page) && page.truncated;
+      } catch (error) {
+        if (error instanceof EventHistoryLimitError) {
+          return c.json(
+            { success: false, code: error.code, error: errorMessage(error) },
+            413,
+          );
+        }
+        throw error;
+      }
+      const matching = filteredEvents.filter(matches);
       // TAIL, not reversal: this endpoint returns rows oldest-first and the
       // Monitoring view relies on it (reversing here broke a pre-existing
       // test, which is the contract speaking). A bounded read of a growing
@@ -513,7 +590,7 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
         // Says whether rows were DROPPED, not merely whether the cap was
         // reached: a full page that happens to be the whole result set is
         // not truncated.
-        truncated: capped.length < matching.length,
+        truncated: readerTruncated || capped.length < matching.length,
       });
     }
 
@@ -531,7 +608,17 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
       await stream.writeSSE({ data: JSON.stringify(connectedEvent) });
 
       const eventHandler = (event: any) => {
-        if (event.userId && event.userId !== userId) return;
+        // History's owner rule, on either owner field. Writers stamp
+        // `station.user.id`, so checking `userId` alone admitted every
+        // principal's rows. An unowned live row still streams, as before.
+        const rowOwners = [event.userId, event['station.user.id']].filter(
+          (id): id is string => typeof id === 'string' && id.length > 0,
+        );
+        if (
+          rowOwners.length > 0 &&
+          !rowOwners.some((id) => ownerIds.includes(id))
+        )
+          return;
         // An agent's stream carries only rows its owner is named on.
         if (
           fixedOwner !== undefined &&
@@ -609,8 +696,25 @@ export function canReadMonitoringEvent(
   // A partial hosted composition must not turn into an authorization bypass.
   // Generic non-session telemetry has no session/content identifier and stays
   // available; session-bearing rows require both pieces of central policy.
-  const sessionId = monitoringSessionIdentity(event);
   const hosted = authority && isHostedSessionReadAuthority(authority);
+  // A row a telemetry producer delivered belongs to the principal who owns
+  // that token, whatever session id its producer reported: an external
+  // agent's session is not a Station session, so the session predicate below
+  // refused every such row. The owner key is written by the ingest receiver
+  // from the admitted token, never copied from a body. Producer rows are
+  // personal-mode only; hosted readers never see them.
+  if (event && typeof event === 'object' && K.TELEMETRY_PRODUCER in event) {
+    const owner = (event as Record<string, unknown>)[
+      K.TELEMETRY_PRODUCER_OWNER
+    ];
+    return (
+      !hosted &&
+      typeof owner === 'string' &&
+      owner.length > 0 &&
+      authority?.userId === owner
+    );
+  }
+  const sessionId = monitoringSessionIdentity(event);
   if (sessionId) {
     // In hosted mode an identity is necessary but not sufficient: route
     // composition must also supply the central session predicate.

@@ -1,0 +1,7 @@
+{
+  "revision": "89fe4546f29e6c7e432242b40c097f90b845d0d1",
+
+  "notes": [
+    {"path":"CLAUDE.md","note":"Reviewed the CLAUDE.md import of its paired AGENTS.md after AGENTS.md gained a handoff-link bullet outside the governance block: the import and the canonical Veritas governance block are unchanged, so the pointer stays accurate; no prose change.","inputs":["CLAUDE.md","AGENTS.md"]}
+  ]
+}

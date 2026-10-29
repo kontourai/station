@@ -46,9 +46,10 @@ import { navigationStore } from '../../contexts/navigation-store';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useDockSlotDevice, useIsMobile } from '../../hooks/useIsMobile';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
+import { useLayoutSessionPanels } from '../../hooks/useLayoutSessionPanels';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
-import { NO_SESSION_PANELS_KEY } from '../../lib/coding-panels-record';
+import { NO_SESSION_PANELS_KEY } from '../../lib/layout-panels-record';
 import { BrowserPreviewPaneLauncher } from '../../workspace-panes/BrowserPreviewPaneLauncher';
 import { useCodingChatPositionEffects } from '../../workspace-panes/CodingChatPane';
 import { clearOpenFilePreviewIntent } from '../../workspace-panes/openFilePreviewIntent';
@@ -65,7 +66,9 @@ import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { ChatWorkspacePane } from '../chat-dock/ChatDock';
 import { inboxToggleLabel } from '../chat-dock/inbox-toggle-label';
+import { Dialog } from '../Dialog';
 import {
+  ArrowDownGlyph,
   ArrowLeftGlyph,
   ArrowRightGlyph,
   CheckGlyph,
@@ -95,7 +98,6 @@ import {
   codingSideMaxWidth,
   codingTranscriptWidth,
   resizeCodingPanelFromKeyboard,
-  useCodingSessionPanels,
 } from './codingPanels';
 import type { CodingStackLocation } from './codingStackPage';
 import './CodingWorkbench.css';
@@ -134,17 +136,10 @@ const readHistoryIndex = () => navigationStore.getHistoryIndex();
 const readActiveChat = () => navigationStore.getSnapshot().activeChat;
 const NO_BADGES: Readonly<Record<string, number>> = {};
 const PERSISTENCE_NOTICE_DELAY_MS = 1500;
-const RAIL_ORDER = [
-  WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR_ID,
-  WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR_ID,
-  WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR_ID,
-  WORKSPACE_PLAN_PANE_DESCRIPTOR_ID,
-  WORKSPACE_READINESS_PANE_DESCRIPTOR_ID,
-  WORKSPACE_TRUST_PANE_DESCRIPTOR_ID,
-] as string[];
-function railRank(descriptorId: string): number {
-  const rank = RAIL_ORDER.indexOf(descriptorId);
-  return rank === -1 ? RAIL_ORDER.length : rank;
+/** A pane's place on the rail: its declared drill-in order, then the rest. */
+function railRank(order: readonly string[], descriptorId: string): number {
+  const rank = order.indexOf(descriptorId);
+  return rank === -1 ? order.length : rank;
 }
 
 /**
@@ -158,6 +153,17 @@ function activatedByKeyboard(event: { detail: number }): boolean {
 export interface CodingWorkbenchProps {
   projectId: string;
   projectSlug: string;
+  /**
+   * What the stack is called — "Coding" for built-in Coding, the layout's
+   * name otherwise. It names the breadcrumb's navigation landmark and the
+   * stack's chords in the shortcut list.
+   */
+  stackName: string;
+  /**
+   * The layout's declared drill-ins (`drillIns`), in rail order. Panes the
+   * reader added follow them, in the host's own order.
+   */
+  drillInOrder: readonly string[];
   /**
    * Whether this layout's centre shows Chat (`resolveLayoutChatPlacement`'s
    * `center`). False on a bottom-only device, whose Chat is the dock: the
@@ -254,6 +260,8 @@ export interface CodingWorkbenchProps {
 export function CodingWorkbench({
   projectId,
   projectSlug,
+  stackName,
+  drillInOrder,
   centerChat,
   wide = false,
   location,
@@ -291,13 +299,17 @@ export function CodingWorkbench({
   // ── Wide: the URL's pane is the side panel, the Terminal is the lower one.
   const terminalId = terminal?.instance.instanceId ?? null;
   const sessionKey = activeChat ?? NO_SESSION_PANELS_KEY;
-  const { panels, update: updatePanels } = useCodingSessionPanels(sessionKey);
+  const panelStateIdentity = JSON.stringify([scopeKey, sessionKey]);
+  const { panels, update: updatePanels } = useLayoutSessionPanels(
+    scopeKey,
+    sessionKey,
+  );
   const sidePaneId =
     wide && location.page === 'drill-in' && location.paneId !== terminalId
       ? location.paneId
       : null;
   const sideOpen = sidePaneId !== null;
-  const lowerOpen = wide && terminal !== undefined && panels.terminalOpen;
+  const lowerOpen = wide && terminal !== undefined && panels.lowerOpen;
   /** The stack's page: on a wide screen Chat is always it. */
   const page: 'chat' | 'drill-in' = wide ? 'chat' : location.page;
   const paneId = wide ? sidePaneId : location.paneId;
@@ -307,6 +319,18 @@ export function CodingWorkbench({
   // it replaces did), so a focused terminal or preview is not left under the
   // keyboard.
   const isMobile = useIsMobile();
+  const [toolPicker, setToolPicker] = useState<{
+    paneId: string | null;
+  } | null>(null);
+  const toolPickerOpen =
+    isMobile && toolPicker !== null && toolPicker.paneId === paneId;
+  const setToolPickerOpen = (open: boolean) =>
+    setToolPicker(open ? { paneId } : null);
+  useEffect(() => {
+    if (toolPicker && (!isMobile || toolPicker.paneId !== paneId)) {
+      setToolPicker(null);
+    }
+  }, [isMobile, paneId, toolPicker]);
   const visualViewport = useMobileVisualViewport();
   const rootRef = useRef<HTMLDivElement>(null);
   const [fittedHeight, setFittedHeight] = useState<number | null>(null);
@@ -368,8 +392,7 @@ export function CodingWorkbench({
     paneHostOpen: page === 'chat' ? hostOpen : null,
     existingPreviewFor,
     focusExisting: focusExistingPreview,
-    // A phone's Chat is the dock, maximized while the Chat page is the page.
-    ownsMobileDock: page === 'chat',
+    ownsMobileDock: !centerChat && page === 'chat',
   });
 
   // ── Transitions: the entering page slides in from the side it came from —
@@ -463,7 +486,7 @@ export function CodingWorkbench({
     'codingStack.back',
     isMac ? '[' : 'ArrowLeft',
     isMac ? ['cmd'] : ['alt'],
-    'Back in the Coding stack',
+    `Back in the ${stackName} stack`,
     backChord,
     true,
     0,
@@ -473,7 +496,7 @@ export function CodingWorkbench({
     'codingStack.forward',
     isMac ? ']' : 'ArrowRight',
     isMac ? ['cmd'] : ['alt'],
-    'Forward in the Coding stack',
+    `Forward in the ${stackName} stack`,
     forwardChord,
     true,
     0,
@@ -602,7 +625,7 @@ export function CodingWorkbench({
     }
     const remembered = holds(panels.side) ? panels.side : null;
     if (appliedSession.current === null) {
-      appliedSession.current = sessionKey;
+      appliedSession.current = panelStateIdentity;
       if (sidePaneId) {
         if (sidePaneId !== panels.side) updatePanels({ side: sidePaneId });
       } else if (remembered && location.page === 'chat') {
@@ -610,8 +633,8 @@ export function CodingWorkbench({
       }
       return;
     }
-    if (appliedSession.current === sessionKey) return;
-    appliedSession.current = sessionKey;
+    if (appliedSession.current === panelStateIdentity) return;
+    appliedSession.current = panelStateIdentity;
     if (remembered !== sidePaneId) replaceSide(remembered);
   }, [
     holds,
@@ -619,7 +642,7 @@ export function CodingWorkbench({
     panels.side,
     provisional,
     replaceSide,
-    sessionKey,
+    panelStateIdentity,
     sidePaneId,
     updatePanels,
     wide,
@@ -631,7 +654,7 @@ export function CodingWorkbench({
     if (!wide || provisional || terminalId === null) return;
     if (location.page === 'drill-in' && location.paneId === terminalId) {
       replaceSide(null);
-      updatePanels({ terminalOpen: true });
+      updatePanels({ lowerOpen: true });
     }
   }, [
     location.page,
@@ -652,11 +675,11 @@ export function CodingWorkbench({
     const was = wasWide.current;
     wasWide.current = wide;
     if (!was || wide || provisional || terminalId === null) return;
-    if (panels.terminalOpen && location.page === 'chat')
+    if (panels.lowerOpen && location.page === 'chat')
       navigationStore.updateParams({ pane: terminalId, paneScope: scopeKey });
   }, [
     location.page,
-    panels.terminalOpen,
+    panels.lowerOpen,
     provisional,
     scopeKey,
     terminalId,
@@ -737,13 +760,13 @@ export function CodingWorkbench({
           document.activeElement &&
           lowerPanelRef.current.contains(document.activeElement),
       );
-      updatePanels({ terminalOpen: false });
+      updatePanels({ lowerOpen: false });
       setAnnouncement(`${label} closed`);
       if (viaKeyboard || focusWasInside)
         focusRailItem(terminal.instance.instanceId);
       return;
     }
-    updatePanels({ terminalOpen: true });
+    updatePanels({ lowerOpen: true });
     setAnnouncement(`${label} below the conversation`);
     if (viaKeyboard) setLowerFocusRequest((request) => request + 1);
   };
@@ -856,7 +879,7 @@ export function CodingWorkbench({
   );
   const lowerDefault = codingLowerDefaultHeight(roomHeight);
   const lowerHeight = clampCodingLowerHeight(
-    panels.terminalHeight ?? lowerDefault,
+    panels.lowerHeight ?? lowerDefault,
     roomHeight,
   );
   // A drag's frames are written to the room's own custom properties, not
@@ -992,15 +1015,22 @@ export function CodingWorkbench({
       choiceAppliedFor.current = null;
       return;
     }
-    if (choiceAppliedFor.current === sessionKey) return;
-    choiceAppliedFor.current = sessionKey;
+    if (choiceAppliedFor.current === panelStateIdentity) return;
+    choiceAppliedFor.current = panelStateIdentity;
     if (readerChoice !== null && readerChoice !== inboxOpen)
       writeInbox(readerChoice);
-  }, [inboxOpen, provisional, readerChoice, sessionKey, wide, writeInbox]);
+  }, [
+    inboxOpen,
+    panelStateIdentity,
+    provisional,
+    readerChoice,
+    wide,
+    writeInbox,
+  ]);
 
   // ── One bar: the breadcrumb names the conversation, and Chat's own
   // toolbar (its project context, Open/New, the dock menu) renders into the
-  // bar's two slots beside it (#3046) rather than as a second row.
+  // bar's slots beside it (#3046) rather than as a second row.
   // The folded inbox's edge: a slim strip on the Chat column's left edge
   // that reopens the inbox (the reader's own choice) and carries the inbox's
   // "Needs you" count so a fold never hides that something is waiting. Fine
@@ -1010,11 +1040,17 @@ export function CodingWorkbench({
   const inboxEdge = wide && centerChat && !inboxOpen && !coarsePointer;
   const inboxEdgeName = inboxToggleLabel(false, inboxNeedsYou);
   const chatBar = centerChat && page === 'chat';
+  const [barStart, setBarStart] = useState<HTMLElement | null>(null);
   const [barLeading, setBarLeading] = useState<HTMLElement | null>(null);
   const [barTrailing, setBarTrailing] = useState<HTMLElement | null>(null);
   const chatBarSlots = useMemo(
-    () => ({ leading: barLeading, trailing: barTrailing, namesPane: true }),
-    [barLeading, barTrailing],
+    () => ({
+      start: barStart,
+      leading: barLeading,
+      trailing: barTrailing,
+      namesPane: true,
+    }),
+    [barStart, barLeading, barTrailing],
   );
   // The panel heads: the pane's own controls join the head row.
   const [sideHeadLeading, setSideHeadLeading] = useState<HTMLElement | null>(
@@ -1079,10 +1115,13 @@ export function CodingWorkbench({
     'aria-hidden': !active || undefined,
   });
 
-  // Diff first, then Files and Terminal, the evidence panes, then whatever
-  // else the host holds in its own order (previews, catalog panes).
+  // The declared drill-ins first, in their declared order (built-in Coding:
+  // Diff, Files, Terminal, the evidence panes), then whatever else the host
+  // holds in its own order (previews, catalog panes).
   const railInstances = [...instances].sort(
-    (left, right) => railRank(left.descriptorId) - railRank(right.descriptorId),
+    (left, right) =>
+      railRank(drillInOrder, left.descriptorId) -
+      railRank(drillInOrder, right.descriptorId),
   );
   // "Unavailable" is also the host's standing for the moment before its
   // lease resolves; only one that lasts is a problem worth saying.
@@ -1132,6 +1171,7 @@ export function CodingWorkbench({
     <div
       ref={rootRef}
       className="coding-workbench"
+      data-mobile={isMobile || undefined}
       data-mode={wide ? 'panels' : 'stack'}
       style={
         fittedHeight === null
@@ -1147,62 +1187,102 @@ export function CodingWorkbench({
         <div className="coding-workbench__bar">
           {/* The rail is last in the tab order (bar, Chat, the open panel,
               then the rail); a reader who wants a tool first skips to it. */}
-          <button
-            type="button"
-            className="coding-workbench__skip"
-            onClick={() => {
-              rootRef.current
-                ?.querySelector<HTMLElement>(
-                  '.coding-workbench__rail-item[data-rail-item]',
-                )
-                ?.focus();
-            }}
-          >
-            Skip to views
-          </button>
-          <nav className="coding-workbench__nav" aria-label="Coding navigation">
-            <ol className="coding-workbench__crumbs" aria-label="Breadcrumb">
-              <li className="coding-workbench__crumb">
-                <button
-                  type="button"
-                  className="coding-workbench__crumb-link"
-                  onClick={openInbox}
-                >
-                  Inbox
-                </button>
-              </li>
-              <li className="coding-workbench__crumb">
-                {page === 'drill-in' ? (
+          {!isMobile && (
+            <button
+              type="button"
+              className="coding-workbench__skip"
+              onClick={() => {
+                rootRef.current
+                  ?.querySelector<HTMLElement>(
+                    '.coding-workbench__rail-item[data-rail-item]',
+                  )
+                  ?.focus();
+              }}
+            >
+              Skip to views
+            </button>
+          )}
+          {chatBar ? (
+            <div className="coding-workbench__bar-trailing" ref={setBarStart} />
+          ) : null}
+          {isMobile ? (
+            <nav
+              className="coding-workbench__mobile-nav"
+              aria-label={`${stackName} navigation`}
+            >
+              <Button
+                variant="ghost"
+                className="coding-workbench__mobile-back"
+                onClick={page === 'drill-in' ? returnToChatPage : openInbox}
+              >
+                <ArrowLeftGlyph />
+                {page === 'drill-in' ? 'Chat' : 'Inbox'}
+              </Button>
+              <button
+                type="button"
+                className="choice-trigger coding-workbench__tool-trigger"
+                ref={(node) => {
+                  currentCrumbRef.current = node;
+                }}
+                aria-label={`Switch tool, current: ${page === 'drill-in' ? drillInLabel : 'Chat'}`}
+                aria-haspopup="dialog"
+                aria-expanded={toolPickerOpen}
+                onClick={() => setToolPickerOpen(true)}
+              >
+                <span>{page === 'drill-in' ? drillInLabel : 'Chat'}</span>
+                <ArrowDownGlyph className="choice-caret" />
+              </button>
+            </nav>
+          ) : (
+            <nav
+              className="coding-workbench__nav"
+              aria-label={`${stackName} navigation`}
+            >
+              <ol className="coding-workbench__crumbs" aria-label="Breadcrumb">
+                <li className="coding-workbench__crumb">
                   <button
                     type="button"
                     className="coding-workbench__crumb-link"
-                    onClick={returnToChatPage}
+                    onClick={openInbox}
                   >
-                    {chatTitle}
+                    Inbox
                   </button>
-                ) : (
-                  <span
-                    className="coding-workbench__crumb-current"
-                    aria-current="page"
-                  >
-                    {chatTitle}
-                  </span>
-                )}
-              </li>
-              {page === 'drill-in' ? (
-                <li className="coding-workbench__crumb">
-                  <span
-                    className="coding-workbench__crumb-current"
-                    aria-current="page"
-                    ref={currentCrumbRef}
-                    tabIndex={-1}
-                  >
-                    {drillInLabel}
-                  </span>
                 </li>
-              ) : null}
-            </ol>
-          </nav>
+                {(!isMobile || page === 'drill-in') && (
+                  <li className="coding-workbench__crumb">
+                    {page === 'drill-in' ? (
+                      <button
+                        type="button"
+                        className="coding-workbench__crumb-link"
+                        onClick={returnToChatPage}
+                      >
+                        {chatTitle}
+                      </button>
+                    ) : (
+                      <span
+                        className="coding-workbench__crumb-current"
+                        aria-current="page"
+                      >
+                        {chatTitle}
+                      </span>
+                    )}
+                  </li>
+                )}
+                {page === 'drill-in' ? (
+                  <li className="coding-workbench__crumb">
+                    <span
+                      className="coding-workbench__crumb-current"
+                      aria-current="page"
+                      ref={currentCrumbRef}
+                      tabIndex={-1}
+                    >
+                      {drillInLabel}
+                    </span>
+                  </li>
+                ) : null}
+              </ol>
+            </nav>
+          )}
           {chatBar ? (
             <div
               className="coding-workbench__bar-leading"
@@ -1417,10 +1497,7 @@ export function CodingWorkbench({
                   }
                   onCommit={(height) =>
                     updatePanels({
-                      terminalHeight: clampCodingLowerHeight(
-                        height,
-                        roomHeight,
-                      ),
+                      lowerHeight: clampCodingLowerHeight(height, roomHeight),
                     })
                   }
                 />
@@ -1473,36 +1550,108 @@ export function CodingWorkbench({
           ) : null}
         </div>
       </div>
-      <CodingViewRail
-        instances={railInstances}
-        mode={wide ? 'panels' : 'stack'}
-        currentPaneId={page === 'drill-in' ? paneId : null}
-        pressed={
-          wide
-            ? {
-                ...(sidePaneId ? { [sidePaneId]: sidePanelId } : {}),
-                ...(lowerOpen && terminalId
-                  ? { [terminalId]: lowerPanelId }
-                  : {}),
-              }
-            : undefined
-        }
-        paneLabel={paneLabel}
-        paneDetail={paneDetail}
-        badges={badges}
-        onOpenView={openView}
-        onAddPane={hostOpen ? requestCatalog : undefined}
-        browserLauncher={
-          browserPreviewAvailability ? (
-            <BrowserPreviewPaneLauncher
-              projectId={projectId}
-              projectSlug={projectSlug}
-              host={hostOpen}
-              availability={browserPreviewAvailability}
-            />
-          ) : null
-        }
-      />
+      {isMobile ? (
+        <Dialog
+          open={toolPickerOpen}
+          title="Tools"
+          overlayClassName="coding-workbench__tool-overlay"
+          panelClassName="coding-workbench__tool-sheet"
+          closeLabel="Close tools"
+          onClose={() => setToolPickerOpen(false)}
+          size="sm"
+        >
+          <nav className="coding-workbench__tool-list" aria-label="Views">
+            <Button
+              variant="ghost"
+              aria-current={page === 'chat' ? 'page' : undefined}
+              onClick={() => {
+                setToolPickerOpen(false);
+                goToChatPage();
+              }}
+            >
+              Chat
+            </Button>
+            {railInstances.map((instance) => (
+              <Button
+                key={instance.instanceId}
+                variant="ghost"
+                aria-label={
+                  badges[instance.descriptorId] === undefined
+                    ? paneLabel(instance)
+                    : `${paneLabel(instance)}, ${badges[instance.descriptorId]} changed ${badges[instance.descriptorId] === 1 ? 'file' : 'files'}`
+                }
+                aria-current={
+                  instance.instanceId === paneId ? 'page' : undefined
+                }
+                title={paneDetail?.(instance) ?? undefined}
+                onClick={(event) => {
+                  setToolPickerOpen(false);
+                  openView(instance, activatedByKeyboard(event));
+                }}
+              >
+                {railGlyph(instance.descriptorId)}
+                <span>{paneLabel(instance)}</span>
+                {badges[instance.descriptorId] === undefined ? null : (
+                  <span className="coding-workbench__tool-count">
+                    {badges[instance.descriptorId]} changed files
+                  </span>
+                )}
+              </Button>
+            ))}
+            {browserPreviewAvailability ? (
+              <BrowserPreviewPaneLauncher
+                projectId={projectId}
+                projectSlug={projectSlug}
+                host={hostOpen}
+                availability={browserPreviewAvailability}
+              />
+            ) : null}
+            {hostOpen ? (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setToolPickerOpen(false);
+                  requestCatalog();
+                }}
+              >
+                <PlusGlyph />
+                Add tool
+              </Button>
+            ) : null}
+          </nav>
+        </Dialog>
+      ) : (
+        <CodingViewRail
+          instances={railInstances}
+          mode={wide ? 'panels' : 'stack'}
+          currentPaneId={page === 'drill-in' ? paneId : null}
+          pressed={
+            wide
+              ? {
+                  ...(sidePaneId ? { [sidePaneId]: sidePanelId } : {}),
+                  ...(lowerOpen && terminalId
+                    ? { [terminalId]: lowerPanelId }
+                    : {}),
+                }
+              : undefined
+          }
+          paneLabel={paneLabel}
+          paneDetail={paneDetail}
+          badges={badges}
+          onOpenView={openView}
+          onAddPane={hostOpen ? requestCatalog : undefined}
+          browserLauncher={
+            browserPreviewAvailability ? (
+              <BrowserPreviewPaneLauncher
+                projectId={projectId}
+                projectSlug={projectSlug}
+                host={hostOpen}
+                availability={browserPreviewAvailability}
+              />
+            ) : null
+          }
+        />
+      )}
     </div>
   );
 }
@@ -1651,6 +1800,7 @@ const CenterChat = memo(function CenterChat({
   onInboxNeedsYouChange,
 }: {
   slots: {
+    start: HTMLElement | null;
     leading: HTMLElement | null;
     trailing: HTMLElement | null;
     namesPane: boolean;

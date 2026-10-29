@@ -11,10 +11,13 @@
  * button and disclosure text are asserted for real.
  */
 
-import { agentId } from '@kontourai/station-contracts/agent-identity';
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({
@@ -28,6 +31,16 @@ vi.mock('../contexts/AgentsContext', () => ({
   useAgentsLoaded: () => true,
 }));
 
+const sdk = vi.hoisted(() => ({
+  continueAfterMemoryExhaustion: vi.fn(),
+  MemoryContinuationUnsupportedError: class extends Error {},
+}));
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  continueAfterMemoryExhaustion: sdk.continueAfterMemoryExhaustion,
+  MemoryContinuationUnsupportedError: sdk.MemoryContinuationUnsupportedError,
+}));
+
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://localhost:3242' }),
   useHostRequestAuthorityScope: () => undefined,
@@ -37,11 +50,12 @@ vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: vi.fn() }),
 }));
 
+const navigateSpy = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/NavigationContext', () => {
   // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
   // the store, optionally through a selector) and `useNavigationActions` (the
   // memoized actions, no subscription). This mock answers both from one value.
-  const navigation = () => ({ navigate: vi.fn() });
+  const navigation = () => ({ navigate: navigateSpy });
   return {
     useNavigation: (
       selector?: (state: ReturnType<typeof navigation>) => unknown,
@@ -178,6 +192,11 @@ function buildSession(overrides: Partial<ChatSession>): ChatSession {
   };
 }
 
+// These cases assert transcript actions, not cold module loading.
+beforeAll(async () => {
+  await import('../components/chat/ChatMessageList');
+});
+
 const RAW_MESSAGE =
   'No conversation found with session ID: d434e194-cc2e-4edc-8733-d8645c512fab';
 const LAZY_TRANSCRIPT_TIMEOUT_MS = 5_000;
@@ -294,6 +313,60 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
     );
     expect(chatInput.handleSend).toHaveBeenCalledTimes(1);
     expect(onNewChat).not.toHaveBeenCalled();
+  });
+
+  test("an engine's sign-in refusal offers Sign in, which opens that engine's page", async () => {
+    const onNewChat = vi.fn();
+    const session = buildSession({
+      agentConnectionId: engineConnectionId('factory-droid'),
+      messages: [
+        { role: 'user', content: 'hello', timestamp: 1 } as any,
+        {
+          role: 'user',
+          content:
+            '[SYSTEM_EVENT] [CHAT_ERROR:engine-sign-in-required] Factory Droid needs you to sign in before it can answer.',
+          timestamp: 2,
+        } as any,
+      ],
+    });
+
+    renderDock(session, onNewChat);
+
+    const action = await screen.findByRole(
+      'button',
+      { name: 'Sign in' },
+      { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+    );
+    expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
+    fireEvent.click(action);
+    expect(navigateSpy).toHaveBeenCalledWith(
+      '/connections/engines/factory-droid',
+    );
+    expect(onNewChat).not.toHaveBeenCalled();
+  });
+
+  test('an MCP sign-in refusal reaches the session UI and opens Tools sign-in', async () => {
+    const session = buildSession({
+      messages: [
+        { role: 'user', content: 'use my tools', timestamp: 1 } as any,
+        {
+          role: 'user',
+          content:
+            "[SYSTEM_EVENT] [CHAT_ERROR:mcp_sign_in_required] Integration 'workspace' needs sign-in.",
+          timestamp: 2,
+        } as any,
+      ],
+    });
+    renderDock(session, vi.fn());
+    const action = await screen.findByRole(
+      'button',
+      { name: 'Sign in to tool' },
+      { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+    );
+    expect(screen.getByText(/Sign in to this tool integration/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
+    fireEvent.click(action);
+    expect(navigateSpy).toHaveBeenCalledWith('/connections/tools');
   });
 
   test('an expired OAuth session offers Switch agent, not Send again, and hides stderr behind Details', async () => {
@@ -517,5 +590,116 @@ describe('ChatDockBody station-agent failure marker', () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/invalid or have expired/i)).toBeNull();
+  });
+});
+
+describe('ChatDockBody memory-exhaustion marker', () => {
+  const message =
+    'Codex ran out of memory and was stopped, along with the commands it was running. Its workload budget is 3072 MiB (peak 3072 MiB), shared by Codex and every command it runs.';
+  const killed = (extra: unknown[] = []) =>
+    buildSession({
+      conversationId: 'conversation-oom',
+      messages: [
+        {
+          role: 'user',
+          content: 'Regenerate the icons, lint, and run the browser check',
+          timestamp: 1,
+        } as any,
+        {
+          role: 'user',
+          content: `[SYSTEM_EVENT] [CHAT_ERROR:engine-memory-exhausted] ${message}`,
+          timestamp: 2,
+        } as any,
+        ...extra,
+      ],
+    } as Partial<ChatSession>);
+
+  beforeEach(() => {
+    sdk.continueAfterMemoryExhaustion.mockReset();
+  });
+
+  test('offers Continue, not Send again, and continues through Station rather than resending', async () => {
+    sdk.continueAfterMemoryExhaustion.mockResolvedValue('queued');
+    const chatInput = buildChatInput();
+    renderDock(killed(), vi.fn(), chatInput);
+    expect(
+      await screen.findByText(
+        /engine ran out of memory/i,
+        {},
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    ).toBeTruthy();
+    const action = await screen.findByRole(
+      'button',
+      { name: 'Continue' },
+      { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+    );
+    expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Switch agent' })).toBeNull();
+    fireEvent.click(action);
+    await waitFor(() =>
+      expect(sdk.continueAfterMemoryExhaustion).toHaveBeenCalledWith(
+        'conversation-oom',
+        'http://localhost:3242',
+      ),
+    );
+    expect(chatInput.handleSend).not.toHaveBeenCalled();
+  });
+
+  test('an older Station without the route gets the short continuation as a message', async () => {
+    sdk.continueAfterMemoryExhaustion.mockRejectedValue(
+      new sdk.MemoryContinuationUnsupportedError(),
+    );
+    const chatInput = buildChatInput();
+    renderDock(killed(), vi.fn(), chatInput);
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: 'Continue' },
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    );
+    await waitFor(() =>
+      expect(chatInput.handleSend).toHaveBeenCalledWith(
+        'Continue the task from where it stopped.',
+        [],
+      ),
+    );
+    expect(chatInput.handleSend).not.toHaveBeenCalledWith(
+      'Regenerate the icons, lint, and run the browser check',
+      expect.anything(),
+    );
+  });
+
+  test('once Station continued on its own, the card says so and offers Stop while it runs', async () => {
+    const chatInput = buildChatInput();
+    renderDock(
+      {
+        ...killed([
+          {
+            role: 'user',
+            content: 'Continue the task from where it stopped.',
+            stationMemoryContinuation: true,
+            timestamp: 3,
+          },
+        ]),
+        status: 'running',
+        orchestrationTurnOpen: true,
+      } as unknown as ChatSession,
+      vi.fn(),
+      chatInput,
+    );
+    expect(
+      await screen.findByText(
+        /restarted — continuing/i,
+        {},
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+    const stop = await screen.findByRole('button', { name: 'Stop' });
+    fireEvent.click(stop);
+    expect(chatInput.handleCancel).toHaveBeenCalled();
+    expect(sdk.continueAfterMemoryExhaustion).not.toHaveBeenCalled();
   });
 });

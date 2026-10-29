@@ -1,0 +1,7 @@
+{
+  "revision": "ede0e1184ba0c4a8595b501021ab5475e24ffbc1",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the claims citing approvalMode.ts: only the user-facing full-access description changed (it no longer says 'no sandbox'; it says a start without a full-access grant still runs inside Station's workspace confinement). This document makes no 'no sandbox' claim about full access and describes the approval-mode mapping, not that copy; no documented claim changes.","inputs":["docs/conformance/tool-policy-delivery.md","package.json#/dependencies/@agentclientprotocol~1sdk","package.json#/dependencies/@anthropic-ai~1claude-agent-sdk","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots","src-ui/src/utils/approvalMode.ts"]}
+  ]
+}

@@ -66,11 +66,11 @@ export class DispatchCwdRefusedError extends Error {
 
 /**
  * The code the scope rule gives a folder it cannot read
- * (`station_control_role_required`, `tools/station-control-policy.ts`): a
- * folder that no longer resolves to the recorded path is not the folder
- * that was admitted.
+ * (`station_control_out_of_scope`, reason `target-unavailable`,
+ * `tools/station-control-policy.ts`): a folder that no longer resolves to the
+ * recorded path is not the folder that was admitted.
  */
-const MOVED_CODE = 'station_control_role_required';
+const MOVED_CODE = 'station_control_out_of_scope';
 
 /** The recorded canonical folder of a start input, if it carries one. */
 export function recordedDispatchCanonicalCwd(

@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import type { PairedDevice } from '@kontourai/station-contracts';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PairedDevicesPanel } from '../react/connection-manager-modal/PairedDevicesPanel';
 
@@ -89,9 +95,82 @@ function renderPanel(
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe('PairedDevicesPanel', () => {
+  test.each(['operator_session_required', 'insufficient_scope'])(
+    'offers operator sign-in after a 403 %s inventory refusal',
+    async (code) => {
+      renderPanel({
+        request: vi.fn(async () =>
+          Response.json(
+            {
+              error: { code },
+              signInUrl: 'https://station.example.ts.net:8443/operator/sign-in',
+            },
+            { status: 403 },
+          ),
+        ),
+      });
+      expect(
+        await screen.findByText('Sign in as operator to view paired devices.'),
+      ).toBeTruthy();
+      expect(
+        screen
+          .getByRole('link', { name: 'Sign in as operator' })
+          .getAttribute('href'),
+      ).toBe('https://station.example.ts.net:8443/operator/sign-in');
+      expect(screen.queryByText(/Reconnect it/)).toBeNull();
+    },
+  );
+
+  test('a 401 operator-session refusal asks to reconnect the device', async () => {
+    renderPanel({
+      request: vi.fn(async () =>
+        Response.json(
+          {
+            error: { code: 'operator_session_required' },
+            signInUrl: 'https://station.example.ts.net:8443/operator/sign-in',
+          },
+          { status: 401 },
+        ),
+      ),
+    });
+    expect(
+      await screen.findByText(/Reconnect it, then try again/),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('link', { name: 'Sign in as operator' }),
+    ).toBeNull();
+  });
+
+  test('initial load is user activity and automatic refreshes carry the background marker', async () => {
+    vi.useFakeTimers();
+    const request = vi.fn(
+      async (_url: URL | RequestInfo, _init?: RequestInit) =>
+        new Response(JSON.stringify({ devices: [] }), { status: 200 }),
+    );
+    await act(async () => {
+      renderPanel({ request });
+    });
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(
+      new Headers(request.mock.calls[0]?.[1]?.headers).has(
+        'X-Station-Background-Refresh',
+      ),
+    ).toBe(false);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(
+      new Headers(request.mock.calls[1]?.[1]?.headers).get(
+        'X-Station-Background-Refresh',
+      ),
+    ).toBe('1');
+  });
+
   test('shows when each device was paired and last used', async () => {
     stubHost({
       devices: [
@@ -485,38 +564,113 @@ describe('PairedDevicesPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
 
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toContain(
-      'requires this Station’s operator credential',
-    );
+    expect(alert.textContent).toContain('Sign in as operator');
   });
 
-  test('uses an explicitly entered operator credential only for device changes', async () => {
-    const { calls } = stubHost({
-      devices: [device({ id: 'abc', name: 'Pixel 9' })],
-    });
-    renderPanel({
-      allowManualCredentials: true,
-      getCredential: () => undefined,
-    });
-
-    fireEvent.change(
-      await screen.findByLabelText('Operator credential for device changes'),
-      { target: { value: 'operator-credential' } },
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Revoke Pixel 9' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
-
-    await waitFor(() => {
-      expect(calls).toContainEqual({
-        method: 'DELETE',
-        url: 'https://station.example.ts.net/api/pairing/devices/abc',
-        auth: 'Bearer operator-credential',
+  test.each([
+    'approved',
+    'denied',
+    'target_changed',
+    'session_ended',
+    'expired',
+  ] as const)(
+    'a cookie session polls a %s review without a paste field',
+    async (outcome) => {
+      vi.useFakeTimers();
+      vi.spyOn(window, 'open').mockReturnValue(null);
+      const writes: string[] = [];
+      let applied = false;
+      let statusReads = 0;
+      const request = vi.fn(
+        async (input: URL | RequestInfo, init?: RequestInit) => {
+          const url = String(input);
+          expect(new Headers(init?.headers).has('Authorization')).toBe(false);
+          if (init?.method === 'DELETE') {
+            writes.push(url);
+            return new Response(
+              JSON.stringify({
+                status: 'step_up_required',
+                transaction: {
+                  id: 'transaction-1',
+                  reviewUrl:
+                    'https://station.example.ts.net:8443/consent/transaction-1',
+                  expiresAt: Date.now() + 1_000,
+                },
+              }),
+              { status: 202 },
+            );
+          }
+          if (url.endsWith('/device-access-transactions/transaction-1')) {
+            expect(
+              new Headers(init?.headers).get('X-Station-Background-Refresh'),
+            ).toBe('1');
+            if (++statusReads === 1)
+              return new Response(JSON.stringify({ status: 'pending' }));
+            applied = outcome === 'approved';
+            return new Response(
+              JSON.stringify({
+                status: outcome,
+                effect: device({ revokedAt: Date.now() }),
+              }),
+            );
+          }
+          if (applied)
+            expect(
+              new Headers(init?.headers).get('X-Station-Background-Refresh'),
+            ).toBe('1');
+          return new Response(
+            JSON.stringify({
+              devices: [device({ revokedAt: applied ? Date.now() : null })],
+              operatorSession: { expiresAt: Date.now() + HOUR },
+            }),
+          );
+        },
+      );
+      await act(async () => {
+        renderPanel({ request, getCredential: () => undefined });
       });
-    });
-    expect(calls.filter((call) => call.method === 'GET')).toEqual(
-      expect.arrayContaining([expect.objectContaining({ auth: null })]),
-    );
-  });
+      expect(
+        screen.queryByLabelText('Operator credential for device changes'),
+      ).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Revoke Pixel 9' }));
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+      });
+      expect(
+        screen
+          .getByRole('link', { name: 'Review access change' })
+          .getAttribute('href'),
+      ).toContain(':8443/consent/transaction-1');
+      expect(applied).toBe(false);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+      expect(
+        screen.getByRole('link', { name: 'Review access change' }),
+      ).toBeTruthy();
+      expect(applied).toBe(false);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+      expect(writes).toHaveLength(1);
+      expect(applied).toBe(outcome === 'approved');
+      if (outcome !== 'approved')
+        expect(screen.getByRole('alert').textContent).toContain(
+          outcome === 'denied'
+            ? 'Cancelled. Nothing was applied.'
+            : outcome === 'target_changed'
+              ? 'This changed since you asked. Nothing was applied; open a new request.'
+              : outcome === 'session_ended'
+                ? 'Your operator session ended; sign in again. Nothing was applied.'
+                : 'The review expired. Nothing was applied.',
+        );
+      if (outcome === 'target_changed')
+        expect(screen.getByRole('alert').textContent).not.toContain('expired');
+      expect(
+        screen.queryByRole('link', { name: 'Review access change' }),
+      ).toBeNull();
+    },
+  );
 
   test('does not render or use a manual credential when the native host owns it', async () => {
     const { calls } = stubHost({
@@ -528,15 +682,15 @@ describe('PairedDevicesPanel', () => {
     });
 
     expect(
-      await screen.findByText(
-        /Station Desktop can list devices but does not hold the operator credential/,
-      ),
+      await screen.findByText(/Station Desktop can list devices/),
     ).toBeTruthy();
     expect(
       screen.queryByLabelText('Operator credential for device changes'),
     ).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Revoke Pixel 9' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Revoke Pixel 9' }),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
 
     await waitFor(() => {

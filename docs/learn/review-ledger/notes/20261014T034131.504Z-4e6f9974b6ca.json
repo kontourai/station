@@ -1,0 +1,7 @@
+{
+  "revision": "cde26d277b4f48d0a1f4e392a7da7a79caf66d63",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Re-reviewed 'Transcript layout tracing' after the fix round: tracing now requires the explicit app:transcript-layout debug namespace only (Developer tools no longer enables it; transcriptLayoutTrace.ts readRequested), records name rows by role plus a one-way FNV hash of the row key and other nodes by test id/tag/classes/ARIA role with no aria-labels (describeTraceNode, traceKey), the overlay is removed on detach, and buffered layout shifts are not re-recorded on re-attach (lastShiftAt). Executed: transcriptLayoutTracer unit tests (namespace-only, privacy, overlay) with fault injection, and the e2e journey that asserts the tracer attaches. Device workflows remain unexercised on hardware.","inputs":["docs/guides/development.md","src-ui/src/components/chat/transcriptLayoutTrace.ts","src-ui/src/components/chat/transcriptLayoutTracer.ts","tests/transcript-load-stability.spec.ts"]}
+  ]
+}

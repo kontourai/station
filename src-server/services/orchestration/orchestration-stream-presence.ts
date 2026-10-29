@@ -3,11 +3,11 @@
  * many live `/api/orchestration/events` SSE subscribers each authorized
  * presence subject currently holds open.
  *
- * This is the server-side "is anyone actually watching?" signal the
- * push-on-completion gate needs (`turn-completion-notifications.ts`): a
- * turn that completes/fails while its owning user has zero live streams
- * gets a push; a turn that completes while the owner is actively connected
- * does not (they already see it render). Counting rather than a boolean
+ * It was built as the push-on-completion "is anyone watching?" gate; that
+ * gate is gone (an idle desktop holding a stream silenced every device), and
+ * notification delivery now decides per surface from focus and in-app
+ * liveness (`notifications/delivery/router.ts`). What remains reads the
+ * roster (`/presence/summary`). Counting rather than a boolean
  * because a user can legitimately hold more than one open tab/device stream
  * at once — only the LAST one leaving flips them to "disconnected". Hosted
  * subjects include the trusted tenant binding as well as the user, so a
@@ -24,8 +24,7 @@
  * here) and retains it per subject, bounded, so a session-agnostic "who's
  * connected" roster can be read back (`roster()`) without a second identity
  * registry. This is purely additive to the ref-counting above: the
- * `countsBySubject` map and everything the push-on-completion gate reads
- * (`isConnected`) are completely unaffected by roster
+ * `countsBySubject` map and `isConnected` are completely unaffected by roster
  * bounds — a connection that overflows the roster is still counted there,
  * exactly as before. Bounds mirror `ClientConnectionPresence`'s discipline
  * (`services/ssh/client-connection-presence.ts`): a total-tracked-principal
@@ -230,7 +229,13 @@ export class OrchestrationStreamPresence {
       .sort((a, b) => a.principal.id.localeCompare(b.principal.id));
   }
 
-  /** `true` when this exact subject currently holds a live stream open. */
+  /**
+   * `true` when this exact subject currently holds a live stream open. No
+   * production code reads it since turn completions stopped gating on it;
+   * it stays as the exact count the `/events` route's release-on-every-exit
+   * tests observe, which `roster()` cannot replace (it omits overflow and
+   * principal-less connections by design).
+   */
   isConnected(subject: OrchestrationStreamPresenceSubject | string): boolean {
     if (typeof subject === 'string') {
       return this.isConnected(

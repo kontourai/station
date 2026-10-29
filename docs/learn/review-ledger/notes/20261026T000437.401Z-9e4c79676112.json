@@ -1,0 +1,7 @@
+{
+  "revision": "2abe335e7c3827b6ee146d281fd33572242adffb",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Bounded Root successor review: strengthens existing transport/frozen-error custody cases to invoke streamConversationTurn from the actual SDK root entry and read the key via both root and React-free client entry. Executed37PASS at this source; same key observed without wrapping error. This establishes one source/Vite module graph only, not installed-package or duplicate-bundle singleton identity. Production/docs/changeset behavior unchanged from independently reviewed0fb55 and Root disclosure007447c; all earlier semantic limits and server-release/capability landing hold retained. Other manual claims not re-reviewed.","inputs":["docs/reference/sdk.md","packages/sdk/src/__tests__/chatRuntimeStream.test.ts"]}
+  ]
+}

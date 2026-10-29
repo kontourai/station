@@ -4,6 +4,7 @@ import {
   MAX_COLLABORATIVE_EDIT_OPERATION_BYTES,
 } from '../../../src-shared/collaborative-edit-limits.js';
 import {
+  compareWorkingStateIds,
   type InsertTextOperation,
   SHARED_WORKING_STATE_SCHEMA_VERSION,
   SharedWorkingState,
@@ -12,6 +13,7 @@ import {
 } from '../shared-working-state.js';
 import {
   createSharedWorkingStateEditingCapability,
+  lowSortingIntentId,
   MAX_SHARED_EDIT_TEXT_CODE_UNITS,
   sharedWorkingStateEditBatchDigest,
 } from '../shared-working-state-editing.js';
@@ -442,5 +444,25 @@ describe('SharedWorkingStateEditingCapability', () => {
       text: 'acd',
       selection: { anchor: 2, focus: 2 },
     });
+  });
+});
+
+describe('low-sorting room edit identities (#4008)', () => {
+  const fixed = () => 'abcdef';
+  test.each([
+    [null, '!zzzzzzzzabcdef'],
+    ['0f4c1b2e-0000-4000-8000-000000000000:insert:0', '!zzzzzzzzabcdef'],
+    ['p:0123456789ab:0:0', '!zzzzzzzzabcdef'],
+    ['!0000000aq1w2e3:i:7', '!00000009abcdef'],
+    ['!zzzzzzzzq1w2e3:i:0', '!zzzzzzzyabcdef'],
+  ])('below %s mints %s, whose atoms sort below it', (below, expected) => {
+    const minted = lowSortingIntentId(below, fixed);
+    expect(minted).toBe(expected);
+    if (below)
+      expect(compareWorkingStateIds(`${minted}:i:0`, below)).toBeLessThan(0);
+  });
+
+  test('refuses once the counter space is exhausted', () => {
+    expect(lowSortingIntentId('!00000000q1w2e3:i:0', fixed)).toBeNull();
   });
 });

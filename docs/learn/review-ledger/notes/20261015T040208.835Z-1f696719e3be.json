@@ -1,0 +1,25 @@
+{
+  "revision": "e8082799b6eeebece0627c23505bd125a368aeeb",
+
+  "notes": [
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Reviewed against the Monument publish-prep change (#3565): the Monument paragraph (private until its first owner-gated publish, so changeset publish skips it; no dependencies; root manifest link:packages/monument) is unchanged and still true. The root package.json change only adds the build:monument and monument-pack:smoke scripts; no installation claim depends on them.","inputs":["docs/design/pnpm-workspace-installation.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed against the root package.json scripts change (adds build:monument and monument-pack:smoke). The guide's code-health and gate claims do not name either script and are unaffected.","inputs":["docs/guides/code-quality.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed against the root package.json scripts change (adds build:monument and monument-pack:smoke). Neither script installs, resolves or runs dependency lifecycle code in the managed path; the monument smoke runs npm install --ignore-scripts into a scratch directory. No claim in the guide changes.","inputs":["docs/guides/dependency-security.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/development.md","note":"Edited the workspace-packages note: Monument no longer ships raw TypeScript source for consumers; it publishes compiled dist with declarations (publishConfig applied by pnpm), built by build:monument and checked by monument-pack:smoke. The table row (Tier 1, private: true until its first owner-gated publish) is still accurate. Checked against packages/monument/package.json, tsconfig.build.json and scripts/monument-pack-smoke.mjs.","inputs":["docs/guides/development.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed against the publish-packages.yml change (#3565): adds a Build Monument step, a publish-dispatch-only Smoke the Monument tarball step that skips while the package is private, and corrects a stale comment that changeset publish runs plain npm publish (changesets 3.x selects pnpm publish for this pnpm workspace). The guide's channel, qualification and Stable promotion claims are unaffected; it does not describe the package-publish step list.","inputs":["docs/guides/releasing.md",".github/workflows/publish-packages.yml"]},
+
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"Reviewed against the root package.json scripts change (adds build:monument and monument-pack:smoke). The guide does not enumerate those scripts; no claim changes.","inputs":["docs/guides/repository-knowledge-graph.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed against scripts/vitest-resource-manifest.mjs (monument-pack-smoke.test.ts joins the shared-output group because it owns packages/monument/dist), scripts/test-impact-manifest.mjs (new script-to-test edge) and the root scripts. Consistent with the guide: tests that write shared repo paths belong in shared-output, and a child-process test is classified. No prose change.","inputs":["docs/guides/testing.md","package.json#/scripts","scripts/test-impact-manifest.mjs","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Reviewed against the root package.json scripts change (adds build:monument and monument-pack:smoke). Neither is a verification lane or receipt producer; the declared-output wording for test-full is unchanged.","inputs":["docs/reference/verification-receipts.md","package.json#/scripts"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed against scripts/vitest-resource-manifest.mjs: the new child-process test (scripts/__tests__/monument-pack-smoke.test.ts) is classified in the shared-output group, as the rule requires, and uses spawnSync with windowsHide. The new script uses spawnSyncBounded. No change to the instruction.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed against the docs/guides/development.md edit (Monument now publishes compiled dist). The instruction file makes no claim about how Monument ships; Station still consumes it through its public entry points resolved to src. No change.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

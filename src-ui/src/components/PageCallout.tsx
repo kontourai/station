@@ -8,19 +8,8 @@
  * (accent border, a bespoke accent button that was not `Button` at all).
  * Same voice now, and one place to change it.
  *
- * TONE IS THE BANNER SCALE, not a second one. `PageCalloutTone` IS
- * `BannerTone` — imported, not redeclared — and the border colours resolve
- * through the `--tone-border-*` custom properties that `BannerHost.css` also
- * consumes, so the two surfaces cannot drift into disagreeing about what
- * "warning" looks like.
- *
- * NOT A BANNER, though. `BannerHost` is app-level chrome: it reserves layout
- * space at the top of the shell, sorts by priority, survives navigation and
- * carries conditions the app discovered on its own. These are page CONTENT —
- * they scroll with the page, they belong to the view that renders them, and
- * they are gone the moment that view is. Routing them through the host would
- * make them follow the reader onto routes they have nothing to do with,
- * which is the placement defect the first-run audit already fixed once.
+ * Callouts use the shared tone vocabulary and root --tone-border-* tokens.
+ * They scroll with their owning page and disappear when that view unmounts.
  */
 
 import type { ReactNode } from 'react';

@@ -38,6 +38,26 @@ describe('/stats cache-honest totals (station#4196)', () => {
     return message.content as string;
   }
 
+  test('without an agent id it reports no usage instead of fetching stats', async () => {
+    const { getCommand } = await import('../slashCommands/registry');
+    const handler = getCommand('stats');
+    const addEphemeralMessage = vi.fn();
+    const fetchQuery = vi.fn();
+    await handler!({
+      sessionId: 's1',
+      chatState: { conversationId: 'c1', messages: [] },
+      addEphemeralMessage,
+      queryClient: { fetchQuery },
+    } as any);
+    expect(fetchQuery).not.toHaveBeenCalled();
+    expect(addEphemeralMessage).toHaveBeenCalledWith(
+      's1',
+      expect.objectContaining({
+        content: 'Messages: 0. No usage recorded yet.',
+      }),
+    );
+  });
+
   test('the 212x fixture renders the backed cache-inclusive figures for a disjoint provider', async () => {
     // 3-turn cold-cache claude session from the archive#4048 audit probe:
     // input 30/45/60, cache_creation 9000/400/700, cache_read 0/9000/9400.

@@ -1,0 +1,7 @@
+{
+  "revision": "53f1b03828067c53841c70fadbfc4cad33ca7d6d",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"Searched for client_turn_in_flight, clientTurnId, same-key retry, foreground_message_indeterminate and retain claims. None here describes the retained-claim resend; the SDK's indeterminate-retry and getTurnDelivery text stays accurate. The change only refuses a same-process resend of a retained claim (waiting or new) as foreground_message_indeterminate and clears the marker on a fresh claim.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

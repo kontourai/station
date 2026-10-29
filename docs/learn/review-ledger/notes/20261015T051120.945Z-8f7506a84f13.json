@@ -1,0 +1,7 @@
+{
+  "revision": "18f68d7832f895fcac0abf8887671ef6836eff6d",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"PR #3676 fix round 1 type correction: re-read the conversation freshness paragraph. useWorkObservation now accepts the nullable identity already supplied by disabled history readers; the existing falsy-ID guard is unchanged. This is a TypeScript signature correction, with no emitted runtime or documented concept change. Scoped success/failure and last-subscriber eviction behavior retain their prior tests and browser evidence.","inputs":["docs/user/concepts.md","src-ui/src/contexts/work-observation.ts"]}
+  ]
+}

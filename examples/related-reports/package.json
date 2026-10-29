@@ -1,0 +1,24 @@
+{
+  "name": "@kontourai/station-related-reports",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Related panes example plugin for Station",
+  "type": "module",
+  "main": "./src/index.tsx",
+  "files": [
+    "src",
+    "plugin.json",
+    "tsconfig.json",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "@kontourai/station-sdk": "*",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@kontourai/station-sdk": "*",
+    "@types/react": "^19.0.0",
+    "typescript": "7.0.2"
+  },
+  "license": "Apache-2.0"
+}

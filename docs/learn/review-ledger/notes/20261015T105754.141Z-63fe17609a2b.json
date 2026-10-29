@@ -1,0 +1,7 @@
+{
+  "revision": "719bdf3ead1e62850fb907397e7943cceb9b8dae",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-read after 719bdf3ead1 restored round-9 conversationOpenController and this doc to their 365f7abee15 bytes (round-10 per-tab hydration ownership reverted for an ordinary-use regression). Resync/120s history bound, focus-return guards, recovery precedence and Last-known freshness text match the restored code; the doc makes no hydration-ownership claim.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/conversationOpenController.ts"]}
+  ]
+}

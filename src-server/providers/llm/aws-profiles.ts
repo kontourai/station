@@ -44,11 +44,11 @@ const CREDENTIALS_PROFILE_HEADER_RE = new RegExp(
   `^\\[([${PROFILE_NAME_CHARS}]+)\\]\\s*$`,
 );
 
-export function defaultAwsConfigPath(): string {
+function defaultAwsConfigPath(): string {
   return process.env.AWS_CONFIG_FILE || join(homedir(), '.aws', 'config');
 }
 
-export function defaultAwsCredentialsPath(): string {
+function defaultAwsCredentialsPath(): string {
   return (
     process.env.AWS_SHARED_CREDENTIALS_FILE ||
     join(homedir(), '.aws', 'credentials')

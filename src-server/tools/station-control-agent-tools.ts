@@ -3,6 +3,7 @@ import {
   deleteAgentRaw,
   deleteConversation,
   fetchAgentsBare,
+  forkConversation,
   getConversationMessages,
   listAgentConversations,
   updateAgentRaw,
@@ -27,14 +28,10 @@ import {
 } from './station-control-shared.js';
 
 /**
- * archive#167 Wave 2B: agent CRUD + conversation fetches now run through
+ * archive#167: agent CRUD + conversation fetches run through
  * `@kontourai/station-sdk/client`'s canonical fetchers instead of this
  * file's own inline `api()` calls (`station-control-shared.ts`). `apiBase`
- * is resolved once at module load — mirroring `station-control-shared.ts`'s
- * own `const API = resolveControlApiBase();` — because station-control runs
- * as a long-lived MCP server process where `STATION_API_BASE`/`STATION_PORT`
- * are expected to be stable for the process lifetime, not re-read per call
- * (archive#167 plan Risk 3).
+ * is resolved on every call; see `controlApiBase` below (archive#1195).
  */
 // archive#1195: resolved fresh on every call (see station-control-shared.ts's
 // `api()` doc comment) -- a module-load-time freeze here would be wrong once
@@ -76,19 +73,27 @@ export function registerAgentTools(server: StationControlToolRegistry) {
     'get_agent',
     'Get agent details by slug',
     { slug: z.string() },
-    // No canonical `@kontourai/station-sdk/client` fetcher exists for this
-    // route: it targets bare `GET /agents/:slug`, distinct from
-    // `client/agents.ts`'s `getAgent` (enriched `GET /api/agents/:slug`,
-    // used only by the CLI's `agents get` verb). The archive#167 plan flagged this
-    // as a Wave 2B gap ("the plan's Task text for the 'agents +
-    // conversations' group does not name a canonical fetcher for
-    // station-control's `get_agent` tool"); re-verified against
-    // `src-server/routes/agents/agents.ts` (only `GET /` is registered on the bare
-    // `/agents` mount — there is no `GET /:slug` handler at all), so this
-    // tool already 404s pre-#167. Left on the `api()` passthrough rather
-    // than silently rerouting it to a different endpoint, which would be an
-    // out-of-scope server-route/behavior decision (AC4).
-    async ({ slug }) => jsonToolResult(await api(`/agents/${slug}`)),
+    // No route serves one agent on the bare `/agents` mount (it registers
+    // only `GET /`), so this picks the agent out of that same listing
+    // `list_agents` reads. The enriched `GET /api/agents/:slug` would serve
+    // it directly, but it is a dispatch leaf: sharing it with this read
+    // would loosen every dispatch tool's guard on it.
+    async ({ slug }) => {
+      const listing = (await fetchAgentsBare(
+        controlApiBase(),
+        controlRequestOptions(),
+      )) as { success?: unknown; data?: unknown };
+      if (listing?.success !== true || !Array.isArray(listing.data))
+        return jsonToolResult(listing);
+      const agent = listing.data.find(
+        (entry) => (entry as { slug?: unknown } | null)?.slug === slug,
+      );
+      return jsonToolResult(
+        agent === undefined
+          ? { success: false, error: `Agent '${slug}' not found` }
+          : { success: true, data: agent },
+      );
+    },
   );
 
   server.tool(
@@ -265,6 +270,54 @@ export function registerAgentTools(server: StationControlToolRegistry) {
         await api(`/api/conversations/${encodeURIComponent(id)}/read${search}`),
       );
     },
+  );
+
+  server.tool(
+    'fork_conversation',
+    [
+      'Fork a conversation into a new one that starts from its history up to a completed assistant turn, as the Station UI fork does. The source is unchanged.',
+      "It is held to the same scope as starting a Session: the source must be your own conversation or another of your owner's that your scope lets you view, and the fork lands (in targetProjectSlug, else the source's Project) only where you could start a Session yourself. Unless your credential is bound, your scope is your session's Project (or the global space, if it has none); a bound credential reaches the global space and the Projects your owner may act in, and a bound operator's reaches what the operator may read. Anything else is refused.",
+      'Returns the new conversationId and the seed its first turn replays.',
+    ].join(' '),
+    {
+      agent: z.string().min(1).describe('The Agent slug that owns the source'),
+      conversationId: z.string().min(1).max(256),
+      targetAgent: z
+        .string()
+        .min(1)
+        .optional()
+        .describe('The Agent for the fork; defaults to agent'),
+      targetProjectSlug: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("The fork's Project; defaults to the source's"),
+      branchPointTurnId: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          'A completed assistant turn id; defaults to the latest completed turn',
+        ),
+      idempotencyKey: z
+        .string()
+        .min(1)
+        .max(128)
+        .optional()
+        .describe('Retrying with the same key returns the same fork'),
+    },
+    async ({ agent, conversationId, targetAgent, ...options }) =>
+      jsonToolResult(
+        await toAgentEnvelope(
+          forkConversation(
+            controlApiBase(),
+            agent,
+            conversationId,
+            targetAgent ?? agent,
+            { ...controlRequestOptions(), ...options },
+          ),
+        ),
+      ),
   );
 
   server.tool(

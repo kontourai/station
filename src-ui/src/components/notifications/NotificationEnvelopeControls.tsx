@@ -15,6 +15,7 @@ import {
   createNotificationPreferencesClient,
   type NotificationMuteTarget,
 } from '../../lib/notification-preferences-client';
+import { NoticeAction } from './NoticeAction';
 
 /**
  * Inbox row additions for an enveloped notification (#2587): who sent it,
@@ -50,13 +51,13 @@ export function NotificationEnvelopeControls({
       )}
       <div className={actionsClassName}>
         {canOpen && (
-          <button
+          <NoticeAction
             type="button"
             className={actionClassName}
             onClick={() => void activateNotification(notification)}
           >
             Open
-          </button>
+          </NoticeAction>
         )}
         {source && (
           <MuteActions source={source} actionClassName={actionClassName} />
@@ -106,7 +107,7 @@ function MuteActions({
   return (
     <>
       {targets.map(({ label, target }) => (
-        <button
+        <NoticeAction
           key={label}
           type="button"
           className={actionClassName}
@@ -114,7 +115,7 @@ function MuteActions({
           onClick={() => mute.mutate(target)}
         >
           {label}
-        </button>
+        </NoticeAction>
       ))}
       {mute.data && (
         <span role="status">

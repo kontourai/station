@@ -1,0 +1,9 @@
+{
+  "revision": "bbacbe273a68e96ca8c568d7d22614e1c5f11743",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-read the ColorThemes module-map entry against this change: it only drops the export keyword from internals (root attribute-name constants, startup index markers, per-family stylesheet renderer) and deletes two unused flavor helpers (colorThemeFlavorFor, colorThemeFlavorId). The document names none of these symbols; the files, responsibilities, startup path and picker API it describes are unchanged.","inputs":["docs/architecture/module-map.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots","src-ui/src/lib/color-theme-apply.ts","src-ui/src/lib/color-theme-css.ts","src-ui/src/lib/color-theme-selection.ts","src-ui/src/lib/color-themes.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Re-read the ColorThemes sections of the theming guide against this change: it only drops the export keyword from internals (root attribute-name constants, startup index markers, per-family stylesheet renderer) and deletes two unused flavor helpers (colorThemeFlavorFor, colorThemeFlavorId). The document names none of these symbols; the files, responsibilities, startup path and picker API it describes are unchanged.","inputs":["docs/guides/theming.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots","src-ui/src/lib/color-theme-apply.ts","src-ui/src/lib/color-theme-css.ts","src-ui/src/lib/color-theme-selection.ts","src-ui/src/lib/color-themes.ts"]}
+  ]
+}

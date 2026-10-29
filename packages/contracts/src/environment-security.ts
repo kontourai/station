@@ -111,8 +111,18 @@ export const PAIRING_SCOPE_ORCHESTRATION_READ = 'orchestration:read' as const;
 export const PAIRING_SCOPE_ORCHESTRATION_OPERATE =
   'orchestration:operate' as const;
 export const PAIRING_SCOPE_TERMINAL_OPERATE = 'terminal:operate' as const;
+/** Watch terminal output; never grants input or lifecycle operations. */
+export const PAIRING_SCOPE_TERMINAL_OBSERVE = 'terminal:observe' as const;
 /** Pairing/device management (creating offers, confirming/denying requests, revoking devices). */
 export const PAIRING_SCOPE_ACCESS_MANAGE = 'access:manage' as const;
+/**
+ * Administer already-paired devices: list, change scopes, revoke, and remove
+ * revoked records. Only the operator may grant or remove this permission;
+ * its holder cannot delegate it. No preset or historical default grants it.
+ * This permits granting other device permissions, including full access,
+ * without granting operator identity, account administration, or peer access.
+ */
+export const PAIRING_SCOPE_ACCESS_DEVICES = 'access:devices' as const;
 /**
  * Fleet inference (archive#1398, `docs/design/inference-fleet.md` §3.3):
  * invoke a *model completion* on this Station's contributed connections, and
@@ -206,6 +216,9 @@ export const PAIRING_SCOPE_HOME_TRANSFER = 'home:transfer' as const;
  */
 export const PAIRING_SCOPE_HOME_CONTROL = 'home:control' as const;
 
+/** Companion management is separate from home continuity, export consent and personal analytics grants. */
+export const PAIRING_SCOPE_TELEMETRY_MANAGE = 'telemetry:manage' as const;
+
 /**
  * Start, read and cancel a device-code login for an engine credential profile
  * (station#device-code). Deliberately its own token rather than a reuse of
@@ -285,13 +298,16 @@ export const PAIRING_SCOPES = [
   PAIRING_SCOPE_ORCHESTRATION_READ,
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   PAIRING_SCOPE_TERMINAL_OPERATE,
+  PAIRING_SCOPE_TERMINAL_OBSERVE,
   PAIRING_SCOPE_ACCESS_MANAGE,
+  PAIRING_SCOPE_ACCESS_DEVICES,
   PAIRING_SCOPE_INFERENCE_INVOKE,
   PAIRING_SCOPE_ACCESS_APPROVE,
   PAIRING_SCOPE_RELAY_MANAGE,
   PAIRING_SCOPE_CONSENT_DECIDE,
   PAIRING_SCOPE_HOME_TRANSFER,
   PAIRING_SCOPE_HOME_CONTROL,
+  PAIRING_SCOPE_TELEMETRY_MANAGE,
   PAIRING_SCOPE_ENGINE_LOGIN,
   PAIRING_SCOPE_CODING_EXEC,
   PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
@@ -341,7 +357,8 @@ export const DEFAULT_GRANT_PAIRING_SCOPE: string = [
  * The pairing-UI presets: "Read-only" pairs a device that can only
  * read/stream state, "Standard" additionally grants control (mutate + open a
  * terminal) but withholds `access:manage` — a paired device, however
- * broadly scoped, can never manage other devices or pairing offers itself.
+ * broadly scoped, needs a separate access:devices grant to manage existing
+ * devices. Pairing offers remain operator-only.
  *
  * `delegation` (archive#1123, `docs/design/station-peer-pairing.md`
  * §2) is a THIRD preset, not a reuse of `standard`: every call
@@ -446,10 +463,12 @@ export const PAIRING_SCOPE_GRANT_PATHS: Record<
   [PAIRING_SCOPE_ORCHESTRATION_READ]: ['preset', 'default-grant'],
   [PAIRING_SCOPE_ORCHESTRATION_OPERATE]: ['preset', 'default-grant'],
   [PAIRING_SCOPE_TERMINAL_OPERATE]: ['preset', 'default-grant'],
+  [PAIRING_SCOPE_TERMINAL_OBSERVE]: ['operator-promotion'],
   // The recorded historical exception: in the frozen default grant, in no
   // preset, and deliberately never added to one — elevation at pairing time
   // grants the most to the least-known device. See archive#1883.
   [PAIRING_SCOPE_ACCESS_MANAGE]: ['default-grant'],
+  [PAIRING_SCOPE_ACCESS_DEVICES]: ['operator-promotion'],
   [PAIRING_SCOPE_INFERENCE_INVOKE]: ['preset'],
   // archive#1887: the only token whose sole path is an operator promoting an
   // already-paired device. In no preset (elevation at pairing time grants the
@@ -462,6 +481,7 @@ export const PAIRING_SCOPE_GRANT_PATHS: Record<
   [PAIRING_SCOPE_CONSENT_DECIDE]: ['operator-promotion'],
   [PAIRING_SCOPE_HOME_TRANSFER]: ['preset'],
   [PAIRING_SCOPE_HOME_CONTROL]: ['operator-promotion'],
+  [PAIRING_SCOPE_TELEMETRY_MANAGE]: ['operator-promotion'],
   // Operator promotion only, for the same reason as the two tokens above --
   // and for one more that is specific to adding a token to a preset at all:
   // `parsePairingScope` refuses a WHOLE scope string containing one unknown
@@ -502,6 +522,11 @@ export const PAIRING_SCOPE_DESCRIPTIONS: Record<
     label: 'Operate',
     summary: 'Can start, continue and steer chats and Agent work.',
   },
+  [PAIRING_SCOPE_TERMINAL_OBSERVE]: {
+    label: 'Watch terminals',
+    summary:
+      'Takes effect with remote watch: view terminal output without typing or changing sessions.',
+  },
   [PAIRING_SCOPE_TERMINAL_OPERATE]: {
     label: 'Terminal',
     summary: "Can open an interactive terminal on this Station's computer.",
@@ -510,6 +535,11 @@ export const PAIRING_SCOPE_DESCRIPTIONS: Record<
     label: 'Manage access',
     summary:
       'Can manage pairing offers and devices. Held only by older default grants; never granted to a device here.',
+  },
+  [PAIRING_SCOPE_ACCESS_DEVICES]: {
+    label: 'Manage device access',
+    summary:
+      'Can list devices, change their permissions (including full access), revoke access and remove revoked records. Only the Station operator can grant or remove this administrative permission.',
   },
   [PAIRING_SCOPE_INFERENCE_INVOKE]: {
     label: 'Fleet inference',
@@ -537,6 +567,11 @@ export const PAIRING_SCOPE_DESCRIPTIONS: Record<
     label: 'Home control',
     summary:
       'Allows home-control sessions. Room access and Agent execution still require their own permissions.',
+  },
+  [PAIRING_SCOPE_TELEMETRY_MANAGE]: {
+    label: 'Manage telemetry companion',
+    summary:
+      'Can install and manage the optional telemetry companion when signed in as an operator. Does not enable telemetry sending or grant personal source access.',
   },
   [PAIRING_SCOPE_ENGINE_LOGIN]: {
     label: 'Start engine sign-in',
@@ -694,9 +729,12 @@ export function isPairingScopeSubset(
  * too — that is the switch that turns a silent misbehavior into a
  * "update your app" verdict.
  */
-// Protocol 2 adds revision-bound product disclosure acknowledgements. Core
-// protocol-1 callers remain admitted; this optional feature negotiates separately.
-export const STATION_COMPAT_PROTOCOL_VERSION = 2;
+// Protocol 3 admits exact-turn inventory lineage. Older readers keep the
+// contribution-only shape; protocol-1 callers remain admitted.
+// Protocol 4 admits Session inventory tool-result rows whose outcome was never
+// observed (`terminalStatus: 'unresolved'`, #4178). Older readers validate
+// that vocabulary exactly, so they keep the omission.
+export const STATION_COMPAT_PROTOCOL_VERSION = 4;
 
 /**
  * Oldest client protocol this host still serves. A client advertising less
@@ -935,7 +973,7 @@ export type PairedDeviceRevocation =
   | { state: 'unobserved-before-revocation-provenance' }
   | {
       state: 'recorded';
-      actor: 'operator-credential';
+      actor: 'operator-credential' | 'operator-passkey' | 'device-access';
       reason: 'owner-request';
     }
   | {
@@ -994,6 +1032,11 @@ export interface PairedDevice {
    * migrates it in place the same way `scope` itself was migrated
    * (archive#1098 R4). Never absent on a value read out of the service.
    */
+  /**
+   * #3557: present only on a personal access token resolved as a headless
+   * device of its owner; never persisted in the device registry.
+   */
+  readonly credentialKind?: 'personal-token';
   kind: PairedDeviceKind;
   createdAt: number;
   /**
@@ -1051,6 +1094,11 @@ export interface PairedDevice {
    * device paired before this field existed has no such key at all.
    */
   requester?: TailscaleServeRequester;
+  /**
+   * #3557: device lists only. What a live device may use now: `scope`
+   * capped by its person's Station group (equal to `scope` when untied).
+   */
+  effectiveScope?: string;
   /**
    * Ephemeral connection state, added only by the access-management listing.
    * It is not persisted with a paired device and never includes session ids.
@@ -1159,9 +1207,19 @@ export interface EnvironmentSecurityRecord {
  * or the service.
  */
 export interface StationCapabilityFlags {
+  /** Consented private terminal outcome reads. */
+  privateOperationalOutcomes?: boolean;
   /** SSH environment management (`src-server/services/ssh/`, `/api/ssh-environments`). */
   sshEnvironments?: boolean;
-  /** Web Push subscribe/unsubscribe (`src-server/routes/operations/push-routes.ts`). */
+  /**
+   * `GET /api/system/routes` (`station-routes.ts`): the addresses this Station
+   * reports it can be reached on, for a paired device to learn as routes.
+   */
+  connectionRoutes?: boolean;
+  /**
+   * Web Push subscribe/unsubscribe (`src-server/routes/operations/push-routes.ts`).
+   * Absent on hosted deployments, whose push routes all answer 404 (#4177).
+   */
   webPushNotifications?: boolean;
   /**
    * The `/api/orchestration/events` (+ per-session) SSE stream honors a
@@ -1173,6 +1231,14 @@ export interface StationCapabilityFlags {
   eventStreamResume?: boolean;
   /** The versioned bounded per-session event-window protocol is available. */
   sessionEventWindow?: boolean;
+  /**
+   * `GET /api/orchestration/sessions/:threadId/inputs/:eventId` serves the
+   * exact authored input behind a Session inventory row. A host without it
+   * answers that path 404 like a denied read, so a client gates the read on
+   * this flag instead of reporting a failed read. Absent on hosted
+   * deployments, whose route refuses every read (#4177).
+   */
+  sessionInventoryInputRead?: boolean;
   /**
    * Scoped pairing (archive#1098): pairing grants and device sessions carry
    * an OAuth-style scope string, enforced by a single route -> required-scope

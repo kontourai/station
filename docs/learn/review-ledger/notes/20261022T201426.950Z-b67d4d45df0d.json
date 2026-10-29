@@ -1,0 +1,9 @@
+{
+  "revision": "ec027024cf01920e794ff1c26395e7e22798e449",
+
+  "notes": [
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Corrected the framing section after reviewing applicationChannel: negotiated four-credit read-ahead is 64 KiB, legacy endpoints retain one credit, and one request per channel plus frame/body/producer/send bounds remain unchanged. Links the detailed Connect contract. Local simulated tests executed; real browser/TURN qualification was not run.","inputs":["docs/guides/local-collaboration-lab.md"]},
+
+    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed inherited generated ledger projection and its JSON source: the document explicitly distinguishes recording time, artifact build time, exact ship SHA, workflow receipts and availability/completeness limits. This transport change neither alters release records nor qualifies an artifact; no prose or provider-state change is asserted.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

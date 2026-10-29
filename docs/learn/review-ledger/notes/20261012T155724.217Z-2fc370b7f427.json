@@ -1,0 +1,7 @@
+{
+  "revision": "c3158ef30c31083f5af95328e0acd04d3538dec8",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"#3561: proof-repo-guardrails.mjs now requires orchestration-service.ts to call deriveReadModelSession, persistReadModelSession and trackOrchestrationSession from orchestration-session-state.ts (the split read-model projection), plus their exports, instead of projectOrchestrationEventToReadModel. The guide describes the guardrail manifest and fail-closed positive control at the level of what they cover, not individual rules; still accurate.","inputs":["docs/guides/testing.md","scripts/proof-repo-guardrails.mjs"]}
+  ]
+}

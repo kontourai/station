@@ -1,0 +1,9 @@
+{
+  "revision": "0768f3c4e884671965e0c635c6423a31a0044021",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the DNT choice-group adjustment in UsageTelemetryDisclosure and its local stylesheet. Off/Lite/Full are visible radio choices; selecting alone does not write, and the single Save action persists the chosen tier without acknowledging under DNT. The save label names that tier. Selection is keyed to the connected authority. Source defines 44px choice targets; runtime layout remains separately qualified by the screenshot capture. All 30 affected UI/recovery tests pass, UI and browser-fixture typechecks pass, and the full static gate passes without changing the button-cap baseline. Consent admission and wire/ack revision values are unchanged.","inputs":["docs/reference/usage-telemetry.md","src-ui/src/components/UsageTelemetryDisclosure.tsx","src-ui/src/components/UsageTelemetryDisclosure.css"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed screenshots.spec.ts after the DNT control adjustment: the fixture with a saved Full choice expects the Save operator choice as Full action and explicitly checks visibility of Off/Lite/Full radio choices at both viewport sizes. It retains ordinary Playwright assertions, the same hermetic routes, and cleanup. Browser-fixture typechecking passes. Runner commands, deadlines, screenshot geometry and evidence-tier guidance remain accurate; no prose change is needed.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]}
+  ]
+}

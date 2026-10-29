@@ -1,0 +1,7 @@
+{
+  "revision": "c17d25a18499790ed036c7106ead3934e36b18f2",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Added 'Choosing the compiler' under host typecheck slots. Verified against scripts/tsc-slot.mjs: COMPILERS (tsc, tsc-ts, bun), DEFAULT_COMPILERS {local: tsc-ts, ci: tsc}, precedence --compiler= > STATION_TYPECHECK_COMPILER > default (CI unset/'false'/'0' means local), explicit selection fails when it cannot run, default falls back silently to tsc, per-compiler build info suffix. Both example commands executed. Existing Bun section still accurate: --bun is an explicit selection and hosted checks still use TypeScript 7. Evidence: typecheck-host-slots.test.ts (47 pass) with five fault injections each caught.","inputs":["docs/guides/testing.md","scripts/__tests__/typecheck-host-slots.test.ts","scripts/tsc-slot.mjs"]}
+  ]
+}

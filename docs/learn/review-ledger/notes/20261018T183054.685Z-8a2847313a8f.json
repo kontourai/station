@@ -1,0 +1,7 @@
+{
+  "revision": "e56004cb85940ebde7f94e0fc220d04870697266",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"PR 3830 main integration: reviewed b9019409980 (#3819), which changes the SDK review inputs and typed session structural sharing, not sdk.md prose. The supported ledger migrator combined both branches' source lists without changing other record fields. Checked useApiQuery/QueryConfig and the delegation-files client section against the merged callers: typed sharing binds only session query results; delegate staging capability, reference binding, coded refusals, shared-workspace-only support and cleanup rules remain accurate and independent. No SDK prose changes needed. Requested focused tests and readiness are recorded separately after this source review; no new live or Windows runtime qualification claimed.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

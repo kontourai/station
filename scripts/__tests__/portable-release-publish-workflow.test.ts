@@ -1790,8 +1790,8 @@ describe.skipIf(process.platform === 'win32')(
           root: 'station',
           launcher: 'station/bin/station',
           node: {
-            version: process.versions.node,
-            distribution: `node-v${process.versions.node}-${os}-${arch}.tar.gz`,
+            version: NODE_VERSION,
+            distribution: `node-v${NODE_VERSION}-${os}-${arch}.tar.gz`,
             sha256: 'd'.repeat(64),
           },
           release: {
@@ -1820,7 +1820,7 @@ describe.skipIf(process.platform === 'win32')(
         '--base-url',
         publicationLocations('stable', REPOSITORY, version).baseUrl,
         '--node-version',
-        process.versions.node,
+        NODE_VERSION,
         '--launcher-protocol-min',
         String(PORTABLE_LAUNCHER_PROTOCOL.min),
         '--launcher-protocol-max',
@@ -1846,11 +1846,14 @@ describe.skipIf(process.platform === 'win32')(
         REPOSITORY,
       ]);
       expect(checked.status, checked.stderr).toBe(0);
-      // The one substitution: the signed URL points at the local archive,
-      // because the release asset does not exist. Every other byte of the
-      // payload is the assembler's.
+      // Two substitutions, both because this archive is a local stand-in: the
+      // signed URL points at it, since the release asset does not exist, and
+      // the Node.js version names the host's, since the stand-in runs on the
+      // host Node rather than the pinned one install.sh then checks it
+      // against. Every other byte of the payload is the assembler's.
       const payload = JSON.parse(readFileSync(payloadPath, 'utf8'));
       payload.artifacts[0].url = pathToFileURL(archive.archive).href;
+      payload.nodeVersion = process.versions.node;
       const localPayload = join(dir, 'local-payload.json');
       writeFileSync(localPayload, JSON.stringify(payload));
       const { privateKeyPem, keyTable } = createDryRunKeys(

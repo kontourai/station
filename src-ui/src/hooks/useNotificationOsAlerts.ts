@@ -5,6 +5,7 @@ import {
 import { useEffect } from 'react';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { isMainDesktopWindow } from '../platform/native/mainWindow';
+import { useConstrainedNetwork } from '../platform/networkCost';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
 
 /**
@@ -66,6 +67,8 @@ export const DELIVERY_FEED_POLL_MS = 20_000;
 export function useNotificationOsAlerts(): void {
   const { apiBase, connectionId } = useApiBase();
   const profile = usePlatformProfile();
+  const constrainedNetwork = useConstrainedNetwork();
+  const feedPollMs = constrainedNetwork ? 60_000 : DELIVERY_FEED_POLL_MS;
   // Once per app, not once per window: pop-out windows render the app too.
   const enabled =
     profile.isTauri &&
@@ -74,7 +77,7 @@ export function useNotificationOsAlerts(): void {
     isMainDesktopWindow();
   const { data, dataUpdatedAt } = useNotificationsQuery(
     { status: LIVE_NOTIFICATION_STATUSES },
-    { refetchInterval: 10_000, enabled },
+    { refetchInterval: constrainedNetwork ? 30_000 : 10_000, enabled },
   );
   const scopeKey = `${apiBase}\n${connectionId ?? ''}`;
   useEffect(() => {
@@ -88,12 +91,28 @@ export function useNotificationOsAlerts(): void {
 
   useEffect(() => {
     if (!enabled) return;
-    const poll = () =>
-      void import('../platform/native/deliveryFeed').then((module) =>
-        module.pollDeliveryFeed(apiBase, scopeKey),
-      );
-    poll();
-    const timer = setInterval(poll, DELIVERY_FEED_POLL_MS);
-    return () => clearInterval(timer);
-  }, [apiBase, scopeKey, enabled]);
+    let disposed = false;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const poll = () => {
+      if (document.hidden || disposed) return;
+      void import('../platform/native/deliveryFeed').then((module) => {
+        if (!document.hidden && !disposed)
+          void module.pollDeliveryFeed(apiBase, scopeKey);
+      });
+    };
+    const update = () => {
+      if (timer !== undefined) clearInterval(timer);
+      timer = undefined;
+      if (document.hidden) return;
+      poll();
+      timer = setInterval(poll, feedPollMs);
+    };
+    update();
+    document.addEventListener('visibilitychange', update);
+    return () => {
+      disposed = true;
+      if (timer !== undefined) clearInterval(timer);
+      document.removeEventListener('visibilitychange', update);
+    };
+  }, [apiBase, scopeKey, enabled, feedPollMs]);
 }

@@ -4,12 +4,17 @@ import {
   type LayoutConfig,
   type LayoutTemplate,
   layoutOwner,
+  layoutSubject,
 } from '@kontourai/station-contracts/layout';
 import {
   isPrincipalRef,
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
+import {
+  PROJECT_CHAT_APPROVAL_POSTURES,
+  PROJECT_CHAT_DEFAULT_SELECTIONS,
+} from '@kontourai/station-contracts/project-chat-defaults';
 import { isSafeToolServerId } from '@kontourai/station-contracts/tool';
 import { z } from 'zod';
 import type { ConversationRecord, DocumentRecord } from './storage-adapter.js';
@@ -51,6 +56,19 @@ const projectSchema = z
     icon: optionalString,
     description: optionalString,
     workingDirectory: optionalString,
+    repositorySource: z
+      .object({
+        acquisitionId: z.string().uuid(),
+        attempt: z.number().int().positive(),
+        sourceUrl: nonEmptyString,
+        sourceRef: optionalString,
+        subdirectory: optionalString,
+        canonicalRemote: nonEmptyString,
+        resolvedCommit: z.string().regex(/^[a-f0-9]{40,64}$/),
+        acquiredAt: timestamp,
+      })
+      .strict()
+      .optional(),
     defaultWorkspaceIsolation: z.enum(['shared', 'worktree']).optional(),
     defaultEnvironment: z
       .discriminatedUnion('kind', [
@@ -60,6 +78,11 @@ const projectSchema = z
       .optional(),
     defaultProviderId: optionalString,
     defaultModel: optionalString,
+    defaultModelSelection: z.enum(PROJECT_CHAT_DEFAULT_SELECTIONS).optional(),
+    defaultApprovalMode: z.enum(PROJECT_CHAT_APPROVAL_POSTURES).optional(),
+    defaultApprovalModeSelection: z
+      .enum(PROJECT_CHAT_DEFAULT_SELECTIONS)
+      .optional(),
     defaultAgent: z.string().regex(CLEAN_ID_PATTERN).optional(),
     defaultEmbeddingProviderId: optionalString,
     defaultEmbeddingModel: optionalString,
@@ -77,6 +100,10 @@ const projectSchema = z
       })
       .strict()
       .optional(),
+    personalLayouts: z
+      .enum(['off', 'project-panes', 'allowed-plugins'])
+      .optional(),
+    personalLayoutAllowedPlugins: z.array(nonEmptyString).optional(),
     position: z.number().int().nonnegative().optional(),
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -128,7 +155,12 @@ const layoutSchema = z
     id: nonEmptyString,
     projectSlug: nonEmptyString.optional(),
     owner: layoutOwnerSchema.optional(),
+    subject: z
+      .object({ kind: z.literal('project'), projectSlug: nonEmptyString })
+      .strict()
+      .optional(),
     type: nonEmptyString,
+    workspaceBinding: z.literal('repository').optional(),
     name: nonEmptyString,
     slug: nonEmptyString,
     icon: optionalString,
@@ -152,6 +184,7 @@ const layoutSchema = z
   .superRefine((value, ctx) => {
     try {
       layoutOwner(value);
+      layoutSubject(value);
     } catch (error) {
       ctx.addIssue({
         code: 'custom',
@@ -213,6 +246,8 @@ const knowledgeRootSchema = z
         .object({ kind: z.literal('project'), projectSlug: nonEmptyString })
         .strict(),
     ]),
+    projectId: z.string().uuid().optional(),
+    registrationId: z.string().uuid().optional(),
     adapterId: nonEmptyString,
     storeRoot: nonEmptyString,
     displayName: nonEmptyString,

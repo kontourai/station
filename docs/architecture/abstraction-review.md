@@ -46,30 +46,6 @@ GitHub owns implementation work and current status. These sections retain the
 source observations that explain each finding. Their issue links include
 suggested fixes and documentation acceptance; they are not a second backlog.
 
-### Store-index freshness lacks two identities
-
-The [sqlite-vec index](../../src-server/knowledge-index/sqlite-vec-index-provider.ts)
-records vector width but not the embedding model/configuration that produced
-it. Its [migration caller](../../src-server/knowledge-index/migrate-pre-index-knowledge.ts)
-also treats matching width as sufficient for vector reuse. A different model
-with the same width can therefore be mixed with existing vectors without a
-dimension error.
-
-Tracked in [#2727: embedding configuration identity](https://github.com/kontourai/station/issues/2727).
-
-The [store search route](../../src-server/routes/knowledge/knowledge-index-routes.ts)
-rechecks access and record existence, but returns the index's old excerpt
-beside the record's current title/category. It does not compare a record-body
-revision. This differs from the older document API's content-hash validation
-through [KnowledgeFileTransactions](module-map.md#knowledgefiletransactions).
-
-Tracked separately in [#2728: source-content freshness](https://github.com/kontourai/station/issues/2728).
-
-Next design review: give index entries explicit source-content and embedding
-configuration identity, then decide how callers should see stale results and
-rebuild requirements. Matching dimensions and a readable record are useful
-checks, but neither establishes the meaning or freshness of an embedding.
-
 ### Personal Knowledge scope and the Settings card disagree
 
 `KnowledgeStoreProvider.generateRootId` allows `root:personal:2` and later
@@ -328,11 +304,14 @@ The Operate shell's event stream bypasses the authenticated SDK transport even
 though its initial Session read uses it. A real caller against a synthetic
 protected HTTP service reproduced the missing credential and HTTP 401;
 [#2845](https://github.com/kontourai/station/issues/2845) tracks the correction.
-Home reset has a separate source-confirmed gap: it skips the home instance
-registry and does not take the backup/restore maintenance lease before archiving
-([#2849](https://github.com/kontourai/station/issues/2849)). No live home reset
-was attempted. Both belong in the existing owners, with actual-caller tests,
-rather than another parallel transport or lifecycle abstraction.
+Home reset now acquires the home maintenance lease, rechecks lifecycle inactivity
+and archives the home while holding that lease. It still does not separately
+consult the home-scoped instance registry
+([#2849](https://github.com/kontourai/station/issues/2849)). Maintenance excludes
+cooperating leased runtimes; it does not stop writers that bypass that protocol.
+No live home reset was attempted in the original review. The remaining gaps
+belong in the existing owners, with actual-caller coverage, rather than another
+parallel transport or lifecycle abstraction.
 
 ### Successful persistence does not establish usable presentation
 

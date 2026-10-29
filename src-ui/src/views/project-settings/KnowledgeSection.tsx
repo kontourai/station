@@ -1,20 +1,15 @@
 import {
-  useCreateKnowledgeRootMutation,
   useKnowledgeBulkDeleteMutation,
   useKnowledgeDeleteMutation,
   useKnowledgeDocsQuery,
-  useKnowledgeRootsQuery,
   useKnowledgeSaveMutation,
   useKnowledgeScanMutation,
   useKnowledgeStatusQuery,
   useMigratePreIndexKnowledgeMutation,
 } from '@kontourai/station-sdk';
 import { useRef, useState } from 'react';
-import {
-  CheckGlyph,
-  DatabaseGlyph,
-  FolderGlyph,
-} from '../../components/icons/Glyph';
+import { Button } from '../../components/Button';
+import { CheckGlyph, FolderGlyph } from '../../components/icons/Glyph';
 import { PageSection } from '../../components/PageSection';
 import { Empty, ErrorState, Skeleton } from '../../components/state';
 import { useNavigation } from '../../contexts/NavigationContext';
@@ -30,28 +25,13 @@ const MIGRATE_GUARANTEE_TEXT =
   'Reading the source can first recover an interrupted earlier write.';
 
 function KnowledgeStoreSubsection({ slug }: { slug: string }) {
-  const {
-    data: roots,
-    isLoading: rootsLoading,
-    error: rootsError,
-  } = useKnowledgeRootsQuery();
+  const { navigate } = useNavigation();
   const { data: docs = [] } = useKnowledgeDocsQuery(slug) as {
     data?: DocMeta[];
   };
-  const createRootMutation = useCreateKnowledgeRootMutation();
   const migrateMutation = useMigratePreIndexKnowledgeMutation();
 
-  const projectRoot = roots?.find(
-    (root) => root.scope.kind === 'project' && root.scope.projectSlug === slug,
-  );
   const hasPreIndexKnowledge = docs.length > 0;
-
-  function handleCreateRoot() {
-    createRootMutation.mutate({
-      scope: { kind: 'project', projectSlug: slug },
-      adapterId: 'kit-default-store',
-    });
-  }
 
   function handleMigrate() {
     migrateMutation.mutate({ projectSlug: slug });
@@ -65,58 +45,15 @@ function KnowledgeStoreSubsection({ slug }: { slug: string }) {
         <span className="knowledge-section__card-label">Knowledge store</span>
       </div>
 
-      {rootsLoading ? (
-        <Skeleton variant="line" />
-      ) : rootsError ? (
-        <ErrorState
-          title="Could not load the project knowledge store"
-          description={errorText(rootsError)}
-        />
-      ) : projectRoot ? (
-        <div className="knowledge-section__source-list">
-          <div className="knowledge-section__source">
-            <span className="knowledge-section__source-icon">
-              <DatabaseGlyph />
-            </span>
-            <div className="knowledge-section__source-info">
-              <span className="knowledge-section__source-name">
-                {projectRoot.displayName}
-              </span>
-              <span className="knowledge-section__source-path">
-                {projectRoot.storeRoot}
-              </span>
-            </div>
-            <span className="knowledge-section__badge">
-              {projectRoot.adapterId}
-            </span>
-          </div>
-        </div>
-      ) : (
-        <Empty
-          variant="compact"
-          label="This project doesn't have its own knowledge store yet"
-          description="Create a dedicated project knowledge store to hold this project's knowledge records."
-          action={
-            <button
-              type="button"
-              className="knowledge-section__action-btn"
-              onClick={handleCreateRoot}
-              disabled={createRootMutation.isPending}
-            >
-              {createRootMutation.isPending
-                ? 'Creating…'
-                : 'Create project knowledge store'}
-            </button>
-          }
-        />
-      )}
-
-      {createRootMutation.isError && (
-        <ErrorState
-          title="Could not create the project knowledge store"
-          description={errorText(createRootMutation.error)}
-        />
-      )}
+      <p>Manage registered repositories and knowledge stores in Sources.</p>
+      <Button
+        size="sm"
+        onClick={() =>
+          navigate(`/projects/${slug}/edit`, { section: 'resources' })
+        }
+      >
+        Manage sources
+      </Button>
 
       {hasPreIndexKnowledge && (
         <div className="knowledge-section__migrate">
@@ -124,16 +61,15 @@ function KnowledgeStoreSubsection({ slug }: { slug: string }) {
             This project has existing knowledge from before knowledge stores.{' '}
             {MIGRATE_GUARANTEE_TEXT}
           </p>
-          <button
-            type="button"
-            className="knowledge-section__action-btn"
+          <Button
+            size="sm"
             onClick={handleMigrate}
             disabled={migrateMutation.isPending}
           >
             {migrateMutation.isPending
               ? 'Migrating…'
               : "Migrate this project's existing knowledge"}
-          </button>
+          </Button>
 
           {migrateMutation.isError && (
             <ErrorState
@@ -177,9 +113,11 @@ export function KnowledgeSection({ slug }: { slug: string }) {
   } | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [operationError, setOperationError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: docs = [] } = useKnowledgeDocsQuery(slug) as {
+  const docsQuery = useKnowledgeDocsQuery(slug);
+  const { data: docs = [] } = docsQuery as {
     data?: DocMeta[];
   };
   const { data: status } = useKnowledgeStatusQuery(slug) as {
@@ -196,17 +134,20 @@ export function KnowledgeSection({ slug }: { slug: string }) {
   async function handleScan() {
     setScanning(true);
     setScanResult(null);
+    setOperationError(null);
     try {
       const result = await scanMutation.mutateAsync({});
       setScanResult(result ?? null);
-    } catch {
-      /* ignore */
+    } catch (error) {
+      setOperationError(errorText(error));
     }
     setScanning(false);
   }
 
   async function uploadFiles(files: FileList | File[]) {
     setUploading(true);
+    setOperationError(null);
+    const failures: string[] = [];
     for (const file of Array.from(files)) {
       try {
         const content = await file.text();
@@ -214,17 +155,18 @@ export function KnowledgeSection({ slug }: { slug: string }) {
           filename: file.name,
           content,
         });
-      } catch {
-        /* ignore */
+      } catch (error) {
+        failures.push(`${file.name}: ${errorText(error)}`);
       }
     }
+    setOperationError(failures.length ? failures.join('; ') : null);
     setUploading(false);
   }
 
   function handleDrop(event: React.DragEvent) {
     event.preventDefault();
     setDragOver(false);
-    if (event.dataTransfer.files.length > 0) {
+    if (!uploading && event.dataTransfer.files.length > 0) {
       void uploadFiles(event.dataTransfer.files);
     }
   }
@@ -250,9 +192,8 @@ export function KnowledgeSection({ slug }: { slug: string }) {
     >
       <p className="knowledge-section__cross-link">
         Looking for your personal knowledge store?{' '}
-        <button
-          type="button"
-          className="button button--link"
+        <Button
+          variant="link"
           onClick={() =>
             navigate('/settings', {
               view: 'knowledge',
@@ -261,29 +202,48 @@ export function KnowledgeSection({ slug }: { slug: string }) {
           }
         >
           Open Settings → My knowledge store
-        </button>
+        </Button>
         . Managing the vector database or embedding model?{' '}
-        <button
-          type="button"
-          className="button button--link"
+        <Button
+          variant="link"
           onClick={() => navigate('/connections/knowledge')}
         >
           Open Knowledge infrastructure
-        </button>
+        </Button>
       </p>
       <KnowledgeStoreSubsection slug={slug} />
+      {operationError && (
+        <ErrorState
+          variant="compact"
+          title="Knowledge action failed"
+          description={operationError}
+        />
+      )}
+      {deleteMutation.isError && (
+        <ErrorState
+          variant="compact"
+          title="Could not remove document"
+          description={errorText(deleteMutation.error)}
+        />
+      )}
+      {clearMutation.isError && (
+        <ErrorState
+          variant="compact"
+          title="Could not clear documents"
+          description={errorText(clearMutation.error)}
+        />
+      )}
 
       <div className="knowledge-section__card">
         <div className="knowledge-section__card-header">
           <span className="knowledge-section__card-label">Sources</span>
-          <button
-            type="button"
-            className="knowledge-section__action-btn"
+          <Button
+            size="sm"
             onClick={handleScan}
             disabled={scanning || !workingDir}
           >
-            {scanning ? '⟳ Scanning…' : '⟳ Index directory'}
-          </button>
+            {scanning ? 'Scanning…' : 'Index directory'}
+          </Button>
         </div>
         {workingDir ? (
           <div className="knowledge-section__source-list">
@@ -315,7 +275,9 @@ export function KnowledgeSection({ slug }: { slug: string }) {
       <div className="knowledge-section__card">
         <div className="knowledge-section__card-header">
           <span className="knowledge-section__card-label">Documents</span>
-          <span className="knowledge-section__stat">{docs.length} files</span>
+          {!docsQuery.isLoading && !docsQuery.isError && (
+            <span className="knowledge-section__stat">{docs.length} files</span>
+          )}
         </div>
 
         <input
@@ -340,6 +302,7 @@ export function KnowledgeSection({ slug }: { slug: string }) {
           }}
           onDragLeave={() => setDragOver(false)}
           onDrop={handleDrop}
+          disabled={uploading}
           onClick={() => fileInputRef.current?.click()}
         >
           {uploading ? (
@@ -353,40 +316,56 @@ export function KnowledgeSection({ slug }: { slug: string }) {
           )}
         </button>
 
-        {docs.length > 0 && (
-          <div className="knowledge-section__doc-list">
-            {docs.map((doc) => (
-              <div key={doc.id} className="knowledge-section__doc">
-                <span className="knowledge-section__doc-name">
-                  {doc.filename}
-                </span>
-                <span className="knowledge-section__badge">
-                  {doc.chunkCount} chunks
-                </span>
-                <button
-                  type="button"
-                  className="knowledge-section__doc-remove"
-                  onClick={() => deleteMutation.mutate(doc.id)}
-                  title="Remove"
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
+        {docsQuery.isLoading ? (
+          <Skeleton variant="block" />
+        ) : docsQuery.isError ? (
+          <ErrorState
+            variant="compact"
+            title="Could not load documents"
+            action={
+              <Button onClick={() => void docsQuery.refetch()}>Retry</Button>
+            }
+          />
+        ) : (
+          docs.length > 0 && (
+            <div className="knowledge-section__doc-list">
+              {docs.map((doc) => (
+                <div key={doc.id} className="knowledge-section__doc">
+                  <span className="knowledge-section__doc-name">
+                    {doc.filename}
+                  </span>
+                  <span className="knowledge-section__badge">
+                    {doc.chunkCount} chunks
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => deleteMutation.mutate(doc.id)}
+                    title="Remove"
+                    aria-label={`Remove ${doc.filename}`}
+                    disabled={
+                      deleteMutation.isPending || clearMutation.isPending
+                    }
+                  >
+                    ×
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )
         )}
       </div>
 
       <div className="knowledge-section__status">
         {docs.length > 0 && (
-          <button
-            type="button"
-            className="knowledge-section__clear-btn"
+          <Button
+            variant="danger-outline"
+            size="sm"
             onClick={() => clearMutation.mutate(docs.map((doc) => doc.id))}
             disabled={clearMutation.isPending}
           >
             {clearMutation.isPending ? 'Clearing…' : 'Clear all'}
-          </button>
+          </Button>
         )}
       </div>
     </PageSection>

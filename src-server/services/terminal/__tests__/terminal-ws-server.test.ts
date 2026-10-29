@@ -6,6 +6,7 @@ import { terminalPtyUnavailableReason } from '@kontourai/station-shared/terminal
 import { describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
 import { PtyUnavailableError } from '../../../domain/pty-adapter.js';
+import type { TerminalEvent } from '../../../domain/terminal-types.js';
 import { RuntimeAuthFailureLimiter } from '../../../security/runtime-request-security.js';
 import { resolveStationBrowserOrigins } from '../../../security/station-browser-origins.js';
 import { TerminalWebSocketServer } from '../terminal-ws-server.js';
@@ -478,6 +479,7 @@ describe('terminal websocket remote authentication', () => {
   it('returns the running terminal cwd only through an explicit live-CWD request', async () => {
     const service = {
       subscribe: vi.fn(() => vi.fn()),
+      open: vi.fn(async () => ({ sessionId: 'project-a:terminal-one' })),
       getCwd: vi.fn(async () => '/workspace/after-cd'),
       close: vi.fn(),
     };
@@ -491,6 +493,17 @@ describe('terminal websocket remote authentication', () => {
       readyState: WebSocket.OPEN,
     };
     (terminal as any).acceptBusinessClient(ws);
+    // A socket may only query a session it opened.
+    await listeners.get('message')!(
+      Buffer.from(
+        JSON.stringify({
+          type: 'open',
+          projectSlug: 'project-a',
+          terminalId: 'terminal-one',
+        }),
+      ),
+    );
+    ws.send.mockClear();
 
     await listeners.get('message')!(
       Buffer.from(
@@ -1043,5 +1056,179 @@ describe('terminal websocket browser origin on the credential-free loopback path
     expect(outcome).toBe('Unexpected server response: 403');
     expect(connection).not.toHaveBeenCalled();
     expect(service.open).not.toHaveBeenCalled();
+  });
+});
+
+describe('terminal websocket session scoping', () => {
+  type Listener = (event: TerminalEvent) => void;
+
+  function scopingHarness() {
+    const listeners: Listener[] = [];
+    const service = {
+      subscribe: vi.fn((listener: Listener) => {
+        listeners.push(listener);
+        return vi.fn();
+      }),
+      open: vi.fn(
+        async (input: { projectSlug: string; terminalId: string }) => ({
+          sessionId: `${input.projectSlug}:${input.terminalId}`,
+          status: 'running',
+          pid: 1,
+          history: '',
+          cols: 80,
+          rows: 24,
+        }),
+      ),
+      write: vi.fn(),
+      resize: vi.fn(),
+      getCwd: vi.fn(async () => '/workspace/secret-cwd'),
+      close: vi.fn(async () => undefined),
+    };
+    const emit = (event: TerminalEvent) => {
+      for (const listener of listeners) listener(event);
+    };
+    return {
+      service,
+      emit,
+      terminal: new TerminalWebSocketServer(service as any),
+    };
+  }
+
+  /** A real client socket that has opened one session and records every frame. */
+  async function openClient(
+    port: number,
+    projectSlug: string,
+    terminalId: string,
+  ) {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+    const frames: Record<string, unknown>[] = [];
+    ws.on('message', (raw) => frames.push(JSON.parse(raw.toString())));
+    await once(ws, 'open');
+    ws.send(
+      JSON.stringify({ type: 'open', projectSlug, terminalId, cwd: '/tmp' }),
+    );
+    await vi.waitFor(() =>
+      expect(frames).toContainEqual(
+        expect.objectContaining({ type: 'snapshot' }),
+      ),
+    );
+    return { ws, frames, sessionId: `${projectSlug}:${terminalId}` };
+  }
+
+  async function closeClients(...sockets: WebSocket[]) {
+    for (const ws of sockets) {
+      ws.close();
+      await once(ws, 'close');
+    }
+  }
+
+  it('delivers each session event only to the socket that opened that session', async () => {
+    const { emit, terminal } = scopingHarness();
+    const { port, wss } = await listeningPort(terminal);
+    const a = await openClient(port, 'project-a', 'terminal-one');
+    const b = await openClient(port, 'project-b', 'terminal-two');
+
+    emit({ type: 'data', sessionId: b.sessionId, data: 'b-secret-output' });
+    emit({
+      type: 'activity',
+      sessionId: b.sessionId,
+      hasRunningSubprocess: true,
+    });
+    emit({ type: 'exited', sessionId: b.sessionId, exitCode: 0, signal: null });
+    // Emitted last: once A has its own frame, any leaked B frame (sent
+    // earlier on the same ordered socket) would already be in `a.frames`.
+    emit({ type: 'data', sessionId: a.sessionId, data: 'a-own-output' });
+
+    await vi.waitFor(() => {
+      expect(a.frames).toContainEqual({
+        type: 'data',
+        sessionId: a.sessionId,
+        data: 'a-own-output',
+      });
+      expect(b.frames).toContainEqual(
+        expect.objectContaining({ type: 'exited', sessionId: b.sessionId }),
+      );
+    });
+    expect(a.frames.filter((f) => f.sessionId === b.sessionId)).toEqual([]);
+    expect(b.frames).toContainEqual({
+      type: 'data',
+      sessionId: b.sessionId,
+      data: 'b-secret-output',
+    });
+    expect(b.frames.filter((f) => f.sessionId === a.sessionId)).toEqual([]);
+
+    await closeClients(a.ws, b.ws);
+    await closeServer(terminal, wss);
+  });
+
+  it('refuses data, resize, cwd, and close for a session the socket did not open', async () => {
+    const { service, terminal } = scopingHarness();
+    const { port, wss } = await listeningPort(terminal);
+    const a = await openClient(port, 'project-a', 'terminal-one');
+    const b = await openClient(port, 'project-b', 'terminal-two');
+    a.frames.length = 0;
+
+    const foreign = [
+      { type: 'data', sessionId: b.sessionId, data: 'rm -rf ~\r' },
+      { type: 'resize', sessionId: b.sessionId, cols: 1, rows: 1 },
+      { type: 'cwd', sessionId: b.sessionId, requestId: 'probe-1' },
+      { type: 'close', sessionId: b.sessionId },
+      // A session that does not exist gets the identical refusal.
+      { type: 'data', sessionId: 'project-z:missing', data: 'x' },
+    ];
+    for (const message of foreign) a.ws.send(JSON.stringify(message));
+    await vi.waitFor(() => expect(a.frames).toHaveLength(foreign.length));
+
+    const refusal = {
+      type: 'error',
+      code: 'session-not-owned',
+      message: 'Terminal session is not open on this connection.',
+    };
+    expect(a.frames).toEqual([
+      refusal,
+      refusal,
+      { ...refusal, requestId: 'probe-1' },
+      refusal,
+      refusal,
+    ]);
+    expect(service.write).not.toHaveBeenCalled();
+    expect(service.resize).not.toHaveBeenCalled();
+    expect(service.getCwd).not.toHaveBeenCalled();
+    expect(service.close).not.toHaveBeenCalled();
+
+    // B's session is untouched and still drivable by its owner.
+    b.ws.send(
+      JSON.stringify({ type: 'data', sessionId: b.sessionId, data: 'ls\r' }),
+    );
+    await vi.waitFor(() =>
+      expect(service.write).toHaveBeenCalledWith(b.sessionId, 'ls\r'),
+    );
+
+    await closeClients(a.ws, b.ws);
+    await closeServer(terminal, wss);
+  });
+
+  it('drops the socket ownership when it closes its own session', async () => {
+    const { service, emit, terminal } = scopingHarness();
+    const { port, wss } = await listeningPort(terminal);
+    const a = await openClient(port, 'project-a', 'terminal-one');
+
+    a.ws.send(JSON.stringify({ type: 'close', sessionId: a.sessionId }));
+    await vi.waitFor(() =>
+      expect(service.close).toHaveBeenCalledWith(a.sessionId),
+    );
+    a.frames.length = 0;
+    emit({ type: 'data', sessionId: a.sessionId, data: 'after-close' });
+    a.ws.send(
+      JSON.stringify({ type: 'data', sessionId: a.sessionId, data: 'x' }),
+    );
+    await vi.waitFor(() => expect(a.frames).toHaveLength(1));
+    expect(a.frames).toEqual([
+      expect.objectContaining({ type: 'error', code: 'session-not-owned' }),
+    ]);
+    expect(service.write).not.toHaveBeenCalled();
+
+    await closeClients(a.ws);
+    await closeServer(terminal, wss);
   });
 });

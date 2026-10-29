@@ -1,0 +1,19 @@
+{
+  "revision": "2e940aa38e572bf25e0db55c45a271d1f87d92d7",
+
+  "notes": [
+    {"path":"docs/design/agent-engine-unification.md","note":"Reviewed the unchanged authored-definition policy and all callers after extraction into session-agent-start-policy.ts. The resolver retains the existing export for foreground/catalog callers; channel delivery, engine exemptions and historical protocol claims are unchanged.","inputs":["docs/design/agent-engine-unification.md","src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"Reviewed the resolver-only extraction against the current-state Browser access description. The saved browser flag and delivery paths are unchanged; the common browser/computer capability layer remains a proposal.","inputs":["docs/design/agent-interaction-capabilities.md","src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Reviewed the required label on the canonical Project agent Empty state. No member authority, Project binding, authoring persistence or execution behavior changes; current descriptions remain accurate.","inputs":["docs/design/project-membership.md","src-ui/src/views/project-settings/ProjectAgentsPanel.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed recovery importing the same policy from its dependency-free owner. Session start refusal and retryable failure recording are unchanged; no endpoint, request, response or approval API changes.","inputs":["docs/reference/api.md","src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the policy extraction against existing provider/session declarations. The same unknown agentSlug predicate and caller-supplied resolved status remain; no public DTO, field, version or event shape changed.","inputs":["docs/reference/contracts.md","src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the recovery import change and preserved resolver export. No SDK transport, query identity, session error contract or client boundary changed.","inputs":["docs/reference/sdk.md","src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed recovery and resolver after the unchanged policy extraction and typed-fixture repair. Tool selection, Project policy, source descriptions, approval delivery and current browser support statements remain accurate. 177 focused tests and both affected typecheck lanes passed; no new provider qualification claimed.","inputs":["docs/reference/station-docs.md","src-server/services/orchestration/orchestration-session-state.ts","src-server/services/orchestration/session-agent-resolution.ts"]}
+  ]
+}

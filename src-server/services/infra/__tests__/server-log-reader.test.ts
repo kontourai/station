@@ -14,6 +14,10 @@ import {
   createServerLogReader,
   DEFAULT_SERVER_LOG_SCAN_BUDGET_BYTES,
 } from '../server-log-reader.js';
+import {
+  installServerLogSink,
+  resetServerLogSinkForTests,
+} from '../server-log-store.js';
 
 const dirs: string[] = [];
 
@@ -24,6 +28,7 @@ function createTempDir(): string {
 }
 
 afterEach(() => {
+  resetServerLogSinkForTests();
   for (const dir of dirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -76,6 +81,26 @@ describe('ServerLogReader — empty directory', () => {
       skippedMalformedLines: 0,
       scanBudgetExhausted: false,
     });
+  });
+});
+
+describe('ServerLogReader — batched writes', () => {
+  it('sees a line the installed store has buffered but not yet written', async () => {
+    const directory = createTempDir();
+    const sink = installServerLogSink({ directory });
+    sink.writeLine(
+      JSON.stringify({
+        level: 'info',
+        timestamp: new Date().toISOString(),
+        msg: 'buffered-before-query',
+      }),
+    );
+
+    // No wait: the store's 10 ms batch timer has not fired yet.
+    const result = await createServerLogReader({ directory }).query();
+    expect(result.entries.map((entry) => entry.msg)).toContain(
+      'buffered-before-query',
+    );
   });
 });
 

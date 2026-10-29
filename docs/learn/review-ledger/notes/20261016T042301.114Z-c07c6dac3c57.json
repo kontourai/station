@@ -1,0 +1,7 @@
+{
+  "revision": "40c4fca3c0b1b8f44833024dffec9820d493ba57",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Checked against the session-api.md change (attached Claude transcript anchor, shrink re-anchor, uuid-less identity): the ADR only links the session API and makes no claim about attached transcript cursors.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

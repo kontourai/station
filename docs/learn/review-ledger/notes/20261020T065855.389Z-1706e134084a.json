@@ -1,0 +1,21 @@
+{
+  "revision": "53820d562663eb8aabe3e240c26fff7931ba99b7",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed 53820d56266 through real ChatWorkspacePane, useChatDockActiveChatSync and useChatDockActions. Only cold URL hydration suppresses a reveal; person-selected conversation, new-chat, continuation and composer/model paths retain their existing reveal. Interaction and continuity claims remain accurate; no prose change. Caller/recovery checks passed; native repair acceptance pending.","inputs":["docs/design/chat-composer.md"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed 53820d56266 against phone-layer Back/Up/reload and region maximize ownership. Exact layer restore is unchanged; the later cold hydration now passes revealDock false through the real caller, preserving dock/maximize and avoiding a second dismissal. Deliberate focus/open still reveals. This repairs the documented pre-layer restoration contract; no prose change. Android 0129 failure stack retained separately; new-head native acceptance pending.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed 53820d56266 against fullscreen chat and responsive dialog ownership. Only asynchronous cold hydration reveal changes; CSS, breakpoints, header, geometry, dialog focus and touch controls are unchanged. Preserving URL maximize removes an unintended late transition. Existing guide remains accurate; no new geometry/native pass claimed.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed 53820d56266 UI cold lookup/open callers. HTTP lookup/message shapes, authorization, request bindings and orchestration API are unchanged; revealDock is an existing internal UI option, not a new wire field. Conversation management and current chat consumer references remain accurate; no prose change.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed 53820d56266 against chat/settings defaults and attachment/model scope. No stored setting, schema, Agent/model default, attachment or runtime configuration changes. Only hydration layout reveal is suppressed; explicit opens remain unchanged. Existing configuration claims remain accurate; no prose change.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed 53820d56266 conversation identity resolution and dock selection. Durable conversation versus execution Session meanings and continuity remain unchanged; hydration preserves the existing navigation layout and creates no work. Existing concept claims remain accurate; no prose change.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed 53820d56266 against Continue working, Chats and tasks, new-chat and fullscreen-phone sections. Person-selected opens retain explicit reveal; URL hydration no longer overrides dock visibility/maximize after leaving a child. Start/setup and footer controls are unchanged. Guidance remains accurate; repaired native behavior pending acceptance.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Reviewed 53820d56266 against Build with chat and Board navigation. Projectless new-chat picker/removable draft retain explicit composer/new-session actions; a cold pointer only hydrates. Board authoring/save/move/guards and region placement are unchanged. Existing claims remain accurate; no prose change.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

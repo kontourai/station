@@ -14,8 +14,15 @@ import {
 import type { AgentConfigurationMutationRunner } from '../../../runtime/types.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
+import { readIntegrationOrigin } from '../../../services/plugins/integration-origin.js';
 import { PluginContentLockCycleError } from '../../../services/plugins/plugin-content-integrity.js';
 import { PluginConsentRefusedError } from '../../../services/plugins/plugin-install-consent.js';
+
+import { PluginInstallTrustRefused } from '../../../services/plugins/plugin-install-trust-recording.js';
+import {
+  PluginTrustRecordNewerError,
+  PluginTrustRecordsUnavailableError,
+} from '../../../services/plugins/plugin-install-trust-store.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   registryOps: { add: vi.fn() },
@@ -259,17 +266,32 @@ describe('Registry Routes', () => {
     expect(configLoader.saveIntegration).not.toHaveBeenCalled();
   });
 
-  test('registry install persists and reloads a new integration disabled', async () => {
+  test('registry install persists a disabled integration with its installing registry origin', async () => {
     const home = mkdtempSync(join(tmpdir(), 'station-registry-disabled-'));
     try {
       const { app, configLoader } = setup();
       configLoader.saveIntegration.mockImplementation((id, def) =>
         saveIntegrationConfig(home, id, def),
       );
-      __integrationProvider.getToolDef.mockResolvedValueOnce({
+      configLoader.getProjectHomeDir.mockReturnValue(home);
+      const definition = {
         id: 'filesystem',
-        kind: 'mcp',
+        kind: 'mcp' as const,
         command: 'npx',
+      };
+      const origin = {
+        kind: 'registry' as const,
+        registryName: 'Team catalog',
+        itemId: 'filesystem',
+        version: '2.0',
+      };
+      const provider = (
+        await import('../../../providers/registries/registry.js')
+      ).getIntegrationRegistryProvider();
+      provider.installWithDefinition = vi.fn().mockResolvedValue({
+        result: { success: true },
+        definition,
+        origin,
       });
 
       await app.request('/integrations/install', {
@@ -280,10 +302,13 @@ describe('Registry Routes', () => {
 
       const path = join(home, 'integrations', 'filesystem', 'integration.json');
       expect(readFileSync(path, 'utf8')).toContain('"enabled": false');
-      expect((await loadIntegrationConfig(home, 'filesystem')).enabled).toBe(
-        false,
-      );
+      const installed = await loadIntegrationConfig(home, 'filesystem');
+      expect(installed.enabled).toBe(false);
+      expect(readIntegrationOrigin(home, installed)).toEqual(origin);
     } finally {
+      delete (
+        await import('../../../providers/registries/registry.js')
+      ).getIntegrationRegistryProvider().installWithDefinition;
       rmSync(home, { recursive: true, force: true });
     }
   });
@@ -808,6 +833,43 @@ describe('Registry Routes', () => {
       expect(body.message).toContain('getting-started-starter');
       expect(body.consent.reason).toBe('undisclosed-contributions');
     }
+  });
+
+  test('#2998: install trust refusals keep their status and code on both catalog faces', async () => {
+    const { app } = setup();
+    const cases = [
+      [
+        new PluginInstallTrustRefused('missing-inclusion-proof'),
+        409,
+        'plugin-install-trust-refused',
+      ],
+      [new PluginTrustRecordNewerError('p1'), 409, 'plugin-trust-record-newer'],
+      [
+        new PluginTrustRecordsUnavailableError(
+          '/tmp/home/plugin-trust.json',
+          'unreadable',
+        ),
+        503,
+        'plugin-trust-records-unavailable',
+      ],
+    ] as const;
+    for (const route of ['/agents/install', '/plugins/install'])
+      for (const [error, status, code] of cases) {
+        vi.mocked(installPluginFromSource).mockRejectedValueOnce(error);
+        const response = await app.request(route, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: 'p1' }),
+        });
+        const body = await json(response);
+        expect({ route, status: response.status, code: body.code }).toEqual({
+          route,
+          status,
+          code,
+        });
+        expect(body.success).toBe(false);
+        expect(JSON.stringify(body)).not.toContain('/tmp/home');
+      }
   });
 
   test('DELETE /agents/:id removes a registry plugin through the shared uninstall, not the raw provider delete', async () => {

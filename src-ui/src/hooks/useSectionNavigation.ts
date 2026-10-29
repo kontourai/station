@@ -25,6 +25,13 @@ function focusSection(section: string) {
   const reveal = () => {
     const target = document.getElementById(`section-${section}`);
     if (!target) return false;
+    // A background route must not scroll or take focus from an open dialog.
+    if (
+      [...document.querySelectorAll('[aria-modal="true"], dialog[open]')].some(
+        (modal) => !modal.contains(target),
+      )
+    )
+      return true;
     if (typeof target?.scrollIntoView === 'function') {
       target.scrollIntoView({ block: 'start' });
     }

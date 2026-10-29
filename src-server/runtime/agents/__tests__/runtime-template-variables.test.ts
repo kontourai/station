@@ -1,4 +1,8 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  captureLoggerLines,
+  stopLoggerCaptures,
+} from '../../../__test-utils__/logger-capture.js';
 
 const getCachedUser = vi.fn(() => ({
   alias: 'casey',
@@ -17,6 +21,7 @@ const { replaceRuntimeTemplateVariables } = await import(
 
 describe('replaceRuntimeTemplateVariables', () => {
   afterEach(() => {
+    stopLoggerCaptures();
     vi.restoreAllMocks();
     getCachedUser.mockReturnValue({
       alias: 'casey',
@@ -88,7 +93,7 @@ describe('replaceRuntimeTemplateVariables', () => {
     getCachedUser.mockImplementation(() => {
       throw new Error('auth unavailable');
     });
-    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const logs = captureLoggerLines('debug');
 
     const result = replaceRuntimeTemplateVariables(
       'Alias={{user_alias}}; Date={{iso_date}}',
@@ -102,6 +107,8 @@ describe('replaceRuntimeTemplateVariables', () => {
 
     expect(result).toContain('Alias={{user_alias}}');
     expect(result).toContain('Date=');
-    expect(debugSpy).toHaveBeenCalled();
+    expect(logs.at('debug').map((line) => line.msg)).toContain(
+      'Auth module not loaded yet',
+    );
   });
 });

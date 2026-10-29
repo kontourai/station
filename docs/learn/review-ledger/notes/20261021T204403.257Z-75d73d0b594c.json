@@ -1,0 +1,7 @@
+{
+  "revision": "788e3b6b45e9e724dc29ec2f59c5e06b47f4f50d",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Merge of #3991: the self-configuring-agent guide's anchors this page links (dispatch-authority, session-control) still exist; docs:links:check passed. No session API claim changed. Source review only.","inputs":["docs/reference/session-api.md","docs/guides/self-configuring-agent.md"]}
+  ]
+}

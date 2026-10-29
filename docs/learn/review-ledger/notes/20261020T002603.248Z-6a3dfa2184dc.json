@@ -1,0 +1,45 @@
+{
+  "revision": "b15fee4f40b267c83ff007585b5d38c893b9403e",
+
+  "notes": [
+    {"path":"README.md","note":"Replaced the false claim that the Connections guide lists engines and exact setup steps with a link to its new supported-engines table; removed the duplicate Connections link. Collapsed the verified-installer, prebuilt-archive and Docker sections into links to Getting started (single install owner) and the deployment guide; kept the desktop, Nightly one-command, phone and source quickstarts and the run-from-source anchor. Stated that phone apps are in Play internal testing/TestFlight and that most people use the phone browser. New CLI reference sections do not change README claims.","inputs":["README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/README.md","note":"Checked against the public-docs.json admission of user/settings.md and user/sharing-answers.md: the map's statements about the public allowlist and corpus mirror remain accurate. The two new user pages are not yet listed in the map's user-doc list; they are reachable from Getting started.","inputs":["docs/README.md","docs/pages/public-docs.json"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Dated historical audit; its claims are bound to baseline ff2d743b4. The keyboard-shortcuts palette section, monitoring metric tool-name fix and new CLI reference sections do not change any finding it records.","inputs":["docs/architecture/abstraction-review.md","docs/guides/keyboard-shortcuts.md","docs/guides/monitoring.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"New tasks, secret-bindings unbind and home recovery-plan reference sections do not touch the triage commands this design describes; its claims are unchanged.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/agents.md","note":"Retitled to Configure Agents and replaced the false 'keep minimal' banner with a scope statement linking agent-development.md. Moved the AI-assistant rules and UI recipes out: theming/tones, ConfirmModal, AgentIcon and engine identity to patterns/frontend.md; cross-tab navigation to reference/sdk.md useLayoutNavigation; running a layout locally, Playwright and plugin workflow already owned by development.md, testing.md and plugins.md. Moved the attention inbox section under Tool Approval Flow. Added unattended webhook/Discord sessions. Linked anchors (#agent-configuration, #mcp-tool-configuration, #shared-projects, #tool-approval-flow, #unattended-runs, #what-autoapprove-never-covers) are preserved.","inputs":["docs/guides/agents.md"]},
+
+    {"path":"docs/guides/connections.md","note":"Added a supported-engines table traced from NATIVE_ENGINE_CANDIDATES in native-engine-adoption.ts (claude, codex, muse) and BuiltinACPConnectionRegistryProvider in providers/llm/defaults.ts (Kiro CLI, Cursor, OpenCode, Goose, Qwen Code, GitHub Copilot, Grok Build, Mistral Vibe with their commands); detection is PATH presence only.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/documentation.md","note":"corpus.json changed only by admitting two user pages alongside public-docs.json; the guide's statement that corpus.json must track public-docs.json remains accurate.","inputs":["docs/guides/documentation.md","corpus.json"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The CLI and SDK reference additions (tasks actions, unbind, recovery-plan, tab-state handoff) do not change this guide's routing table or claims.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Added a Command palette section traced from CommandPalette.tsx and KeyboardShortcutsContext: Cmd/Ctrl+K, fires in text fields, suppressed under aria-modal dialogs, rebindable, no on-screen opener, result groups, message search after two characters, recency ranking and reset, arrow/Return/Escape handling.","inputs":["docs/guides/keyboard-shortcuts.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Connections guide gained an engine table; this guide's routing to Connections for setup remains accurate.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Corrected station.skill.activations and station.skill.activation.duration to count activate_skill tool calls (skill-service.ts getSkillTool); removed delivery-slice labels from the log self-read and project-resource shadow sentences, keeping archive#1896 and archive#1501.","inputs":["docs/guides/monitoring.md"]},
+
+    {"path":"docs/pages/README.md","note":"Admitted user/settings.md and user/sharing-answers.md in both public-docs.json and corpus.json; workspace-checkpoints.md remains the one unadmitted user guide, so the page's claims hold. docs:pages:build and docs:public:hygiene pass.","inputs":["docs/pages/README.md","corpus.json","docs/pages/public-docs.json"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Received the status-tone, ConfirmModal, AgentIcon and engine-identity guidance moved from agents.md (verified ConfirmModal, AgentIcon, station-tones.ts and inboxRowIconAgent exist; dropped the stale pinned @kontourai/ui version). Added a Messages and locale formatting section traced from src-ui/src/i18n (useLocale, 10 route-shell keys, en-XA dev-only via ?locale=en-XA, parity and dead-key tests).","inputs":["docs/patterns/frontend.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"agents.md changes are a retitle and moving UI recipes out; no Agent identity or adapter-selector claim this inventory relies on changed.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/guides/agents.md"]},
+
+    {"path":"docs/reference/cli.md","note":"Added the 14 missing tasks actions from help.ts/core.ts (inputs, basis, support, outputs) with their real flag forms (--format=, required output id, undocumented --media), secret-bindings unbind (three body kinds, safe-partial 202) from core.ts and routes/secret-bindings.ts, and home recovery-plan (flags, exit codes 0/1/2, contributor-only) from cli.ts and station-home-recovery-preflight.ts. docs:cli-parity:check passes.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Added STATION_CONSOLE_HUB_URL, STATION_CONSOLE_FILE_SINK and STATION_CONSOLE_SCOPE from resolveConsoleBridgeConfig in console-bridge-service.ts (truthy set, trailing-slash trim, default scope station-local, .kontourai/console file layout).","inputs":["docs/reference/env-vars.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Added the cross-tab state handoff example and rules under useLayoutNavigation (sessionStorage per Layout, hash update only for the active tab, setLayoutTab in host-contexts.ts), moved from agents.md.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Connect your phone now says the phone apps reach Play internal-testing and TestFlight testers only and that others use the phone browser with Pair with a code or Request access (GuidedConnect.tsx; mobile-release.md, store-entry.md). Next links the new settings and sharing pages.","inputs":["docs/user/getting-started.md"]},
+
+    {"path":"packages/cli/README.md","note":"CLI reference additions do not change this README's distribution, targeting or triage claims.","inputs":["packages/cli/README.md","docs/reference/cli.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"The SDK reference gained a tab-state example only; this file's routing rules are unchanged.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

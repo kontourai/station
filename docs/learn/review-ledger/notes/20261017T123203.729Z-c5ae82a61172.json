@@ -1,0 +1,7 @@
+{
+  "revision": "8d4182de2b3e127cca7b1d476f79da3bc38d15ab",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed regenerated MCP content after main 899d46d09fc. Host-browser invitation administration retains its private mint proof and does not confer operator identity or native consent authority; tool-library installation and Project policy retain their separate authorization. Both canonical explanations remain in the generated payload: 114 topics, digest fcf1c2e232074f2c72d37e5fe277c4f0dfff5d8dadbb31e1d596f0991e369b36. Pairing, tool authority, Profile, transcript and CI-admission suites passed 187 tests. E2E types, fixture policy, generated-content check and the four-scene Profile/dock recovery browser spec passed. Hosted successor qualification remains pending.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

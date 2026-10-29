@@ -1,0 +1,7 @@
+{
+  "revision": "c55ee1b80d0f74087cd1cf8552af58788e1de7cf",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed the final older-server fallback delta only: own latest turn identity scopes tagged tools across repeated same-turn starts, while an untagged tool cannot be selected across the latest chronological start. Modern server fact and authoritative null behavior remain unchanged. The actual mounted SDK polling regression reproduced the untagged-old-tool defect, passed after the boundary fix, and is being fault-injected/restored at the same guard. This changes tool attribution, not geometry, motion, stop authority or any diagram; prior browser evidence remains bound to141e08c4af1. Final replay review found no objections within the documented64-identity horizon; no live-engine qualification.","inputs":["docs/design/placement.md"]}
+  ]
+}

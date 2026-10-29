@@ -4,14 +4,40 @@ import type { AgentData } from '../../contexts/AgentsContext';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
 import type { ChatSession } from '../../types';
-import { agentEngineDescriptor } from '../../utils/engine';
+import {
+  agentEngineDescriptor,
+  chatEngineIdentity,
+  type EngineDescriptor,
+} from '../../utils/engine';
 import { engineChipLabel } from '../badges/EngineChip';
 import { FlowGatedChip } from '../flow/FlowGatedChip';
 import { AgentIcon } from '../icons/AgentIcon';
 
 interface ChatDockActiveIdentityProps {
   session: Pick<ChatSession, 'id' | 'title'> &
-    Partial<Pick<ChatSession, 'agentSlug' | 'agentName' | 'flowRun'>>;
+    Partial<
+      Pick<
+        ChatSession,
+        | 'agentSlug'
+        | 'agentName'
+        | 'flowRun'
+        | 'orchestrationProvider'
+        | 'agentConnectionId'
+        | 'agentConnectionObservedFor'
+        | 'currentSessionId'
+        | 'conversationId'
+      >
+    >;
+  /**
+   * The Agent whose engine binding runs this chat, from
+   * `chatExecutionBinding`, the resolver the composer chip uses, so the two
+   * cannot disagree. `null` when it did not resolve (an override's Agent that
+   * is deleted or not loaded): then only the Session names the engine. When
+   * omitted, `agent` is that binding.
+   */
+  executionAgent?: AgentData | null;
+  /** ACP connections, which alone name a Session on the generic ACP provider. */
+  acpConnections?: readonly { id: string; name: string }[];
   originLabel?: string;
   originProvider?: string;
   onDetails?: () => void;
@@ -28,27 +54,14 @@ interface ChatDockActiveIdentityProps {
   onClose: (id: string) => void;
 }
 
-/**
- * The active conversation's compact identity belongs to the dock header, not
- * to the action row below it. Keeping it as a component prevents the header
- * and tab bar from growing duplicate session/engine rendering paths (#1064).
- *
- * station#3309 (owner: "showing agent icons and metadata"): the row reads
- * AGENT-first. The agent's icon leads, then its name; the engine that executes
- * it and the model it runs follow. It used to open with the session title and
- * hang the engine chip off the end, which named the conversation but never the
- * thing answering in it.
- *
- * #1536 F reordered what comes after the name and collapsed the tail. The
- * conversation TITLE is now the row's flexible element and the engine and model
- * are ONE muted token behind it that gives way first: measured on a project
- * page, a 110-character project path left the title about one character while
- * "Claude Code" and "Opus 5" — two separately flex-positioned spans, each
- * `flex-shrink: 0` — overprinted each other. The agent identity still leads,
- * because that is #3309's finding and it is short; what changed is that the
- * label distinguishing THIS chat from the last one is no longer the first
- * thing to vanish.
- */
+/** Where a delegated conversation is driven from; a task id says nothing. */
+export function delegatedTaskLabel(origin: OrchestrationInputOrigin): string {
+  return origin.title
+    ? `Driven from delegated task: ${origin.title}`
+    : 'Driven from a delegated task';
+}
+
+/** One line: the conversation title, then the agent and engine, muted; the engine and then the agent step aside before the title truncates. */
 export function ChatDockActiveIdentity({
   session,
   agent,
@@ -57,28 +70,52 @@ export function ChatDockActiveIdentity({
   originLabel,
   originProvider,
   inputOrigin,
+  acpConnections,
+  executionAgent,
   onDetails,
   onClose,
 }: ChatDockActiveIdentityProps) {
   const closeTabShortcut = useShortcutDisplay('dock.closeTab');
 
-  const engine = agent
+  const bindingAgent = executionAgent === undefined ? agent : executionAgent;
+  const configuredEngine = bindingAgent
     ? agentEngineDescriptor({
-        slug: session.agentSlug ?? agent.slug,
-        name: agent.name,
-        source: agent.source,
-        engineId: agent.engineId,
-        connectionName: agent.connectionName,
-        engineDisplayName: agent.engineDisplayName,
-        model: agent.model,
-        execution: agent.execution,
+        slug:
+          bindingAgent === agent
+            ? (session.agentSlug ?? bindingAgent.slug)
+            : bindingAgent.slug,
+        name: bindingAgent.name,
+        source: bindingAgent.source,
+        engineId: bindingAgent.engineId,
+        connectionName: bindingAgent.connectionName,
+        engineDisplayName: bindingAgent.engineDisplayName,
+        model: bindingAgent.model,
+        execution: bindingAgent.execution,
       })
     : null;
-  // The agent's own name now leads this row, so an engine chip repeating it
+  // The same rule as the composer's engine chip (`chatEngineIdentity`): once
+  // the chat has a Session, the Agent's configuration names its engine only
+  // while that Session runs on the Agent's current connection. An engine that
+  // cannot be named yet shows no engine rather than a guess.
+  const engineIdentity = chatEngineIdentity({
+    orchestrationProvider: session.orchestrationProvider,
+    currentSessionId: session.currentSessionId ?? session.conversationId,
+    sessionConnectionId: session.agentConnectionId,
+    connectionObservedFor: session.agentConnectionObservedFor,
+    binding: bindingAgent ?? null,
+    acpConnections,
+  });
+  const { configurationNamesEngine } = engineIdentity;
+  const engine: EngineDescriptor | null = configurationNamesEngine
+    ? configuredEngine
+    : engineIdentity.sessionEngine
+      ? { name: engineIdentity.sessionEngine }
+      : null;
+  // The assistant name already appears in the context line, so a chip repeating it
   // ("Station" beside the agent called Station) prints one word twice rather
   // than adding an identity. Same de-duplication `agentEngineDescriptor`
-  // already applies to an ACP connection's self-referential model (#894
-  // MED-1), applied one level up now that the name is visible here too.
+  // already applies to an ACP connection's self-referential model (#894),
+  // applied one level up now that the name is visible here too.
   //
   // Latent, if this call site ever starts passing `engineConnectionType`:
   // this drops the WHOLE descriptor on a name match, including the `model`
@@ -108,13 +145,19 @@ export function ChatDockActiveIdentity({
     name: agentName,
     slug: session.agentSlug,
     icon: agent?.icon,
-    engineId: parseEngineId(originProvider) ?? agent?.engineId,
+    engineId:
+      parseEngineId(originProvider) ??
+      (configurationNamesEngine
+        ? bindingAgent?.engineId
+        : parseEngineId(session.orchestrationProvider)),
   };
-  // One muted token, not a pill plus a span: `engineChipLabel` already joins an
-  // engine with its own model ("OpenCode · GLM-4.7"), and the model this chat
-  // actually runs joins on with the same separator. Empty when neither is
-  // known, so the row names nothing it cannot derive.
-  const engineTrail =
+  // The bar shows the agent and the engine on the title's line; the model and
+  // the route are the composer's (its model picker names them), so here they
+  // are only the tooltip. `engineChipLabel` already joins an engine with its
+  // own model ("OpenCode · GLM-4.7"); the trail names nothing it cannot
+  // derive and is empty when neither is known.
+  const engineLabel = originLabel ?? engineChipLabel(engineChip);
+  const fullTrail =
     originLabel ??
     [
       engineChipLabel(engineChip),
@@ -123,6 +166,10 @@ export function ChatDockActiveIdentity({
     ]
       .filter(Boolean)
       .join(' · ');
+  const contextTitle = [!originLabel ? agentName : null, fullTrail]
+    .filter(Boolean)
+    .join(' · ');
+  const delegationTitle = inputOrigin ? delegatedTaskLabel(inputOrigin) : null;
 
   return (
     <div className="chat-dock__active-identity">
@@ -134,37 +181,38 @@ export function ChatDockActiveIdentity({
         />
       )}
       <div className="chat-dock__active-identity-text">
-        {agentName && !originLabel && (
-          <strong className="chat-dock__active-identity-agent">
-            {agentName}
-          </strong>
-        )}
-        {/* `title` because this is the element that ellipsizes: the full label
-            has to stay readable, and hover is the channel that costs the row
-            nothing. */}
         <span
           className="chat-dock__active-identity-title"
-          title={session.title}
+          // The agent, engine and delegation may have stepped aside for
+          // the title; its tooltip keeps them.
+          title={[session.title, contextTitle, delegationTitle]
+            .filter(Boolean)
+            .join('\n')}
         >
           {session.title}
         </span>
-        {engineTrail && (
-          <span
-            className={`chat-dock__active-identity-engine${originLabel ? ' chat-dock__active-identity-origin' : ''}`}
-            title={engineTrail}
-          >
-            {originLabel && <AgentIcon agent={iconSubject} size={18} />}
-            {engineTrail}
-          </span>
-        )}
+        <span
+          className="chat-dock__active-identity-context"
+          title={contextTitle || undefined}
+        >
+          {agentName && !originLabel && (
+            <strong className="chat-dock__active-identity-agent">
+              {agentName}
+            </strong>
+          )}
+          {engineLabel && (
+            <span
+              className={`chat-dock__active-identity-engine${originLabel ? ' chat-dock__active-identity-origin' : ''}`}
+            >
+              {originLabel && <AgentIcon agent={iconSubject} size={18} />}
+              {engineLabel}
+            </span>
+          )}
+        </span>
         {inputOrigin && (
           <span
             className="chat-dock__active-identity-engine"
-            title={
-              inputOrigin.title
-                ? `Driven from delegated task: ${inputOrigin.title}`
-                : `Driven from delegated task ${inputOrigin.taskId}`
-            }
+            title={delegationTitle ?? undefined}
           >
             Driven from delegation
           </span>

@@ -1,0 +1,7 @@
+{
+  "revision": "7bd5d55ff2d57ea3aa9fa8c8753f14570e34c3f4",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed after the runtime-routes.ts change in 1c2471f399a: the server update coordinator's config:changed listener moved from an unconditional context.eventBus.subscribe in configureRuntimeRoutes into the coordinator's own bus subscription (its subscribe dep, still the runtime event bus, made in start() on a launcher-run server). Searched this document for server-update, core-update, download-policy and config-event claims; none describes that wiring, and no route, payload or behavior it documents changed.","inputs":["docs/guides/web-push-notifications.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

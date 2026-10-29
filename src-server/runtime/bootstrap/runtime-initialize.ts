@@ -67,16 +67,19 @@ import { getAgentPolicyService } from '../../services/agents/agent-policy-servic
 import { publicIdentityAgentSetView } from '../../services/agents/runtime-agent-identity.js';
 import { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 import { ConsoleBridgeService } from '../../services/evidence/console-bridge-service.js';
 import { configurePlatformMutationGate } from '../../services/evidence/platform-mutation-gate.js';
 import { VeritasReadinessService } from '../../services/evidence/veritas-readiness-service.js';
 import { WorkflowSidecarService } from '../../services/evidence/workflow-sidecar-service.js';
+import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 import type { FeedbackService } from '../../services/feedback/feedback-service.js';
 import { FlowRunService } from '../../services/flow/flow-run-service.js';
 import {
   createEnvironmentRuntimeResourcePostureProbe,
   type RuntimeResourcePostureProbe,
 } from '../../services/infra/resource-posture.js';
+import { enforcedWorkloadLimits } from '../../services/infra/workload-resources.js';
 import { createAdoptedChildExecutionBindingResolver } from '../../services/orchestration/adopted-child-execution-binding.js';
 import {
   AttachedSessionFollowService,
@@ -99,6 +102,7 @@ import type {
   RegistryTrustPolicyApplication,
   RegistryTrustPolicyAuthority,
 } from '../../services/plugins/registry-trust-policy.js';
+import { createProjectChatDefaultsService } from '../../services/projects/project-chat-defaults.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
 import { observeCwdShadow } from '../../services/projects/project-resource-shadow.js';
 import { createProjectSessionDirectoryResolver } from '../../services/projects/project-session-directory.js';
@@ -125,7 +129,7 @@ import type { StrandsFramework } from '../frameworks/strands-adapter.js';
 import { VoltAgentFramework } from '../frameworks/voltagent-adapter.js';
 import {
   type HonoServerConfig,
-  honoServer,
+  stationHonoServer,
 } from '../frameworks/voltagent-hono-runtime.js';
 import * as MCPManager from '../mcp/mcp-manager.js';
 import {
@@ -160,11 +164,15 @@ import {
   isHostedTenantExecutionRequired,
   loadHostedTenantRegistryFromEnvironment,
 } from './runtime-tenant-context.js';
-import { isManagedChatOrchestrationFeatureEnabled } from './station-features.js';
 
 type RuntimeFramework = VoltAgentFramework | StrandsFramework;
 
 export interface InitializeRuntimeDeps {
+  validateProjectTools?: (
+    slug: string,
+    spec: AgentSpec,
+    input: ProviderSessionStartInput,
+  ) => Promise<void>;
   resolveProjectToolServers?: (
     input: import('@kontourai/station-contracts/provider').ProviderSessionStartInput,
   ) => Promise<readonly string[]>;
@@ -178,6 +186,8 @@ export interface InitializeRuntimeDeps {
     EnvironmentSecurityService,
     | 'verifyCredential'
     | 'resolveGrantedScope'
+    // #3586: the voice WebSocket refuses account-bound devices and tokens.
+    | 'identifyDevice'
     | 'canSharePersonalConversation'
     | 'personalConversationOwnerIds'
     | 'deviceHoldsFullAccess'
@@ -225,6 +235,8 @@ export interface InitializeRuntimeDeps {
   /** Reconcile the built-in role after background ACP readiness settles. */
   onACPConnectionsReady?: () => void | Promise<void>;
   orchestrationEventStore: EventStore;
+  /** The `chat-host-images` Feature Preview selector, passed to orchestration. */
+  hostImagesPreview?: FeaturePreviewSelector;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
   /** archive#3245: lifetime analytics' read of the orchestration substrate. */
@@ -406,22 +418,11 @@ export async function initializeRuntime(
   const features = (process.env.STATION_FEATURES || '')
     .split(',')
     .filter(Boolean);
+  // SUNSET(#3909): delete once the persisted `runtime` setting is the only
+  // runtime selector, or Strands is the default.
   if (features.includes('strands-runtime')) {
     appConfig.runtime = 'strands';
   }
-  // archive#980: default OFF. In-memory only (never persisted to
-  // config/app.json) — mirrors the `strands-runtime` flag just above.
-  // **Boot-time snapshot only — NOT the source of truth after this point.**
-  // `this.appConfig` (station-runtime.ts) is wholesale reassigned from a
-  // fresh disk load on every `reloadAgentsFromDisk()`/`reloadDefaultAgent()`
-  // (which never carries this non-persisted field), so any live reader must
-  // go through `isManagedChatOrchestrationFeatureEnabled()`
-  // (`station-features.ts`), never `appConfig.managedChatOrchestration`
-  // directly — see `createConfigRoutes`'s `getManagedChatOrchestrationEnabled`
-  // param, which does exactly that.
-  appConfig.managedChatOrchestration = isManagedChatOrchestrationFeatureEnabled(
-    process.env,
-  );
 
   const runtime = appConfig.runtime || 'voltagent';
   const framework: RuntimeFramework =
@@ -482,9 +483,9 @@ export async function initializeRuntime(
     // to resolve at registration is "known" to /chat, which returns a
     // specific 409 — not "unknown"). This is a strict widening (accept-more,
     // never accept-less), so it is safe for BOTH paths that reach this gate:
-    // the managed-chat-orchestration flip AND the always-on `delegateTask`
-    // Station-agent branch (which uses provider 'station-agent' regardless of
-    // the flag) — not flip-only, contrary to what the flag's name suggests.
+    // managed chat (which runs through orchestration unconditionally, ADR
+    // 0014) AND the `delegateTask` Station-agent branch (provider
+    // 'station-agent').
     // archive#1992: the active set keys the built-in default agent under the
     // internal runtime key 'default' (runtime-default-agent.ts), while every
     // caller reaching this gate uses the public slug 'station' — and the
@@ -520,6 +521,7 @@ export async function initializeRuntime(
   const loadSessionAgentSpec = (slug: string) =>
     configLoader.loadAgent(slug).catch(() => null);
   const resolveSessionAgent = createSessionAgentResolver({
+    validateProjectTools: deps.validateProjectTools,
     resolveProjectToolServers: deps.resolveProjectToolServers,
     loadAgentSpec: loadSessionAgentSpec,
     resolveToolServer: (id) =>
@@ -567,6 +569,9 @@ export async function initializeRuntime(
     process.env.STATION_IDLE_SESSION_PARK_AFTER_MS,
   );
   const orchestrationService = new OrchestrationService({
+    ...(deps.hostImagesPreview
+      ? { hostImagesPreview: deps.hostImagesPreview }
+      : {}),
     ...(idleSessionParkAfterMs !== undefined ? { idleSessionParkAfterMs } : {}),
     // #1796: revoking a device's full access re-confines the sessions its
     // grant unconfined, from their next turn.
@@ -581,6 +586,8 @@ export async function initializeRuntime(
     ]),
     eventBus,
     eventStore: orchestrationEventStore,
+    // The budget an engine is told about is the one its scope enforces.
+    workloadEngineLimits: (sessionId) => enforcedWorkloadLimits(sessionId),
     pricingSnapshotCapture: {
       capture: async (input) => usagePricingSnapshotCapture?.capture(input),
     },
@@ -596,6 +603,10 @@ export async function initializeRuntime(
     // acp-resume-cursor-support.ts — keyed on the observed handshake, not on
     // the presence of capabilities.
     resumeCursorSupport: acpResumeCursorSupport(acpBridge),
+    // #3290: an ACP thread has an approval knob only on a connection whose
+    // approval rules Station sets at launch.
+    acpApprovalControl: (connectionId) =>
+      acpBridge.approvalControl(connectionId),
     adoptionLedger,
     credentialProfileRecoveryAdapter: deps.credentialProfileRecoveryAdapter,
     requireTenantExecutionContext: isHostedTenantExecutionRequired,
@@ -659,6 +670,12 @@ export async function initializeRuntime(
     // per call for the same reason as the workspace default above.
     resolveStationDefaultApprovalMode: async () =>
       (await configLoader.loadAppConfig()).defaultApprovalMode,
+    // A Project's new-chat approval layer and its last-used record, over the
+    // same Project store and home the project routes read.
+    projectChatDefaults: createProjectChatDefaultsService(
+      configLoader.getProjectHomeDir(),
+      storageAdapter,
+    ),
     // #3157: read when a usage-limit resume is armed and when it is due.
     resolveUsageLimitAutoResume: async () =>
       (await configLoader.loadAppConfig()).usageLimitAutoResume,
@@ -737,6 +754,8 @@ export async function initializeRuntime(
     logger,
     invalidateSessionOwner: (threadId) =>
       orchestrationService.invalidateSessionOwner(threadId),
+    canBindNewAttachedSubject: (threadId) =>
+      orchestrationService.canBindNewAttachedSubject(threadId),
     listProjects: () => storageAdapter.listProjects(),
     // #3386: the operator's "Conversations outside projects" setting.
     outsideProjectsEnabled: () =>
@@ -771,7 +790,14 @@ export async function initializeRuntime(
         (message, meta) => logger.warn(message, meta),
       );
       orchestrationEventStore.appendEvent(sanitized);
-      eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, { event: sanitized });
+      // Emit what was stored (docs/design/event-content-spill.md).
+      eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
+        event:
+          orchestrationEventStore.storedLiveEvent(
+            sanitized.threadId,
+            sanitized.eventId,
+          ) ?? sanitized,
+      });
     },
     logger,
   });
@@ -907,6 +933,10 @@ export async function initializeRuntime(
   // inputs is the archive#1588/#3063 reload-loop anti-pattern.
   await materializeBuiltinIntegrations(deps.configLoader);
 
+  // First-run engine adoption persists AppConfig; finish that owned write before
+  // fencing agent construction against subsequent configuration changes.
+  const builtinEngineBinding =
+    await deps.resolveBuiltinEngineBinding?.(appConfig);
   const registryPolicyApplication =
     await deps.registryTrustPolicyAuthority?.captureApplication();
   const configurationBefore = deps.captureAgentConfigurationRevisions?.();
@@ -916,8 +946,7 @@ export async function initializeRuntime(
     bootstrapDefaultAgent: async () =>
       (await bootstrapRuntimeDefaultAgent({
         appConfig,
-        builtinEngineBinding:
-          await deps.resolveBuiltinEngineBinding?.(appConfig),
+        builtinEngineBinding,
         configLoader: deps.configLoader as any,
         framework,
         logger,
@@ -969,7 +998,7 @@ export async function initializeRuntime(
           createEventStoreWorkItemPrincipalLiveness(orchestrationEventStore),
         ),
         resolveUnattendedGrant: deps.resolveUnattendedGrant,
-        // archive#1834 review round 2: the same guardian composition
+        // archive#1834: the same guardian composition
         // runtime-agent-builder gives every persisted agent.
         approvalGuardian: new ApprovalGuardianService({
           appConfig,
@@ -1050,7 +1079,9 @@ export async function initializeRuntime(
   // Station's handler immediately as well, before awaiting VoltAgent.ready.
   void serverStartup.catch(() => {});
   let serverStartInvoked = false;
-  const createServer = honoServer(serverConfig);
+  const discovery = lanDiscoveryFor(configLoader);
+  await discovery.configure(appConfig);
+  const createServer = stationHonoServer(serverConfig, undefined, discovery);
   const trackedServerFactory: ServerProviderFactory = (serverDeps) => {
     const provider = createServer(serverDeps);
     return {

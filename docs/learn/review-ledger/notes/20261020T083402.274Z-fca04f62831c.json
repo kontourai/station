@@ -1,0 +1,7 @@
+{
+  "revision": "20d038d9e796bf0bdcf7c7062e308e2813935179",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Correction to the #3897 note on this record: ExistingSetupImportStepper's output is not byte-identical. It now uses the shared formatBytes in src-ui/src/utils/formatBytes.ts, which adds a TB step, so 1099511627776 bytes renders as \"1.0 TB\" where it used to render \"1024.0 GB\". Values below 1 TiB are unchanged. Checked against both formatBytes implementations.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

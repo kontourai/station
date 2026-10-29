@@ -10,6 +10,7 @@ import {
   CloseGlyph,
   EditGlyph,
   HandGlyph,
+  InboxGlyph,
   InfoGlyph,
   LockGlyph,
   MonitorGlyph,
@@ -19,6 +20,7 @@ import {
   PlayGlyph,
   QuestionGlyph,
   ShieldGlyph,
+  TargetGlyph,
   TimeGlyph,
   WarningGlyph,
 } from '../icons/Glyph';
@@ -210,9 +212,11 @@ const CHIP_GLYPHS: Record<
   InboxRowChipKind,
   (props: { className?: string }) => React.ReactElement
 > = {
+  'agent-message': InboxGlyph,
   remote: MonitorGlyph,
   draft: EditGlyph,
   woke: TimeGlyph,
+  claim: TargetGlyph,
 };
 
 /** Renders nothing for an empty list: a row with no facts has no chip line. */
@@ -227,7 +231,7 @@ export function InboxRowChips({ chips }: { chips: readonly InboxRowChip[] }) {
             key={chip.kind}
             className={`inbox-row__chip inbox-row__chip--${chip.kind}`}
             data-chip={chip.kind}
-            title={chip.label}
+            title={chip.title ?? chip.label}
           >
             <Glyph />
             <bdi>{chip.label}</bdi>

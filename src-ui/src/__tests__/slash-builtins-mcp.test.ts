@@ -59,6 +59,28 @@ describe('default-agent slash commands', () => {
     } as any;
   }
 
+  test('without an agent id it says it cannot tell instead of fetching tools', async () => {
+    const { getCommand } = await import('../slashCommands/registry');
+    const handler = getCommand('mcp');
+    const fetchQuery = vi.fn();
+    const context = baseContext({
+      agent: undefined,
+      chatState: {},
+      addEphemeralMessage: vi.fn(),
+      queryClient: { fetchQuery } as any,
+    });
+
+    await handler!(context);
+
+    expect(fetchQuery).not.toHaveBeenCalled();
+    expect(context.addEphemeralMessage).toHaveBeenCalledWith(
+      's1',
+      expect.objectContaining({
+        content: expect.stringContaining('can’t tell yet'),
+      }),
+    );
+  });
+
   test('lists MCP servers from the agent tools query', async () => {
     const { getCommand } = await import('../slashCommands/registry');
     const handler = getCommand('mcp');

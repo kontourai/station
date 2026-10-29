@@ -1,15 +1,6 @@
-import type {
-  CodingSessionPanels,
-  CodingSessionPanelsRecord,
-} from '@kontourai/station-contracts/device-settings';
-import { useCallback, useEffect, useState } from 'react';
-import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
-import {
-  CLOSED_CODING_SESSION_PANELS,
-  readCodingSessionPanels,
-  writeCodingSessionPanels,
-} from '../../lib/coding-panels-record';
-import { deviceSettingsStore } from '../../lib/device-settings-store';
+import { useEffect, useState } from 'react';
+import { useIsMobile } from '../../hooks/useIsMobile';
+import { TRANSCRIPT_MIN_WIDTH } from '../chat/transcriptMeasure';
 
 /**
  * The Coding layout's panels (#3040, #3051): on a wide screen a tool opens
@@ -40,17 +31,10 @@ export const CODING_SIDE_MIN_WIDTH = 320;
 export const CODING_SIDE_DEFAULT_WIDTH = 440;
 /**
  * The transcript column — where the reader works — keeps this much beside
- * an open tool, or the inbox folds for the tool's stay (#3046 round).
- * Derived from the transcript's own rules, not from the fold: a message
- * bubble is 80% of its row (`.message`, `max-width: 80%`) with 48px of
- * its own padding, and the row sits inside the column's two 20px gutters
- * (`--chat-message-gutter`). A 640px column is a 600px row, a 480px
- * bubble, 432px of text past the padding: sixty-odd characters of the
- * body, the measure under which a reply's lines break too often to scan.
- * (The design audit's 500px column, beside an unfolded inbox at 1440,
- * showed exactly that: a two-line composer and wrapped cards.)
+ * an open tool, or the inbox folds for the tool's stay (#3046 round). The
+ * transcript's own floor (`transcriptMeasure.ts`, where its derivation is).
  */
-export const CODING_TRANSCRIPT_MIN_WIDTH = 640;
+export const CODING_TRANSCRIPT_MIN_WIDTH = TRANSCRIPT_MIN_WIDTH;
 /** The inbox's own width rule (`ChatDockInboxPanel.css`), for an unmeasured one. */
 const CODING_INBOX_WIDTH = { min: 240, fraction: 0.24, max: 360 };
 /** Below Chat's transcript and composer, the lower panel stops here. */
@@ -129,6 +113,7 @@ const CODING_SEPARATOR_SIZE = 8;
  */
 export function useCodingWide(): boolean {
   const [wide, setWide] = useState(readCodingWide);
+  const mobile = useIsMobile();
   useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return;
     const query = window.matchMedia(CODING_WIDE_MEDIA_QUERY);
@@ -137,7 +122,7 @@ export function useCodingWide(): boolean {
     query.addEventListener('change', read);
     return () => query.removeEventListener('change', read);
   }, []);
-  return wide;
+  return wide && !mobile;
 }
 
 function readCodingWide(): boolean {
@@ -209,37 +194,4 @@ export function resizeCodingPanelFromKeyboard(
   if (key === 'End') return options.max;
   if (key === 'Enter') return clamp(options.reset);
   return null;
-}
-
-/**
- * The session's remembered panels, and a write-through to the device
- * setting. The record is one device setting (`codingPanels`), read through
- * the same store every other per-device UI state uses, so it survives a
- * reload and is bounded there.
- */
-export function useCodingSessionPanels(sessionKey: string): {
-  panels: CodingSessionPanels;
-  update(patch: Partial<Omit<CodingSessionPanels, 'at'>>): void;
-} {
-  const record: CodingSessionPanelsRecord = useDeviceSettings().codingPanels;
-  const panels = sessionKey
-    ? readCodingSessionPanels(record, sessionKey)
-    : CLOSED_CODING_SESSION_PANELS;
-  const update = useCallback(
-    (patch: Partial<Omit<CodingSessionPanels, 'at'>>) => {
-      if (!sessionKey) return;
-      // Read the store at write time, not the render's copy: two writes in
-      // one commit (a toggle and the size it restores) must both land.
-      const current = deviceSettingsStore.get('codingPanels');
-      const next = writeCodingSessionPanels(
-        current,
-        sessionKey,
-        patch,
-        Date.now(),
-      );
-      if (next !== current) deviceSettingsStore.set('codingPanels', next);
-    },
-    [sessionKey],
-  );
-  return { panels, update };
 }

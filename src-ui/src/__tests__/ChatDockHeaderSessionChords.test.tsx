@@ -2,11 +2,13 @@
  * @vitest-environment jsdom
  */
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 /**
- * The activity dropdown's per-session keycaps (#1649).
+ * The working chats' per-session keycaps (#1649). The rows were the bar's
+ * "N chats working" dropdown; they are the first rows of the dock's one More
+ * menu now, and the count rides the inbox toggle or that menu's trigger.
  *
  * These rows used to render a literal `⌘{n}`. `dock.session1`…`dock.session9`
  * are Cmd-N on macOS and Ctrl-N everywhere else, so on Windows and Linux the
@@ -51,17 +53,19 @@ const active = (id: string, title: string) => ({
   status: 'sending',
 });
 
-describe('activity dropdown per-session chords (#1649)', () => {
+const openMore = () =>
+  fireEvent.click(screen.getByRole('button', { name: /^More dock actions/ }));
+
+describe('working chat rows show per-session chords (#1649)', () => {
   test('each row shows the chord the registry reports, not a Mac keycap', () => {
     const { container } = renderHeader([
       active('a', 'First'),
       active('b', 'Second'),
     ]);
 
+    openMore();
     const badges = Array.from(
-      container.querySelectorAll(
-        '.chat-dock__activity-item .chat-dock__subtitle',
-      ),
+      document.querySelectorAll('[role=menuitem] .action-overflow__shortcut'),
     ).map((node) => node.textContent);
 
     expect(badges).toEqual(['Ctrl+1', 'Ctrl+2']);
@@ -75,23 +79,27 @@ describe('activity dropdown per-session chords (#1649)', () => {
     // are registered by `ChatDock`, which a header rendered alone does not
     // have. `.chat-dock__subtitle:empty` is what hides the badge; the
     // contract this pins is that nothing invents a chord for it.
-    const { container } = renderHeader([
+    renderHeader([
       active('a', 'First'),
       active('b', 'Second'),
       active('c', 'Third'),
     ]);
 
+    openMore();
     const badges = Array.from(
-      container.querySelectorAll(
-        '.chat-dock__activity-item .chat-dock__subtitle',
-      ),
+      document.querySelectorAll('[role=menuitem] .action-overflow__shortcut'),
     ).map((node) => node.textContent);
 
-    expect(badges).toEqual(['Ctrl+1', 'Ctrl+2', '']);
+    expect(badges).toEqual(['Ctrl+1', 'Ctrl+2']);
+    expect(
+      screen
+        .getByRole('menuitem', { name: 'Third' })
+        .getAttribute('aria-keyshortcuts'),
+    ).toBeNull();
   });
 
-  test('a background-only session appears in the activity badge and list', () => {
-    const { container } = renderHeader([
+  test('a background-only session counts as working and gets a row', () => {
+    renderHeader([
       {
         id: 'background',
         title: 'Background research',
@@ -103,10 +111,16 @@ describe('activity dropdown per-session chords (#1649)', () => {
         },
       },
     ]);
-    expect(container.querySelector('.chat-dock__activity-btn')).not.toBeNull();
+    // No inbox toggle in this harness (no workspace controls), so the count
+    // rides the More trigger.
     expect(
-      container.querySelector('.chat-dock__activity-btn')?.textContent,
-    ).toContain('1');
-    expect(screen.getByText('Background research')).toBeTruthy();
+      screen.getByRole('button', {
+        name: 'More dock actions — 1 chat working',
+      }),
+    ).not.toBeNull();
+    openMore();
+    expect(
+      screen.getByRole('menuitem', { name: 'Background research' }),
+    ).toBeTruthy();
   });
 });

@@ -1,0 +1,7 @@
+{
+  "revision": "f20d5019ddf8bf5529e06c78a266dc165d0cfdf3",
+
+  "notes": [
+    {"path":"src-desktop/icons/README.md","note":"f20d5019dd only extracts the per-primitive L/A command writer out of runData in station-icon-geometry.mjs; every channel and target emits byte-identical SVG to the reviewed revision (EXECUTED comparison). The README's description of the geometry module is unchanged and accurate.","inputs":["src-desktop/icons/README.md","scripts/lib/station-icon-geometry.mjs"]}
+  ]
+}

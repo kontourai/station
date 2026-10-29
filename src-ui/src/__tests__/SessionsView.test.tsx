@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 
+import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import type { AttachedSessionSourceMetadata } from '@kontourai/station-contracts/provider';
 
 import {
@@ -60,6 +61,8 @@ const adoptionIntent = vi.hoisted(() =>
   Object.freeze({ idempotencyKey: 'adopt-session-test-intent' }),
 );
 let sessions: Array<Record<string, unknown>> = [];
+const agentCatalog: never[] = [];
+vi.mock('../views/sessions/conversation-groups', { spy: true });
 // Every config this render passed to the sessions query, so the list's own
 // refresh cadence can be read from the query rather than inferred.
 const orchestrationSessionsQueryConfig = vi.hoisted(() => [] as unknown[]);
@@ -146,6 +149,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   // per-invocation envelope through them.
   const real = await importOriginal<typeof import('@kontourai/station-sdk')>();
   return {
+    OrchestrationSessionsContext: real.OrchestrationSessionsContext,
     isApiRequestScope: real.isApiRequestScope,
     projectIdentityReadFailure: real.projectIdentityReadFailure,
     // The chat's per-message rating, inert here.
@@ -189,7 +193,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
       refetch: vi.fn(),
     }),
     // The open-chats refactor (archive#2683) renders shared membership metadata.
-    useAgentsQuery: () => ({ data: [], isLoading: false }),
+    useAgentsQuery: () => ({ data: agentCatalog, isLoading: false }),
     useOrchestrationSessionsQuery: (config?: unknown) => {
       orchestrationSessionsQueryConfig.push(config);
       return {
@@ -339,6 +343,31 @@ import {
   publishReferenceableConversations,
 } from '../components/chat/conversationReferenceDrag';
 import { SessionsView } from '../views/SessionsView';
+import { foldConversationTurns } from '../views/sessions/conversation-groups';
+
+function historicalSessions() {
+  return Array.from(
+    { length: 45 },
+    (_, index) =>
+      ({
+        provider: 'claude',
+        threadId: `history-${index}`,
+        conversationId: `history-${index}`,
+        displayTitle: `Historical work ${index}`,
+        lifecycleState: 'completed',
+        status: 'closed',
+        controlMode: 'station-owned',
+        answerability: { answerable: true },
+        isLoaded: false,
+        isPersisted: true,
+        eventCount: 3,
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: new Date(
+          Date.parse('2025-01-01T00:00:00Z') - index * 1000,
+        ).toISOString(),
+      }) satisfies OrchestrationSessionSummary,
+  );
+}
 
 /**
  * #3552: an external conversation continues from its composer — type, send,
@@ -575,6 +604,96 @@ describe('SessionsView', () => {
       matches: false,
       removeEventListener: vi.fn(),
     }));
+  });
+
+  test('bounds Earlier activity, pages history and searches beyond the mounted page', async () => {
+    sessions = historicalSessions();
+    const view = renderView();
+    expect(view.container.querySelectorAll('.split-pane__item')).toHaveLength(
+      20,
+    );
+    fireEvent.change(screen.getByPlaceholderText('Search activity…'), {
+      target: { value: 'Historical work 44' },
+    });
+    await waitFor(() =>
+      expect(view.container.querySelectorAll('.split-pane__item')).toHaveLength(
+        1,
+      ),
+    );
+    expect(rowButton('Historical work 44')).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText('Search activity…'), {
+      target: { value: '' },
+    });
+    await waitFor(() =>
+      expect(view.container.querySelectorAll('.split-pane__item')).toHaveLength(
+        20,
+      ),
+    );
+    const more = screen.getByRole('button', {
+      name: 'Show more earlier activity',
+    });
+    more.focus();
+    fireEvent.click(more);
+    expect(view.container.querySelectorAll('.split-pane__item')).toHaveLength(
+      40,
+    );
+    expect(document.activeElement).toBe(more);
+    fireEvent.click(more);
+    expect(view.container.querySelectorAll('.split-pane__item')).toHaveLength(
+      45,
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Show more earlier activity' }),
+    ).toBeNull();
+  });
+
+  test('keeps Earlier paging before the following external-session section', () => {
+    const history = historicalSessions();
+    sessions = [
+      ...history,
+      {
+        ...history[0],
+        threadId: 'external-probe',
+        conversationId: 'external-probe',
+        displayTitle: 'External probe',
+        controlMode: 'read-only-attached',
+        attachedSource: VERIFIED_ATTACHED_SOURCE,
+      },
+    ];
+    const { container } = renderView();
+    const more = screen.getByRole('button', {
+      name: 'Show more earlier activity',
+    });
+    const lastHistory = rowButton('Historical work 19').closest(
+      '.split-pane__item-row',
+    );
+    const externalHeading = Array.from(
+      container.querySelectorAll('.split-pane__section-header'),
+    ).find((heading) => heading.textContent?.includes('From other apps'));
+    expect(lastHistory?.nextElementSibling).toBe(more);
+    expect(more.nextElementSibling).toBe(externalHeading);
+    expect(rowButton('External probe')).toBeTruthy();
+  });
+
+  test('keeps a deep-linked Earlier session visible beyond the first page', async () => {
+    sessions = historicalSessions();
+    const { container } = renderView('history-40');
+    await waitFor(() =>
+      expect(rowButton('Historical work 40').getAttribute('aria-current')).toBe(
+        'true',
+      ),
+    );
+    expect(container.querySelectorAll('.split-pane__item')).toHaveLength(21);
+    expect(
+      screen.queryByRole('button', { name: /^Historical work 39$/ }),
+    ).toBeNull();
+  });
+
+  test('reuses the mounted conversation fold when an unrelated render leaves list inputs unchanged', () => {
+    const view = renderView();
+    const before = vi.mocked(foldConversationTurns).mock.calls.length;
+    view.rerenderSession();
+    expect(vi.mocked(foldConversationTurns).mock.calls.length - before).toBe(0);
   });
 
   // archive#771 regression: `isLoading` was consulted by `SplitPaneLayout`'s
@@ -1261,100 +1380,17 @@ describe('SessionsView', () => {
     );
   });
 
-  test('offers a top-level worker launcher before any sessions exist', () => {
+  test('New Task requests a shaping chat before any sessions exist', () => {
     sessions = [];
+    const listener = vi.fn();
+    window.addEventListener('station:shape-task', listener);
     renderView();
-
-    fireEvent.click(screen.getByRole('button', { name: 'New task' }));
-
+    fireEvent.click(screen.getByRole('button', { name: 'New Task' }));
+    expect(listener).toHaveBeenCalledTimes(1);
     expect(
-      screen.getByRole('dialog', { name: 'Delegate a task' }),
-    ).toBeTruthy();
-    expect(screen.queryByText('Child worker of')).toBeNull();
-  });
-
-  /**
-   * archive#1245 — a call site the issue does not list, found by its sweep.
-   *
-   * `closeDelegation` was `requestAnimationFrame( =>
-   * delegationTriggerRef.current?.focus)` with no `isConnected` guard at all.
-   * The trigger is a per-row control in the sessions list, and delegating
-   * invalidates that list — so the launcher's own action is what removes it,
-   * which is archive#1126 exactly. It now goes through
-   * `@kontourai/station-shared/return-focus`.
-   *
-   * COVERAGE HONESTY: jsdom, wiring only. The module's post-focus verification
-   * needs a real browser (`tests/dialog-return-focus.spec.ts`); jsdom reports
-   * `.focus` on an unfocusable node as successful.
-   */
-  describe('delegation launcher return focus (station#1245)', () => {
-    function withStubbedFrame<T>(run: (fire: () => void) => T): T {
-      let callback: FrameRequestCallback | null = null;
-      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
-        callback = cb;
-        return 1;
-      });
-      vi.stubGlobal('cancelAnimationFrame', () => {});
-      try {
-        return run(() => {
-          act(() => {
-            (callback as FrameRequestCallback | null)?.(0);
-          });
-        });
-      } finally {
-        vi.unstubAllGlobals();
-      }
-    }
-
-    function openLauncher() {
-      const trigger = screen.getByRole('button', { name: 'New task' });
-      const starter = trigger.parentElement as HTMLElement;
-      trigger.focus();
-      fireEvent.click(trigger);
-      return { starter, trigger };
-    }
-
-    test('restores focus to the control that opened it', () => {
-      sessions = [];
-      renderView();
-      const { trigger } = openLauncher();
-
-      withStubbedFrame((fire) => {
-        fireEvent.click(
-          within(
-            screen.getByRole('dialog', { name: 'Delegate a task' }),
-          ).getByRole('button', { name: 'Cancel' }),
-        );
-        fire();
-      });
-
-      expect(document.activeElement).toBe(trigger);
-      expect(trigger.hasAttribute('tabindex')).toBe(false);
-    });
-
-    test('falls back to a surviving ancestor when delegating removed the trigger', () => {
-      sessions = [];
-      renderView();
-      const { starter, trigger } = openLauncher();
-      // The footer keeps a wrapper around the trigger; removing the trigger
-      // alone is what a refreshed pane does to a control it re-rendered.
-      const row = trigger;
-
-      withStubbedFrame((fire) => {
-        fireEvent.click(
-          within(
-            screen.getByRole('dialog', { name: 'Delegate a task' }),
-          ).getByRole('button', { name: 'Cancel' }),
-        );
-        // The refreshed list replaced the row the trigger lived on.
-        row.remove();
-        fire();
-      });
-
-      expect(document.activeElement).toBe(starter);
-      expect(document.activeElement).not.toBe(document.body);
-      expect(starter.getAttribute('tabindex')).toBe('-1');
-    });
+      screen.queryByRole('dialog', { name: 'Delegate a task' }),
+    ).toBeNull();
+    window.removeEventListener('station:shape-task', listener);
   });
 
   test('selects the exact session requested by the route', () => {
@@ -1681,7 +1717,7 @@ describe('SessionsView', () => {
     renderView('thread-alpha');
 
     const detail = screen.getByTestId('session-detail');
-    expect(within(detail).getByText('Delegated worker')).toBeTruthy();
+    expect(within(detail).getByText('Agent')).toBeTruthy();
     expect(within(detail).getByText('Current environment')).toBeTruthy();
     expect(within(detail).getByText('ollama-local')).toBeTruthy();
     expect(within(detail).getByText('parent-chat')).toBeTruthy();
@@ -3506,6 +3542,39 @@ describe('SessionsView', () => {
     expect(screen.queryByLabelText('Send input to session')).toBeNull();
   });
 
+  test('a live form request (no notification actions) still hides the composer', () => {
+    // A Claude AskUserQuestion (or any form) is answered on its own card, so
+    // its inbox notification carries no actions; the open request it still
+    // references is what makes it live. Reading actions alone put the
+    // generic composer back beside a live question (archive#1249 hazard).
+    sessions[0].lifecycleState = 'running';
+    sessions[0].delegation = undefined;
+    attentionItems = [
+      {
+        id: 'approval:notif-question',
+        kind: 'approval',
+        title: 'The agent asked questions: Which color?',
+        createdAt: '2026-06-28T00:00:02.000Z',
+        updatedAt: '2026-06-28T00:00:02.000Z',
+        sessionId: 'thread-alpha',
+        source: {
+          notificationId: 'notif-question',
+          notificationSource: 'approval-inbox',
+        },
+        actions: [],
+        requestReference: {
+          threadId: 'thread-alpha',
+          requestId: 'req-question',
+          requestEventId: 'evt-question',
+        },
+      },
+    ];
+
+    renderView('thread-alpha');
+
+    expect(screen.queryByLabelText('Send input to session')).toBeNull();
+  });
+
   test('a session carrying only effectiveModel still shows its model (station#1249 review HIGH)', () => {
     // `model` is set only when a caller supplied an explicit modelId at start;
     // `effectiveModel` is resolved later from session.configured/turn.started.
@@ -3779,8 +3848,8 @@ describe('SessionsView', () => {
       const headings = sectionHeadings(container).filter((heading) =>
         heading.startsWith('Running'),
       );
-      expect(headings).toEqual(['Running · 3']);
-      expect(sectionHeadings(container)).toEqual(['Running · 3']);
+      expect(headings).toEqual(['Running · 2']);
+      expect(sectionHeadings(container)).toEqual(['Running · 2']);
     });
 
     test('names a row by the session’s own displayTitle, never its thread id', () => {
@@ -4577,8 +4646,7 @@ describe('SessionsView', () => {
         }),
         // Terminal, but a read-only attached transcript: its detail is
         // `AttachedSessionDetail`, which has no receipts/diagnostics region —
-        // never offer a control whose target may be absent (the
-        // `revealHomeRegion` rule).
+        // never offer a control whose target may be absent.
         flatSession({
           threadId: 'attached-done',
           displayTitle: 'Attached transcript',
@@ -4820,26 +4888,13 @@ describe('SessionsView', () => {
       expect(onFocusConsumed).toHaveBeenCalledTimes(2);
     });
 
-    /**
-     * The list is kept fresh by polling because the SSE feed is per-session.
-     * That poll belongs to the query: the interval this replaced called
-     * `refetch()` on the same cache entry from a second scheduler, so it kept
-     * firing in every state React Query pauses a `refetchInterval` for.
-     */
-    test('polls the sessions list through the query, not an interval beside it', () => {
+    test('leaves list refresh scheduling with the query owner', () => {
       orchestrationSessionsQueryConfig.length = 0;
       const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
       try {
         renderView();
 
         expect(orchestrationSessionsQueryConfig.length).toBeGreaterThan(0);
-        expect(orchestrationSessionsQueryConfig[0]).toMatchObject({
-          refetchInterval: 5000,
-        });
-        // Some five-second timers in this tree belong to React Query's own
-        // `refetchInterval` machinery, so their presence proves nothing. What
-        // the removed interval did was call the list query's `refetch()`, so
-        // fire every five-second timer and assert none of them does.
         refetchSessions.mockClear();
         for (const [handler] of setIntervalSpy.mock.calls.filter(
           ([, delay]) => delay === 5000,
@@ -4914,7 +4969,7 @@ describe('Activity presentation (sessions moved under Home)', () => {
     expect(screen.getByText('Nothing has run yet')).toBeTruthy();
     expect(
       screen.getByText(
-        'Start a task with New task, or open a chat. What runs shows up here.',
+        'Start a task with New Task, or open a chat. What runs shows up here.',
       ),
     ).toBeTruthy();
     expect(container.textContent).not.toMatch(/\bSessions\b/);

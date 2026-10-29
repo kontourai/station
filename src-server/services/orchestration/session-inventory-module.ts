@@ -16,6 +16,7 @@ import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy'
 import type { ExactAnswerBasisModule } from '../evidence/exact-answer-basis-module.js';
 import { reviewedSourceSessionInventoryGroup } from '../evidence/reviewed-source-session-inventory-adapter.js';
 import type {
+  AnswerInventoryLineageRead,
   SessionInventoryCursor,
   SessionInventoryEventDescriptor,
   SessionInventoryEventRead,
@@ -32,9 +33,17 @@ type SessionInventoryPageOutcome =
   | { status: 'found'; page: SessionInventoryV2GroupPage }
   | { status: 'not-found' }
   | { status: 'unavailable' };
+
+/**
+ * The client protocol that reads `terminalStatus: 'unresolved'` tool-result
+ * rows (#4178). Older clients validate that vocabulary exactly.
+ */
+export const UNRESOLVED_TOOL_RESULT_CLIENT_PROTOCOL = 4;
+
 export interface SessionInventoryModule {
   read(input: {
     scope: SessionInventoryScope;
+    clientProtocol?: number;
     /** Task route supplies exact, already-authorized kept rows. */
     keptRows?: readonly Extract<
       SessionInventoryRow,
@@ -47,6 +56,7 @@ export interface SessionInventoryModule {
   }): Promise<SessionInventoryReadOutcome>;
   page(input: {
     scope: SessionInventoryScope;
+    clientProtocol?: number;
     groupId: SessionInventoryV2GroupId;
     continuation?: string;
     keptRows?: readonly Extract<
@@ -117,8 +127,13 @@ function empty(id: SessionInventoryV2GroupId): SessionInventoryV2Group {
  */
 export function createSessionInventoryModule(input: {
   sessionOutputs: SessionOutputsModule;
-  /** Indexed canonical facts only; never a transcript/event-page replay. */
-  /** Complete, allowlisted historical descriptors for Whole Session only. */
+  /**
+   * Complete, allowlisted historical descriptors for Whole Session only. The
+   * rows are indexed canonical facts; to decide whether an \`unresolved\`
+   * completion still stands, the store runs the transcript projection over
+   * the thread's events once per read (#4178), and only when the page meets
+   * one.
+   */
   readWholeSessionEvents?: (
     sessionId: string,
     frozenHighWater?: number,
@@ -138,6 +153,10 @@ export function createSessionInventoryModule(input: {
     authority: SessionReadAuthority,
   ) => Promise<SessionAnswerBasisQueryOutcome>;
   readExactAnswerBasis?: ExactAnswerBasisModule['read'];
+  readAnswerLineage?: (
+    sessionId: string,
+    turnId: string,
+  ) => AnswerInventoryLineageRead;
   /** Persisted EventStore cursor authority, supplied only by runtime composition. */
   issueCursor?: (cursor: SessionInventoryCursor) => string;
   readCursor?: (token: string) => SessionInventoryCursor | undefined;
@@ -161,10 +180,18 @@ export function createSessionInventoryModule(input: {
     limit = 2,
     start?: { sequence: number; eventId: string },
     answerResult?: SessionAnswerBasisQueryOutcome,
+    clientProtocol = 1,
   ): Promise<{
     groups: Partial<Record<SessionInventoryV2GroupId, SessionInventoryV2Group>>;
     highWater: number;
     continuation?: { sequence: number; eventId: string };
+    /**
+     * Owner events this fold read. A page cursor records this, not the
+     * projected item count: a fold skips some events (an unresolved command
+     * for an older client, a provider-opened turn), and re-reading a page by
+     * its item count would end at a different continuation.
+     */
+    eventsRead?: number;
   }> => {
     if (scope.kind === 'current-answer') {
       if (!answerResult && !input.readAnswerBasis)
@@ -215,16 +242,123 @@ export function createSessionInventoryModule(input: {
         items,
         gaps: [],
       });
+      let decisions = gap('decisions');
+      const execution: SessionInventoryRow[] = [];
+      let partialDelegations =
+        !!answer.partialResults ||
+        answer.results.some(
+          ({ toolCallId, result }) =>
+            !toolCallId || result.terminalStatus === 'unknown',
+        );
+      let lineageGap: 'not-captured' | 'corrupt' | 'unavailable' =
+        'not-captured';
+      if (clientProtocol >= 3 && input.readAnswerLineage) {
+        try {
+          const lineage = input.readAnswerLineage(
+            scope.sessionId,
+            scope.turnId,
+          );
+          if (lineage.status === 'found') {
+            decisions = group(
+              'decisions',
+              lineage.decisions.map((item) => ({
+                kind: 'station-request-decision' as const,
+                key: `request:${item.eventId}`,
+                owner: owner('thread.canonical-events'),
+                relations: ['observed-during'] as const,
+                sessionId: scope.sessionId,
+                turnId: scope.turnId,
+                ...item,
+              })),
+            );
+            execution.push(
+              ...lineage.delegations.map((item) => ({
+                kind: 'station-delegation' as const,
+                key: `delegation:${item.eventId}`,
+                owner: owner('thread.canonical-events'),
+                relations: ['observed-during'] as const,
+                sessionId: scope.sessionId,
+                turnId: scope.turnId,
+                ...item,
+              })),
+            );
+            partialDelegations ||= lineage.partialDelegations;
+          } else {
+            decisions = gap('decisions', 'corrupt');
+            partialDelegations = true;
+            lineageGap = 'corrupt';
+          }
+        } catch {
+          decisions = gap('decisions', 'unavailable');
+          partialDelegations = true;
+          lineageGap = 'unavailable';
+        }
+      }
+      const executionGroup = (
+        items: SessionInventoryRow[],
+      ): SessionInventoryV2Group => ({
+        ...(partialDelegations && !items.length
+          ? gap('execution', lineageGap)
+          : group('execution', items)),
+        ...(partialDelegations
+          ? {
+              state: items.length ? ('available' as const) : lineageGap,
+              ...(items.length
+                ? { count: { kind: 'at-least' as const, value: items.length } }
+                : {}),
+              gaps: [{ kind: lineageGap }],
+            }
+          : {}),
+      });
       return {
         groups: {
           inputs: group('inputs', inputs),
           // Surface and Flow have separate exact owners. Until they publish a
           // contribution bound to this answer, their groups stay explicit gaps.
           sources: gap('sources'),
-          execution: gap('execution'),
-          decisions: gap('decisions'),
+          execution:
+            clientProtocol >= 3
+              ? executionGroup([
+                  ...execution,
+                  ...answer.results.flatMap(
+                    ({ eventId, toolCallId, result }) =>
+                      !toolCallId ||
+                      (result.terminalStatus === 'unknown' &&
+                        clientProtocol < UNRESOLVED_TOOL_RESULT_CLIENT_PROTOCOL)
+                        ? []
+                        : [
+                            {
+                              kind: 'thread-tool-result' as const,
+                              key: `tool:${eventId}`,
+                              owner: owner('thread.answer-basis'),
+                              relations: ['observed-during'] as const,
+                              sessionId: answer.sessionId,
+                              eventId,
+                              turnId: answer.turnId,
+                              toolCallId,
+                              name: result.name,
+                              terminalStatus:
+                                result.terminalStatus === 'success'
+                                  ? ('succeeded' as const)
+                                  : result.terminalStatus === 'error'
+                                    ? ('failed' as const)
+                                    : result.terminalStatus === 'unknown'
+                                      ? ('unresolved' as const)
+                                      : ('cancelled' as const),
+                            },
+                          ],
+                  ),
+                ])
+              : gap('execution'),
+          decisions,
           outputs: gap('outputs'),
           'verification-delivery': gap('verification-delivery'),
+          // Nothing yet publishes a resource summary or attention fact bound
+          // to this answer. An exact-zero `empty` group would claim that none
+          // was observed, so both stay owner-qualified gaps.
+          resources: gap('resources'),
+          attention: gap('attention'),
+          kept: gap('kept'),
         },
         highWater: 0,
       };
@@ -303,17 +437,17 @@ export function createSessionInventoryModule(input: {
         });
       } else if (descriptor.method === 'tool.completed') {
         const { terminalStatus } = descriptor;
-        // station#1558: `ThreadToolResultRow.terminalStatus` is a published,
-        // version-validated vocabulary of succeeded/failed/cancelled, and an
-        // unresolved completion is none of them. Emitting it as `cancelled`
-        // would put a fabricated outcome in an inventory whose whole purpose
-        // is to be believable; widening the enum would make every older
-        // consumer reject the ROW (their validator is exact), which is a
-        // worse failure than not describing this one event. So the event is
-        // simply not projected as a tool-result row — the transcript still
-        // carries it. Revisit if the inventory contract gains a version that
-        // can say "outcome never observed".
-        if (terminalStatus === 'unresolved') continue;
+        // An unresolved completion is a command that never reported an
+        // outcome. A client of protocol 4 or later reads it as its own state
+        // (#4178), so it is listed and counted, matching the transcript's
+        // "N with no result". Older clients validate the vocabulary exactly
+        // and would reject the whole projection, so for them it is omitted as
+        // before (station#1558). It is never folded into `cancelled`.
+        if (
+          terminalStatus === 'unresolved' &&
+          clientProtocol < UNRESOLVED_TOOL_RESULT_CLIENT_PROTOCOL
+        )
+          continue;
         execution.push({
           kind: 'thread-tool-result',
           key: `tool:${descriptor.id}`,
@@ -393,6 +527,7 @@ export function createSessionInventoryModule(input: {
       groups: group ? { [group]: groups[group] } : groups,
       highWater,
       ...(ownerContinuation ? { continuation: ownerContinuation } : {}),
+      eventsRead: events.length,
     };
   };
   const authorityKey = (authority: SessionReadAuthority) =>
@@ -435,14 +570,30 @@ export function createSessionInventoryModule(input: {
           }
         : {}),
     });
-  const digest = (items: readonly SessionInventoryV2Row[]) =>
-    createHash('sha256').update(JSON.stringify(items)).digest('hex');
+  const digest = (
+    items: readonly SessionInventoryV2Row[],
+    clientProtocol = 1,
+  ) =>
+    createHash('sha256')
+      .update(
+        JSON.stringify([
+          clientProtocol >= UNRESOLVED_TOOL_RESULT_CLIENT_PROTOCOL
+            ? UNRESOLVED_TOOL_RESULT_CLIENT_PROTOCOL
+            : clientProtocol >= 3
+              ? 3
+              : 1,
+          items,
+        ]),
+      )
+      .digest('hex');
   const preview = (
     group: SessionInventoryV2Group,
     scope: SessionInventoryScope,
     highWater: number,
     authority: SessionReadAuthority,
     ownerContinuation?: { sequence: number; eventId: string },
+    clientProtocol = 1,
+    ownerEventsRead = group.items.length,
   ): SessionInventoryV2Group => {
     if (group.items.length <= 2 && !ownerContinuation) return group;
     if (ownerContinuation && group.items.length <= 2) {
@@ -450,10 +601,10 @@ export function createSessionInventoryModule(input: {
         scope,
         group.id,
         highWater,
-        digest(group.items),
+        digest(group.items, clientProtocol),
         group.items.length,
         authority,
-        { next: ownerContinuation, size: group.items.length },
+        { next: ownerContinuation, size: ownerEventsRead },
       );
       return {
         ...group,
@@ -465,7 +616,7 @@ export function createSessionInventoryModule(input: {
       scope,
       group.id,
       highWater,
-      digest(group.items),
+      digest(group.items, clientProtocol),
       2,
       authority,
     );
@@ -482,15 +633,20 @@ export function createSessionInventoryModule(input: {
     current: () => boolean,
     page = false,
     cursor?: string,
+    clientProtocol = 1,
   ): Promise<SessionInventoryV2Group | undefined> => {
-    // Same-turn declaration is lineage, not answer support. Until an owner
-    // publishes an explicit contribution relation, current-answer exposes none.
-    if (scope.kind !== 'whole-session') return gap('outputs');
+    // Protocol 3 admits exact-turn production lineage, never answer support.
+    if (
+      scope.kind !== 'whole-session' &&
+      !(scope.kind === 'current-answer' && clientProtocol >= 3)
+    )
+      return gap('outputs');
     let result: Awaited<ReturnType<SessionOutputsModule['list']>>;
     try {
       result = await input.sessionOutputs.list({
         sessionId: scope.sessionId,
-        limit: 20,
+        ...(scope.kind === 'current-answer' ? { turnId: scope.turnId } : {}),
+        limit: page ? 20 : 2,
         ...(cursor ? { cursor } : {}),
         authority,
         current,
@@ -521,17 +677,22 @@ export function createSessionInventoryModule(input: {
       relations: ['produced-by'] as const,
       output,
     }));
+    if (!items.length && result.page.partial) return gap('outputs', 'corrupt');
     return {
       id: 'outputs',
       owner: owner('station.session-outputs'),
-      state: items.length ? 'available' : 'empty',
+      state: items.length
+        ? 'available'
+        : result.page.partial
+          ? 'corrupt'
+          : 'empty',
       count: {
-        kind: result.page.cursor ? 'at-least' : 'exact',
+        kind: result.page.cursor || result.page.partial ? 'at-least' : 'exact',
         value: result.page.items.length,
       },
       items,
       ...(result.page.cursor ? { continuation: result.page.cursor } : {}),
-      gaps: [],
+      gaps: result.page.partial ? [{ kind: 'corrupt' }] : [],
     };
   };
   const workItems = (
@@ -615,7 +776,14 @@ export function createSessionInventoryModule(input: {
     }
   };
   return {
-    async read({ scope, authority, current, keptRows, taskWorkItemRef }) {
+    async read({
+      scope,
+      authority,
+      current,
+      keptRows,
+      taskWorkItemRef,
+      clientProtocol = 1,
+    }) {
       if (!canRead(scope.sessionId, authority, current))
         return { status: 'not-found' };
       // A current-answer inventory is an exact Surface Basis view.  Do not
@@ -656,7 +824,14 @@ export function createSessionInventoryModule(input: {
       }
       // Sources are deliberately an owner-contract gap at bf501ca. Live now is
       // supplied by native state only, never persisted or inferred here.
-      const outputGroup = await outputs(scope, authority, current);
+      const outputGroup = await outputs(
+        scope,
+        authority,
+        current,
+        false,
+        undefined,
+        clientProtocol,
+      );
       if (!outputGroup) return { status: 'not-found' };
       const workItemGroup = workItems(
         scope,
@@ -684,6 +859,7 @@ export function createSessionInventoryModule(input: {
                   2,
                   undefined,
                   currentAnswer,
+                  clientProtocol,
                 ),
               ] as const,
             ]
@@ -692,7 +868,16 @@ export function createSessionInventoryModule(input: {
                 async (group) =>
                   [
                     group,
-                    await folded(scope, authority, snapshotHighWater, group),
+                    await folded(
+                      scope,
+                      authority,
+                      snapshotHighWater,
+                      group,
+                      undefined,
+                      undefined,
+                      undefined,
+                      clientProtocol,
+                    ),
                   ] as const,
               ),
             );
@@ -749,6 +934,8 @@ export function createSessionInventoryModule(input: {
             highWater,
             authority,
             foldGroups.find(([id]) => id === group.id)?.[1].continuation,
+            clientProtocol,
+            foldGroups.find(([id]) => id === group.id)?.[1].eventsRead,
           ),
         ),
         ...(scope.kind === 'current-answer' && exactAnswer?.status === 'found'
@@ -771,6 +958,7 @@ export function createSessionInventoryModule(input: {
       current,
       keptRows,
       taskWorkItemRef,
+      clientProtocol = 1,
     }) {
       if (!canRead(scope.sessionId, authority, current))
         return { status: 'not-found' };
@@ -811,6 +999,7 @@ export function createSessionInventoryModule(input: {
           current,
           true,
           continuation,
+          clientProtocol,
         );
         if (!group || !canRead(scope.sessionId, authority, current))
           return { status: 'not-found' };
@@ -848,6 +1037,9 @@ export function createSessionInventoryModule(input: {
           highWater,
           inventoryGroup,
           SESSION_INVENTORY_PAGE_MAX_ITEMS,
+          undefined,
+          undefined,
+          clientProtocol,
         );
         const group = direct.groups[groupId] ?? empty(groupId);
         const next = direct.continuation
@@ -855,10 +1047,13 @@ export function createSessionInventoryModule(input: {
               scope,
               groupId,
               direct.highWater,
-              digest(group.items),
+              digest(group.items, clientProtocol),
               group.items.length,
               authority,
-              { next: direct.continuation, size: group.items.length },
+              {
+                next: direct.continuation,
+                size: direct.eventsRead ?? group.items.length,
+              },
             )
           : undefined;
         return {
@@ -897,6 +1092,8 @@ export function createSessionInventoryModule(input: {
           inventoryGroup,
           cursor.pageSize,
           priorStart,
+          undefined,
+          clientProtocol,
         );
         const priorGroup = prior.groups[groupId] ?? empty(groupId);
         if (
@@ -907,7 +1104,7 @@ export function createSessionInventoryModule(input: {
           cursor.scope !== scope.kind ||
           cursor.groupId !== groupId ||
           cursor.highWater !== prior.highWater ||
-          cursor.contentDigest !== digest(priorGroup.items) ||
+          cursor.contentDigest !== digest(priorGroup.items, clientProtocol) ||
           prior.continuation?.sequence !== cursor.nextSequence ||
           prior.continuation?.eventId !== cursor.nextEventId
         )
@@ -923,6 +1120,8 @@ export function createSessionInventoryModule(input: {
           inventoryGroup,
           SESSION_INVENTORY_PAGE_MAX_ITEMS,
           start,
+          undefined,
+          clientProtocol,
         );
         const nextGroup = nextRead.groups[groupId] ?? empty(groupId);
         const next = nextRead.continuation
@@ -930,13 +1129,13 @@ export function createSessionInventoryModule(input: {
               scope,
               groupId,
               cursor.highWater,
-              digest(nextGroup.items),
+              digest(nextGroup.items, clientProtocol),
               cursor.position + nextGroup.items.length,
               authority,
               {
                 start,
                 next: nextRead.continuation,
-                size: nextGroup.items.length,
+                size: nextRead.eventsRead ?? nextGroup.items.length,
               },
             )
           : undefined;
@@ -978,6 +1177,7 @@ export function createSessionInventoryModule(input: {
         2,
         undefined,
         currentAnswer,
+        clientProtocol,
       );
       const allGroups = foldedResult.groups;
       const whole =
@@ -1007,7 +1207,7 @@ export function createSessionInventoryModule(input: {
                         : 'session-source-index-not-captured',
                     )
                   : empty(groupId)));
-      const contentDigest = digest(whole.items);
+      const contentDigest = digest(whole.items, clientProtocol);
       const highWater = foldedResult.highWater;
       if (!continuation) {
         const items = whole.items.slice(0, SESSION_INVENTORY_PAGE_MAX_ITEMS);

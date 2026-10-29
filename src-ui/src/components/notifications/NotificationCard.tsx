@@ -9,6 +9,7 @@ import {
   notificationDetail,
 } from '../../utils/notifications';
 import { DISMISS_NOTIFICATION_ACTION } from '../attention/notificationRowActions';
+import { NoticeAction } from './NoticeAction';
 import { NotificationEnvelopeControls } from './NotificationEnvelopeControls';
 
 /**
@@ -62,8 +63,8 @@ export function NotificationCard({
           <NotificationEnvelopeControls
             notification={notification}
             detailClassName="notification-card__detail"
-            actionsClassName="notification-card__actions"
-            actionClassName="notification-card__action notification-card__action--ghost"
+            actionsClassName="notice-actions"
+            actionClassName="notice-action--ghost"
           />
           {notice && (
             <div
@@ -89,7 +90,7 @@ export function NotificationCard({
        */}
       {notification.status !== 'dismissed' &&
         notification.status !== 'actioned' && (
-          <div className="notification-card__actions">
+          <div className="notice-actions">
             {/*
              * archive#3779: the label is read from the shared action model,
              * not written here. `DELETE /notifications/:id` does NOT delete —
@@ -97,13 +98,13 @@ export function NotificationCard({
              * stays "Dismiss"; see `notificationRowActions` for the measured
              * mechanism and why a second verb is an owner decision.
              */}
-            <button
+            <NoticeAction
               type="button"
-              className="notification-card__action notification-card__action--ghost"
+              className="notice-action--ghost"
               onClick={() => onDismiss(notification.id)}
             >
               {DISMISS_NOTIFICATION_ACTION.label}
-            </button>
+            </NoticeAction>
           </div>
         )}
     </article>

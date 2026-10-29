@@ -1,0 +1,37 @@
+{
+  "revision": "a66372486ac21e628ee5fb99fa99d9404f94b0fc",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Scoped module-map delta review: terminal denial adds no context, ownership edge or governance/evidence authority. Existing five-context relationships remain accurate; the operator guide owns the changed cancellation journey.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Scoped module-map delta review: session-bound consent denial changes no core context responsibility, Flow attachment rule, artifact custody or evidence/governance boundary. Existing routing to the module map remains accurate; no broader context re-audit.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Scoped module-map delta review: the system/architecture reading path and package purpose are unchanged by adding the operator denial lifecycle. Operator behavior remains owned by the linked guide and reference; no installed/release/production claim is added.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Scoped operator documentation routing review: the existing operator-passkeys guide, API reference and module map already own this journey. Terminal Cancel changes no document classification, public-admission setting or reading-path link.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Scoped module-map delta review: session-bound denial remains owned by the existing consent listener/store. No new subsystem, extracted interface, authority grant or abstraction disposition follows; the map continues to own detailed lifecycle semantics.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/automations.md","note":"Scoped threat-model delta review: operator-session denial is limited to the initiating interactive consent request and cannot approve or commit. It adds no unattended Automations authority, intake, dispatch or retry behavior. Existing proposal/foundation qualification limits are unchanged.","inputs":["docs/design/automations.md","docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Scoped module-map delta review: Cancel changes only a pending in-memory ConsentTransaction to denied. It adds no EventStore/Monument migration, invocation ledger or recovery authority. Existing ledger dispositions and historical status remain unchanged.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"Scoped module-map/connect-reference delta review: terminal Cancel uses existing operator/session/consent vocabulary and changes no Station group, Device, Project role or work terminology. No glossary definition needs alteration for this lifecycle clarification.","inputs":["docs/glossary.md","docs/architecture/module-map.md","docs/reference/connect.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Scoped module-map delta review: operator-session denial adds no Station Control verb, discovery authority, caller assurance or Agent ability to approve access. Existing operator-bound versus agent-bound management and dispatch instructions remain accurate.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Scoped module-map delta review: server-side operator denial changes no Agent identity helper, public Agent SDK entrypoint, supported integration or inventory disposition. The plan retains its source/qualification limits.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Scoped module-map delta review: Cancel uses the existing consent decide endpoint and adds no Settings route, deep link, query parameter or navigation owner. Existing settings route contracts are unchanged.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the generated topic delta: only the module-map operator section now states session-and-nonce denial on the consent origin, with no passkey and no commit authority. Station Docs remains credential-free documentation; it gains no action or operator capability. Canonical manual routing and MCP delivery semantics remain unchanged.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Scoped module-map delta review: cancellation does not change Device pairing, operator identity, Project membership, Agent execution or work concepts. Existing concept explanations and routing remain accurate; the operator guide owns the changed review steps.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Scoped module-map delta review: an operator-section prose update changes only its attributed source text. Exported graph IDs, ownership/reference edge meanings, bounded imports and derived-versus-canonical storage semantics are unchanged. No graph runtime requalification is claimed.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Scoped module-map delta review: terminal denial remains route validation plus service-owned state transition. Server scope instructions, logger seam, mutation boundaries and verification routing are unchanged; no instruction edit.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Scoped module-map delta review: the paired-device panel polls the existing SDK/remote status and labels terminal denied as Cancelled. No navigation primitive, dirty-state guard, design token or shared control contract changed; UI scope instructions remain accurate.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

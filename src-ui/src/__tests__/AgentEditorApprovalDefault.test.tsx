@@ -6,7 +6,17 @@
  */
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
-import { describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+
+// #3290: the editor reads the ACP connection list to tell an engine whose
+// approval rules Station sets from one that decides for itself.
+const acpConnections = vi.hoisted(() => ({
+  current: [] as Array<{ id: string; name: string; command: string }>,
+}));
+vi.mock('../hooks/useACPConnections', () => ({
+  useACPConnections: () => ({ data: acpConnections.current }),
+}));
+
 import { AgentEditorApprovalDefault } from '../views/agent-editor/AgentEditorApprovalDefault';
 import {
   buildAgentPayload,
@@ -37,6 +47,10 @@ const agent = (execution: Record<string, unknown>) =>
   } as never);
 
 describe('AgentEditorApprovalDefault', () => {
+  beforeEach(() => {
+    acpConnections.current = [];
+  });
+
   test('a knob engine offers the default; choosing full access says what it means and reaches the save payload', () => {
     let latest: AgentFormData | undefined;
     render(<Harness initial={agent({})} onForm={(form) => (latest = form)} />);
@@ -47,6 +61,18 @@ describe('AgentEditorApprovalDefault', () => {
 
     expect(latest?.execution.approvalMode).toBe('never');
     expect(screen.getByText(/starts at full access/)).toBeTruthy();
+    // A start without a full-access grant (a webhook start) gets a narrower
+    // setting whose exact shape depends on the engine (`approval-posture.ts`
+    // applicableMode; Claude Code may fall back to Auto with no confinement),
+    // so the hint promises none of it.
+    expect(
+      screen.getByText(
+        /gets a narrower setting, so some actions may still ask/,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/still runs inside/i)).toBeNull();
+    expect(screen.queryByText(/workspace confinement/i)).toBeNull();
+    expect(screen.queryByText(/no sandbox/i)).toBeNull();
     expect(buildAgentPayload(latest!).execution).toMatchObject({
       approvalMode: 'never',
     });
@@ -77,6 +103,32 @@ describe('AgentEditorApprovalDefault', () => {
     const { container } = render(
       <Harness
         initial={agent({ agentConnectionId: 'some-acp-runtime' })}
+        onForm={() => {}}
+      />,
+    );
+    expect(container.firstChild).toBeNull();
+  });
+
+  test('#3290: an ACP connection that launches OpenCode offers the default', () => {
+    acpConnections.current = [
+      { id: 'my-opencode', name: 'OpenCode', command: '/usr/bin/opencode' },
+    ];
+    render(
+      <Harness
+        initial={agent({ agentConnectionId: 'my-opencode' })}
+        onForm={() => {}}
+      />,
+    );
+    expect(screen.getByLabelText('Default approval mode')).toBeTruthy();
+  });
+
+  test('#3290: an ACP connection merely named opencode that decides for itself shows nothing', () => {
+    acpConnections.current = [
+      { id: 'opencode', name: 'Kiro', command: 'kiro-cli' },
+    ];
+    const { container } = render(
+      <Harness
+        initial={agent({ agentConnectionId: 'opencode' })}
         onForm={() => {}}
       />,
     );

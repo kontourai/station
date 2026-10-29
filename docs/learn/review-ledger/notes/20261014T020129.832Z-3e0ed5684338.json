@@ -1,0 +1,7 @@
+{
+  "revision": "988949305e1df68541059efcb1e81d3e5f8ea739",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Changed input ChatMessageList.tsx: this change adds content/clamp scroll handling, an animated Scroll to bottom, tracer marks and a virtualizer handoff prop. Checked the doc's ChatMessageList claims: it still provides UIBlockActionsContext (submitForm via useSendMessage, formatFormSubmission) unchanged. No prose change.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

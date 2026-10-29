@@ -1,0 +1,7 @@
+{
+  "revision": "a41b274b574131dfbc5323656e533ae5fe18461f",
+
+  "notes": [
+    {"path":"packages/monument/README.md","note":"Re-reviewed cancellation and diagnostic fix at committed 59b795a318a: after awaited owned-tree settlement, SIGINT/SIGTERM throws a terminal interruption error through smoke/pack/main instead of starting a later stage; unsettled trees still retain scratch. CLI test adapter preserves every nonpass result even for status zero and includes failure diagnostics. Real consumer/descendant interrupt fixture verifies no later typecheck launch, stopped descendant and nonzero exit, with an ordinary consumer-failure control that still runs typechecking. Twenty owner tests passed in a separate checkout, scripts typecheck passed. Existing archive/exports/credential behavior remains unchanged; no Windows, OIDC or functional release proof claimed.","inputs":["packages/monument/README.md"]}
+  ]
+}

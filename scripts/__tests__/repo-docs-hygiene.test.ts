@@ -318,6 +318,7 @@ describe('repo docs hygiene', () => {
       'scripts/public-docs-hygiene.mjs',
       'scripts/build-github-pages.mjs',
       'scripts/lib/bounded-capture.mjs',
+      'scripts/lib/documentation-model.mjs',
       'scripts/lib/module-entry.mjs',
     ];
     const makeTempDir = trackTempDirs({ lifetime: 'file' });

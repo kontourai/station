@@ -4,6 +4,10 @@ import type { EngineId } from './agent-identity.js';
 export type { EngineId } from './agent-identity.js';
 
 import type { ChatAttachmentInput } from './chat-attachment.js';
+import {
+  type ConfinementPlan,
+  STATION_CONFINEMENT_RECORD_METADATA_KEY,
+} from './execution-confinement.js';
 import type { TenantExecutionContext } from './tenancy.js';
 import type {
   WorkspaceIsolationConfig,
@@ -31,6 +35,29 @@ export interface ProviderContinuityCapabilities {
   resumeIdentity?: 'require-match';
   /** Resume a prior Session only within its recorded engine-home/profile binding. */
   nativeReturn?: 'same-binding';
+}
+
+/** Current delivery fidelity, not a promise that an interrupted effect is replayable. */
+export interface DurabilityCapability {
+  state: 'native' | 'emulated' | 'none';
+  /** User-facing limit owned by the declaring adapter. */
+  detail: string;
+}
+
+/** Every capability is explicit; an omitted cell is an invalid declaration. */
+export interface ProviderDurabilityProfile {
+  steerPlacement: DurabilityCapability;
+  crashContinuation: DurabilityCapability;
+  toolReplay: DurabilityCapability;
+  pendingApprovals: DurabilityCapability;
+  contextCarriage: DurabilityCapability;
+  fork: DurabilityCapability;
+  /** State describes Station's recovery support; ownership is independent. */
+  compaction: DurabilityCapability & {
+    owner: 'station' | 'engine' | 'unknown';
+  };
+  partialOutput: DurabilityCapability;
+  usage: DurabilityCapability;
 }
 
 export const NATIVE_RESUME_IDENTITY_METADATA_KEY = 'nativeResumeIdentity';
@@ -107,6 +134,14 @@ export interface ModelLaunchCapabilities extends ModelLifecycleCapabilities {
 export type ModelLifecyclePoint = 'start' | 'resume' | 'turn';
 
 export const MODEL_OVERRIDE_UNSUPPORTED_CODE = 'model-override-unsupported';
+/**
+ * A new session was refused because the model the request names is not one
+ * the engine's own fresh session options offered. The engine answered, so the
+ * start is settled rather than uncertain. Deterministic for that engine and
+ * catalog, so NOT retryable as sent: the caller has to choose a model the
+ * engine offers.
+ */
+export const MODEL_NOT_ADVERTISED_CODE = 'model_not_advertised';
 export const SESSION_REATTACH_CONFLICT_CODE = 'session-reattach-conflict';
 export type SessionReattachConflictReason =
   | 'model-change'
@@ -218,6 +253,19 @@ export const SESSION_AGENT_ICON_MAX_LENGTH = AGENT_ICON_TOKEN_MAX_LENGTH;
  */
 export const FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY =
   'firstTurnInstructionsComposed';
+/**
+ * Epic #4003: the Task brief a Session dispatched for a Task receives with
+ * its first turn, `{ version, digest, text }`. Stamped into start metadata by
+ * Station's start choke point from a server-only internal option (after the
+ * reserved-key strip), read back once before the first turn, and prepended to
+ * that turn's ambient context on every engine.
+ */
+export const TASK_BRIEF_METADATA_KEY = 'stationTaskBrief';
+/**
+ * Stamped on the one turn that composed the pending Task brief, with the
+ * brief's digest: that turn's own record of what it carried.
+ */
+export const TASK_BRIEF_COMPOSED_METADATA_KEY = 'stationTaskBriefComposed';
 export const WORKSPACE_PANE_HOST_ACTION_METADATA_KEY =
   'workspacePaneHostAction';
 
@@ -305,9 +353,12 @@ export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
   SESSION_AGENT_ICON_METADATA_KEY,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
+  TASK_BRIEF_METADATA_KEY,
+  TASK_BRIEF_COMPOSED_METADATA_KEY,
   WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
   STATION_CONFINEMENT_METADATA_KEY,
   STATION_CONFINEMENT_GRANTOR_METADATA_KEY,
+  STATION_CONFINEMENT_RECORD_METADATA_KEY,
   DELEGATION_PROVENANCE_METADATA_KEY,
 ] as const;
 
@@ -535,9 +586,12 @@ export function modelLaunchTelemetryAttributes(
  *   the effective mode falls through to the engine connection's
  *   configured default, and then to the adapter's own built-in default.
  *
- * Adapters that expose no native approval knob (ACP, Ollama, Bedrock, the
+ * Adapters that expose no native approval knob (Ollama, Bedrock, the
  * Station agent runtime) simply never read this field — it has no effect
  * for them, and UI surfaces should render read-only for those providers.
+ * An ACP connection has the knob only when Station sets the engine's
+ * approval rules at launch (`acpApprovalControl` in
+ * `engine-capability-matrix.ts`, #3290).
  */
 export type ApprovalMode = 'ask' | 'auto' | 'never' | 'connection-default';
 
@@ -594,8 +648,13 @@ export const PROVIDER_MUSE = 'muse';
  *   session catalog — `setConfigOption` when a `category: "mode"` option
  *   exists, otherwise `session/set_mode`. Display-only
  *   `effectiveModelMetadata` echoes still exist and do not add keys.
- *   ACP's per-tool `session/request_permission` handshake is unrelated
- *   to Station `approvalMode`, which remains unsupported here.
+ *   #3290: `approvalMode` is not listed because it depends on the
+ *   connection, not the provider. On a connection whose approval rules
+ *   Station sets at launch (`acpApprovalControl` is `station`, OpenCode
+ *   today) the adapter reads it to decide how Station answers the engine's
+ *   `session/request_permission` calls, and the server admits it there
+ *   (`approvalKnobSupported`). Any other ACP engine decides which calls ask
+ *   itself, so the option stays unsupported and the adapter refuses it too.
  * - `ollama`/`bedrock`: read only `modelOptions.systemPrompt` — system-prompt
  *   passthrough is explicitly excluded from archive#978's scope, so it is
  *   NOT added to either provider's support list; a caller-supplied
@@ -713,8 +772,43 @@ export function unsupportedModelOptionError(
 export const APPROVAL_ESCALATION_REQUIRES_RESTART_CODE =
   'approval-escalation-requires-restart';
 
+/**
+ * #3290: `RuntimeWarningEvent.code` published when Station could not move an
+ * ACP engine (OpenCode) onto the launch rules a picked approval mode needs.
+ * The session kept its engine process and its posture (`details.
+ * appliedApprovalMode`, absent while the engine's own settings decide);
+ * `details.requestedApprovalMode` names the mode that did not apply. The
+ * same turn's `turn.started` metadata carries `approvalTakeoverFailed:
+ * true`, so the composer chip does not show the pick as applied.
+ */
+export const ACP_APPROVAL_TAKEOVER_FAILED_CODE = 'acp-approval-takeover-failed';
+
 /** A provider explicitly disproved the exact native binding being resumed. */
 export const ENGINE_SESSION_BINDING_DEAD_CODE = 'engine-session-binding-dead';
+
+/**
+ * `runtime.error` code for a turn whose engine process was killed because its
+ * workload scope exhausted its memory budget. The evidence is the kernel's own
+ * `oom_kill` count in the engine scope's `memory.events`, read before the
+ * scope is stopped: the engine exited by SIGKILL and the scope recorded an
+ * OOM kill that was not already reported as a command kill, or systemd
+ * reported the scope `oom-kill` (`childWorkloadMemoryExhausted` in
+ * `@kontourai/station-shared/child-workload`). A signal alone, or an unknown
+ * count, is never enough. `details.workload` carries `result`,
+ * `memoryPeakBytes`, `memoryMaxBytes`, `oomKills` and `unreportedOomKills`
+ * when observed. Published by the Codex adapter today; the conversation is then
+ * continued with a Station recovery note.
+ */
+export const ENGINE_MEMORY_EXHAUSTED_CODE = 'engine-memory-exhausted';
+
+/**
+ * `runtime.warning` code: the kernel OOM killer killed a process inside an
+ * engine's workload scope (normally a command the engine started) while the
+ * engine kept running. `details` carries `newKills`, `oomKills` and
+ * `memoryMaxBytes`. Which command it was is not known to Station; the engine
+ * reports that command's own failure.
+ */
+export const WORKLOAD_COMMAND_OOM_KILLED_CODE = 'workload-command-oom-killed';
 
 /**
  * A provider reported a failed query/turn without disproving its native binding.
@@ -831,6 +925,42 @@ export const MUSE_SERVE_STOP_UNCONFIRMED_CODE = 'muse-serve-stop-unconfirmed';
 export const PROVIDER_TURN_IN_PROGRESS_CODE = 'provider_turn_in_progress';
 
 /**
+ * Refusal code for a send that waited for its session's engine start (for
+ * an ACP session, reattaching to a stored native session) and the start had
+ * still not finished within the adapter's wait. Retryable: the same send
+ * succeeds once the session is ready, so clients keep it queued.
+ */
+export const PROVIDER_SESSION_STARTING_CODE = 'provider_session_starting';
+
+/**
+ * An engine answered that it needs its user to sign in (the ACP
+ * `auth_required` error) before it would open a session or run a prompt.
+ * Kind `auth`: not retryable until the user signs in with the engine.
+ */
+export const ENGINE_SIGN_IN_REQUIRED_CODE = 'engine-sign-in-required';
+
+/**
+ * Refusal code for a send whose session's engine start failed while the send
+ * waited for it. Nothing was sent. Kept, not dropped: the client keeps the
+ * message queued with the reason and a Retry, and does not retry on its own.
+ */
+export const PROVIDER_SESSION_START_FAILED_CODE =
+  'provider_session_start_failed';
+
+/**
+ * Refusal code for a send whose idempotency key (`clientTurnId`) another
+ * in-flight attempt still holds, or released without sending. Nothing new
+ * was sent. Retryable with the same key: clients keep the message queued and
+ * re-send it.
+ */
+export const CLIENT_TURN_IN_FLIGHT_CODE = 'client_turn_in_flight';
+/** The key already names a different submitted intent. No turn was accepted. */
+export const CLIENT_TURN_INPUT_CONFLICT_CODE = 'client_turn_input_conflict';
+/** This keyed input cannot be represented completely by the supported digest. */
+export const CLIENT_TURN_INPUT_UNSUPPORTED_CODE =
+  'client_turn_input_unsupported';
+
+/**
  * A send refused before any engine effect because the bound engine cannot
  * take the attached input (an ACP engine whose `initialize` handshake did not
  * advertise `promptCapabilities.image`, or a file the engine only accepts as
@@ -839,6 +969,17 @@ export const PROVIDER_TURN_IN_PROGRESS_CODE = 'provider_turn_in_progress';
  * retry — the user has to remove the attachments or pick another engine.
  */
 export const ATTACHMENT_INPUT_UNSUPPORTED_CODE = 'attachment_input_unsupported';
+
+/**
+ * #3290: a start or send refused because Station cannot apply its approval
+ * mode to the ACP engine: the engine's resolved rules (the user's or an
+ * organisation's configuration, or the binary itself) override Station's, or
+ * the chat runs an agent Station does not govern. Deterministic, NOT
+ * retryable: the same send is refused until that configuration or the
+ * chat's mode changes, so clients name that next step instead of a retry.
+ */
+export const ACP_APPROVAL_GOVERNANCE_REFUSED_CODE =
+  'acp_approval_governance_refused';
 
 /**
  * Whether Station owns an orchestration session or only follows it.
@@ -939,6 +1080,7 @@ export interface ResolvedAgentDefinition {
    * authored empty array, which simply means "no shortcuts").
    */
   autoApprove?: string[];
+  askBeforeUse?: string[];
   /**
    * #90 D14: `false` when the agent's operator switched the built-in browser
    * tools (`station-browser`) off. Absent means the engine's default: an
@@ -1096,6 +1238,13 @@ export interface ProviderSessionStartInput {
    * commands omit this field; absent is `workspace`.
    */
   confinement?: StationConfinement;
+  /**
+   * #2494: server-resolved confinement mechanism for this spawn, present only
+   * when one is engaged. Public orchestration commands omit this field. The
+   * adapter that engages the mechanism observes the started process and
+   * stamps `STATION_CONFINEMENT_RECORD_METADATA_KEY` on `session.started`.
+   */
+  confinementPlan?: ConfinementPlan;
   metadata?: Record<string, unknown>;
   /**
    * Server-only opaque app-home selector for a single provider spawn. It is
@@ -1133,6 +1282,8 @@ export interface ProviderSessionAdoptInput
 
 export interface ProviderSendTurnInput {
   threadId: string;
+  /** Server-assigned retained invocation; attribution only, never replay authority. */
+  invocationId?: string;
   /** Model-facing turn input (may carry server-composed ambient context). */
   input: string;
   /**
@@ -1175,6 +1326,14 @@ export interface ProviderSendTurnInput {
    * HTTP/client schemas do not accept this field.
    */
   recoveryCorrelationId?: string;
+  /**
+   * Cancels this send before the engine has it (and interrupts a turn the
+   * engine accepted after it fired). Only an explicit, server-owned decision
+   * may supply it: a Stop/cancel, a server deadline, a shutdown. Never wire
+   * an HTTP request's or client connection's signal here: once Station has
+   * the message, the client may close or disconnect and the send must still
+   * go through.
+   */
   signal?: AbortSignal;
   /**
    * A client-generated per-turn idempotency
@@ -1236,4 +1395,41 @@ export interface ProviderTurnStartResult {
   threadId: string;
   turnId: string;
   resumeCursor?: unknown;
+}
+
+/**
+ * The send key of the turn Station sends to continue a conversation whose
+ * engine was killed for memory: one per dead Session and turn, so every path
+ * that continues it (Station's automatic continuation, a person's Continue on
+ * any device) names the same turn and the conversation inbox and turn
+ * deduplication admit it once. Derived server-side; clients only test it.
+ */
+export const MEMORY_CONTINUATION_CLIENT_TURN_PREFIX = 'memory-continue-';
+
+const MEMORY_CONTINUATION_KEY = /^memory-continue-[0-9a-f]{40}(-p[2-5]?)?$/;
+
+/**
+ * Who asked for a continuation after a memory kill, read from its send key:
+ * Station's automatic continuation uses the bare key; a person's Continue
+ * uses `-p` (then `-p2` to `-p5` after a cancelled or refused one).
+ */
+export function memoryContinuationKeyKind(
+  clientTurnId: string | undefined,
+): 'automatic' | 'person' | undefined {
+  const match = clientTurnId
+    ? MEMORY_CONTINUATION_KEY.exec(clientTurnId)
+    : null;
+  if (!match) return undefined;
+  return match[1] ? 'person' : 'automatic';
+}
+
+/** Whether a turn is Station's continuation after a memory kill. */
+export function isStationMemoryContinuationTurn(turn: {
+  readonly clientTurnId?: string;
+  readonly clientOrigin?: { readonly actor: { readonly kind: string } };
+}): boolean {
+  return (
+    turn.clientOrigin?.actor.kind === 'internal' &&
+    memoryContinuationKeyKind(turn.clientTurnId) !== undefined
+  );
 }

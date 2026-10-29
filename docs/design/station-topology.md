@@ -1,7 +1,7 @@
 # Design: Station topology and role vocabulary
 
-> Status: **decision record, documentation-only** for
-> [#479](https://github.com/kontourai/station/issues/479), recovered from
+> **Reading status: decision record, documentation-only** for
+> [#479](https://github.com/kontourai/station/issues/479) (closed), recovered from
 > [archived PR #4377](https://github.com/kontourai/station-archive/pull/4377) and
 > regrounded on 2026-09-12 at `8c85f6b10bd2ad5e0c19172d13613a39535b811f`.
 > This record changes no runtime, wire contract, persisted schema, identifier,

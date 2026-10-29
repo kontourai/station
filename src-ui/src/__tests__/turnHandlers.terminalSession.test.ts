@@ -57,6 +57,31 @@ describe('handleRuntimeErrorEvent — station#1827 terminal engine session', () 
     );
   });
 
+  // The engine's own "not signed in" answer arrives typed
+  // (`engine-sign-in-required`, the ACP adapter's code for auth_required),
+  // so the chat says to sign in instead of showing a generic error.
+  test('a sign-in-required runtime.error renders as a sign-in prompt naming the engine', () => {
+    const raw =
+      'Kiro CLI needs you to sign in before it can answer. Authentication required';
+    handleRuntimeErrorEvent({
+      threadId: THREAD_ID,
+      method: 'runtime.error',
+      kind: 'auth',
+      code: 'engine-sign-in-required',
+      message: raw,
+    } as any);
+    const chat = activeChatsStore.getSnapshot()[THREAD_ID];
+    const text = chat.streamingMessage?.contentParts
+      ?.filter((part: any) => part.type === 'text')
+      .map((part: any) => part.content)
+      .join('\n');
+    expect(text).toContain('**Sign in to this engine**');
+    expect(text).toContain('Kiro CLI needs you to sign in');
+    expect(chat.messages?.[0].content).toBe(
+      `[SYSTEM_EVENT] [CHAT_ERROR:engine-sign-in-required] ${raw}`,
+    );
+  });
+
   test('renders translated copy in the streaming bubble, with the raw text behind a disclosure — not as the headline', () => {
     handleRuntimeErrorEvent({
       threadId: THREAD_ID,

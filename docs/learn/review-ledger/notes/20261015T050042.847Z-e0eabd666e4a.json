@@ -1,0 +1,7 @@
+{
+  "revision": "3b6fa63b5f0746d1cd93c291fb8244a3755b5c93",
+
+  "notes": [
+    {"path":"CONTEXT.md","note":"Fix round 5 of the delivery-state change: a claim whose renderer is proven gone (its Web Lock released) is public awaitingLookup and dismissUnconfirmed withdraws it, rechecking that liveness under the queue lock (unknown liveness never counts as gone); another window's change notice starts a flush pass without syncHeld when the refreshed projection shows a row this window may send now; this renderer's own claim is sendUnderWay only while one of its flush passes holds it (drainInFlight); the sendUnderWay comment now says exactly that; composer popover Escape and outside-tap unit tests. Its only changed input is the module map's outbound dispatch Behavior paragraph. Searched this document for outbox, outbound, flush, cross-window, Discard and liveness claims; none is affected. No prose change.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]}
+  ]
+}

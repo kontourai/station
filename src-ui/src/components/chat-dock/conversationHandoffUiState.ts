@@ -82,6 +82,8 @@ export function acceptConversationHandoffUiState(
       receipt.target.engine.kind === 'connection'
         ? receipt.target.engine.connectionId
         : undefined,
+    // The handoff starts its target Session on exactly this engine.
+    agentConnectionObservedFor: receipt.currentSessionId,
     agentSlug: receipt.target.agentId,
     agentName: target?.name ?? `Deleted Agent (${receipt.target.agentId})`,
     currentSessionId: receipt.currentSessionId,
@@ -114,6 +116,7 @@ export function acceptConversationHandoffUiState(
     // queued pick still rides the next send (#2436).
     lastAppliedApprovalMode: undefined,
     approvalEscalationRejected: undefined,
+    approvalTakeoverFailed: undefined,
     isProcessingStep: false,
     error: null,
     orchestrationTurnOpen: false,

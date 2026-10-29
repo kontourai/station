@@ -28,7 +28,35 @@
 
     "src-server/routes/orchestration/orchestration.ts",
 
-    "src-server/services/orchestration/session-command-module.ts"
+    "src-server/services/orchestration/session-command-module.ts",
+
+    "src-ui/src/contexts/work-observation.ts",
+
+    "src-ui/src/hooks/orchestration/useSessionEventWindow.ts",
+
+    "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts",
+
+    "src-ui/src/views/home/useInboxWorkItems.ts",
+
+    "src-ui/src/views/home/useHomeViewModel.ts",
+
+    "src-ui/src/views/home/work-status.ts",
+
+    "src-ui/src/components/chat-dock/ChatDockBody.tsx",
+
+    "src-ui/src/components/chat-dock/ConversationOpenRevalidator.tsx",
+
+    "src-ui/src/__tests__/InboxOpenChatStatusConsistency.test.tsx",
+
+    "src-ui/src/components/chat-dock/conversationOpenController.ts",
+
+    "src-ui/src/components/chat-dock/ChatDock.tsx",
+
+    "src-ui/src/views/home/useObservedWorkStatus.ts",
+
+    "src-ui/src/hooks/useConversationInbox.ts",
+
+    "src-ui/src/components/chat/ConversationInboxMessages.tsx"
   ],
 
   "checks": [

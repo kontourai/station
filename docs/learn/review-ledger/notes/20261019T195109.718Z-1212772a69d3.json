@@ -1,0 +1,7 @@
+{
+  "revision": "3f87100e1c94fa38bde5fe753ad2fd4e458137dc",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Second review-round delta to ChatMessageList.tsx changes only when the hidden step-announcement text is set or cleared. No region, surface, pane or dock placement behavior changes; no prose change.","inputs":["docs/design/placement.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

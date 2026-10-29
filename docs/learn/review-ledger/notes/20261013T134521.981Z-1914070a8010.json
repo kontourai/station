@@ -1,0 +1,7 @@
+{
+  "revision": "867af6fb9610338ff064de09ca75d5183bd7b226",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Re-read after the #3631 delta check: both admission paragraphs (capacity admission and the reusable regression) now state the 15-minute ceiling.","inputs":["docs/guides/releasing.md"]}
+  ]
+}

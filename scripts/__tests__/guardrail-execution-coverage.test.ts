@@ -145,7 +145,17 @@ const PROCESS_BOUNDARY_ACCEPT_RUNS = [
  * proof itself. The proof is the named test.
  */
 const EXECUTED_BY_OWN_TEST: ReadonlyArray<readonly [string, string]> = [
+  [
+    'component-style-hygiene.mjs',
+    'scripts/__tests__/component-style-hygiene.process.test.ts',
+  ],
+  ['run-biome.mjs', 'scripts/__tests__/run-biome.process.test.ts'],
   ['cli-doc-parity.mjs', 'scripts/__tests__/cli-doc-parity.test.ts'],
+  ['cli-mcp-parity.mjs', 'scripts/__tests__/cli-mcp-parity.test.ts'],
+  [
+    'feature-preview-docs-check.mjs',
+    'scripts/__tests__/feature-preview-docs-check.test.ts',
+  ],
   [
     'generate-metric-reference.mjs',
     'scripts/__tests__/metric-reference.test.ts',
@@ -177,6 +187,10 @@ const EXECUTED_BY_OWN_TEST: ReadonlyArray<readonly [string, string]> = [
     'scripts/__tests__/lazy-boundary-ratchet.test.ts',
   ],
   ['button-cap-ratchet.mjs', 'scripts/__tests__/button-cap-ratchet.test.ts'],
+  [
+    'monument-import-boundary-gate.mjs',
+    'scripts/__tests__/monument-import-boundary-gate.test.ts',
+  ],
   ['lockfile-sync-gate.mjs', 'scripts/__tests__/version-packages-lock.test.ts'],
   ['random-uuid-guard.mjs', 'scripts/__tests__/random-uuid-guard.test.ts'],
   ['repo-docs-hygiene.mjs', 'scripts/__tests__/repo-docs-hygiene.test.ts'],
@@ -200,6 +214,7 @@ const EXECUTED_BY_OWN_TEST: ReadonlyArray<readonly [string, string]> = [
     'type-laundering-gate.mjs',
     'scripts/__tests__/type-laundering-gate.process.test.ts',
   ],
+  ['ui-copy-length.mjs', 'scripts/__tests__/ui-copy-length.process.test.ts'],
   [
     'ui-glyph-coverage-ratchet.mjs',
     'scripts/__tests__/ui-glyph-coverage-gate.cli.test.ts',
@@ -213,6 +228,10 @@ const EXECUTED_BY_OWN_TEST: ReadonlyArray<readonly [string, string]> = [
  * growing it silently is what the exact-set assertion prevents.
  */
 const NOT_EXECUTED: ReadonlyArray<readonly [string, string]> = [
+  [
+    'agent-runtime-import-boundary-gate.mjs',
+    'agent-runtime-import-boundary-gate.test.ts proves scanner acceptance and Station-coupling refusal in-process; it does not execute the CLI entry point as a child process',
+  ],
   [
     'actionlint-gate.mjs',
     'shells out to the external `actionlint` binary, which is not a repository dependency; a run without it proves the shim, not the gate',

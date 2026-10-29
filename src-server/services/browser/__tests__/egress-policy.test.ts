@@ -215,3 +215,15 @@ describe('round 2: DNS rebinding — hostnames never lead to non-public addresse
     ).toBeUndefined();
   });
 });
+
+test.each(['93.184.216.34', '127.0.0.1', '169.254.169.254'])(
+  'none reach refuses %s independently of address class',
+  (address) => {
+    expect(
+      decideEgress(address, 8080, {
+        ...policy('operator'),
+        reach: { kind: 'none' },
+      }),
+    ).toBe('non-public-address');
+  },
+);

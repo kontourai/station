@@ -1,0 +1,7 @@
+{
+  "revision": "8cba69d0a44e9a290639f0097a0ec4e805e8971c",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Bounded packager repair review at8cba69d0a44: real packaged Compose failed consumer validation because js-yaml5 default CORE schema treated merge keys as ordinary << properties. Regression controls require inherited receiver read_only and postgres restart policies. Producer/verifier now explicitly resolve the merge tag; no deployment security settings, image pins, manifest build-only scope or release authority changed.34 exact-parent package/archive tests pass and Docker Compose validates the newly generated parent candidate. Previous child2d6080 isolated startup reached authenticated PG readiness inside the receiver but host published ports refused connections; that separate retained diagnostic is not parent runtime/deployment/restore/Station/native/release proof. README remains explicit that supported deployment and managed install are unqualified.","inputs":["deployment/telemetry/README.md","scripts/__tests__/package-telemetry-companion.test.ts","scripts/package-telemetry-companion.mjs"]}
+  ]
+}

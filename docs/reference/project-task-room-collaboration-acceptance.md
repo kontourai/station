@@ -1,17 +1,27 @@
 # Project/Task room collaboration acceptance
 
-`tests/project-task-room-collaboration.spec.ts` is the real-browser acceptance
-lane for the personal Station Task room. It starts an isolated production
-server/UI, creates a Project and Task through shipped HTTP/UI entry points,
-pairs a second browser as a distinct device, and uses the rendered Task
-workspace rather than injected pane props.
+`tests/project-task-room-collaboration.spec.ts` is the retained real-browser acceptance fixture for the personal Station Task room. It starts an isolated production server/UI, creates a Project and Task through shipped HTTP/UI entry points, pairs a second browser as a distinct device, and targets the rendered Task workspace rather than injected pane props.
+
+The workspace opens on **Overview**. **Conversation**, **Work chats**, **Plan**
+and **Details** remain directly accessible. The selected view is retained in
+the URL through authority re-verification; protected pane state is recreated
+for the current authority and Task incarnation.
 
 When it passes, the lane checks both browsers receive the same server-owned room generation;
-join and durable announce; symmetric published presence; watch, follow, and
-local-input stop; exact revision-bound cursor/selection projection; message and
-document convergence over the shared SSE connection; revoked-device cached
-read-only behavior; immutable revision-link presentation; and same-home SQLite
-restoration after a full server restart.
+implicit join and durable publication; symmetric named presence; autosave;
+watch/follow fixture commands and local-input stop; exact revision-bound cursor/selection projection; message and
+document convergence over the shared SSE connection; revoked-device access recovery with protected editing and sending controls removed; autosaves leaving immutable revision links unrequested; and same-home SQLite
+restoration after a full server restart. Reconnect checks the selected Plan tab
+and converged preview before explicitly reopening the editor. It does not claim
+draft or edit-mode continuity across authority re-verification. After restart,
+the fixture waits for the viewer's published presence before issuing heartbeat;
+recovered live snapshots must contain no old cursors or follow panes.
+
+The retained fixture exercises its conversation and document through normal
+user actions. Retained watch/follow
+protocol setup uses explicitly named real HTTP fixture commands because those
+controls are not on the primary chat surface. The lane is not a claim that a
+human watch/follow picker is currently shipped there.
 
 The browser contract deliberately does not expose CRDT operations, writer
 epochs, raw live-work receipts, document IDs, channels, recovery state, or
@@ -36,7 +46,7 @@ room records.
 Run the focused browser proof with:
 
 ```sh
-PLAYWRIGHT_BROWSERS_PATH=0 npx playwright test tests/project-task-room-collaboration.spec.ts --project=chromium --workers=1
+npm run test:e2e:smoke-live -- --spec=tests/project-task-room-collaboration.spec.ts
 ```
 
 The helper starts an isolated Station home and ports with deterministic E2E
@@ -48,3 +58,5 @@ The #2892 synthetic command remains smoke evidence only. Reference performance
 is verified only by the named Windows production target and bridge
 described in `interactive-workspace-performance.md`; an absent target or bridge
 is `NOT_VERIFIED`, never a substitute PASS.
+
+The [revision evidence composition suite](../../src-server/services/orchestration/__tests__/project-task-room-revision-evidence-bridge.test.ts) and composed Task Review routes own exact plan-reference freezing. Saving alone no longer publishes an immutable revision link; the [freeze policy](../decisions/revision-evidence-freeze-policy.md) separates those outcomes.

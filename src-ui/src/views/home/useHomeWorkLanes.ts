@@ -20,6 +20,7 @@ import {
 } from './home-lane-model';
 import type { HomeWorkItem } from './home-view-model';
 import { readTerminalSince, writeTerminalSince } from './terminal-since-store';
+import type { WorkFactsById } from './work-facts';
 
 /** Re-render cadence so terminal linger / snooze wake / pill expiry progress
  * even without another prop change forcing it. Deliberately coarse — none of
@@ -27,6 +28,7 @@ import { readTerminalSince, writeTerminalSince } from './terminal-since-store';
 const LANE_TICK_MS = 30_000;
 
 export interface HomeWorkLanes {
+  childrenById: ReadonlyMap<string, readonly HomeLaneItem[]>;
   /** Live lanes (`workStatus`), each in position-stable order. */
   needsYou: HomeLaneItem[];
   running: HomeLaneItem[];
@@ -63,7 +65,10 @@ export interface HomeWorkLanes {
  * even though that render never committed; StrictMode's synchronous
  * double-invocation is the only concurrency shape this argument covers.
  */
-export function useHomeWorkLanes(items: HomeWorkItem[]): HomeWorkLanes {
+export function useHomeWorkLanes(
+  items: HomeWorkItem[],
+  workFacts?: WorkFactsById,
+): HomeWorkLanes {
   const [now, setNow] = useState(() => Date.now());
   const [snoozeMap, setSnoozeMap] = useState<SnoozeMap>(() =>
     readSnoozes(Date.now()),
@@ -148,6 +153,7 @@ export function useHomeWorkLanes(items: HomeWorkItem[]): HomeWorkLanes {
 
   const partition = partitionHomeWorkItems({
     items: laneItems,
+    workFacts,
     now,
     snoozedUntil,
     terminalSince: terminalSinceRef.current,
@@ -192,6 +198,7 @@ export function useHomeWorkLanes(items: HomeWorkItem[]): HomeWorkLanes {
   const settled = sortSettledTail(partition.settled, terminalSinceRef.current);
 
   return {
+    childrenById: partition.childrenById,
     external: partition.external,
     drafts: partition.drafts,
     needsYou,

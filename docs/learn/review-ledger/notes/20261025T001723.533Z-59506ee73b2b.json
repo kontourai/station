@@ -1,0 +1,7 @@
+{
+  "revision": "f1fd4ecb9e8d0346e2adab77f7e60640d7352b97",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Reworded the d1 part-1 pins bullet: part 1 ships no production pin list (the unused empty constant was removed), so no install can be kontour and with no pins every lock entry is refused. Checked against plugin-install-trust.ts and its lock test.","inputs":["docs/design/shell-plugins-distributions.md","src-server/services/plugins/plugin-install-trust.ts"]}
+  ]
+}

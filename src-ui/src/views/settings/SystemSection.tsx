@@ -1,11 +1,14 @@
+import { ACCOUNT_PREFERENCE_KEYS } from '@kontourai/station-contracts/account-preferences';
 import { useSystemStatusForApiBaseQuery } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { SettingsGlyph } from '../../components/icons/Glyph';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
+import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
+import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import type { AppConfig } from '../../types';
 import {
@@ -41,10 +44,7 @@ export function SystemSection({
    */
   hasUnsavedChanges?: boolean;
 }) {
-  const { data: systemStatus } = useSystemStatusForApiBaseQuery(
-    apiBase,
-    60_000,
-  );
+  const [buildDetailsOpen, setBuildDetailsOpen] = useState(false);
   const platformProfile = usePlatformProfile();
   // #2144 slice 6 item F. Local state and local hooks: unlike the Station
   // reset, this needs neither the draft config nor a server request, so
@@ -52,7 +52,17 @@ export function SystemSection({
   const deviceSettings = useDeviceSettings();
   const { resetDeviceSettings } = useDeviceSettingsActions();
   const [showDeviceResetModal, setShowDeviceResetModal] = useState(false);
-  const deviceResetPlan = buildDeviceResetPlan(deviceSettings);
+  const account = useAccountPreferences();
+  const deviceResetPlan = buildDeviceResetPlan(
+    account.status === 'account'
+      ? {
+          ...deviceSettings,
+          featureSettings:
+            deviceSettingsStore.getEnvelope().values.featureSettings,
+        }
+      : deviceSettings,
+    account.status === 'account' ? ACCOUNT_PREFERENCE_KEYS : [],
+  );
 
   return (
     <SettingsSection
@@ -73,26 +83,64 @@ export function SystemSection({
         </div>
       )}
 
-      <div
+      {/* The card's own "Server · {name}" heading labels this row; a row
+          title above it would name the same server twice. */}
+      <section
         className="settings__field"
         {...settingsRow('core-app-updates')}
+        aria-labelledby="core-app-updates-heading"
         tabIndex={-1}
       >
-        <span className="settings__field-label">
-          {settingsRow('core-app-updates').title}
+        <ConnectedServerUpdates headingId="core-app-updates-heading" />
+      </section>
+
+      <div
+        className="settings__field"
+        {...settingsRow('server-update-download-policy')}
+        tabIndex={-1}
+      >
+        <label
+          className="settings__field-label"
+          htmlFor="serverUpdateDownloadPolicy"
+        >
+          {settingsRow('server-update-download-policy').title}
+        </label>
+        <select
+          id="serverUpdateDownloadPolicy"
+          value={config.serverUpdateDownloadPolicy ?? 'after-24h'}
+          onChange={(event) =>
+            onChange({
+              ...config,
+              serverUpdateDownloadPolicy: event.target
+                .value as AppConfig['serverUpdateDownloadPolicy'],
+            })
+          }
+        >
+          <option value="never">Never</option>
+          <option value="after-24h">After 24 hours</option>
+          <option value="immediately">Immediately</option>
+        </select>
+        <span className="settings__field-hint">
+          For a Station service installed from a release archive: when it
+          downloads an available update by itself. It never restarts without
+          you.
         </span>
-        <ConnectedServerUpdates />
       </div>
 
-      <div {...settingsRow('deployed-build')} tabIndex={-1}>
+      <details
+        {...settingsRow('deployed-build')}
+        tabIndex={-1}
+        onToggle={(event) => setBuildDetailsOpen(event.currentTarget.open)}
+      >
+        <summary>Build details</summary>
         {platformProfile.isTauri ? (
           <InstalledAppBuildProvenance
             build={platformProfile.clientBuild}
             development={platformProfile.isDevBuild}
           />
         ) : null}
-        <BuildProvenance build={systemStatus?.build} />
-      </div>
+        {buildDetailsOpen && <ConnectedBuildDetails apiBase={apiBase} />}
+      </details>
 
       <div
         className="settings__field"
@@ -119,7 +167,7 @@ export function SystemSection({
           <option value="trace">Trace</option>
         </select>
         <span className="settings__field-hint">
-          Logging verbosity. Higher levels include more detail.
+          Choose how much detail Station logs.
         </span>
       </div>
 
@@ -154,9 +202,10 @@ export function SystemSection({
           </label>
         </div>
         <span className="settings__field-hint">
-          Export or import settings JSON. This does not include projects,
-          sessions, or credentials. For a full offline backup, stop Station and
-          run <code>station home backup</code>.
+          Export or import Station and device settings JSON. Account preferences
+          stay with your account. This does not include projects, sessions, or
+          credentials. For a full offline backup, stop Station and run{' '}
+          <code>station home backup</code>.
         </span>
       </div>
 
@@ -233,4 +282,9 @@ export function SystemSection({
       </div>
     </SettingsSection>
   );
+}
+
+function ConnectedBuildDetails({ apiBase }: { apiBase: string }) {
+  const { data } = useSystemStatusForApiBaseQuery(apiBase, 60_000);
+  return <BuildProvenance build={data?.build} />;
 }

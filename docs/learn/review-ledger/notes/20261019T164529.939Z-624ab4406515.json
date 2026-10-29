@@ -1,0 +1,7 @@
+{
+  "revision": "fa08748729eaaa67830668ab9c34982156ea20b7",
+
+  "notes": [
+    {"path":"docs/design/session-tape-replay.md","note":"Added that History shows no live turn rail. timeline.ts now exports compactTurnText and turnLabel delegates to it with the same 72-character limit (69 characters plus an ellipsis) and Turn N fallback, so the replay landmark labels described here are unchanged; transcriptTurnLandmarks.ts derives the live rail from transcript rows, not the tape, and ChatMessageList hides the rail when activeSession.replay is set (pinned by ChatMessageList.turnRail.test.tsx).","inputs":["docs/design/session-tape-replay.md","src-ui/src/hooks/orchestration/replay/timeline.ts"]}
+  ]
+}

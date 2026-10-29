@@ -1,0 +1,7 @@
+{
+  "revision": "4b5f66e2e0e09e0e14df2f5a9763133d1b94055f",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Scoped #3858 fixture-classification review: path-read-pin-boundary adds only the named Playwright message-delivery-recovery spec and its reason. The actual spec reads .station/instances, selects the single record whose baseDir equals the runner-owned STATION_E2E_HOME, and pairs a fresh second browser through the existing local-grant mint/exchange helper. This is not a repository-source scan and Vitest cannot schedule a Playwright spec. Scanner detection, existing classifications, source pins, resource policy, fixture actionability, deadlines and executable commands are unchanged. Reviewed the actual new registry read, guard, existing classification mechanism and current browser/focused-test guidance; no prose correction needed. The first missing-classification failure is preserved; corrected path-read and exact-scope stream invalidation owner passed59 tests, without weakening either guard. Actual isolated Chromium two-client journey, successful screenshots and mount fault/exactrestore proof remain bounded local evidence, not full regression/native/release qualification.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts"]}
+  ]
+}

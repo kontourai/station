@@ -95,7 +95,7 @@ function runBootstrap(origins: readonly string[] = [HOST_ORIGIN]): Harness {
 }
 
 describe('plugin-host frame downlink', () => {
-  test('relays declared pane-host replies, including an experience result', () => {
+  test('relays declared pane-host replies, including experience and related-pane results', () => {
     const harness = runBootstrap();
     expect(harness.loaded()).toBe(true);
 
@@ -104,6 +104,7 @@ describe('plugin-host frame downlink', () => {
       'pane-host/facts-changed',
       'pane-host/refused',
       'pane-host/experience-result',
+      'pane-host/related-result',
     ]) {
       harness.dispatch({ data: { method, params: { id: method } } });
     }
@@ -114,6 +115,7 @@ describe('plugin-host frame downlink', () => {
       'pane-host/facts-changed',
       'pane-host/refused',
       'pane-host/experience-result',
+      'pane-host/related-result',
     ]);
   });
 

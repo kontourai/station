@@ -4,6 +4,8 @@ import type {
   OperationalEventProjection,
   OperationalEventScope,
 } from './operational-event.js';
+import type { PublisherTelemetryDeclaration } from './plugin-telemetry.js';
+import type { RequiredSlotAssignments } from './required-slots.js';
 import type { WorkspacePaneDescriptor } from './workspace-pane.js';
 import type { WorkspacePaneHostContributionV1 } from './workspace-pane-host-contribution.js';
 
@@ -80,6 +82,11 @@ export const PERMISSION_TIERS: Record<string, PermissionTier> = {
   // auto-grant. (Absent from this table it would read `trusted`, which is
   // stricter still but the wrong shape — this is not host-level authority.)
   'ui.confirm': 'active',
+  // A contributed layout's `primary: 'chat'` (#2995): while it is mounted the
+  // shell suspends the dock's Chat and ⌘D goes to the layout. That redirects
+  // the operator's conversation into plugin-chosen chrome, so it is asked for
+  // at install like any other action on the operator's behalf.
+  'layout.primaryChat': 'active',
   'network.fetch': 'active',
   'agents.invoke': 'active',
   'tools.invoke': 'active',
@@ -218,6 +225,9 @@ export interface PluginReviewedSourcesModule {
 }
 
 export interface PluginManifest {
+  /** Inert slot preferences; assigning Home still requires Home-role consent. */
+  requiredSlots?: RequiredSlotAssignments;
+  telemetry?: PublisherTelemetryDeclaration;
   name: string;
   version: string;
   sdkVersion?: string;
@@ -315,6 +325,8 @@ export interface PluginPreview {
   valid: boolean;
   error?: string;
   manifest?: PluginManifest;
+  /** Whether the staged source already contains a client bundle; not runtime readiness. */
+  hasBundle?: boolean;
   components: PluginComponent[];
   conflicts: ConflictInfo[];
 }

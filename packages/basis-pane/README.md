@@ -12,7 +12,9 @@ override `private: true` or prove a public release. `npm run build --prefix
 packages/basis-pane` compiles locally, while consumers continue to use the
 source export map through Station's bundler.
 
-The root exports `StationBasisPane`, `AnswerBasisAffordance` and the built-in Pane
+The root exports `StationBasisPane`, `AnswerBasisAffordance` (an answer's Basis
+entry: plain "Basis" unless Surface's standing for that answer is notable, then
+Surface's own label) and the built-in Pane
 descriptor/instance helpers. Opt-in subpaths expose collection views, Session
 inventory, and the portable MCP App resources. The
 [connected host](../../src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx)
@@ -86,3 +88,35 @@ Hosts capture a non-secret request scope before invoking protected reads or
 mutations. Connection activation and native authorization epochs partition
 queries and reject late responses; native receipts are attached only to scoped
 requests. No raw credentials belong in cache keys or pane props.
+
+## Connected Session inventory
+
+Station presents groups in this order: Inputs, Execution, Decisions, Outputs,
+Work items, Verification & delivery, Sources, Kept, Attention, Resources and
+Live now. This presentation order does not change the wire order or turn
+lineage into answer support. In a narrow side dock, inventory occupies the
+conversation surface and hides the underlying transcript until Close; focus
+returns to its opener when possible.
+
+The chat pane owns the authority/chat registration independently of its lazy
+panel and desktop/mobile headers. Current execution updates preserve a captured
+exact-answer scope; changing chat or authority, or unmounting the pane, retires
+it. The connected exact-answer action opens an explicit Task picker before
+Keep. The portable App remains a reader: its existing protocol negotiation does
+not opt into all protocol 3 HTTP lineage rows, nor into protocol 4 rows for
+commands with no recorded result.
+
+In the Execution group, a command that never reported an outcome (#4178) shows
+the shared `StatusBadge` "No result recorded" in its neutral tone beside its
+classification; it claims neither success nor failure.
+
+
+The desktop and mobile chat headers expose **Inventory** directly. It opens
+this full reader, retaining a captured exact-answer scope if one is already
+being inspected. Selecting **View details** expands the selected row: Station
+re-reads exact authored input by Session/event/turn identity and safe tool
+results by Session/event identity. Other rows show their recorded metadata and
+can open the relevant Session; output actions retain their existing inspector.
+Input reads are bounded, no-store, personal-only and reauthorize after the
+owner read. Bodies are not added to inventory descriptors or portable MCP rows.
+A revoked input read hides previously readable content.

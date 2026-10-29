@@ -1,0 +1,7 @@
+{
+  "revision": "a899357be52606bd97c4009a8b41c38a829c0b70",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Reviewed workspace-map header ownership and personal Board discovery, first-create, loading/error states, rail popup focus and authority replacement against the corrected sidebar owners and mounted/browser evidence; shared Boards remain unbuilt.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/header/Header.tsx","src-ui/src/components/project-sidebar/ProjectLayoutChips.tsx","src-ui/src/components/project-sidebar/ProjectSidebar.tsx","src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx","src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx"]}
+  ]
+}

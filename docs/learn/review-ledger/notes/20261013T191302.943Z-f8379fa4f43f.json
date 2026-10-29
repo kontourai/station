@@ -1,0 +1,7 @@
+{
+  "revision": "3722b18db80cfd645555c4d93bb69d79a8dea00a",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Reviewed the docs-gate pin update to Corpus 340b66f and unchanged exact head repository/SHA inputs and reusable callee. The corrected Corpus check and bundle generation passed, including redirects validation; all 338 focused policy/manifest tests passed. Manifest admission and maintenance instructions remain accurate.","inputs":["docs/guides/documentation.md",".github/workflows/docs-kit.yml"]}
+  ]
+}

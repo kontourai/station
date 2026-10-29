@@ -1,0 +1,7 @@
+{
+  "revision": "9ebb19fffe6c89c1961fc2e3e97968c01ae28f8d",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Reviewed inherited requestFromPluginPane and its config/notice/disclosure/event callers. Corrected the guide to include Sec-Fetch-Dest iframe alongside explicit plugin headers; absence still grants no authority and ordinary fetch/XHR remains within the documented same-origin trust limitation. No new containment or real-provider qualification.","inputs":["docs/guides/plugins.md","src-server/security/plugin-pane-context.ts"]}
+  ]
+}

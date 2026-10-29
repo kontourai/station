@@ -24,7 +24,7 @@ import { UsageDrillDownModal } from './UsageDrillDownModal';
 import { UsagePeriodSelector } from './UsagePeriodSelector';
 import { UsageSummaryCards } from './UsageSummaryCards';
 import { UsageTrendChart } from './UsageTrendChart';
-import { getAverageCostPerMessage, getTotalUsageConversations } from './utils';
+import { getTotalUsageConversations } from './utils';
 import './UsageStatsPanel.css';
 
 type DrillDownType = 'model' | 'agent' | null;
@@ -103,10 +103,6 @@ function UsagePeriodSection({ from, to }: { from: string; to: string }) {
     );
   }
 
-  const avgCostPerMessage = getAverageCostPerMessage({
-    totalCost: rangeSummary.totalCost,
-    totalMessages: rangeSummary.totalMessages,
-  });
   const datedUsage: UsageStats['byDate'] = data.byDate ?? {};
   const costMeasured =
     data.snapshot?.projection !== 'retained-source-v1' ||
@@ -130,13 +126,6 @@ function UsagePeriodSection({ from, to }: { from: string; to: string }) {
             costMeasured
               ? `$${rangeSummary.totalCost.toFixed(2)}`
               : 'Not reported'
-          }
-        />
-        <StatCard
-          icon={<ChartGlyph />}
-          label="Avg/Message"
-          value={
-            costMeasured ? `$${avgCostPerMessage.toFixed(4)}` : 'Not reported'
           }
         />
         <StatCard
@@ -192,7 +181,6 @@ export function UsageStatsPanel() {
   if (!usageStats) return null;
 
   const { lifetime, byModel, byAgent } = usageStats;
-  const avgCostPerMessage = getAverageCostPerMessage(lifetime);
   const totalConversations = getTotalUsageConversations(lifetime);
 
   return (
@@ -215,7 +203,7 @@ export function UsageStatsPanel() {
         <UsagePeriodSection from={range.from} to={range.to} />
       ) : (
         <UsageSummaryCards
-          avgCostPerMessage={avgCostPerMessage}
+          daysActive={lifetime.daysActive}
           engineUsageCoverage={lifetime.engineUsageCoverage}
           totalConversations={totalConversations}
           totalCost={lifetime.totalCost}
@@ -249,6 +237,7 @@ export function UsageStatsPanel() {
         onAgentClick={(agentId) => setDrillDown({ type: 'agent', id: agentId })}
         onModelClick={(modelId) => setDrillDown({ type: 'model', id: modelId })}
         totalMessages={lifetime.totalMessages}
+        unallocatedModelMessages={usageStats.unallocated?.model.messages}
       />
 
       {drillDown && (

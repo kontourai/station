@@ -30,6 +30,7 @@ import {
   installMockOrchestrationSse,
   waitForMockOrchestrationSse,
 } from './helpers/orchestration';
+import { chooseChatRegionRow } from './helpers/region-placement';
 import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 import { installVisualViewportFixture } from './helpers/visual-viewport';
@@ -543,6 +544,10 @@ async function mockTaskFirstHome(
           },
         ]),
       );
+      return;
+    }
+    if (path === '/api/knowledge/roots' && route.request().method() === 'GET') {
+      await route.fulfill(json([]));
       return;
     }
     if (
@@ -1096,15 +1101,15 @@ test.describe('Task-first Home (#332, mocked)', () => {
       page.getByRole('button', { name: 'Dismiss engine picker' }),
     ).toHaveCount(0);
 
-    await page.getByRole('button', { name: 'Collapse sidebar' }).click();
+    await page.getByRole('button', { name: 'Collapse workspace map' }).click();
     await expect(page.locator('.sidebar')).toHaveClass(/sidebar--collapsed/);
     await expect(
-      page.getByRole('button', { name: 'Expand sidebar' }),
+      page.getByRole('button', { name: 'Expand workspace map' }),
     ).toBeVisible();
     await expect(
-      page.getByRole('button', { name: 'Open chats' }),
+      page.getByRole('button', { name: 'Sidebar utilities' }),
     ).toBeVisible();
-    await page.getByRole('button', { name: 'Expand sidebar' }).click();
+    await page.getByRole('button', { name: 'Expand workspace map' }).click();
 
     // archive#1629 removed the sidebar's "Project chats" pill (and its
     // `station:open-project-chats` dispatch) — ChatDock's listener for that
@@ -1130,12 +1135,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
     // help-menu line #1552 D1 had to retarget, and that retarget could not be
     // verified until this was current. The control is the same one; only its
     // name moved to the region vocabulary.
-    const maximize = page.getByRole('button', {
-      name: 'Expand dock region to workspace',
-    });
-    const restore = page.getByRole('button', {
-      name: 'Restore dock region size',
-    });
+    // Chat's region commands are rows of its More menu (`RegionMenu`).
+    const maximize = { click: () => chooseChatRegionRow(page, 'Maximize') };
+    const restore = { click: () => chooseChatRegionRow(page, 'Restore size') };
     await maximize.click();
     await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
     expect(new URL(page.url()).searchParams.get('maximize')).toBe('true');
@@ -1146,9 +1148,10 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await restore.click();
 
     await page.goto('/projects/station');
-    // #1552 D1: "Ask Station for help" is a row of the avatar's menu now, not a
-    // toolbar button. The prompt list it opens is unchanged.
-    await page.getByRole('button', { name: 'Profile and settings' }).click();
+    // #1552 D1: "Ask Station for help" is a row of the account menu (the
+    // sidebar footer's account control), not a toolbar button. It opens the
+    // header's help menu, whose prompt list is unchanged.
+    await page.getByRole('button', { name: /^Profile and settings:/ }).click();
     await page.getByRole('menuitem', { name: 'Ask Station for help' }).click();
     await page.getByRole('button', { name: 'What can you do?' }).click();
 
@@ -1441,18 +1444,19 @@ test.describe('Task-first Home (#332, mocked)', () => {
         .getByRole('navigation', { name: 'Primary navigation' })
         .getByRole('button', { name: 'Connections', exact: true }),
     ).toHaveCount(0);
-    // The advertised path from here is the footer's gear into Settings'
-    // Manage group. It is proven by pressing it in the two suites whose
-    // fixtures model the Settings page — project-architecture.spec.ts
-    // ("connections view renders") and registry.spec.ts — rather than here:
+    // The advertised path from here is the footer's Customize chooser, whose
+    // Connections row opens the hub at its Engines tab. The journey that
+    // presses it is project-architecture.spec.ts ("connections view
+    // renders"), whose fixtures model the destination, not this one:
     // `mockTaskFirstHome` models Home, and routing this test through Settings
     // made it issue five API reads the fixture has no shape for, which is the
-    // audit failure this comment replaces rather than papers over.
+    // audit failure this comment replaces rather than papers over. Here only
+    // the trigger is asserted to be on screen from a cold start.
     await page.goto('/');
     await expect(
       page
         .getByRole('navigation', { name: 'Primary navigation' })
-        .getByRole('button', { name: 'Settings', exact: true }),
+        .getByRole('button', { name: 'Customize', exact: true }),
     ).toBeVisible();
   });
 
@@ -1921,7 +1925,8 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
     // #2059 (design record D3): the mobile drawer lists PLACES, and the
     // configuration destinations it used to group under `Customize`/`System`
-    // are behind the footer's gear. This is the same accessibility contract as
+    // are behind the footer's Customize chooser and its account menu's Open
+    // settings row. This is the same accessibility contract as
     // before — every advertised navigation control a thumb must hit clears the
     // 44px floor, and nothing overflows the viewport horizontally — re-aimed
     // at the surfaces that carry it now rather than deleted with the groups.
@@ -1967,17 +1972,25 @@ test.describe('Task-first Home (#332, mocked)', () => {
         ).toHaveCount(0);
       }
 
-      // The footer's two navigation controls are the drawer's only remaining
-      // destination affordances, so they carry the floor the rows used to.
-      for (const label of ['Schedule', 'Customize', 'Settings']) {
-        const control = navigation.getByRole('button', { name: label });
+      // The footer's controls are the drawer's only remaining destination
+      // affordances, so they carry the floor the rows used to. The account
+      // control is matched by its own name: a bare /settings/ substring would
+      // also be satisfied by it, which is how a removed Settings gear could
+      // keep passing here.
+      for (const name of [
+        /^Schedule$/,
+        /^Customize$/,
+        /^Updates(: .+)?$/,
+        /^Profile and settings:/,
+      ]) {
+        const control = navigation.getByRole('button', { name });
         await expect(control).toBeVisible();
         const box = (await control.boundingBox())!;
         expect(box.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
         expect(box.width).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
       }
 
-      // The Manage group the gear lands on carries the other half of this
+      // The Manage group Settings opens on carries the other half of this
       // contract — its entries are thumb-sized too — and it is asserted in
       // settings.spec.ts, whose fixture models the Settings page. This one
       // owns the drawer.

@@ -1,0 +1,7 @@
+{
+  "revision": "0feff2a4f6f204780f3dddd1cc779622b37a7d07",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"#3800 delta round: codex-adapter.ts only extends the pre-start .codex refusal (server directory when no cwd; refusal text names the outer-repository limit; inner registered worktrees trusted). Searched this document for start-refusal, sandbox and .codex claims; none describe the changed behavior beyond what is already accurate; no prose change needed.","inputs":["docs/guides/agents.md","src-server/providers/adapters/codex-adapter.ts"]}
+  ]
+}

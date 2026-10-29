@@ -5,12 +5,14 @@ Station has three separate measurement paths:
 | Path | Owner and destination | What enables it |
 | --- | --- | --- |
 | Local monitoring events | `MonitoringEmitter` and daily NDJSON files; read by Monitoring and Insights | Runtime event producers; independent of OTel export |
-| OTel metrics and traces | OpenTelemetry SDK → configured collector | `OTEL_EXPORTER_OTLP_ENDPOINT`, subject to SDK configuration and persisted installation identity |
-| Product-usage telemetry | `UsageTelemetryService` → configured usage endpoint | Endpoint configured, telemetry enabled, and the current disclosure receipt acknowledged |
+| OTel metrics and traces | OpenTelemetry SDK → configured collector | Saved collector address or `OTEL_EXPORTER_OTLP_ENDPOINT`, subject to SDK configuration and persisted installation identity |
+| Product-usage telemetry | Independent publisher sinks owned by `UsageTelemetryService` | A configured address and resolved tier; Lite requires shown notice, Full requires that publisher's current disclosure receipt |
 
-Product observations use the disclosed v1 envelope: stable retry IDs, producer
+Full product observations use the disclosed v1 envelope: stable retry IDs, producer
 times, inventory revision and allowlisted immutable build attribution on every
-event. The optional [product receiver](../../packages/telemetry-broker/README.md)
+event. Full product telemetry is pseudonymous: its installation hash rotates
+monthly and is never linked to an account by Station. Built-in Lite is identifier-free
+by contract and sends only the completed previous UTC day after notice. Plugin publishers default Off and require opt-in; plugin-chosen Lite counts can encode identifiers even though Station adds none. The optional [product receiver](../../packages/telemetry-broker/README.md)
 authenticates separate product source keys, durably commits PostgreSQL observations,
 and deduplicates retained source/event UUIDs. Its operator queries describe received
 observations with unknown delivery coverage; these observations are separate from
@@ -18,8 +20,85 @@ canonical personal receipts. Acknowledgements
 must name the displayed inventory revision, so stale/older UIs cannot silently
 approve newly exported fields. See the [usage inventory](../reference/usage-telemetry.md).
 
-The repository includes an optional Docker example for Collector → Prometheus
-→ Grafana metrics and Collector → Jaeger traces. Starting that example is not
+Managed broker restores support product/diagnostic-only recovery through the
+offline `--fence-managed-restore` command. Stop all receivers and disable their
+network access before restoring; after successful fencing, recreate every
+process. Compatible migrations, product credential revocation, publisher-key
+deletion and permanent publication suppression commit atomically, before
+listeners or timers. The state is **publication permanently suppressed; history
+unreconciled**. Lite pings/feedback and publication remain disabled; operator
+product/exact queries, retention and privacy erasure remain available. Aggregate
+reads return empty cells, no cursors and `no-store`; historical publications,
+noise and product receipts are preserved. There is no supported resumption.
+
+The command refuses restored private vault custody (including revoked/unbound
+vaults); private restore is not qualified by this profile or the older
+product-only fence command. Reapply managed fencing on every restore. This
+policy cannot retract already released data and does not protect arbitrary
+SQL/VM rollback, old binaries or drain live replies. See the
+[broker restore instructions](../../packages/telemetry-broker/README.md) for
+preconditions and verification limits. Existing v1 qualification is unchanged
+and does not establish managed suppression qualification.
+
+The companion receiver additionally accepts identifier-free `station_daily`
+Lite pings through public publisher/channel source IDs. Its owner view is exact:
+operator `sto_` endpoints return daily marginals and weekly sums, including daily
+distinct-network counts (weekly contributor-days; not cross-day unique people).
+The same Lite URL accepts strict fixed-enum feedback bound to the source's
+publisher. Operator responses include exact publisher/action/reason counts by
+UTC arrival day or week, covering retained days including the current partial
+period. Migration 7 stores feedback separately; it deduplicates per daily key,
+publisher and action, erases hashes after day closure and expires rows at the
+configured UTC-day cutoff (default 90 days including today). Feedback hash
+erasure still runs if ping-hash erasure fails. Committed Lite responses always
+return `{ "accepted": true }`, without exposing dedupe state. Public and
+third-party publisher views exclude feedback.
+IPv4 or IPv6 /48s supply daily contributor keys, separately from /64 rate limits.
+Forwarded headers are ignored by default. A Cloudflare Tunnel needs explicit
+trusted connector CIDRs so clients do not share the connector key; only a trusted
+peer's single-IP `CF-Connecting-IP` is used transiently. Invalid values fall back
+to the peer and increment a content-free private counter. Startup refuses
+non-canonical ranges, whitespace, IPv4 prefixes wider than /24 and IPv6 prefixes
+wider than /64. Trusted-proxy peers can reach only the public GET routes and
+Lite POST route; private routes return 404 even with valid credentials. See the
+[single-host tunnel recipe](../../deployment/telemetry/README.md#single-host-cloudflare-tunnel)
+for public route limits and the separate infrastructure logging review.
+
+Public dashboards and scoped publisher keys receive only **weekly noisy
+estimates** over ten profile/adoption fields. The fixed public domain includes
+all enum values and operator-configured public versions/registry IDs, even true
+zero; no true-count k pre-filter remains. Sources default to catalog-only
+version admission. Optional `versionPolicy: "semver"` admits valid sender
+versions plus `custom`; operator exact views show all of them. Its public version
+support still comes only from `releaseVersions`, with no version dimension
+contributed by an empty SemVer catalog. Unlisted versions never expand public
+support. Migration 8 preserves catalog policy for existing sources. Published counts sum distinct daily
+contributor keys per value (network-days), so NAT undercounts installations.
+Sensitivity 40 per added ping and per-count ε=1/280 give ε≤1/7 per ping. If a
+network contributes at most 40 coordinates per day, its week sensitivity is 280
+and ε≤1; arbitrary traffic has the conservative domain-based bound D/40,
+computed from stored publication cells. The
+ideal geometric mechanism is pure ε-DP; persistent-key HMAC and finite-precision
+sampling qualify this implementation. Expected absolute noise is about 280
+weekly network-days. Multiple weeks/publishers compose. Counters and friction stay in
+the exact operator view. Set histograms overlap and cannot be summed or joined.
+
+Schema 6 freezes each publisher/week and its estimates once. Bounded 200-cell
+cursor pages replace the published row cap; repeated/restarted reads return the
+same stored values. A blocked dimension retains its publisher/day's associations
+while others erase theirs. Independent retention expires raw pings after 90
+days. Reads serve stored publications and finalized days without running
+finalization. Failed daily/weekly jobs appear in operator diagnostics and do not
+block other publishers/days. The captured cutoff and arrival fence prevent
+publication of a week that closes during the pass. Publisher-scoped HMAC cursors
+are verified before caching; public pages cache for at most 60 seconds and reset
+at UTC midnight. Failed credential refresh beyond 60 seconds returns
+503. This receiver implementation does not establish an installed Station sender
+or a deployment. See the [Lite contract, privacy/utility table and dashboard](../../packages/telemetry-broker/README.md#lite-observations)
+before interpreting received pings as activity estimates.
+
+The repository includes an optional Docker profile for Collector → Prometheus
+→ Grafana metrics and Collector → Tempo traces. Starting that profile is not
 proof that Station recorded or delivered a measurement. The local event log is
 also separate from the canonical orchestration EventStore.
 
@@ -41,9 +120,793 @@ remain untouched. This repairs
 deployed collector, storage backend or dashboard. The tables below remain
 declarations and recording call sites, not proof of those destinations.
 
+## Canonical usage export source
+
+The `GET /api/analytics/usage-export` path selects retained canonical
+usage observations in committed global order. It reuses the EventStore receipt
+SELECT, mapping and pricing projection. Dates are inclusive UTC Station-observed
+days, at most 366 days; each page selects at most 100 observation events. One
+event can produce distinct token and provider-cost receipts. Continuation fixes
+the stream epoch/high watermark and binds the source, request principal, tenant,
+owner set, scope and dates. It is pagination data, never an authentication grant.
+
+`scope=individual` selects only the verified person's own recorded owner id.
+`personal-account` explicitly selects the existing approved personal-conversation
+owner set; hosted mode refuses that broader scope and keeps exact owner+tenant
+selection. Runtime composition refuses unverified/operator-only person claims,
+rechecks existing credential/account authority at response release, and rechecks
+the owner set/source epoch. Unknown query keys and malformed continuations refuse.
+
+Coverage stays unknown: retained observation pages do not establish missing
+provider reports, all historical source deletions or complete history. This
+interactive path does not issue a companion grant or borrow a peer bearer. The
+separate grant, custody and receiving-page owners are described below. The
+source now journals deletion/scope invalidations and fences snapshots; Core now
+replays those invalidations into private companion storage. Core also
+materializes current receipts and checks source authority for queries. The
+[activation owner](../../src-server/analytics/analytics-activation.ts) binds
+private analytics to the physical home and recovery record as a negative fence.
+Stream epoch is copied by backups and is not that restore fence. Arbitrary
+clone, mirror and deployed recovery qualification remain open under #3459/#3460.
+Focused mounted-route and runtime-composition controls have exercised more than
+500 retained observations, fixed-head paging, owner/tenant scope, membership and
+queued-body revocation, verified person-bound Device and account reads, and
+cumulative-history refusal. They use controlled identity fixtures; live
+enrollment, durable sync, measured query performance, full gates and deployment
+qualification remain separate. The source refuses cumulative-cost projection
+when selected threads exceed a combined 1,000-event sequence budget, before
+hydrating their history; its evidence read also has a row bound. It reports
+unavailable rather than truncate cost segments. Durable cost-segment indexing
+and measured larger-history budgets remain open.
+
+The [scoped SDK reader](../reference/sdk.md#canonical-usage-export) validates
+receipt observation clocks, source/window/scope, committed order and a captured
+continuation snapshot without folding page facts into totals. Its fetcher and
+two-observer query controls have executed; a query key grants no source access.
+
+### Destructive source changes
+
+The source keeps a private SQLite invalidation journal beside the canonical
+EventStore. Deleting a history row and changing its owner/tenant record the
+relevant scope and thread in the same transaction as that mutation. Late history
+attribution with retained usage also records scope entry. These are minimal
+metadata tombstones, without prompts or tool bodies. The latest 10,000 entries
+and a retained-after floor bound storage. A durable initialization marker
+distinguishes a fresh legacy store from a lost journal on reopen. Missing
+retained evidence or a changed schema refuses export rather than resetting the
+revision.
+
+Pages capture this mutation revision in their SQLite read snapshot. Continuations
+and queued release check it independently of append-only high water and stream
+epoch. A deleted thread or tenant reassignment invalidates old cursors and queued
+pages; a failed mutation rolls both facts and journal back. After an upgrade or
+mutation refusal, restart at the first page instead of reusing an old cursor.
+
+The narrow grant endpoint returns `x-station-usage-source-revision`. The
+receiving reader carries that value into its final HEAD checks and requires the
+same revision back, so deletion after arrival at Core still fences a queued
+receiving response. This revision is separate from credential rotation. Core
+replays this journal into private companion storage before advancing facts. It
+does not prove pre-upgrade deletion history and is copied by backups; the
+separate physical-home/recovery activation owner supplies the negative fence.
+
+### Replay source invalidations
+
+GET `/api/analytics/source-grant-export/<approvalId>?mode=invalidations` uses the
+same narrow credential, receiving proof and current grant/person/tenant checks.
+It returns only the authorized scopes' thread IDs, reasons and observation times;
+private owner and tenant fields never leave the journal. `after` is a journal
+revision, not an event commit position. A nonzero `after` requires the prior
+`streamEpoch`; `pageSize` is 1–100. A continuation uses only `cursor` plus the
+mode, binding the grant generation, exact scope, epoch and fixed journal high
+water. Later invalidations do not enter that pagination cycle.
+
+`nextAfter` advances over the authorized page, or to the fixed high water once
+that cycle is exhausted, including a tail containing only other scopes. A
+checkpoint or continuation older than the retained floor returns 410
+`usage_export_history_gap`, rather than an empty success. The caller must
+reconcile or explicitly reseed its replica; advancing blindly would retain
+possibly deleted facts. An unknown/rolled-back source epoch or position refuses,
+and rotation or revocation fences old cursors and queued replies.
+
+These are historical invalidations with
+`coverage:"retained-invalidations-only"`, not proof that an index is current or
+that pre-upgrade deletion history exists. When applying a withdrawal, use the
+facts' captured source revision: remove facts captured before that invalidation,
+not a later authorized incarnation of the same thread. Scope entry signals a
+refresh/backfill, not deletion. The companion stored-page/checkpoint transaction
+is described below. The receiving page-bounded Core consumer is described below.
+The companion withdrawal transaction, Core replay integration and current
+indexed-query checks are implemented in the receiving sync and query owners
+below. Real deployment qualification remains separate.
+
+### Private companion checkpoints
+
+The companion now has a separate private usage storage namespace. An operator
+service registers only an empty bucket's key hash. The private capability alone
+binds and accesses its data; Core must hold it in the verified person's analytics
+custody. The page-sync path now derives it from the owned receiving analytics
+key with a target/grant-generation-specific domain; it never returns that key.
+Operator/product telemetry credentials cannot read private usage. The store
+never treats a claimed person ID or product installation hash as authority.
+
+A strict canonical page, its captured source revision, window checkpoint and
+operation receipt commit in one PostgreSQL transaction. Expected checkpoint and
+receiver-incarnation checks reject stale writers and a recreated empty store.
+A lost reply can be recovered by operation ID; replay does not advance twice.
+Different content under the same observation identity is a conflict. Missing
+checkpoint/row evidence refuses rather than silently returning empty history.
+
+Retained storage alone does not establish current source authorization or spend.
+Core orchestrates invalidation replay and checks current source permission
+before releasing queries; the companion derives canonical receipts and grouped
+summaries. Retention and erasure follow the separate [private receiver
+contract](../../packages/telemetry-broker/README.md#private-usage-storage).
+PGlite transaction tests do not establish real PostgreSQL deployment, source
+identity, restored-backup fencing, installed/native or release qualification.
+
+### Capture a page into the private companion
+
+POST `/api/analytics/recipient-candidates/<recipientId>/sync` with
+`{operationId,from,to,restart?}` commits or recovers one bounded page. It requires
+the current verified person and owned slot, source-address confirmation and a
+live narrow source grant for new capture. Core selects the installed companion
+itself, revalidating signed artifact, home/daemon/container custody and runtime.
+No target URL, person, tenant, storage key or source credential is body input.
+
+If the private bucket is absent, the person sync refuses with
+`private_usage_provision_required`. Use the separate
+[person request and operator preparation](#connect-a-personal-source-in-insights)
+before retrying. The operator's companion-management action registers only the
+private key hash. Existing buckets use the person's private capability; they do
+not require the viewer to gain operator data access. The storage key is derived
+from the owned receiving proof key, installation/custody and source grant/revision
+under a separate domain. Operator keys provision only infrastructure; source
+bearers go only to the approved source origin.
+
+Core chooses the source continuation from the durable companion checkpoint.
+Before sending a write it records the exact page intent privately and rechecks
+person/source/recipient access after target validation. A lost reply retains the
+same operation ID; retry that operation to recover its original receipt before
+sending anything again. Different input or a new operation while the prior
+outcome is unresolved conflicts. An explicit `restart:true` begins a fresh fact
+snapshot under checkpoint CAS without erasing old stored observations.
+
+The result is a historical `AnalyticsSourceSyncStatus`. `page-stored` means issue
+a new operation for the next page; `facts-captured` ends that fact cycle. Neither
+means a live index is current: `sourceAuthority:"not-established-by-status"`
+remains explicit. The separate query path checks current authority and materializes
+receipts; a sync status does not establish either.
+Cancellation discards the local staged body and stops writes; it does not claim
+that the remote copy was erased.
+
+A staged body expires at the earlier of source expiry or 24 hours. Runtime
+health housekeeping and sync actions discard expired bodies while retaining only
+content-free receipt expectations. `unconfirmed` is not process liveness; a
+historical commit can still be recovered after body expiry, but an absent
+receipt cannot trigger blind retransmission without its original body. No viewer
+bearer is persisted. Controlled actor/resource/transport tests copied 503
+canonical observations from each of two Source EventStores through one receiving
+home into PostgreSQL semantics, including lost-reply recovery and final-write
+denials. Those controls do not establish real TLS/person/device, TCP/fsync,
+native, restored-backup or release qualification. UI/SDK foreground
+orchestration and Personal Insights consume this path; background sync and full
+two-Station acceptance remain pending.
+
+### Withdraw invalidated companion facts
+
+The companion's private invalidation transaction is now implemented. It accepts
+only a bucket capability, expected receiver incarnation and expected journal
+position with a strict source page. Source Station/scope/epoch remain pinned to
+the bucket. Thread deletion or scope withdrawal removes older captured facts;
+a newer authorized capture of that thread is preserved. Scope entry requests
+refresh/backfill. Late older fact writes are fenced after the journal advances.
+
+Data withdrawal, capacity counts, replay cursor and recovery receipt commit
+together. The schema-v2 upgrade preserves earlier data and starts its journal at
+zero rather than pretending deletion history was processed. A missing journal
+receipt or stale position refuses.
+
+The Core sync action now replays at most 100 invalidations before advancing
+facts. `invalidations-pending` means use a new operation for the next replay
+page; repeating an uncertain operation recovers its original receipt first.
+Replay uses the approved source origin, current person/grant checks and a final
+write check, with private durable intent subject to the same expiry and
+cancellation cleanup as fact pages. Empty unchanged journals create no write
+receipt. A pruned source checkpoint returns `410 usage_export_history_gap`; it
+never advances as an empty page. Once replay completes, a changed source
+revision or scope entry restarts the selected fact window under checkpoint CAS.
+Personal Insights uses the separate current-query checks below: `facts-captured`
+is historical page delivery, and stored observations are not automatically live
+query authority.
+
+### Query captured private receipts
+
+The receiving-person API now exposes
+`POST /api/analytics/recipient-candidates/<id>/query` with a date window and
+optional index continuation. It checks the current source grant and requires a
+complete captured fact checkpoint plus caught-up invalidations. A fresh query
+whose source head has advanced returns `409 private_usage_sync_required`.
+The server keeps both private credentials; no operator data key is sent to the
+viewer. Source revocation is checked again before queued receipt bytes leave Core.
+
+The companion builds up to four selected-window indexes per private bucket in bounded
+steps. `indexing` returns progress without receipt rows; repeat with its `indexId`.
+`ready` returns at most 100 canonical receipts and an optional `nextAfter`.
+Continue with that index and cursor. These are receipt pages, not page totals or
+complete provider coverage. Reconciliation uses Station's shared cumulative,
+sparse-report and immutable-pricing rules; the interactive rollup's separate
+500-receipt cap is unchanged. No new billing calculation is introduced.
+
+A continuation stays at its captured source head while append-only usage arrives;
+`asOf` reports both that head and the newly observed head. It never silently turns
+a pinned view into a fresh one. Source mutations, changed local capture/index,
+retention expiry or a different selected window can require a new index. Expiry,
+withdrawal, owner erasure and maintenance invalidate derived receipts too.
+Missing index evidence refuses rather than returning an empty successful answer.
+Coverage remains retained observations only. The browser source-enrollment
+controls and physical-home/recovery negative fence are implemented; real
+deployment, arbitrary clone/mirror and native qualification remain open.
+
+### Group indexed usage without truncating history
+
+The same receiving query accepts `mode:"summary"` and `groupBy` of `day`,
+`provider`, `model` or `station`. Optional provider/model/account-key filters use
+actual receipt attribution; project and engine fields are not inferred or
+accepted. Account-key filtering also names its provider. Missing model data stays
+an unattributed group, not a guessed engine identity.
+
+After indexing, `summary.phase:"aggregating"` returns progress without totals.
+Repeat with the returned index and summary IDs. Each transaction processes at
+most 1,000 normalized receipts and atomically saves its accumulator and cursor.
+`summary.phase:"ready"` returns completed grouped rows, paged separately from
+receipt drilldown. Changing group/filter selection requires a new summary;
+reusing the previous summary ID conflicts. Drilldown paging never changes the
+full-window totals. Currencies and immutable price snapshots remain separate
+buckets; unknown measurements do not become zero or an invoice.
+
+Four index windows per bucket support independent current/comparison ranges.
+Each index retains at most eight grouped/filter caches, 1,000 groups and a 1 MiB
+accumulator. The existing database/admission/deadline limits still apply; budget
+refusal is a failure, never a successful truncated total. Old index eviction,
+withdrawal, expiry, pruning and owner erasure also discard grouped copies.
+Controlled PostgreSQL-semantics tests exercised 2,002 receipts over 1,001
+observations, interrupted aggregation writes, independent windows and stable
+money buckets. Their measured action budget is PGlite evidence, not deployed
+PostgreSQL/TCP/fsync, native or full query/UI qualification. The saved-view/Insights surface below now consumes these rows; full installed/native qualification remains open.
+
+### Save and open personal Insights views
+
+Open **Personal views** in the existing Insights surface (also embedded in
+Profile). Choose enrolled sources, UTC dates/period, grouping and a reported or
+estimated usage measure. Provider/model/account filters use receipt attribution;
+project and engine filters remain unsupported. Apply changes before reading the
+new results. Save creates an owned definition; Update uses its current revision.
+Use **More view actions** for refresh, reload, definition export and deletion.
+Reload a conflicting view before saving again. **More receipt actions → First
+receipts** returns a drilled-down source to its first receipt page. Previous/custom comparison periods
+keep separate coverage labels; missing rows and measurements are not zero, and
+unequal/unknown coverage does not become a regression score.
+
+A view selects at most one connection per advertised Station identity. Separate
+identities remain independent populations that can overlap. Differently identified
+clones are undetectable here; there is no cross-source deduplication. This is a
+selection guard, not verified provenance.
+
+Definitions survive server/browser restart and view remount. Deleting a view
+removes its definition, not its source history. Export contains the definition
+only. Source IDs and saved IDs do not authorize data: each query still checks the
+current verified person and enrolled source. Source enrollment/approval remains
+an explicit separate flow in **Connect or manage private sources**. Installed
+and native qualification are not established by the saved-view implementation.
+
+Foreground sync resumes an unfinished operation from owned metadata, processes
+bounded pages with pacing and stops on failure or cancellation. It does not retry
+an uncertain write under a new ID. Operator-only storage provisioning stays
+separate from viewer data access. Results pause during this sync and revalidate
+when it completes. Receipt drilldown and price provenance use progressive details.
+
+A retained-copy snapshot can appear as dated historical data during service
+failure within its validity window. A known access/validation refusal invalidates
+older snapshots across windows and remounts; a later outage cannot revive them.
+Inventory observations of inactive slots also invalidate their snapshots. A
+person-level inventory refusal invalidates the current scope's source snapshots,
+so metadata refusal followed by an outage cannot bypass that fence.
+Live-mirror data does not use this historical fallback. The controlled browser
+fixture exercised two-source save/reload/filtering, comparison rows, access loss,
+keyboard focus, dark/light themes and 390px layout. That is not real source
+onboarding, signed-artifact, installed/native or production proof.
+
+### Connect a personal source in Insights
+
+The [source setup controls](../../src-ui/src/components/monitoring/AnalyticsSourceSetup.tsx)
+are under **Personal views → Connect or manage private sources**. Use a verified
+person on both Stations. Installing the companion or signing in as the local
+operator does not grant access to another person's usage.
+
+1. On the receiving Station, open **Receive usage here** and copy its receiver
+   identity. On the source Station, open **Share this Station**, enter that
+   destination identity and origin, select the usage scope and copy policy, and
+   choose **Create public offer**. Source access expires after 24 hours.
+2. Transfer the public offer to the receiving Station. Enter the authenticated
+   HTTPS source address and choose **Prepare receiving key**. Transfer the public
+   receiving-key proof back to the source Station.
+3. On the source Station, paste that proof and choose **Review source permission**.
+   Compare the key confirmation code with the receiving Station before deciding
+   on the separate trusted requester page. A self-signed person claim does not
+   authenticate that person's identity. Approval alone does not start sync.
+4. After approval, choose **Create encrypted connection** and transfer that packet
+   to the receiving Station. Store it in the owned receiving slot, then review
+   the source address on its separate requester page. Credential storage and
+   address confirmation are separate operations.
+5. On the receiving Station, choose **Request private storage preparation**.
+   Give its request ID to that Station's operator. Under **Developer → Monitoring
+   → Companion → Prepare a person's private storage**, the operator enters the
+   ID, reviews the receiving person, slot, Station, companion installation and
+   credential revision, then chooses **Prepare this person's private storage**.
+   The companion must already be admitted, installed and running.
+6. Return as the receiving person, refresh the source list, select the authorized
+   source in the personal view, and run foreground sync before querying copied
+   history. Sync remains explicit, bounded and cancellable. The person uses the
+   prepared vault without acquiring operator credentials or management access.
+
+Storage preparation requests are held in memory for at most five minutes and
+expire with their source credential if sooner. After a Station restart, expiry,
+or a new request for the same slot, ask the person to request preparation again.
+The review binds the real receiving principal and current session/Device grant,
+slot, source confirmation, credential revision and managed installation custody.
+Operator approval allocates an empty vault and reserves capacity; it grants no
+source export, transfer or query permission. Changing the person, slot, credential
+or companion refuses the old request. Source authorization is checked before a
+source-qualified success response. If source consent disappears after allocation,
+success is withheld and the empty allocation may remain; failure is not rollback.
+Local authority is checked synchronously at dispatch and queued release, while
+source HEAD proves authorization only at the source validation boundary. Remote
+revocation after that HEAD cannot atomically retract release. A bounded shared
+installation lease excludes cooperating install/start/stop through each dispatch
+or enqueue, not external Docker administration or daemon/filesystem changes. Retrying the
+same live request provisions the same vault. A lost reply requires checking the
+request again; it is not evidence of failure or success. The request exposes no
+source, private-vault or operator credential. It does not start sync or grant
+source permission. An ordinary person cannot prepare storage or choose an
+arbitrary vault or receiver URL.
+
+Account-bound person Devices with a current matching account session may reach
+only the exact enrollment, requester review, receiving confirmation, saved-view,
+sync and query leaves marked in the
+[pairing-scope owner](../../src-server/security/pairing-route-scopes.ts).
+They still require `orchestration:read` and each route's current person, source,
+consent and grant checks. Account tokens, agents, cookies alone and Project
+membership alone do not obtain this access. Generic analytics, companion
+management and the orchestration commands endpoint remain closed to these
+Devices. Real dispatch from this account surface remains a checkpoint gap:
+the commands route's general session-read authorization does not establish
+Project execution permission, so telemetry access does not open it.
+
+Real HTTPS/person/PostgreSQL/UI enrollment, native execution, current visual
+verification at 390px and 1440px in both themes, and publication remain unverified.
+Source implementation does not establish installed runtime or release acceptance.
+
+The source offer and receiving slot selectors recover owned setup state after a
+reload. **Revoke source access** withdraws the source grant. Stopping a receiving
+slot does not claim that a remote copy was erased. Transfer controls expose only
+public or encrypted packets; private keys and plaintext credentials stay with
+server custody. The [SDK client](../../packages/sdk/src/client/analytics-enrollment.ts)
+uses the existing scoped enrollment routes and checks trusted review URLs before
+navigation. The main Insights view contains no consent approval action.
+
+Browser controls stop when the trusted popup cannot open. The native source
+implementation instead captures the exact enrollment response's HTTP-only
+requester cookie inside the HTTP owner, with a five-minute use limit. It binds
+that session to the request ID, partition, source origin and active profile
+authorization epoch. The renderer receives neither the cookie nor a decision
+nonce. Requester-only mode shows the server-authored description in OS chrome,
+checks the profile binding again before deciding, and has no operator fallback.
+The ordinary native operator broker still cannot substitute for this proof.
+
+Native onboarding is not qualified: Rust compilation was refused by the host's
+disk-space guard, and the changed handoff has not run in a real shell. The
+executed TypeScript suite covers the native IPC authority mode, requester-secret
+route validation, actual enrollment and encrypted credential routes, and the
+separate address review. It does not establish Rust compilation, OS-dialog,
+real two-Station TLS, installed-shell or deployment behavior.
+
+### Operational outcome consent and private terminal outcomes
+
+The source enrollment API and SDK can reserve the explicit consent profile
+`operationalConsent:"terminal-outcomes/v1"`. Existing intents and credentials
+without this field remain usage-only. Changing consent requires a new enrollment,
+receiving candidate and source approval; retry and rotation cannot widen it.
+The source requester review names the consent choice, the candidate signs the
+exact intent digest, delivery seals the choice, and receiving custody checks it
+against the enrolled intent. No prompts, tool input/output, error strings or
+paths are authorized by this profile.
+
+The backend path for #3460/#3463 is implemented:
+
+- **Classification.** The
+  [canonical terminal owner](../../src-server/services/orchestration/canonical-terminal-outcome.ts)
+  is shared with live engine-turn telemetry. A completed or aborted turn is an
+  outcome, and so is a turn-scoped `runtime.error` unless it is codex's deferred
+  retry. A deferred retry is never counted as a failure.
+- **Source export.** When the current grant record carries the exact consent,
+  the existing EventStore export page also selects those terminals. It uses the
+  same committed `globalSequence`, high water, stream epoch, source revision and
+  owner/tenant joins. Each terminal is an allowlisted fact: class, engine family,
+  Station-observed UTC time and opaque event/thread/turn IDs. The grant echo,
+  page literal and cursor context bind the consent. Usage-only grants keep
+  byte-identical receipt pages, and the legacy interactive rollup and dedup are
+  unchanged.
+- **Receiving storage.** Core takes consent only from the decrypted credential,
+  requires the source grant to echo it and binds it into the companion commit.
+  The companion PG store keeps terminals as ordinary observations, so
+  invalidation, retention pruning and revocation remove them with usage facts.
+  Restore-generation fences refuse them as they refuse usage queries.
+  Invalidation removes a terminal only with its own thread. Additive migration 5 adds a partial index; earlier digests are
+  unchanged.
+- **Query.** `POST …/recipient-candidates/<id>/outcomes` returns engine or day
+  counts. Each opaque thread/turn in a source bucket counts once, with its
+  latest terminal. The response includes the observed-turn denominator and
+  retained-only, unknown coverage. Equal IDs from different sources stay
+  separate. Missing consent, stale snapshots, alien owners/tenants and held
+  responses after source revocation are refused.
+
+The [setup UI](../../src-ui/src/components/monitoring/AnalyticsSourceSetup.tsx)
+offers this opt-in with usage-only sharing as the default. Saved definitions use
+`kind:"outcomes"`, completed/aborted/failed measures and engine/day grouping.
+The [SDK reader](../../packages/sdk/src/client/private-insights.ts) checks
+`privateOperationalOutcomes` before querying; mounted Personal Insights renders
+per-source counts, the observed-turn denominator and unknown retained coverage.
+These are independent source populations, without cross-source deduplication or
+full reliability/error rates. Product/fleet incidents remain separate.
+The full consent-to-PostgreSQL/UI execution journey, real HTTPS/person enrollment,
+installed/native behavior and release qualification remain unverified by this
+source review.
+
+### Source enrollment proposals
+
+`/api/analytics/source-enrollments` now records a verified person's explicit
+proposal for a source/destination relationship. This is the first stage of
+#3459, not an active analytics grant. Every result has `exportAuthority:false`
+and `destinationVerified:false`; no credential is issued, destination contacted,
+usage copied or sending enabled. Approval, custody, the enrollment UI and
+foreground durable sync are implemented as separate downstream steps below.
+Preparing this proposal activates none of them; background sync and real
+two-Station acceptance remain pending.
+
+POST supplies an operation UUID, proposed destination Station/origin, individual
+or personal-account scope, expiry within 30 days and an explicit live-mirror or
+bounded retained-copy policy. The source derives the person, tenant, owner set
+and source identity from current verified ingress and the canonical export policy;
+body identity or authority fields are refused. Hosted personal-account scope
+remains unsupported. Agent/plugin callers and unbound/operator-only attribution
+cannot prepare a proposal. Authority and membership are rechecked across storage
+and queued response delivery.
+
+GET lists the latest 20 own intents; GET `/<operationId>` recovers one.
+Repeating the same immutable intent returns its record; changing it conflicts.
+DELETE `/<operationId>` cancels the proposal and retains its receipt. Reusing a
+cancelled ID does not reactivate it. Records are private, bounded and atomically
+replaced under a cross-process lock. Corrupt or unsafe bytes refuse reads/writes
+without resetting the store. At most 20 unexpired prepared intents per
+person/tenant and 1,000 retained intents per source are accepted. These metadata
+bounds do not establish authorization, data retention or sync completeness. The
+downstream approval, narrow credential custody, revocation, source/deletion and
+physical-home/recovery fences, and foreground durable sync have separate
+implemented owners. This metadata stage does not establish remote-person
+identity or qualify the full two-Station journey.
+
+### Receiving key candidates
+
+`/api/analytics/recipient-candidates` prepares a receiving key slot for the
+current verified person and tenant. POST supplies an operation UUID, a canonical
+proposed source origin and a prepared source-intent DTO. The intent's proposed
+destination Station must match the receiving Station's current identity. No
+origin is contacted. Recipient identity comes from verified local ingress,
+never a body person/tenant field.
+
+The slot stores separate X25519 encryption and Ed25519 proof private keys in
+private analytics storage. API results contain only a signed public candidate,
+its proposed source intent, confirmation code and observed candidate/expired/
+cancelled state. The signature binds the source-intent digest, source/destination
+IDs and proposed origins, recipient identity/context, both public keys and a
+five-minute lifetime capped by the proposal's expiry. Reopening or repeating the
+same operation recovers the same keys; changing its proposal conflicts. GET
+lists the latest 20 own slots; GET/DELETE `/<recipientId>` reads or cancels one.
+Cancellation retains the keys for reconciliation and never reactivates on replay.
+
+Every view retains `verification:"key-possession-only"`, `sourceVerified:false`
+and `exportAuthority:false`. A self-signed candidate does not authenticate a
+remote person, approve Station trust, establish current source authorization or
+grant home-transfer authority. Its recipient ID is a locally derived echo, not a
+portable authorization credential. Independent destination confirmation, source
+approval and encrypted credential delivery are separate steps. Foreground sync
+is a separate implemented downstream action; this key stage starts no transfer.
+No Station/F1 signing key or generic personal-token bearer is reused.
+
+### Source approval review
+
+`/api/analytics/source-grant-approvals` now requests an actual Station consent
+review for an immutable source intent and receiving-key candidate. The source
+person must use a live, person-bound Device with read access; operator fallback,
+unbound Devices, generic personal tokens, agents and plugins cannot originate
+this approval. Recipient/source principal IDs must match exactly: matching local
+usernames across distinct issuers is not an identity link.
+
+The source checks the saved owner/tenant snapshot, requested scope, expiry,
+recipient signature/digest and destination binding. The separate-origin review
+shows the source person, owner count, scope, target/origin, public receiving key
+and confirmation code, expiry and retention choice. A signature is still only
+key possession: the user must compare the key with the authenticated receiving
+Station. The review is partitioned by source/person/tenant and accepts only its
+transaction-bound requester session; ordinary operator or promoted-device
+consent authority cannot render or decide it. Browser review requires a one-use
+render nonce, expected Origin/Fetch Metadata and a re-derived target guard before
+the commit. Native requester custody is described in the onboarding section;
+its installed-shell qualification remains open.
+
+Source cancellation or changed eligibility refuses the decision without granting
+anything. The committed `AnalyticsSourceApproval` records source-user approval
+of the exact key/policy, not remote-person authentication. It retains
+`exportAuthority:false`; credential delivery and each export read require
+separate admission. Core supports explicit bounded receiving sync. Verified clone/mirror identity
+and installed recovery qualification remain open. GET `/<operationId>` reads the
+own receipt, DELETE revokes the recorded approval, and GET `/requests/<id>` reads
+the own pending review status. The requester-only browser path needs a listening
+consent origin on the same hostname for its host-only cookie; it does not borrow
+native operator authority as a substitute for person consent.
+
+Source approvals also bind to the private home activation: physical root identity
+and the restore owner's recovery ID. This is a negative fence, never identity or
+source authority. Restoring an approved snapshot after revoking its credential
+must not make that credential usable again. The source refuses such a record
+before person-authority lookup. Older records without activation evidence cannot
+be silently adopted or redelivered; the owned setup route asks for a new source
+connection and permission review. Revocation remains available for cleanup.
+
+Runtime bootstrap separately binds private receipt and invalidation epochs to
+that activation. Normal home restore and supervised update rollback change
+those analytics epochs without
+rewriting the generic database stream identity. A live activation change or
+unreadable recovery metadata refuses private export reads. If provenance is
+unavailable at startup, bootstrap installs a refusing private-export callback;
+it does not turn that failure into a fallback epoch or stop generic Station
+startup. Repairing the metadata requires a restart before private exports resume.
+
+Receiver key records also bind to activation. A restored or legacy unbound slot
+reports `restore-required` and omits stored-credential, source-confirmation and
+sync status. It cannot materialize a delivery, resume sync, read source pages or
+query private storage. The owner can cancel the old slot and prepare a fresh,
+unapproved key; preparing that key does not grant source access. Setup hides the
+old proof and asks for fresh source permission. These are operation fences, not
+claims that backup key material has been erased.
+
+Controlled tests use the actual home restore owner, real encrypted grant flow,
+private usage observations and PostgreSQL-semantics checkpoint storage. They
+cover approved-snapshot → revoke → restore and key/checkpoint-snapshot → cancel
+→ restore through both normal restore and in-place update rollback, including
+attempted data reads and fresh-key preparation. Update rollback publishes a fresh
+recovery record before removing copied state, preserves that fence if interrupted,
+and advances it again on retry. These checks do not establish arbitrary raw-copy
+detection, verified clone/mirror identity or installed/native recovery; those
+remain open.
+
+### Encrypted source credential custody
+
+POST `/api/analytics/source-grant-approvals/<operationId>/delivery` now creates a
+source credential for an approved, unexpired policy. The private owner/tenant/set,
+approving Device and binding must still match. Account standing is checked since
+the approval time, so a later sign-in does not silently revive approval predating
+a global sign-out. The source keeps only the credential hash and encrypted
+delivery; repeated requests return the same ciphertext/key rather than rotating it.
+
+The JWE uses ECDH-ES/A256GCM with the approved slot's X25519 encryption key and
+binds source/approval/intent, destination/recipient context, revision and expiry.
+POST `/api/analytics/recipient-candidates/<recipientId>/credentials` materializes
+it only under the receiving person/tenant and an uncancelled slot. Mismatched
+context, altered envelopes, stale revisions and expired new deliveries refuse.
+The recipient stores plaintext only in private person-scoped analytics custody;
+API results contain metadata, never the credential or private keys. Lost-reply
+replays recover the same stored receipt.
+
+`credentialStored:true` means custody only. Decryption proves the receiving key
+worked; it does not authenticate the source, prove current source permission or
+activate a data pipeline. `sourceVerified:false` and `exportAuthority:false`
+remain explicit. No source origin is contacted by materialization. Source grant
+revocation stops further delivery and narrow export reads, including queued
+responses. The explicit receiving page reader is a separate step. The enrollment
+UI and foreground durable sync are separate implemented steps; live transport
+and full two-Station qualification remain open. Generic personal, peer, MCP and
+provider credentials are not used for delivery.
+
+### Rotate a source credential
+
+POST `/api/analytics/source-grant-approvals/<operationId>/rotate` accepts a fresh
+`rotationId` UUID and `expectedRevision`. The same currently eligible approving
+Device/person and exact approved policy are required. Rotation changes only the
+credential generation; it does not extend expiry, broaden scope or confirm a
+source address. The source atomically replaces the hash and encrypted delivery.
+Old credentials, proofs, cursors and queued export responses stop working.
+
+Repeating the current rotation ID with its original expected revision recovers
+the same ciphertext. A stale revision, reused ID with changed input or replay of
+an older rotation conflicts. A grant retains at most 128 rotation IDs; after
+that, enroll a new policy rather than pruning its replay history. Materialize the
+new envelope at the receiving slot before using it; the receiving owner refuses
+revision rollback. Automatic rotation and transfer remain separate work.
+
+### Confirm and read a receiving source
+
+After materialization, POST
+`/api/analytics/recipient-candidates/<recipientId>/source-confirmation` with `{}`
+requests a separate requester-session consent review. Open the displayed HTTPS
+address as the source Station and check its identity before approving. This
+records that person's choice of the exact source address, slot and credential
+generation. Operator consent cannot substitute for the requester. The slot's
+`sourceConfirmation` is historical person-approved-HTTPS-origin metadata;
+`sourceVerified:false` remains distinct from that choice. Rotation clears the
+confirmation and requires reviewing the new generation.
+
+POST `/<recipientId>/read` on the same API takes a UTC `from`/`to` window,
+optional `pageSize` (1–100), and cursor plus snapshot for later pages. It refuses
+until source confirmation exists. The reader first checks an unauthenticated
+Station handshake over the approved HTTPS origin; an identity mismatch sends no
+credential. Only then does Core send the private narrow credential and delivery
+proof to that source's export leaf. Redirects and HTTP fallback are refused.
+The deadline is 10 seconds and the page body ceiling is 2 MiB. A shared strict
+contract decoder rejects foreign source/scope/snapshot, out-of-order observations,
+unknown content fields and invalid money/provenance shapes.
+
+Receiving authority and the current private slot are rechecked, and a source
+HEAD request revalidates current grant permission before release, including a
+queued response. Cancellation, rotation or revocation refuses further release.
+No browser, peer, operator or provider credential is forwarded, and no plaintext
+export credential is returned. This is an explicit bounded page read: it does
+not create a durable index, checkpoint, background sync, deletion journal or
+restore fence. Live TLS, two-machine and installed/native qualification remain
+separate from mounted controlled-transport tests.
+
+### Scoped source export
+
+GET `/api/analytics/source-grant-export/<approvalId>` accepts only the delivered
+`stax_` credential and the receiving key's signed delivery-possession proof.
+The proof binds the credential hash, source, approval, recipient context,
+revision and expiry. It is reusable delivery evidence, not a fresh request
+signature. Neither credential nor proof grants general Station API access.
+
+The source derives scope from its saved approval, rechecks the approving Device,
+account standing, owner set and ingress tenant, and reads the canonical usage
+export. Every page and queued response rechecks current approval. HEAD on the same
+leaf authenticates the same grant and returns 204 without usage facts. Cursors bind
+the grant revision and credential hash in addition to the canonical snapshot;
+they cannot be exchanged with interactive export cursors. Retained observations
+still carry unknown coverage. Receiving custody does not authenticate a proposed
+source origin. The receiving page reader requires a separate explicit
+source-address confirmation. The enrollment UI and explicit foreground sync are
+implemented; background sync and real two-Station acceptance remain pending.
+
 ## Developer diagnostics
 
-Developer → Monitoring provides five views over existing Station measurements:
+Developer → Monitoring → Companion checks the selected Station's local container
+prerequisites from an operator session. It reports missing Docker/Compose,
+unsupported or remote contexts, and observed container architecture/versions.
+On capable servers it also shows retained parent-release evidence, distinguishing
+missing/invalid envelopes and payloads from a verified parent signature and
+matching build inventory. That evidence does not authenticate the original
+archive bytes or establish runtime qualification.
+An authorized operator can choose **Prepare signed archive** to download and
+verify the signed parent archive and prepare its fixed companion files in the
+selected Station's private storage. The pane distinguishes a verified archive
+from companion files prepared and verified; neither starts services.
+**Check preparation status** reads the retained receipt. After a lost response,
+the pane checks the same operation; it never automatically repeats the download.
+Reopening the pane recovers the latest recorded operation. An unconfirmed result,
+pending receipt, lock or missing receipt requires reconciliation before another
+attempt; a recorded intent or lock does not establish that a process is running.
+The pane also exposes conditional installation and explicit start/stop controls.
+Installation requires fresh host and parent-release evidence, prepared archive
+bytes with a matching architecture profile declaration, and an explicit choice
+to use managed Docker volumes on the selected Station. Installation creates
+stopped services. **Start companion** starts an owned installation; **Stop
+companion** preserves its volumes. Current runtime and authenticated storage
+status come from a fresh state read, not a completed action receipt.
+
+After a lost install or control response, the pane reads the same operation's
+receipt without automatically repeating the mutation. Unconfirmed state blocks
+a new start; an explicit stop remains available when current custody permits it.
+Reopening recovers recorded installation and action state. A failed refresh does
+not retain an earlier positive status. No complete official architecture profile
+has been issued, so these conditional controls do not yet establish a qualified
+public installation journey. Sending and personal source access remain separate
+choices.
+
+When managed runtime and receiver storage are ready, **Received product trends**
+reads this companion through Core. It offers 7/14/30-day UTC windows and a release
+filter over the bounded received groups, with 50 groups per page. Counts describe
+received disclosed product observations, not personal usage or billing. Producer
+wall-clock time, retention and unknown delivery coverage stay visible. A failed
+refresh hides earlier results. The receiver operator key stays on the selected
+Station; the pane receives validated aggregates only. Real qualified-artifact
+installation and rendered-query acceptance remain outstanding. See the
+[companion profile](../../deployment/telemetry/README.md#station-host-prerequisite-api).
+
+### Review an incident draft
+
+Open **Incident groups and issue drafts** under the companion's received product
+trends. It uses the same UTC window and reads only while expanded. The
+[incident reader](../../packages/telemetry-broker/src/product-incidents.ts) groups
+retained product observations by event/component, attributed engine, classified
+failure and immutable process-build metadata. Engine failures currently carry
+`unclassified` rather than a guessed stack signature. Recovery observations use
+the existing failure-kind inventory.
+
+Each group separates succeeded, failed, aborted, unresolved and unknown
+populations. Its observed denominator covers received source/event observations
+in that cohort, not every attempted operation. Affected/observed installation
+counts use reported installation identifiers; they are not person or hardware
+counts. First/last problem times use producer wall clocks. Storage probes create
+no product observations. Delivery coverage remains unknown, so comparing counts
+alone cannot establish a release regression.
+
+**Review issue draft** reads fresh evidence before generating text. **Copy
+reviewed draft** performs another current operator read before writing to the
+clipboard. A failed read hides earlier groups and drafts. Drafts include the
+window, group reference, exact available process revision and its provenance,
+outcome populations, denominator and uncertainty. A checkout hash does not
+identify served bundle bytes. Reproduction steps and approved sanitized
+attachments still need user review. These controls do not publish externally.
+
+The [Core route](../../src-server/routes/system/telemetry-companion-routes.ts)
+retains the receiver key and rechecks operator access after reading. Reports
+contain no raw stack traces, prompts, filesystem paths, source or installation
+identifiers. Strict contract validation rejects extra fields, unsafe build
+metadata and inconsistent population counts. More than 1,000 groups fails rather
+than returning a successful truncated report; the pane displays 25 groups per
+page. Definitions and drafts do not grant personal-source access.
+
+Executed coverage includes PostgreSQL-semantics grouping and overflow controls,
+Core response/authority checks, and a Core→SDK→UI copy-refusal test after access
+loss. This does not qualify deployed PostgreSQL, installed/native rendering or
+external publishing. Private-source incident detail remains unfinished.
+
+### Link an existing issue
+
+In a reviewed incident draft, **Linked issues** accepts canonical GitHub issue
+URLs. These are user-supplied references: Station does not check issue existence,
+publish a comment, attach diagnostics or change the external issue. Other
+tracker providers are not implemented by this control.
+
+Core checks current operator access and reads the current managed companion's
+product evidence before returning or adding references. Links belong to that
+installation and incident group. A different installation cannot read or remove
+them; a missing current group prevents listing or adding references. Removal
+changes the local reference only. The receiver's public report and generated
+draft do not automatically include user-supplied issue URLs.
+
+The private `security/telemetry-incident-links.json` file keeps at most 1,000
+records, eight active references per group, within a 1 MiB file bound. References
+become invisible after 30 days. Expired records are physically pruned on a later
+successful link-creation mutation; this is not a timed erasure guarantee.
+Removal drops the issue URL immediately and keeps a minimal operation tombstone
+until expiry. These records contain no incident evidence snapshot or raw event
+content.
+
+A create operation has a stable UUID. A lost-reply retry with the same UUID and
+input returns its recorded state; conflicting reuse and duplicate active issue
+references fail. Replaying a removed create operation cannot resurrect it while
+its tombstone is retained. After the 30-day retention horizon, that recovery
+record is no longer guaranteed. The pane keeps the same operation ID when
+retrying an uncertain reference and refreshes current links after settlement.
+No external publishing authority follows from a link or its operation receipt.
+
+Executed tests use actual private-file writes and reopen, installation boundaries,
+current-group and operator refusals, lost replies, duplicate/conflicting writes,
+deleted-operation replay, expiry, capacity and corruption. The UI→SDK→Core journey
+also exercises a lost reply and stable-ID retry against the real link store.
+Installed rendering, timed physical erasure, other tracker integrations and
+private-source incident detail remain unqualified or unfinished.
+
+Developer → Monitoring → Activity provides five views over existing Station measurements:
 
 | View | Source and limits |
 | --- | --- |
@@ -78,7 +941,18 @@ principal or provider writer and remain unallocated in those dimensions even if
 arbitrary metadata names them. Engine person attribution uses the server-stamped `turn.started`
 principal; usage-event principal fields cannot override it. Current app or Agent configuration
 never fills historical gaps.
-The hero graph shows the last 14 UTC days rather than the last 14 populated rows.
+The hero graph shows the last 14 UTC days rather than the last 14 populated rows,
+with full date endpoints at narrow widths. The usage summary shows retained activity,
+conversations, active UTC days and recorded cost. It does not divide a partial token
+or cost sum by all turns to imply a measured per-turn average. Model rankings show
+only recorded model identities and disclose unattributed turns; current Agent defaults
+do not establish historical model-to-Agent relationships. Model and Agent rows and
+details distinguish absent cost from a reported or estimated zero. Agent cost buckets
+retain optional `reportedCostUsd` and `estimatedCostUsd` alongside their combined `cost`.
+Paired people, the operator breakdown, peer receipts, milestones, diagnostics and
+history mount when their disclosure is opened and unmount when closed. Shared
+analytics queries, including milestone data, continue to follow their context
+ownership. Existing authorization rules still apply to the connected Station.
 
 [UsageAggregator](../../src-server/analytics/usage-aggregator.ts) rebuilds the
 snapshot on an active read when the previous scan is at least a minute old.
@@ -233,8 +1107,14 @@ two engines are declared to count cached input differently. Costs in different
 currencies, and estimates under different price snapshots, are listed side by
 side and not added together. The tree covers sessions on this Station only.
 
-Delegated tasks are found from the delegation context Station stamps at
-launch, or from a `parentTaskId` the request names. For a Claude Code or Codex
+Delegated tasks are found through an indexed projection of parent mentions
+in `session.started` and later `session.configured` events: delegation context,
+legacy `parentConversationId`, or a `parentTaskId` the request names. The
+[storage migration](../../src-server/domain/migrations/016-session-parent-mentions.ts)
+backfills existing events and maintains mentions in the event write transaction.
+The read preserves context precedence and matching-start provenance; these
+mentions describe naming, not authority to stop a child. They do not record an
+exact initiating Session or a detached lifetime. For a Claude Code or Codex
 session's `delegate_task` call Station derives the context from the calling
 session's own record; for Station's own agent the runtime attests it from the
 conversation the tool call ran in. A task launched through a caller-less
@@ -296,33 +1176,54 @@ access or read failure.
 
 ## Quick Start
 
+The local stack is the [developer profile](../../deployment/telemetry/README.md#developer-profile)
+of the private telemetry deployment: the same pinned Collector, Prometheus,
+Tempo and Grafana, without the product receiver. Create its two private
+credential files as that section describes, then:
+
 ```bash
-cd monitoring && docker compose up -d
+export TELEMETRY_PRIVATE_DIR="$HOME/.station-telemetry-dev"
+docker compose -f deployment/telemetry/compose.diagnostics.yaml \
+  -f deployment/telemetry/compose.dev.yaml up -d
 ```
 
 | Service    | URL                        | Credentials     |
 |------------|----------------------------|-----------------|
-| Grafana    | http://localhost:3333      | admin/station   |
-| Prometheus | http://localhost:9090      | —               |
-| Jaeger     | http://localhost:16686     | —               |
-| Collector  | http://localhost:4318      | OTLP HTTP       |
+| Grafana    | http://127.0.0.1:44484     | `telemetry-admin` and the `grafana-password` file |
+| Prometheus | http://127.0.0.1:44483     | —               |
+| Collector  | http://127.0.0.1:44482     | OTLP HTTP, `x-api-key` from the `otel-key` file |
 
-The Grafana dashboard auto-provisions from `monitoring/grafana/dashboards/station.json`. No manual import needed.
+Grafana provisions `deployment/telemetry/dashboards/station.json`; traces are
+in its Tempo data source. No manual import is needed.
 
 ## Environment Variables
 
 | Variable                    | Required | Default     | Description                                      |
 |-----------------------------|----------|-------------|--------------------------------------------------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | — | OTLP HTTP base endpoint. Unset means no OTel SDK initialization; local monitoring remains available. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | — | OTLP HTTP base endpoint when no saved collector address exists. Without either address, no OTel SDK initializes; local monitoring remains available. |
 | `OTEL_SERVICE_NAME` | No | `station` | OTel service name. |
-| `STATION_TELEMETRY_API_KEY` | No | — | Optional `x-api-key` header for OTel export. This is not the product-usage key. |
+| `STATION_OTEL_API_KEY` | No | — | Optional `x-api-key` header for OTel export. This is not the product-usage key. |
+| `STATION_TELEMETRY_API_KEY` | No | — | Legacy alias for the OTel key; a nonempty canonical key wins. |
 | `STATION_EVENT_LOG_RETENTION_DAYS` | No | `30` | UTC daily monitoring files retained on disk. |
 | `STATION_EVENT_LOG_MAX_BYTES` | No | `268435456` | Maximum retained monitoring-event bytes; the active UTC day's file is protected. |
+
+Operator Full observations use separate `STATION_PRODUCT_TELEMETRY_*` variables and
+disclosure authority; see [usage telemetry](../reference/usage-telemetry.md).
+Legacy names remain supported until a separate release decision. Bootstrap
+notices name aliases or conflicts without printing key material.
+
+Settings → Telemetry distinguishes exporter initialization, metric and trace
+callback acceptance/failure, and explicit connection checks. An OTLP check sends
+empty trace and metric requests and establishes only collector HTTP acceptance.
+The response marks downstream delivery unverified; stored metrics, trace
+queries and dashboards need their own runtime qualification. Status and
+connection results describe the current Station process.
 
 To enable telemetry against the local stack:
 
 ```bash
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:44482
+export STATION_OTEL_API_KEY="$(cat "$HOME/.station-telemetry-dev/otel-key")"
 export OTEL_SERVICE_NAME=station
 ```
 
@@ -383,13 +1284,13 @@ If a metric is load-bearing for a decision, it needs a local record as well.
 Station's own server logs are one instance of this: `station.logs.read` counts
 read-path *queries*, but the durable local record is the NDJSON store itself
 (`<STATION_HOME>/logs/server/`) plus its self-read path — `GET
-/api/diagnostics/logs` and the `read_logs` MCP tool (archive#1896 slice 2, see
+/api/diagnostics/logs` and the `read_logs` MCP tool (archive#1896; see
 [docs/reference/config.md#logging](../reference/config.md#logging)) — so the logs
 this section's own counters describe are themselves locally readable, not just
 counted.
 
 The worked example is the project-resource migration shadow
-(archive#1501 slice 3a): alongside `station.project_resource.shadow_comparisons`
+(archive#1501): alongside `station.project_resource.shadow_comparisons`
 it aggregates comparison counts by dimension in a per-home
 record at `<STATION_HOME>/project-resource-shadow.json`
 (`src-server/services/projects/project-resource-shadow-record.ts`). Read it
@@ -451,8 +1352,8 @@ older Station overwrite a newer one's history.
 ```
 Station server
   └─ OTel SDK (src-server/telemetry.ts)
-       ├─ Traces  → OTLP HTTP :4318/v1/traces  → Collector → Jaeger
-       └─ Metrics → OTLP HTTP :4318/v1/metrics → Collector → Prometheus → Grafana
+       ├─ Traces  → OTLP HTTP /v1/traces  → Collector → Tempo → Grafana
+       └─ Metrics → OTLP HTTP /v1/metrics → Collector → Prometheus → Grafana
 ```
 
 `src-server/index.ts` imports `src-server/telemetry.ts` before runtime/instrument
@@ -512,7 +1413,7 @@ domain operations, so their totals are not counts of one business action.
 | `station.filetree.operations` | Filesystem route and file-tree/preview service operations | `op` or `operation`, sometimes `outcome` |
 | `station.registry.operations` | Registry operations | `operation`, with `outcome`, `source`, `item` where supplied |
 | <a id="skills"></a>`station.skill.discoveries` | Discovery passes; the discovered count is an attribute | `count`, `projectSlug` |
-| `station.skill.activations` | `skill_read` calls, including failed reads; not proof an Agent executed a skill | `skill` |
+| `station.skill.activations` | `activate_skill` tool calls, including failed reads; not proof an Agent executed a skill | `skill` |
 | <a id="other"></a>`station.analytics.operations` | Analytics route operations | `op` |
 | `station.bedrock.operations` | Model catalog and Bedrock operations | `op` |
 | `station.config.operations` | Config and connection operations | `op`, sometimes `id` |
@@ -541,8 +1442,25 @@ a confirmed deferral.
 | `station.tool.duration` | Matched call/result elapsed time from MetadataHandler **and** the external-engine bridge | `tool` when reported, `plugin` | ms |
 | `station.scheduler.job.duration` | Scheduler execution duration | `job` | ms |
 | `station.approval.duration` | Explicit registry settlement time | `action` | ms |
-| `station.skill.activation.duration` | `skill_read` duration, including failed reads | `skill` | ms |
+| `station.skill.activation.duration` | `activate_skill` call duration, including failed reads | `skill` | ms |
 | `station.mcp.negotiation.duration` | Negotiation plus discovery duration | Negotiation attributes above | ms |
+| `station.runtime.event_loop_lag` | How late a 10-second runtime timer woke | None | ms |
+
+The lag histogram only sees a stall that overlaps a timer wake, and it is
+exported only with an OTel endpoint. Independently of OTel, a window whose
+event-loop delay reached one second writes an `Event loop stalled` warning to
+the server log (`<STATION_HOME>/logs/server/`). The warning carries
+`maxDelayMs` and `p99DelayMs`, plus what the process did during `elapsedMs`:
+`cpuUserMs`, `cpuSystemMs`, `majorPageFaults`, and `gcCount`, `gcTotalMs`,
+`gcMaxMs`, with `rssMb` and `heapUsedMb` at the end of the window. Read them as
+leads. CPU time is the whole process's, across all of its threads, not only
+the event loop. GC totals are main-thread pause time, so a GC total near the
+stall points at garbage collection. On Linux and macOS, many major page faults
+mean the process waited on pages read from disk (swap, or evicted code and
+mapped files); on Windows the count includes soft faults too. Little
+CPU time and few faults point at a call that blocked without computing, or at a
+host that ran other work. The warning is written about 250 ms after the window
+ends, so it includes GC pauses that Node reports late.
 
 The cost counter has USD semantics in its producer but no declared instrument
 unit. Token counters likewise have no explicit unit property.
@@ -559,12 +1477,13 @@ runtime wiring supplies these map sizes:
 | `station.agents.active` | Loaded entries in `activeAgents`, not currently executing turns |
 | `station.mcp.connections` | Entries in `mcpConnectionStatus`, including failed entries, not only healthy connections |
 
-`station.tokens.context` and `station.prompt.operations` are declared, but this
-audit found no current production recording calls for them in the repository.
+`station.tokens.context` is declared, but this audit found no current
+production recording call for it in the repository.
 `station.layout.operations` and `station.voice.duration` have no current
-declaration. Historical retained series or a dashboard query do not establish
-a current producer. The dashboard follow-up is
-[#2751](https://github.com/kontourai/station/issues/2751).
+declaration; the dashboard has no layout operations query until
+[#2751](https://github.com/kontourai/station/issues/2751) adds the instrument.
+Historical retained series or a dashboard query do not establish a current
+producer.
 
 <a id="token-field-fallback-pattern"></a>
 
@@ -592,7 +1511,7 @@ See [chat finalization](../../src-server/routes/chat/chat-lifecycle.ts) and
 
 ## Grafana Dashboard
 
-The dashboard (`monitoring/grafana/dashboards/station.json`) contains 28 non-row panels plus five section rows. The following numbers are
+The dashboard (`deployment/telemetry/dashboards/station.json`) contains 26 non-row panels plus five section rows. The following numbers are
 reading order, not Grafana JSON panel IDs:
 
 | # | Title | Type | Category |
@@ -608,49 +1527,58 @@ reading order, not Grafana JSON panel IDs:
 | 9 | Requests by Agent | bargauge | General |
 | 10 | Tool Calls | bargauge | General |
 | 11 | Agent Operations | bargauge | CRUD Operations |
-| 12 | Layout Operations | bargauge | CRUD Operations |
-| 13 | Prompt Operations | bargauge | CRUD Operations |
-| 14 | Project Operations | bargauge | CRUD Operations |
-| 15 | Plugin Activity | bargauge | Plugins |
-| 16 | Plugin Events Over Time | timeseries | Plugins |
-| 17 | Notifications | bargauge | Notifications & Scheduler |
-| 18 | Scheduler Jobs | bargauge | Notifications & Scheduler |
-| 19 | Scheduler Job Duration | timeseries | Notifications & Scheduler |
-| 20 | Provider Operations | bargauge | Providers & MCP |
-| 21 | MCP Lifecycle | bargauge | Providers & MCP |
-| 22 | Knowledge Operations | bargauge | Providers & MCP |
-| 23 | Tool Duration (p95) | timeseries | Performance |
-| 24 | Chat Duration Distribution | timeseries | Performance |
-| 25 | Context Overhead vs Input Tokens | timeseries | Performance |
-| 26 | Error Rate | timeseries | Performance |
-| 27 | Cost by Agent | bargauge | Performance |
-| 28 | Token Usage | stat | Performance |
+| 12 | Project Operations | bargauge | CRUD Operations |
+| 13 | Plugin Activity | bargauge | Plugins |
+| 14 | Plugin Events Over Time | timeseries | Plugins |
+| 15 | Notifications | bargauge | Notifications & Scheduler |
+| 16 | Scheduler Jobs | bargauge | Notifications & Scheduler |
+| 17 | Scheduler Job Duration | timeseries | Notifications & Scheduler |
+| 18 | Provider Operations | bargauge | Providers & MCP |
+| 19 | MCP Lifecycle | bargauge | Providers & MCP |
+| 20 | Knowledge Operations | bargauge | Providers & MCP |
+| 21 | Tool Duration (p95) | timeseries | Performance |
+| 22 | Chat Duration Distribution | timeseries | Performance |
+| 23 | Context Overhead vs Input Tokens | timeseries | Performance |
+| 24 | Error Rate | timeseries | Performance |
+| 25 | Cost by Agent | bargauge | Performance |
+| 26 | Token Usage | stat | Performance |
 
 Current query limits matter when interpreting those panels:
 
-- Layout, Prompt, and Context queries do not have current recording sources as
-  described above. Notifications and Knowledge group by `operation`, but their
-  producers use `op`. Other mixed-label families need their populations separated.
+- The Context query has no current recording source as described above.
+  Notifications and Knowledge group by `operation`, but their producers use
+  `op`. Other mixed-label families need their populations separated.
 - Scheduler and chat request panels include operations beyond completed work.
   Tool-call and tool-duration populations differ. Gauge titles do not change
   the map-cardinality meanings above.
 - Chat p95 is calculated per histogram series without aggregating Agent/plugin
   buckets into a global p95. Cost panels show partial estimates.
-- `or vector(0)` in the Errors query can render zero when no series was observed.
-  That is not evidence that instrumentation ran and observed no errors.
+- The Errors query has no `or vector(0)` fallback, so an unobserved series shows
+  no data rather than a zero. A zero is still not evidence that instrumentation
+  ran and observed no errors.
 
 [#2751](https://github.com/kontourai/station/issues/2751) owns the query/producer
-reconciliation. The Compose files use `latest` images and do not pin host bind
-addresses; Grafana enables an anonymous Viewer and the example admin password.
-Treat this as an operator-configured development example, not a qualified
-production deployment. This audit did not start Docker or test collector,
-Prometheus, Grafana, or Jaeger delivery.
+reconciliation. The Compose profile pins the Collector, Prometheus, Tempo,
+Grafana and PostgreSQL images by digest. The receiver and cloudflared images
+are operator-selected: Compose requires a value but does not enforce a digest,
+so select an exact source-built tag or digest as the
+[profile README](../../deployment/telemetry/README.md) describes. Published
+ports bind to loopback, and the profile requires private credential files with
+no default password. It is still a development and private-operator profile,
+not a qualified production deployment. One local start of the developer profile
+provisioned this dashboard, refused unauthenticated Grafana and OTLP requests,
+and carried a synthetic authenticated OTLP counter into Prometheus. It did not
+exercise Station's own export, traces in Tempo, or rendered panel values.
 
-## Distributed Traces (Jaeger)
+## Distributed Traces (Tempo)
 
-Traces are exported via OTLP to the Collector, which forwards them to Jaeger over gRPC (port 4317, insecure).
+Traces are exported via OTLP to the Collector, which projects their attributes
+and forwards them to Tempo over OTLP HTTP on the internal diagnostics network.
 
-Access traces at **http://localhost:16686**. Select service `station` (or the value of `OTEL_SERVICE_NAME`) from the search dropdown.
+Open Grafana's **Explore** view, choose the **Tempo** data source and search for
+service `station` (or the value of `OTEL_SERVICE_NAME`). The Collector renames
+spans to `station.operation` and keeps only the attributes listed in the
+[telemetry profile](../../deployment/telemetry/README.md#diagnostic-semantics-and-retention).
 
 The primary-chat stream creates a `station.chat` span with `startSpan`.
 That call neither forces it to be a root span nor makes it the active context.
@@ -702,7 +1630,7 @@ import { myCounter } from '../../../telemetry/metrics.js';
 myCounter.add(1, { label: 'value' });
 ```
 
-**3. Add a Grafana panel** by editing `monitoring/grafana/dashboards/station.json` or via the Grafana UI (save JSON back to the file to persist).
+**3. Add a Grafana panel** by editing `deployment/telemetry/dashboards/station.json`. The provisioned dashboard is read-only in Grafana; copy edited JSON back to the file to persist it.
 
 Define the observation and its owning caller before choosing a metric name.
 Test that caller with a registered in-memory meter, including missing-data and
@@ -717,8 +1645,10 @@ name/duration also travel into the local result event. Follow the
 caller instead of copying a partial snippet that changes those conditions.
 
 The optional SDK shutdown joins Station's shared 1.5-second network-teardown
-budget. It is best effort; process exit or that deadline is not proof of
-collector delivery.
+budget. Configured exporters can flush during that budget. Expiry fences their
+credentials and probes immediately, even if SDK shutdown is still pending;
+later callbacks cannot record an accepted delivery. It is best effort; process
+exit or that deadline is not proof of collector delivery.
 
 ## Application-Level Monitoring (MonitoringEmitter)
 
@@ -791,6 +1721,8 @@ Station extensions:
 | `station.output.chars` | Output character count |
 | `station.user.id` | User identifier. Omitted when the session reported none (archive#3082), same discipline as the agent slug. |
 | `station.reasoning.text` | Extended thinking content |
+| `station.telemetry.producer` | The telemetry producer token that delivered an ingested row. Absent on rows Station wrote itself or a paired credential sent. |
+| `station.telemetry.producer_owner` | The principal who created that token. A producer row is readable only by this principal, whatever session id the producer reported, and stays so after the token is revoked. Set from the admitted token, never from the body. |
 
 ### Emitter Methods
 
@@ -803,6 +1735,47 @@ Station extensions:
 | `emitReasoning` | Extended thinking | reasoning text |
 | `emitHealth` | Health check | healthy, checks, integrations |
 | `emitRaw` | Custom events | any MonitoringEvent |
+
+### External telemetry producers
+
+Programs outside Station can add rows to this history through the
+[telemetry ingest routes](../reference/api.md#telemetry-ingest). Flow Agents'
+Codex and Claude Code telemetry hooks are the first such producer. The
+contract a producer implements:
+
+1. **Credential.** The operator creates a token for it:
+   `station telemetry producers create <name> --token-file=<path>`. The file
+   holds one `sti_…` token and has mode `0600`. Station keeps only its hash.
+2. **Configuration.** The producer is given the full URL of the ingest route,
+   for example `http://127.0.0.1:3141/v1/agent-events` on this machine, or
+   `https://<serve-host>/v1/agent-events` (the Tailscale Serve HTTPS address) in
+   front of the UI port for a remote producer, and the token file's path. It
+   does not guess Station's port.
+3. **Request.** One event per `POST`, with `Authorization: Bearer <token>`,
+   `Content-Type: application/json`, and the event JSON as the body
+   (`schema_version` `0.x`; see the reference for required fields).
+4. **Responses.** `2xx`: accepted. `400`: the event does not match the schema;
+   resending it will not help. `401`: no token, or an unknown or revoked one.
+   `403`: the token expired (`telemetry_producer_expired`) or the sender is not
+   on this machine and the token does not allow that
+   (`telemetry_producer_remote_not_allowed`). `413`/`429`: the body or rate
+   budget; `429` carries `Retry-After`. `503`: the token store is unreadable (the
+   [API reference](../reference/api.md#telemetry-ingest) gives the remedy).
+5. **Rotation.** Create a new token, point the producer at it, then revoke the
+   old one with `station telemetry producers revoke <name>`. Revocation and
+   expiry take effect on the next request.
+
+Session, conversation, trace, tool-call and event ids, the agent slug and the
+engine a producer reports are stored as `producer:<token name>:<value>`, so a
+producer row never joins a Station conversation, agent or engine, and a
+re-created token with the same name shares the old one's namespace. Agents reading monitoring through station-control see producer
+rows marked as external, unverified data, and the Monitoring view shows a
+`Producer:` label on them.
+
+A token accepts senders on this machine only unless it was created with
+`--allow-remote`, which a producer on another tailnet device needs. Every
+row a token writes names it in `station.telemetry.producer`. A token reads
+nothing and is refused on every other route.
 
 ### Consuming Events
 
@@ -817,10 +1790,21 @@ or epoch milliseconds; an absent start defaults to zero and an absent end to
 now. Invalid bounds fail rather than widening the window. User ownership and
 Session/tenant policy are applied before dimension filters and a requested
 limit. Results are timestamp-ordered oldest first; a limit keeps the newest
-matching rows. `limit` is optional and capped at 5,000 when supplied, so an
-uncapped export is not a bounded page. The returned `truncated` flag says
-whether the limit dropped matching rows; `data.length` is the returned row
-count. The response does not report the total number of matches.
+matching rows. `limit` is optional and capped at 5,000 when supplied.
+The route passes visibility, dimensions and the limit into the disk reader.
+It retains at most 10,000 matching rows and 8 MiB of matching NDJSON, scans at
+most 32 MiB, and parses lines no larger than 1 MiB. Rows dropped by the requested
+limit or these budgets produce a successful response with `truncated: true`.
+If scanning stops at its byte or line bound, the result contains the newest
+matching rows among scanned bytes; unread bytes may contain newer timestamps.
+Narrow the window or archive oversized files to inspect omitted history.
+`data.length` is the returned row count; no total match count is reported.
+CLI and SDK exports use this same authorized route and obey its budgets.
+
+The separate `/events` broadcast stream also bounds slow-reader
+backlogs. Overflow emits `data:changed` with `{ "resync": true }`; the UI invalidates
+its query cache to recover current state. Transient effects such as navigation,
+toasts and approval prompts may be dropped; they are not replayed by resync.
 
 `RuntimeEventLog` caches per-file timestamp bounds with filesystem identity,
 not payloads. Appends/replacements invalidate that shortcut. Missing history is
@@ -830,7 +1814,9 @@ records that reached the monitoring files.
 ### Insights API
 
 `GET /api/insights` returns aggregates, not raw events: tool/Agent/model buckets,
-hourly activity and totals. Agent buckets count chats only; there is no
+hourly activity and totals. Rows from external telemetry producers never count toward
+them; they are summarized per producer in `producerActivity`, and
+`producer=<token name>` scopes the response to one producer. Agent buckets count chats only; there is no
 per-Agent token figure. Its default window is 14 days. The route applies
 user and Session/tenant checks and optional Agent/tool/engine filters; health
 probes are excluded. A tool filter removes non-tool rows too, and an engine
@@ -860,3 +1846,24 @@ For exact query parsing and response fields, read the
 [event-log owner](../../src-server/runtime/conversation/runtime-event-log.ts).
 Source and fixture checks do not establish real collector delivery, retained
 historical completeness, or dashboard correctness.
+
+### Optional private terminal observations
+
+In Connect or manage private sources, a new source offer can optionally include
+content-free completed, aborted and failed terminal observations. The default
+omits `operationalConsent`; permission is immutable for a grant and changing it
+requires a new grant and source approval. Inventory exposes the consent from the
+source intent. Personal Insights (also embedded in Profile) selects Usage receipts
+or Terminal outcomes, with UTC windows and independent source populations.
+Terminal outcomes group by engine or day; provider, model and account filters
+are refused. Observed turns is the denominator for the retained terminal classes.
+Coverage is unknown and counts do not establish full reliability or error rates.
+Sync is required after the source head changes. Failed, offline, stale or withdrawn
+reads withhold outcome rows. Missing host capability offers an update remedy.
+
+A combined saved or previewed definition cannot include two connections advertising
+the same source Station identity. Separate single-source views remain valid.
+Independent identities may overlap; clones advertising different identities cannot
+be detected. No cross-source ID deduplication or product telemetry join occurs.
+Real PostgreSQL, native and release qualification remain NOT_VERIFIED by this
+implementation checkpoint.

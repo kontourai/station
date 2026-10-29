@@ -30,12 +30,16 @@
  * context's own `regionArrangement` device setting (localStorage).
  */
 
+import { copyFileSync, mkdirSync } from 'node:fs';
+import { resolve } from 'node:path';
+import type { AccountPreferencesView } from '@kontourai/station-contracts/account-preferences';
+import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
+import { expect, type Locator, type TestInfo, test } from '@playwright/test';
+import { seedMobileTaskSwitcher } from './helpers/chat-shell-fixture';
 import {
-  LIVE_ACTIVITY_SCHEMA_VERSION,
-  parseLiveActivityProjection,
-} from '@kontourai/station-contracts/live-activity';
-import { expect, test } from '@playwright/test';
-import { test as fixtureTest } from './helpers/fixture-audit';
+  test as fixtureTest,
+  rejectUnexpectedFixtureRequest,
+} from './helpers/fixture-audit';
 import {
   installMockOrchestrationSse,
   seedOrchestrationRoutes,
@@ -51,6 +55,7 @@ import {
   showSurfaceInEmptyRegion,
   surfaceDockShell,
 } from './helpers/region-placement';
+import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 
 /** The primary area's own heading, which only a `main` occupant renders. */
 function mainHeading(page: import('@playwright/test').Page, name: string) {
@@ -510,31 +515,16 @@ test.describe('Activity surface at 390x844', () => {
   });
 });
 
-fixtureTest.describe('Live work in the sidebar footer', () => {
+/**
+ * Live work's phone route is the header overflow's row: the sidebar footer
+ * carries no Live work control, so the `⋯` menu's row names the active-session
+ * count and opens Activity, where that work is listed.
+ */
+fixtureTest.describe('Live work on the phone', () => {
   fixtureTest.beforeEach(async ({ page }) => {
     await seedOrchestrationRoutes(page);
     await installMockOrchestrationSse(page);
-    const observedAt = Date.now();
-    const liveProjection = {
-      schemaVersion: LIVE_ACTIVITY_SCHEMA_VERSION,
-      observedAt,
-      connectedClients: 4,
-      participants: Array.from({ length: 4 }, (_, index) => ({
-        id: (index + 1).toString(16).padStart(24, '0'),
-        actor: { kind: 'human', label: `Participant ${index + 1}` },
-        scope: { projectId: 'p1', projectSlug: 'demo', taskId: '77' },
-        work: {
-          workName: 'Reviewing work',
-          workState: 'reviewing',
-          startedAt: observedAt,
-        },
-      })),
-    };
-    if (!parseLiveActivityProjection(liveProjection))
-      throw new Error('Invalid live presence fixture');
-    await page.route('**/api/live-activity', (route) =>
-      route.fulfill({ json: { success: true, data: liveProjection } }),
-    );
+    const observedAt = new Date().toISOString();
     await page.route('**/api/orchestration/sessions/read-model*', (route) =>
       route.fulfill({
         json: {
@@ -549,8 +539,8 @@ fixtureTest.describe('Live work in the sidebar footer', () => {
             isLoaded: true,
             isPersisted: true,
             eventCount: 1,
-            createdAt: new Date(observedAt).toISOString(),
-            updatedAt: new Date(observedAt).toISOString(),
+            createdAt: observedAt,
+            updatedAt: observedAt,
           })),
         },
       }),
@@ -558,53 +548,57 @@ fixtureTest.describe('Live work in the sidebar footer', () => {
     await page.goto('/settings');
   });
 
+  /**
+   * The phone's `⋯` menu: Live work's state trails its label at the row's
+   * end, and the Profile row's initials chip fills the 16px glyph slot every
+   * row's label aligns to (#1552 D4) rather than its own 22px.
+   */
   fixtureTest(
-    'populated live work fits the sidebar beside its three footer actions',
+    'the phone overflow menu trails Live work’s state and keeps Profile in its glyph slot',
     async ({ page }, testInfo) => {
-      await page.setViewportSize({ width: 1280, height: 900 });
-      const footer = page.locator('.sidebar__footer');
-      const presence = footer.getByRole('button', {
-        name: /4 participants.*2 active sessions/,
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.getByRole('button', { name: 'More actions' }).click();
+      const liveWork = page.getByRole('button', {
+        name: 'Live work, 2 active',
       });
-      await expect(presence).toBeVisible();
-      const bounds = (await footer.boundingBox())!;
-      for (const name of ['Schedule', 'Customize', 'Settings']) {
-        const box = (await footer
-          .getByRole('button', { name, exact: true })
-          .boundingBox())!;
-        expect(box.x).toBeGreaterThanOrEqual(bounds.x);
-        expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width);
-      }
+      await expect(liveWork).toBeVisible();
+      const row = (await liveWork.boundingBox()) as {
+        x: number;
+        width: number;
+      };
+      const detail = (await liveWork
+        .getByText('2 active', { exact: true })
+        .boundingBox()) as { x: number; width: number };
+      // The state sits at the row's end, not beside the label: without
+      // its own rule it follows the label directly, far from that end.
+      expect(row.x + row.width - (detail.x + detail.width)).toBeLessThan(24);
+      const profile = page.getByRole('button', {
+        name: 'Profile',
+        exact: true,
+      });
+      const slot = (await profile
+        .locator('.menu-row__glyph')
+        .boundingBox()) as { width: number };
+      const chip = (await profile
+        .locator('.app-toolbar__overflow-initials')
+        .boundingBox()) as { width: number };
+      expect(chip.width).toBeLessThanOrEqual(slot.width + 0.5);
       await page.screenshot({
-        path: testInfo.outputPath('footer-populated-desktop.png'),
+        path: testInfo.outputPath('overflow-live-work-profile.png'),
       });
-      await page.getByRole('button', { name: 'Collapse sidebar' }).click();
-      await expect(presence).toBeVisible();
-      for (const name of ['Schedule', 'Customize', 'Settings']) {
-        await expect(
-          footer.getByRole('button', { name, exact: true }),
-        ).toBeVisible();
-      }
     },
   );
 
   fixtureTest(
-    'opening live Activity closes mobile navigation and reveals the work',
+    'the overflow Live work row opens Activity on the running work',
     async ({ page }, testInfo) => {
       await page.setViewportSize({ width: 390, height: 844 });
-      await page.getByRole('button', { name: 'Toggle menu' }).click();
-      const navigation = page.getByRole('navigation', {
-        name: 'Mobile navigation',
+      await page.getByRole('button', { name: 'More actions' }).click();
+      const liveWork = page.getByRole('button', {
+        name: 'Live work, 2 active',
       });
-      const presence = navigation.getByRole('button', {
-        name: /4 participants.*2 active sessions/,
-      });
-      await expect(presence).toBeVisible();
-      await presence.click();
-      await page
-        .getByRole('button', { name: 'Open Activity', exact: true })
-        .click();
-      await expect(navigation).toBeHidden();
+      await liveWork.click();
+      await expect(liveWork).toBeHidden();
       await expect(
         page.getByRole('heading', { name: 'Activity', exact: true }),
       ).toBeVisible();
@@ -613,8 +607,278 @@ fixtureTest.describe('Live work in the sidebar footer', () => {
       ).toBeVisible();
       expect(await documentFitsViewportWidth(page)).toBe(true);
       await page.screenshot({
-        path: testInfo.outputPath('footer-activity-mobile.png'),
+        path: testInfo.outputPath('overflow-live-work-activity.png'),
       });
     },
   );
+});
+
+type Box = { x: number; y: number; width: number; height: number };
+
+function overlaps(a: Box, b: Box): boolean {
+  return (
+    a.x < b.x + b.width &&
+    b.x < a.x + a.width &&
+    a.y < b.y + b.height &&
+    b.y < a.y + a.height
+  );
+}
+
+/**
+ * Every named footer control is inside the footer, and no two of them share
+ * a pixel: a control drawn under another is not a control a pointer can use.
+ */
+async function expectFooterControlsApart(
+  footer: Locator,
+  controls: Record<string, Locator>,
+) {
+  const bounds = (await footer.boundingBox()) as Box;
+  const boxes: [string, Box][] = [];
+  for (const [name, control] of Object.entries(controls)) {
+    await expect(control, name).toBeVisible();
+    const box = (await control.boundingBox()) as Box;
+    expect(box.x, `${name} left`).toBeGreaterThanOrEqual(bounds.x - 0.5);
+    expect(box.x + box.width, `${name} right`).toBeLessThanOrEqual(
+      bounds.x + bounds.width + 0.5,
+    );
+    boxes.push([name, box]);
+  }
+  for (const [index, [name, box]] of boxes.entries())
+    for (const [other, otherBox] of boxes.slice(index + 1))
+      expect(overlaps(box, otherBox), `${name} overlaps ${other}`).toBe(false);
+}
+
+/**
+ * One row in reading order: each control starts at or after the end of the
+ * one before it, on the same vertical centre.
+ */
+async function expectOneRowInOrder(controls: Record<string, Locator>) {
+  const boxes: [string, Box][] = [];
+  for (const [name, control] of Object.entries(controls))
+    boxes.push([name, (await control.boundingBox()) as Box]);
+  for (const [index, [name, box]] of boxes.slice(1).entries()) {
+    const [previousName, previous] = boxes[index];
+    expect(box.x, `${name} after ${previousName}`).toBeGreaterThanOrEqual(
+      previous.x + previous.width - 0.5,
+    );
+    expect(
+      Math.abs(box.y + box.height / 2 - (previous.y + previous.height / 2)),
+      `${name} on ${previousName}'s row`,
+    ).toBeLessThanOrEqual(1);
+  }
+}
+
+/** A footer capture, kept in the gallery directory when one is given. */
+async function captureFooter(
+  target: Locator,
+  testInfo: TestInfo,
+  name: string,
+) {
+  await target.screenshot({
+    path: testInfo.outputPath(name),
+    animations: 'disabled',
+  });
+  if (process.env.STATION_E2E_GALLERY_DIR) {
+    mkdirSync(process.env.STATION_E2E_GALLERY_DIR, { recursive: true });
+    copyFileSync(
+      testInfo.outputPath(name),
+      resolve(process.env.STATION_E2E_GALLERY_DIR, name),
+    );
+  }
+}
+
+/**
+ * The sidebar footer's one row: Schedule and Customize at its start, the
+ * icon-only Updates control and the account control at its end. Measured on
+ * the 216px expanded sidebar in both themes, on the collapsed rail (where
+ * Schedule and Customize move behind Sidebar utilities while Updates and the
+ * account stay on the rail) and in the phone drawer at 390 and 320px, where
+ * the row keeps its order and every control takes the 44px touch floor. Geometry from the rendered page,
+ * not class names.
+ */
+fixtureTest.describe('Sidebar footer controls', () => {
+  fixtureTest(
+    'every footer control stays inside the footer, apart and reachable',
+    async ({ page }, testInfo) => {
+      await seedOrchestrationRoutes(page);
+      await installMockOrchestrationSse(page);
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await page.goto('/settings');
+      await page.evaluate(() => document.fonts.ready);
+      const controlsIn = (root: Locator) => ({
+        Schedule: root.getByRole('button', { name: 'Schedule', exact: true }),
+        Customize: root.getByRole('button', {
+          name: 'Customize',
+          exact: true,
+        }),
+        Updates: root.getByRole('button', { name: /^Updates(: .+)?$/ }),
+        account: root.getByRole('button', { name: /^Profile and settings:/ }),
+      });
+      const footer = page.locator('.sidebar__footer');
+      const expanded = controlsIn(footer);
+      await expect(expanded.account).toBeVisible({
+        timeout: FIRST_RENDER_TIMEOUT_MS,
+      });
+      for (const theme of ['dark', 'light'] as const) {
+        await page.evaluate((value) => {
+          document.documentElement.setAttribute('data-theme', value);
+        }, theme);
+        // The expanded sidebar at its own 216px width: nothing here has more
+        // room than that.
+        expect((await footer.boundingBox())?.width).toBeLessThanOrEqual(216);
+        await expectFooterControlsApart(footer, expanded);
+        // One row, in reading order: Schedule, Customize, Updates, account.
+        await expectOneRowInOrder(expanded);
+        await captureFooter(footer, testInfo, `footer-${theme}-expanded.png`);
+      }
+
+      await page
+        .getByRole('button', { name: 'Collapse workspace map' })
+        .click();
+      const rail = page.locator('.sidebar--collapsed .sidebar__footer');
+      await expect(rail).toBeVisible();
+      const utilitiesTrigger = rail.getByRole('button', {
+        name: 'Sidebar utilities',
+      });
+      await expectFooterControlsApart(rail, {
+        utilities: utilitiesTrigger,
+        Updates: controlsIn(rail).Updates,
+        account: controlsIn(rail).account,
+      });
+      // Schedule and Customize leave the rail for the popover, not both.
+      await expect(controlsIn(rail).Schedule).toHaveCount(0);
+      await expect(controlsIn(rail).Customize).toHaveCount(0);
+      await captureFooter(rail, testInfo, 'footer-collapsed.png');
+      await utilitiesTrigger.click();
+      const utilities = page.getByRole('dialog', { name: 'Sidebar utilities' });
+      for (const name of ['Schedule', 'Customize']) {
+        await expect(
+          utilities.getByRole('button', { name, exact: true }),
+        ).toBeVisible();
+      }
+      await page.keyboard.press('Escape');
+      await expect(utilities).toBeHidden();
+
+      for (const width of [390, 320]) {
+        await page.setViewportSize({ width, height: 844 });
+        await page.getByRole('button', { name: 'Toggle menu' }).click();
+        const drawer = page
+          .getByRole('navigation', { name: 'Mobile navigation' })
+          .locator('.sidebar__footer');
+        await expect(drawer).toBeVisible();
+        const phoneControls = controlsIn(drawer);
+        await expectFooterControlsApart(drawer, phoneControls);
+        await expectOneRowInOrder(phoneControls);
+        // The phone's touch floor, measured on every footer control.
+        for (const [name, control] of Object.entries(phoneControls)) {
+          const box = (await control.boundingBox()) as Box;
+          expect(box.height, `${name} height`).toBeGreaterThanOrEqual(
+            MIN_TOUCH_TARGET_PX,
+          );
+          expect(box.width, `${name} width`).toBeGreaterThanOrEqual(
+            MIN_TOUCH_TARGET_PX,
+          );
+        }
+        expect(await documentFitsViewportWidth(page)).toBe(true);
+        await captureFooter(drawer, testInfo, `footer-phone-${width}.png`);
+        await page.keyboard.press('Escape');
+        await expect(drawer).toBeHidden();
+      }
+    },
+  );
+});
+
+fixtureTest.describe('Earlier history paging', () => {
+  for (const mobile of [false, true]) {
+    fixtureTest(
+      `${mobile ? 'phone switcher' : 'Activity'} bounds history and keeps paging reachable`,
+      async ({ page }, testInfo) => {
+        await page.setViewportSize(
+          mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 },
+        );
+        await seedMobileTaskSwitcher(page);
+        await page.route('**/api/me/preferences', (route) => {
+          if (route.request().method() !== 'GET')
+            return rejectUnexpectedFixtureRequest(route);
+          return route.fulfill({
+            json: {
+              success: true,
+              data: {
+                schemaVersion: 1,
+                values: {},
+                revision: 'history-fixture',
+              } satisfies AccountPreferencesView,
+            },
+          });
+        });
+        const summaries: OrchestrationSessionSummary[] = Array.from(
+          { length: 45 },
+          (_, index) => ({
+            threadId: `history-${index}`,
+            conversationId: `history-${index}`,
+            provider: 'codex',
+            status: 'closed',
+            lifecycleState: 'completed',
+            controlMode: 'station-owned',
+            answerability: { answerable: true },
+            displayTitle: `Historical work ${index}`,
+            isLoaded: false,
+            isPersisted: true,
+            eventCount: 2,
+            createdAt: '2024-01-01T00:00:00Z',
+            updatedAt: new Date(
+              Date.parse('2025-01-01T00:00:00Z') - index * 1000,
+            ).toISOString(),
+          }),
+        );
+        await page.route('**/api/orchestration/sessions/read-model', (route) =>
+          route.fulfill({ json: { success: true, data: summaries } }),
+        );
+        await page.goto(mobile ? '/?dock=open' : '/?surface=activity');
+        if (mobile)
+          await page.getByRole('button', { name: /^Chats and tasks/ }).click();
+        const root = mobile
+          ? page.getByRole('dialog', { name: 'Chats and tasks' })
+          : surfaceDockShell(page, 'Activity');
+        const rows = root.locator(
+          mobile
+            ? '.chat-dock-inbox__group[aria-labelledby$="-earlier"] .chat-dock-inbox__row'
+            : '.split-pane__item',
+        );
+        await expect(rows.first()).toBeVisible();
+        await expect(page.locator('.station-startup-frame')).toBeHidden();
+        await page.evaluate(() => document.fonts.ready);
+        const captureName = mobile ? 'phone-switcher.png' : 'activity.png';
+        await page.screenshot({
+          path: testInfo.outputPath(captureName),
+          animations: 'disabled',
+        });
+        if (process.env.STATION_E2E_GALLERY_DIR) {
+          mkdirSync(process.env.STATION_E2E_GALLERY_DIR, { recursive: true });
+          copyFileSync(
+            testInfo.outputPath(captureName),
+            resolve(process.env.STATION_E2E_GALLERY_DIR, captureName),
+          );
+        }
+        await expect(rows).toHaveCount(20);
+        const more = root.getByRole('button', {
+          name: mobile
+            ? 'Show more earlier chats and tasks'
+            : 'Show more earlier activity',
+        });
+        await more.scrollIntoViewIfNeeded();
+        const box = await more.boundingBox();
+        expect(box?.height).toBeGreaterThanOrEqual(44);
+        await more.press('Enter');
+        await expect(rows).toHaveCount(40);
+        await expect(more).toBeFocused();
+        await more.press('Enter');
+        await expect(rows).toHaveCount(45);
+        await expect(more).toHaveCount(0);
+        await expect(
+          rows.nth(40).locator(mobile ? '.inbox-row__open' : 'xpath=.'),
+        ).toBeFocused();
+      },
+    );
+  }
 });

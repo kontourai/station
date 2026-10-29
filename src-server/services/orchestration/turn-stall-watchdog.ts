@@ -2,11 +2,11 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { isDeferredRetriableTurnError } from './session-lifecycle-service.js';
 
 /**
- * archive#3451 finding H2, corrected by fix round D4: matches `retriable &&
+ * archive#3451: matches `retriable &&
  * no turnId` — a SHAPE, not a single publisher. Named for that shape, not
- * for the one call site that motivated it; the round-1 name
+ * for the one call site that motivated it; an earlier name
  * (`isDeferredStreamRestartError`) claimed a uniqueness this predicate does
- * not have, and the round-2 review found THREE producers that match it:
+ * not have, and THREE producers match it:
  *
  * 1. orchestration-service's adapter-stream-restart error (~line 5358: any
  *    provider, `retriable: true`, deliberately no `turnId` — session-scoped,
@@ -27,9 +27,10 @@ import { isDeferredRetriableTurnError } from './session-lifecycle-service.js';
  * `isDeferredRetriableTurnError` alone only recognizes codex's turn-scoped
  * willRetry error (by design — station-agent-adapter's two `retriable: true`
  * sites are ALREADY terminal, but both carry a `turnId`, which is what tells
- * them apart, not the provider). Before finding H2, a claude/acp/bedrock
+ * them apart, not the provider). Before this predicate, a claude/acp/bedrock
  * turn hit by (1) had its still-legitimately-running watch cleared — the
- * same metric-pollution class finding 4 fixed, in the opposite direction.
+ * same metric-pollution class as an earlier fix, in the opposite
+ * direction.
  */
 function isSessionScopedRetriableError(
   event: Pick<CanonicalRuntimeEvent, 'method' | 'turnId'> & {
@@ -86,7 +87,7 @@ const TERMINAL_METHODS: ReadonlySet<CanonicalRuntimeEvent['method']> = new Set([
 ]);
 
 /**
- * Review HIGH 1 (archive#2959): a turn awaiting a HUMAN — an approval prompt, an
+ * archive#2959: a turn awaiting a HUMAN — an approval prompt, an
  * input request — is alive but deliberately silent, for as long as the human
  * takes. Deferred approval is a first-class feature (the approvals inbox and
  * CLI exist to answer later), so silence after `request.opened` is not a
@@ -139,6 +140,22 @@ export class TurnStallWatchdog {
   private readonly watched = new Map<string, WatchedTurn>();
   /** Turns whose watch is suspended awaiting a human response. */
   private readonly suspended = new Map<string, string>();
+  /**
+   * A turn with a tool call open is running known work: a long build, a test
+   * run, or an agent's own blocking wait loop. Some adapters report nothing
+   * between `tool.started` and `tool.completed`, so the window cannot count
+   * that time as silence without reporting healthy work as "No progress" with
+   * a Stop prompt. While any call is open the window is not armed; the last
+   * call's `tool.completed` is progress and re-arms it. Unlike an approval
+   * wait, the progress observation is kept: its `lastProgressEventAt` (the
+   * call's start, or later progress) stays true. A call that never completes
+   * keeps the window disarmed until the turn ends; the running tool row and
+   * its start time remain the user-visible fact for that case.
+   */
+  private readonly openTools = new Map<
+    string,
+    { turnId: string; callIds: Set<string> }
+  >();
 
   /** Live timer count this instance currently owns (test/shutdown hook). */
   get size(): number {
@@ -163,7 +180,7 @@ export class TurnStallWatchdog {
    * other callers (`session.stop-settled`, `runtime.error`) without a second,
    * differently-shaped variant anyway.
    *
-   * Review HIGH 1 (archive#3594): checks BOTH `this.watched` and
+   * archive#3594: checks BOTH `this.watched` and
    * `this.suspended`, not just `watched`. A turn awaiting a human
    * (`SUSPEND_METHODS`) has its entry moved out of `watched` entirely — an
    * earlier revision of this method read only `watched` and returned `false`
@@ -200,7 +217,16 @@ export class TurnStallWatchdog {
     lastProgressEventAt = new Date().toISOString(),
   ): void {
     const lifecycle = lifecycleCallbacks(callbacks);
+    // Restarting the same turn's window keeps its open calls; a new turn's
+    // start drops the previous turn's, which can no longer complete here.
+    const openTools = this.openTools.get(threadId);
     this.clear(threadId, lifecycle);
+    if (openTools?.turnId === turnId && openTools.callIds.size > 0) {
+      this.openTools.set(threadId, openTools);
+      this.watched.set(threadId, { turnId, windowMs, lastProgressEventAt });
+      lifecycle.onProgress?.({ threadId, turnId, lastProgressEventAt });
+      return;
+    }
     const timer = setTimeout(() => {
       const watched = this.watched.get(threadId);
       if (!watched || watched.turnId !== turnId) return;
@@ -240,6 +266,8 @@ export class TurnStallWatchdog {
       createdAt?: string;
       /** Only meaningful (and only ever set) for a `runtime.error` event. */
       retriable?: boolean;
+      /** Only read for `tool.started` and `tool.completed`. */
+      toolCallId?: string;
     },
     windowMs: number,
     callbacks: TurnStallCallbacks,
@@ -291,7 +319,7 @@ export class TurnStallWatchdog {
       // removing the safety net this watchdog exists to provide, with the
       // absence of a stall alert indistinguishable from a healthy session.
       //
-      // Review MEDIUM 1: `session.exited` is excluded from the gate
+      // `session.exited` is excluded from the gate
       // STRUCTURALLY, not merely because no known publisher happens to set
       // its (optional, base-inherited) `turnId` today. It is session-scoped
       // by definition — the whole session ended — so it must always clear
@@ -319,7 +347,7 @@ export class TurnStallWatchdog {
       return;
     }
     if (SUSPEND_METHODS.has(event.method)) {
-      // Delta-review F1 (archive#4054 round 2): the same identity gate the terminal
+      // archive#4054: the same identity gate the terminal
       // paths use. A DELAYED request.opened naming a superseded turn must not
       // suspend — and, since the fired-watch retention fix, must not clear —
       // the observation of the turn that is actually running. A no-turnId
@@ -333,7 +361,7 @@ export class TurnStallWatchdog {
         // A fired watch retains identity solely so a later progress or turn
         // end can clear its observation. Once an approval wait suspends the
         // watch, Station deliberately stops observing silence, so keeping a
-        // user-visible quiet marker would overclaim (archive#4054 fix round F2).
+        // user-visible quiet marker would overclaim (archive#4054).
         lifecycleCallbacks(callbacks).onClear?.({
           threadId: event.threadId,
           turnId: suspended.turnId,
@@ -355,6 +383,9 @@ export class TurnStallWatchdog {
       }
       return;
     }
+    if (event.method === 'tool.started' || event.method === 'tool.completed') {
+      this.trackOpenTool(event);
+    }
     const watching = this.watched.get(event.threadId);
     if (!watching) return;
     if (event.turnId && event.turnId !== watching.turnId) return;
@@ -370,8 +401,35 @@ export class TurnStallWatchdog {
     );
   }
 
+  /**
+   * Record a call opening or closing in the thread's tracked turn, watched or
+   * suspended (a call can finish while an approval is open). A call naming
+   * another turn, or arriving with no tracked turn, is not this watch's.
+   */
+  private trackOpenTool(event: {
+    method: CanonicalRuntimeEvent['method'];
+    threadId: string;
+    turnId?: string;
+    toolCallId?: string;
+  }): void {
+    if (!event.toolCallId) return;
+    const turnId =
+      this.watched.get(event.threadId)?.turnId ??
+      this.suspended.get(event.threadId);
+    if (turnId === undefined) return;
+    if (event.turnId && event.turnId !== turnId) return;
+    let open = this.openTools.get(event.threadId);
+    if (open?.turnId !== turnId) {
+      open = { turnId, callIds: new Set() };
+      this.openTools.set(event.threadId, open);
+    }
+    if (event.method === 'tool.started') open.callIds.add(event.toolCallId);
+    else open.callIds.delete(event.toolCallId);
+  }
+
   /** Clear any watch for `threadId` without firing. */
   clear(threadId: string, callbacks?: TurnStallLifecycleCallbacks): void {
+    this.openTools.delete(threadId);
     const suspendedTurnId = this.suspended.get(threadId);
     this.suspended.delete(threadId);
     const watching = this.watched.get(threadId);

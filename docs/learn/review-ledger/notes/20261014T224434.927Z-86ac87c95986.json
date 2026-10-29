@@ -1,0 +1,7 @@
+{
+  "revision": "f6ea09aadaf7405fdd3cce8933258cf4a497d708",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Reviewed against fix round 3: open windows re-read finished keys on the cross-window channel and on visibility, the queued notice's Discard… goes through the shared confirmation, one wording for a send with no answer (deliveryLabels), the phone sheet listing message actions in place, and the outbox list's sentence-case summary.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

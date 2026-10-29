@@ -34,3 +34,32 @@ Every confirmed release of a prior assignment claim is persisted immediately.
 It is never deferred to a later association write, because that write might not
 happen. A failed release or reservation restoration is likewise `indeterminate`,
 never presented as retryable success.
+
+A Task dispatch runs as the Task's Agent: the dispatch's `agentId`, else the
+Agent the Task records
+([#4005](https://github.com/kontourai/station/issues/4005)). The remote-sessions
+Adapter resolves it with the same resolver a foreground `/chat` start uses
+(`resolveTaskDispatchAgentStart`), within the dispatch deadline and before the
+reservation, any assignment claim or any provider effect. A dispatch that names
+no provider, such as the project page's Dispatch button, starts the Agent's own
+engine and model; a dispatch that names one must name the Agent's engine. The
+start records the same Environment and Agent binding as `/chat`, so the Session
+takes `/chat` follow-ups and conversation-inbox entries. It runs in the
+Project's working directory, in the shared checkout, and keeps its native
+transcript.
+
+An engine start naming no Agent, an unknown or unavailable Agent, an engine
+that is not ready, a model that cannot launch, a provider other than the
+Agent's engine, or a directory other than the Project's is refused as `failed`
+with nothing written; none of these can leave the Task `indeterminate`. So is a
+start the session service rejected before any provider effect (its receipt is
+`rejected`, for example a model that cannot launch or engine start capacity);
+any other start failure stays `indeterminate`.
+
+Only a dispatch with no Agent at all, or one that asks for `task-dispatch`,
+seeds a `task-dispatch` Session and starts no engine; a seeded dispatch that
+names an Agent this Station does not have is refused. External monitors ask
+for `task-dispatch`: nothing on the monitor path sends the Task's prompt as a
+turn (`MonitorTaskTurnSupervisor` only observes and bounds turns), so a started
+engine would sit idle. The board intent and the e2e room control keep their
+existing shapes.

@@ -1,0 +1,15 @@
+{
+  "revision": "ccc5d0fdff38ab9613ba941333db99ed649f880c",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Delta review after merging main: this branch's only module-map change is one sentence in the ColorThemes entry naming the lazily loaded Appearance page as the picker. This document makes no claim about color themes or that picker (it links to or routes by the module map), so nothing changes.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Delta review after merging main: this branch's only module-map change is one sentence in the ColorThemes entry naming the lazily loaded Appearance page as the picker. This document makes no claim about color themes or that picker (it links to or routes by the module map), so nothing changes.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Delta review after merging main: this branch's only module-map change is one sentence in the ColorThemes entry naming the lazily loaded Appearance page as the picker. This document makes no claim about color themes or that picker (it links to or routes by the module map), so nothing changes.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Delta review after merging main: this branch's only module-map change is one sentence in the ColorThemes entry naming the lazily loaded Appearance page as the picker. This document makes no claim about color themes or that picker (it links to or routes by the module map), so nothing changes.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Re-read: station-docs serves the manual and architecture topics compiled from docs; this branch's regenerated station-docs-content.ts only carries the module-map ColorThemes sentence naming the Appearance page as the picker. The tool list, compile behavior and topic catalog this page describes are unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "ac54f3bc42e46775e42fb4c1ac2abeb9a24c346b",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"turn-stall-watchdog.ts now keeps the window disarmed while a tool call is open in the tracked turn (tool.started without its tool.completed, keyed by toolCallId, gated on turn identity) and re-arms on the last completion; turn-progress-tracker.ts forwards toolCallId. Re-read this document: it names no stall-window semantics or silence wording, so none of its claims change.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]}
+  ]
+}

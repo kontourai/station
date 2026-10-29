@@ -231,7 +231,7 @@ describe('POST /api/inference/completions: ingestion bounds and abort threading 
   });
 
   test('M-2: a caller that LIES about Content-Length is stopped MID-STREAM, not buffered in full', async () => {
-    // The residual this route shipped with in review round 1, now closed by
+    // The residual this route first shipped with, now closed by
     // `readRequestText`. The probe is the lying-header case specifically: a
     // body far over the cap, with a small honest-looking declared length, so
     // the pre-read short-circuit cannot be what refuses it.

@@ -1,0 +1,15 @@
+{
+  "revision": "a0713b1b3671bc86e74957b50176510c37205344",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed the New Chat start claims against NewChatModal.tsx and useNewChatSelectionModel.ts: a default model an engine's own advertised list (ACP model config option) omits is now skipped by resolveEffectiveModel, and a kept chip choice absent from a known catalog is refused at Start with the message kept. Added one sentence stating this beside the remembered-choice paragraph; the remembered Agent/Model/project claims are unchanged.","inputs":["docs/user/getting-started.md","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/hooks/useNewChatSelectionModel.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed against NewChatModal.tsx and the new start guard: no claim here states that a default or kept model is sent unvalidated. 'Model not reported' / Choose model rows now also cover an ACP engine whose only default was unadvertised, which the existing sentence already describes. Test file change adds a Start-refusal case only. No prose change needed.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/NewChatModalSelectDispatch.test.tsx","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed against NewChatModal.tsx: change is confined to the start-time Model check and default resolution; connection setup, Default model selection, Check connection and Refresh models claims are untouched. No prose change needed.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Capture bytes unchanged. NewChatModal.tsx changed only in the start-time Model availability check; the rendered start screen this capture shows is not altered.","inputs":["docs/learn/media/new-chat-start-before.png","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Capture bytes unchanged. NewChatModal.tsx changed only in the start-time Model availability check; the rendered start screen this capture shows is not altered.","inputs":["docs/learn/media/new-chat-start-after.png","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

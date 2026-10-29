@@ -1,5 +1,4 @@
 import type {
-  TaskDeclaredOutputKeepResult,
   TaskOutputCreateInput,
   TaskOutputRecord,
 } from '@kontourai/station-contracts';
@@ -7,12 +6,10 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   createTaskOutputClient,
   deleteTaskOutputClient,
-  keepDeclaredTaskOutput,
   listTaskOutputs,
 } from './client/task-outputs';
 import { type QueryConfig, resolveApiBase, useApiQuery } from './query-core';
 import type { TaskRoomWorkRequestScope } from './query-domains/taskRoomWork';
-import { sessionInventoryQueries } from './session-inventory';
 
 export {
   downloadTaskOutputContent,
@@ -46,21 +43,6 @@ export async function deleteTaskOutput(input: {
     await resolveApiBase(input.apiBase),
     input.taskId,
     input.outputId,
-  );
-}
-export async function keepDeclaredOutput(input: {
-  taskId: string;
-  sessionId: string;
-  eventId: string;
-  operationId: string;
-  apiBase?: string;
-}): Promise<TaskDeclaredOutputKeepResult> {
-  return keepDeclaredTaskOutput(
-    await resolveApiBase(input.apiBase),
-    input.taskId,
-    input.sessionId,
-    input.eventId,
-    { operationId: input.operationId },
   );
 }
 export function useTaskOutputsQuery(
@@ -123,32 +105,5 @@ export function useDeleteTaskOutputMutation() {
       client.invalidateQueries({
         queryKey: taskOutputQueries.outputs(input.taskId).queryKey,
       }),
-  });
-}
-export function useKeepDeclaredOutputMutation() {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: keepDeclaredOutput,
-    onSuccess: (_data, input) =>
-      Promise.all([
-        client.invalidateQueries({
-          queryKey: taskOutputQueries.outputs(input.taskId).queryKey,
-        }),
-        client.invalidateQueries({ queryKey: ['task-basis', input.taskId] }),
-        client.invalidateQueries({
-          queryKey: ['task-references', input.taskId],
-        }),
-        client.invalidateQueries({
-          predicate: (query) =>
-            Array.isArray(query.queryKey) &&
-            (query.queryKey[0] ===
-              sessionInventoryQueries.projection({
-                kind: 'whole-session',
-                sessionId: input.sessionId,
-              }).queryKey[0] ||
-              query.queryKey[0] === 'session-inventory-page') &&
-            JSON.stringify(query.queryKey).includes(input.sessionId),
-        }),
-      ]),
   });
 }

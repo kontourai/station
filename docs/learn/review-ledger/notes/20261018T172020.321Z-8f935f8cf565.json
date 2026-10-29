@@ -1,0 +1,7 @@
+{
+  "revision": "88f29c595a3ff4b1e627155c39ffb6ffb7c9ff8e",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Pending upstream integration at 88f29c595a3: per owner request removed the lane-local checkedApi method-forwarding patch so #3828 owns the fix. Added an explicit cleanup-to-transport DELETE regression. Against cc1fcf23116 it fails on actual GET/GET/GET versus expected DELETE/DELETE/DELETE; the delivery suite is expected red (16 failed, 6 passed) until the base fix is merged. Earlier combined 93/93 and both fault-injection restores were at dd9e694f4bf with local forwarding. Those are historical evidence, not a pass for this intermediate head. No test is skipped or weakened. Reviewed the documented explicit method seam and retained the skill/native-policy unverified limits.","inputs":["docs/reference/agent-smoke-confidence.md","scripts/lib/engine-matrix.mjs"]}
+  ]
+}

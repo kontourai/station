@@ -21,11 +21,13 @@ import { readJson } from '../../../__test-utils__/read-json.js';
 import { installAccountBoundDeviceGate } from '../../../runtime/bootstrap/account-bound-device-gate.js';
 import { createOrchestrationRequestPrincipalResolver } from '../../../runtime/bootstrap/orchestration-request-principal.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
+import { AccountPreferencesStore } from '../../../services/identity/account-preferences.js';
 import { loadDeploymentAuthentication } from '../../../services/identity/deployment-authentication-loader.js';
 import { identifyIngress } from '../../../services/identity/identity-source.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import type { Logger } from '../../../utils/logger.js';
+import { createAccountPreferencesRoutes } from '../../me/account-preferences.js';
 import { createDeploymentAuthenticationRoutes } from '../deployment-authentication-routes.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
@@ -212,6 +214,19 @@ async function createHarness(options?: {
         }),
       security,
       deploymentAuthentication: authentication,
+    }),
+  );
+  app.route(
+    '/api/me',
+    createAccountPreferencesRoutes({
+      store: new AccountPreferencesStore(homeDirectory),
+      resolvePrincipal: createOrchestrationRequestPrincipalResolver({
+        environmentSecurityService: security,
+        deploymentAuthentication: authentication.service,
+        hostedTenantRegistry: undefined,
+      }),
+      tenantId: () => undefined,
+      isInternal: () => false,
     }),
   );
   // The real account login/logout surface (provider revocation included),
@@ -468,6 +483,42 @@ describe('GET /api/auth/authority through the production composition', () => {
     expect(await readJson(afterRevoke)).toEqual({
       error: { code: 'account_authentication_invalid', reason: 'revoked' },
     });
+  });
+
+  test('account-bound devices read and change their own account preferences through real transport admission', async () => {
+    const h = await createHarness();
+    const first = h.pairAccountBoundDevice('phone', true);
+    const second = h.pairAccountBoundDevice('desktop', true);
+    const headers = new Headers(h.bothCookies(first.credential).headers);
+    headers.set('Origin', ORIGIN);
+    const write = await h.request('/api/me/preferences', {
+      headers,
+      method: 'PATCH',
+      body: JSON.stringify({ theme: 'light' }),
+    });
+    expect(write.status, await write.clone().text()).toBe(200);
+    const read = await h.request(
+      '/api/me/preferences',
+      h.bothCookies(second.credential),
+    );
+    expect(read.status).toBe(200);
+    expect(await readJson(read)).toMatchObject({
+      data: { values: { theme: 'light' } },
+    });
+    expect(
+      (await h.request('/api/me/preferences', h.bearer(first.credential)))
+        .status,
+    ).toBe(401);
+    for (const [path, method] of [
+      ['/api/me/preferences', 'POST'],
+      ['/api/me/preferences/another-person', 'PATCH'],
+    ]) {
+      const refused = await h.request(path!, { headers, method });
+      expect(refused.status).toBe(403);
+      expect(await readJson(refused)).toEqual({
+        error: { code: 'account_bound_device_route_forbidden' },
+      });
+    }
   });
 
   test('account-bound device allowlist: exact GET self-read only', async () => {

@@ -1,0 +1,7 @@
+{
+  "revision": "c045b7aaa9b6d0c23600aa94fbb064aaa8a8fe4b",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Scoped follow-up at c045b7aaa9b6d0c23600aa94fbb064aaa8a8fe4b: inspected the sole delta from c4, an explicit {path:string;sha256:string} parameter type for the retained-artifact callback in the existing shard keeper. The returned reference, independent digest check, redaction and failing-versus-passing assertions are unchanged at runtime. Read-only formatter and the scripts typecheck passed on the exact working bytes committed here, resolving the observed TS7006 from the retained C4 CI failure. The reporting/upload/immutable-reference explanation remains accurate. Earlier real reporter, omission, persistence and overwrite controls remain source-bound historical evidence; current-head CI/hosted/landing qualification is still separate.","inputs":["docs/guides/testing.md","scripts/__tests__/fast-checks-shard-cli.test.ts"]}
+  ]
+}

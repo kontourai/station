@@ -1,0 +1,277 @@
+/* A subagent spawned by a tool call, drawn where that call sits in the
+   transcript. One raised panel; the header is the disclosure button. */
+.subagent-card {
+  margin: var(--k-space-2) 0;
+  border: var(--k-border-thin, 1px) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+}
+
+.subagent-card__main {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: flex-start;
+  gap: var(--k-space-2);
+  padding: var(--k-space-2) var(--k-space-3);
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.subagent-card__main:hover {
+  background: var(--k-panel);
+}
+
+.subagent-card__main:focus-visible {
+  outline: var(--k-focus-ring-width, 2px) solid var(--k-focus);
+  outline-offset: calc(-1 * var(--k-focus-ring-width, 2px));
+}
+
+.subagent-card__glyph {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  color: var(--k-text-muted);
+}
+
+.subagent-card__text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.subagent-card__headline {
+  display: flex;
+  min-width: 0;
+  flex-wrap: nowrap;
+  align-items: center;
+  column-gap: var(--k-space-2);
+}
+
+.subagent-card__title {
+  max-width: 100%;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--k-text-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subagent-card__status {
+  display: inline-flex;
+  flex-shrink: 0;
+  max-width: 45%;
+  align-items: center;
+  gap: var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
+
+.subagent-card__status--completed {
+  color: var(--k-positive);
+}
+
+.subagent-card__status--failed {
+  color: var(--k-negative);
+}
+
+.subagent-card__status--stopped-unconfirmed,
+.subagent-card__status--unresolved {
+  color: var(--k-caution);
+}
+
+.subagent-card__spinner,
+.subagent-card__hollow {
+  display: inline-block;
+  width: 0.75em;
+  height: 0.75em;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+}
+
+.subagent-card__stopped {
+  display: inline-block;
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 1px;
+  background: currentColor;
+}
+
+/* Observations of an absence (no outcome, an unconfirmed stop): dashed. */
+.subagent-card__hollow {
+  border-style: dashed;
+}
+
+.subagent-card__spinner {
+  border-right-color: transparent;
+  /* The shared spin keyframes and token; the global reduced-motion rule in
+     tokens.css stops it. */
+  animation: spin var(--motion-status-spin) var(--ease-linear) infinite;
+}
+
+.subagent-card__meta,
+.subagent-card__preview {
+  overflow: hidden;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subagent-card__model {
+  font-family: var(--k-font-mono);
+}
+
+.subagent-card__model[data-reported="false"],
+.subagent-card__preview--gap {
+  color: var(--k-text-faint);
+  font-family: inherit;
+  font-style: italic;
+}
+
+.subagent-card__aside {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--k-space-2);
+  align-self: center;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.subagent-card__chevron {
+  display: inline-flex;
+}
+
+.subagent-card__detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  padding: 0 var(--k-space-3) var(--k-space-3);
+  border-top: var(--k-border-thin, 1px) solid var(--k-line);
+  padding-top: var(--k-space-2);
+  font-size: var(--k-text-sm);
+}
+
+.subagent-card__summary {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.subagent-card__note {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
+
+.subagent-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+
+.subagent-card__actions {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.subagent-card__actions > .subagent-card__note {
+  flex: 1;
+}
+
+.subagent-group {
+  margin-block: var(--k-space-2);
+  border: var(--k-border-thin, 1px) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+}
+
+.subagent-group__heading {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  padding: var(--k-space-2) var(--k-space-3);
+  width: 100%;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--k-text-sm);
+}
+
+.subagent-group__heading:focus-visible {
+  outline: var(--k-focus-ring-width, 2px) solid var(--k-focus);
+  outline-offset: calc(-1 * var(--k-focus-ring-width, 2px));
+}
+
+.subagent-group__heading > svg:last-child {
+  margin-inline-start: auto;
+}
+
+.subagent-group[data-grouped="false"] {
+  margin: 0;
+  border: 0;
+}
+
+.subagent-group[data-grouped="false"] > .subagent-group__children {
+  padding: 0;
+}
+
+.subagent-group__counts {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
+
+.subagent-group__children {
+  padding-inline: var(--k-space-2);
+}
+
+.subagent-group[data-grouped="true"]
+  > .subagent-group__children
+  > .subagent-card {
+  border: 0;
+  background: transparent;
+  margin: 0;
+}
+
+.subagent-card__main[aria-expanded="true"] .subagent-card__title {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.subagent-group__avatars {
+  display: inline-flex;
+  align-items: center;
+}
+
+.subagent-group__avatars > * + * {
+  margin-inline-start: calc(-1 * var(--k-space-2));
+}
+
+.subagent-group__more {
+  display: inline-grid;
+  place-items: center;
+  min-width: var(--k-space-5);
+  min-height: var(--k-space-5);
+  border: var(--k-border-thin, 1px) solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel-raised);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}

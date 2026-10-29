@@ -13,15 +13,13 @@ test.describe('Desktop Regression', () => {
   }) => {
     await page.goto('/');
 
-    // The desktop route to Settings is the avatar menu, not a gear. The header
-    // carries no standalone gear at any viewport (the phone-only one is gone;
-    // Settings lives in the sidebar drawer's footer), so at this viewport
-    // `getByTitle(/Settings/)` matches only the menu's own row. That is why
-    // matching on title alone is not a safe way to ask "is the shell
-    // present" (#1322). Reaching Settings through the menu is covered by
-    // `openHeaderSettings` in tests/helpers/orchestration.
+    // The desktop route to Settings is the sidebar footer's account menu.
+    // Neither the header nor the footer carries a standalone gear at any
+    // viewport, so matching on `getByTitle(/Settings/)` is not a safe way to
+    // ask "is the shell present" (#1322). Reaching Settings through the menu
+    // is covered by `openHeaderSettings` in tests/helpers/orchestration.
     await expect(
-      page.getByRole('button', { name: 'Profile and settings' }),
+      page.getByRole('button', { name: /^Profile and settings:/ }),
     ).toBeVisible({ timeout: 10_000 });
     expect(
       await page.evaluate(

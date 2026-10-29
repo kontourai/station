@@ -43,7 +43,6 @@ describe('ACPManager periodic probe cadence (station#1908)', () => {
 
   test('does not spawn the engine binary on every 60s tick forever', async () => {
     const manager = new ACPManager(
-      {} as any,
       { info: vi.fn(), warn: vi.fn(), debug: vi.fn() },
       '/tmp',
     );
@@ -79,7 +78,6 @@ describe('ACPManager.removeConnection', () => {
     // disabled or unregistered connection was never added, so its id is
     // unknown to the manager. That must not fail the route.
     const manager = new ACPManager(
-      {} as any,
       { info: vi.fn(), warn: vi.fn(), debug: vi.fn() },
       '/tmp',
     );
@@ -100,7 +98,6 @@ describe('ACPManager.startAll repeated calls (#3421)', () => {
 
   test('a second startAll replaces the sweep timer instead of stacking one', async () => {
     const manager = new ACPManager(
-      {} as any,
       { info: vi.fn(), warn: vi.fn(), debug: vi.fn() },
       '/tmp',
     );

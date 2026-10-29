@@ -1,0 +1,7 @@
+{
+  "revision": "e5ece8deedba2cadd24df9b061f221254c7ec722",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Reviewed optional local diagnostic wording against unchanged hosted fast-checks plan/shards/statics and normal push hooks. Ordinary PR evidence now uses focused local checks plus required hosted checks without a mandatory duplicate ci:fast run. No change to source qualification or release boundaries.","inputs":["docs/guides/development.md"]}
+  ]
+}

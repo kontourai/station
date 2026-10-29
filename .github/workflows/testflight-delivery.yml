@@ -24,8 +24,13 @@ on:
       release_label:
         required: true
         type: string
-      mobile_endpoint:
-        required: true
+      web_build_version:
+        description: >-
+          The web bundle's build identity (STATION_BUILD_VERSION) when it is
+          more than Apple's bare marketing version: a Nightly's or Beta's full
+          version, which a client compares with its server (#2675). Defaults
+          to marketing_version.
+        required: false
         type: string
       update_feed_url:
         required: false
@@ -42,6 +47,11 @@ on:
       update_action_origins:
         required: false
         type: string
+      distribute_external:
+        description: Attempt Nightly external testing and beta review without blocking delivery.
+        required: false
+        type: boolean
+        default: false
       delivery:
         description: >-
           build-and-upload (default) builds, audits, and uploads in one call;
@@ -59,6 +69,14 @@ permissions:
   attestations: write
 
 jobs:
+  advisory:
+    needs: deliver
+    if: ${{ always() && !cancelled() && inputs.channel != 'nightly' && inputs.delivery != 'build' && (needs.deliver.result == 'success' || (inputs.delivery == 'upload' && needs.deliver.result == 'skipped')) }}
+    uses: ./.github/workflows/release-advisory.yml
+    with:
+      audit_id: ${{ format('testflight-{0}', inputs.channel) }}
+      source_sha: ${{ inputs.source_sha }}
+
   deliver:
     name: Build, sign and audit IPA
     if: ${{ inputs.delivery != 'upload' }}
@@ -77,13 +95,12 @@ jobs:
       APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
       APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_IOS_SIGNING_IDENTITY }}
       APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
-      # The Live Activity widget extension's App Store profile (#2513). Only
-      # the Beta and Nightly environments hold one; Stable builds no extension.
+      # Stable extension profiles are used only after owner enablement in
+      # native-release; Beta and Nightly retain their existing configuration.
       APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64 }}
       APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64 }}
       TESTFLIGHT_INTERNAL_GROUP_ID: ${{ vars.TESTFLIGHT_INTERNAL_GROUP_ID }}
-      STATION_MOBILE_DEFAULT_ENDPOINT: ${{ inputs.mobile_endpoint }}
-      STATION_BUILD_VERSION: ${{ inputs.marketing_version }}
+      STATION_BUILD_VERSION: ${{ inputs.web_build_version || inputs.marketing_version }}
       STATION_BUILD_CHANNEL: ${{ inputs.channel }}
       STATION_RELEASE_LABEL: ${{ inputs.release_label }}
       VITE_NATIVE_APP_UPDATE_FEED_URL: ${{ inputs.update_feed_url }}
@@ -147,10 +164,9 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/git/tags/$github_tag_object_sha" > "$github_tag"
           node scripts/verify-ios-testflight-internal-tag.mjs --source-ref '${{ inputs.source_ref }}' --source-sha '${{ inputs.source_sha }}' --channel '${{ inputs.channel }}' --marketing-version '${{ inputs.marketing_version }}' --bundle-version '${{ inputs.bundle_version }}' --expected-fingerprint "$TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT" --local-tag-object-sha "$local_tag_object_sha" --github-ref "$github_ref" --github-tag "$github_tag" --gpg-status "$gpg_status"
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
-        with: { install: false }
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - run: npm run dependencies:ci
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
@@ -158,23 +174,25 @@ jobs:
       - run: brew install xcodegen libimobiledevice cocoapods
       - name: Resolve whether this channel builds the Live Activity
         id: live_activity
+        env:
+          STATION_IOS_STABLE_PUSH_ENABLED: ${{ vars.STATION_IOS_STABLE_PUSH_ENABLED }}
         run: |
           set -euo pipefail
           # The channel table is the one place a channel names its Live
-          # Activity widget extension (#2513): Beta and Nightly embed one,
-          # Stable does not. Both halves follow this answer: the plugin's
+          # Activity widget extension (#2513). Stable also requires its
+          # environment's owner switch. Both halves follow this answer: the plugin's
           # STATION_IOS_LIVE_ACTIVITY and the extension target in the spec.
           # A TestFlight build always talks to production APNs.
-          extension_bundle_id=$(node --input-type=module -e 'import { iosTestFlightChannel } from "./scripts/ios-testflight-channel.mjs"; process.stdout.write(iosTestFlightChannel(process.argv[1]).agentActivityBundleId ?? "");' '${{ inputs.channel }}')
+          extension_bundle_id=$(node --input-type=module -e 'import { iosTestFlightPushExtensions } from "./scripts/ios-testflight-channel.mjs"; process.stdout.write(iosTestFlightPushExtensions(process.argv[1], process.env.STATION_IOS_STABLE_PUSH_ENABLED).agentActivityBundleId ?? "");' '${{ inputs.channel }}')
           if [ -n "$extension_bundle_id" ]; then enabled=true; else enabled=false; fi
           { echo "enabled=$enabled"; echo "extension_bundle_id=$extension_bundle_id"; echo "aps_environment=production"; } >> "$GITHUB_OUTPUT"
-          notification_bundle_id=$(node --input-type=module -e 'import { iosTestFlightChannel } from "./scripts/ios-testflight-channel.mjs"; process.stdout.write(iosTestFlightChannel(process.argv[1]).notificationServiceBundleId ?? "");' '${{ inputs.channel }}')
+          notification_bundle_id=$(node --input-type=module -e 'import { iosTestFlightPushExtensions } from "./scripts/ios-testflight-channel.mjs"; process.stdout.write(iosTestFlightPushExtensions(process.argv[1], process.env.STATION_IOS_STABLE_PUSH_ENABLED).notificationServiceBundleId ?? "");' '${{ inputs.channel }}')
           if [ -n "$notification_bundle_id" ]; then notification_enabled=true; else notification_enabled=false; fi
           test "$notification_enabled" = "$enabled"
           { echo "notification_enabled=$notification_enabled"; echo "notification_bundle_id=$notification_bundle_id"; } >> "$GITHUB_OUTPUT"
       - name: Fail closed on channel-owned secrets and exact iOS identity
         run: |
-          for name in APPLE_API_KEY_ID APPLE_API_ISSUER_ID APPLE_API_PRIVATE_KEY APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64 APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD APPLE_DEVELOPMENT_TEAM APPLE_SIGNING_IDENTITY APPLE_PROVISIONING_PROFILE_BASE64 TESTFLIGHT_INTERNAL_GROUP_ID STATION_MOBILE_DEFAULT_ENDPOINT VITE_NATIVE_APP_UPDATE_CHANNEL VITE_NATIVE_APP_VERSION; do
+          for name in APPLE_API_KEY_ID APPLE_API_ISSUER_ID APPLE_API_PRIVATE_KEY APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64 APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD APPLE_DEVELOPMENT_TEAM APPLE_SIGNING_IDENTITY APPLE_PROVISIONING_PROFILE_BASE64 TESTFLIGHT_INTERNAL_GROUP_ID VITE_NATIVE_APP_UPDATE_CHANNEL VITE_NATIVE_APP_VERSION; do
             test -n "${!name}" || { echo "Missing required protected channel value: $name" >&2; exit 1; }
           done
           if [ '${{ steps.live_activity.outputs.enabled }}' = true ]; then
@@ -241,7 +259,7 @@ jobs:
           node scripts/app-store-connect-receipt.mjs app-preflight --bundle-id "$bundle_id" --expected-name "$expected_name" --output provider-receipts/app-store-connect-app-preflight.json --github-output "$GITHUB_OUTPUT"
           echo "bundle_id=$bundle_id" >> "$GITHUB_OUTPUT"
       - name: Stage immutable iOS client provenance resource
-        run: STATION_BUILD_BRANCH="$AUTHORITY_REF" node scripts/write-ios-build-manifest.mjs
+        run: STATION_BUILD_BRANCH="$AUTHORITY_REF" node scripts/write-ios-build-manifest.mjs --config "$RUNNER_TEMP/tauri.ios.channel.json"
       - name: Resolve optional custom iOS update feed
         run: |
           mkdir -p provider-receipts
@@ -360,7 +378,7 @@ jobs:
           # (gen/apple/assets/station-build.json, gitignored). The packaged
           # copy is what "Verify IPA identity" compares byte for byte, so
           # stage it again from the same authority before building.
-          (cd .. && STATION_BUILD_BRANCH="$AUTHORITY_REF" node scripts/write-ios-build-manifest.mjs)
+          (cd .. && STATION_BUILD_BRANCH="$AUTHORITY_REF" node scripts/write-ios-build-manifest.mjs --config "$RUNNER_TEMP/tauri.ios.channel.json")
           test -s gen/apple/assets/station-build.json
           live_info_plist="$RUNNER_TEMP/station-ios-live-activity-Info.plist"
           live_export_options="$RUNNER_TEMP/station-ios-export-options.plist"
@@ -448,7 +466,7 @@ jobs:
             IOS_MOBILE_PROVISION="$(base64 < "$RUNNER_TEMP/station-ios.mobileprovision" | tr -d '\n')"
             export IOS_MOBILE_PROVISION
           fi
-          node --input-type=module -e 'import { writeFileSync } from "node:fs"; import { mobileCargoConfig } from "../scripts/ios-store-signing-config.mjs"; writeFileSync(process.argv[1], mobileCargoConfig(process.env.STATION_MOBILE_DEFAULT_ENDPOINT, { liveActivity: process.env.LIVE_ACTIVITY === "true" }), { mode: 0o600 });' "$RUNNER_TEMP/station-ios-mobile-env.toml"
+          node --input-type=module -e 'import { writeFileSync } from "node:fs"; import { mobileCargoConfig } from "../scripts/ios-store-signing-config.mjs"; writeFileSync(process.argv[1], mobileCargoConfig({ liveActivity: process.env.LIVE_ACTIVITY === "true" }), { mode: 0o600 });' "$RUNNER_TEMP/station-ios-mobile-env.toml"
           if [ "$LIVE_ACTIVITY" = true ]; then grep -Fq 'STATION_IOS_LIVE_ACTIVITY' "$RUNNER_TEMP/station-ios-mobile-env.toml"; fi
           rm -rf gen/apple/build
           security unlock-keychain -p "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$RUNNER_TEMP/station-ios.keychain-db"
@@ -569,7 +587,7 @@ jobs:
           cp "$ipa" "release-assets/station-${{ inputs.release_label }}-ios-device.ipa"
           echo "ipa=release-assets/station-${{ inputs.release_label }}-ios-device.ipa" >> "$GITHUB_OUTPUT"
       - name: Retain the audited IPA and receipts as the staged run artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: station-${{ inputs.channel }}-ios-staged-${{ inputs.bundle_version }}
           path: |
@@ -581,7 +599,7 @@ jobs:
           retention-days: 14
       - name: Retain the built IPA when package verification fails
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: station-${{ inputs.channel }}-ios-verification-failure-${{ inputs.bundle_version }}
           path: src-desktop/gen/apple/build/arm64/*.ipa
@@ -596,8 +614,8 @@ jobs:
     # Runs after `deliver` in build-and-upload mode, or alone in upload mode
     # against the staged artifact an earlier call in this run retained. Never
     # rebuilds or re-signs: the bytes uploaded are the bytes that were audited.
-    needs: deliver
-    if: ${{ always() && !cancelled() && inputs.delivery != 'build' && (needs.deliver.result == 'success' || (inputs.delivery == 'upload' && needs.deliver.result == 'skipped')) }}
+    needs: [deliver, advisory]
+    if: ${{ always() && !cancelled() && inputs.delivery != 'build' && (needs.advisory.result == 'success' || (inputs.channel == 'nightly' && needs.advisory.result == 'skipped')) && (needs.deliver.result == 'success' || (inputs.delivery == 'upload' && needs.deliver.result == 'skipped')) }}
     runs-on: macos-26
     timeout-minutes: 60
     environment: ${{ inputs.channel == 'stable' && 'native-release' || format('ios-{0}', inputs.channel) }}
@@ -611,8 +629,7 @@ jobs:
       APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_IOS_SIGNING_IDENTITY }}
       APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
       TESTFLIGHT_INTERNAL_GROUP_ID: ${{ vars.TESTFLIGHT_INTERNAL_GROUP_ID }}
-      STATION_MOBILE_DEFAULT_ENDPOINT: ${{ inputs.mobile_endpoint }}
-      STATION_BUILD_VERSION: ${{ inputs.marketing_version }}
+      STATION_BUILD_VERSION: ${{ inputs.web_build_version || inputs.marketing_version }}
       STATION_BUILD_CHANNEL: ${{ inputs.channel }}
       STATION_RELEASE_LABEL: ${{ inputs.release_label }}
       VITE_NATIVE_APP_UPDATE_FEED_URL: ${{ inputs.update_feed_url }}
@@ -638,13 +655,13 @@ jobs:
           node scripts/verify-ios-testflight-authority.mjs --source-ref "$source_ref" --source-sha '${{ inputs.source_sha }}'
           echo "AUTHORITY_REF=$source_ref" >> "$GITHUB_ENV"
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - run: npm run dependencies:ci
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: station-${{ inputs.channel }}-ios-staged-${{ inputs.bundle_version }}
           path: staged
@@ -698,7 +715,7 @@ jobs:
           --github-output "$GITHUB_OUTPUT"
       - name: Upload a previously unobserved IPA to TestFlight
         if: steps.reconcile.outputs.upload == 'true'
-        uses: apple-actions/upload-testflight-build@14df18fee5a4ff3b76971dd382f033494a0194e9 # v5.5.0
+        uses: apple-actions/upload-testflight-build@155ea93be9ee6d5186c71f660a612f5eddb14510 # v5.6.0
         with:
           app-path: ${{ steps.staged.outputs.ipa }}
           app-type: ios
@@ -735,9 +752,35 @@ jobs:
           fi
           internal_group=$(node --input-type=module -e 'import { iosTestFlightChannel } from "./scripts/ios-testflight-channel.mjs"; process.stdout.write(iosTestFlightChannel(process.argv[1]).internalGroup);' '${{ inputs.channel }}')
           node scripts/app-store-connect-receipt.mjs attach-internal-group --app-id '${{ steps.app_store.outputs.app_id }}' --build-id "$build_id" --group-id "$TESTFLIGHT_INTERNAL_GROUP_ID" --group-name "$internal_group" --output provider-receipts/testflight-internal-group-assignment.json
+      - name: Distribute Nightly to external testers and submit beta review
+        id: external
+        if: inputs.distribute_external && inputs.channel == 'nightly' && !startsWith(inputs.source_ref, 'refs/tags/ios-testflight/')
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          TESTFLIGHT_EXTERNAL_GROUP_ID: ${{ vars.TESTFLIGHT_EXTERNAL_GROUP_ID }}
+          TESTFLIGHT_EXTERNAL_GROUP_NAME: ${{ vars.TESTFLIGHT_EXTERNAL_GROUP_NAME }}
+        run: |
+          build_id=$(node -p 'JSON.parse(require("node:fs").readFileSync("provider-receipts/testflight-build-receipt.json", "utf8")).buildId')
+          node scripts/app-store-connect-receipt.mjs distribute-external --app-id '${{ steps.app_store.outputs.app_id }}' --build-id "$build_id" --bundle-version '${{ inputs.bundle_version }}' --output provider-receipts/testflight-external-distribution.json
+      - name: Report external TestFlight distribution outcome
+        if: always() && (steps.external.outcome == 'success' || steps.external.outcome == 'failure')
+        continue-on-error: true
+        env:
+          EXTERNAL_OUTCOME: ${{ steps.external.outcome }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+          const path = 'provider-receipts/testflight-external-distribution.json';
+          const receipt = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null;
+          const status = process.env.EXTERNAL_OUTCOME === 'success' ? receipt?.status : 'FAILED (non-blocking)';
+          const detail = receipt?.error ?? receipt?.betaReviewState ?? receipt?.externalBuildState ?? 'No provider receipt; inspect the external distribution step.';
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, `\n### External TestFlight distribution\n\nStatus: **${status}**\n\n${detail}\n\nApple controls beta approval; this does not prove tester installation.\n`);
+          if (process.env.EXTERNAL_OUTCOME !== 'success') console.log('::warning::External TestFlight distribution failed; internal delivery remains successful. See the step log and external-distribution receipt.');
+          NODE
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with: { subject-path: release-assets/* }
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: station-${{ inputs.channel }}-ios-testflight-${{ inputs.bundle_version }}

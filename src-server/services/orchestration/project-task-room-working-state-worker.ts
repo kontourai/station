@@ -3,18 +3,27 @@ import { parentPort, workerData } from 'node:worker_threads';
 import { PROJECT_TASK_ROOM_RUNTIME_MIGRATION } from '../../domain/migrations/006-project-task-room-runtime.js';
 import { PROJECT_TASK_ROOM_REVISION_PUBLICATION_MIGRATION } from '../../domain/migrations/008-project-task-room-revision-publication.js';
 import { ensureProjectTaskRoomRevisionAttributionColumn } from '../../domain/migrations/009-project-task-room-revision-attribution.js';
+import { ensureProjectTaskRoomRevisionFreezeColumn } from '../../domain/migrations/024-project-task-room-revision-freeze.js';
+import {
+  type RevisionEvidenceAdmissionRefusal,
+  revisionEvidenceAdmission,
+  revisionEvidenceRecordBytesUpperBound,
+  revisionEvidenceSnapshotBytes,
+} from '../../domain/revision-bound-evidence.js';
 import {
   DEFAULT_RETAINED_WORKING_STATE_OPERATIONS,
   SharedWorkingState,
   type TextDocumentOperation,
   type WorkingStateSnapshot,
 } from '../../domain/shared-working-state.js';
+import { TASK_ROOM_INSERT_RESERVE_BYTES } from '../../domain/task-room-document-capacity.js';
 import { applyWalJournalMode } from '../../utils/sqlite-wal.js';
 import { projectTaskRoomRevisionPublicationId } from './project-task-room-document-id.js';
 import {
   initializeProjectTaskRoomSourceSeals,
   readProjectTaskRoomSourceSeal,
 } from './project-task-room-source-seal.js';
+import { readRevisionEvidenceLedgerUsage } from './sqlite-revision-evidence-persistence.js';
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require('node:sqlite') as {
@@ -34,6 +43,7 @@ db.exec(PROJECT_TASK_ROOM_RUNTIME_MIGRATION);
 initializeProjectTaskRoomSourceSeals(db);
 db.exec(PROJECT_TASK_ROOM_REVISION_PUBLICATION_MIGRATION);
 ensureProjectTaskRoomRevisionAttributionColumn(db);
+ensureProjectTaskRoomRevisionFreezeColumn(db);
 const maxRetainedOperations = Number.isSafeInteger(
   workerData.maxRetainedOperations,
 )
@@ -47,13 +57,100 @@ const maxWorkingSnapshotBytes = Number.isSafeInteger(
   : MAX_REVISION_PUBLICATION_SNAPSHOT_BYTES;
 const MAX_REVISION_PUBLICATION_CORRELATION_BYTES = 2 * 1024;
 const MAX_REVISION_PUBLICATION_TEXT_BYTES = 512;
+/**
+ * Upper bound for a not-yet-frozen publication's record. Its frozen text is
+ * never larger than the snapshot, which carries every character's JSON value;
+ * the slack covers scope, actor and correlation at six bytes per stored byte.
+ */
+function pendingRecordBytesUpperBound(snapshotBytes: number) {
+  return (
+    revisionEvidenceRecordBytesUpperBound({
+      snapshotBytes: 2 * snapshotBytes,
+      text: '',
+      scope: null,
+      actor: null,
+      correlation: null,
+    }) +
+    6 *
+      (6 * MAX_REVISION_PUBLICATION_TEXT_BYTES +
+        MAX_REVISION_PUBLICATION_CORRELATION_BYTES)
+  );
+}
+/**
+ * Stored receipts plus every publication admitted but not yet frozen, each
+ * of those at its upper bound. Publications already frozen are in the
+ * ledger; the rest are reserved (#4007).
+ */
+function reservedRevisionLedger(): {
+  readonly count: number;
+  readonly recordBytes: number;
+} {
+  const ledger = readRevisionEvidenceLedgerUsage(db);
+  const pending = db
+    .prepare(
+      'SELECT snapshot_bytes FROM project_task_room_revision_publication_outbox WHERE evidence_revision IS NULL AND freeze_requested=1',
+    )
+    .all() as Array<{ snapshot_bytes: number }>;
+  return {
+    count: ledger.count + pending.length,
+    recordBytes: pending.reduce(
+      (total, row) =>
+        total + pendingRecordBytesUpperBound(Number(row.snapshot_bytes)),
+      ledger.recordBytes,
+    ),
+  };
+}
+/**
+ * Every save must fit a complete evidence record. Coalesced candidates do not
+ * reserve immutable ledger capacity; only non-coalescing (eager) saves still
+ * preflight it.
+ */
+function revisionPublicationRefusal(
+  value: any,
+  state: SharedWorkingState,
+  snapshotBytes: number,
+): RevisionEvidenceAdmissionRefusal | null {
+  // Freeze's own measure: a shape it would refuse is refused here instead.
+  const evidenceBytes = revisionEvidenceSnapshotBytes(state.snapshot());
+  if (evidenceBytes === null) return 'document-full';
+  const text = state.text();
+  return revisionEvidenceAdmission({
+    snapshotBytes: Math.max(snapshotBytes, evidenceBytes),
+    textBytes: Buffer.byteLength(text, 'utf8'),
+    recordBytes: revisionEvidenceRecordBytesUpperBound({
+      snapshotBytes,
+      text,
+      scope: value.scope,
+      actor: {
+        actorId: value.actorId,
+        kind: value.actorKind ?? 'human',
+        ...(value.actorLabel ? { displayLabel: value.actorLabel } : {}),
+      },
+      correlation: {
+        projectId: value.scope?.projectId,
+        taskId: value.scope?.taskId,
+        ...(value.publicationCorrelation ?? {}),
+      },
+    }),
+    reserveBytes: (value.operations as TextDocumentOperation[]).some(
+      (operation) => operation.kind === 'insert',
+    )
+      ? TASK_ROOM_INSERT_RESERVE_BYTES
+      : 0,
+    ledger:
+      value.coalesceRevisionPublication === true
+        ? { count: 0, recordBytes: 0 }
+        : reservedRevisionLedger(),
+  });
+}
 const send = (id: number, result: unknown) =>
   parentPort?.postMessage({ id, result });
 let watchCount = 0;
 let dataVersion = Number(
   db.prepare('PRAGMA data_version').get()?.data_version ?? 0,
 );
-let watchTimer: ReturnType<typeof setInterval> | undefined;
+let watchTimer: ReturnType<typeof setTimeout> | undefined;
+let watchDelay = 250;
 const beforeCommit = new Map<number, (allowed: boolean) => void>();
 function requestBeforeCommit(id: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -63,22 +160,31 @@ function requestBeforeCommit(id: number): Promise<boolean> {
 }
 function updateWatch() {
   if (watchCount > 0 && !watchTimer) {
-    watchTimer = setInterval(() => {
+    watchTimer = setTimeout(() => {
+      watchTimer = undefined;
       try {
         const next = Number(
           db.prepare('PRAGMA data_version').get()?.data_version ?? 0,
         );
         if (next !== dataVersion) {
           dataVersion = next;
+          watchDelay = 250;
           parentPort?.postMessage({ type: 'changed' });
+        } else {
+          watchDelay = Math.min(watchDelay * 2, 2_000);
         }
-      } catch {}
-    }, 250);
-  } else if (watchCount === 0 && watchTimer) {
-    clearInterval(watchTimer);
+      } catch {
+        watchDelay = Math.min(watchDelay * 2, 2_000);
+      }
+      updateWatch();
+    }, watchDelay);
+  } else if (watchCount === 0) {
+    clearTimeout(watchTimer);
     watchTimer = undefined;
+    watchDelay = 250;
   }
 }
+
 const key = (scope: any) => [scope.projectId, scope.taskId, scope.documentId];
 const boundedText = (
   value: unknown,
@@ -149,7 +255,7 @@ function readRevisionPublication(scope: any) {
     .prepare(
       `SELECT intent_id,base_working_revision,working_revision,snapshot_json,
         actor_id,actor_label,actor_kind,operator_id,device_id,policy_revision,
-        correlation_json,parent_evidence_revision,evidence_revision,created_at
+        correlation_json,parent_evidence_revision,evidence_revision,created_at,freeze_requested
        FROM project_task_room_revision_publication_outbox
        WHERE project_id=? AND task_id=? AND document_id=? LIMIT 1`,
     )
@@ -157,6 +263,7 @@ function readRevisionPublication(scope: any) {
   if (!row) return { kind: 'unavailable' } as const;
   try {
     if (
+      (row.freeze_requested !== 0 && row.freeze_requested !== 1) ||
       !boundedText(row.intent_id) ||
       !boundedText(row.base_working_revision) ||
       !boundedText(row.working_revision) ||
@@ -204,6 +311,7 @@ function readRevisionPublication(scope: any) {
       kind: 'available',
       publication: {
         intentId: row.intent_id,
+        freezeRequested: row.freeze_requested === 1,
         scope,
         baseWorkingRevision: row.base_working_revision,
         workingRevision: row.working_revision,
@@ -389,8 +497,122 @@ async function handle(message: any) {
           : { kind: 'conflict' },
       );
     }
+    if (value.type === 'revision-ledger-usage') {
+      try {
+        return send(id, { kind: 'available', ...reservedRevisionLedger() });
+      } catch {
+        return send(id, { kind: 'unavailable' });
+      }
+    }
     if (value.type === 'read-revision-publication') {
       return send(id, readRevisionPublication(value.scope));
+    }
+    if (value.type === 'request-revision-publication') {
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const read = readRevisionPublication(value.scope);
+        if (readProjectTaskRoomSourceSeal(db, value.scope)) {
+          db.exec('ROLLBACK');
+          return send(id, { kind: 'unavailable' });
+        }
+        if (read.kind === 'missing') {
+          const head = readRevisionHead(value.scope);
+          if (
+            head.kind === 'available' &&
+            head.workingRevision === value.workingRevision
+          ) {
+            db.exec('ROLLBACK');
+            return send(id, {
+              kind: 'existing',
+              evidenceRevision: head.evidenceRevision,
+            });
+          }
+          // A pristine document has no settlement to supply an outbox. Its
+          // first reference freezes the initial state as the recorded Task owner.
+          const stored = db
+            .prepare(
+              'SELECT 1 FROM project_task_room_working_states WHERE project_id=? AND task_id=? AND document_id=?',
+            )
+            .get(...key(value.scope));
+          const initial = stored ? undefined : load(value.scope)?.snapshot();
+          const principal = value.initialPrincipal;
+          if (
+            head.kind !== 'missing' ||
+            !initial ||
+            initial.revision !== value.workingRevision ||
+            !boundedText(value.initialActorId) ||
+            !boundedText(principal?.operatorId) ||
+            !boundedText(principal?.deviceId) ||
+            !boundedText(principal?.policyRevision)
+          ) {
+            db.exec('ROLLBACK');
+            return send(id, { kind: 'unavailable' });
+          }
+          const snapshotJson = JSON.stringify(initial);
+          db.prepare(`INSERT INTO project_task_room_revision_publication_outbox(
+            project_id,task_id,document_id,intent_id,base_working_revision,working_revision,
+            snapshot_json,snapshot_bytes,actor_id,actor_label,actor_kind,
+            operator_id,device_id,policy_revision,correlation_json,
+            parent_evidence_revision,evidence_revision,created_at,freeze_requested
+          ) VALUES(?,?,?,?,?,?,?,?,?,?,'human',?,?,?,?,NULL,NULL,?,1)`).run(
+            ...key(value.scope),
+            'revision-initial:' + initial.revision,
+            initial.revision,
+            initial.revision,
+            snapshotJson,
+            Buffer.byteLength(snapshotJson, 'utf8'),
+            value.initialActorId,
+            principal.operatorId,
+            principal.operatorId,
+            principal.deviceId,
+            principal.policyRevision,
+            JSON.stringify({
+              projectId: value.scope.projectId,
+              taskId: value.scope.taskId,
+            }),
+            new Date().toISOString(),
+          );
+          if (!(await requestBeforeCommit(id))) {
+            db.exec('ROLLBACK');
+            return send(id, { kind: 'unavailable' });
+          }
+          db.exec('COMMIT');
+          return send(id, { kind: 'requested' });
+        }
+        if (
+          read.kind !== 'available' ||
+          read.publication.workingRevision !== value.workingRevision
+        ) {
+          db.exec('ROLLBACK');
+          return send(id, { kind: 'unavailable' });
+        }
+        db.prepare(
+          'UPDATE project_task_room_revision_publication_outbox SET freeze_requested=1 WHERE project_id=? AND task_id=? AND document_id=?',
+        ).run(...key(value.scope));
+        if (!(await requestBeforeCommit(id))) {
+          db.exec('ROLLBACK');
+          return send(id, { kind: 'unavailable' });
+        }
+        db.exec('COMMIT');
+        return send(id, { kind: 'requested' });
+      } catch {
+        try {
+          db.exec('ROLLBACK');
+        } catch {}
+        return send(id, { kind: 'unavailable' });
+      }
+    }
+    // Only a deterministic freeze refusal permits releasing this claim. A
+    // transient/unknown result may already have committed immutable evidence.
+    if (value.type === 'release-revision-publication') {
+      const result = db
+        .prepare(
+          'UPDATE project_task_room_revision_publication_outbox SET freeze_requested=0 WHERE project_id=? AND task_id=? AND document_id=? AND intent_id=? AND evidence_revision IS NULL',
+        )
+        .run(...key(value.scope), value.intentId);
+      return send(id, {
+        kind: result.changes === 1 ? 'released' : 'unavailable',
+      });
     }
     if (value.type === 'mark-revision-publication') {
       if (
@@ -640,7 +862,7 @@ async function handle(message: any) {
         }
         const pending = db
           .prepare(
-            'SELECT 1 AS pending FROM project_task_room_revision_publication_outbox WHERE project_id=? AND task_id=? AND document_id=? LIMIT 1',
+            'SELECT 1 AS pending FROM project_task_room_revision_publication_outbox WHERE project_id=? AND task_id=? AND document_id=? AND (freeze_requested=1 OR evidence_revision IS NOT NULL) LIMIT 1',
           )
           .get(...key(value.scope));
         if (pending) {
@@ -652,6 +874,10 @@ async function handle(message: any) {
         }
         const state = load(value.scope);
         if (!state) throw new Error('unavailable');
+        if (value.onlyIfEmpty === true && state.text()) {
+          db.exec('ROLLBACK');
+          return send(id, { kind: 'rejected' });
+        }
         const baseWorkingRevision = state.snapshot().revision;
         const revisions: Array<{ prior: string; revision: string }> = [];
         for (const operation of value.operations as TextDocumentOperation[]) {
@@ -674,9 +900,24 @@ async function handle(message: any) {
         const snapshot = state.snapshot();
         const snapshotJson = JSON.stringify(snapshot);
         const snapshotBytes = Buffer.byteLength(snapshotJson, 'utf8');
+        // Deterministic: no retry of this write can fit, so name it (#4007).
+        if (snapshotBytes > maxWorkingSnapshotBytes) {
+          db.exec('ROLLBACK');
+          return send(id, { kind: 'rejected', reason: 'document-full' });
+        }
+        if (value.suppressRevisionPublicationForDiagnostic !== true) {
+          const refusal = revisionPublicationRefusal(
+            value,
+            state,
+            snapshotBytes,
+          );
+          if (refusal) {
+            db.exec('ROLLBACK');
+            return send(id, { kind: 'rejected', reason: refusal });
+          }
+        }
         if (
           snapshotBytes < 1 ||
-          snapshotBytes > maxWorkingSnapshotBytes ||
           !boundedText(value.intentId) ||
           !boundedText(value.actorId) ||
           (value.actorLabel !== undefined && !boundedText(value.actorLabel))
@@ -746,7 +987,8 @@ async function handle(message: any) {
           | undefined;
         if (
           parent &&
-          (parent.working_revision !== baseWorkingRevision ||
+          ((value.coalesceRevisionPublication !== true &&
+            parent.working_revision !== baseWorkingRevision) ||
             !evidenceRevision(parent.evidence_revision))
         )
           throw new Error('corrupt revision evidence head');
@@ -788,12 +1030,21 @@ async function handle(message: any) {
             project_id,task_id,document_id,intent_id,base_working_revision,
             working_revision,snapshot_json,snapshot_bytes,actor_id,actor_label,actor_kind,
             operator_id,device_id,policy_revision,
-            correlation_json,parent_evidence_revision,evidence_revision,created_at
-          ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?)`,
+            correlation_json,parent_evidence_revision,evidence_revision,created_at,freeze_requested
+          ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?)
+          ON CONFLICT(project_id,task_id,document_id) DO UPDATE SET
+            intent_id=excluded.intent_id,base_working_revision=excluded.base_working_revision,
+            working_revision=excluded.working_revision,snapshot_json=excluded.snapshot_json,
+            snapshot_bytes=excluded.snapshot_bytes,actor_id=excluded.actor_id,
+            actor_label=excluded.actor_label,actor_kind=excluded.actor_kind,
+            operator_id=excluded.operator_id,device_id=excluded.device_id,
+            policy_revision=excluded.policy_revision,correlation_json=excluded.correlation_json,
+            parent_evidence_revision=excluded.parent_evidence_revision,created_at=excluded.created_at,
+            freeze_requested=excluded.freeze_requested`,
         ).run(
           ...key(value.scope),
           publicationIntentId,
-          baseWorkingRevision,
+          parent?.working_revision ?? baseWorkingRevision,
           snapshot.revision,
           snapshotJson,
           snapshotBytes,
@@ -806,6 +1057,7 @@ async function handle(message: any) {
           correlationJson,
           parent?.evidence_revision ?? null,
           new Date().toISOString(),
+          value.coalesceRevisionPublication === true ? 0 : 1,
         );
         // The transaction is intentionally still open while the runtime
         // revalidates the immutable request/device/policy grant. A revoked

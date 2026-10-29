@@ -1,0 +1,7 @@
+{
+  "revision": "81ac140c39e57a2e85a0576248907b65878a214c",
+
+  "notes": [
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Fix round 5: re-read SSE transport, deduplication and resume claims against the epoch-change snapshot caller. The change resets only authority-client observation sequence bookkeeping and read tokens; fetch-SSE, cursor adoption, durable replay and connection-budget limits remain as documented. No transport-budget or native qualification claimed.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts"]}
+  ]
+}

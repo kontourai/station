@@ -165,7 +165,7 @@ describe('Bedrock check receipts', () => {
     // a list-denied connection could ever produce — and said what it needs to
     // do so.
     expect(result.reason).toContain('Set a default model');
-    // ...and it names the field that does it (review M1): every provider form
+    // ...and it names the field that does it: every provider form
     // that can reach this instruction now has one.
     expect(result.reason).toContain('"Default model" field');
     const [view] = await service.listModelConnections();
@@ -202,7 +202,7 @@ describe('Bedrock check receipts', () => {
 });
 
 /**
- * archive#3654 review round 2 — the standing receipt for ONE connection, read rather
+ * archive#3654 — the standing receipt for ONE connection, read rather
  * than probed.
  *
  * `GET /api/providers/:id/health` used to reach this through the whole model

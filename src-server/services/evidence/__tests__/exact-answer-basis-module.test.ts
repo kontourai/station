@@ -1,4 +1,5 @@
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
+import type { ContributionReadV2 } from '@kontourai/surface/basis';
 import { describe, expect, test, vi } from 'vitest';
 import { composeAuthorizedSessionAnswerBasis } from '../../projects/task-basis-module.js';
 import { createExactAnswerBasisModule } from '../exact-answer-basis-module.js';
@@ -42,6 +43,42 @@ const assessment = {
 };
 
 describe('ExactAnswerBasisModule', () => {
+  test('maps a Station-built contribution Surface rejects to unavailable and reports the invariant', async () => {
+    // Lone surrogate: inside Station's id bound, outside Surface's opaque id.
+    const unrepresentable = {
+      ...answer,
+      inputs: [
+        {
+          eventId: 'input-\ud800',
+          kind: 'initial' as const,
+          prompt: 'ask',
+          attachments: [],
+        },
+      ],
+    };
+    const reported: { code: string }[] = [];
+    const module = createExactAnswerBasisModule({
+      hosted: () => false,
+      canReadSession: () => true,
+      readAnswer: (async () => unrepresentable) as never,
+      readAssessment: async () => assessment,
+      readNarrative: (async () => undefined) as never,
+      readReviewedSource: async () => undefined,
+      reportCompositionInvariant: (error) => reported.push(error.surfaceGap),
+    });
+    await expect(
+      module.read({
+        sessionId: 'session-a',
+        turnId: 'turn-a',
+        authority,
+        current: () => true,
+      }),
+    ).resolves.toEqual({ status: 'unavailable' });
+    expect(reported).toEqual([
+      expect.objectContaining({ code: 'hostile-input' }),
+    ]);
+  });
+
   test('reads every exact owner once and refuses a revoked publication', async () => {
     let current = true;
     const readAssessment = vi.fn(async () => assessment);
@@ -166,86 +203,101 @@ describe('ExactAnswerBasisModule', () => {
     expect(personalReviewed).not.toHaveBeenCalled();
   });
 
-  test('publishes only closed Fieldwork source gaps and never turns a support edge into support', () => {
-    const basis = composeAuthorizedSessionAnswerBasis(answer as never);
-    const contribution = {
-      owner: { authority: '@kontourai/fieldwork' },
-      state: 'available',
-      observedAt: answer.observedAt,
-      value: [
-        {
-          ref: {
-            authority: '@kontourai/fieldwork',
-            schemaVersion: 'fieldwork.kontourai.io/v1',
-            kind: 'reviewed-web-source',
-            exactRef: `fieldwork-reviewed-source:v1:${'b'.repeat(64)}`,
-            evidenceId: 'evidence-a',
-          },
-          answer: answer.binding.answer,
-          role: 'source',
-          context: {
-            kind: 'reviewed-source',
-            sourceClaimId: 'source-claim',
-            sourceEvidenceId: 'evidence-a',
-            answerClaimId: 'answer-claim',
-            answerCitationEvidenceId: 'citation-a',
-            assessmentRevision: 1,
-            review: 'not-accepted',
-            reviewedAt: null,
-            currentness: 'drifted',
-            checkedAt: answer.observedAt,
-            expectedCapture: null,
-            observedCapture: null,
-          },
-          gaps: [
-            {
-              code: 'reviewed-source-drifted',
-              message:
-                'Reviewed source context is incomplete or requires attention.',
-            },
-          ],
-        },
-      ],
-    } as never;
-    const row = reviewedSourceSessionInventoryRow({
-      sessionId: 'session-a',
-      turnId: 'turn-a',
-      answerReferenceId: 'message-a',
-      contribution,
-      basis: {
-        ...basis,
-        relationships: [
+  test.each(['not-accepted', 'not-chosen'] as const)(
+    'preserves %s source gaps without inferring support',
+    (review) => {
+      const basis = composeAuthorizedSessionAnswerBasis(answer as never);
+      const contribution = {
+        owner: { authority: '@kontourai/fieldwork' },
+        state: 'available',
+        observedAt: answer.observedAt,
+        value: [
           {
-            kind: 'supports',
-            from: 'evidence:evidence-a',
-            to: 'answer-claim',
-            source: 'surface-assessment',
-            gaps: [],
+            ref: {
+              authority: '@kontourai/fieldwork',
+              schemaVersion: 'fieldwork.kontourai.io/v1',
+              kind: 'reviewed-web-source',
+              exactRef: `fieldwork-reviewed-source:v1:${'b'.repeat(64)}`,
+              evidenceId: 'evidence-a',
+            },
+            answer: answer.binding.answer,
+            role: 'source',
+            context: {
+              kind: 'reviewed-source',
+              sourceClaimId: 'source-claim',
+              sourceEvidenceId: 'evidence-a',
+              answerClaimId: 'answer-claim',
+              answerCitationEvidenceId: 'citation-a',
+              assessmentRevision: 1,
+              review,
+              ...(review === 'not-chosen'
+                ? { choice: { candidateCount: 2, chosenOverCandidateIds: [] } }
+                : {}),
+              reviewedAt: null,
+              currentness: 'drifted',
+              checkedAt: answer.observedAt,
+              expectedCapture: null,
+              observedCapture: null,
+            },
+            gaps: [
+              {
+                code: 'reviewed-source-drifted',
+                message:
+                  'Reviewed source context is incomplete or requires attention.',
+              },
+              {
+                code: `reviewed-source-review-${review}`,
+                message:
+                  'Reviewed source context is incomplete or requires attention.',
+              },
+            ],
           },
         ],
-      },
-    });
-    expect(row).toMatchObject({
-      relations: ['contributed-to'],
-      contributionGaps: ['reviewed-source-drifted'],
-    });
-    expect(row?.relations).not.toContain('supports');
-    expect(
-      reviewedSourceSessionInventoryGroup({
+      } satisfies ContributionReadV2;
+      const row = reviewedSourceSessionInventoryRow({
         sessionId: 'session-a',
         turnId: 'turn-a',
         answerReferenceId: 'message-a',
-        contribution: {
-          owner: { authority: '@kontourai/fieldwork' },
-          state: 'unavailable',
-          observedAt: answer.observedAt,
-        } as never,
-        basis,
-      }),
-    ).toMatchObject({
-      state: 'unavailable',
-      items: [],
-      gaps: [{ kind: 'unavailable' }],
-    });
-  });
+        contribution,
+        basis: {
+          ...basis,
+          relationships: [
+            {
+              kind: 'supports',
+              from: 'evidence:evidence-a',
+              to: 'answer-claim',
+              source: 'surface-assessment',
+              gaps: [],
+            },
+          ],
+        },
+      });
+      expect(row).toMatchObject({
+        relations: ['contributed-to'],
+        reviewedSource: { review },
+        contributionGaps: [
+          'reviewed-source-drifted',
+          `reviewed-source-review-${review}`,
+        ],
+      });
+      expect(row?.relations).not.toContain('supports');
+      expect(
+        reviewedSourceSessionInventoryGroup({
+          sessionId: 'session-a',
+          turnId: 'turn-a',
+          answerReferenceId: 'message-a',
+          contribution: {
+            owner: { authority: '@kontourai/fieldwork' },
+            state: 'unavailable',
+            observedAt: answer.observedAt,
+          } as never,
+          basis,
+        }),
+      ).toMatchObject({
+        state: 'unavailable',
+        items: [],
+        gaps: [{ kind: 'unavailable' }],
+      });
+    },
+  );
 });

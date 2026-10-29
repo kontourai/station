@@ -1,0 +1,7 @@
+{
+  "revision": "a62b2b1e73156af09b5cb2206be230b2bc0b1a5f",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"#1706 follow-up: docs/guides/testing.md now also says the required Source verification policy status keeps success with a provisional description for ci-fast/test-full deferrals. This document only routes to testing.md; its routing and claims remain accurate.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

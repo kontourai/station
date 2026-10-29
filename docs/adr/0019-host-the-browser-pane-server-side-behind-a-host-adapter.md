@@ -99,7 +99,7 @@ Facts this decision depends on, checked on this branch:
 - **Upstream Tauri.** Tauri 3's CEF runtime (`tauri-runtime-cef`) published
   `v3.0.0-alpha.2` on 2026-09-21. The Tauri 2 child-webview defects the spike
   cited were all open on 2026-09-22: tauri-apps/tauri#15682 (the child covers
-  the main webview), #15656 (Wayland bounds) and #11794 (no mobile
+  the main webview), tauri-apps/tauri#15656 (Wayland bounds) and tauri-apps/tauri#11794 (no mobile
   `add_child`).
 
 Prior art: an existing product runs an Electron webview driven over the Chrome
@@ -448,8 +448,8 @@ frames to catch up. Improving relay throughput is separate work that overlaps
 ## Alternatives considered
 
 - **Tauri 2 child webview inside the main window.** Rejected, as in ADR 0017.
-  It requires the `unstable` feature, and tauri-apps/tauri#15682, #15656 and
-  #11794 remain open. It would also reach only the desktop client.
+  It requires the `unstable` feature, and tauri-apps/tauri#15682, tauri-apps/tauri#15656 and
+  tauri-apps/tauri#11794 remain open. It would also reach only the desktop client.
 - **Port Station to Electron.** Rejected. ADR 0017 already
   declined an Electron migration for this feature. It would buy an embedded
   webview on desktop only, at the cost of a new distribution, patch and

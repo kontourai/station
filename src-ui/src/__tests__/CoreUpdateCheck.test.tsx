@@ -2,7 +2,11 @@
  * @vitest-environment jsdom
  */
 
-import type { ServiceUpdateProgress } from '@kontourai/station-contracts/system-status';
+import type {
+  ServerUpdateRunningTurns,
+  ServerUpdateState,
+  ServiceUpdateProgress,
+} from '@kontourai/station-contracts/system-status';
 import type {
   CoreUpdateRestartExpectation,
   CoreUpdateRestartStatus,
@@ -55,9 +59,34 @@ let serviceProgressOptions:
     }
   | undefined;
 const applyReset = vi.fn();
+const applyMutate = vi.fn();
+/** #3851: the pushed server update state, the action mutation and the turns. */
+const serverUpdateQuery: { data: ServerUpdateState | undefined } = {
+  data: undefined,
+};
+const serverUpdateActions: unknown[] = [];
+const runningTurnsQuery: {
+  data: ServerUpdateRunningTurns | undefined;
+  isPending: boolean;
+  isError: boolean;
+  isSuccess: boolean;
+} = { data: undefined, isPending: false, isError: false, isSuccess: false };
 
 vi.mock('@kontourai/station-sdk', () => ({
   useCoreUpdateStatusQuery: () => queryState,
+  useServerUpdateStateQuery: () => serverUpdateQuery,
+  useServerUpdateRunningTurnsQuery: () => runningTurnsQuery,
+  useServerUpdateActionMutation: () => ({
+    mutate: (
+      request: unknown,
+      options?: { onSuccess?: (data: { requestId: string | null }) => void },
+    ) => {
+      serverUpdateActions.push(request);
+      options?.onSuccess?.({ requestId: 'r-applied' });
+    },
+    isPending: false,
+    error: null,
+  }),
   useServiceUpdateProgressQuery: (
     _apiBase: string,
     options: typeof serviceProgressOptions,
@@ -71,7 +100,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   ) => {
     applyOptions = options;
     return {
-      mutate: vi.fn(),
+      mutate: applyMutate,
       reset: applyReset,
       isPending: false,
       error: null,
@@ -84,6 +113,34 @@ vi.mock('@kontourai/station-sdk/core-update-restart-status', () => ({
 }));
 
 const { CoreUpdateCheck } = await import('../views/settings/CoreUpdateCheck');
+
+/** The header's status badge, empty when the card claims no status. */
+function badgeText(): string {
+  return document.querySelector('.server-update__badge')?.textContent ?? '';
+}
+
+/** The header's version line, as text ("current → to target"). */
+function versionLine(): string | null {
+  return (
+    document
+      .querySelector('.server-update__version')
+      ?.textContent?.replace(/\s+/g, ' ')
+      .trim() ?? null
+  );
+}
+
+/** The card's primary actions, by label: at most one at a time. */
+function primaryActions(): string[] {
+  return Array.from(
+    document.querySelectorAll('.server-update .button--primary'),
+    (button) => button.textContent ?? '',
+  );
+}
+
+/** Whether a node sits inside the card's folded Details. */
+function inDetails(node: Element): boolean {
+  return node.closest('details.server-update__details') !== null;
+}
 
 const STARTED_AT = new Date('2026-08-09T12:00:00.000Z');
 const VIEW_IDENTITY = {
@@ -181,10 +238,46 @@ afterEach(() => {
   serviceProgressState.isError = false;
   serviceProgressOptions = undefined;
   applyReset.mockReset();
+  applyMutate.mockReset();
+  runningTurnsQuery.data = undefined;
+  runningTurnsQuery.isSuccess = false;
   queryState.dataUpdatedAt = 1_786_000_000_000;
 });
 
 describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
+  test('a source update names affected turns and waits for explicit confirmation before applying', () => {
+    runningTurnsQuery.data = { turns: [], hiddenCount: 2 };
+    runningTurnsQuery.isSuccess = true;
+    renderWith(behindCheckout());
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Update server checkout' }),
+    );
+    expect(applyMutate).not.toHaveBeenCalled();
+    expect(screen.getByText('2 turns you cannot see')).toBeTruthy();
+    expect(screen.getByText(/disconnects every client/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Later' }));
+    expect(applyMutate).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Update server checkout' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Update and restart' }));
+    expect(applyMutate).toHaveBeenCalledTimes(1);
+  });
+  test('changing the selected server invalidates an open source-update confirmation', () => {
+    const mounted = renderWith(behindCheckout());
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Update server checkout' }),
+    );
+    expect(screen.getByRole('alertdialog')).toBeTruthy();
+    mounted.rerender(
+      <CoreUpdateCheck
+        apiBase="http://localhost:3141"
+        context={makeContext({ scopeKey: 'scope-b' })}
+      />,
+    );
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(applyMutate).not.toHaveBeenCalled();
+  });
   test('a reinstall bundle with a differing stamp shows the S10 source-ref facts, never an apply button or release claim', () => {
     renderWith({
       installKind: 'desktop-bundle',
@@ -1066,18 +1159,18 @@ describe('a prebuilt release archive (#2675 D3)', () => {
 
   test('a verified newer release offers the service update, with versions and no source-update copy', () => {
     renderWith(archiveService());
-    expect(
-      screen.getByRole('button', { name: 'Update server to 0.8.0-preview.2' }),
-    ).toBeTruthy();
-    const line = screen.getByText(
-      'Station 0.8.0-preview.2 is available. This server runs 0.8.0-preview.1.',
-    );
-    expect(line.className).toContain('settings__update-msg--warning');
-    expect(screen.getByText(/Version: 0\.8\.0-preview\.1/)).toBeTruthy();
-    expect(screen.getByText(/Latest release: 0\.8\.0-preview\.2/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Update server' })).toBeTruthy();
+    // The header carries the comparison: a badge and "current → latest",
+    // each version once, with no sentence restating them.
+    expect(badgeText()).toBe('Update available');
+    expect(versionLine()).toBe('0.8.0-preview.1 → to 0.8.0-preview.2');
+    expect(screen.queryByText(/is available/)).toBeNull();
+    expect(screen.queryByText(/Version: /)).toBeNull();
+    expect(screen.queryByText(/Latest release: /)).toBeNull();
     expect(
       screen.getByText(/Update channel: preview \(set at install\)/),
     ).toBeTruthy();
+    expect(inDetails(screen.getByText(/Update channel/))).toBe(true);
     expect(screen.queryByText(/[Ss]ource update/)).toBeNull();
     expect(
       screen.queryByRole('button', { name: 'Update server checkout' }),
@@ -1091,14 +1184,84 @@ describe('a prebuilt release archive (#2675 D3)', () => {
         updateAvailable: false,
       }),
     );
-    const line = screen.getByText(
-      'This server runs the newest preview release (0.8.0-preview.1).',
-    );
-    expect(line.className).toContain('settings__update-msg--success');
-    expect(line.querySelector('svg')).not.toBeNull();
+    expect(badgeText()).toBe('Up to date');
     expect(
-      screen.queryByRole('button', { name: /Update server to/ }),
+      document.querySelector('.server-update__badge .tone-positive'),
+    ).not.toBeNull();
+    // Latest equals current: the version is stated once, with no arrow.
+    expect(versionLine()).toBe('0.8.0-preview.1');
+    expect(
+      screen.queryByRole('button', { name: /^Update server$/ }),
     ).toBeNull();
+  });
+
+  test.each([
+    ['unverified', 'unverified'],
+    ['not recorded', 'not-recorded'],
+    ['unreachable', 'unreachable'],
+    ['not yet run', undefined],
+  ] as const)(
+    'a release check that is %s claims no status, even with equal versions',
+    (_name, releaseCheck) => {
+      renderWith(
+        archiveService({
+          latestVersion: '0.8.0-preview.1',
+          releaseCheck,
+          updateAvailable: false,
+        }),
+      );
+      expect(badgeText()).toBe('');
+      expect(screen.queryByText('Up to date')).toBeNull();
+    },
+  );
+
+  test('the badge names a failed check, an unreachable server and a stuck update, and nothing when superseded', () => {
+    queryState.data = archiveService();
+    queryState.error = new Error('HTTP 503');
+    const view = render(
+      <CoreUpdateCheck
+        apiBase="http://localhost:3141"
+        context={makeContext()}
+      />,
+    );
+    expect(badgeText()).toBe('Check failed');
+    queryState.error = null;
+
+    view.rerender(
+      <CoreUpdateCheck
+        apiBase="http://localhost:3141"
+        context={makeContext({ reachability: 'unavailable' })}
+      />,
+    );
+    expect(badgeText()).toBe('Unavailable');
+
+    queryState.data = archiveService({
+      serviceUpdate: {
+        state: 'needs-operator',
+        requestId: REQUEST_ID,
+        fromVersion: '0.8.0-preview.1',
+        targetVersion: '0.8.0-preview.2',
+        reason: 'prepared-timeout',
+        restoreAttempts: 3,
+        finishedAt: '2026-09-27T12:00:00.000Z',
+      },
+    });
+    view.rerender(
+      <CoreUpdateCheck
+        apiBase="http://localhost:3141"
+        context={makeContext()}
+      />,
+    );
+    expect(badgeText()).toBe('Needs operator');
+
+    // Another selection: the cached comparison and progress are history.
+    view.rerender(
+      <CoreUpdateCheck
+        apiBase="http://localhost:3141"
+        context={makeContext({ isCurrent: () => false })}
+      />,
+    );
+    expect(badgeText()).toBe('');
   });
 
   test('an archive no launcher runs says how to update instead of offering it', () => {
@@ -1152,7 +1315,7 @@ describe('a prebuilt release archive (#2675 D3)', () => {
       }),
     );
     expect(
-      screen.queryByRole('button', { name: /Update server to/ }),
+      screen.queryByRole('button', { name: /^Update server$/ }),
     ).toBeNull();
     expect(
       screen.getByText(
@@ -1165,9 +1328,8 @@ describe('a prebuilt release archive (#2675 D3)', () => {
   test('an accepted apply follows its request until the correlated outcome, then re-checks', () => {
     const view = renderWith(archiveService());
     expect(serviceProgressOptions?.enabled).toBe(false);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Update server to 0.8.0-preview.2' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Update server' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Update and restart' }));
     act(() => {
       applyOptions?.onSuccess?.({
         success: true,
@@ -1205,7 +1367,7 @@ describe('a prebuilt release archive (#2675 D3)', () => {
     ).toBeTruthy();
     // The offer stays closed while this request is followed.
     expect(
-      screen.queryByRole('button', { name: /Update server to/ }),
+      screen.queryByRole('button', { name: /^Update server$/ }),
     ).toBeNull();
     expect(queryState.refetch).not.toHaveBeenCalled();
 
@@ -1234,7 +1396,7 @@ describe('a prebuilt release archive (#2675 D3)', () => {
     // comparison earns no offer until the re-check it triggered answers.
     expect(applyReset).toHaveBeenCalledTimes(1);
     expect(
-      screen.queryByRole('button', { name: /Update server to/ }),
+      screen.queryByRole('button', { name: /^Update server$/ }),
     ).toBeNull();
     queryState.dataUpdatedAt = Date.now() + 1;
     view.rerender(
@@ -1244,7 +1406,7 @@ describe('a prebuilt release archive (#2675 D3)', () => {
       />,
     );
     const again = screen.getByRole('button', {
-      name: 'Update server to 0.8.0-preview.2',
+      name: 'Update server',
     }) as HTMLButtonElement;
     expect(again.disabled).toBe(false);
   });
@@ -1271,16 +1433,15 @@ describe('a prebuilt release archive (#2675 D3)', () => {
     );
     expect(screen.queryByText(/cannot be read/)).toBeNull();
     expect(
-      screen.queryByRole('button', { name: /Update server to/ }),
+      screen.queryByRole('button', { name: /^Update server$/ }),
     ).toBeNull();
   });
 
   test('following an update expires on a timer whatever the last state, and says where to look', () => {
     vi.useFakeTimers({ now: new Date('2026-09-27T12:00:00.000Z') });
     const view = renderWith(archiveService());
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Update server to 0.8.0-preview.2' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Update server' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Update and restart' }));
     act(() => {
       applyOptions?.onSuccess?.({
         success: true,
@@ -1313,6 +1474,34 @@ describe('a prebuilt release archive (#2675 D3)', () => {
     expect(screen.queryByText(/stopped following the update/)).toBeNull();
   });
 
+  test('the badge keeps reporting a followed update while its restart drops the connection', () => {
+    const view = renderWith(archiveService());
+    fireEvent.click(screen.getByRole('button', { name: 'Update server' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Update and restart' }));
+    act(() => {
+      applyOptions?.onSuccess?.({
+        success: true,
+        serviceUpdate: { requestId: REQUEST_ID },
+      });
+    });
+    serviceProgressState.data = {
+      state: 'updating',
+      requestId: REQUEST_ID,
+      phase: 'stopping',
+      fromVersion: '0.8.0-preview.1',
+      targetVersion: '0.8.0-preview.2',
+      attempts: 0,
+    };
+    // The restart takes the server away: the connection reads as checking.
+    view.rerender(
+      <CoreUpdateCheck
+        apiBase="http://localhost:3141"
+        context={makeContext({ reachability: 'checking' })}
+      />,
+    );
+    expect(badgeText()).toBe('Updating');
+  });
+
   test('a server that stops answering mid-update says it is restarting, not that the update failed', () => {
     serviceProgressState.data = {
       state: 'updating',
@@ -1336,5 +1525,313 @@ describe('a prebuilt release archive (#2675 D3)', () => {
     expect(waiting.textContent).toContain(
       'station service status --instance=view-instance',
     );
+  });
+});
+
+describe('download, then a confirmed restart (#3851)', () => {
+  const STAGED = '0.8.0-preview.2';
+  function stagedService(
+    overrides: Partial<CoreUpdateStatus> = {},
+  ): CoreUpdateStatus {
+    return {
+      installKind: 'archive-service',
+      applyMethod: 'service-update',
+      channel: 'preview',
+      currentVersion: '0.8.0-preview.1',
+      latestVersion: STAGED,
+      releaseCheck: 'verified',
+      updateAvailable: true,
+      serverIdentity: ANSWER_IDENTITY,
+      provenanceIssue: null,
+      technicalDetail: null,
+      selfUpdateUnavailableReason: null,
+      selfUpdateUnavailableCode: null,
+      serviceUpdate: { state: 'idle' },
+      stagedUpdates: true,
+      ...overrides,
+    };
+  }
+  function pushed(
+    progress: ServiceUpdateProgress,
+    overrides: Partial<ServerUpdateState> = {},
+  ): ServerUpdateState {
+    return {
+      supported: true,
+      currentVersion: '0.8.0-preview.1',
+      availability: null,
+      progress,
+      downloadPolicy: 'after-24h',
+      autoDownloadAt: null,
+      applyWhenIdle: null,
+      ...overrides,
+    };
+  }
+  afterEach(() => {
+    serverUpdateQuery.data = undefined;
+    serverUpdateActions.length = 0;
+    runningTurnsQuery.data = undefined;
+    runningTurnsQuery.isSuccess = false;
+  });
+
+  test('offers Download, never the one-click update, and downloading restarts nothing', () => {
+    serverUpdateQuery.data = pushed({ state: 'idle' });
+    renderWith(stagedService());
+    expect(
+      screen.queryByRole('button', { name: /^Update server$/ }),
+    ).toBeNull();
+    // One primary action: the header names the version, the button does not.
+    expect(primaryActions()).toEqual(['Download server update']);
+    expect(versionLine()).toBe(`0.8.0-preview.1 → to ${STAGED}`);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Download server update' }),
+    );
+    expect(serverUpdateActions).toEqual([{ action: 'stage' }]);
+  });
+
+  test('the auto-download schedule is one short line, with the date only when not today', () => {
+    vi.useFakeTimers({ now: new Date(2026, 9, 28, 9, 0) });
+    serverUpdateQuery.data = pushed(
+      { state: 'idle' },
+      { autoDownloadAt: new Date(2026, 9, 28, 17, 4).toISOString() },
+    );
+    const view = renderWith(stagedService());
+    const today = screen.getByText(/^Auto-downloads /);
+    expect(today.textContent).toMatch(/^Auto-downloads at \d{1,2}:04/);
+    expect(today.textContent).not.toMatch(/2026|Oct/);
+    serverUpdateQuery.data = pushed(
+      { state: 'idle' },
+      { autoDownloadAt: new Date(2026, 9, 29, 17, 4).toISOString() },
+    );
+    view.rerender(
+      <CoreUpdateCheck
+        apiBase="http://localhost:3141"
+        context={makeContext()}
+      />,
+    );
+    expect(screen.getByText(/^Auto-downloads /).textContent).toMatch(
+      /^Auto-downloads Oct 29, \d{1,2}:04/,
+    );
+  });
+
+  test('shows measured download bytes while staging, and no Download button', () => {
+    serverUpdateQuery.data = pushed({
+      state: 'staging',
+      requestId: 'r-1',
+      intent: 'stage',
+      stagePhase: 'downloading',
+      downloadedBytes: 25 * 1024 * 1024,
+      totalBytes: 100 * 1024 * 1024,
+    });
+    renderWith(stagedService());
+    // A measured download is a progress bar, not a sentence.
+    const bar = screen.getByRole('progressbar', {
+      name: 'Downloading the update',
+    });
+    expect(bar.getAttribute('aria-valuenow')).toBe('25');
+    expect(bar.getAttribute('aria-valuetext')).toBe('25.0 / 100.0 MB (25%)');
+    expect(screen.getByText('25.0 / 100.0 MB')).toBeTruthy();
+    expect(screen.queryByText(/Downloading the release/)).toBeNull();
+    expect(badgeText()).toBe('Downloading');
+    expect(screen.queryByRole('button', { name: /Download/ })).toBeNull();
+    expect(primaryActions()).toEqual([]);
+  });
+
+  test('a staged version asks before restarting, naming the turns it interrupts', () => {
+    serverUpdateQuery.data = pushed({
+      state: 'staged',
+      requestId: 'r-1',
+      version: STAGED,
+      stagedAt: '2026-10-19T10:00:00.000Z',
+    });
+    runningTurnsQuery.data = {
+      turns: [
+        {
+          sessionId: 's-1',
+          conversationId: 'c-1',
+          title: 'Fix the build',
+          engine: 'codex',
+          startedAt: null,
+        },
+      ],
+      hiddenCount: 1,
+    };
+    runningTurnsQuery.isSuccess = true;
+    renderWith(stagedService());
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Restart server',
+      }),
+    );
+    // Nothing is requested by opening the confirmation.
+    expect(serverUpdateActions).toEqual([]);
+    expect(
+      screen.getByText('These 2 agent turns will be interrupted:'),
+    ).toBeTruthy();
+    expect(screen.getByText('Fix the build (codex)')).toBeTruthy();
+    expect(screen.getByText('1 turn you cannot see')).toBeTruthy();
+    expect(screen.queryByText(/resume/i)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Later' }));
+    expect(serverUpdateActions).toEqual([]);
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Restart server',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'When idle' }));
+    expect(serverUpdateActions).toEqual([
+      { action: 'apply-when-idle', version: STAGED },
+    ]);
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Restart server',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Restart now' }));
+    expect(serverUpdateActions.at(-1)).toEqual({
+      action: 'apply',
+      version: STAGED,
+    });
+  });
+
+  test.each(['connection', 'version'] as const)(
+    'a staged confirmation closes when its %s changes',
+    (change) => {
+      serverUpdateQuery.data = pushed({
+        state: 'staged',
+        requestId: 'r-1',
+        version: STAGED,
+        stagedAt: '2026-10-19T10:00:00.000Z',
+      });
+      const view = renderWith(stagedService());
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'Restart server',
+        }),
+      );
+      expect(screen.getByRole('alertdialog')).toBeTruthy();
+      const nextVersion = change === 'version' ? '0.8.0-preview.3' : STAGED;
+      serverUpdateQuery.data = pushed({
+        state: 'staged',
+        requestId: 'r-2',
+        version: nextVersion,
+        stagedAt: '2026-10-19T10:01:00.000Z',
+      });
+      view.rerender(
+        <CoreUpdateCheck
+          apiBase="http://localhost:3141"
+          context={makeContext({
+            scopeKey: change === 'connection' ? 'scope-b' : 'scope-a',
+          })}
+        />,
+      );
+      expect(screen.queryByRole('alertdialog')).toBeNull();
+      expect(serverUpdateActions).toEqual([]);
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'Restart server',
+        }),
+      );
+      expect(screen.getByRole('alertdialog').textContent).toContain(
+        nextVersion,
+      );
+    },
+  );
+
+  test('an update-when-idle intent says so and can be cancelled', () => {
+    serverUpdateQuery.data = pushed(
+      {
+        state: 'staged',
+        requestId: 'r-1',
+        version: STAGED,
+        stagedAt: '2026-10-19T10:00:00.000Z',
+      },
+      {
+        applyWhenIdle: { version: STAGED, requestedAt: '2026-10-19T10:01:00Z' },
+      },
+    );
+    renderWith(stagedService());
+    expect(
+      screen.getByText(
+        `Restarts into ${STAGED} once no agent turn is running.`,
+      ),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Cancel update when idle' }),
+    );
+    expect(serverUpdateActions).toEqual([{ action: 'cancel-apply-when-idle' }]);
+  });
+
+  test('once the offered release is staged, the header says ready to restart and Restart is the one primary action (review F11)', () => {
+    serverUpdateQuery.data = pushed({
+      state: 'staged',
+      requestId: 'r-1',
+      version: STAGED,
+      stagedAt: '2026-10-19T10:00:00.000Z',
+    });
+    renderWith(stagedService());
+    expect(badgeText()).toBe('Ready to restart');
+    expect(versionLine()).toBe(`0.8.0-preview.1 → to ${STAGED}`);
+    expect(primaryActions()).toEqual(['Restart server']);
+    expect(screen.queryByText(/is downloaded and verified/)).toBeNull();
+    expect(screen.queryByText(new RegExp(`${STAGED} is available`))).toBeNull();
+  });
+
+  test.each([
+    [
+      'the answering server is not the one this view correlated',
+      { instanceId: 'other-instance' },
+      {},
+    ],
+    ['the comparison is superseded', {}, { isCurrent: () => false }],
+  ] as const)(
+    'a staged release never reads as ready to restart when %s, since no Restart is offered',
+    (_name, identity, contextOverrides) => {
+      serverUpdateQuery.data = pushed({
+        state: 'staged',
+        requestId: 'r-1',
+        version: STAGED,
+        stagedAt: '2026-10-19T10:00:00.000Z',
+      });
+      queryState.data = stagedService({
+        serverIdentity: { ...ANSWER_IDENTITY, ...identity },
+      });
+      queryState.error = null;
+      render(
+        <CoreUpdateCheck
+          apiBase="http://localhost:3141"
+          context={makeContext(contextOverrides)}
+        />,
+      );
+      expect(
+        screen.queryByRole('button', { name: 'Restart server' }),
+      ).toBeNull();
+      expect(badgeText()).not.toBe('Ready to restart');
+      expect(screen.queryByText('Ready to restart')).toBeNull();
+    },
+  );
+
+  test('a release newer than the staged one is offered for download again (review F7)', () => {
+    serverUpdateQuery.data = pushed({
+      state: 'staged',
+      requestId: 'r-1',
+      version: STAGED,
+      stagedAt: '2026-10-19T10:00:00.000Z',
+    });
+    renderWith(stagedService({ latestVersion: '0.8.0-preview.3' }));
+    // Restarting into the downloaded release leads; the newer download is
+    // secondary, named by version because the header shows the staged one.
+    expect(
+      screen.getByRole('button', { name: 'Download 0.8.0-preview.3' }),
+    ).toBeTruthy();
+    expect(primaryActions()).toEqual(['Restart server']);
+  });
+
+  test('a server without stagedUpdates keeps the legacy update offer', () => {
+    renderWith(stagedService({ stagedUpdates: undefined }));
+    expect(screen.getByRole('button', { name: 'Update server' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Download/ })).toBeNull();
   });
 });

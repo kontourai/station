@@ -31,7 +31,7 @@ Production TURN/TLS, supported native runtimes and actual remote delivery must
 qualify independently. The Node UDP backend remains useful diagnostic evidence;
 it does not acquire TURN/TCP support from Pion's results.
 
-Native desktop has a separate [OS-keyring routing-grant vault](../../src-desktop/src/relay_grant_vault.rs),
+Native desktop has a separate [OS-keyring routing-grant vault](../../src-desktop/src/native_relay_redemption.rs),
 and a host-owned Device enrollment ceremony. The ordinary saved-route owner
 now composes `/native-application`, fresh ICE, Device proof and a separate
 account continuation for bounded health and member Project reads. Operator
@@ -601,16 +601,20 @@ terminal, plugin, pairing, consent and generic operator routes refuse proof
 authority even when the proven Device holds broad scopes. A separate closed
 relay-management and Project access management inventory now has native
 transport and fixed account-proof preparation; it requires explicit management
-scope and independent Project IAM. The account-bound gate admits only exact
-native relay-management leaves with current Device/account binding and separate
-management scope; credential-only account-bound Devices remain gated.
+scope and independent Project IAM. For relay management, the account-bound gate
+admits only exact native leaves with current Device/account binding and separate
+management scope; credential-only account-bound Devices remain gated on those leaves.
+The independent [personal analytics leaves](../guides/monitoring.md#connect-a-personal-source-in-insights)
+require a person-bound Device, matching current account session and
+`orchestration:read`; this exception does not qualify native analytics transport.
 Capabilities return neutral false without management authority. The one [native Device request
 authority](../../src-server/security/native-device-request-authority.ts) mints
 the credential-free principal on the final Request, and every later seam
 (account-bound gate, orchestration principal, Project membership authority,
 native account continuation) re-reads binding, paired Device and account
 binding through it — including before and after each provider await — never
-carrying identity from headers. Station-runtime composes binding, replay and
+carrying identity from headers. The paired Device it re-reads carries the scope
+its person's Station group allows (#3557), not the raw stored grant. Station-runtime composes binding, replay and
 admission only behind `STATION_NATIVE_DEVICE_PROOF_PILOT=1` with a supported
 provider/session capability and native connector; `0` disables the pilot and
 unsupported opt-in configurations fail closed at startup. The

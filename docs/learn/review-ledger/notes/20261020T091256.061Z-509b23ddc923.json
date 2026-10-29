@@ -1,0 +1,7 @@
+{
+  "revision": "2179dc907a08d15f3b9de73828bdfc6856c0db19",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the claims citing approvalMode.ts: only the user-facing full-access descriptions changed, and they now claim less (a start without a full-access grant gets a narrower setting, so some actions may still ask; the OpenCode copy is conditional on the grant). This document does not describe that copy; no documented claim changes.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/utils/approvalMode.ts"]}
+  ]
+}

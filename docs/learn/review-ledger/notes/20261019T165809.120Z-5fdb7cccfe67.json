@@ -1,0 +1,7 @@
+{
+  "revision": "4106e6ac38e20b94e20e7a740c2a333184ecb74b",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"ChatDock and useObservedWorkStatus changed only to add the session context card and an optional-item variant of the same status read; no concept-guide claim (work/session, engine, pairing, readiness) depends on them. No prose change.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/views/home/useObservedWorkStatus.ts"]}
+  ]
+}

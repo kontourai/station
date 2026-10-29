@@ -1,0 +1,29 @@
+{
+  "revision": "5c3fc8140e126f6d278e7c86732b04df62177aac",
+
+  "notes": [
+    {"path":"README.md","note":"Dependency delta: a cited document gained the producer filter and the External producers / tool-export wording for telemetry producers. Nothing here depends on those passages.","inputs":["README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Dependency delta: a cited document gained the producer filter and the External producers / tool-export wording for telemetry producers. Nothing here depends on those passages.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Dependency delta: a cited document gained the producer filter and the External producers / tool-export wording for telemetry producers. Nothing here depends on those passages.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Dependency delta: a cited document gained the producer filter and the External producers / tool-export wording for telemetry producers. Nothing here depends on those passages.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/cli.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Fix-round 8: insights.ts and monitoring.ts deltas (tools as a Station filter, filtered producerActivity, 400 for bad producer) are consistent with the guide's Insights paragraph; the SDK change adds the filter only. No prose change needed.","inputs":["docs/guides/monitoring.md","packages/sdk/src/query-domains/analytics.ts","src-server/routes/operations/insights.ts","src-server/routes/operations/monitoring.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Fix-round 8: tools=true is now a Station filter (monitoring.ts), so a Station tool export never includes producer rows; producerActivity follows Station filters (empty when filtered) and counts chats per distinct trace (insights.ts); an empty/invalid producer is 400 on both routes (isTelemetryProducerName); SDK filters and the sidebar group documented. Checked against the composition tests (40 vs 110 export, chats, 400s).","inputs":["docs/reference/api.md","packages/cli/src/commands/surfaces.ts","packages/sdk/src/query-domains/analytics.ts","src-server/routes/operations/insights.ts","src-server/routes/operations/monitoring.ts","src-server/services/telemetry-producers/telemetry-producer-store.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Fix-round 8: added --producer to station insights get/events (surfaces.ts buildQuery), with the exclusion rule and 400 for an invalid name; events forwarding pinned by surface-http.test.ts. insights get forwarding is by source inspection.","inputs":["docs/reference/cli.md","packages/cli/src/__tests__/surface-http.test.ts","packages/cli/src/commands/surfaces.ts","src-server/routes/operations/monitoring.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Fix-round 8: noted the producer filter on fetchMonitoringEvents/fetchMonitoringEventWindow and InsightsFilters, and producerActivity on fetchInsights (analytics.ts, systemRuntimeRequests.ts, insightsResponse.ts); pinned by insightsFilters.test.ts.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/analytics.ts","packages/sdk/src/query-domains/insightsResponse.ts","packages/sdk/src/query-domains/systemRuntimeRequests.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Fix-round 8: telemetry-producer-store.ts only re-exports the existing name predicate for the readers' producer validation; storage and admission claims are unchanged.","inputs":["docs/security/remote-access-threat-model.md","src-server/services/telemetry-producers/telemetry-producer-store.ts"]},
+
+    {"path":"examples/custom-branding/README.md","note":"Fix-round 8 delta: the SDK monitoring/insights helpers gain an optional producer filter and producerActivity in the parsed Insights response. Nothing this document says about those helpers changes.","inputs":["examples/custom-branding/README.md","packages/sdk/src/query-domains/systemRuntimeRequests.ts"]},
+
+    {"path":"packages/cli/README.md","note":"Dependency delta: a cited document gained the producer filter and the External producers / tool-export wording for telemetry producers. Nothing here depends on those passages.","inputs":["packages/cli/README.md","docs/reference/cli.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Dependency delta: a cited document gained the producer filter and the External producers / tool-export wording for telemetry producers. Nothing here depends on those passages.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

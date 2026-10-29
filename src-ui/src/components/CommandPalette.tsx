@@ -24,10 +24,12 @@ import {
   useHostRequestAuthorityScope,
 } from '../contexts/ApiBaseContext';
 import { activeChatsStore } from '../contexts/active-chats-store';
+import { useDeviceSettings } from '../contexts/DeviceSettingsContext';
 import {
   evaluateShortcutWhen,
   useShortcutRegistry,
 } from '../contexts/KeyboardShortcutsContext';
+import { KERNEL_RESERVED_SHORTCUTS } from '../contexts/kernelReservedShortcuts';
 import { useNavigation } from '../contexts/NavigationContext';
 import { navigationStore } from '../contexts/navigation-store';
 import {
@@ -36,6 +38,7 @@ import {
 } from '../contexts/open-chats-store';
 import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import { useShowSurfacePage } from '../contexts/useShowSurface';
+import { useDeveloperFeatures } from '../hooks/useDeveloperFeatures';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
 import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { useLocale } from '../i18n/LocaleContext';
@@ -145,6 +148,8 @@ function settingsScopeDetail(
       return formatMessage('scopeStation', locale);
     case 'defaults':
       return formatMessage('scopeDefaults', locale);
+    case 'account':
+      return formatMessage('scopeAccount', locale);
     case 'device':
       return formatMessage('scopeDevice', locale);
     case 'mixed':
@@ -268,10 +273,25 @@ export function CommandPalette() {
     };
   }, [open, query, settingsCatalog]);
 
+  const developerFeatures = useDeveloperFeatures();
+  const { developerToolsEnabled } = useDeviceSettings();
   const settingsCommands = useMemo(
     () =>
-      settingsCatalog?.settingsPaletteCommands({ isMobile, isDesktop }) ?? [],
-    [isMobile, isDesktop, settingsCatalog],
+      settingsCatalog?.settingsPaletteCommands({
+        isMobile,
+        isDesktop,
+        developerToolsEnabled,
+        experimentalTrustEnabled: developerFeatures.trust,
+        experimentalStationRoutesEnabled: developerFeatures.stationRoutes,
+      }) ?? [],
+    [
+      isMobile,
+      isDesktop,
+      settingsCatalog,
+      developerToolsEnabled,
+      developerFeatures.trust,
+      developerFeatures.stationRoutes,
+    ],
   );
   const settingsLocaleFormatter: SettingsLocaleFormatter | null =
     settingsCatalog
@@ -326,24 +346,20 @@ export function CommandPalette() {
     openChatIdentitiesSnapshot,
     openChatIdentitiesSnapshot,
   );
-  // #1418/#1419 review, MEDIUM: a global "focused chat" signal DOES exist —
+  // #1418/#1419: a global "focused chat" signal DOES exist —
   // navigationStore's `activeChat`/`activeConversation` name it, and
-  // `toolActivityNotifications.ts` already treats them as the on-screen chat
-  // while a Chat surface is showing (`isDockOpen`). `getChatKeyForExecutionSession`
-  // resolves either identifier (chat key, execution session id, or
-  // conversationId) against the registered chats the same way that reader
-  // does. Gated on `isDockOpen` so this never claims a chat is focused while
-  // no Chat surface is actually showing it, and it never guesses among
-  // several open chats — only the one navigationStore itself calls active.
+  // `isChatInForeground` (hooks/orchestration/chatForeground.ts) treats them
+  // as the on-screen chat while a Chat surface is showing.
+  // `getChatKeyForExecutionSession` resolves either identifier (chat key,
+  // execution session id, or conversationId) against the registered chats.
+  // Gated on `isDockOpen` so this never claims a chat is focused while no
+  // Chat surface is actually showing it, and it never guesses among several
+  // open chats — only the one navigationStore itself calls active.
   //
-  // Forward coupling (#1418/#1419 review round 2, MEDIUM): `isDockOpen` is
-  // incomplete — a full-screen Chat surface never sets it, so a plugin
-  // seed-composer command run while Chat is full-screen wrongly sees no
-  // active chat here. The sibling branch fix/reduce-tool-toasts-20260924
-  // (not merged; do not import it from here) adds
-  // `src-ui/src/hooks/orchestration/chatForeground.ts` with
-  // `isChatInForeground`, which covers both cases. Switch this gate to it
-  // once that branch merges.
+  // Known gap: `isDockOpen` is incomplete — a full-screen Chat surface never
+  // sets it, so a plugin seed-composer command run while Chat is full-screen
+  // sees no active chat here. `chatForeground.ts` counts full-screen Chat
+  // surfaces for exactly that case; this gate does not use it yet.
   const activeChatId = useMemo(() => {
     if (!isDockOpen) return null;
     const resolved =
@@ -526,9 +542,9 @@ export function CommandPalette() {
   }, []);
 
   useKeyboardShortcut(
-    'command-palette',
-    'k',
-    ['cmd'],
+    KERNEL_RESERVED_SHORTCUTS.commandPalette.id,
+    KERNEL_RESERVED_SHORTCUTS.commandPalette.binding.key,
+    [...KERNEL_RESERVED_SHORTCUTS.commandPalette.binding.modifiers],
     'Open command palette',
     openPalette,
   );
@@ -861,7 +877,9 @@ export function CommandPalette() {
               : {
                   label: entry.descriptor.name,
                   stateLabel: presentation.stateLabel,
-                  reasonLabel: presentation.reasonLabel,
+                  reasonLabel: presentation.reviewExtensions
+                    ? 'Review extension access in this Project’s pane picker or the current Station’s details.'
+                    : presentation.reasonLabel,
                   actionLabel: presentation.actionLabel,
                 },
           );

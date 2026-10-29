@@ -1,0 +1,7 @@
+{
+  "revision": "236da2b7338eb40434c59612ae9e410aaea5066a",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed tool picker instructions against source and generated MCP prose. Action names disclose descriptions; selected actions show approvals directly. Source attribution, sharing and connection controls retain their existing authority boundaries.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts","src-ui/src/views/agent-editor/AgentToolLibrary.tsx"]}
+  ]
+}

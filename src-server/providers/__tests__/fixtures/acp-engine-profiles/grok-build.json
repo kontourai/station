@@ -1,0 +1,26 @@
+{
+  "engine": "grok-build",
+  "registry": {
+    "id": "grok-build",
+    "version": "1.0.66",
+    "distribution": "npx",
+    "package": "@xai-official/grok@1.0.66",
+    "args": ["agent", "stdio"]
+  },
+  "initialize": {
+    "protocolVersion": 1,
+    "agentCapabilities": {
+      "loadSession": true,
+      "promptCapabilities": {
+        "image": true
+      }
+    },
+    "authMethods": []
+  },
+  "vendorNotifications": [
+    {
+      "method": "_x.ai/models/update",
+      "params": {}
+    }
+  ]
+}

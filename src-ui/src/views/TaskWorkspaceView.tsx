@@ -1,10 +1,14 @@
 import { resolveWorkspaceBasisMcpPaneOccurrence } from '@kontourai/station-basis-pane/workspace-basis-mcp-pane';
-import { WORKSPACE_BASIS_PANE_DESCRIPTOR } from '@kontourai/station-basis-pane/workspace-basis-pane';
 import {
-  WORKSPACE_TASK_ROOM_CHAT_DESCRIPTOR_ID,
-  WORKSPACE_TASK_ROOM_EDITOR_DESCRIPTOR_ID,
-} from '@kontourai/station-contracts/workspace-task-room';
-import { composeTaskRoomWorkspace } from '@kontourai/station-contracts/workspace-task-room-composition';
+  createWholeTaskBasisPaneInstance,
+  WORKSPACE_BASIS_PANE_DESCRIPTOR,
+} from '@kontourai/station-basis-pane/workspace-basis-pane';
+import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
+import {
+  gitHubIssueUrlFromWorkItemRef,
+  WORK_ITEM_OBSERVATION_LIMITS,
+} from '@kontourai/station-contracts/work-item-provider';
+import { createWorkspacePaneHostBaselineDocument } from '@kontourai/station-contracts/workspace-pane-host';
 import {
   bindStarterWork,
   type RelationGraphLink,
@@ -15,8 +19,10 @@ import {
   usePluginsQuery,
   useQueryClient,
   useTaskGraphQuery,
+  useTaskWorkItemQuery,
 } from '@kontourai/station-sdk';
 import { useProjectTaskRoomDiscoveryQuery } from '@kontourai/station-sdk/project-task-rooms';
+import { taskBasisQueries } from '@kontourai/station-sdk/task-basis';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   lazy,
@@ -30,20 +36,30 @@ import {
 import { Button } from '../components/Button';
 import { DiffPanel } from '../components/coding-layout/DiffPanel';
 import { FileContentViewer } from '../components/coding-layout/FileContentViewer';
-import { DetailHeader } from '../components/DetailHeader';
+import { usePageHeader } from '../components/page-frame';
 import {
   Empty,
   ErrorState,
   SkeletonBlock,
   SkeletonList,
 } from '../components/state';
-import { useNavigation } from '../contexts/NavigationContext';
+import {
+  useApiBase,
+  useHostRequestAuthorityScope,
+} from '../contexts/ApiBaseContext';
+import {
+  useNavigation,
+  useNavigationActions,
+} from '../contexts/NavigationContext';
 import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
+import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { clientOriginDetail } from '../utils/clientOrigin';
 import { errorText } from '../utils/errorText';
 import { ProjectTaskRoomProvider } from '../workspace-panes/ProjectTaskRoomContext';
-import { ProjectTaskRoomConversation } from '../workspace-panes/ProjectTaskRoomConversation';
-import { ProjectTaskRoomPresence } from '../workspace-panes/ProjectTaskRoomPresence';
+import {
+  ProjectTaskRoomConversation,
+  TaskRoomHistoryDetails,
+} from '../workspace-panes/ProjectTaskRoomConversation';
 import { TaskRoomEditorPane } from '../workspace-panes/TaskRoomEditorPane';
 import { WorkspacePaneHost } from '../workspace-panes/WorkspacePaneHost';
 import {
@@ -57,14 +73,31 @@ import {
   resolveTaskExperiences,
   type TaskExperienceId,
 } from './task-experiences';
+import { TaskLearningPanel } from './task-workspace/TaskLearningPanel';
+import { TaskMemoryPanel } from './task-workspace/TaskMemoryPanel';
 import {
   type TaskOutputPromotion,
   TaskOutputsSection,
 } from './task-workspace/TaskOutputsSection';
+import { TaskRelationships } from './task-workspace/TaskRelationships';
+import {
+  TaskRoomHeader,
+  TaskRoomRail,
+  TaskRoomResults,
+} from './task-workspace/TaskRoomPage';
 import { TaskTurnReferenceView } from './task-workspace/TaskTurnReferenceView';
 import { TaskUserInputReferences } from './task-workspace/TaskUserInputReferences';
 import './page-layout.css';
 import './TaskWorkspaceView.css';
+
+const TASK_VIEWS = {
+  overview: 'Overview',
+  conversation: 'Conversation',
+  review: 'Review',
+  'work-chats': 'Work chats',
+  plan: 'Plan',
+  details: 'Details',
+} as const;
 
 type ReferenceKind = 'artifact' | 'receipt' | 'file' | 'external';
 
@@ -72,6 +105,11 @@ const LazyTaskBasisWorkspacePane = lazy(() =>
   import('../workspace-panes/BasisWorkspacePane').then(
     ({ BasisWorkspacePane }) => ({ default: BasisWorkspacePane }),
   ),
+);
+const LazyTaskReviewTab = lazy(() =>
+  import('./task-workspace/review/TaskReviewTab').then(({ TaskReviewTab }) => ({
+    default: TaskReviewTab,
+  })),
 );
 const LazyTaskBasisMcpWorkspacePane = lazy(() =>
   import('../workspace-panes/BasisMcpWorkspacePane').then(
@@ -183,15 +221,25 @@ function isTaskNotFound(error: unknown): boolean {
   return error instanceof Error && /\b404\b|not found/i.test(error.message);
 }
 
-function statusBadgeVariant(status: string) {
-  if (status === 'done') return 'success' as const;
-  if (status === 'blocked' || status === 'canceled') return 'warning' as const;
-  if (status === 'running') return 'info' as const;
-  return 'muted' as const;
-}
-
 export function TaskWorkspaceView({ taskId }: { taskId: string }) {
+  const reviewEnabled = useSurfaceVisibilityFlags().has('task-review');
+  const { apiBase } = useApiBase();
+  const requestScope = useHostRequestAuthorityScope();
+  // Navigation survives authority verification remounts; protected pane state does not.
+  const requestedView = useNavigation(() =>
+    new URLSearchParams(window.location.search).get('taskView'),
+  );
+  const { updateParams } = useNavigationActions();
   const { data: graph, isLoading, error, refetch } = useTaskGraphQuery(taskId);
+  const setTab = useCallback(
+    (tab: string) => {
+      const view = Object.entries(TASK_VIEWS).find(
+        ([, name]) => name === tab,
+      )?.[0];
+      if (view) updateParams({ taskView: view });
+    },
+    [updateParams],
+  );
   const projectsQuery = useScopedProjectsQuery() as {
     data?: Array<{ id: string; slug: string }>;
     isLoading: boolean;
@@ -222,6 +270,11 @@ export function TaskWorkspaceView({ taskId }: { taskId: string }) {
       />
     );
   }
+  const tab =
+    Object.entries(TASK_VIEWS).find(
+      ([view]) =>
+        view === requestedView && (view !== 'review' || reviewEnabled),
+    )?.[1] ?? 'Overview';
   const taskProject = projectsQuery.data.find(
     (project) =>
       project.id === graph.task.projectId ||
@@ -231,11 +284,25 @@ export function TaskWorkspaceView({ taskId }: { taskId: string }) {
   return (
     <>
       {starterLinkUnverified && <StarterLinkRetry task={graph.task} />}
-      <TaskWorkspaceContent
+      <ProjectTaskRoomProvider
+        key={JSON.stringify([
+          apiBase,
+          requestScope?.authorityKey,
+          taskId,
+          graph.task.createdAt,
+        ])}
         taskId={taskId}
-        graph={graph}
-        projectSlug={taskProject.slug}
-      />
+      >
+        <TaskWorkspaceContent
+          taskId={taskId}
+          graph={graph}
+          projectSlug={taskProject.slug}
+          projectId={taskProject.id}
+          reviewEnabled={reviewEnabled}
+          tab={tab}
+          setTab={setTab}
+        />
+      </ProjectTaskRoomProvider>
     </>
   );
 }
@@ -364,10 +431,18 @@ function TaskWorkspaceContent({
   taskId,
   graph,
   projectSlug,
+  projectId,
+  reviewEnabled,
+  tab,
+  setTab,
 }: {
   taskId: string;
   graph: TaskGraph;
   projectSlug: string;
+  projectId: string;
+  reviewEnabled: boolean;
+  tab: string;
+  setTab: (tab: string) => void;
 }) {
   const references = useMemo(() => taskReferences(graph), [graph]);
   // AW-4: the list is derived from what this Station has actually
@@ -383,11 +458,35 @@ function TaskWorkspaceContent({
     [plugins],
   );
   const [selection, setSelection] = useReferenceSelection(taskId, references);
+  const [basisVisible, setBasisVisible] = useState(false);
   const [basisHostOpen, setBasisHostOpen] =
     useState<WorkspacePaneHostOpenAction | null>(null);
   const captureBasisHostOpen = useCallback(
-    (action: WorkspacePaneHostOpenAction | null) => setBasisHostOpen(action),
-    [],
+    (action: WorkspacePaneHostOpenAction | null) =>
+      setBasisHostOpen(
+        action
+          ? {
+              ...action,
+              open: (...args) => {
+                const outcome = action.open(...args);
+                if (outcome.ok) {
+                  setBasisVisible(true);
+                  setTab('Details');
+                }
+                return outcome;
+              },
+              focusExisting: (id) => {
+                const focused = action.focusExisting?.(id) ?? false;
+                if (focused) {
+                  setBasisVisible(true);
+                  setTab('Details');
+                }
+                return focused;
+              },
+            }
+          : null,
+      ),
+    [setTab],
   );
   const [outputPromotion, setOutputPromotion] =
     useState<TaskOutputPromotion | null>(null);
@@ -434,49 +533,173 @@ function TaskWorkspaceContent({
   );
   return (
     <div className="page page--full task-workspace">
-      <TaskHeader task={graph.task} />
-      <div className="task-workspace__body">
-        <section className="task-workspace__section" aria-label="Task brief">
-          <h3 className="task-workspace__section-title">
-            What we're working toward
-          </h3>
-          <p>
-            {graph.task.description ||
-              'Discuss the objective, questions, and next steps with your team in the shared conversation.'}
-          </p>
-        </section>
-        {activeExperience.id === 'direct' ? (
-          <TaskRoomWorkspaceSection
-            task={graph.task}
-            projectSlug={projectSlug}
-            onOpenActionChange={captureBasisHostOpen}
+      <TaskRoomHeader
+        task={graph.task}
+        projectSlug={projectSlug}
+        projectId={projectId}
+        onDetails={() => setTab('Details')}
+      />
+      <div
+        className="task-room-tabs page__tabs"
+        role="tablist"
+        aria-label="Task views"
+      >
+        {Object.entries(TASK_VIEWS)
+          .filter(([view]) => view !== 'review' || reviewEnabled)
+          .map(([, name]) => (
+            <Button
+              key={name}
+              role="tab"
+              tabIndex={tab === name ? 0 : -1}
+              aria-selected={tab === name}
+              aria-controls={`task-panel-${name.replaceAll(' ', '-')}`}
+              id={`task-tab-${name.replaceAll(' ', '-')}`}
+              className="page__tab"
+              onClick={() => setTab(name)}
+              onKeyDown={(event) => {
+                if (
+                  !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(
+                    event.key,
+                  )
+                )
+                  return;
+                const tabs = Array.from(
+                  event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+                    '[role="tab"]',
+                  ) ?? [],
+                ).filter((button) => button.offsetParent !== null);
+                const index = tabs.indexOf(event.currentTarget);
+                const next =
+                  event.key === 'Home'
+                    ? 0
+                    : event.key === 'End'
+                      ? tabs.length - 1
+                      : (index +
+                          (event.key === 'ArrowRight' ? 1 : -1) +
+                          tabs.length) %
+                        tabs.length;
+                event.preventDefault();
+                tabs[next]?.focus();
+                tabs[next]?.click();
+              }}
+            >
+              {name}
+            </Button>
+          ))}
+      </div>
+      {reviewEnabled && (
+        <div
+          className="task-room-panel task-review-panel"
+          hidden={tab !== 'Review'}
+          role="tabpanel"
+          id="task-panel-Review"
+          aria-labelledby="task-tab-Review"
+        >
+          <Suspense fallback={<SkeletonBlock label="Loading Review" />}>
+            <LazyTaskReviewTab task={graph.task} visible={tab === 'Review'} />
+          </Suspense>
+        </div>
+      )}
+      <div
+        className="task-room-main"
+        hidden={tab !== 'Conversation'}
+        role="tabpanel"
+        id="task-panel-Conversation"
+        aria-labelledby="task-tab-Conversation"
+      >
+        <ProjectTaskRoomConversation
+          taskId={taskId}
+          projectSlug={projectSlug}
+          taskCreatedAt={graph.task.createdAt}
+        />
+      </div>
+      <div
+        className="task-room-panel"
+        hidden={tab !== 'Plan'}
+        role="tabpanel"
+        id="task-panel-Plan"
+        aria-labelledby="task-tab-Plan"
+      >
+        {/* #4003: what a Session dispatched for this Task is briefed with:
+            the linked item, the Task document, and Task memory. */}
+        {graph.task.workItemRef ? (
+          <TaskWorkItemHeader
+            taskId={graph.task.id}
+            workItemRef={graph.task.workItemRef}
           />
         ) : null}
-        <TaskExperienceNavigation
-          experiences={experiences}
-          activeExperienceId={activeExperience.id}
-          onSelect={setActiveExperienceId}
-        />
+        <TaskRoomEditorPane taskId={taskId} startInPreview />
+        <TaskMemoryPanel taskId={graph.task.id} />
+        {graph.task.status === 'done' ? (
+          <TaskLearningPanel taskId={graph.task.id} />
+        ) : null}
+      </div>
+      <div
+        className="task-room-panel task-overview"
+        hidden={tab !== 'Overview'}
+        role="tabpanel"
+        id="task-panel-Overview"
+        aria-labelledby="task-tab-Overview"
+      >
+        <TaskRoomRail task={graph.task} onBrief={() => setTab('Plan')} />
+        <TaskRelationships task={graph.task} kind="children" />
+        <div id="task-deliverables">
+          <TaskRoomResults task={graph.task} />
+        </div>
+      </div>
+      <div
+        className="task-room-panel"
+        hidden={tab !== 'Work chats'}
+        role="tabpanel"
+        id="task-panel-Work-chats"
+        aria-labelledby="task-tab-Work-chats"
+      >
+        <TaskRelationships task={graph.task} kind="work-chats" />
+      </div>
+      <div
+        className="task-workspace__body"
+        hidden={tab !== 'Details'}
+        role="tabpanel"
+        id="task-panel-Details"
+        aria-labelledby="task-tab-Details"
+      >
         <details className="task-workspace__record-details">
-          <summary>Task and workspace details</summary>
+          <summary>Task identity and workspace</summary>
           <TaskIdentitySection task={graph.task} />
           <WorkspaceBindingSection task={graph.task} />
         </details>
-        <WorkspacePaneHostOpenContext.Provider value={basisHostOpen}>
-          <TaskTurnReferenceView
-            taskId={taskId}
-            projectId={graph.task.projectId}
-          />
-        </WorkspacePaneHostOpenContext.Provider>
+        <TaskRoomWorkspaceSection
+          task={graph.task}
+          onOpenActionChange={captureBasisHostOpen}
+          visible={basisVisible}
+        />
+        {/* #3883: Kept answers open Basis panes into the host just above, in
+            the same panel, so an already-visible strip and focused tab can be
+            revealed without moving the page. */}
+        <details className="task-workspace__record-details">
+          <summary>Answer details</summary>
+          <WorkspacePaneHostOpenContext.Provider value={basisHostOpen}>
+            <TaskTurnReferenceView
+              taskId={taskId}
+              projectId={graph.task.projectId}
+            />
+          </WorkspacePaneHostOpenContext.Provider>
+        </details>
         <TaskUserInputReferences taskId={taskId} />
         <TaskOutputsSection
           task={graph.task}
           promotion={outputPromotion}
           onPromotionSettled={(promotion, success) => {
-            if (success)
+            if (success) {
               operations.clear(promotion.relativePath, promotion.title);
+            }
             setOutputPromotion(null);
           }}
+        />
+        <TaskExperienceNavigation
+          experiences={experiences}
+          activeExperienceId={activeExperience.id}
+          onSelect={setActiveExperienceId}
         />
         {activeExperience.id === 'direct' ? (
           <>
@@ -505,30 +728,114 @@ function TaskWorkspaceContent({
               onSelect={setSelection}
               outputOperations={operations}
               promotionPending={outputPromotion !== null}
-              onRequestOutput={(relativePath, title, operationId) =>
-                setOutputPromotion({ relativePath, title, operationId })
-              }
+              onRequestOutput={(relativePath, title, operationId) => {
+                setOutputPromotion({ relativePath, title, operationId });
+              }}
             />
           </>
         ) : (
           <TaskExperienceBoundary experience={activeExperience} />
         )}
+        <TaskRoomHistoryDetails taskId={taskId} />
       </div>
     </div>
   );
 }
 
+/** Space kept between the sticky page header and a revealed pane. */
+const REVEAL_GAP_PX = 8;
+
 /** Durable promoted workspace-file snapshots; no RelationGraph mirror. */
 function TaskRoomWorkspaceSection({
   task,
-  projectSlug,
   onOpenActionChange,
+  visible,
 }: {
   task: TaskRecord;
-  projectSlug: string;
+  visible: boolean;
   onOpenActionChange(action: WorkspacePaneHostOpenAction | null): void;
 }) {
   const discovery = useProjectTaskRoomDiscoveryQuery(task.id);
+  const queryClient = useQueryClient();
+  const requestScope = useHostRequestAuthorityScope();
+  const refreshBasis = useCallback(() => {
+    if (requestScope)
+      void queryClient.invalidateQueries({
+        queryKey: taskBasisQueries.scope(task.id, requestScope),
+      });
+  }, [queryClient, requestScope, task.id]);
+  const roomRef = useRef<HTMLElement>(null);
+  // #3883: Results can open a pane while its Details host is hidden. The
+  // page-published action selects the pane, focuses its tab after Details is
+  // revealed, and scrolls only when the visible tab strips were out of view.
+  // Panes opened inside this host keep the host's own open action.
+  const revealFocusedPane = useCallback(() => {
+    const room = roomRef.current;
+    if (!room) return;
+    // The framed Task route owns its header outside the workspace; direct
+    // legacy mounts can still supply a DetailHeader inside it.
+    const header =
+      room
+        .closest('.task-workspace')
+        ?.querySelector<HTMLElement>(':scope > .detail-header') ??
+      room
+        .closest('.page-frame')
+        ?.querySelector<HTMLElement>(':scope > .page-frame__header');
+    const inView = (element: Element) => {
+      const rect = element.getBoundingClientRect();
+      return (
+        rect.top >= Math.max(0, header?.getBoundingClientRect().bottom ?? 0) &&
+        rect.bottom <= window.innerHeight
+      );
+    };
+    // Measured now, before the host's focus frame scrolls the tab to the
+    // nearest edge.
+    const strips = [...room.querySelectorAll('[role="tablist"]')];
+    const roomWasInView =
+      room.getClientRects().length > 0 &&
+      strips.length > 0 &&
+      strips.every(inView);
+    // After the host's own focus frame, which is scheduled first.
+    requestAnimationFrame(() => {
+      const activeElement = room.ownerDocument.activeElement;
+      const tab = room.contains(activeElement) ? activeElement : null;
+      if (roomWasInView && tab && inView(tab)) return;
+      const target =
+        tab?.closest<HTMLElement>('.workspace-pane-host__group') ?? room;
+      // The margin holds the group below the header for this one scroll.
+      target.style.scrollMarginTop = header
+        ? `${header.getBoundingClientRect().height + REVEAL_GAP_PX}px`
+        : '';
+      target.scrollIntoView?.({ block: 'start' });
+      target.style.scrollMarginTop = '';
+    });
+  }, []);
+  const publishOpenAction = useCallback(
+    (action: WorkspacePaneHostOpenAction | null) =>
+      onOpenActionChange(
+        action && {
+          ...action,
+          open(instance, preparation, placement) {
+            const outcome = action.open(instance, preparation, placement);
+            if (outcome.ok) {
+              refreshBasis();
+              if (action.focusExisting?.(instance.instanceId))
+                revealFocusedPane();
+            }
+            return outcome;
+          },
+          focusExisting(instanceId) {
+            const found = action.focusExisting?.(instanceId) ?? false;
+            if (found) {
+              refreshBasis();
+              revealFocusedPane();
+            }
+            return found;
+          },
+        },
+      ),
+    [onOpenActionChange, refreshBasis, revealFocusedPane],
+  );
   const runtime = useRef<WorkspacePaneHostRuntime | null>(null);
   if (!runtime.current) runtime.current = new WorkspacePaneHostRuntime();
   const hostRuntime = runtime.current;
@@ -553,76 +860,69 @@ function TaskRoomWorkspaceSection({
   // would discard the exact async context they are designed to preserve.
   const workspaceCapabilities =
     capabilities ?? retainedCapabilities.current?.value;
-  const composition = composeTaskRoomWorkspace({
-    projectId: task.projectId,
-    taskId: task.id,
-    layoutId: `task-${task.id}`,
-    capabilities: {
-      documentRead: workspaceCapabilities?.documentRead === true,
-      documentWrite: workspaceCapabilities?.documentWrite === true,
-      roomRead: workspaceCapabilities?.historyRead === true,
-      roomLive: workspaceCapabilities?.live === true,
-    },
-  });
+  const basis = createWholeTaskBasisPaneInstance(task.projectId, task.id);
+  const document =
+    basis && workspaceCapabilities?.documentRead
+      ? createWorkspacePaneHostBaselineDocument(
+          `task-details-${task.id}`,
+          {
+            kind: 'task',
+            projectId: task.projectId,
+            taskId: task.id,
+            layoutId: `task-${task.id}`,
+          },
+          [basis],
+        )
+      : null;
   if (discovery.isLoading)
-    return <SkeletonBlock count={2} label="Checking Task room capabilities" />;
-  if (!composition.document)
-    return <p role="status">Task room document is unavailable.</p>;
+    return visible ? (
+      <SkeletonBlock count={2} label="Checking Task room capabilities" />
+    ) : null;
+  if (!document)
+    return visible ? (
+      <p role="status">Task room document is unavailable.</p>
+    ) : null;
   return (
-    <section className="task-workspace__room" aria-label="Task room workspace">
-      {composition.degradedCapabilities.length ? (
-        <p role="status">
-          Task room degraded: {composition.degradedCapabilities.join(', ')}.
-        </p>
-      ) : null}
-      <ProjectTaskRoomProvider taskId={task.id}>
-        <ProjectTaskRoomPresence taskId={task.id} />
-        <WorkspacePaneHost
-          document={composition.document}
-          runtime={hostRuntime}
-          onOpenActionChange={onOpenActionChange}
-          presentationLabel={(instance) =>
-            resolveWorkspaceBasisMcpPaneOccurrence(instance)?.descriptor.name ??
-            null
-          }
-          renderPane={(instance) => {
-            const mcpBasis = resolveWorkspaceBasisMcpPaneOccurrence(instance);
-            return instance.descriptorId ===
-              WORKSPACE_TASK_ROOM_EDITOR_DESCRIPTOR_ID ? (
-              <TaskRoomEditorPane
-                taskId={task.id}
-                runtime={hostRuntime}
-                instanceId={instance.instanceId}
+    <section
+      ref={roomRef}
+      className="task-workspace__room"
+      aria-label="Task room workspace"
+      hidden={!visible}
+    >
+      <WorkspacePaneHost
+        document={document}
+        runtime={hostRuntime}
+        onOpenActionChange={publishOpenAction}
+        presentationLabel={(instance) =>
+          resolveWorkspaceBasisMcpPaneOccurrence(instance)?.descriptor.name ??
+          null
+        }
+        renderPane={(instance) => {
+          if (!visible) return null;
+          const mcpBasis = resolveWorkspaceBasisMcpPaneOccurrence(instance);
+          return instance.descriptorId ===
+            WORKSPACE_BASIS_PANE_DESCRIPTOR.id ? (
+            <Suspense
+              fallback={<SkeletonBlock count={3} label="Loading Basis" />}
+            >
+              <LazyTaskBasisWorkspacePane
+                presentation="chromeless"
+                descriptor={WORKSPACE_BASIS_PANE_DESCRIPTOR}
+                instance={instance}
               />
-            ) : instance.descriptorId ===
-              WORKSPACE_TASK_ROOM_CHAT_DESCRIPTOR_ID ? (
-              <ProjectTaskRoomConversation
-                taskId={task.id}
-                projectSlug={projectSlug}
-                taskCreatedAt={task.createdAt}
+            </Suspense>
+          ) : mcpBasis ? (
+            <Suspense
+              fallback={<SkeletonBlock count={3} label="Loading Basis App" />}
+            >
+              <LazyTaskBasisMcpWorkspacePane
+                descriptor={mcpBasis.descriptor}
+                instance={instance}
               />
-            ) : instance.descriptorId === WORKSPACE_BASIS_PANE_DESCRIPTOR.id ? (
-              <Suspense
-                fallback={<SkeletonBlock count={3} label="Loading Basis" />}
-              >
-                <LazyTaskBasisWorkspacePane
-                  descriptor={WORKSPACE_BASIS_PANE_DESCRIPTOR}
-                  instance={instance}
-                />
-              </Suspense>
-            ) : mcpBasis ? (
-              <Suspense
-                fallback={<SkeletonBlock count={3} label="Loading Basis App" />}
-              >
-                <LazyTaskBasisMcpWorkspacePane
-                  descriptor={mcpBasis.descriptor}
-                  instance={instance}
-                />
-              </Suspense>
-            ) : null;
-          }}
-        />
-      </ProjectTaskRoomProvider>
+            </Suspense>
+          ) : null;
+        }}
+      />
     </section>
   );
 }
@@ -764,12 +1064,90 @@ function TaskExperienceBoundary({
 }
 
 function TaskHeader({ task }: { task: TaskRecord }) {
+  usePageHeader({ title: task.title, subtitle: `Task ${task.id}` });
+  return null;
+}
+
+/**
+ * The Task's linked tracker item (#4003), re-read every time the Task opens.
+ * The tracker owns state and labels; Station shows them as read, never syncs
+ * them. "New comments" are those created after the Task last recorded the
+ * item (`workItemObservedAt`).
+ */
+function TaskWorkItemHeader({
+  taskId,
+  workItemRef,
+}: {
+  taskId: string;
+  workItemRef: string;
+}) {
+  const { data, error, isLoading } = useTaskWorkItemQuery(taskId);
+  const observation = data?.status === 'observed' ? data.observation : null;
+  const url = observation?.url ?? gitHubIssueUrlFromWorkItemRef(workItemRef);
+  const newComments =
+    observation && data?.commentsSince !== undefined
+      ? (observation.comments?.length ?? 0)
+      : undefined;
+  const newCommentLabel =
+    newComments === undefined
+      ? null
+      : newComments === 0
+        ? 'No new comments'
+        : `${newComments}${newComments >= WORK_ITEM_OBSERVATION_LIMITS.comments ? '+' : ''} new comment${newComments === 1 ? '' : 's'}`;
   return (
-    <DetailHeader
-      title={task.title}
-      subtitle={`Task ${task.id}`}
-      badge={{ label: task.status, variant: statusBadgeVariant(task.status) }}
-    />
+    <section
+      className="task-workspace__work-item"
+      aria-label="Linked work item"
+      data-testid="task-work-item-header"
+    >
+      {url ? (
+        <a
+          className="task-workspace__work-item-ref"
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {workItemRef}
+        </a>
+      ) : (
+        <span className="task-workspace__work-item-ref">{workItemRef}</span>
+      )}
+      {observation ? (
+        <>
+          <span
+            className={`task-workspace__work-item-state task-workspace__work-item-state--${observation.state}`}
+          >
+            {observation.state === 'open' ? 'Open' : 'Closed'}
+            {observation.stateReason && observation.state === 'closed'
+              ? ` · ${observation.stateReason.replaceAll('_', ' ')}`
+              : ''}
+          </span>
+          {observation.labels.map((label) => (
+            <span className="task-workspace__work-item-label" key={label}>
+              {label}
+            </span>
+          ))}
+          {newCommentLabel ? (
+            <span className="task-workspace__work-item-comments">
+              {newCommentLabel}
+            </span>
+          ) : null}
+        </>
+      ) : isLoading ? (
+        <span className="task-workspace__work-item-note">
+          Reading the item…
+        </span>
+      ) : (
+        <span className="task-workspace__work-item-note" role="status">
+          Couldn’t read the item.{' '}
+          {data && data.status !== 'observed'
+            ? data.reason
+            : error
+              ? errorText(error)
+              : ''}
+        </span>
+      )}
+    </section>
   );
 }
 
@@ -787,8 +1165,11 @@ function TaskIdentitySection({ task }: { task: TaskRecord }) {
       <dl className="task-workspace__details">
         <TaskDetail label="Task ID" value={task.id} />
         <TaskDetail label="Title" value={task.title} />
-        <TaskDetail label="Status" value={task.status} />
+        <TaskDetail label="Status" value={taskStatusLabel(task.status)} />
         <TaskDetail label="Project" value={task.projectId} />
+        {task.workItemRef ? (
+          <TaskDetail label="Work item" value={task.workItemRef} />
+        ) : null}
         <TaskDetail label="Last action origin" value={originDetail} />
       </dl>
     </section>
@@ -1090,7 +1471,7 @@ function LocalReferenceContent(
           pendingLabel="Keeping output…"
           aria-label={`Keep ${props.path} as output`}
         >
-          Keep as output
+          Keep
         </Button>
         <span>{props.path}</span>
       </div>
@@ -1128,7 +1509,7 @@ function DeletedProjectTaskState({ task }: { task: TaskRecord }) {
       <div className="task-workspace__body">
         <ErrorState
           title="Project deleted"
-          description={`This Task is retained in history, but its Project (${task.projectId}) no longer exists. Chats and recorded Task details remain; live Project workspace controls are unavailable.`}
+          description={`Its Project (${task.projectId}) no longer exists. Chats and Task details remain; Project workspace controls are unavailable.`}
         />
         <TaskIdentitySection task={task} />
       </div>

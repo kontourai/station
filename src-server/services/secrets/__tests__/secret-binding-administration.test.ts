@@ -9,7 +9,10 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SecretRunner } from '@kontourai/station-contracts/datum-secret-reference';
-import type { CredentialOwner } from '@kontourai/station-contracts/secret-binding';
+import type {
+  CredentialOwner,
+  TelemetryDestinationGrant,
+} from '@kontourai/station-contracts/secret-binding';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 
@@ -67,6 +70,211 @@ async function home(): Promise<string> {
 afterEach(async () => {
   await Promise.all(
     homes.splice(0).map((path) => rm(path, { recursive: true, force: true })),
+  );
+});
+
+describe('instance telemetry destination authority', () => {
+  const product: TelemetryDestinationGrant = {
+    kind: 'instance-telemetry-destination',
+    transport: 'product',
+    destination: 'https://receiver.test/v1/product/events',
+  };
+  test('an exact transport/destination grant persists without crossing MCP or ACP authority and revocation fences a captured key', async () => {
+    const root = await home();
+    const reads = vi.fn(() => 'private-product-material');
+    const audit = vi.fn();
+    const options = {
+      secretRunner: { ...runner, readKeychain: reads },
+      environment: { PRODUCT_KEY: 'private-product-material' },
+      logger: { info: audit },
+    };
+    const service = new FileSecretBindingAdministration(root, options);
+    await service.create({
+      id: 'product-source',
+      name: 'Product source',
+      authRef: { env: 'PRODUCT_KEY' },
+    });
+    await expect(
+      service.resolveForTelemetry({
+        id: 'product-source',
+        transport: 'product',
+        destination: product.destination,
+      }),
+    ).rejects.toMatchObject({ reason: 'grant_missing' });
+    expect(reads).not.toHaveBeenCalled();
+    await service.grant({
+      id: 'product-source',
+      grant: product,
+      expectedRevision: 1,
+    });
+    const reopened = new FileSecretBindingAdministration(root, options);
+    for (const [transport, destination] of [
+      ['otel', product.destination],
+      ['product', 'https://other-receiver.test/v1/product/events'],
+      ['product', 'https://receiver.test/v1/product/probes'],
+      ['product', 'https://receiver.test/v1/product/events/'],
+    ] as const)
+      await expect(
+        reopened.resolveForTelemetry({
+          id: 'product-source',
+          transport,
+          destination,
+        }),
+      ).rejects.toMatchObject({ reason: 'grant_missing' });
+    expect(reads).not.toHaveBeenCalled();
+    await expect(
+      reopened.resolveForIntegration({
+        integrationId: 'product-source',
+        secretEnvRefs: { TOKEN: 'product-source' },
+      }),
+    ).rejects.toMatchObject({ reason: 'grant_missing' });
+    await expect(
+      reopened.resolveForAcpProvider({
+        connectionId: 'product-source',
+        providerId: 'main',
+        secretHeaderRefs: { 'x-api-key': 'product-source' },
+      }),
+    ).rejects.toMatchObject({ reason: 'grant_missing' });
+    expect(reads).not.toHaveBeenCalled();
+    const resolved = await reopened.resolveForTelemetry({
+      id: 'product-source',
+      transport: 'product',
+      destination: product.destination,
+    });
+    expect(resolved.key).toBe('private-product-material');
+    expect(resolved.revision).toBe(2);
+    expect(resolved.assertCurrent).not.toThrow();
+    await reopened.revoke({ id: 'product-source', expectedRevision: 2 });
+    expect(resolved.assertCurrent).toThrow(SecretBindingResolutionError);
+    await expect(
+      reopened.resolveForTelemetry({
+        id: 'product-source',
+        transport: 'product',
+        destination: product.destination,
+      }),
+    ).rejects.toMatchObject({ reason: 'binding_revoked' });
+    expect(reads).not.toHaveBeenCalled();
+    const document = await readFile(
+      join(root, 'security', 'secret-bindings.json'),
+      'utf8',
+    );
+    expect(document).not.toContain('private-product-material');
+    expect(JSON.stringify(audit.mock.calls)).not.toContain(
+      'private-product-material',
+    );
+    expect(JSON.stringify(audit.mock.calls)).not.toContain(
+      'https://receiver.test',
+    );
+    expect(
+      (await reopened.get('product-source'))?.telemetryDestinationGrants,
+    ).toEqual([product]);
+  });
+
+  test('ungrant and replacement invalidate existing material and a person-owned record cannot supply the shared emitter', async () => {
+    const root = await home();
+    const service = new FileSecretBindingAdministration(root, {
+      environment: { PRODUCT_KEY: 'product-material' },
+    });
+    await service.create({
+      id: 'product-source',
+      name: 'Product source',
+      authRef: { env: 'PRODUCT_KEY' },
+    });
+    await service.grant({
+      id: 'product-source',
+      grant: product,
+      expectedRevision: 1,
+    });
+    const first = await service.resolveForTelemetry({
+      id: 'product-source',
+      transport: 'product',
+      destination: product.destination,
+    });
+    await service.ungrant({
+      id: 'product-source',
+      grant: product,
+      expectedRevision: 2,
+    });
+    expect(first.assertCurrent).toThrow();
+    await expect(
+      service.resolveForTelemetry({
+        id: 'product-source',
+        transport: 'product',
+        destination: product.destination,
+      }),
+    ).rejects.toMatchObject({ reason: 'grant_missing' });
+    const documentPath = join(root, 'security', 'secret-bindings.json');
+    const afterRemoval = JSON.parse(await readFile(documentPath, 'utf8'));
+    expect(afterRemoval.bindings['product-source']).not.toHaveProperty(
+      'telemetryDestinationGrants',
+    );
+    await service.grant({
+      id: 'product-source',
+      grant: product,
+      expectedRevision: 3,
+    });
+    const beforeReplacement = await service.resolveForTelemetry({
+      id: 'product-source',
+      transport: 'product',
+      destination: product.destination,
+    });
+    await service.replace({
+      id: 'product-source',
+      name: 'Replaced source',
+      authRef: { env: 'PRODUCT_KEY' },
+      expectedRevision: 4,
+    });
+    expect(beforeReplacement.assertCurrent).toThrow();
+    const legacyPerson = JSON.parse(await readFile(documentPath, 'utf8'));
+    legacyPerson.bindings['product-source'].owner = {
+      kind: 'principal',
+      principalId: 'human:tailscale-serve:alice',
+    };
+    await writeFile(documentPath, JSON.stringify(legacyPerson), {
+      mode: 0o600,
+    });
+    await expect(
+      service.resolveForTelemetry({
+        id: 'product-source',
+        transport: 'product',
+        destination: product.destination,
+      }),
+    ).rejects.toMatchObject({ reason: 'owner_mismatch' });
+    await expect(
+      service.grant({
+        id: 'product-source',
+        grant: { ...product, transport: 'otel' },
+        expectedRevision: 5,
+        viewer: { principalId: 'human:tailscale-serve:alice' },
+      }),
+    ).rejects.toBeInstanceOf(SecretBindingPersonGrantError);
+  });
+
+  test.each([
+    'https://user:secret@receiver.test/events',
+    'https://receiver.test/events?key=secret',
+    'https://receiver.test/events#secret',
+    'file:///tmp/receiver',
+    'not-a-url',
+  ])(
+    'refuses unsafe telemetry destination %s without persisting a grant',
+    async (destination) => {
+      const root = await home();
+      const service = new FileSecretBindingAdministration(root);
+      await service.create({
+        id: 'product-source',
+        name: 'Product source',
+        authRef: { env: 'PRODUCT_KEY' },
+      });
+      await expect(
+        service.grant({
+          id: 'product-source',
+          grant: { ...product, destination },
+          expectedRevision: 1,
+        }),
+      ).rejects.toThrow('Invalid telemetry destination grant');
+      expect((await service.get('product-source'))?.revision).toBe(1);
+    },
   );
 });
 

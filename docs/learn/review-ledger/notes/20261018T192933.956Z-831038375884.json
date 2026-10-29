@@ -1,0 +1,7 @@
+{
+  "revision": "1e462959a8a262cbd63e830a56bbb84e5e5cff1a",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Final b9112b4 integration reviewed at 1e462959a8a: inspected HMAC artifact/answer checks, exact skill name and successful completion id, successful MCP result and engine tool-list policy evidence. Rejected blocked attempts are not breaches and no inventory is unverified; native policy is unverified. Policy evidence is independent of ping failure. All resource setup/read/cleanup requests use audited setupApi and exact ids. Combined180 and Claude461 tests pass; all nine source counterfactuals fail assertions then restore40/50 green. Read init-tools shape from the real CLI capture and mapper; synthetic two-call variants test matching, not a new live capture. No billable calls or live/browser qualification.","inputs":["docs/conformance/tool-policy-delivery.md","scripts/__tests__/engine-delivery-probes.test.ts","scripts/__tests__/engine-delivery-routes.test.ts","scripts/engine-delivery-probes.ts"]}
+  ]
+}

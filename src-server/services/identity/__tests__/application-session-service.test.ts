@@ -237,6 +237,7 @@ async function harness(
       readSecureDeviceCookie: (request) =>
         parseSecureDeviceSessionCookie(
           request.headers.get('cookie') ?? undefined,
+          (candidate) => pairing.identifyDevice(candidate) !== null,
         ),
       issueAlias: (parentCredential, deviceId, aliasId) => {
         const alias = pairing.issueRelayCredentialAlias(
@@ -352,6 +353,7 @@ async function harness(
           readSecureDeviceCookie: (request) =>
             parseSecureDeviceSessionCookie(
               request.headers.get('cookie') ?? undefined,
+              (candidate) => pairing.identifyDevice(candidate) !== null,
             ),
           issueAlias: (parentCredential, deviceId, aliasId) => {
             const alias = pairing.issueRelayCredentialAlias(
@@ -1040,6 +1042,27 @@ describe('Device-bound continuation persistence and negative admission', () => {
       },
     );
     expect(insecureDeviceCookie.status).toBe(401);
+    for (const extra of [
+      `station-device=${h.device.credential}`,
+      'station-device=malformed',
+      `station-device=${'A'.repeat(43)}; station-device=${'B'.repeat(43)}`,
+    ]) {
+      const refused = await h.request(
+        '/api/account-auth/continuations/adopt-cookie/challenge',
+        {
+          method: 'POST',
+          headers: {
+            Origin: origin,
+            Cookie: `${cookieJar}; ${extra}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ publicKey: browserKey.publicKey }),
+        },
+      );
+      expect(refused.status).toBe(401);
+    }
+    const foreignCookie = `station-device-0123456789abcdef=${'A'.repeat(43)}`;
+    h.setBrowserCookieJar(`${cookieJar}; ${foreignCookie}`);
     const devicesBefore = h.pairing.listDevices().map((device) => device.id);
     const adoption = await browser.adoptCookies();
     expect(adoption).toMatchObject({

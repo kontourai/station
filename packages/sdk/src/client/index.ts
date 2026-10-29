@@ -21,13 +21,15 @@
  * `.kontourai/flow-agents/cli-harness/cli-coverage-audit.md`'s §3
  * triplication inventory (excluding app config, `#175`, and plugin
  * install/update/remove — genuinely different mechanisms, tracked
- * separately) — not a general-purpose HTTP client for every Station route.
+ * separately). The credential-aware `getJson` primitive is also available
+ * here so optional browser features can read catalogs without importing the
+ * SDK's React entry.
  */
 
+export * from './account-preferences';
 export * from './agents';
 export * from './analytics';
 export * from './answer-basis';
-export * from './answer-narrative-binding';
 export * from './answer-support';
 export {
   envelopeDetailsMessage,
@@ -63,6 +65,7 @@ export {
   fetchSSE,
   getClientRawEgressPolicy,
   getClientRequestTimeout,
+  getJson,
   isApiRequestScope,
   notifyCredentialChanged,
   StationCredentialConflictError,
@@ -78,9 +81,27 @@ export {
 export * from './integrations';
 export * from './knowledge';
 export * from './learning-source';
+export type {
+  LocalTranscriptionResult,
+  LocalTranscriptSegment,
+  MediaToolComponent,
+  MediaToolDownload,
+  MediaToolsStatus,
+} from './media-tools';
+export {
+  downloadMediaTools,
+  getMediaToolsStatus,
+  transcribeAudio,
+} from './media-tools';
 export * from './orchestration';
 export * from './peer-enrollments';
+export * from './personal-boards';
+export { listPersonalLayouts } from './personal-layouts';
 export { getPluginHeaders } from './plugin-headers';
+export {
+  createPluginTelemetry,
+  mountPluginTelemetryPane,
+} from './plugin-telemetry';
 export * from './plugins';
 export * from './project-task-rooms';
 export * from './projects';
@@ -88,8 +109,10 @@ export * from './relay-enrollment';
 export * from './request-inspection';
 export * from './reviews';
 export * from './runs';
+export * from './runtime-event-content';
 export * from './scheduler';
 export * from './send-execution-message';
+export { sentTurnKey } from './sent-turn-key';
 export * from './session-outputs';
 export * from './skill-experiences';
 export * from './skills';
@@ -105,6 +128,9 @@ export {
 export * from './task-tool-results';
 export * from './task-user-input-references';
 export * from './unified-search';
+export * from './usage-export';
+export * from './walkthroughs';
+export * from './work-claims';
 export {
   executeWorkspacePaneHostAction,
   getWorkspacePaneHostActions,

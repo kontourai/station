@@ -1,3 +1,4 @@
+export { PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE } from '@kontourai/station-contracts/provider-failure';
 /**
  * Bounded provider-plan quota failure facts (#2265).
  *
@@ -36,9 +37,6 @@
  *   from the validated digit captures, never echoed from the raw string, so
  *   nothing outside the validated shape can ride along.
  */
-
-export const PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE =
-  'provider-plan-quota-exhausted';
 
 /**
  * Fixed safe copy published on the canonical `runtime.error` for a

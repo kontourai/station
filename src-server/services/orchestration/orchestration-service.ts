@@ -30,15 +30,18 @@ import type {
   ConversationContextBoundaryRequest,
 } from '@kontourai/station-contracts/conversation-context-boundary';
 import {
+  type AcpApprovalControl,
   ENGINE_CAPABILITY_MATRICES,
   sessionDeliveryChannels,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { FullAccessRevocationReport } from '@kontourai/station-contracts/environment-security';
+import { STATION_CONFINEMENT_RECORD_METADATA_KEY } from '@kontourai/station-contracts/execution-confinement';
 import type {
   AgentRunSummary,
   ConversationHandoffStatusProjection,
   ConversationListItem,
+  ConversationOpenResolution,
   InterruptTurnResult,
   OrchestrationCommand,
   OrchestrationCommandDispatchResult,
@@ -56,6 +59,7 @@ import type {
   SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
 import {
+  CONVERSATION_CONTEXT_UNAVAILABLE_CODE,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   PENDING_TURN_INTERRUPT_TTL_MS,
 } from '@kontourai/station-contracts/orchestration';
@@ -69,13 +73,17 @@ import type {
   StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import {
+  CLIENT_TURN_IN_FLIGHT_CODE,
   DELEGATION_PROVENANCE_METADATA_KEY,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,
   MUSE_TURN_SLOT_RELEASING_CODE,
   PORTABLE_EXECUTION_CONSENT_METADATA_KEY,
+  PROVIDER_SESSION_START_FAILED_CODE,
+  PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
+  readApprovalMode,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
   SESSION_AGENT_ICON_METADATA_KEY,
@@ -87,10 +95,19 @@ import {
   STATION_CONFINEMENT_GRANTOR_METADATA_KEY,
   STATION_CONFINEMENT_METADATA_KEY,
   stripReservedOrchestrationMetadata,
+  TASK_BRIEF_COMPOSED_METADATA_KEY,
+  TASK_BRIEF_METADATA_KEY,
   unsupportedModelOptionError,
   unsupportedModelOptionKeys,
   WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
+import {
+  PROVIDER_FAILURE_KINDS,
+  PROVIDER_FAILURE_RETRYABLE,
+  type ProviderFailure,
+  type ProviderFailureKind,
+  SESSION_START_IN_FLIGHT_CODE,
+} from '@kontourai/station-contracts/provider-failure';
 import type {
   CanonicalRuntimeEvent,
   FlowRunFreshness,
@@ -133,6 +150,12 @@ import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/to
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import type { SessionUsageAggregate } from '@kontourai/station-shared/usage-fold';
 import type { OrchestrationSessionUsage } from '../../analytics/usage-aggregator-state.js';
+import {
+  readAuthorizedUsageExport,
+  UsageExportRejected,
+  usageExportOwnerIds,
+} from '../../analytics/usage-export-reader.js';
+import { readAuthorizedUsageInvalidations } from '../../analytics/usage-invalidation-reader.js';
 import type { UsagePricingSnapshotCapture } from '../../analytics/usage-pricing-snapshot-capture.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import { engineIdForAdapter } from '../../providers/adapter-identity.js';
@@ -143,11 +166,17 @@ import type {
   ProviderTurnStartResult,
 } from '../../providers/adapter-shape.js';
 import {
+  ApprovalGovernanceRefusedError,
   AttachmentInputUnsupportedError,
+  ClientTurnInFlightError,
+  ClientTurnInputConflictError,
   ProviderTurnEndedError,
   SendTurnRefusedError,
+  SessionStartRefusedError,
 } from '../../providers/adapter-shape.js';
+import { codexSandboxConfinementProvider } from '../../providers/adapters/codex-confinement.js';
 import type { Prerequisite } from '../../providers/provider-contracts.js';
+import { ProviderRefusalError } from '../../providers/provider-failure.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
 import {
   nativeSessionIdentityMatchesSource,
@@ -171,6 +200,7 @@ import {
   requiredMissingPrerequisites,
   resolveRuntimeAdapterReadiness,
 } from '../../runtime/frameworks/runtime-adapter-readiness.js';
+import { revokeStationControlMcpToken } from '../../runtime/mcp/station-control-mcp-token.js';
 import { createNativeOutputDeclarationOperation } from '../../runtime/native-output-declaration.js';
 import type { NativeOutputCallFacts } from '../../runtime/native-output-turn-grant.js';
 import {
@@ -184,6 +214,14 @@ import {
   isFullAccessGrant,
   UnattributedFullAccessGrantError,
 } from '../../security/coding-authority.js';
+import {
+  type ConfinementProvider,
+  ConfinementRefusedError,
+  noMechanismConfinementRecord,
+  readConfinementRecord,
+  resolveConfinement,
+} from '../../security/confinement/confinement-provider.js';
+import { seatbeltConfinementProvider } from '../../security/confinement/seatbelt.js';
 import {
   adapterSessionStartDuration,
   adapterTurnDuration,
@@ -225,6 +263,7 @@ import {
 } from '../evidence/orchestration-workflow-sidecar.js';
 import type { VeritasReadinessService } from '../evidence/veritas-readiness-service.js';
 import type { WorkflowSidecarService } from '../evidence/workflow-sidecar-service.js';
+import type { FeaturePreviewSelector } from '../feature-previews/feature-preview-registry.js';
 import type {
   AttachFlowEvidenceOptions,
   FlowRunService,
@@ -237,6 +276,12 @@ import {
   ConcurrentEngineStartCapacityError,
   type RuntimeResourcePostureProbe,
 } from '../infra/resource-posture.js';
+import { workloadBudgetEngineContext } from '../infra/workload-budget.js';
+import { withEngineMcpAccountOwner } from '../plugins/engine-mcp-oauth.js';
+import {
+  isPersonChatStart,
+  type ProjectChatDefaultsService,
+} from '../projects/project-chat-defaults.js';
 import {
   type PortableExecutionConsentIdentity,
   portableConsentOfStartedMetadata,
@@ -248,6 +293,11 @@ import {
   type CwdShadowSample,
   dispatchCwdShadow,
 } from '../projects/project-resource-shadow.js';
+import {
+  TASK_BRIEF_MAX_CHARS,
+  TASK_BRIEF_VERSION,
+} from '../projects/task-brief.js';
+import { TurnIdempotencySettledError } from '../turn-idempotency.js';
 import type { UsageTelemetryProperties } from '../usage-telemetry-inventory.js';
 import { AdapterRetirement } from './adapter-retirement.js';
 import type { ResolveAdoptedChildExecutionBinding } from './adopted-child-execution-binding.js';
@@ -263,6 +313,10 @@ import {
 } from './attached-session-adoption.js';
 import { resolveContinuationPlace } from './attached-session-continuation-place.js';
 import { type AttachedProjectRoot } from './attached-session-follow-service.js';
+import {
+  canonicalTerminalOutcome,
+  terminalEngineFamily,
+} from './canonical-terminal-outcome.js';
 import { ChildWorkProjection } from './child-work-projection.js';
 import {
   type ChildWorkTranscriptModule,
@@ -273,6 +327,12 @@ import {
   withClientOrigin,
 } from './client-origin-propagation.js';
 import { ConnectionSmoke } from './connection-smoke.js';
+import {
+  ConversationForkContextError,
+  ConversationForkContextModule,
+  type ConversationForkContextReference,
+  type ConversationForkContextSnapshot,
+} from './conversation-fork-context.js';
 import {
   type ConversationHistoryPage,
   ConversationHistoryReadService,
@@ -286,6 +346,11 @@ import {
   type ConversationOpenResolver,
   createConversationOpenResolver,
 } from './conversation-open-resolver.js';
+import {
+  assertConversationStartSeedStart,
+  assertConversationStartSeedTurn,
+  ConversationStartContextError,
+} from './conversation-start-context.js';
 import { ConversationTurnActivityProjection } from './conversation-turn-activity.js';
 import { CooperativeStop } from './cooperative-stop.js';
 import { CredentialProfileRecovery } from './credential-profile-recovery.js';
@@ -295,6 +360,7 @@ import {
   createCredentialRecoveryModule,
 } from './credential-recovery-module.js';
 import { DeltaCoalescer, isCoalescableDelta } from './delta-coalescer.js';
+import { splitOversizedDeltas } from './delta-splitting.js';
 import {
   assertDispatchCwdUnmoved,
   DISPATCH_CANONICAL_CWD_METADATA_KEY,
@@ -306,11 +372,16 @@ import {
   withoutDispatchCanonicalCwd,
 } from './dispatch-cwd-admission.js';
 import type { EventBus } from './event-bus.js';
-import type {
-  CommandRefusalPhase,
-  ConversationForkProvenance,
-  EventStore,
-  PersistedRuntimeEvent,
+import {
+  type ApprovalContentBinding,
+  approvalContentBinding,
+} from './event-content-spill.js';
+import {
+  type CommandRefusalPhase,
+  type ConversationForkProvenance,
+  type EventStore,
+  EventStoreIngressError,
+  type PersistedRuntimeEvent,
 } from './event-store.js';
 import {
   type ExecutionWorkspaceBinding,
@@ -321,11 +392,13 @@ import {
   type ForegroundInvocationAdmission,
   ForegroundInvocationUnavailableError,
 } from './foreground-invocation-admission.js';
+import { HostImageTurnCapture } from './host-image-turn-capture.js';
 import { InternalStopSuppression } from './internal-stop-suppression.js';
 import {
   type InterruptedTurnMemoryAdapter,
   InterruptedTurnRecovery,
 } from './interrupted-turn-recovery.js';
+import { memoryExhaustionRecoveryNote } from './memory-exhaustion-recovery.js';
 import {
   listLaunchableAdapterModels,
   ModelLaunchPlanning,
@@ -345,11 +418,13 @@ import {
 } from './open-requests.js';
 import { OrchestrationMonitoringBridge } from './orchestration-monitoring-bridge.js';
 import {
+  type AttachedSessionRecoveryObservation,
   buildAgentRunSummary,
   buildOrchestrationSessionSummary,
+  deriveReadModelSession,
   extractPeerPendingRequestObservation,
   PEER_PENDING_REQUEST_METADATA_KEY,
-  projectOrchestrationEventToReadModel,
+  persistReadModelSession,
   type RecoveredSessionStartOptions,
   recoverOrchestrationSessions,
   resolveOrchestrationAdapterForThread,
@@ -357,6 +432,11 @@ import {
   trackOrchestrationSession,
 } from './orchestration-session-state.js';
 import { type OrchestrationStreamPresenceSubject } from './orchestration-stream-presence.js';
+import {
+  captureTurnIntent,
+  type PreparedTurnIntentView,
+  samePreparedValue,
+} from './prepared-turn-intent.js';
 import { type RecoveryDispatchAdapter } from './recovery-dispatch-adapter.js';
 import {
   inspectRequestEvent,
@@ -409,8 +489,10 @@ import {
   sessionOwnerAttributionMetadata,
 } from './session-owner-attribution.js';
 import {
+  SESSION_CONFINEMENT_ROOT_METADATA_KEY,
   SESSION_LOCAL_PROJECT_ID_METADATA_KEY,
   SESSION_LOCAL_PROJECT_ID_REFUSED_METADATA_KEY,
+  sessionConfinementRoot,
 } from './session-project-identity.js';
 import {
   createSessionQueryModule,
@@ -424,8 +506,10 @@ import {
 import { SessionTranscriptReads } from './session-transcript-reads.js';
 import {
   createInMemorySessionTurnBoundaryAuthority,
+  ORCHESTRATION_SHUTDOWN_EXIT_REASON,
   runSessionStartWithBoundary,
   type SessionTurnBoundaryAuthority,
+  type SessionTurnBoundaryTransition,
 } from './session-turn-boundary.js';
 import {
   SkillExperienceRuntime,
@@ -447,6 +531,12 @@ import {
 import type { TurnDeduplicator } from './turn-deduplicator.js';
 import { TurnProgressTracker } from './turn-progress-tracker.js';
 import { TurnProvenanceSidecar } from './turn-provenance-sidecar.js';
+import {
+  directTurnSubmissionDigest,
+  snapshotDirectTurnInput,
+  snapshotTurnSubmissionValue,
+  TurnSubmissionUnsupportedError,
+} from './turn-submission-digest.js';
 import { WorkspaceExecutionBarrier } from './workspace-execution-barrier.js';
 import { resolveWorkspaceIdentity } from './workspace-identity.js';
 
@@ -460,13 +550,9 @@ type UsageTelemetryObserver = {
 function telemetryEngine(
   provider: string,
 ): UsageTelemetryProperties<'engine_turn'>['engine'] {
-  return (
-    ['station', 'acp', 'bedrock', 'claude', 'codex', 'muse', 'ollama'].includes(
-      provider,
-    )
-      ? provider
-      : 'other'
-  ) as UsageTelemetryProperties<'engine_turn'>['engine'];
+  return terminalEngineFamily(
+    provider,
+  ) satisfies UsageTelemetryProperties<'engine_turn'>['engine'];
 }
 
 /**
@@ -476,12 +562,16 @@ function telemetryEngine(
  * from an HTTP route.
  */
 interface OrchestrationDispatchInternalOptions {
+  /** Original intent proof; null preserves unknown legacy inbox input. */
+  submissionDigest?: string | null;
   skillExperience?: SkillExperienceStartInputV1;
   /** Request authority forwarded only by the server-owned foreground resolver. */
   nativeMemoryReadAuthority?: SessionReadAuthority;
   sessionStartAdmission?: SessionCommandInternalOptions['sessionStartAdmission'];
   /** Exact server-owned Task reservation scope; never read from public metadata. */
   roomExecutionBinding?: SessionCommandInternalOptions['roomExecutionBinding'];
+  /** Epic #4003: see `SessionCommandInternalOptions.taskBrief`. */
+  taskBrief?: SessionCommandInternalOptions['taskBrief'];
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
   /**
    * #484 phase A: receiver-owned portable-execution recheck, awaited inside
@@ -570,6 +660,8 @@ export class OrchestrationCommandDispatchError extends Error {
   readonly code?: string;
   readonly outcome?: 'indeterminate';
   readonly retryable?: boolean;
+  readonly kind?: ProviderFailureKind;
+  readonly failurePhase?: 'refused' | 'failed' | 'indeterminate';
 
   constructor(
     message: string,
@@ -579,59 +671,75 @@ export class OrchestrationCommandDispatchError extends Error {
     readonly receiptStatus: 'persisted' | 'unavailable' = 'persisted',
     indeterminateTurnStart = false,
     code?: string,
+    refusal?: ProviderFailure,
   ) {
     super(message);
     this.name = 'OrchestrationCommandDispatchError';
     if (indeterminateTurnStart) {
       this.code = FOREGROUND_MESSAGE_INDETERMINATE_CODE;
       this.outcome = 'indeterminate';
+      this.kind = 'indeterminate';
+      this.retryable = false;
+      this.failurePhase = 'indeterminate';
     } else if (code) {
       this.code = code;
-      // A refusal-to-act (not a failed action) is retryable. Any code whose
-      // error message tells the user to retry belongs in this set —
-      // archive#3493 delta review caught 'session_start_in_flight' saying
-      // "retry" while this line still classified it non-retryable.
+      this.kind = Object.hasOwn(PROVIDER_FAILURE_KINDS, code)
+        ? (
+            PROVIDER_FAILURE_KINDS as Readonly<
+              Record<string, ProviderFailureKind>
+            >
+          )[code]
+        : undefined;
       this.retryable =
-        code === 'session_start_in_flight' ||
-        code === 'resource_engine_start_capacity' ||
-        RETRYABLE_ADAPTER_REFUSAL_CODES.has(code);
+        this.kind === undefined ? false : PROVIDER_FAILURE_RETRYABLE[this.kind];
+      if (this.kind === 'indeterminate') this.failurePhase = 'indeterminate';
+    }
+    if (refusal && !indeterminateTurnStart) {
+      this.kind = refusal.kind;
+      this.retryable = refusal.retryable;
+      this.failurePhase = refusal.failurePhase;
+    }
+    if (
+      indeterminateTurnStart ||
+      indeterminateSession ||
+      this.kind === 'indeterminate'
+    ) {
+      this.kind = 'indeterminate';
+      this.retryable = false;
+      this.failurePhase = 'indeterminate';
+      this.outcome = 'indeterminate';
     }
   }
 }
 
-/**
- * Adapter refusals a caller should retry rather than drop: the same send
- * succeeds once the condition passes.
- * - #2300: a Muse send that arrived while the previous turn's `muse exec` was
- *   still exiting.
- * - #2324: a send that arrived while the engine was running a turn it opened
- *   on its own; it succeeds once that turn closes.
- */
-const RETRYABLE_ADAPTER_REFUSAL_CODES: ReadonlySet<string> = new Set([
+const LEGACY_ADAPTER_REFUSAL_CODES: ReadonlySet<string> = new Set([
+  CLIENT_TURN_IN_FLIGHT_CODE,
   MUSE_TURN_SLOT_RELEASING_CODE,
+  PROVIDER_SESSION_START_FAILED_CODE,
+  PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 ]);
 
-/**
- * The code of a retryable adapter refusal (see
- * {@link RETRYABLE_ADAPTER_REFUSAL_CODES}), or `undefined`. Matched on the
- * contract code (not the adapter's class) so this service does not import an
- * adapter module.
- */
+/** Only the legacy pre-effect codes can establish refusal without typed metadata. */
 function retryableAdapterRefusalCode(error: unknown): string | undefined {
-  if (!(error instanceof Error)) return undefined;
-  const code = (error as { code?: unknown }).code;
-  return typeof code === 'string' && RETRYABLE_ADAPTER_REFUSAL_CODES.has(code)
-    ? code
-    : undefined;
+  if (
+    !(error instanceof Error) ||
+    !('code' in error) ||
+    typeof error.code !== 'string'
+  )
+    return undefined;
+  return LEGACY_ADAPTER_REFUSAL_CODES.has(error.code) ? error.code : undefined;
 }
 
 /** A repeated start may attach only when it cannot change session behavior. */
-export class SessionReattachConflictError extends Error {
+export class SessionReattachConflictError extends ProviderRefusalError {
   readonly code = SESSION_REATTACH_CONFLICT_CODE;
 
   constructor(readonly reason: SessionReattachConflictReason) {
-    super(`${SESSION_REATTACH_CONFLICT_CODE}: ${reason}`);
+    super(
+      `${SESSION_REATTACH_CONFLICT_CODE}: ${reason}`,
+      PROVIDER_FAILURE_KINDS[SESSION_REATTACH_CONFLICT_CODE],
+    );
   }
 }
 
@@ -643,12 +751,13 @@ export class SessionReattachConflictError extends Error {
  * typed error rather than falling through to the dormant write, which would
  * report success around a live start (the original archive#3493 lie).
  */
-class SessionStopWhileStartingError extends Error {
-  readonly code = 'session_start_in_flight';
+class SessionStopWhileStartingError extends ProviderRefusalError {
+  readonly code = SESSION_START_IN_FLIGHT_CODE;
 
   constructor(threadId: string, timeoutMs: number) {
     super(
       `Session is still starting; stop did not settle within ${timeoutMs}ms — retry: ${threadId}`,
+      PROVIDER_FAILURE_KINDS[SESSION_START_IN_FLIGHT_CODE],
     );
     this.name = 'SessionStopWhileStartingError';
   }
@@ -703,6 +812,40 @@ const DISCARDED_DRAFT_GATE_MAX = 256;
  * the interruption warning names it.
  */
 const OBSERVED_EVENT_RETRY_DELAYS_MS = [25, 100] as const;
+
+/** What {@link OrchestrationService}'s append half hands its observer half. */
+interface CommittedEvent {
+  projectedEvent: CanonicalRuntimeEvent;
+  session: ProviderSession | null;
+  /** Whether this event was a provider-started turn's `turn.started`. */
+  providerTurn: boolean;
+  providerTurnRecorded: SessionTurnBoundaryTransition | undefined;
+}
+
+/**
+ * #3561: `candidate` with the lifecycle fields that
+ * `normalizeCanonicalRuntimeEventLifecycle` stamps put back to what the
+ * adapter authored on `source`, so normalizing it again stamps from current
+ * state instead of keeping an earlier stamp (which normalization never
+ * overwrites).
+ */
+function withAdapterLifecycleStamp(
+  candidate: CanonicalRuntimeEvent,
+  source: CanonicalRuntimeEvent,
+): CanonicalRuntimeEvent {
+  const next = { ...candidate };
+  delete next.sessionState;
+  delete next.previousState;
+  delete next.transitionReason;
+  delete next.transitionSource;
+  if ('sessionState' in source) next.sessionState = source.sessionState;
+  if ('previousState' in source) next.previousState = source.previousState;
+  if ('transitionReason' in source)
+    next.transitionReason = source.transitionReason;
+  if ('transitionSource' in source)
+    next.transitionSource = source.transitionSource;
+  return next;
+}
 
 /**
  * #2312 verifier M3: a Session in the Draft's conversation is one the caller
@@ -759,6 +902,13 @@ export {
 } from './attached-session-adoption.js';
 export { ModelLaunchPlanUnavailableError } from './model-launch-planning.js';
 
+class ConversationSeedTurnRefusedError extends SendTurnRefusedError {
+  readonly code = CONVERSATION_CONTEXT_UNAVAILABLE_CODE;
+  constructor(message: string) {
+    super(message, 'conflict');
+  }
+}
+
 /**
  * A `sendTurn` refused because the session's folded lifecycle state is
  * terminal (`completed`). This used to be a bare
@@ -803,6 +953,16 @@ interface OrchestrationServiceOptions {
   eventBus: EventBus;
   eventStore?: EventStore;
   /**
+   * The workload limits an engine launched now receives, or undefined where
+   * no workload scope is enforced (`enforcedWorkloadLimits`). Read at each
+   * first turn so a settings change or unavailable enforcement is current.
+   */
+  workloadEngineLimits?: (
+    sessionId: string,
+  ) =>
+    | { memoryMaxBytes: number; swapMaxBytes: number; tasksMax: number }
+    | undefined;
+  /**
    * Optional write-time catalog authority. The service calls it only while a
    * token event is entering the canonical log; read paths use the persisted
    * snapshot and never perform a current-price lookup.
@@ -823,12 +983,24 @@ interface OrchestrationServiceOptions {
     connectionId?: string;
   }) => boolean | undefined;
   /**
+   * #3290: who decides which of an ACP connection's actions ask
+   * (`acpApprovalControl` of its command). `undefined` for a connection this
+   * Station does not know, which then has no approval knob.
+   */
+  acpApprovalControl?: (connectionId: string) => AcpApprovalControl | undefined;
+  /**
    * #2540: an `idle` session whose engine has been unused this long is
    * parked — its engine process stops, the session stays dormant and
    * restarts in place on its next turn. `0` disables parking. Default
    * {@link IDLE_SESSION_PARK_AFTER_MS}.
    */
   idleSessionParkAfterMs?: number;
+  /**
+   * The `chat-host-images` Feature Preview: host images a settled reply
+   * names are copied into the attachment store, and agents are told how to
+   * name them. Absent means off.
+   */
+  hostImagesPreview?: FeaturePreviewSelector;
   /** How often idle sessions are checked. Default {@link IDLE_SESSION_SWEEP_MS}. */
   idleSessionSweepMs?: number;
   /**
@@ -858,6 +1030,7 @@ interface OrchestrationServiceOptions {
   /** Destination-local resource resolution for new starts and missing-cwd recovery. */
   resolveProjectSessionDirectory?: (
     slug: string,
+    retained?: { localProjectId: string; cwd: string },
   ) => Promise<string | undefined>;
   /**
    * #2873: the directory an engine connection starts a session in when the
@@ -886,6 +1059,15 @@ interface OrchestrationServiceOptions {
    */
   resolveStationDefaultApprovalMode?: () => Promise<ApprovalMode | undefined>;
   /**
+   * A Project's new-chat defaults (`ProjectChatDefaultsService`): the
+   * approval layer every session start in a Project reads, and the
+   * last-used record a person's successful chat start writes.
+   */
+  projectChatDefaults?: Pick<
+    ProjectChatDefaultsService,
+    'approvalDefault' | 'recordStart'
+  >;
+  /**
    * #3157: `AppConfig.usageLimitAutoResume`, loaded per call like the
    * defaults above. Absent means off: an unattended resume spends quota.
    */
@@ -898,6 +1080,11 @@ interface OrchestrationServiceOptions {
    * its next turn. Absent: stamps apply as written.
    */
   isFullAccessGrantorCurrent?: (deviceId: string) => boolean;
+  /**
+   * #2494: the confinement mechanisms a start can resolve to. Absent:
+   * Codex's own sandbox and Station's Seatbelt profile for Claude.
+   */
+  confinementProviders?: readonly ConfinementProvider[];
   /** Private exact PR point read; it never shares the public route's branch resolver. */
   nativeDeclaredPullRequestResolver?: {
     read(input: {
@@ -1260,6 +1447,57 @@ function pendingFirstTurnInstructions(
   return firstTurnInstructions;
 }
 
+function taskBriefStartRecord(brief: { digest: string; text: string }) {
+  return {
+    version: TASK_BRIEF_VERSION,
+    digest: brief.digest,
+    text: brief.text,
+  };
+}
+
+/** No turn has started in this session yet (the first-turn rule above). */
+function isGenuineFirstTurn(events: readonly { method?: unknown }[]): boolean {
+  return !events.some((event) => event.method === 'turn.started');
+}
+
+/**
+ * Epic #4003: the Task brief the start recorded (`TASK_BRIEF_METADATA_KEY`),
+ * while the session has had no turn yet. Same first-turn rule as
+ * `pendingFirstTurnInstructions` above; a record of any other shape, or a
+ * text past the brief's own bound, composes nothing.
+ */
+function pendingTaskBrief(
+  events: readonly { method?: unknown; metadata?: unknown }[],
+): { digest: string; text: string } | undefined {
+  if (events.some((event) => event.method === 'turn.started')) {
+    return undefined;
+  }
+  let brief: { digest: string; text: string } | undefined;
+  for (const event of events) {
+    if (
+      event.method !== 'session.started' &&
+      event.method !== 'session.configured'
+    ) {
+      continue;
+    }
+    const record =
+      event.metadata && typeof event.metadata === 'object'
+        ? (event.metadata as Record<string, unknown>)[TASK_BRIEF_METADATA_KEY]
+        : undefined;
+    if (!record || typeof record !== 'object') continue;
+    const { version, digest, text } = record as Record<string, unknown>;
+    if (
+      version === TASK_BRIEF_VERSION &&
+      typeof digest === 'string' &&
+      typeof text === 'string' &&
+      text.length > 0 &&
+      text.length <= TASK_BRIEF_MAX_CHARS
+    )
+      brief = { digest, text };
+  }
+  return brief;
+}
+
 /**
  * Strip client-supplied server-owned receipt metadata before
  * resolution/dispatch. The route schema's `metadata` field is an untyped
@@ -1490,21 +1728,22 @@ function isWithinDirectory(root: string, candidate: string): boolean {
  * Meaning (R3): `localProjectId` is "the Project named at start AND
  * verified to contain the session's working directory". It is stamped only
  * when the resolved start `cwd` lies inside that Project's
- * `workingDirectory`, or is exactly the server-admitted workspace (a
- * provisioned worktree) bound to this thread and Project. A Project with no
+ * resolved execution root, or is exactly the server-admitted secondary
+ * resource or provisioned worktree bound to this thread and Project. A Project with no
  * directory, or a start whose cwd is elsewhere, is named but unverified:
  * it gets no id and an explicit `localProjectIdRefused: true`, so a reader
  * cannot fall back to looking the slug up.
  *
- * The containment check is LEXICAL: paths are resolved and compared as
- * strings, and symlinks inside the root are not followed. A symlink under
- * the Project root that points elsewhere still counts as inside.
+ * Runtime composition canonicalizes the root and cwd before containment.
+ * Embedded callers without a resource resolver retain lexical containment;
+ * server-admitted workspaces retain their exact admitted coordinate.
  */
-function withSessionLocalProjectId(
+async function withSessionLocalProjectId(
   input: ProviderSessionStartInput,
   listProjects?: () => AttachedProjectRoot[],
   admittedWorkspace?: { threadId: string; projectSlug?: string; cwd: string },
-): ProviderSessionStartInput {
+  resolveProjectDirectory?: (slug: string) => Promise<string | undefined>,
+): Promise<ProviderSessionStartInput> {
   const metadata = input.metadata;
   if (!metadata) return input;
   const { [SESSION_LOCAL_PROJECT_ID_METADATA_KEY]: _untrusted, ...rest } =
@@ -1517,16 +1756,28 @@ function withSessionLocalProjectId(
     ? listProjects?.().find((entry) => entry.slug === slug)
     : undefined;
   const cwd = input.cwd ? resolve(expandTilde(input.cwd)) : undefined;
-  const root = project?.workingDirectory
-    ? resolve(expandTilde(project.workingDirectory))
+  const admittedCwd =
+    cwd !== undefined &&
+    admittedWorkspace?.threadId === input.threadId &&
+    admittedWorkspace.projectSlug === slug &&
+    admittedWorkspace.cwd === cwd;
+  const resolvedRoot =
+    !admittedCwd && slug && resolveProjectDirectory
+      ? await resolveProjectDirectory(slug)
+      : project?.workingDirectory;
+  const currentProject = slug
+    ? listProjects?.().find((entry) => entry.slug === slug)
+    : undefined;
+  const root = resolvedRoot
+    ? resolveProjectDirectory && !admittedCwd
+      ? canonicalPath(resolvedRoot)
+      : resolve(expandTilde(resolvedRoot))
     : undefined;
   const cwdVerified =
     cwd !== undefined &&
-    ((root !== undefined && isWithinDirectory(root, cwd)) ||
-      (admittedWorkspace?.threadId === input.threadId &&
-        admittedWorkspace.projectSlug === slug &&
-        admittedWorkspace.cwd === cwd));
-  const id = cwdVerified ? project?.id : undefined;
+    ((root !== undefined && isWithinDirectory(root, cwd)) || admittedCwd);
+  const id =
+    cwdVerified && currentProject?.id === project?.id ? project?.id : undefined;
   if (typeof id === 'string' && id)
     return {
       ...input,
@@ -1541,6 +1792,32 @@ function withSessionLocalProjectId(
       },
     };
   return _untrusted === undefined ? input : { ...input, metadata: rest };
+}
+
+/**
+ * #3800: stamps `SESSION_CONFINEMENT_ROOT_METADATA_KEY`
+ * (`sessionConfinementRoot`) from this Station's own Project list and the
+ * resolved start cwd, replacing whatever the caller sent.
+ */
+function withSessionConfinementRoot(
+  input: ProviderSessionStartInput,
+  listProjects?: () => AttachedProjectRoot[],
+  admittedWorkspace?: { threadId: string; cwd: string },
+): ProviderSessionStartInput {
+  const { [SESSION_CONFINEMENT_ROOT_METADATA_KEY]: _untrusted, ...rest } =
+    input.metadata ?? {};
+  const root = sessionConfinementRoot(input.cwd, listProjects?.() ?? [], {
+    ...(typeof input.metadata?.projectSlug === 'string'
+      ? { projectSlug: input.metadata.projectSlug }
+      : {}),
+    ...(admittedWorkspace?.threadId === input.threadId
+      ? { admittedCwd: admittedWorkspace.cwd }
+      : {}),
+  });
+  return {
+    ...input,
+    metadata: { ...rest, [SESSION_CONFINEMENT_ROOT_METADATA_KEY]: root },
+  };
 }
 
 // Runtime composition resolves the current local resource before containment and
@@ -1558,7 +1835,7 @@ async function resolveStartSessionCwd(
     typeof rawProjectSlug === 'string' && rawProjectSlug
       ? rawProjectSlug
       : undefined;
-  const suppliedCwd = input.cwd ? resolve(expandTilde(input.cwd)) : undefined;
+  let suppliedCwd = input.cwd ? resolve(expandTilde(input.cwd)) : undefined;
   if (
     admittedWorkspace &&
     (admittedWorkspace.threadId !== input.threadId ||
@@ -1604,8 +1881,15 @@ async function resolveStartSessionCwd(
     });
   }
 
-  if (projectSlug && resolveProjectDirectory) {
-    projectCwd = await resolveProjectDirectory(projectSlug);
+  if (projectSlug && resolveProjectDirectory && !admittedWorkspace) {
+    const resolvedRoot = await resolveProjectDirectory(projectSlug);
+    if (resolvedRoot && !existsSync(resolvedRoot))
+      throw new Error(
+        `Project '${projectSlug}' working directory no longer exists: ${resolvedRoot}`,
+      );
+    projectCwd = resolvedRoot ? canonicalPath(resolvedRoot) : undefined;
+    if (suppliedCwd && existsSync(suppliedCwd))
+      suppliedCwd = canonicalPath(suppliedCwd);
   }
 
   const cwd = suppliedCwd ?? projectCwd;
@@ -1704,6 +1988,7 @@ export class OrchestrationService {
   /** Shared receiver-local path observation used by target planning and start admission. */
   readonly resolveProjectSessionDirectory?: (
     slug: string,
+    retained?: { localProjectId: string; cwd: string },
   ) => Promise<string | undefined>;
   /** This Station's default workspace mode for a project that names none. */
   readonly resolveStationDefaultWorkspaceIsolation?: () => Promise<
@@ -1723,6 +2008,7 @@ export class OrchestrationService {
   readonly sessionLifecycles: SessionLifecycleModule;
   private usageTelemetry?: UsageTelemetryObserver;
   private readonly sessionExecutionCoordinator: SessionExecutionCoordinator;
+  private readonly hostImages: HostImageTurnCapture;
   private readonly workspaceExecutionBarrier = new WorkspaceExecutionBarrier();
   private readonly sessionStartBoundaries: SessionTurnBoundaryAuthority;
   /** Private native-output authority; no public Session/Thread API exposes it. */
@@ -1976,6 +2262,7 @@ export class OrchestrationService {
   private readonly conversationHistoryReader?: ConversationHistoryReadService;
   private readonly turnDeduplicator?: TurnDeduplicator;
   private readonly conversationLineage: ConversationLineage;
+  private readonly forkContexts: ConversationForkContextModule;
   private readonly adoptionLedger?: AdoptionLedger;
   private readonly adoption: AttachedSessionAdoption;
   private readonly monitoringBridge: OrchestrationMonitoringBridge;
@@ -2001,12 +2288,6 @@ export class OrchestrationService {
         this.isRetryablePublishFailure(event, error),
     },
   );
-  /**
-   * #3560: `turn.started` event ids whose provider-turn boundary is recorded
-   * while their publish is still in progress, so a retry does not record it
-   * again. Cleared when the publish returns or gives up.
-   */
-  private readonly providerTurnBoundariesInFlight = new Set<string>();
   /**
    * #3560: how many observed-event retries are asleep or running per thread
    * (overlapping retries happen when an adapter is replaced while the old
@@ -2054,6 +2335,12 @@ export class OrchestrationService {
    * attachment until it is true, so the projection fails open in the window.
    */
   private sessionAttachmentSettled = false;
+  // Separate from answerability settlement: a failed/partial binding scan
+  // cannot authorize a new or replacement attached source subject.
+  private attachedSubjectRecovery:
+    | { outcome: 'pending' | 'failed' }
+    | { outcome: 'observed'; observation: AttachedSessionRecoveryObservation } =
+    { outcome: 'pending' };
 
   /**
    * The instance-bound half of {@link sessionAttachmentSettled}: resolved in
@@ -2094,7 +2381,37 @@ export class OrchestrationService {
     return { promise, settle };
   })();
 
+  private readonly stopSessionDeletionNotifications?: () => void;
+  private readonly sessionDeletionReaders = new Set<SessionReadScope>();
+
+  retainSessionDeletionReader(authority: SessionReadScope): () => void {
+    this.sessionDeletionReaders.add(authority);
+    return () => {
+      this.sessionDeletionReaders.delete(authority);
+    };
+  }
+
   constructor(private readonly options: OrchestrationServiceOptions) {
+    // All delete paths converge here, including Draft discard and attached alias cleanup.
+    this.stopSessionDeletionNotifications = options.eventStore?.observeCommits({
+      threadDeleting: (threadId) => {
+        const audience = new Set(
+          [...this.sessionDeletionReaders].filter((scope) =>
+            this.canUserReadSession(threadId, scope),
+          ),
+        );
+        const canRead = (scope: SessionReadScope) => audience.has(scope);
+        return () =>
+          options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_SESSIONS_CHANGED, {
+            threadId,
+            canRead,
+          });
+      },
+      inboxChanged: (conversationId) =>
+        options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_INBOX_CHANGED, {
+          conversationId,
+        }),
+    });
     this.resolveProjectSessionDirectory =
       options.resolveProjectSessionDirectory;
     this.resolveStationDefaultWorkspaceIsolation =
@@ -2106,6 +2423,17 @@ export class OrchestrationService {
       // the credential-profile pin uses (`loadAgentExecutionConfig`).
       resolveAgentDefault: async (agentSlug) =>
         (await options.loadAgentExecutionConfig?.(agentSlug))?.approvalMode,
+      resolveProjectDefault: (project) =>
+        options.projectChatDefaults?.approvalDefault(project),
+      // #2494: read from the stored start event directly, because
+      // `readLatestSessionStartMetadata` strips the reserved record key.
+      observedConfinement: (threadId) =>
+        readConfinementRecord(
+          (
+            options.eventStore?.latestEventByMethod(threadId, 'session.started')
+              ?.payload as { metadata?: Record<string, unknown> } | undefined
+          )?.metadata?.[STATION_CONFINEMENT_RECORD_METADATA_KEY],
+        ),
     });
     this.nativeOutputDeclarations = createNativeOutputDeclarationOperation({
       authority: this.nativeOutputGrants,
@@ -2201,11 +2529,19 @@ export class OrchestrationService {
         this.options.eventStore?.conversationForSession(threadId)
           ?.conversationId ?? threadId,
       listEventPayloads: (threadId) =>
-        (this.options.eventStore?.listEvents(threadId) ?? []).map(
-          (event) => event.payload,
-        ),
-      listUsageEventRecords: (threadId) =>
-        this.options.eventStore?.listEvents(threadId) ?? [],
+        this.options.eventStore?.listEventPayloads(threadId) ?? [],
+      listResolvedEventPayloads: (threadId) => {
+        const store = this.options.eventStore;
+        return store
+          ? store
+              .resolveEventContent(store.listEvents(threadId))
+              .map((event) => event.payload)
+          : [];
+      },
+      readUsageRevision: (threadId) =>
+        this.options.eventStore?.readUsageRevision(threadId) ?? 'empty',
+      listUsageEventPayloads: (threadId) =>
+        this.options.eventStore?.listUsageEventPayloads(threadId) ?? [],
       listUsageReceiptEvents: (input) =>
         this.options.eventStore?.listUsageReceiptEvents(input) ?? [],
       listUsageCoverageEvents: (input) =>
@@ -2241,6 +2577,35 @@ export class OrchestrationService {
           `Usage fold refused a persisted ${dropped.field} (${String(dropped.value)}) while replaying thread ${dropped.threadId ?? 'unknown'}${dropped.provider ? ` from ${dropped.provider}` : ''}: the figure is unusable, so it is read as absent rather than as a measurement.`,
         ),
     });
+    this.forkContexts = new ConversationForkContextModule({
+      store: () => this.options.eventStore,
+      deduplicator: () => this.turnDeduplicator,
+      canRead: (reference, scope) => this.canReadForkContext(reference, scope),
+      canStart: (reference, actor) =>
+        this.forkContextOwnerReadable(
+          reference,
+          actor.userId,
+          actor.tenantExecutionContext,
+        ),
+      canReadSession: (id, scope) =>
+        this.sessionAuthz.canReadSession(id, scope),
+      runtimeMessages: (id, scope) =>
+        this.transcriptReads.readSessionMessages(id, scope),
+      metadata: (id) => this.readLatestSessionStartMetadata(id),
+      nativeMemoryOwnsTranscript: (id, provider) =>
+        (provider ??
+          this.options.eventStore?.readSessionByThread(id)?.provider) ===
+          'station-agent' && this.supportsNativeMemoryContinuity(),
+      requiresNativeIdentity: (id) => {
+        const provider =
+          this.options.eventStore?.readSessionByThread(id)?.provider;
+        return (
+          provider !== undefined &&
+          this.options.adapterRegistry.get(provider)?.metadata.continuity
+            ?.resumeIdentity === 'require-match'
+        );
+      },
+    });
     this.sessionEventReads = new SessionEventReads({
       ...(options.eventStore ? { eventStore: options.eventStore } : {}),
       logger: options.logger,
@@ -2259,7 +2624,7 @@ export class OrchestrationService {
       observeAnswerability: (threadId, provider, observedAt) =>
         this.observeAnswerability(threadId, provider, observedAt),
       readSession: (threadId, authority) =>
-        this.readSession(threadId, authority),
+        this.readSession(threadId, authority, { eventMethods: [] }),
     });
     this.internalStops = new InternalStopSuppression({
       listActiveTurnFoldEventPayloads: (threadId) =>
@@ -2282,6 +2647,17 @@ export class OrchestrationService {
       this.sessionStartBoundaries,
       this.workspaceExecutionBarrier,
     );
+    this.hostImages = new HostImageTurnCapture({
+      preview: options.hostImagesPreview,
+      eventStore: options.eventStore,
+      sessionCwd: (threadId) =>
+        this.sessionReadModel.get(threadId)?.cwd ??
+        options.eventStore?.readSessionByThread(threadId)?.cwd,
+      publish: (event) => {
+        this.projectAndPublishEvent(event);
+      },
+      logger: options.logger,
+    });
     this.turnDeduplicator =
       options.turnDeduplicator ?? options.eventStore?.createTurnDeduplicator();
     this.adoptionLedger =
@@ -2327,6 +2703,14 @@ export class OrchestrationService {
       requireAdapter: (provider) => this.requireAdapter(provider),
       assertAdapterCurrent: (adapter) => this.assertAdapterCurrent(adapter),
       assertAdapterReady: (adapter) => this.assertAdapterReady(adapter),
+      applyConfinement: (input) =>
+        this.withConfinement(
+          input.provider,
+          input,
+          input.confinement === 'host' ? 'host' : 'workspace',
+          // The child runs in its own folder, never a worktree Station made.
+          'shared',
+        ),
       withAcceptedModelLaunchPlan: (
         adapter,
         input,
@@ -2458,6 +2842,9 @@ export class OrchestrationService {
           : undefined;
         return {
           assignedAgentSlug: session.assignedAgentSlug,
+          ...(session.delegation?.title
+            ? { delegationTitle: session.delegation.title }
+            : {}),
           ...(conversationId ? { conversationId } : {}),
           ...(session.environmentId
             ? { environmentId: session.environmentId }
@@ -2479,9 +2866,7 @@ export class OrchestrationService {
       canReadSession: (threadId, authority) =>
         this.sessionAuthz.canReadSession(threadId, authority),
       listEvents: (threadId) =>
-        (this.options.eventStore?.listEvents(threadId) ?? []).map(
-          (event) => event.payload,
-        ),
+        this.options.eventStore?.listEventPayloads(threadId) ?? [],
       // Task user-input pinning is event-id exact. Do not substitute a
       // transcript projection or a turn replay: one turn can hold steers.
       userInputEventById: (eventId) => {
@@ -2505,14 +2890,23 @@ export class OrchestrationService {
         this.options.eventStore?.listBasisEventsForTurn(threadId, turnId) ?? {
           status: 'over-budget' as const,
         },
-      listEventsForTurn: (threadId, turnId) =>
-        (
-          this.options.eventStore?.listEventsForTurn(
-            threadId,
-            turnId,
-            MAX_ASSISTANT_TURN_EVENTS + 1,
-          ) ?? []
-        ).map((event) => event.payload),
+      // An assistant turn read owes its caller the exact reply (Basis,
+      // quote sources, room publication), so it opts in to resolving
+      // out-of-line content (docs/design/event-content-spill.md). It is
+      // bounded to one turn.
+      listEventsForTurn: (threadId, turnId) => {
+        const store = this.options.eventStore;
+        if (!store) return [];
+        return store
+          .resolveEventContent(
+            store.listEventsForTurn(
+              threadId,
+              turnId,
+              MAX_ASSISTANT_TURN_EVENTS + 1,
+            ),
+          )
+          .map((event) => event.payload);
+      },
       projectSlugForSession: (_session, threadId) =>
         this.options.eventStore?.readConversationProjectSlug(threadId),
       reportUnavailable: (query, error) => {
@@ -2593,6 +2987,13 @@ export class OrchestrationService {
           typeof adapter?.retireSession === 'function'
         );
       },
+      nativeMemoryOwnsTranscriptFor: (provider) =>
+        provider === 'station-agent' && this.supportsNativeMemoryContinuity(),
+      nativeIdentityRequiredFor: (provider) =>
+        options.adapterRegistry.get(provider)?.metadata.continuity
+          ?.resumeIdentity === 'require-match',
+      readForkContextDelivery: (id, scope) =>
+        this.forkContexts.delivery(id, scope),
       ...(this.turnDeduplicator
         ? { turnDeduplicator: this.turnDeduplicator }
         : {}),
@@ -2603,6 +3004,8 @@ export class OrchestrationService {
         this.readSession(threadId, authority),
       readSessionMessages: (threadId, authority) =>
         this.readSessionMessages(threadId, authority),
+      readSessionSeedMessages: (threadId, authority) =>
+        this.readSessionSeedMessages(threadId, authority),
       listSessionReadModel: (authority) => this.listSessionReadModel(authority),
       canReadSession: (threadId, authority) =>
         this.sessionAuthz.canReadSession(threadId, authority),
@@ -2659,6 +3062,12 @@ export class OrchestrationService {
             ? startMetadata.expectedDefinitionFingerprint
             : undefined;
         const model = session.reportedModel ?? session.model;
+        const nextTurnStartsSession =
+          await this.conversationLineage.nextTurnStartsSession(
+            conversationId,
+            detail,
+            authority,
+          );
         return {
           sessionId: session.threadId,
           // Only `readCurrentConversationSession`'s reserved-tail fallback
@@ -2706,6 +3115,9 @@ export class OrchestrationService {
           // provider today.
           canContinue: canResolveConversationContinuation(detail),
           continuationPending: isConversationContinuationPending(detail),
+          ...(nextTurnStartsSession === undefined
+            ? {}
+            : { nextTurnStartsSession }),
           ...(detail.session.conversationActivity
             ? { activity: detail.session.conversationActivity }
             : {}),
@@ -2749,6 +3161,9 @@ export class OrchestrationService {
         this.internalStops.reportRedispatchFailed(threadId, turnId, provider),
       replayModelOptions: (threadId, provider, modelOptions) =>
         this.replayModelOptionsWithPosture(threadId, provider, modelOptions),
+      assertRetainedWorkspaceAuthorized: async (threadId) => {
+        await this.authorizedConversationWorkspace(threadId);
+      },
       replayConfinement: (threadId) =>
         this.approvalPosture.standingConfinement(
           threadId,
@@ -2926,6 +3341,7 @@ export class OrchestrationService {
           this.credentialProfileRecovery.isRestarting(threadId),
         autoResume: async () =>
           (await options.resolveUsageLimitAutoResume?.()) === true,
+        resumeChoices: options.eventStore.usageLimitResumeChoices?.(),
         onOutcome: ({ failureKind, decision, outcome }) => {
           this.usageTelemetry?.trackSessionRecovery({
             failure_kind: failureKind,
@@ -2966,7 +3382,13 @@ export class OrchestrationService {
     void this.adoption
       .startReconciliation()
       .then(() => this.recoverSessions())
+      .then((observation) => {
+        this.attachedSubjectRecovery = observation.scanObserved
+          ? { outcome: 'observed', observation }
+          : { outcome: 'failed' };
+      })
       .catch((error) => {
+        this.attachedSubjectRecovery = { outcome: 'failed' };
         // Both upstream steps do unguarded durable reads
         // (`adoptionLedger.reservations()`, `readSessions()`), so this chain can
         // reject. On `main` that only produced an unhandled rejection; since
@@ -3087,17 +3509,6 @@ export class OrchestrationService {
     return this.credentialProfileRecovery.createDispatchAdapter();
   }
 
-  // biome-ignore lint/correctness/noUnusedPrivateClassMembers: retained for test reach-ins (T6, slice 7 — 4 cast sites reach this name; the runtime path lives in CredentialProfileRecovery).
-  private restartCredentialProfileRecoverySession(
-    input: Parameters<CredentialProfileRecovery['restartRecoverySession']>[0],
-  ): Promise<{ turnId: string }> {
-    return this.credentialProfileRecovery.restartRecoverySession(input);
-  }
-
-  // Kept deliberately asymmetric with `restoreSession` (rewired direct):
-  // the ctor's quarantineSession closure routes through THIS forwarder, and
-  // that in-file caller is what keeps biome's unsafe pass from deleting a
-  // method 5 tests cast to. Do not "finish the job" by making it symmetric.
   private quarantineCredentialProfileRecoverySession(
     threadId: string,
   ): Promise<void> {
@@ -3195,8 +3606,8 @@ export class OrchestrationService {
     // `adapter.sendTurn` that bypasses dispatch — so a thread whose
     // persisted binding carries portable consent refuses HERE, before any
     // provider effect, instead of replaying a portable session the current
-    // offer never authorized. Unmarked (legacy/ordinary) sessions pass
-    // through byte-identical.
+    // offer never authorized. Ordinary retained Project authority is checked
+    // separately after restart preparation, immediately before provider start.
     {
       const unadmittedConsent = this.persistedPortableConsentOfThread(
         input.threadId,
@@ -3324,12 +3735,17 @@ export class OrchestrationService {
       );
       let session: ProviderSession;
       try {
+        await this.authorizedConversationWorkspace(input.threadId);
         // #2873: a respawn re-resolves the recorded folder like any start.
         assertDispatchCwdUnmoved(startInput, startInput.cwd);
         session = await withTenantExecutionContext(tenantExecutionContext, () =>
-          this.runEngineSessionStart(startInput.threadId, () =>
-            adapter.startSession(startInput),
-          ),
+          this.runEngineSessionStart(startInput.threadId, () => {
+            this.assertForkContextAtProviderStart(startInput, {
+              userId: this.sessionAuthz.sessionOwnerUserId(startInput.threadId),
+              tenantExecutionContext,
+            });
+            return adapter.startSession(startInput);
+          }),
         );
       } finally {
         admissionLease?.release();
@@ -3639,6 +4055,14 @@ export class OrchestrationService {
   }
 
   async shutdown(): Promise<void> {
+    this.stopSessionDeletionNotifications?.();
+    // #3562: boot recovery retries on a backoff; none of it may publish once
+    // the publish path below starts coming down. Its rows stay for next boot.
+    this.interruptedTurns.stop();
+    // A capture still reading files must not publish into a closing store.
+    // Synchronous on purpose: an await here would reorder the rest of this
+    // shutdown's synchronous prefix.
+    this.hostImages.close();
     if (this.idleSweepTimer) clearInterval(this.idleSweepTimer);
     this.idleSweepTimer = undefined;
     this.transcriptSearchStopped = true;
@@ -3650,6 +4074,21 @@ export class OrchestrationService {
     this.nativeOutputGrants.dispose();
     this.stationControlPullRequests?.dispose();
     this.nativeTurnGenerations.clear();
+    // Preserve only resumable idle room Sessions, under their lifecycle lock.
+    // An unavailable binding is a parking failure; all other teardown still runs.
+    const roomParkingResults = await Promise.allSettled(
+      [...this.sessionAdapters].map(([threadId, adapter]) =>
+        this.adapterRetirement.runCleanupWithinDeadline(async () => {
+          if (
+            this.options.eventStore?.readProjectTaskRoomExecutionBinding(
+              threadId,
+            ) &&
+            this.isParkableIdleSession(threadId, Date.now(), 0)
+          )
+            await this.parkIdleSession(threadId, adapter, Date.now(), 0);
+        }, `${adapter.provider} room session parking`),
+      ),
+    );
     // A delta still buffered is text the model produced and nobody saw.
     // Flush before anything else here can tear the publish path down —
     // guarded, because this runs first and a failed final publish must not
@@ -3664,7 +4103,9 @@ export class OrchestrationService {
     // archive#2959: never leave a watchdog timer outliving this service.
     this.turnProgress.dispose();
     this.conversationActivity?.dispose();
-    await this.recoveryCoordinator?.dispose();
+    const recoveryResults = await Promise.allSettled(
+      this.recoveryCoordinator ? [this.recoveryCoordinator.dispose()] : [],
+    );
     this.adapterRegistryUnsubscribe?.();
     this.adapterRegistryUnsubscribe = undefined;
     const currentAdapters = this.options.adapterRegistry.list();
@@ -3701,16 +4142,25 @@ export class OrchestrationService {
             this.finalizeStoppedAdapterSessions(
               adapter,
               currentSessions.get(adapter) ?? new Map(),
-              'orchestration_shutdown',
+              ORCHESTRATION_SHUTDOWN_EXIT_REASON,
             );
           }, `${adapter.provider} adapter shutdown`),
         ),
     ]);
     this.activeEventAdapters.clear();
     this.adoption.unregisterOwner();
-    const failures = cleanupResults.flatMap((result) =>
+    const failures = [
+      ...roomParkingResults,
+      ...recoveryResults,
+      ...cleanupResults,
+    ].flatMap((result) =>
       result.status === 'rejected' ? [result.reason] : [],
     );
+    try {
+      this.deltaCoalescer.dispose();
+    } catch (error) {
+      failures.push(error);
+    }
     if (failures.length > 0) {
       throw new AggregateError(failures, 'Provider adapter shutdown failed.');
     }
@@ -3790,6 +4240,7 @@ export class OrchestrationService {
       id: string;
       name: string;
       originalId: string;
+      resolvedModel?: string;
     }>
   > {
     const adapter = this.options.adapterRegistry.get(provider);
@@ -4458,11 +4909,14 @@ export class OrchestrationService {
     // supersedes a stale verdict, so a recreated thread id can never
     // inherit a dead session's positive. The store stays the authority.
     let consent: PortableExecutionConsentIdentity | undefined;
-    for (const event of this.options.eventStore?.listEvents(threadId) ?? []) {
-      const method = (event.payload as { method?: unknown })?.method;
+    for (const event of this.options.eventStore?.listEventPayloads(threadId, [
+      'session.started',
+      'session.configured',
+    ]) ?? []) {
+      const method = event.method;
       if (method !== 'session.started' && method !== 'session.configured')
         continue;
-      const metadata = (event.payload as { metadata?: unknown })?.metadata;
+      const metadata = (event as { metadata?: unknown }).metadata;
       consent =
         portableConsentOfStartedMetadata(
           metadata && typeof metadata === 'object'
@@ -4546,6 +5000,20 @@ export class OrchestrationService {
   }
 
   /**
+   * #4162: the metadata the session's latest start recorded (reserved keys
+   * stripped). Undefined for a session `authority` may not read.
+   */
+  readSessionStartMetadata(
+    threadId: string,
+    authority: SessionReadScope,
+  ): Record<string, unknown> | undefined {
+    this.initialize();
+    if (!this.sessionAuthz.canReadSession(threadId, authority))
+      return undefined;
+    return this.readLatestSessionStartMetadata(threadId);
+  }
+
+  /**
    * #2377 slice C2a: whether Station recorded a start for this session, so a
    * station-control call that names it is a follow-up, not a new session.
    */
@@ -4591,19 +5059,41 @@ export class OrchestrationService {
     return undefined;
   }
 
+  async hasReadableSession(
+    threadId: string,
+    authority: SessionReadScope,
+  ): Promise<boolean> {
+    this.initialize();
+    let persisted = this.options.eventStore?.readSessionByThread(threadId);
+    let loaded = this.sessionReadModel.get(threadId);
+    if (!persisted && !loaded) {
+      await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
+      persisted = this.options.eventStore?.readSessionByThread(threadId);
+      loaded = this.sessionReadModel.get(threadId);
+    }
+    if (persisted)
+      this.sessionAuthz.hydratePersistedTenantContexts([persisted]);
+    return (
+      Boolean(persisted || loaded) &&
+      this.sessionAuthz.canReadSession(threadId, authority)
+    );
+  }
+
   async readSession(
     threadId: string,
     authority: SessionReadScope,
+    options?: { eventMethods: readonly string[]; includeLatestEvent?: boolean },
   ): Promise<OrchestrationSessionDetail | null> {
     this.initialize();
-    await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
-
-    const persistedSessions = this.options.eventStore?.readSessions() ?? [];
-    this.sessionAuthz.hydratePersistedTenantContexts(persistedSessions);
-    const persisted = persistedSessions.find(
-      (session) => session.threadId === threadId,
-    );
-    const loaded = this.sessionReadModel.get(threadId);
+    let persisted = this.options.eventStore?.readSessionByThread(threadId);
+    let loaded = this.sessionReadModel.get(threadId);
+    if (!options || (!persisted && !loaded)) {
+      await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
+      persisted = this.options.eventStore?.readSessionByThread(threadId);
+      loaded = this.sessionReadModel.get(threadId);
+    }
+    if (persisted)
+      this.sessionAuthz.hydratePersistedTenantContexts([persisted]);
     if (!persisted && !loaded) {
       return null;
     }
@@ -4611,24 +5101,37 @@ export class OrchestrationService {
       return null;
     }
 
-    // Conversation history remains the full-record contract of this detail
-    // reader. It is deliberately outside archive#1867's summary/query slice; the
-    // cursor migration for that payload belongs to archive#2004.
-    const events = (this.options.eventStore?.listEvents(threadId) ?? []).map(
-      (event) => event.payload,
-    );
+    // Legacy detail callers keep full replay; fact readers name their methods.
+    const events = options
+      ? (this.options.eventStore?.listEventPayloads(
+          threadId,
+          options.eventMethods,
+          options.includeLatestEvent,
+          true,
+        ) ?? [])
+      : (this.options.eventStore?.listEvents(threadId) ?? []).map(
+          (event) => event.payload,
+        );
+    const summaryEvents = options
+      ? (
+          this.options.eventStore?.listSessionProjectionEvents(threadId, {
+            hydrateAttachments: false,
+          }) ?? []
+        ).map((event) => event.payload)
+      : events;
 
     const latestRecovery = this.recoveryCoordinator?.latestProjection(threadId);
     // #3157: a waiting usage-limit resume says whether the setting would let
     // it run unattended now; the coordinator applies it only at the reset.
     const recovery = latestRecovery
-      ? await this.projectRecovery(latestRecovery)
+      ? await this.projectRecovery(latestRecovery, threadId)
       : undefined;
     // See `listSessionReadModel`: a continuation child folds only its own
     // events, which start at the second prompt.
     const conversationFirstPromptedTurn =
       this.options.eventStore?.conversationRootFirstPromptedTurn(
         threadId,
+        options === undefined,
       )?.payload;
     const conversationActivity =
       this.conversationActivity?.readForThread(threadId);
@@ -4638,7 +5141,8 @@ export class OrchestrationService {
       session: buildOrchestrationSessionSummary({
         persisted,
         loaded,
-        events,
+        events: summaryEvents,
+        eventCount: this.options.eventStore?.countEventsByThread(threadId) ?? 0,
         ...(conversationDraftFacts ? { conversationDraftFacts } : {}),
         turnProgress: this.turnProgress.read(threadId),
         readChildWork: this.readChildWork,
@@ -4659,9 +5163,10 @@ export class OrchestrationService {
 
   private async projectRecovery(
     latest: ConnectionRecoveryProjection,
+    threadId: string,
   ): Promise<ConnectionRecoveryProjection> {
     return latest.usageLimit && latest.outcome === 'armed'
-      ? await this.withUsageLimitAutoResume(latest)
+      ? await this.withUsageLimitAutoResume(latest, threadId)
       : latest;
   }
 
@@ -4675,7 +5180,9 @@ export class OrchestrationService {
   ): Promise<ConnectionRecoveryProjection | null> {
     this.initialize();
     const latest = this.recoveryCoordinator?.latestProjection(threadId);
-    return latest?.usageLimit ? await this.projectRecovery(latest) : null;
+    return latest?.usageLimit
+      ? await this.projectRecovery(latest, threadId)
+      : null;
   }
 
   /**
@@ -4686,7 +5193,7 @@ export class OrchestrationService {
    */
   async actOnUsageLimitRecovery(
     threadId: string,
-    action: 'resume' | 'cancel',
+    action: 'resume' | 'cancel' | 'resume-at-reset' | 'hold',
   ): Promise<{
     result: UsageLimitRecoveryActionResult;
     recovery: ConnectionRecoveryProjection | null;
@@ -4696,7 +5203,12 @@ export class OrchestrationService {
     const result: UsageLimitRecoveryActionResult = coordinator
       ? action === 'resume'
         ? await coordinator.resumeUsageLimitNow(threadId)
-        : await coordinator.cancelUsageLimitWaiting(threadId)
+        : action === 'cancel'
+          ? await coordinator.cancelUsageLimitWaiting(threadId)
+          : await coordinator.chooseUsageLimitResume(
+              threadId,
+              action === 'hold' ? 'hold' : 'resume',
+            )
       : { kind: 'not-waiting' };
     return { result, recovery: await this.readUsageLimitRecovery(threadId) };
   }
@@ -4707,7 +5219,16 @@ export class OrchestrationService {
    */
   private async withUsageLimitAutoResume(
     recovery: ConnectionRecoveryProjection,
+    threadId: string,
   ): Promise<ConnectionRecoveryProjection> {
+    // A person's choice on this stop decides it in place of the setting.
+    const choice = this.recoveryCoordinator?.usageLimitResumeChoice(threadId);
+    if (choice)
+      return {
+        ...recovery,
+        autoResume: choice === 'resume',
+        autoResumeChoice: choice,
+      };
     try {
       return {
         ...recovery,
@@ -4737,6 +5258,7 @@ export class OrchestrationService {
     resumeCursor?: unknown;
     resumeModel?: string;
     transcriptSeed?: string;
+    contextSeed?: import('./conversation-handoff-module.js').ConversationContextSeedPin;
     nativeSourceSessionId?: string;
     nativeResumeBindingKey?: string;
     contextBoundary?: ConversationContextBoundaryProjection;
@@ -4771,8 +5293,9 @@ export class OrchestrationService {
    * the rebinding the client acts on (unchanged). #2309: turn, tool and
    * terminal frames — and at most one coalesced frame per second per
    * execution child — carry the conversation's activity after that event
-   * committed. Runs per frame per subscriber; the activity path is map reads
-   * once a conversation's threads are seeded.
+   * committed. The SSE route shares the binding across subscribers for one
+   * emitted envelope; the activity path uses map reads once a conversation's
+   * threads are seeded.
    */
   conversationStreamBinding(event: {
     threadId: string;
@@ -4860,17 +5383,134 @@ export class OrchestrationService {
     );
   }
 
+  /** Read-only delivery lookup; see `ConversationLineage.inspectTurnDelivery`. */
+  /**
+   * The turn another attempt holds `clientTurnId` for on `threadId`, waited
+   * for (bounded, by the deduplicator's own wait). `given-up` when this
+   * process's own owner gave the key up after it may have reached the engine
+   * (the possible-effect refusal the delivery lookup also gives, never a
+   * resend). Only that: a live owner's claim, however old, may still
+   * deliver, so its resend stays free to join the turn (#3660). A read fault
+   * falls through to `held`, which is safe because a resend meets the same
+   * held claim. `held`: still held, or released without sending.
+   */
+  private async awaitHeldTurnKey(
+    threadId: string,
+    clientTurnId: string,
+    signal?: AbortSignal,
+    inputDigest?: string,
+  ): Promise<{ kind: 'turn'; turnId: string } | { kind: 'given-up' | 'held' }> {
+    const ledger = this.turnDeduplicator;
+    if (!ledger) return { kind: 'held' };
+    const turnId = await raceWithSignal(
+      ledger.awaitResolution({ threadId, clientTurnId, inputDigest }),
+      signal,
+    ).catch((error) => {
+      if (error instanceof ClientTurnInputConflictError) throw error;
+      return undefined;
+    });
+    if (turnId) return { kind: 'turn', turnId };
+    let givenUp = false;
+    try {
+      givenUp = ledger.givenUp({ threadId, clientTurnId });
+    } catch {
+      givenUp = false;
+    }
+    return givenUp ? { kind: 'given-up' } : { kind: 'held' };
+  }
+
+  /**
+   * #3568: join the turn a live claim holds `clientTurnId` for on
+   * `sessionId`, as a same-key send meeting that claim in `sendTurn` does:
+   * `started` with its turn once it resolves, `indeterminate` when this
+   * process gave the key up after a possible effect, else `in-flight`.
+   */
+  async joinHeldTurnKey(
+    sessionId: string,
+    clientTurnId: string,
+    /** Stops only this wait (the caller went away); nothing is sent either way. */
+    signal?: AbortSignal,
+    inputDigest?: string,
+  ): Promise<
+    | { outcome: 'started'; turnId: string }
+    | { outcome: 'indeterminate' | 'in-flight' }
+  > {
+    this.initialize();
+    const held = await this.awaitHeldTurnKey(
+      sessionId,
+      clientTurnId,
+      signal,
+      inputDigest,
+    );
+    if (held.kind === 'turn')
+      return { outcome: 'started', turnId: held.turnId };
+    return {
+      outcome: held.kind === 'given-up' ? 'indeterminate' : 'in-flight',
+    };
+  }
+
+  inspectTurnDelivery(
+    conversationId: string,
+    clientTurnId: string,
+    authority: SessionReadScope,
+    inputDigest?: string,
+  ): ReturnType<ConversationLineage['inspectTurnDelivery']> {
+    this.initialize();
+    return this.conversationLineage.inspectTurnDelivery(
+      conversationId,
+      clientTurnId,
+      authority,
+      inputDigest,
+    );
+  }
+
+  readPendingConversationSubmission(
+    conversationId: string,
+    clientTurnId: string,
+    authority: SessionReadScope,
+    userId?: string,
+  ) {
+    this.initialize();
+    if (
+      this.conversationLineage.inspectTurnDelivery(
+        conversationId,
+        clientTurnId,
+        authority,
+      ) === null
+    )
+      throw new Error('The requested conversation is unavailable.');
+    const pending = this.options.eventStore?.readPendingThreadInboxSubmission(
+      conversationId,
+      clientTurnId,
+    );
+    if (pending && pending.userId !== userId)
+      throw Object.assign(
+        new Error("This message key belongs to someone else's queued message."),
+        { code: 'inbox_key_held' },
+      );
+    return pending;
+  }
+
   async readConversationHandoffStatus(
     conversationId: string,
     idempotencyKey: string,
     authority: SessionReadScope,
+    inputDigest?: string,
   ): Promise<ConversationHandoffStatusProjection | null> {
     this.initialize();
-    return this.conversationLineage.readConversationHandoffStatus(
+    const status = await this.conversationLineage.readConversationHandoffStatus(
       conversationId,
       idempotencyKey,
       authority,
     );
+    if (status?.marker && inputDigest !== undefined) {
+      this.turnDeduplicator?.inspect({
+        threadId: status.marker.sessionId,
+        clientTurnId: `handoff:${crypto.createHash('sha256').update(`${conversationId}\0${idempotencyKey}`).digest('hex')}`,
+        inputDigest,
+      });
+    }
+    return status;
   }
 
   async reserveConversationContextBoundary(
@@ -5274,6 +5914,30 @@ export class OrchestrationService {
     return this.sessionEventReads.readSessionEventPage(threadId, options);
   }
 
+  /** See {@link SessionEventReads.readApprovalContentBinding}. */
+  readApprovalContentBinding(
+    threadId: string,
+    requestId: string,
+    authority: SessionReadScope,
+  ): ApprovalContentBinding | null {
+    this.initialize();
+    return this.sessionEventReads.readApprovalContentBinding(
+      threadId,
+      requestId,
+      authority,
+    );
+  }
+
+  /** See {@link SessionEventReads.readEventContent}. */
+  readEventContent(
+    threadId: string,
+    digest: string,
+    authority: SessionReadScope,
+  ): { kind: 'string' | 'json'; body: string; bytes: number } | null {
+    this.initialize();
+    return this.sessionEventReads.readEventContent(threadId, digest, authority);
+  }
+
   async readSessionEventWindow(
     threadId: string,
     options: {
@@ -5332,6 +5996,19 @@ export class OrchestrationService {
     );
   }
 
+  readEventStreamReplayPage(
+    afterGlobalSequence: number,
+    options: { threadId?: string; through: number },
+    authority: SessionReadScope,
+  ): { events: PersistedRuntimeEvent[]; scannedThrough: number } {
+    this.initialize();
+    return this.sessionEventReads.readEventStreamReplayPage(
+      afterGlobalSequence,
+      options,
+      authority,
+    );
+  }
+
   readEventStreamReplayPlan(
     afterGlobalSequence: number,
     options: { threadId?: string; limit: number; maxSerializedBytes: number },
@@ -5356,7 +6033,242 @@ export class OrchestrationService {
     authority: SessionReadScope,
   ): ConversationMessage[] {
     this.initialize();
-    return this.transcriptReads.readSessionMessages(threadId, authority);
+    return [
+      ...this.forkContexts.copiedForSession(threadId, authority),
+      ...this.transcriptReads.readSessionMessages(threadId, authority),
+    ];
+  }
+
+  /**
+   * {@link readSessionMessages} for engine-facing transcript seeds, with
+   * content stored out of line resolved. UI and history reads keep the
+   * reference-bearing projection.
+   */
+  private readSessionSeedMessages(
+    threadId: string,
+    authority: SessionReadScope,
+  ): ConversationMessage[] {
+    this.initialize();
+    return [
+      ...this.forkContexts.copiedForSession(threadId, authority),
+      ...this.transcriptReads.readSessionSeedMessages(threadId, authority),
+    ];
+  }
+
+  private forkContextOwnerReadable(
+    reference: ConversationForkContextReference,
+    userId: string | undefined,
+    tenantContext: TenantExecutionContext | undefined,
+  ): boolean {
+    if (!userId) return false;
+    if (this.options.requireTenantExecutionContext?.() === true) {
+      const tenant =
+        this.options.validateRecoveredTenantExecutionContext?.(tenantContext);
+      return (
+        tenant !== undefined &&
+        tenant.tenantId === reference.tenantId &&
+        userId === reference.ownerUserId
+      );
+    }
+    if (tenantContext !== undefined || reference.tenantId !== undefined)
+      return false;
+    return (
+      userId === reference.ownerUserId ||
+      this.options.personalConversationAccess?.canRead(
+        userId,
+        reference.ownerUserId,
+      ) === true
+    );
+  }
+
+  private canReadForkContext(
+    reference: ConversationForkContextReference,
+    scope: SessionReadScope,
+  ): boolean {
+    if (scope === INTERNAL_SESSION_READ_SCOPE) return true;
+    if (
+      !isSessionReadAuthority(scope) ||
+      (scope.mode === 'hosted') !==
+        (this.options.requireTenantExecutionContext?.() === true)
+    )
+      return false;
+    return this.forkContextOwnerReadable(
+      reference,
+      scope.userId,
+      scope.tenantExecutionContext,
+    );
+  }
+
+  readConversationForkContextForRequest(
+    sourceId: string,
+    key: string,
+    authority: SessionReadAuthority,
+  ) {
+    this.initialize();
+    return this.forkContexts.forRequest(sourceId, key, authority);
+  }
+
+  reserveConversationForkContext(
+    snapshot: ConversationForkContextSnapshot,
+    authority: SessionReadAuthority,
+  ) {
+    this.initialize();
+    return this.forkContexts.reserve(snapshot, authority);
+  }
+
+  readConversationForkContextSnapshot(id: string, authority: SessionReadScope) {
+    this.initialize();
+    return this.forkContexts.snapshot(id, authority);
+  }
+
+  publishConversationForkContext(
+    event: CanonicalRuntimeEvent,
+    digest: string,
+    authority: SessionReadAuthority,
+  ) {
+    this.initialize();
+    return this.forkContexts.publish(event, digest, authority);
+  }
+
+  readForkConversationTranscript(id: string, authority: SessionReadScope) {
+    this.initialize();
+    return this.forkContexts.transcript(id, authority);
+  }
+
+  readForkConversation(id: string, authority: SessionReadScope) {
+    this.initialize();
+    const reference = this.forkContexts.reference(id, authority);
+    if (reference === undefined || reference === null) return reference;
+    const snapshot = this.forkContexts.snapshot(id, authority);
+    if (!snapshot) return null;
+    return {
+      id,
+      resourceId: reference.targetAgent,
+      userId: reference.ownerUserId,
+      title: snapshot.title,
+      createdAt: snapshot.createdAt,
+      updatedAt: snapshot.createdAt,
+      metadata: {
+        parentConversationId: reference.sourceConversationId,
+        branchPointTurnId: snapshot.branchPointTurnId,
+        sourceSessionId: snapshot.sourceSessionId,
+        continuation: 'replay-seed' as const,
+        ...(reference.projectSlug
+          ? { projectSlug: reference.projectSlug }
+          : {}),
+        forkContextDigest: reference.digest,
+      },
+    };
+  }
+
+  prepareInitialConversationForkContext(
+    input: {
+      conversationId: string;
+      agentId: string;
+      projectSlug?: string;
+      userId?: string;
+    },
+    authority: SessionReadAuthority,
+  ) {
+    this.initialize();
+    return this.forkContexts.initial(
+      input.conversationId,
+      input.agentId,
+      input.projectSlug,
+      input.userId,
+      authority,
+    );
+  }
+
+  assertConversationForkContextEnvironment(
+    id: string,
+    current: boolean,
+    authority: SessionReadAuthority,
+  ): void {
+    this.initialize();
+    const reference = this.forkContexts.reference(id, authority);
+    if (reference === null || (reference !== undefined && !current))
+      throw new ConversationForkContextError(
+        'A saved fork context must activate on its owning Station.',
+      );
+  }
+
+  async deleteUnstartedConversationForkContext(
+    id: string,
+    authority: SessionReadScope,
+  ): Promise<boolean> {
+    this.initialize();
+    if (this.startsUnderway.has(id))
+      throw new ConversationForkContextError(
+        'The fork has a provider start in progress.',
+      );
+    return this.sessionExecutionCoordinator.runLifecycleTransition(
+      id,
+      async () => {
+        if (this.startsUnderway.has(id))
+          throw new ConversationForkContextError(
+            'The fork has a provider start in progress.',
+          );
+        return this.forkContexts.deleteUnstarted(id, authority);
+      },
+    );
+  }
+
+  private assertForkContextAtProviderStart(
+    input: ProviderSessionStartInput,
+    actor: { userId?: string; tenantExecutionContext?: TenantExecutionContext },
+  ): void {
+    try {
+      this.forkContexts.assertStart(input, actor);
+      assertConversationStartSeedStart(this.options.eventStore, input);
+    } catch (error) {
+      if (
+        error instanceof ConversationForkContextError ||
+        error instanceof ConversationStartContextError
+      )
+        throw new SessionStartRefusedError(
+          error.message,
+          CONVERSATION_CONTEXT_UNAVAILABLE_CODE,
+        );
+      throw error;
+    }
+  }
+
+  private assertForkContextAtProviderTurn(
+    input: ProviderSendTurnInput,
+    actor?: {
+      userId?: string;
+      tenantExecutionContext?: TenantExecutionContext;
+    },
+  ): void {
+    try {
+      this.forkContexts.assertTurnCurrent(input, {
+        userId:
+          actor?.userId ?? this.sessionAuthz.sessionOwnerUserId(input.threadId),
+        tenantExecutionContext:
+          actor?.tenantExecutionContext ??
+          this.sessionAuthz.tenantContextFor(input.threadId),
+      });
+      this.conversationLineage.assertHandoffContextAtProviderTurn(input);
+      const provider = this.options.eventStore?.readSessionByThread(
+        input.threadId,
+      )?.provider;
+      assertConversationStartSeedTurn(
+        this.options.eventStore,
+        input,
+        this.readLatestSessionStartMetadata(input.threadId),
+        provider !== undefined &&
+          this.options.adapterRegistry.get(provider)?.metadata.continuity
+            ?.resumeIdentity === 'require-match',
+      );
+    } catch (error) {
+      if (
+        error instanceof ConversationForkContextError ||
+        error instanceof ConversationStartContextError
+      )
+        throw new ConversationSeedTurnRefusedError(error.message);
+      throw error;
+    }
   }
 
   /**
@@ -5483,6 +6395,64 @@ export class OrchestrationService {
       stationId,
       request,
     );
+  }
+
+  usageExportOwnerIds(
+    authority: SessionReadAuthority,
+    scope: import('@kontourai/station-contracts/usage-export').UsageExportScope,
+  ) {
+    return usageExportOwnerIds(authority, scope, () =>
+      this.options.personalConversationAccess?.ownerIds(authority.userId),
+    );
+  }
+
+  usageExportRevision(): number {
+    this.initialize();
+    const store = this.options.eventStore;
+    if (!store) throw new UsageExportRejected('usage_export_unavailable', 503);
+    return store.usageExportRevision();
+  }
+
+  readUsageReceiptInvalidations(
+    authority: SessionReadAuthority,
+    stationId: string,
+    request: import('@kontourai/station-contracts/usage-export').UsageInvalidationRequest,
+    authorizationContext: string,
+  ) {
+    this.initialize();
+    const store = this.options.eventStore;
+    if (!store) throw new UsageExportRejected('usage_export_unavailable', 503);
+    return readAuthorizedUsageInvalidations({
+      store,
+      authority,
+      stationId,
+      request,
+      authorizationContext,
+      personalOwnerIds: () =>
+        this.options.personalConversationAccess?.ownerIds(authority.userId),
+    });
+  }
+
+  readUsageReceiptExport(
+    authority: SessionReadAuthority,
+    stationId: string,
+    request: import('@kontourai/station-contracts/usage-export').UsageExportRequest,
+    authorizationContext?: string,
+    operationalConsent?: import('@kontourai/station-contracts/usage-export').AnalyticsOperationalConsent,
+  ) {
+    this.initialize();
+    const store = this.options.eventStore;
+    if (!store) throw new UsageExportRejected('usage_export_unavailable', 503);
+    return readAuthorizedUsageExport({
+      store,
+      authority,
+      stationId,
+      request,
+      authorizationContext,
+      ...(operationalConsent ? { operationalConsent } : {}),
+      personalOwnerIds: () =>
+        this.options.personalConversationAccess?.ownerIds(authority.userId),
+    });
   }
 
   /**
@@ -5681,8 +6651,48 @@ export class OrchestrationService {
   async resolveConversationOpen(
     conversationId: string,
     authority: SessionReadAuthority,
-  ) {
+  ): Promise<ConversationOpenResolution | null> {
     this.initialize();
+    const fork = this.forkContexts.reference(conversationId, authority);
+    if (fork === null) return null;
+    if (fork && !this.options.eventStore?.readSessionByThread(conversationId)) {
+      if (fork.state !== 'ready') return null;
+      const snapshot = this.forkContexts.snapshot(
+        conversationId,
+        authority,
+        true,
+      );
+      const transcript = this.forkContexts.transcript(
+        conversationId,
+        authority,
+      );
+      if (!snapshot || !transcript) return null;
+      const starting = this.startsUnderway.has(conversationId);
+      return {
+        status: 'fork-ready',
+        conversation: {
+          id: conversationId,
+          source: 'store',
+          agentSlug: publicAgentIdFromRuntimeKey(fork.targetAgent),
+          ...(fork.projectSlug ? { projectSlug: fork.projectSlug } : {}),
+          title: snapshot.title,
+          createdAt: snapshot.createdAt,
+          updatedAt: snapshot.createdAt,
+          messageCount: transcript.messages.length,
+          mutable: true,
+          answerability: { answerable: true },
+        },
+        transcript: {
+          available: true,
+          owner: 'fork-context',
+          messageCount: transcript.messages.length,
+        },
+        canContinue: !starting,
+        ...(starting ? { continuationPending: true } : {}),
+        answerability: { answerable: true },
+        recoveryActions: [],
+      };
+    }
     const currentSessionId = this.currentConversationSessionId(conversationId);
     const detail = await this.readCurrentConversationSession(
       conversationId,
@@ -5994,10 +7004,20 @@ export class OrchestrationService {
             postureInput.threadId,
             context.fullAccessGrant,
           );
+          const priorApplied = this.approvalPosture.appliedOf(
+            postureInput.threadId,
+          );
           const startModelOptions = await this.approvalPosture.resolve({
             threadId: postureInput.threadId,
             provider: adapter.provider,
             phase: 'start',
+            acpControl: this.acpApprovalControlOfThread(
+              postureInput.threadId,
+              adapter.provider,
+              typeof postureInput.metadata?.connectionId === 'string'
+                ? postureInput.metadata.connectionId
+                : undefined,
+            ),
             ...(typeof postureInput.metadata?.agentSlug === 'string'
               ? { agentSlug: postureInput.metadata.agentSlug }
               : {}),
@@ -6007,6 +7027,19 @@ export class OrchestrationService {
                     approvalMode:
                       internal.foregroundInvocationAdmission.agentSpec.execution
                         ?.approvalMode,
+                  },
+                }
+              : {}),
+            ...(typeof postureInput.metadata?.projectSlug === 'string'
+              ? {
+                  project: {
+                    projectSlug: postureInput.metadata.projectSlug,
+                    ...(context.userId ? { userId: context.userId } : {}),
+                    lastUsedApplies: isPersonChatStart(
+                      postureInput,
+                      context,
+                      internal,
+                    ),
                   },
                 }
               : {}),
@@ -6039,9 +7072,13 @@ export class OrchestrationService {
               throw portableRefusalForUnadmittedThread(predecessorConsent);
           }
           if (!internal?.skipModelOptionSupportCheck) {
-            const unsupported = unsupportedModelOptionKeys(
+            const unsupported = this.unsupportedOptionKeysForThread(
+              input.threadId,
               adapter.provider,
               input.modelOptions,
+              typeof input.metadata?.connectionId === 'string'
+                ? input.metadata.connectionId
+                : undefined,
             );
             if (unsupported.length > 0)
               throw new Error(
@@ -6059,12 +7096,14 @@ export class OrchestrationService {
           const {
             reviewIsolation: _untrustedReviewIsolation,
             confinement: _untrustedConfinement,
+            confinementPlan: _untrustedConfinementPlan,
             ...publicStartInput
           } = input as ProviderSessionStartInput;
           const admittedStartWorkspace =
             internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
             readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
             internal?.receiverExecutionAdmission?.admitted ??
+            (await this.retainedSessionAdmittedWorkspace(publicStartInput)) ??
             (await this.adoptedChildAdmittedWorkspace(publicStartInput));
           let startInput = await resolveStartSessionCwd(
             normalizeOmittedModelId(
@@ -6089,7 +7128,13 @@ export class OrchestrationService {
           );
           // Station #90 lane D (D5): record the Project's local id beside its
           // slug, from this Station's own project list, never from input.
-          startInput = withSessionLocalProjectId(
+          startInput = await withSessionLocalProjectId(
+            startInput,
+            this.options.listProjects,
+            admittedStartWorkspace,
+            this.options.resolveProjectSessionDirectory,
+          );
+          startInput = withSessionConfinementRoot(
             startInput,
             this.options.listProjects,
             admittedStartWorkspace,
@@ -6158,6 +7203,22 @@ export class OrchestrationService {
                 : {}),
             },
           };
+          // #2494: the confinement this start resolves to, from the
+          // confinement above and the mode the engine is actually given. A
+          // required level with no usable mechanism refuses here, before the
+          // engine is touched.
+          // The isolation comes from the server-resolved workspace binding
+          // (a canonically provisioned or verified owned worktree), never the
+          // caller-controlled `metadata.workspaceIsolation`.
+          startInput = this.withConfinement(
+            adapter.provider,
+            startInput,
+            confinement,
+            internal?.foregroundInvocationAdmission?.provisionedWorkspace ||
+              readExecutionWorkspaceBinding(internal?.executionWorkspace)
+              ? 'worktree'
+              : 'shared',
+          );
           // archive#2821 hardening L3: `stripReservedCapabilityMetadata`
           // above removed `sessionVisibility` from EVERY caller's metadata,
           // trusted or not, because it cannot tell them apart. Only an
@@ -6205,6 +7266,20 @@ export class OrchestrationService {
               },
             };
           }
+          // Epic #4003: the dispatch-built Task brief, stamped after the
+          // reserved-key strip removed any caller-supplied value, for the
+          // first turn to compose (`pendingTaskBrief`).
+          if (internal?.taskBrief) {
+            startInput = {
+              ...startInput,
+              metadata: {
+                ...startInput.metadata,
+                [TASK_BRIEF_METADATA_KEY]: taskBriefStartRecord(
+                  internal.taskBrief,
+                ),
+              },
+            };
+          }
           // #484 phase A: re-stamp the server-minted portable consent
           // marker after the reserved-key strip (which removed any
           // caller-forged value) so the persisted session binding carries
@@ -6249,6 +7324,29 @@ export class OrchestrationService {
             startInput,
             internal?.foregroundInvocationAdmission,
           );
+          // #3290: before the start boundary, so a definitive refusal (an
+          // approval mode the engine's own rules would override) is not
+          // recorded as a start that may have happened.
+          try {
+            await adapter.preflightStart?.(startInput);
+          } catch (error) {
+            if (!(error instanceof ApprovalGovernanceRefusedError)) throw error;
+            throw await this.completeGovernanceRefusal(error, {
+              threadId: startInput.threadId,
+              agentSlug:
+                typeof startInput.metadata?.agentSlug === 'string'
+                  ? startInput.metadata.agentSlug
+                  : undefined,
+              capturedAgent: internal?.foregroundInvocationAdmission
+                ? {
+                    approvalMode:
+                      internal.foregroundInvocationAdmission.agentSpec.execution
+                        ?.approvalMode,
+                  }
+                : undefined,
+              prior: priorApplied,
+            });
+          }
           throwIfAborted(startInput.signal);
           this.assertAdapterCurrent(adapter);
           chatStartGate.add(1, {
@@ -6277,6 +7375,27 @@ export class OrchestrationService {
               // yields: the start boundary below claims synchronously. It
               // runs outside that boundary, which would record a throw as
               // an uncertain start.
+              await this.retainedSessionAdmittedWorkspace(input);
+              const localProjectId =
+                input.metadata?.[SESSION_LOCAL_PROJECT_ID_METADATA_KEY];
+              const projectSlug = input.metadata?.projectSlug;
+              if (
+                typeof localProjectId === 'string' &&
+                typeof projectSlug === 'string' &&
+                input.cwd &&
+                !internal?.foregroundInvocationAdmission
+                  ?.provisionedWorkspace &&
+                !readExecutionWorkspaceBinding(internal?.executionWorkspace) &&
+                !internal?.receiverExecutionAdmission?.admitted &&
+                !input.metadata?.worktree
+              )
+                await this.options.resolveProjectSessionDirectory?.(
+                  projectSlug,
+                  {
+                    localProjectId,
+                    cwd: input.cwd,
+                  },
+                );
               const binding = context.dispatchCwdAdmission
                 ? await this.dispatchCwdBinding(input, internal)
                 : undefined;
@@ -6290,7 +7409,21 @@ export class OrchestrationService {
                 () =>
                   this.runEngineSessionStart(
                     input.threadId,
-                    () => adapter.startSession(input),
+                    () =>
+                      withEngineMcpAccountOwner(
+                        effectiveOwnerAttribution(context) ||
+                          input.metadata?.ownerAttribution ===
+                            'unattributed-agent'
+                          ? undefined
+                          : context.userId,
+                        () => {
+                          this.assertForkContextAtProviderStart(
+                            input,
+                            internal?.forkContextRequester ?? context,
+                          );
+                          return adapter.startSession(input);
+                        },
+                      ),
                     internal?.sessionStartAdmission,
                   ),
               );
@@ -6358,7 +7491,35 @@ export class OrchestrationService {
           });
           return session;
         },
-        recordStarted: (adapter, input) => {
+        cleanupFailedStart: async (adapter, threadId) => {
+          // Revoke even if provider teardown fails or exceeds its deadline.
+          revokeStationControlMcpToken(threadId);
+          try {
+            await this.adapterRetirement.runCleanupWithinDeadline(
+              () => adapter.stopSession(threadId),
+              `${adapter.provider} failed start cleanup`,
+            );
+          } catch (error) {
+            this.options.logger.warn('Failed start session cleanup failed', {
+              provider: adapter.provider,
+              threadId,
+              error: errorMessage(error),
+            });
+            // A current adapter owns unrelated sessions and its shared event stream.
+            if (!this.isAdapterCurrent(adapter))
+              this.adapterRetirement.retireAfterCleanupFailure(adapter);
+            return;
+          }
+          const tracked = this.sessionReadModel.get(threadId);
+          if (tracked)
+            this.finalizeStoppedAdapterSessions(
+              adapter,
+              new Map([[threadId, tracked]]),
+              'Session start failed.',
+            );
+        },
+        recordStarted: (adapter, input, context, internal) => {
+          this.recordProjectChatStart(input, context, internal);
           this.modelLaunch.recordAcceptedModelLaunchPlan(
             adapter,
             this.modelLaunch.modelLaunchPlanFromInput(input),
@@ -6398,19 +7559,11 @@ export class OrchestrationService {
             this.portableConsentByThread.delete(input.threadId);
           }
         },
-        ensureStartedSessionCurrent: async (adapter, session, signal) => {
+        ensureStartedSessionCurrent: async (adapter, _session, signal) => {
           if (signal?.aborted) {
-            await this.adapterRetirement.cleanupObsoleteStartedSession(
-              adapter,
-              session.threadId,
-            );
             throwIfAborted(signal);
           }
           if (!this.isAdapterCurrent(adapter)) {
-            await this.adapterRetirement.cleanupObsoleteStartedSession(
-              adapter,
-              session.threadId,
-            );
             throw new Error(
               `${adapter.provider} adapter was replaced while the session was starting.`,
             );
@@ -6444,6 +7597,9 @@ export class OrchestrationService {
       publicSession: publicProviderSession,
       isRejectedError: (error) =>
         error instanceof ModelLaunchPlanUnavailableError ||
+        // The adapter settled the start itself: the engine refused it and
+        // nothing of it is left to inspect.
+        error instanceof SessionStartRefusedError ||
         error instanceof SessionReattachConflictError ||
         error instanceof ConcurrentEngineStartCapacityError ||
         // #2873: a refusal to start, with nothing run.
@@ -6497,6 +7653,32 @@ export class OrchestrationService {
       context.clientOrigin,
     );
     if (refused) return refused;
+    const fork = this.options.eventStore?.conversationForkContextReference(
+      command.input.threadId,
+    );
+    if (fork) {
+      if (
+        fork.state !== 'ready' ||
+        !this.forkContextOwnerReadable(
+          fork,
+          context.userId,
+          context.tenantExecutionContext,
+        )
+      )
+        throw new ConversationForkContextError(
+          'The requested fork context is unavailable.',
+        );
+      internal = {
+        ...internal,
+        forkContextRequester: {
+          userId: context.userId,
+          ...(context.tenantExecutionContext
+            ? { tenantExecutionContext: context.tenantExecutionContext }
+            : {}),
+        },
+      };
+      context = { ...context, userId: fork.ownerUserId };
+    }
     return this.trackStartUnderway(command.input.threadId, () =>
       this.sessionCommandImplementation.executeInternal(
         command,
@@ -6710,6 +7892,7 @@ export class OrchestrationService {
         outcome.receiptStatus,
         false,
         code,
+        'failure' in outcome ? outcome.failure : undefined,
       );
     }
     this.initialize();
@@ -6843,16 +8026,35 @@ export class OrchestrationService {
             command.target,
           );
         case 'sendTurn': {
+          const submittedInput = command.input.clientTurnId
+            ? snapshotDirectTurnInput(command.input)
+            : command.input;
+          if (submittedInput.clientTurnId && internal?.skillExperience)
+            internal = {
+              ...internal,
+              skillExperience: snapshotTurnSubmissionValue(
+                internal.skillExperience,
+              ),
+            };
+          const submissionDigest =
+            submittedInput.clientTurnId && internal?.submissionDigest !== null
+              ? (internal?.submissionDigest ??
+                directTurnSubmissionDigest(
+                  submittedInput,
+                  internal?.skillExperience,
+                ))
+              : undefined;
           // Monitor envelopes register here, at the one execution choke
           // point every first and successor turn crosses. No registration
           // means the normal Task/chat path is byte-for-byte unchanged.
-          this.assertTurnAdmitted(command.input.threadId);
+          this.assertTurnAdmitted(submittedInput.threadId);
+          await this.authorizedConversationWorkspace(submittedInput.threadId);
           const current = await this.readSession(
-            command.input.threadId,
+            submittedInput.threadId,
             INTERNAL_SESSION_READ_SCOPE,
           );
           const adapter = await resolveOrchestrationAdapterForThread({
-            threadId: command.input.threadId,
+            threadId: submittedInput.threadId,
             threadProviders: this.threadProviders,
             requireAdapter: (provider) => this.requireAdapter(provider),
             adapters: this.options.adapterRegistry.list(),
@@ -6876,13 +8078,17 @@ export class OrchestrationService {
               ),
           });
           const {
+            invocationId: _untrustedInvocationId,
             reviewIsolation: _untrustedReviewIsolation,
             confinement: _untrustedConfinement,
             expectedInputRequest: _expectedInputRequest,
+            // The client's own key for the turn.started stamp; Station's.
+            clientKey: stampedClientKey,
             ...publicTurnInput
-          } = command.input as ProviderSendTurnInput & {
+          } = submittedInput as ProviderSendTurnInput & {
             expectedInputRequest?: AttentionRequestReference;
             ambientContext?: string;
+            clientKey?: string;
           };
           // archive#895 wave C: an engine with no native systemPrompt
           // channel gets its authored prompt delivered by prepending it
@@ -6893,14 +8099,65 @@ export class OrchestrationService {
           const pendingPrompt = current
             ? pendingFirstTurnInstructions(current.events)
             : undefined;
-          const turnInputWithFirstTurnPrompt = pendingPrompt
-            ? {
-                ...publicTurnInput,
-                ambientContext: publicTurnInput.ambientContext?.trim()
-                  ? `${pendingPrompt}\n${publicTurnInput.ambientContext}`
-                  : pendingPrompt,
+          // Epic #4003: a Session dispatched for a Task gets its Task brief
+          // the same way, on the same genuine first turn, on every engine:
+          // after any authored prompt, before ordinary ambient context.
+          const pendingBrief = current
+            ? pendingTaskBrief(current.events)
+            : undefined;
+          // Station's own first-turn context, on every engine whose adapter
+          // declares a bounded engine scope: the workload budget it runs
+          // under (only while enforcement is live), and after a memory kill
+          // of the predecessor Session, what was interrupted.
+          const genuineFirstTurn =
+            !!current &&
+            !current.events.some((event) => event.method === 'turn.started');
+          const workloadLimits =
+            genuineFirstTurn &&
+            adapter.metadata.workloadScope === 'engine-process'
+              ? this.options.workloadEngineLimits?.(submittedInput.threadId)
+              : undefined;
+          const recoveryNote = genuineFirstTurn
+            ? this.predecessorMemoryExhaustionNote(submittedInput.threadId)
+            : undefined;
+          const stationContext = [
+            workloadLimits
+              ? workloadBudgetEngineContext(workloadLimits)
+              : undefined,
+            recoveryNote,
+          ].filter((part): part is string => part !== undefined);
+          // The chat-host-images preview's one line, on the same first turn.
+          const pendingHostImageGuide =
+            current && isGenuineFirstTurn(current.events)
+              ? await this.hostImages.instructionFor(submittedInput.threadId)
+              : undefined;
+          const firstTurnContext = [
+            ...stationContext,
+            pendingPrompt,
+            pendingBrief?.text,
+            pendingHostImageGuide,
+            publicTurnInput.ambientContext?.trim()
+              ? publicTurnInput.ambientContext
+              : undefined,
+          ].filter((part): part is string => part !== undefined);
+          const turnInputWithFirstTurnPrompt =
+            pendingPrompt ||
+            pendingBrief ||
+            pendingHostImageGuide ||
+            stationContext.length > 0
+              ? {
+                  ...publicTurnInput,
+                  ambientContext: firstTurnContext.join('\n'),
+                }
+              : publicTurnInput;
+          // #3290: what a governance refusal of this turn needs to say
+          // what Default would do, and to put back what the engine still runs.
+          let turnGovernance:
+            | {
+                agentSlug: string | undefined;
+                prior: ReturnType<ApprovalPosture['appliedOf']>;
               }
-            : publicTurnInput;
+            | undefined;
           let turnInput = stripReservedCapabilityMetadata(
             composeAmbientSendTurnInput(turnInputWithFirstTurnPrompt),
           );
@@ -6948,6 +8205,9 @@ export class OrchestrationService {
               ...(pendingPrompt
                 ? { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true }
                 : {}),
+              ...(pendingBrief
+                ? { [TASK_BRIEF_COMPOSED_METADATA_KEY]: pendingBrief.digest }
+                : {}),
             },
           };
           turnInput =
@@ -6968,10 +8228,18 @@ export class OrchestrationService {
               turnInput.threadId,
               this.readStartConfinementStamp(turnInput.threadId),
             );
+            turnGovernance = {
+              agentSlug: typeof agentSlug === 'string' ? agentSlug : undefined,
+              prior: this.approvalPosture.appliedOf(turnInput.threadId),
+            };
             const modelOptions = await this.approvalPosture.resolve({
               threadId: turnInput.threadId,
               provider: adapter.provider,
               phase: 'turn',
+              acpControl: this.acpApprovalControlOfThread(
+                turnInput.threadId,
+                adapter.provider,
+              ),
               confinement,
               ...(typeof agentSlug === 'string' ? { agentSlug } : {}),
               ...(internal?.foregroundInvocationAdmission
@@ -6990,7 +8258,8 @@ export class OrchestrationService {
               ? { ...withoutOptions, modelOptions, confinement }
               : { ...withoutOptions, confinement };
           }
-          const unsupportedTurnOptions = unsupportedModelOptionKeys(
+          const unsupportedTurnOptions = this.unsupportedOptionKeysForThread(
+            turnInput.threadId,
             adapter.provider,
             turnInput.modelOptions,
           );
@@ -7050,33 +8319,46 @@ export class OrchestrationService {
             const claim = turnDeduplicator?.claim({
               threadId: turnInput.threadId,
               clientTurnId,
+              inputDigest: submissionDigest,
             });
             if (claim) {
+              if (claim.kind === 'conflict')
+                throw new ClientTurnInputConflictError();
               // #3559: the key's owner died after it may have handed this
-              // turn to the provider. Never send it again; report the same
+              // turn to the provider, or the key's resolved row was evicted
+              // after the turn was sent. Never send it again; report the same
               // possible-effect outcome a live indeterminate start does.
-              if (claim.kind === 'indeterminate') {
+              if (claim.kind === 'indeterminate' || claim.kind === 'expired') {
                 orchestrationTurnDedup.add(1, {
                   provider: adapter.provider,
-                  outcome: 'indeterminate',
+                  outcome: claim.kind,
                 });
                 throw new SessionTurnStartIndeterminateError();
               }
               if (claim.kind === 'contended') {
-                const existingTurnId =
-                  claim.turnId ??
-                  (await raceWithSignal(
-                    turnDeduplicator!.awaitResolution({
-                      threadId: turnInput.threadId,
+                const held = claim.turnId
+                  ? { kind: 'turn' as const, turnId: claim.turnId }
+                  : await this.awaitHeldTurnKey(
+                      turnInput.threadId,
                       clientTurnId,
-                    }),
-                    turnInput.signal,
-                  ).catch(() => undefined));
-                if (!existingTurnId) {
-                  throw new Error(
-                    `Turn ${clientTurnId} is already being processed for thread ${turnInput.threadId}.`,
-                  );
+                      turnInput.signal,
+                      submissionDigest,
+                    );
+                if (held.kind !== 'turn') {
+                  throwIfAborted(turnInput.signal);
+                  if (held.kind === 'given-up') {
+                    orchestrationTurnDedup.add(1, {
+                      provider: adapter.provider,
+                      outcome: 'indeterminate',
+                    });
+                    throw new SessionTurnStartIndeterminateError();
+                  }
+                  // The other attempt still holds the key, or released it
+                  // without sending (its own refusal). Nothing new was sent:
+                  // retryable, so the client re-sends with the same key.
+                  throw new ClientTurnInFlightError();
                 }
+                const existingTurnId = held.turnId;
                 orchestrationTurnDedup.add(1, {
                   provider: adapter.provider,
                   outcome: claim.turnId ? 'hit' : 'hit_inflight',
@@ -7130,8 +8412,17 @@ export class OrchestrationService {
             try {
               throwIfAborted(turnInput.signal);
               this.assertAdapterCurrent(adapter);
-              const startTurn = async () =>
-                this.sessionExecutionCoordinator.runTurnStart(
+              const startTurn = async () => {
+                // An adapter whose session is visible before its engine start
+                // finishes (an ACP reattach) is waited on HERE, before the
+                // turn-start claim and workspace barrier are taken, so Stop,
+                // End and idle-park never queue behind a long start. The
+                // request's signal ends the wait; nothing reaches the engine.
+                await adapter.whenSessionReady?.(turnInput.threadId, {
+                  signal: turnInput.signal,
+                });
+                throwIfAborted(turnInput.signal);
+                return this.sessionExecutionCoordinator.runTurnStart(
                   turnInput.threadId,
                   async (boundary) => {
                     const current = await this.readSession(
@@ -7160,7 +8451,7 @@ export class OrchestrationService {
                       throw new EngineParkedDuringDispatchError();
                     const invoke = async () => {
                       const assertInputRequestCurrent = () => {
-                        const expected = command.input.expectedInputRequest;
+                        const expected = submittedInput.expectedInputRequest;
                         if (
                           expected &&
                           (expected.threadId !== turnInput.threadId ||
@@ -7221,7 +8512,7 @@ export class OrchestrationService {
                             turnInput = {
                               ...turnInput,
                               displayInput:
-                                turnInput.displayInput ?? command.input.input,
+                                turnInput.displayInput ?? submittedInput.input,
                               input: `${prompt}\n\n${turnInput.input}`,
                             };
                           },
@@ -7232,15 +8523,6 @@ export class OrchestrationService {
                       // same key is indeterminate instead of a second send.
                       // A throw here has invoked nothing: the boundary stays
                       // `prepared` and the claim is released.
-                      ownedClientTurnClaim?.beginInvocation();
-                      const begun = boundary.beginInvocation(
-                        new Date().toISOString(),
-                      );
-                      if (begun.kind !== 'applied') {
-                        claimOutcome = 'retain';
-                        boundary.indeterminate(new Date().toISOString());
-                        throw new SessionTurnStartIndeterminateError();
-                      }
                       let providerAccepted = false;
                       let providerInvoked = false;
                       let turnCorrelation:
@@ -7260,6 +8542,7 @@ export class OrchestrationService {
                           context?.clientOrigin,
                           context?.principal,
                           experienceReference,
+                          stampedClientKey ?? turnInput.clientTurnId,
                         );
                         // The Station-agent adapter owns the canonical provider
                         // turn id for this engine, so mint it before crossing its
@@ -7399,18 +8682,90 @@ export class OrchestrationService {
                           throw new ForegroundInvocationUnavailableError();
                         const sendAdapter = () => {
                           assertInputRequestCurrent();
-                          const effect = (prompt?: string) => {
+                          const effect = async (prompt?: string) => {
                             if (prompt) {
                               experienceContext = prompt;
                               turnInput = {
                                 ...turnInput,
                                 displayInput:
-                                  turnInput.displayInput ?? command.input.input,
+                                  turnInput.displayInput ??
+                                  submittedInput.input,
                                 input: `${prompt}\n\n${turnInput.input}`,
                               };
                             }
+                            const experienceEventId =
+                              this.skillExperienceRuntime?.current(
+                                turnInput.threadId,
+                              )?.id;
+                            // Skill and native preparation can outlive the Project binding.
+                            await this.authorizedConversationWorkspace(
+                              turnInput.threadId,
+                            );
+                            if (
+                              this.skillExperienceRuntime?.current(
+                                turnInput.threadId,
+                              )?.id !== experienceEventId
+                            )
+                              throw new SkillExperienceUnavailableError(
+                                'The current Skill experience changed before dispatch.',
+                              );
                             assertInputRequestCurrent();
                             this.assertAdapterCurrent(adapter);
+                            this.assertForkContextAtProviderTurn(
+                              turnInput,
+                              context,
+                            );
+                            if (boundary.prepareIntent) {
+                              const captured = captureTurnIntent(turnInput, {
+                                binding: this.preparedTurnBinding(
+                                  turnInput.threadId,
+                                ),
+                                requiresFreshCompanions: Boolean(
+                                  nativeMemory ||
+                                    nativeOutputRelay ||
+                                    nativeForeground ||
+                                    experienceReference ||
+                                    experienceContext ||
+                                    internal?.receiverExecutionAdmission ||
+                                    internal?.foregroundInvocationAdmission ||
+                                    internal?.nativeMemoryReadAuthority ||
+                                    submittedInput.expectedInputRequest,
+                                ),
+                              });
+                              const prepared = boundary.prepareIntent(
+                                captured,
+                                ownedClientTurnClaim,
+                                new Date().toISOString(),
+                              );
+                              if (prepared.kind !== 'applied') {
+                                if (prepared.kind === 'stale')
+                                  throw new Error(
+                                    'Prepared turn input could not be retained; no provider call was made.',
+                                  );
+                                claimOutcome = 'retain';
+                                throw new SessionTurnStartIndeterminateError();
+                              }
+                              turnInput = captured.adapterInput;
+                            } else {
+                              ownedClientTurnClaim?.beginInvocation();
+                            }
+                            const begun = boundary.beginInvocation(
+                              new Date().toISOString(),
+                            );
+                            if (begun.kind !== 'applied') {
+                              claimOutcome = 'retain';
+                              throw new SessionTurnStartIndeterminateError();
+                            }
+                            if (turnInput.invocationId)
+                              this.clientOriginTurns.bindInvocation(
+                                turnInput.threadId,
+                                turnInput.invocationId,
+                              );
+                            if (turnInput.invocationId)
+                              this.sessionExecutionCoordinator.markTurnBegun(
+                                turnInput.threadId,
+                                turnInput.invocationId,
+                              );
                             providerInvoked = true;
                             const send = () =>
                               nativeForeground
@@ -7511,9 +8866,34 @@ export class OrchestrationService {
                           context?.clientOrigin,
                           context?.principal,
                           experienceReference,
+                          stampedClientKey ?? turnInput.clientTurnId,
+                          turnInput.invocationId,
                         );
                         if (earlyOriginEvent) {
                           this.projectAndPublishEvent(earlyOriginEvent);
+                        }
+                        const legacyOriginEvent =
+                          this.clientOriginTurns.takeLegacyRouting(
+                            turnInput.threadId,
+                            accepted.turnId,
+                          );
+                        if (legacyOriginEvent)
+                          this.projectAndPublishEvent(legacyOriginEvent);
+                        if (turnInput.invocationId) {
+                          const settled = boundary.accepted(
+                            accepted.turnId,
+                            new Date().toISOString(),
+                          );
+                          if (settled.kind !== 'applied') {
+                            claimOutcome = 'retain';
+                            throw new SessionTurnStartIndeterminateError();
+                          }
+                          this.sessionExecutionCoordinator.markTurnAccepted(
+                            turnInput.threadId,
+                            accepted.turnId,
+                            turnInput.invocationId,
+                          );
+                          return accepted;
                         }
                         if (
                           !this.sessionExecutionCoordinator.markTurnAccepted(
@@ -7541,7 +8921,10 @@ export class OrchestrationService {
                         return accepted;
                       } catch (error) {
                         if (!providerAccepted) {
-                          this.clientOriginTurns.cancel(turnInput.threadId);
+                          for (const held of this.clientOriginTurns.cancel(
+                            turnInput.threadId,
+                          ))
+                            this.projectAndPublishEvent(held);
                           if (
                             (nativeOutputRelay ||
                               internal?.nativeMemoryReadAuthority) &&
@@ -7560,6 +8943,15 @@ export class OrchestrationService {
                           error instanceof SessionTurnStartIndeterminateError
                         ) {
                           throw error;
+                        }
+                        if (!providerInvoked && claimOutcome !== 'retain') {
+                          const retired = boundary.notInvoked();
+                          if (retired.kind === 'applied') {
+                            claimOutcome = 'release';
+                            throw error;
+                          }
+                          claimOutcome = 'retain';
+                          throw new SessionTurnStartIndeterminateError();
                         }
                         if (
                           !providerInvoked &&
@@ -7605,6 +8997,20 @@ export class OrchestrationService {
                           throw error;
                         }
                         if (error instanceof SendTurnRefusedError) {
+                          if (boundary.recordDefinitiveRefusal) {
+                            claimOutcome = 'retain';
+                            const settled = boundary.recordDefinitiveRefusal(
+                              new Date().toISOString(),
+                            );
+                            if (settled.kind !== 'applied')
+                              throw new SessionTurnStartIndeterminateError();
+                            if (turnInput.invocationId)
+                              this.sessionExecutionCoordinator.settleInvocation(
+                                turnInput.threadId,
+                                turnInput.invocationId,
+                              );
+                            throw error;
+                          }
                           // The adapter refused the turn BEFORE its first
                           // provider-visible effect, so no engine was invoked
                           // and no `turn.started` was published even though
@@ -7655,7 +9061,10 @@ export class OrchestrationService {
                     // whose persisted binding carries portable consent
                     // refuses here instead of executing a portable session
                     // the current offer never authorized.
-                    const invokeWithReceiverAdmission = () => {
+                    const invokeWithReceiverAdmission = async () => {
+                      await this.authorizedConversationWorkspace(
+                        turnInput.threadId,
+                      );
                       const turnAdmission =
                         internal?.receiverExecutionAdmission;
                       const admittedSnapshot = turnAdmission?.admitted
@@ -7752,7 +9161,9 @@ export class OrchestrationService {
                       ? undefined
                       : identity.key;
                   })(),
+                  true,
                 );
+              };
               try {
                 result = await startTurn();
               } catch (error) {
@@ -7782,6 +9193,19 @@ export class OrchestrationService {
                   attachmentReservationBytes,
                 );
               }
+              if (error instanceof ApprovalGovernanceRefusedError)
+                throw await this.completeGovernanceRefusal(error, {
+                  threadId: turnInput.threadId,
+                  agentSlug: turnGovernance?.agentSlug,
+                  capturedAgent: internal?.foregroundInvocationAdmission
+                    ? {
+                        approvalMode:
+                          internal.foregroundInvocationAdmission.agentSpec
+                            .execution?.approvalMode,
+                      }
+                    : undefined,
+                  prior: turnGovernance?.prior,
+                });
               throw error;
             }
             obtainedResult = result;
@@ -7886,6 +9310,8 @@ export class OrchestrationService {
                 ownedClientTurnClaim.resolve(obtainedResult.turnId);
               } else if (claimOutcome === 'release') {
                 ownedClientTurnClaim.release();
+              } else {
+                ownedClientTurnClaim.retain();
               }
             }
             // UX audit T1 review: this is the one moment the service knows
@@ -8182,6 +9608,16 @@ export class OrchestrationService {
                 context?.clientOrigin,
                 context?.principal,
               );
+              const steerInvocationId =
+                this.sessionExecutionCoordinator.invocationForTurn(
+                  command.threadId,
+                  activeTurnId,
+                );
+              if (steerInvocationId)
+                this.clientOriginTurns.bindInvocation(
+                  command.threadId,
+                  steerInvocationId,
+                );
               try {
                 await this.withCurrentSkillExperience(command.threadId, () => {
                   this.assertAdapterCurrent(adapter);
@@ -8195,7 +9631,10 @@ export class OrchestrationService {
                 // Release transient attribution on a failed acknowledgement.
                 // The durable steer claim stays held because engine acceptance
                 // cannot be ruled out.
-                this.clientOriginTurns.cancel(command.threadId);
+                for (const held of this.clientOriginTurns.cancel(
+                  command.threadId,
+                ))
+                  this.projectAndPublishEvent(held);
                 throw steerError;
               }
               const earlySteerOriginEvent = this.clientOriginTurns.settle(
@@ -8203,10 +9642,19 @@ export class OrchestrationService {
                 activeTurnId,
                 context?.clientOrigin,
                 context?.principal,
+                undefined,
+                undefined,
+                steerInvocationId,
               );
               if (earlySteerOriginEvent) {
                 this.projectAndPublishEvent(earlySteerOriginEvent);
               }
+              const legacySteerEvent = this.clientOriginTurns.takeLegacyRouting(
+                command.threadId,
+                activeTurnId,
+              );
+              if (legacySteerEvent)
+                this.projectAndPublishEvent(legacySteerEvent);
               this.assertAdapterCurrentAfterCommand(adapter);
             } catch (error) {
               if (steerInput) {
@@ -8300,6 +9748,51 @@ export class OrchestrationService {
           // and is refused with a reason otherwise; never coerced or cut to
           // fit. This runs whatever the client checked: a client is not
           // trusted to have run the same validator.
+          // docs/design/event-content-spill.md: a request whose content was
+          // stored out of line is allowed only by a client that loaded it
+          // whole. The digest binds this exact stored event (references hash
+          // their bodies); decline and cancel never need it.
+          //
+          // A form is exempt. Its answer is the person's content, validated
+          // below against the form itself (`inputRequest`, `mcpElicitation`
+          // or `questionnaire`), which the planner never spills, so every
+          // form surface shows the whole form. Accepting runs nothing the
+          // spilled fields describe: they are the asker's own copy of the
+          // questions (Claude's `toolInput` for AskUserQuestion) or display
+          // text, and the engine receives only the validated answer. A form
+          // cannot be answered `acceptForSession` (refused below).
+          const contentRequest =
+            currentQuestionRequest?.state === 'found' &&
+            currentQuestionRequest.event.payload.method === 'request.opened'
+              ? currentQuestionRequest.event.payload
+              : undefined;
+          //
+          // The gate also covers content bound to the request: a gated tool
+          // call's spilled arguments (a Codex file change's diff lives only in
+          // its `tool.started`), so the digest then covers their references.
+          // The one definition (approvalContentBinding) is also what the
+          // binding route serves to clients.
+          const contentStore = this.options.eventStore;
+          const binding =
+            contentRequest && contentStore
+              ? approvalContentBinding(contentRequest, (callIds) =>
+                  contentStore.boundToolStartedEvents(
+                    command.threadId,
+                    callIds,
+                  ),
+                )
+              : undefined;
+          if (
+            binding?.required &&
+            (command.decision === 'accept' ||
+              command.decision === 'acceptForSession') &&
+            (command.expectedRequestEventId !== binding.requestEventId ||
+              command.viewedContentDigest !== binding.viewedContentDigest)
+          )
+            throw new RequestEventGuardError(
+              'request_content_not_loaded',
+              'Load the full request before allowing it.',
+            );
           const inputForm = inputRequestFromRequestEvent(
             currentQuestionRequest?.state === 'found' &&
               currentQuestionRequest.event.payload.method === 'request.opened'
@@ -8465,9 +9958,15 @@ export class OrchestrationService {
           // agent's ApprovalRegistry) attributes the approving device, as the
           // old `/tool-approval` path did. Passed only when there is one, so
           // an adapter never sees a context it cannot use.
+          const serverScope =
+            decision === 'acceptForSession' &&
+            command.sessionGrantScope === 'server';
           const requestContext =
-            inputForm || context?.clientOrigin
+            inputForm || context?.clientOrigin || serverScope
               ? {
+                  ...(serverScope
+                    ? { sessionGrantScope: 'server' as const }
+                    : {}),
                   ...(context?.clientOrigin
                     ? { clientOrigin: context.clientOrigin }
                     : {}),
@@ -8531,9 +10030,10 @@ export class OrchestrationService {
           if (!provider) {
             throw new Error(`Session not found: ${command.threadId}`);
           }
-          if (!approvalKnobSupported(provider)) {
+          if (!this.approvalKnobForThread(command.threadId, provider)) {
             throw new SendTurnRefusedError(
               'This engine has no approval control.',
+              'input_unsupported',
             );
           }
           const result = this.recordApprovalModeDecision({
@@ -8585,16 +10085,16 @@ export class OrchestrationService {
           error instanceof DraftDiscardNotAuthorizedError ||
           error instanceof DraftDiscardedError ||
           error instanceof DraftDiscardBusyError ||
-          // #2300/#2324: a send refused until a condition passes (a Muse
-          // process still exiting, an engine's own turn still running) — a
-          // refusal to act, retryable.
           retryableAdapterRefusalCode(error) !== undefined ||
           error instanceof RequestEventGuardError ||
           // #484 continuation: a portable refusal is a refusal to act, not
           // a failed action — and its closed code must survive the wrapper
           // so routes answer the exact 403 (never a 400 with a bare
           // message) and session-turn-boundary receipts stay truthful.
-          error instanceof ReceiverExecutionRefusal
+          error instanceof ReceiverExecutionRefusal ||
+          error instanceof TurnIdempotencySettledError ||
+          // #2494: a respawn refused for its confinement started nothing.
+          error instanceof ConfinementRefusedError
             ? ('rejected' as const)
             : ('failed' as const),
       };
@@ -8630,7 +10130,8 @@ export class OrchestrationService {
         // as a definitive rejection.
         // An attachment refusal's code is forwarded (NOT retryable) so the
         // client can say the same send will be refused again instead of
-        // offering a blind retry.
+        // offering a blind retry. #3290: so is an approval-governance
+        // refusal, whose next step is a configuration or mode change.
         error instanceof SessionEndedError ||
           error instanceof SessionStopWhileStartingError ||
           error instanceof DraftDiscardRefusedError ||
@@ -8638,9 +10139,24 @@ export class OrchestrationService {
           error instanceof DraftDiscardBusyError ||
           error instanceof RequestEventGuardError ||
           error instanceof ReceiverExecutionRefusal ||
-          error instanceof AttachmentInputUnsupportedError
+          error instanceof AttachmentInputUnsupportedError ||
+          error instanceof TurnIdempotencySettledError ||
+          error instanceof ApprovalGovernanceRefusedError ||
+          error instanceof ClientTurnInputConflictError ||
+          error instanceof TurnSubmissionUnsupportedError ||
+          // #2494: the closed confinement refusal codes are a public
+          // contract (`CONFINEMENT_REFUSAL_CODES`), not retryable as sent.
+          error instanceof ConfinementRefusedError
           ? error.code
-          : retryableAdapterRefusalCode(error),
+          : error instanceof SendTurnRefusedError &&
+              'code' in error &&
+              typeof error.code === 'string'
+            ? error.code
+            : retryableAdapterRefusalCode(error),
+        error instanceof SendTurnRefusedError ||
+          error instanceof ProviderRefusalError
+          ? error
+          : undefined,
       );
     } finally {
       if (dispatchedTurnThread !== undefined) {
@@ -9215,6 +10731,74 @@ export class OrchestrationService {
     if (current !== recorded) throw dispatchCwdMovedError(recorded, current);
   }
 
+  /** Reauthorize the durable conversation coordinate, never a caller-supplied cwd. */
+  async authorizedConversationWorkspace(
+    threadId: string,
+  ): Promise<{ projectSlug: string; cwd: string } | undefined> {
+    const store = this.options.eventStore;
+    const resolveDirectory = this.options.resolveProjectSessionDirectory;
+    if (!store || !resolveDirectory) return undefined;
+    const conversationId =
+      store.conversationForSession(threadId)?.conversationId ?? threadId;
+    const metadata = this.firstStartedMetadataOfThread(conversationId);
+    const localProjectId = metadata?.[SESSION_LOCAL_PROJECT_ID_METADATA_KEY];
+    const projectSlug = metadata?.projectSlug;
+    const cwd = store.readSessionByThread(conversationId)?.cwd;
+    if (
+      metadata?.[SESSION_LOCAL_PROJECT_ID_REFUSED_METADATA_KEY] === true &&
+      typeof projectSlug === 'string'
+    ) {
+      if (await resolveDirectory(projectSlug))
+        throw new Error('The Session has no verified Project identity.');
+      return undefined;
+    }
+    // Legacy/adopted conversations retain their existing admission rules.
+    // In particular an unbound conversation cannot acquire a Project here.
+    if (
+      typeof localProjectId !== 'string' ||
+      typeof projectSlug !== 'string' ||
+      !cwd ||
+      metadata?.worktree
+    )
+      return undefined;
+    if (typeof metadata?.cwd === 'string' && metadata.cwd !== cwd)
+      throw new Error('The continued Session workspace binding changed.');
+    const execution = store.readSessionByThread(threadId);
+    if (execution && execution.cwd !== cwd)
+      throw new Error('The continued Session workspace binding changed.');
+    const current = await resolveDirectory(projectSlug, {
+      localProjectId,
+      cwd,
+    });
+    if (current !== cwd || canonicalPath(cwd) !== cwd)
+      throw new Error(
+        'The Session workspace is no longer an authorized Project resource.',
+      );
+    return { projectSlug, cwd };
+  }
+
+  private async retainedSessionAdmittedWorkspace(
+    input: ProviderSessionStartInput,
+  ): Promise<
+    { threadId: string; projectSlug: string; cwd: string } | undefined
+  > {
+    const retained = await this.authorizedConversationWorkspace(input.threadId);
+    if (!retained) return undefined;
+    const conversationId =
+      this.options.eventStore?.conversationForSession(input.threadId)
+        ?.conversationId ?? input.threadId;
+    const originalEnvironment =
+      this.firstStartedMetadataOfThread(conversationId)?.environmentId;
+    if (originalEnvironment !== input.metadata?.environmentId)
+      throw new Error('The continued Session Environment binding changed.');
+    if (
+      input.metadata?.projectSlug !== retained.projectSlug ||
+      input.cwd !== retained.cwd
+    )
+      throw new Error('The continued Session workspace binding changed.');
+    return { threadId: input.threadId, ...retained };
+  }
+
   /**
    * #3429: a later session of a conversation Continue in Station created
    * (its root Session records `continuationSourceThreadId`, written only by
@@ -9414,6 +10998,25 @@ export class OrchestrationService {
     );
   }
 
+  /** A completed scan fences failed targets without blocking unrelated discovery. */
+  canBindNewAttachedSubject(threadId: string): boolean {
+    if (
+      !this.options.eventStore ||
+      this.attachedSubjectRecovery.outcome !== 'observed' ||
+      this.transcriptSearchStopped ||
+      this.quarantinedThreads.has(threadId) ||
+      this.attachedSubjectRecovery.observation.failedTargets.has(threadId) ||
+      this.sessionAuthz.tenantContextFor(threadId) !== undefined
+    )
+      return false;
+    const current = this.options.eventStore.readSessionByThread(threadId);
+    return (
+      current === undefined ||
+      (current.controlMode === 'read-only-attached' &&
+        !current.tenantExecutionContext)
+    );
+  }
+
   /**
    * Owner-cache invalidation for an ownership-shaped event published outside
    * `projectAndPublishEvent` (the attached-session envelope).
@@ -9422,6 +11025,40 @@ export class OrchestrationService {
     if (this.sessionAuthz.invalidateSessionOwner(threadId)) {
       sessionOwnerCacheOps.add(1, { outcome: 'invalidated' });
     }
+  }
+
+  /**
+   * After a start succeeded: a person's interactive chat in a Project
+   * records what it started with, for a `last-used` Project's next chat
+   * (`project-chat-defaults.ts`). `input` is the prepared start, so its
+   * `modelOptions.approvalMode` is the mode the engine was actually given.
+   * Best effort: a failed write is logged and never fails the start.
+   */
+  private recordProjectChatStart(
+    input: ProviderSessionStartInput,
+    context: SessionCommandContext,
+    internal: SessionCommandInternalOptions | undefined,
+  ): void {
+    const recorder = this.options.projectChatDefaults;
+    if (!recorder || !isPersonChatStart(input, context, internal)) return;
+    const projectSlug = input.metadata?.projectSlug;
+    if (typeof projectSlug !== 'string' || !context.userId) return;
+    const agentSlug = input.metadata?.agentSlug;
+    void recorder
+      .recordStart({
+        projectSlug,
+        userId: context.userId,
+        ...(typeof agentSlug === 'string' ? { agentSlug } : {}),
+        ...(input.modelId ? { modelId: input.modelId } : {}),
+        approvalMode: input.modelOptions?.approvalMode,
+        startedAt: new Date().toISOString(),
+      })
+      .catch((error: unknown) => {
+        this.options.logger.warn('Project chat last-used record failed', {
+          threadId: input.threadId,
+          error: errorMessage(error),
+        });
+      });
   }
 
   seedSessionRecord(input: {
@@ -9654,13 +11291,10 @@ export class OrchestrationService {
     userId?: string;
     model?: string;
   } | null {
-    const events =
-      this.options.eventStore
-        ?.listSessionProjectionEvents(threadId)
-        .map((stored) => stored.payload) ?? [];
-    const configured = [...events]
-      .reverse()
-      .find((event) => event.method === 'session.configured');
+    const configured = this.options.eventStore?.latestEventByMethod(
+      threadId,
+      'session.configured',
+    )?.payload;
     if (configured?.method !== 'session.configured') return null;
     const metadata = configured.metadata ?? {};
     // No 'unknown' literal (archive#3082): an unreported slug is an absence,
@@ -9691,10 +11325,24 @@ export class OrchestrationService {
     let lastThreadId: string | undefined;
     let restart = false;
     try {
-      for await (let event of adapter.streamEvents({
-        signal: controller.signal,
-      })) {
+      // Oversized deltas are split here, before publishing, so each chunk
+      // gets its own #3560 publish retry and none is ever stored out of
+      // line (docs/design/event-content-spill.md).
+      for await (let event of splitOversizedDeltas(
+        adapter.streamEvents({
+          signal: controller.signal,
+        }),
+      )) {
         if (!this.isAdapterCurrent(adapter)) continue;
+        if (event.method === ('content.host-images' as string)) {
+          // Station derives this from files it read itself; an engine's
+          // version would map paths to images Station never admitted.
+          this.options.logger.warn('Ignored adapter-provided host images', {
+            provider: adapter.provider,
+            threadId: event.threadId,
+          });
+          continue;
+        }
         if (event.method === 'session.stop-settled') {
           // This is an orchestration-owned derivation. Accepting it from an
           // adapter would let an engine label a forced stop cooperative.
@@ -9706,31 +11354,43 @@ export class OrchestrationService {
         }
         event = await this.captureUsagePricingSnapshot(event);
         lastThreadId = event.threadId;
-        const previousState = this.readCurrentLifecycleState(event.threadId);
-        // archive#3581 review BLOCK 1: `turnIdentityAnchorForEvents`, NOT
-        // `activeTurnIdForEvents` — this value is stamped onto the
-        // persisted event's `sessionState` (below), which
-        // `deriveLifecycleTransition`'s stamp early-return then honors
-        // ahead of its own `acceptsTurnTerminalEvent` guard. The clearing
-        // fold (`activeTurnIdForEvents`) answers "is a turn currently
-        // open", which is `undefined` after a `runtime.error`/
-        // `session.exited` — the exact permissive default that let a stale
-        // terminal for an EARLIER turn get stamped `sessionState:
-        // 'completed'` on disk after a LATER turn's own failure. The
-        // identity-anchor fold retains the last-started turn's id across
-        // that clear, matching what the read-time folds
-        // (`deriveLifecycleTransition`/`deriveAgentRunStatus`) compute over
-        // the identical bounded projection.
-        const turnIdentityAnchor = turnIdentityAnchorForEvents(
-          this.options.eventStore
-            ?.listSessionProjectionEvents(event.threadId)
-            .map((stored) => stored.payload) ?? [],
-        );
-        const normalized = normalizeCanonicalRuntimeEventLifecycle(
-          event,
-          previousState,
-          turnIdentityAnchor,
-        );
+        const adapterEvent = event;
+        // Stamps lifecycle from the state as it stands now. #3561: a retried
+        // publish stamps again, from the adapter's own fields, so an event
+        // other publishers overtook during the retry sleep carries the state
+        // current at its append rather than at its first attempt.
+        const normalizeLifecycle = (
+          candidate: CanonicalRuntimeEvent,
+        ): CanonicalRuntimeEvent => {
+          const previousState = this.readCurrentLifecycleState(
+            adapterEvent.threadId,
+          );
+          // archive#3581 review BLOCK 1: `turnIdentityAnchorForEvents`, NOT
+          // `activeTurnIdForEvents` — this value is stamped onto the
+          // persisted event's `sessionState` (below), which
+          // `deriveLifecycleTransition`'s stamp early-return then honors
+          // ahead of its own `acceptsTurnTerminalEvent` guard. The clearing
+          // fold (`activeTurnIdForEvents`) answers "is a turn currently
+          // open", which is `undefined` after a `runtime.error`/
+          // `session.exited` — the exact permissive default that let a stale
+          // terminal for an EARLIER turn get stamped `sessionState:
+          // 'completed'` on disk after a LATER turn's own failure. The
+          // identity-anchor fold retains the last-started turn's id across
+          // that clear, matching what the read-time folds
+          // (`deriveLifecycleTransition`/`deriveAgentRunStatus`) compute over
+          // the identical bounded projection.
+          const turnIdentityAnchor = turnIdentityAnchorForEvents(
+            this.options.eventStore
+              ?.listSessionProjectionEvents(adapterEvent.threadId)
+              .map((stored) => stored.payload) ?? [],
+          );
+          return normalizeCanonicalRuntimeEventLifecycle(
+            withAdapterLifecycleStamp(candidate, adapterEvent),
+            previousState,
+            turnIdentityAnchor,
+          );
+        };
+        let normalized = normalizeLifecycle(event);
         // #2540: the exit of an engine this service parked is absorbed — see
         // `parkingThreads`. The session stays dormant and restarts in place.
         // A parked engine's exit is absorbed while the park waits for it, and
@@ -9753,7 +11413,17 @@ export class OrchestrationService {
         // `projectAndPublishEvent` with a bounded retry of its publish half,
         // holding this event until it is appended before the next one is
         // consumed (#3560).
-        if (!(await this.publishObservedEvent(normalized, adapter, controller)))
+        if (
+          !(await this.publishObservedEvent(
+            normalized,
+            adapter,
+            controller,
+            (admitted) => {
+              normalized = normalizeLifecycle(normalized);
+              return normalizeLifecycle(admitted);
+            },
+          ))
+        )
           continue;
         this.cooperativeStop.applyPendingTurnInterrupt(adapter, normalized);
         if (normalized.method === 'session.exited') {
@@ -9801,9 +11471,13 @@ export class OrchestrationService {
           site: 'adapter-event-stream',
         });
       }
+      const cause = error instanceof Error ? error.cause : undefined;
       this.options.logger.warn('Provider adapter event stream stopped', {
         provider: adapter.provider,
         error: message,
+        // An EventAppendTransactionLostError wraps the SQLite error that
+        // rolled the append back; name it, not only the wrapper.
+        ...(cause === undefined ? {} : { cause: errorMessage(cause) }),
       });
       // A failed event consumer is observation loss, not a provider terminal.
       // The adapter may still be executing every affected turn. Preserve their
@@ -9880,27 +11554,28 @@ export class OrchestrationService {
    * surfaces `adapter-event-stream-interrupted` and restarts, and it never
    * permits retrying the turn.
    *
-   * A retry repeats the publish body's pre-append steps. They are idempotent
-   * for a replay of the same event, except that an activity notification is
-   * counted twice in `sessionActivityEvents`; a provider-started turn's
-   * boundary is recorded once per event (`providerTurnBoundariesInFlight`).
-   * Lifecycle normalization is NOT redone, so a retried event keeps the
-   * `previousState`/`sessionState` computed before the first attempt.
-   * Pre-append state that outlives an append which never succeeds is #3561.
+   * The publish half changes nothing a client or recovery can observe
+   * before its append commits (#3561), so a failed attempt leaves nothing
+   * for a retry to repeat. Each retry restamps the event's lifecycle through
+   * `renormalize`, from the state current after the sleep.
    */
   private async publishObservedEvent(
     event: CanonicalRuntimeEvent,
     adapter: ProviderAdapterShape,
     controller: AbortController,
+    renormalize: (admitted: CanonicalRuntimeEvent) => CanonicalRuntimeEvent,
   ): Promise<boolean> {
     const admitted = this.admitEventForPublication(event);
     if (!admitted) return true;
+    let attempt = admitted;
     let retrying = false;
     try {
       for (const delayMs of [...OBSERVED_EVENT_RETRY_DELAYS_MS, undefined]) {
         try {
-          return this.offerOrPublishEvent(admitted);
+          return this.offerOrPublishEvent(attempt);
         } catch (error) {
+          if (error instanceof EventStoreIngressError)
+            return await this.publishResidualRefusal(attempt, adapter, error);
           if (
             delayMs === undefined ||
             !this.isRetryablePublishFailure(admitted, error)
@@ -9927,11 +11602,11 @@ export class OrchestrationService {
           await new Promise((resolve) => setTimeout(resolve, delayMs));
           if (controller.signal.aborted || !this.isAdapterCurrent(adapter))
             throw error;
+          attempt = renormalize(admitted);
         }
       }
       throw new Error('unreachable: the final attempt returns or throws');
     } finally {
-      this.providerTurnBoundariesInFlight.delete(admitted.eventId);
       // Whatever the outcome, this event's retry is over. Text still retained
       // for the thread gets its window timer back once no other retry on the
       // thread is in flight.
@@ -9945,6 +11620,125 @@ export class OrchestrationService {
         this.deltaCoalescer.resumeRetained(admitted.threadId);
       }
     }
+  }
+
+  /**
+   * docs/design/event-content-spill.md#residual-refusal: an event EventStore
+   * still cannot store after spilling (content over the per-event ceiling, a
+   * hostile shape, or adapter-built fields over the backstop). It is handled
+   * here, per event, so the adapter stream keeps running:
+   *
+   * - a `request.opened` is declined to the engine with a warning, so no
+   *   approval waits invisibly;
+   * - another event whose content roots were over the ceiling is stored with
+   *   those roots marked unavailable, so a turn terminal is never lost;
+   * - anything else is skipped with a warning naming it.
+   *
+   * The refusal must be about THIS event. A coalescer flush ahead of it can
+   * surface a different event's refusal; that one is reported, and this
+   * event is offered once more, never declined on the other's account.
+   */
+  private async publishResidualRefusal(
+    event: CanonicalRuntimeEvent,
+    adapter: ProviderAdapterShape,
+    error: EventStoreIngressError,
+    reoffered = false,
+  ): Promise<boolean> {
+    const warn = (code: string, message: string) => {
+      this.options.logger.warn('Runtime event could not be stored', {
+        provider: adapter.provider,
+        threadId: event.threadId,
+        method: error.subject.method,
+        eventId: error.subject.eventId,
+        error: error.message,
+      });
+      try {
+        this.projectAndPublishEvent({
+          eventId: crypto.randomUUID(),
+          provider: adapter.provider,
+          threadId: event.threadId,
+          createdAt: new Date().toISOString(),
+          method: 'runtime.warning',
+          severity: 'warning',
+          code,
+          message,
+        });
+      } catch (surfacingError) {
+        this.options.logger.warn('Failed to surface an unstorable event', {
+          threadId: event.threadId,
+          error: errorMessage(surfacingError),
+        });
+      }
+    };
+    if (error.subject.eventId !== event.eventId) {
+      warn(
+        'event-not-stored',
+        'Station could not store part of this agent’s output, and skipped it.',
+      );
+      if (reoffered) return true;
+      try {
+        return this.offerOrPublishEvent(event);
+      } catch (retryError) {
+        if (retryError instanceof EventStoreIngressError)
+          return this.publishResidualRefusal(event, adapter, retryError, true);
+        throw retryError;
+      }
+    }
+    if (event.method === 'request.opened') {
+      warn(
+        'request-too-large-to-show',
+        'The agent asked for approval of something too large for Station to show in full, so Station declined it and told the agent.',
+      );
+      try {
+        await adapter.respondToRequest(
+          event.threadId,
+          event.requestId,
+          'decline',
+        );
+      } catch (declineError) {
+        this.options.logger.warn('Could not decline an unstorable request', {
+          threadId: event.threadId,
+          requestId: event.requestId,
+          error: errorMessage(declineError),
+        });
+      }
+      return true;
+    }
+    const reduced = this.options.eventStore?.markContentUnavailable(event);
+    if (reduced && !reoffered) {
+      try {
+        const published = this.offerOrPublishEvent(reduced);
+        warn(
+          'event-content-too-large',
+          'Part of this agent output was too large for Station to keep; it is marked as unavailable.',
+        );
+        return published;
+      } catch (reducedError) {
+        if (!(reducedError instanceof EventStoreIngressError))
+          throw reducedError;
+      }
+    }
+    // A turn terminal is never lost: past everything else, its identity and
+    // outcome persist alone, its reply marked unavailable.
+    const terminal = this.options.eventStore?.minimalTurnTerminal(event);
+    if (terminal) {
+      try {
+        const published = this.offerOrPublishEvent(terminal);
+        warn(
+          'event-content-too-large',
+          'This turn’s result was too large for Station to keep; the turn is recorded as finished without it.',
+        );
+        return published;
+      } catch (terminalError) {
+        if (!(terminalError instanceof EventStoreIngressError))
+          throw terminalError;
+      }
+    }
+    warn(
+      'event-not-stored',
+      'Station could not store part of this agent’s output, and skipped it.',
+    );
+    return true;
   }
 
   /**
@@ -10207,6 +12001,89 @@ export class OrchestrationService {
   }
 
   /** The engine a session runs on, live or dormant; undefined if unknown. */
+  /**
+   * #3290: whether the thread's engine applies an approval posture. Every
+   * engine but ACP answers per provider; an ACP thread answers for the
+   * connection it runs on (`connectionId` when the caller has it, else the
+   * one its session started with).
+   */
+  approvalKnobForThread(
+    threadId: string,
+    provider: EngineId,
+    connectionId?: string,
+  ): boolean {
+    return approvalKnobSupported(
+      provider,
+      this.acpApprovalControlOfThread(threadId, provider, connectionId),
+    );
+  }
+
+  /**
+   * `unsupportedModelOptionKeys`, except that an ACP thread on a connection
+   * whose approval rules Station sets also takes `approvalMode` (#3290). The
+   * support table cannot say so: ACP is one provider for many engines, and
+   * only some of them apply a posture.
+   */
+  private unsupportedOptionKeysForThread(
+    threadId: string,
+    provider: EngineId,
+    modelOptions: Record<string, unknown> | undefined,
+    connectionId?: string,
+  ): string[] {
+    const unsupported = unsupportedModelOptionKeys(provider, modelOptions);
+    return provider === 'acp' &&
+      this.approvalKnobForThread(threadId, provider, connectionId)
+      ? unsupported.filter((key) => key !== 'approvalMode')
+      : unsupported;
+  }
+
+  /**
+   * #3290: a governance refusal completed with what Default would do in this
+   * chat. Station's record of the applied mode goes back to what the engine
+   * still runs first: the refused mode never applied, and a Default pick
+   * must not resolve against it.
+   */
+  private async completeGovernanceRefusal(
+    error: ApprovalGovernanceRefusedError,
+    input: {
+      threadId: string;
+      agentSlug: string | undefined;
+      capturedAgent: { approvalMode?: ApprovalMode } | undefined;
+      prior: ReturnType<ApprovalPosture['appliedOf']>;
+    },
+  ): Promise<ApprovalGovernanceRefusedError> {
+    this.approvalPosture.restoreApplied(input.threadId, input.prior);
+    const request = await this.approvalPosture.defaultPickRequest({
+      threadId: input.threadId,
+      ...(input.agentSlug ? { agentSlug: input.agentSlug } : {}),
+      ...(input.capturedAgent ? { capturedAgent: input.capturedAgent } : {}),
+    });
+    return new ApprovalGovernanceRefusedError(
+      `${error.message} ${
+        request === 'configured'
+          ? "Picking Default won't avoid this: it applies the approval mode set as this Agent's or this Station's default."
+          : request === 'takeover'
+            ? "Picking Default won't avoid this: Station already applied its approval rules in this chat, so Default keeps them at Ask."
+            : "Pick Default to keep using OpenCode's own settings."
+      }`,
+    );
+  }
+
+  private acpApprovalControlOfThread(
+    threadId: string,
+    provider: EngineId,
+    connectionId?: string,
+  ): AcpApprovalControl | undefined {
+    if (provider !== 'acp') return undefined;
+    const started =
+      connectionId ??
+      this.sessionConnectionIds.get(threadId) ??
+      this.readLatestSessionStartMetadata(threadId)?.connectionId;
+    return typeof started === 'string' && started
+      ? this.options.acpApprovalControl?.(started)
+      : undefined;
+  }
+
   private threadProviderForPosture(threadId: string): EngineId | undefined {
     return (
       this.threadProviders.get(threadId) ??
@@ -10231,7 +12108,7 @@ export class OrchestrationService {
     provider: EngineId,
   ): boolean {
     if (command.decision !== 'acceptForSession') return false;
-    if (!approvalKnobSupported(provider)) return false;
+    if (!this.approvalKnobForThread(command.threadId, provider)) return false;
     let current: ReturnType<EventStore['readCurrentRequestEvent']> | undefined;
     try {
       current = this.options.eventStore?.readCurrentRequestEvent(
@@ -10242,7 +12119,13 @@ export class OrchestrationService {
       return false;
     }
     if (current?.state !== 'found') return false;
-    const opened = current.event.payload;
+    // The grant derives from the whole request: a spilled argument subtree
+    // can hold what escalates it (docs/design/event-content-spill.md).
+    const opened = current.event.payload.spilledContent
+      ? (this.options.eventStore?.resolveCanonicalEventContent(
+          current.event.payload,
+        ) ?? current.event.payload)
+      : current.event.payload;
     return (
       opened.method === 'request.opened' &&
       toolRequestSessionGrantFromPayload(opened.payload) === 'edit-mode'
@@ -10441,7 +12324,7 @@ export class OrchestrationService {
       was: FullAccessRevocationReport['reset'][number]['was'],
     ) => {
       const provider = this.threadProviderForPosture(threadId);
-      if (!provider || !approvalKnobSupported(provider)) return;
+      if (!provider || !this.approvalKnobForThread(threadId, provider)) return;
       this.recordApprovalModeDecision({
         threadId,
         provider,
@@ -10816,6 +12699,70 @@ export class OrchestrationService {
   }
 
   /**
+   * A person's personal per-engine default for a NEW chat, sent by their
+   * composer as a hint rather than a pick. It is recorded as the
+   * conversation's decision (as a carried pick is, so later sessions keep it)
+   * only when nothing above it decides: no decision recorded yet, no Agent
+   * default, no Project layer. Full access is gated exactly as a carried
+   * pick is: without the caller's grant, a `never` that would apply is
+   * refused (`refused-full-access`), and one that would not apply is moot.
+   */
+  async recordPersonalApprovalDefault(input: {
+    threadId: string;
+    provider: EngineId;
+    connectionId?: string;
+    approvalMode: ApprovalMode;
+    agentSlug?: string;
+    projectSlug?: string;
+    userId?: string;
+    personChat: boolean;
+    mayGrantFullAccess: boolean;
+    clientOrigin?: ClientOrigin;
+    principal?: PrincipalRef;
+  }): Promise<
+    | { outcome: 'not-applied' }
+    | { outcome: 'refused-full-access' }
+    | { outcome: 'recorded'; result: SetApprovalModeResult }
+  > {
+    if (
+      input.approvalMode === 'connection-default' ||
+      !this.approvalKnobForThread(
+        input.threadId,
+        input.provider,
+        input.connectionId,
+      ) ||
+      this.approvalPosture.decision(input.threadId) ||
+      (await this.approvalPosture.decidesAbovePersonalDefault({
+        ...(input.agentSlug ? { agentSlug: input.agentSlug } : {}),
+        ...(input.projectSlug
+          ? {
+              project: {
+                projectSlug: input.projectSlug,
+                ...(input.userId ? { userId: input.userId } : {}),
+                lastUsedApplies: input.personChat,
+              },
+            }
+          : {}),
+        mayGrantFullAccess: input.mayGrantFullAccess,
+      }))
+    )
+      return { outcome: 'not-applied' };
+    if (input.approvalMode === 'never' && !input.mayGrantFullAccess)
+      return { outcome: 'refused-full-access' };
+    return {
+      outcome: 'recorded',
+      result: this.recordApprovalModeDecision({
+        threadId: input.threadId,
+        provider: input.provider,
+        approvalMode: input.approvalMode,
+        basedOnSequence: null,
+        ...(input.clientOrigin ? { clientOrigin: input.clientOrigin } : {}),
+        ...(input.principal ? { principal: input.principal } : {}),
+      }),
+    };
+  }
+
+  /**
    * #2377 slice C1: whether recording `pick` on `threadId` would run any
    * engine of its conversation at full access
    * (`ApprovalPosture.pickReachesFullAccess`), reading each session's start
@@ -10862,6 +12809,13 @@ export class OrchestrationService {
       threadId: input.threadId,
       provider,
       phase: 'start',
+      acpControl: this.acpApprovalControlOfThread(
+        input.threadId,
+        provider,
+        typeof input.metadata?.connectionId === 'string'
+          ? input.metadata.connectionId
+          : undefined,
+      ),
       ...(typeof input.metadata?.agentSlug === 'string'
         ? { agentSlug: input.metadata.agentSlug }
         : {}),
@@ -10871,6 +12825,7 @@ export class OrchestrationService {
     const {
       modelOptions: _previous,
       confinement: _previousConfinement,
+      confinementPlan: _previousConfinementPlan,
       ...withoutOptions
     } = input;
     // Carry the stamp forward (the stored-metadata read strips reserved
@@ -10893,7 +12848,57 @@ export class OrchestrationService {
           : {}),
       },
     };
-    return modelOptions ? { ...restamped, modelOptions } : restamped;
+    // #2494: re-resolved for the new process, whose engine re-derives the
+    // posture; the previous start's record is never copied forward (the
+    // stored-metadata read strips it as a reserved key).
+    // A respawn carries no server workspace binding, so it resolves as
+    // `shared`: a provider that needs a proven worktree is refused, never
+    // granted one on the persisted metadata's say-so.
+    return this.withConfinement(
+      provider,
+      modelOptions ? { ...restamped, modelOptions } : restamped,
+      confinement,
+      'shared',
+    );
+  }
+
+  /**
+   * #2494: `input` with its resolved confinement: a plan for the adapter
+   * when a mechanism is engaged (the adapter observes the started process
+   * and records the posture), else the `no-mechanism` record stamped now.
+   * Called after the reserved-key strip, with the input's final model
+   * options. Throws `ConfinementRefusedError` when a required level has no
+   * usable mechanism.
+   */
+  private withConfinement<
+    T extends Omit<ProviderSessionStartInput, 'resumeCursor'>,
+  >(
+    engine: EngineId,
+    input: T,
+    confinement: StationConfinement,
+    isolationMode: WorkspaceIsolationMode,
+  ): T {
+    const resolution = resolveConfinement({
+      confinement,
+      engine,
+      appliedMode: approvalKnobSupported(engine)
+        ? readApprovalMode(input.modelOptions)
+        : undefined,
+      isolationMode,
+      providers: this.options.confinementProviders ?? [
+        codexSandboxConfinementProvider,
+        seatbeltConfinementProvider,
+      ],
+    });
+    if (resolution.plan) return { ...input, confinementPlan: resolution.plan };
+    return {
+      ...input,
+      metadata: {
+        ...input.metadata,
+        [STATION_CONFINEMENT_RECORD_METADATA_KEY]:
+          noMechanismConfinementRecord(resolution),
+      },
+    };
   }
 
   /**
@@ -10957,6 +12962,7 @@ export class OrchestrationService {
       threadId,
       provider,
       phase: 'turn',
+      acpControl: this.acpApprovalControlOfThread(threadId, provider),
       ...(typeof agentSlug === 'string' ? { agentSlug } : {}),
       modelOptions,
       // #2493: the replay's carried mode is the source turn's; confinement
@@ -11138,6 +13144,25 @@ export class OrchestrationService {
   }
 
   /**
+   * Every session with an active turn, ephemeral ones (webhooks, execution
+   * targets, delegations) included and no read authority applied: what a
+   * server restart would stop (#3851 apply-when-idle). The same predicate as
+   * `hasActiveTurn`, over every persisted, loaded or turn-tracked thread.
+   */
+  listActiveTurnThreadIds(): string[] {
+    const threadIds = new Set<string>([
+      ...(this.options.eventStore?.readSessions() ?? []).map(
+        (session) => session.threadId,
+      ),
+      ...this.sessionReadModel.keys(),
+      ...this.sessionExecutionCoordinator.threadIdsWithTurnState(),
+    ]);
+    return [...threadIds].filter((threadId) =>
+      this.sessionExecutionCoordinator.hasActiveTurn(threadId),
+    );
+  }
+
+  /**
    * archive#3350: every event reaching the publish body below pays a
    * read-model projection, a SQLite append with four projections, an
    * execution-coordinator and recovery observation, a monitoring call and a
@@ -11156,7 +13181,6 @@ export class OrchestrationService {
     try {
       return this.offerOrPublishEvent(admitted);
     } finally {
-      this.providerTurnBoundariesInFlight.delete(admitted.eventId);
       if (!this.observedRetryThreads.has(admitted.threadId))
         this.deltaCoalescer.resumeRetained(admitted.threadId);
     }
@@ -11222,44 +13246,54 @@ export class OrchestrationService {
 
   /**
    * #2324: a turn the engine opened on its own passed through no send, so no
-   * claim recorded its boundary row. Record it BEFORE its `turn.started` is
-   * persisted: a crash after the start then leaves the same durable fact a
-   * crashed user turn leaves, and boot closes it with the interrupted-turn
-   * banner (`InterruptedTurnRecovery`); a crash before the start leaves a
-   * row boot resolves silently. Retired by the turn's own terminal like any
-   * accepted row. A failed record is logged and counted, and the turn is
-   * still published — losing the crash banner is better than losing the
-   * turn.
+   * claim recorded its boundary row. The row is written inside the append of
+   * the turn's `turn.started`, as a co-commit participant (#3561): it exists
+   * exactly when that event does. A crash after the start then leaves the
+   * same durable fact a crashed user turn leaves, and boot closes it with the
+   * interrupted-turn banner (`InterruptedTurnRecovery`). An append that fails
+   * leaves no row, so a retry of the same event records its own, and no other
+   * path can retire it in between. Retired by the turn's own terminal like
+   * any accepted row. A row that cannot be written is logged and counted,
+   * and the turn is still published: losing the crash banner is better than
+   * losing the turn.
+   *
+   * Preparation runs here, before the append, because it may retry pending
+   * boundary transitions, each in a transaction of its own.
    */
-  private recordProviderTurnBoundary(event: CanonicalRuntimeEvent): void {
+  private prepareProviderTurnBoundary(
+    event: CanonicalRuntimeEvent,
+  ): { record(): SessionTurnBoundaryTransition } | undefined {
     if (
       event.method !== 'turn.started' ||
       !event.turnId ||
-      !isProviderTriggeredTurn(event) ||
-      // #3560: a retried publish of the same event must not record a second
-      // row, which boot recovery would banner a second time after a crash.
-      this.providerTurnBoundariesInFlight.has(event.eventId)
+      !isProviderTriggeredTurn(event)
     ) {
-      return;
+      return undefined;
     }
-    const recorded = this.sessionStartBoundaries.recordProviderTurn(
+    return this.sessionStartBoundaries.prepareProviderTurn(
       event.threadId,
       event.turnId,
       event.createdAt,
     );
-    if (recorded.kind === 'applied')
-      this.providerTurnBoundariesInFlight.add(event.eventId);
+  }
+
+  /** Counts, and warns about, a provider turn's committed boundary write. */
+  private reportProviderTurnBoundary(
+    event: CanonicalRuntimeEvent,
+    recorded: SessionTurnBoundaryTransition | undefined,
+  ): void {
+    const outcome = recorded?.kind ?? 'unavailable';
     providerTurnBoundaryRecords.add(1, {
       provider: event.provider,
-      outcome: recorded.kind,
+      outcome,
     });
-    if (recorded.kind !== 'applied') {
+    if (outcome !== 'applied') {
       this.options.logger.warn(
         'Provider-triggered turn boundary was not recorded; a crash during this turn will not be bannered at boot',
         {
           threadId: event.threadId,
           turnId: event.turnId,
-          outcome: recorded.kind,
+          outcome,
         },
       );
     }
@@ -11285,111 +13319,41 @@ export class OrchestrationService {
     event = safeSanitizeUIBlockEventProvenance(event, (message, meta) =>
       this.options.logger.warn(message, meta),
     );
-    // T5 ordering, pinned by the source invariant in this file's test
-    // suite: a stop must settle even for an event the quarantine gate
-    // declines, or a stop on a quarantined thread never settles and rides
-    // its full budget into a forced teardown of a completed turn.
-    this.cooperativeStop.settleCompletedTurn(
-      event.threadId,
-      event.turnId,
-      event.method,
-    );
+    let declined = false;
     if (this.discardedDraftThreads.has(event.threadId)) {
       if (event.method === 'session.exited')
         this.discardedEngineExitWaiters.get(event.threadId)?.();
-      return false;
+      declined = true;
     }
     const quarantined = this.quarantinedThreads.has(event.threadId);
-    if (quarantined && event.method !== 'session.exited') return false;
-    if (quarantined) this.quarantinedThreads.delete(event.threadId);
-    // archive#2959: every canonical event this service actually persists and
-    // publishes passes through here — adapter-streamed content/tool/state
-    // events AND this service's own internally-derived terminal events
-    // (`session.stop-settled`, the forced-path `turn.aborted`), which never
-    // reach `consumeAdapterEvents`' loop at all. Feeding the watchdog here,
-    // not there, is what lets it treat a Stop settling as the same kind of
-    // turn-end as an ordinary completion.
-    // A coalescable delta was already observed raw at the coalescing seam, so
-    // the watchdog sees progress at the engine's rate rather than the publish
-    // rate. Observing the merged event again would reset the window twice for
-    // one stretch of text.
-    // A posture decision is not engine progress: counting it would reset a
-    // stalled turn's window (#2436).
-    if (
-      !isCoalescableDelta(event) &&
-      event.method !== 'session.approval-mode-set'
-    )
-      this.turnProgress.observe(event);
-    this.threadProviders.set(event.threadId, event.provider);
-    if (event.method === 'session.exited') {
-      this.clientOriginTurns.clearThread(event.threadId);
-      // #2409: a respawned engine starts at whatever its start resolves, so
-      // nothing Station set on the exited one is still in effect.
-      this.approvalPosture.forgetThread(event.threadId);
-      this.acceptedTurnConfinement.delete(event.threadId);
-    }
-    if (
-      event.method === 'turn.completed' ||
-      event.method === 'turn.aborted' ||
-      event.method === 'runtime.error'
-    ) {
-      this.clientOriginTurns.retire(event.threadId, event.turnId);
-    }
-    // Adapter-agnostic activity telemetry: adapters stay metric-free (the
-    // sessionStateDuration precedent), so provider activity notifications
-    // are counted here at the projection boundary.
-    if (event.method === 'extension.notification') {
-      sessionActivityEvents.add(1, {
-        provider: event.provider,
-        namespace: event.namespace,
-        kind: event.type,
-      });
-    }
-    // #2456: child work (engine subagents) folds here, beside turnProgress,
-    // so session summaries — and the reconnect snapshot built from them —
-    // carry the live set.
-    this.childWork.observe(event);
-    const projectedEvent = this.options.eventStore
-      ? this.options.eventStore.projectLiveEvent(event)
-      : event;
-    projectOrchestrationEventToReadModel({
-      event: projectedEvent,
-      threadProviders: this.threadProviders,
-      sessionReadModel: this.sessionReadModel,
-      eventStore: this.options.eventStore,
-    });
-    const declaredOutputs =
-      projectedEvent.method === 'turn.completed' && projectedEvent.turnId
-        ? [
-            ...this.nativeOutputDeclarations.takeTerminalAdmissions(
-              projectedEvent.threadId,
-              projectedEvent.turnId,
-              projectedEvent.eventId,
-            ),
-            ...(this.stationControlPullRequests?.takeTerminalAdmissions(
-              projectedEvent.threadId,
-              projectedEvent.turnId,
-              projectedEvent.eventId,
-            ) ?? []),
-          ]
-        : [];
-    this.recordProviderTurnBoundary(projectedEvent);
-    try {
-      this.options.eventStore?.appendEvent(projectedEvent, declaredOutputs);
-      if (declaredOutputs.length > 0) {
-        const handles = declaredOutputs.map((admission) => admission.handle);
-        // A handle belongs to exactly one operation; the other ignores it.
-        this.nativeOutputDeclarations.commit(handles);
-        this.stationControlPullRequests?.commit(handles);
-      }
-    } catch (error) {
-      // Same-call retry is possible only when SQLite rolled back.  Do not
-      // consume a memory handle before its unique durable use index commits.
-      const handles = declaredOutputs.map((admission) => admission.handle);
-      this.nativeOutputDeclarations.rollback(handles);
-      this.stationControlPullRequests?.rollback(handles);
-      throw error;
-    }
+    if (quarantined && event.method !== 'session.exited') declined = true;
+    // #3561: store before show. Nothing a client or recovery can observe
+    // changes before the append commits, so a throw from it propagates from
+    // here with everything below unapplied, and a retry applies it once.
+    const committed = declined ? undefined : this.appendCanonicalEvent(event);
+    // T5 ordering, pinned by the source invariant in this file's test
+    // suite: a stop must settle even for an event the quarantine gate
+    // declines, or a stop on a quarantined thread never settles and rides
+    // its full budget into a forced teardown of a completed turn. For an
+    // event that is published, it settles only once that event's append has
+    // committed (#3561): a failed append leaves the stop pending, as the log
+    // still shows the turn running. It settles before the in-memory
+    // observers run, so one that throws cannot strand a stop whose terminal
+    // is already stored (#3561 review F3).
+    if (this.sessionExecutionCoordinator.ownsTurnEvent(event))
+      this.cooperativeStop.settleCompletedTurn(
+        event.threadId,
+        event.turnId,
+        event.method,
+      );
+    if (!committed) return false;
+    const projectedEvent = this.observeCommittedEvent(
+      event,
+      committed,
+      quarantined,
+    );
+    if (!isCoalescableDelta(event))
+      this.sessionExecutionCoordinator.observe(projectedEvent);
     // The event-store append is the retirement boundary. Do not use an
     // adapter's cleared activeTurnId or a queue-drain edge: a bound native
     // scope remains valid until its ordered durable terminal is committed.
@@ -11398,7 +13362,8 @@ export class OrchestrationService {
         projectedEvent.method === 'turn.aborted' ||
         (projectedEvent.method === 'runtime.error' &&
           !isDeferredRetriableTurnError(projectedEvent))) &&
-      projectedEvent.turnId
+      projectedEvent.turnId &&
+      !this.sessionExecutionCoordinator.hasActiveTurn(projectedEvent.threadId)
     ) {
       this.nativeOutputGrants.retireTerminal(
         projectedEvent.threadId,
@@ -11421,8 +13386,6 @@ export class OrchestrationService {
       this.stationControlPullRequests?.retireSession(projectedEvent.threadId);
     // Already observed raw at the coalescing seam above; observing the merged
     // delta again would double-count progress for one stretch of text.
-    if (!isCoalescableDelta(event))
-      this.sessionExecutionCoordinator.observe(projectedEvent);
     this.monitoringBridge.onRuntimeEvent(projectedEvent);
     // archive#3451 finding 5: a failed turn used to be either mis-counted as
     // `completed` (pre-#3442) or dropped from this metric entirely — count it
@@ -11431,22 +13394,14 @@ export class OrchestrationService {
     // the deferred case is not a terminal outcome yet, so counting it now
     // would both undercount the eventual real terminal and, if one never
     // arrives, over-attribute failures that were really still retrying.
-    if (
-      projectedEvent.method === 'turn.completed' ||
-      projectedEvent.method === 'turn.aborted' ||
-      (projectedEvent.method === 'runtime.error' &&
-        projectedEvent.turnId &&
-        !isDeferredRetriableTurnError(projectedEvent))
-    ) {
+    // #3460: the consented private operational export reuses this exact
+    // classifier, so product telemetry and private outcomes cannot disagree.
+    const terminalOutcome = canonicalTerminalOutcome(projectedEvent);
+    if (terminalOutcome) {
       try {
         this.usageTelemetry?.trackEngineTurn({
           engine: telemetryEngine(projectedEvent.provider),
-          outcome:
-            projectedEvent.method === 'turn.completed'
-              ? 'completed'
-              : event.method === 'turn.aborted'
-                ? 'aborted'
-                : 'failed',
+          outcome: terminalOutcome,
         });
       } catch {
         // Terminal event projection remains authoritative when telemetry fails.
@@ -11455,6 +13410,7 @@ export class OrchestrationService {
     // Recovery observes only after canonical persistence, so a restart can
     // reconstruct the source turn without copying its content into recovery.
     this.recoveryCoordinator?.observe(projectedEvent);
+    this.hostImages.observe(projectedEvent);
     // archive#1120: invalidate the session-owner cache BEFORE emitting on
     // the event bus, so any subscriber reacting to this same event (e.g.
     // the /events route's canUserReadSession gate) that re-derives
@@ -11480,6 +13436,9 @@ export class OrchestrationService {
     }
     this.options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
       event: projectedEvent,
+      globalSequence: this.options.eventStore?.readGlobalSequence(
+        projectedEvent.eventId,
+      ),
       // archive#1410: a turn's provenance envelope rides ALONGSIDE the
       // canonical event, never inside it — the persisted event stays
       // byte-identical to what the adapter produced, and this stays a
@@ -11514,6 +13473,157 @@ export class OrchestrationService {
       });
     }
     return true;
+  }
+
+  /**
+   * #3561: the append half of {@link publishCanonicalEvent}, in store-before-
+   * show order. Before the append runs only what is a pure precondition or
+   * has an undo: the live projection (server-only blob writes, unreferenced
+   * if the append fails and bounded by retention), the pure read-model
+   * derivation, declared-output admissions (rolled back on failure) and the
+   * provider turn boundary's preparation. The session row and a provider
+   * turn's boundary row are co-commit participants of the append. In-memory
+   * observers run only after it has committed, in
+   * {@link observeCommittedEvent}.
+   */
+  private appendCanonicalEvent(event: CanonicalRuntimeEvent): CommittedEvent {
+    const eventStore = this.options.eventStore;
+    const projectedEvent = eventStore
+      ? eventStore.projectLiveEvent(event)
+      : event;
+    const session = deriveReadModelSession({
+      event: projectedEvent,
+      sessionReadModel: this.sessionReadModel,
+      readPersistedSession: (threadId) =>
+        eventStore?.readSessionByThread(threadId),
+    });
+    const declaredOutputs =
+      projectedEvent.method === 'turn.completed' &&
+      projectedEvent.turnId &&
+      this.sessionExecutionCoordinator.ownsTurnEvent(projectedEvent)
+        ? [
+            ...this.nativeOutputDeclarations.takeTerminalAdmissions(
+              projectedEvent.threadId,
+              projectedEvent.turnId,
+              projectedEvent.eventId,
+            ),
+            ...(this.stationControlPullRequests?.takeTerminalAdmissions(
+              projectedEvent.threadId,
+              projectedEvent.turnId,
+              projectedEvent.eventId,
+            ) ?? []),
+          ]
+        : [];
+    const providerTurn = this.prepareProviderTurnBoundary(projectedEvent);
+    let providerTurnRecorded: SessionTurnBoundaryTransition | undefined;
+    // The durable projections of this event commit with it or not at all.
+    const coCommit = () => {
+      if (session) persistReadModelSession(eventStore, session);
+      providerTurnRecorded = providerTurn?.record();
+    };
+    try {
+      if (eventStore)
+        eventStore.appendEvent(projectedEvent, declaredOutputs, coCommit);
+      else coCommit();
+      if (declaredOutputs.length > 0) {
+        const handles = declaredOutputs.map((admission) => admission.handle);
+        // A handle belongs to exactly one operation; the other ignores it.
+        this.nativeOutputDeclarations.commit(handles);
+        this.stationControlPullRequests?.commit(handles);
+      }
+    } catch (error) {
+      // Same-call retry is possible only when SQLite rolled back.  Do not
+      // consume a memory handle before its unique durable use index commits.
+      const handles = declaredOutputs.map((admission) => admission.handle);
+      this.nativeOutputDeclarations.rollback(handles);
+      this.stationControlPullRequests?.rollback(handles);
+      throw error;
+    }
+    return {
+      projectedEvent,
+      session,
+      providerTurn: providerTurn !== undefined,
+      providerTurnRecorded,
+    };
+  }
+
+  /**
+   * #3561: the in-memory half of a committed publish. Runs only once the
+   * event is durable; the cooperative stop has already settled. Returns the
+   * persisted shape of the event.
+   */
+  private observeCommittedEvent(
+    event: CanonicalRuntimeEvent,
+    committed: CommittedEvent,
+    quarantined: boolean,
+  ): CanonicalRuntimeEvent {
+    const { projectedEvent, session } = committed;
+    if (committed.providerTurn)
+      this.reportProviderTurnBoundary(
+        projectedEvent,
+        committed.providerTurnRecorded,
+      );
+    // A quarantined thread's exit is what lifts its quarantine, once stored.
+    if (quarantined) this.quarantinedThreads.delete(event.threadId);
+    // archive#2959: every canonical event this service actually persists and
+    // publishes passes through here — adapter-streamed content/tool/state
+    // events AND this service's own internally-derived terminal events
+    // (`session.stop-settled`, the forced-path `turn.aborted`), which never
+    // reach `consumeAdapterEvents`' loop at all. Feeding the watchdog here,
+    // not there, is what lets it treat a Stop settling as the same kind of
+    // turn-end as an ordinary completion.
+    // A coalescable delta was already observed raw at the coalescing seam, so
+    // the watchdog sees progress at the engine's rate rather than the publish
+    // rate. Observing the merged event again would reset the window twice for
+    // one stretch of text.
+    // A posture decision is not engine progress: counting it would reset a
+    // stalled turn's window (#2436).
+    if (
+      !isCoalescableDelta(event) &&
+      event.method !== 'session.approval-mode-set' &&
+      this.sessionExecutionCoordinator.ownsTurnEvent(event)
+    )
+      this.turnProgress.observe(event);
+    this.threadProviders.set(event.threadId, event.provider);
+    if (event.method === 'session.exited') {
+      this.clientOriginTurns.clearThread(event.threadId);
+      // #2409: a respawned engine starts at whatever its start resolves, so
+      // nothing Station set on the exited one is still in effect.
+      this.approvalPosture.forgetThread(event.threadId);
+      this.acceptedTurnConfinement.delete(event.threadId);
+    }
+    if (
+      event.method === 'turn.completed' ||
+      event.method === 'turn.aborted' ||
+      event.method === 'runtime.error'
+    ) {
+      this.clientOriginTurns.retire(
+        event.threadId,
+        event.turnId,
+        event.invocationId,
+      );
+    }
+    // Adapter-agnostic activity telemetry: adapters stay metric-free (the
+    // sessionStateDuration precedent), so provider activity notifications
+    // are counted here at the projection boundary.
+    if (event.method === 'extension.notification') {
+      sessionActivityEvents.add(1, {
+        provider: event.provider,
+        namespace: event.namespace,
+        kind: event.type,
+      });
+    }
+    // #2456: child work (engine subagents) folds here, beside turnProgress,
+    // so session summaries — and the reconnect snapshot built from them —
+    // carry the live set.
+    this.childWork.observe(event);
+    if (session)
+      trackOrchestrationSession({
+        threadProviders: this.threadProviders,
+        sessionReadModel: this.sessionReadModel,
+        session,
+      });
+    return projectedEvent;
   }
 
   // archive#3557/#3558 fix-round review BLOCK 4: this is a THIRD WRITE path
@@ -11700,8 +13810,8 @@ export class OrchestrationService {
     });
   }
 
-  private async recoverSessions(): Promise<void> {
-    await recoverOrchestrationSessions({
+  private async recoverSessions(): Promise<AttachedSessionRecoveryObservation> {
+    const observation = await recoverOrchestrationSessions({
       adapterRegistry: this.options.adapterRegistry,
       eventStore: this.options.eventStore,
       requireTenantExecutionContext: this.options.requireTenantExecutionContext,
@@ -11760,6 +13870,7 @@ export class OrchestrationService {
     // which is exactly when that receipt is not published either.
     this.sessionRecoveryCompletedSignal.settle();
     this.evictCollidingAttachedAliases();
+    return observation;
   }
 
   /**
@@ -11770,6 +13881,9 @@ export class OrchestrationService {
     admission?: SessionCommandInternalOptions['sessionStartAdmission'],
   ): RecoveredSessionStartOptions {
     return {
+      assertRetainedWorkspaceAuthorized: async (threadId) => {
+        await this.authorizedConversationWorkspace(threadId);
+      },
       invokeSessionStart: (threadId, invoke) =>
         this.runEngineSessionStart(threadId, invoke, admission),
       eventStore: this.options.eventStore,
@@ -11813,22 +13927,56 @@ export class OrchestrationService {
       // client that never supplied one) keeps recovering with none — and the
       // engine keeps inheriting the server process's directory. Fill the gap
       // from the replayed `metadata.projectSlug`. Deliberately only when the
-      // persisted cwd is ABSENT: a session that already has one is not the
-      // archive#1011 case, and re-validating it here would close otherwise healthy
-      // sessions whose directory is momentarily unavailable (an unmounted
-      // volume, a not-yet-restored worktree) — recovery has always been
-      // tolerant there and this fix is not the place to change that.
-      resolveSessionCwd: (input) =>
-        input.cwd
+      // persisted cwd is ABSENT: never replace an existing coordinate with
+      // today's default root. Qualified retained Sessions are reauthorized
+      // after preparation by assertRetainedWorkspaceAuthorized; unqualified
+      // legacy Sessions retain their existing recovery rules.
+      resolveSessionCwd: async (input) => {
+        const resolved = input.cwd
           ? input
-          : resolveStartSessionCwd(
+          : await resolveStartSessionCwd(
               input,
               this.options.listProjects,
               this.options.observeCwdShadow,
               undefined,
               this.options.resolveProjectSessionDirectory,
-            ),
+            );
+        return typeof resolved.metadata?.[
+          SESSION_CONFINEMENT_ROOT_METADATA_KEY
+        ] === 'string'
+          ? resolved
+          : withSessionConfinementRoot(resolved, this.options.listProjects);
+      },
     };
+  }
+
+  /**
+   * The recovery note for a successor whose predecessor Session's newest turn
+   * ended because its engine exhausted its workload memory budget. Reads only
+   * that one turn window of the predecessor recorded in this conversation's
+   * lineage; any read failure composes nothing rather than failing the turn.
+   */
+  private predecessorMemoryExhaustionNote(
+    threadId: string,
+  ): string | undefined {
+    const store = this.options.eventStore;
+    const predecessor =
+      store?.conversationForSession(threadId)?.predecessorSessionId;
+    if (!store || !predecessor) return undefined;
+    try {
+      return memoryExhaustionRecoveryNote(
+        store.listEventWindowByTurn(predecessor, {
+          turnLimit: 1,
+          direction: 'newest',
+        }).events,
+      );
+    } catch (error) {
+      this.options.logger.warn('Could not read the predecessor failure', {
+        threadId,
+        error,
+      });
+      return undefined;
+    }
   }
 
   /**
@@ -11891,8 +14039,8 @@ export class OrchestrationService {
     // Without admission the spawn refuses BEFORE any adapter start/adopt/
     // process spawn. The refusal retains the persisted record and
     // resumeCursor untouched — the session stays dormant and re-routable,
-    // never quarantined or closed. Legacy/unmarked recovery is
-    // byte-identical.
+    // never quarantined or closed. Ordinary retained Project authority is
+    // checked separately at the provider start inside recovery preparation.
     const recoveredAdmitted = receiverAdmission?.admitted
       ? { ...receiverAdmission.admitted }
       : undefined;
@@ -11965,6 +14113,226 @@ export class OrchestrationService {
   /** The configured local owner can supply native prompt history across Session boundaries. */
   supportsNativeMemoryContinuity(): boolean {
     return this.options.eventStore !== undefined;
+  }
+
+  async readPreparedTurnIntent(
+    threadId: string,
+    invocationId: string,
+    authority: SessionReadAuthority,
+  ): Promise<PreparedTurnIntentView | null> {
+    this.initialize();
+    if (
+      !isSessionReadAuthority(authority) ||
+      !this.sessionAuthz.canReadSession(threadId, authority)
+    )
+      return null;
+    const stored = this.options.eventStore?.readPreparedTurnIntent(
+      threadId,
+      invocationId,
+    );
+    if (!stored || !this.sessionAuthz.canReadSession(threadId, authority))
+      return null;
+    return {
+      invocationId,
+      threadId,
+      clientTurnId: stored.capture.clientTurnId,
+      inputDigest: stored.capture.intent.inputDigest,
+      intentDigest: stored.capture.intent.intentDigest,
+      state: stored.state,
+      input: stored.capture.input,
+    };
+  }
+
+  private preparedTurnBinding(threadId: string): Record<string, unknown> {
+    const session =
+      this.options.eventStore?.readSessionByThread(threadId) ??
+      this.sessionReadModel.get(threadId);
+    if (!session) throw new Error('Prepared turn input is unavailable.');
+    const metadata = this.readLatestSessionStartMetadata(threadId);
+    const start = this.options.eventStore?.latestEventByMethod(
+      threadId,
+      'session.started',
+    )?.payload;
+    const nativeBindingKey =
+      start?.method === 'session.started'
+        ? start.metadata?.nativeResumeBindingKey
+        : undefined;
+    const liveBinding = this.options.adapterRegistry
+      .get(session.provider)
+      ?.preparedTurnBinding?.(threadId);
+    const nativeIdentityKey =
+      this.options.eventStore?.nativeSessionBindingIdentity(threadId);
+    return {
+      ...(nativeIdentityKey !== undefined ? { nativeIdentityKey } : {}),
+      provider: session.provider,
+      resumeCursor: session.resumeCursor ?? null,
+      cwd: session.cwd ?? null,
+      environmentId: metadata?.environmentId ?? null,
+      nativeBindingKey: liveBinding?.bindingKey ?? nativeBindingKey ?? null,
+      liveBinding: liveBinding ?? null,
+      connectionId: metadata?.connectionId ?? null,
+      agentId: metadata?.agentSlug ?? null,
+    };
+  }
+
+  /** Explicit replay of never-begun retained bytes; dormant engines require their own start protocol. */
+  async resumePreparedTurnIntent(
+    threadId: string,
+    invocationId: string,
+    authority: SessionReadAuthority,
+  ): Promise<ProviderTurnStartResult> {
+    const unavailable = () => new Error('Prepared turn input is unavailable.');
+    const authorized = () =>
+      isSessionReadAuthority(authority) &&
+      this.sessionAuthz.canReadSession(threadId, authority) &&
+      !this.quarantinedThreads.has(threadId) &&
+      !this.isReadOnlyAttachedSession(threadId);
+    this.initialize();
+    if (!authorized()) throw unavailable();
+    const stored = this.options.eventStore?.readPreparedTurnIntent(
+      threadId,
+      invocationId,
+    );
+    if (
+      stored?.state !== 'prepared' ||
+      stored.capture.resumeGuard.requiresFreshCompanions ||
+      stored.capture.adapterInput.confinement === 'host' ||
+      stored.capture.adapterInput.reviewIsolation ||
+      typeof stored.capture.resumeGuard.binding.nativeBindingKey !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(
+        stored.capture.resumeGuard.binding.nativeBindingKey,
+      ) ||
+      stored.capture.resumeGuard.binding.resumeCursor === null ||
+      stored.capture.resumeGuard.binding.liveBinding === null ||
+      !samePreparedValue(
+        stored.capture.resumeGuard.binding,
+        this.preparedTurnBinding(threadId),
+      )
+    )
+      throw unavailable();
+    this.assertTurnAdmitted(threadId);
+    const provider =
+      this.options.eventStore?.readSessionByThread(threadId)?.provider;
+    const adapter = provider && this.options.adapterRegistry.get(provider);
+    if (!adapter || !(await adapter.hasSession(threadId)) || !authorized())
+      throw unavailable();
+    const live = (await adapter.listSessions()).find(
+      (session) => session.threadId === threadId,
+    );
+    if (
+      !live ||
+      live.status === 'closed' ||
+      live.status === 'dead' ||
+      !samePreparedValue(
+        live.resumeCursor ?? null,
+        stored.capture.resumeGuard.binding.resumeCursor,
+      ) ||
+      !authorized()
+    )
+      throw unavailable();
+    const posture = this.approvalPosture.decision(threadId);
+    if (posture?.approvalMode === 'connection-default') throw unavailable();
+    const confinement = this.approvalPosture.standingConfinement(
+      threadId,
+      this.readStartConfinementStamp(threadId),
+    );
+    const current = () => {
+      try {
+        this.assertTurnAdmitted(threadId);
+        return (
+          authorized() &&
+          this.isAdapterCurrent(adapter) &&
+          this.approvalPosture.decision(threadId)?.sequence ===
+            posture?.sequence &&
+          this.approvalPosture.standingConfinement(
+            threadId,
+            this.readStartConfinementStamp(threadId),
+          ) === confinement &&
+          samePreparedValue(
+            stored.capture.resumeGuard.binding,
+            this.preparedTurnBinding(threadId),
+          )
+        );
+      } catch {
+        return false;
+      }
+    };
+    const freshOptions = await this.replayModelOptionsWithPosture(
+      threadId,
+      adapter.provider,
+      stored.capture.adapterInput.modelOptions,
+    );
+    if (
+      !samePreparedValue(
+        freshOptions ?? null,
+        stored.capture.adapterInput.modelOptions ?? null,
+      ) ||
+      !current()
+    )
+      throw unavailable();
+    const cwd = this.options.eventStore?.readSessionByThread(threadId)?.cwd;
+    const workspace = cwd
+      ? await resolveWorkspaceIdentity(cwd, 'local')
+      : undefined;
+    return this.sessionExecutionCoordinator.runPreparedTurnStart(
+      threadId,
+      async () => {
+        if (!current()) throw unavailable();
+        this.assertForkContextAtProviderTurn(stored.capture.adapterInput);
+        const owned = this.sessionStartBoundaries.resumePrepared?.(
+          stored.capture,
+          new Date().toISOString(),
+          current,
+        );
+        if (owned?.kind !== 'owner') throw unavailable();
+        const begun = owned.claim.beginInvocation(new Date().toISOString());
+        if (begun.kind !== 'applied') {
+          owned.turnClaim?.retain();
+          throw unavailable();
+        }
+        this.sessionExecutionCoordinator.markTurnBegun(
+          threadId,
+          stored.capture.intent.invocationId,
+        );
+        try {
+          const result = await adapter.sendTurn(stored.capture.adapterInput);
+          if (
+            owned.claim.accepted(result.turnId, new Date().toISOString())
+              .kind !== 'applied'
+          )
+            throw unavailable();
+          owned.turnClaim?.resolve(result.turnId);
+          this.sessionExecutionCoordinator.markTurnAccepted(
+            threadId,
+            result.turnId,
+            stored.capture.intent.invocationId,
+          );
+          return result;
+        } catch (error) {
+          if (
+            error instanceof SendTurnRefusedError &&
+            owned.claim.recordDefinitiveRefusal
+          ) {
+            owned.turnClaim?.retain();
+            const settled = owned.claim.recordDefinitiveRefusal(
+              new Date().toISOString(),
+            );
+            if (settled.kind === 'applied') {
+              this.sessionExecutionCoordinator.settleInvocation(
+                threadId,
+                stored.capture.intent.invocationId,
+              );
+              throw error;
+            }
+            throw new SessionTurnStartIndeterminateError();
+          }
+          owned.claim.indeterminate(new Date().toISOString());
+          owned.turnClaim?.retain();
+          throw new SessionTurnStartIndeterminateError();
+        }
+      },
+      workspace && workspace.kind !== 'remote' ? workspace.key : undefined,
+    );
   }
 
   private async captureNativeMemoryHistory(

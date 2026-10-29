@@ -31,11 +31,6 @@
       "evidence": "tests/connect-modal.spec.ts"
     },
     {
-      "path": "src-ui/src/components/acp-connections/ACPAddConnectionModal.tsx",
-      "strategy": "covered",
-      "evidence": "src-ui/src/__tests__/ACPAddConnectionModal.test.tsx"
-    },
-    {
       "path": "src-ui/src/components/acp-connections/ACPConnectionDetailModal.tsx",
       "strategy": "covered",
       "contract": "ResponsiveDialogSurface",
@@ -45,7 +40,13 @@
       "path": "src-ui/src/components/badges/AcpSessionModeSheet.tsx",
       "strategy": "covered",
       "contract": "ResponsiveDialogSurface",
-      "evidence": "src-ui/src/__tests__/AcpSessionModeChip.test.tsx drives the advertised-mode radio rows; src-ui/src/__tests__/ChatInputArea.test.tsx opens it from the composer in place of the approval-mode chip"
+      "evidence": "src-ui/src/__tests__/AcpSessionModeChip.test.tsx drives the advertised-mode radio rows; src-ui/src/__tests__/ChatInputArea.test.tsx opens it from the composer beside the approval control"
+    },
+    {
+      "path": "src-ui/src/components/badges/EngineApprovalDisclosureSheet.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/ChatInputArea.test.tsx opens the read-only approval explanation from the composer chip of an ACP engine that decides for itself (#3290)"
     },
     {
       "path": "src-ui/src/components/badges/ComposerModeSheet.tsx",
@@ -66,12 +67,6 @@
       "evidence": "tests/mobile-chat-composer.spec.ts 320/390px overflow menu containment, 44px menuitems, Escape dismissal with trigger focus return"
     },
     {
-      "path": "src-ui/src/components/chat-dock/MobileSheetPending.tsx",
-      "strategy": "covered",
-      "contract": "ResponsiveDialogSurface",
-      "evidence": "src-ui/src/__tests__/MobileTaskSwitcherAnswerability.test.tsx and tests/mobile-chat-composer.spec.ts cover the lazy phone-sheet loading acknowledgement, close action, and shared responsive surface containment"
-    },
-    {
       "path": "src-ui/src/components/chat-dock/ChatDockModalStack.tsx",
       "strategy": "covered",
       "evidence": "tests/mobile-chat-composer.spec.ts"
@@ -83,15 +78,32 @@
       "evidence": "src-ui/src/__tests__/ChatDockProjectSwitcherSheet.test.tsx drives every row's Continue-in-<project> row action and demoted icon-only Open <project> action (#3319), the decorative Current flag, and empty state; src-ui/src/__tests__/ChatDockProjectContext.test.tsx and ChatDockMobileHeader.test.tsx cover the desktop-anchored and mobile-edge-sheet trigger sites; tests/cross-runtime-chat-switching.spec.ts proves the desktop anchored popover and mobile edge sheet in a real browser"
     },
     {
-      "path": "src-ui/src/components/chat/ShareTargetPickerModal.tsx",
+      "path": "src-ui/src/components/chat-dock/MobileSheetPending.tsx",
       "strategy": "covered",
-      "evidence": "src-ui/src/__tests__/ShareTargetPickerModal.test.tsx"
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/MobileTaskSwitcherAnswerability.test.tsx and tests/mobile-chat-composer.spec.ts cover the lazy phone-sheet loading acknowledgement, close action, and shared responsive surface containment"
+    },
+    {
+      "path": "src-ui/src/components/chat-dock/SessionContextSheet.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/SessionContextCard.dock.test.tsx drives SessionContextSheet through the real ChatWorkspacePane: the desktop chip opens it anchored, Escape closes it and returns focus to the chip, a row closes it before opening its surface, and on a phone the Chat actions row opens it with data-sheet and closing returns focus to the \u22ef trigger; src-ui/src/__tests__/session-context-popover.browser.test.tsx renders the real sheet and stylesheets in Chromium at 1280x820 and measures the anchored popover opening above a chip low in the window and below a chip near the top, inside the viewport with no internal scroll (#3888)"
+    },
+    {
+      "path": "src-ui/src/components/chat/ApprovalSheetProvider.tsx",
+      "strategy": "covered",
+      "evidence": "Composes the covered RequestSheet owner. tests/mobile-request-sheet.spec.ts verifies grouped auto-open, exact session decision, dismissal/reopen, full command and error containment at 320/390, focus and controls; ApprovalSheetProvider.test.tsx verifies kept-mounted cross-surface pending and resolved recovery without extra decision sends."
     },
     {
       "path": "src-ui/src/components/chat/RequestSheet.tsx",
       "strategy": "covered",
       "contract": "ResponsiveDialogSurface",
       "evidence": "tests/mobile-request-sheet.spec.ts opens the #3331 request sheet at 390x844 for a long MCP elicitation form and a short tool approval: labelled dialog, focus trap and return to the card's Answer control, pinned actions reachable without scrolling, content-fit height, backdrop/swipe/Escape/close leaving the request pending, emulated-keyboard Send, resolution elsewhere closing it, reduced motion"
+    },
+    {
+      "path": "src-ui/src/components/chat/ShareTargetPickerModal.tsx",
+      "strategy": "covered",
+      "evidence": "src-ui/src/__tests__/ShareTargetPickerModal.test.tsx"
     },
     {
       "path": "src-ui/src/components/chat/ToolCallBatchSheet.tsx",
@@ -177,6 +189,11 @@
       "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
     },
     {
+      "path": "src-ui/src/components/project-sidebar/SidebarPopover.tsx",
+      "strategy": "covered",
+      "evidence": "src-ui/src/__tests__/ProjectSidebarRow.test.tsx and ProjectSidebarFooter.test.tsx cover focus, pointer dismissal, StrictMode and canonical navigation; ProjectSidebar.test.tsx retires the portal on mobile presentation changes. A nonmodal desktop rail popup; the mobile drawer owns phone navigation."
+    },
+    {
       "path": "src-ui/src/components/review/IndependentReviewRunModal.tsx",
       "strategy": "covered",
       "contract": "ResponsiveDialogSurface",
@@ -206,23 +223,10 @@
     {
       "path": "src-ui/src/views/integrations/DeleteIntegrationModal.tsx",
       "strategy": "covered",
-      "contract": "ResponsiveDialogSurface",
-      "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
+      "evidence": "tests/component-style.spec.ts; shared ConfirmModal composes Dialog and ResponsiveDialogSurface for focus, Escape and narrow geometry"
     },
     {
       "path": "src-ui/src/views/plugin-management/InstallPluginModal.tsx",
-      "strategy": "covered",
-      "contract": "ResponsiveDialogSurface",
-      "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
-    },
-    {
-      "path": "src-ui/src/views/plugin-management/NewPluginModal.tsx",
-      "strategy": "covered",
-      "contract": "ResponsiveDialogSurface",
-      "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
-    },
-    {
-      "path": "src-ui/src/views/plugin-management/StartPluginModal.tsx",
       "strategy": "covered",
       "contract": "ResponsiveDialogSurface",
       "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
@@ -240,7 +244,19 @@
       "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
     },
     {
+      "path": "src-ui/src/views/plugin-management/NewPluginModal.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
+    },
+    {
       "path": "src-ui/src/views/plugin-management/PluginModalStack.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
+    },
+    {
+      "path": "src-ui/src/views/plugin-management/StartPluginModal.tsx",
       "strategy": "covered",
       "contract": "ResponsiveDialogSurface",
       "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
@@ -265,11 +281,6 @@
       "path": "src-ui/src/workspace-panes/device/DeviceToolsDrawer.tsx",
       "strategy": "covered",
       "evidence": "#1971 Device Tools drawer. tests/device-pane.spec.ts \"Device Tools drawer at 390x844\" opens the drawer in a real browser (session and read-back values supplied through page.route in the server's envelopes; the live surface unintercepted) and MEASURES it: it overlays the stage (data-layout overlay) inside the 390px viewport at no more than 288px, the document does not scroll sideways, and every button, input, select and textarea in the drawer (20+) is at least 44px tall and inside the drawer's right edge. src-ui/src/workspace-panes/__tests__/DeviceToolsDrawer.test.tsx drives the overlay/docked switch from the measured pane width, focus on open and its return to the Tools button, Escape, and every section."
-    },
-    {
-      "path": "src-ui/src/components/chat/ApprovalSheetProvider.tsx",
-      "strategy": "covered",
-      "evidence": "Composes the covered RequestSheet owner. tests/mobile-request-sheet.spec.ts verifies grouped auto-open, exact session decision, dismissal/reopen, full command and error containment at 320/390, focus and controls; ApprovalSheetProvider.test.tsx verifies kept-mounted cross-surface pending and resolved recovery without extra decision sends."
     }
   ]
 }

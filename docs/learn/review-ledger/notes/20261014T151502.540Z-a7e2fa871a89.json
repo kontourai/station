@@ -1,0 +1,7 @@
+{
+  "revision": "8534457e44230bbac41d0060bed9cce96b0dcf9b",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Reviewed ChatDockBody delta at 8534457e44: only long-loading feedback adds visible waiting copy after the existing delay. Configuration, attachment ceilings, tool loading and approval authority are unchanged; no prose change needed.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

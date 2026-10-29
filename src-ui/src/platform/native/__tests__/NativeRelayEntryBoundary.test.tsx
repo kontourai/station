@@ -9,15 +9,20 @@ import {
 } from '@testing-library/react';
 import { type ReactNode, useEffect, useSyncExternalStore } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { NativeStationProfileStorage } from '../stationProfileStorage';
+import {
+  NativeStationProfileStorage,
+  savedConnectionFromStationProfile,
+} from '../stationProfileStorage';
 
 const entry = vi.hoisted(() => ({
   tree: null as ReactNode,
   native: true,
   relay: true,
   operator: vi.fn(),
+  discoveryInputs: vi.fn(),
   auth: vi.fn(),
   recovery: vi.fn(),
+  preferences: vi.fn(),
   session: vi.fn(),
   version: 0,
   repository: null as NativeStationProfileStorage | null,
@@ -26,6 +31,35 @@ const entry = vi.hoisted(() => ({
   retired: vi.fn(),
   listeners: new Set<() => void>(),
 }));
+// Produce saved routing metadata through the native profile adapter, including
+// the broker endpoint kind and revision used by the real selection boundary.
+const directConnection = savedConnectionFromStationProfile({
+  schemaVersion: 1,
+  name: 'direct',
+  endpoint: 'https://direct.example.test',
+  setupSource: 'manual',
+  configurationState: 'unconfigured',
+  createdAt: 1,
+  updatedAt: 1,
+});
+const relayConnection = savedConnectionFromStationProfile(
+  {
+    schemaVersion: 1,
+    name: 'home',
+    endpoint: 'https://station.example.test',
+    setupSource: 'manual',
+    configurationState: 'unconfigured',
+    relayRoute: {
+      brokerOrigin: 'https://broker.example.test',
+      stationId: '11111111-1111-4111-8111-111111111111',
+      enrollmentId: '22222222-2222-4222-8222-222222222222',
+    },
+    createdAt: 1,
+    updatedAt: 1,
+  },
+  7,
+);
+
 function Through({ children }: { children: ReactNode }) {
   return children;
 }
@@ -54,19 +88,9 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
       () => entry.version,
     );
     return {
-      activeConnection: entry.relay
-        ? {
-            id: 'native-route',
-            nativeBrokerRoute: {
-              routeVersion: 1,
-              profileName: 'home',
-              profileRevision: 7,
-              brokerOrigin: 'https://broker.example.test',
-              stationId: '11111111-1111-4111-8111-111111111111',
-              enrollmentId: '22222222-2222-4222-8222-222222222222',
-            },
-          }
-        : { id: 'direct-route' },
+      captureCredentialEvidence: () => null,
+      activeConnection: entry.relay ? relayConnection : directConnection,
+      connections: [relayConnection, directConnection],
     };
   },
 }));
@@ -90,6 +114,10 @@ vi.mock('../../PlatformSessionGate', () => ({
 }));
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   ApiBaseProvider: Through,
+  useApiBase: () => {
+    entry.discoveryInputs();
+    return { apiBase: 'http://station.test' };
+  },
 }));
 vi.mock('../../../contexts/AuthContext', () => ({
   AuthProvider: ({ children }: { children: ReactNode }) => {
@@ -105,6 +133,12 @@ vi.mock('../../../contexts/RecoveryQueryBoundary', () => ({
 }));
 vi.mock('../../../contexts/AuthorityQueryContext', () => ({
   AuthorityQueryProvider: Through,
+}));
+vi.mock('../../../contexts/AccountPreferencesProvider', () => ({
+  AccountPreferencesProvider: ({ children }: { children: ReactNode }) => {
+    entry.preferences();
+    return children;
+  },
 }));
 vi.mock('../../../contexts/ActiveChatsContext', () => ({
   ActiveChatsProvider: Through,
@@ -129,6 +163,7 @@ vi.mock('../../../contexts/PreviewContext', () => ({
 }));
 vi.mock('../../../contexts/RegionModelContext', () => ({
   RegionModelProvider: Through,
+  useRegionModelOptional: () => null,
 }));
 vi.mock('../../../contexts/SyntaxHighlighterContext', () => ({
   SyntaxHighlighterProvider: Through,
@@ -138,6 +173,9 @@ vi.mock('../../../contexts/ToastContext', () => ({
 }));
 vi.mock('../../../contexts/VoiceProviderContext', () => ({
   VoiceProviderContext: Through,
+}));
+vi.mock('../../../contexts/WorkClaimsContext', () => ({
+  WorkClaimsProvider: Through,
 }));
 vi.mock('../../../core/PermissionManager', () => ({
   PermissionManager: Through,
@@ -232,12 +270,15 @@ it('the actual main entry cuts native routes above operator providers through pe
   expect(screen.queryByText('Native member entry')).toBeNull();
   expect(entry.auth).not.toHaveBeenCalled();
   expect(entry.operator).not.toHaveBeenCalled();
+  expect(entry.discoveryInputs).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Close' }));
   await screen.findByText('Native member entry');
   expect(entry.auth).not.toHaveBeenCalled();
   expect(entry.recovery).not.toHaveBeenCalled();
+  expect(entry.preferences).not.toHaveBeenCalled();
   expect(entry.session).not.toHaveBeenCalled();
   expect(entry.operator).not.toHaveBeenCalled();
+  expect(entry.discoveryInputs).not.toHaveBeenCalled();
   entry.retired.mockClear();
   await act(async () => {
     for (const handler of entry.nativeHandlers.values())
@@ -262,6 +303,7 @@ it('the actual main entry cuts native routes above operator providers through pe
   expect(screen.getByText('Native member entry')).toBeDefined();
   expect(entry.auth).not.toHaveBeenCalled();
   expect(entry.operator).not.toHaveBeenCalled();
+  expect(entry.discoveryInputs).not.toHaveBeenCalled();
   act(() => {
     entry.relay = false;
     entry.version++;
@@ -270,7 +312,10 @@ it('the actual main entry cuts native routes above operator providers through pe
   await screen.findByText('Operator workspace');
   expect(entry.auth).toHaveBeenCalled();
   expect(entry.recovery).toHaveBeenCalled();
+  expect(entry.preferences).toHaveBeenCalled();
   expect(entry.session).toHaveBeenCalled();
+  expect(entry.discoveryInputs).toHaveBeenCalled();
+  const discoveryCalls = entry.discoveryInputs.mock.calls.length;
   const operatorCalls = entry.operator.mock.calls.length;
   const authCalls = entry.auth.mock.calls.length;
   await act(async () => {
@@ -288,11 +333,14 @@ it('the actual main entry cuts native routes above operator providers through pe
   ).not.toBeNull();
   expect(entry.operator).toHaveBeenCalledTimes(operatorCalls);
   expect(entry.auth).toHaveBeenCalledTimes(authCalls);
+  expect(entry.discoveryInputs).toHaveBeenCalledTimes(discoveryCalls);
   fireEvent.click(screen.getByRole('button', { name: 'Close' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  entry.discoveryInputs.mockClear();
   entry.operator.mockClear();
   entry.auth.mockClear();
   entry.recovery.mockClear();
+  entry.preferences.mockClear();
   entry.session.mockClear();
   act(() => {
     entry.relay = true;
@@ -302,8 +350,10 @@ it('the actual main entry cuts native routes above operator providers through pe
   await screen.findByText('Native member entry');
   expect(entry.auth).not.toHaveBeenCalled();
   expect(entry.recovery).not.toHaveBeenCalled();
+  expect(entry.preferences).not.toHaveBeenCalled();
   expect(entry.session).not.toHaveBeenCalled();
   expect(entry.operator).not.toHaveBeenCalled();
+  expect(entry.discoveryInputs).not.toHaveBeenCalled();
   act(() => {
     entry.native = false;
     entry.version++;
@@ -311,4 +361,5 @@ it('the actual main entry cuts native routes above operator providers through pe
   });
   await screen.findByText('Operator workspace');
   expect(entry.auth).toHaveBeenCalled();
+  expect(entry.discoveryInputs).toHaveBeenCalled();
 });

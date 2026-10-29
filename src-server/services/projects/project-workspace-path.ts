@@ -12,12 +12,12 @@
  * independently-drifting opinions about what `drifted` means to a knowledge
  * scan; written once, it is one decision with one review.
  *
- * Seam S2 (`resolveWorkspacePath` in `runtime-routes.ts`) was migrated in this
- * slice's first round and **reverted** — see §2.2.1's S2 row. It was deferred
- * until `ResourceResolutionResult` could express "the directory is there, I
- * could not verify whose repo it is". archive#1594 (slice 3c-pre) added that
- * — `stale`/`drifted` now carry `unverifiedPath` — and this module now owns
- * the derivation, as {@link resolveProjectDirectoryOutcome}. S2's
+ * Seam S2 (`resolveWorkspacePath` in `runtime-routes.ts`) was migrated in an
+ * early version of this slice and **reverted** — see §2.2.1's S2 row. It was
+ * deferred until `ResourceResolutionResult` could express "the directory is
+ * there, I could not verify whose repo it is". archive#1594 (slice 3c-pre)
+ * added that — `stale`/`drifted` now carry `unverifiedPath` — and this module
+ * now owns the derivation, as {@link resolveProjectDirectoryOutcome}. S2's
  * re-migration onto it is a separate follow-up; nothing here presumes it has
  * happened.
  *
@@ -283,7 +283,7 @@ export async function resolveProjectWorkspaceOutcome(
     // `vi.fn()` double, a result read off disk), and it degrades to a named
     // gap rather than to `path!`.
     //
-    // KEEP THE `typeof` CHECK. Review round 1 caught it removed: the union
+    // KEEP THE `typeof` CHECK. It was once removed by mistake: the union
     // makes it look redundant, and it is — for exactly the producers the
     // comment above says this guard is NOT for. For the ones it IS for,
     // `result.path` is `undefined` and `.length` throws a TypeError past
@@ -439,12 +439,13 @@ export async function resolveProjectDirectoryOutcome(
   }
   const result = resolved.result;
   const path = projectDirectoryPath(result);
-  // `typeof`, not `!== undefined` (delta review, HIGH): the untyped producers
+  // `typeof`, not `!== undefined`: the untyped producers
   // this whole degradation path exists for include results read off disk, and
   // `JSON.parse` yields `null` — not `undefined` — for an explicitly-null
   // field. `null.length` throws past `resolveResource`'s catch, out of a
   // function whose docblock promises it never throws, at the seam slice 3c
-  // flips. Round 1 hardened the sibling repo-question and missed this one.
+  // flips. An earlier fix hardened the sibling repo-question and missed this
+  // one.
   if (typeof path === 'string' && path.length > 0) {
     // `result.state` is narrowed by the fold above, but TypeScript cannot see
     // that through a function boundary, so the states are re-named here. The
@@ -507,7 +508,7 @@ export async function resolveProjectDirectoryOutcome(
   // producer (a `vi.fn()` double, a result off disk, a build against an older
   // `@kontourai/station-contracts`) that bypassed `isWellFormedResolution`.
   //
-  // THEY MUST NOT DEGRADE TO `unbound` (review round 1, HIGH). `unbound` is the
+  // THEY MUST NOT DEGRADE TO `unbound`. `unbound` is the
   // one state slice 3c's mapping sends to `$HOME` + `cwdDefaulted: true`, so
   // reporting it for a result that CLAIMED a directory is fail-OPEN: a chat the
   // UI shows as project-bound would silently read and write $HOME — verbatim

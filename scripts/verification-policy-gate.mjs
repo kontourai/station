@@ -1,8 +1,11 @@
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { validateE2EManifest } from '../tests/e2e-manifest.mjs';
 import { instructionGateErrors } from './agent-instructions-gate.mjs';
+import {
+  CAPTURE_MAX_BYTES,
+  execFileSyncBounded,
+} from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { FAST_STATIC_COMMANDS } from './run-ci-fast.mjs';
 import {
@@ -108,6 +111,10 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
   Object.freeze(['npm', Object.freeze(['run', 'native-platform:ratchet'])]),
   Object.freeze([
     'npm',
+    Object.freeze(['run', 'monument-import-boundary:gate']),
+  ]),
+  Object.freeze([
+    'npm',
     Object.freeze(['run', 'agent-plugin:validators:gate']),
   ]),
   Object.freeze(['npm', Object.freeze(['run', 'settings:registry:gate'])]),
@@ -116,6 +123,8 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
   // CLI help ↔ docs/reference/cli.md parity. Pure source read, ~50ms; see
   // run-ci-fast.mjs for why this belongs on the PR-visible lane.
   Object.freeze(['npm', Object.freeze(['run', 'docs:cli-parity:check'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'cli-mcp:parity:check'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'docs:feature-previews:check'])]),
   // #2803: the docs-reference and link gates, until then composed only by
   // verify:static. Whole-tree reads, ~1s each; see run-ci-fast.mjs.
   Object.freeze(['npm', Object.freeze(['run', 'docs:reference:gate'])]),
@@ -128,6 +137,9 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
     'npm',
     Object.freeze(['run', 'docs:public:contract-examples']),
   ]),
+  // The Corpus decision registry and the numbered-ADR freeze; see
+  // run-ci-fast.mjs.
+  Object.freeze(['npm', Object.freeze(['run', 'check:decisions'])]),
   // Generates the git-ignored Basis MCP app bundles the typecheck lanes
   // resolve; a precondition of the aggregate below, like `build:connect`.
   Object.freeze([
@@ -154,6 +166,10 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
   Object.freeze([
     process.execPath,
     Object.freeze(['scripts/typecheck-aggregate.mjs']),
+  ]),
+  Object.freeze([
+    process.execPath,
+    Object.freeze(['scripts/agent-runtime-import-boundary-gate.mjs']),
   ]),
 ]);
 export const CI_FAST_RESERVED_WEIGHT = 20;
@@ -216,9 +232,9 @@ export const SUBMISSION_HANDOFF_GUIDANCE_DOCS = Object.freeze([
   'docs/guides/development.md',
 ]);
 export const SUBMISSION_HANDOFF_GUIDANCE_MARKERS = Object.freeze([
-  'Ordinary pull requests use focused evidence plus `npm run ci:fast`.',
+  'Ordinary pull requests use focused local evidence, normal push hooks, and required hosted checks.',
   'Do not run `npm run full:regression`\nlocally merely because `main` moved.',
-  'Nightly and tagged preview and stable promotions',
+  'Scheduled main qualification and tagged Preview/Stable',
   'manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.',
   'one exact source SHA',
 ]);
@@ -707,12 +723,15 @@ export function verificationPolicyErrors({
  */
 export function discoverTrackedVitestTestFiles({
   rootDir = root,
-  execFile = execFileSync,
+  // The listing grows with every tracked file and passed the 1 MiB default
+  // capture on a Windows runner (ENOBUFS); see scripts/lib/bounded-capture.mjs.
+  execFile = execFileSyncBounded,
 } = {}) {
   const output = execFile('git', ['ls-files', '-z'], {
     cwd: rootDir,
     encoding: 'utf8',
     windowsHide: true,
+    maxBuffer: CAPTURE_MAX_BYTES,
   });
   const files = String(output)
     .split('\0')

@@ -1,0 +1,7 @@
+{
+  "revision": "aaef7574f5bf17c3592ce20e18e34a7589d3126e",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Moved the task-graph StationHttpError refusal note from Setup to Refused requests; content unchanged.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

@@ -1,4 +1,6 @@
-import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { execFileSyncBounded } from './bounded-capture.mjs';
+import { createLearningSourceReader } from './learning-source-reader.mjs';
 import { bindingDigest, bindingFile } from './review-binding.mjs';
 import { readGitObjects } from './review-git.mjs';
 import {
@@ -6,14 +8,13 @@ import {
   REVIEW_LEDGER_DIR,
   REVIEW_NOTES_DIR,
 } from './review-ledger-paths.mjs';
+import { redactReviewNoteHosts } from './review-note-privacy.mjs';
 
 function git(root, args) {
-  return execFileSync('git', args, {
+  return execFileSyncBounded('git', args, {
     cwd: root,
     encoding: 'utf8',
-    windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
-    maxBuffer: 64 * 1024 * 1024,
   }).trim();
 }
 
@@ -33,6 +34,20 @@ const addedNote = (status, file) =>
   file.startsWith(REVIEW_NOTES_DIR) &&
   !isNoteArchiveFile(file);
 
+// A renamed privacy redaction retains its original review introduction. Only
+// the exact same transformation accepted by append-only validation qualifies.
+function noteRedactions(changes, before) {
+  const redacted = new Map();
+  for (const { status, file } of changes) {
+    if (status !== 'D' || !addedNote('A', file)) continue;
+    const original = before(file);
+    if (original === undefined) continue;
+    const replacement = redactReviewNoteHosts(file, original);
+    if (replacement) redacted.set(replacement.file, replacement.text);
+  }
+  return redacted;
+}
+
 /** Compare human decisions across layouts, ignoring old derived bindings. */
 export function reviewDecisionChanged(before, after) {
   const decision = (entry) =>
@@ -44,6 +59,7 @@ export function reviewDecisionChanged(before, after) {
       entry.summary,
       entry.limits,
       entry.sources.map((source) => source.path).sort(),
+      [...new Set(entry.declaredChecks ?? entry.checks ?? [])].sort(),
       entry.alt,
       entry.caption,
       entry.scenario,
@@ -55,33 +71,74 @@ export function reviewDecisionChanged(before, after) {
   return decision(before) !== decision(after);
 }
 
-/** Compare cited JSON values, rather than treating every manifest edit as relevant. */
-export function touchedReviewInputs(root, paths, changedPaths, before, after) {
-  const candidates = paths.filter((input) =>
-    changedPaths.has(bindingFile(input)),
-  );
-  const values = candidates.filter((input) => input !== bindingFile(input));
-  const objects = readGitObjects(
-    root,
-    values.flatMap((input) => [
+/** Compare cited values within one resolver; mutable refs are always reread. */
+export function createReviewInputComparator(root) {
+  const blobs = new Map();
+  const identities = new Map();
+  const digests = new Map();
+  const immutable = (spec) => /^[a-f0-9]{40}(?:\^(?:[1-9]\d*)?)?:/.test(spec);
+  const digest = (input, spec, bytes) => {
+    if (bytes === undefined) return undefined;
+    let identity = immutable(spec) ? identities.get(spec) : undefined;
+    if (identity === undefined) {
+      identity = createHash('sha256').update(bytes).digest('hex');
+      if (immutable(spec)) identities.set(spec, identity);
+    }
+    let selectors = digests.get(identity);
+    if (!selectors) {
+      selectors = new Map();
+      digests.set(identity, selectors);
+    }
+    if (!selectors.has(input))
+      selectors.set(input, bindingDigest(input, bytes));
+    return selectors.get(input);
+  };
+  return (paths, changedPaths, before, after) => {
+    const candidates = paths.filter((input) =>
+      changedPaths.has(bindingFile(input)),
+    );
+    const values = candidates.filter((input) => input !== bindingFile(input));
+    const specs = values.flatMap((input) => [
       `${before}:${bindingFile(input)}`,
       `${after}:${bindingFile(input)}`,
-    ]),
-  );
-  const changedValues = new Set(
-    values.filter((input, index) => {
-      const a = objects[index * 2];
-      const b = objects[index * 2 + 1];
-      return (
-        a === undefined ||
-        b === undefined ||
-        bindingDigest(input, a) !== bindingDigest(input, b)
-      );
-    }),
-  );
-  return candidates.filter(
-    (input) => input === bindingFile(input) || changedValues.has(input),
-  );
+    ]);
+    const missing = [
+      ...new Set(specs.filter((spec) => !immutable(spec) || !blobs.has(spec))),
+    ];
+    const observed = new Map(
+      readGitObjects(root, missing).map((bytes, index) => {
+        const spec = missing[index];
+        if (immutable(spec)) blobs.set(spec, bytes);
+        return [spec, bytes];
+      }),
+    );
+    const objects = specs.map((spec) =>
+      immutable(spec) ? blobs.get(spec) : observed.get(spec),
+    );
+    const changedValues = new Set(
+      values.filter((input, index) => {
+        const beforeDigest = digest(
+          input,
+          specs[index * 2],
+          objects[index * 2],
+        );
+        const afterDigest = digest(
+          input,
+          specs[index * 2 + 1],
+          objects[index * 2 + 1],
+        );
+        return (
+          beforeDigest === undefined ||
+          afterDigest === undefined ||
+          beforeDigest !== afterDigest
+        );
+      }),
+    );
+    // Callers append decision/dirty paths, so each comparison owns its array.
+    return candidates.filter(
+      (input) => input === bindingFile(input) || changedValues.has(input),
+    );
+  };
 }
 
 /** One stream of landing units; callers choose the range, never one log per commit. */
@@ -150,8 +207,31 @@ export function deriveReviewHistory(root, state, committedNotes) {
       current.flatMap(inputs).filter((input) => input !== bindingFile(input)),
     ),
   ];
+  const committedNoteFiles = committedNotes();
+  const dirty = new Set(
+    git(root, ['diff', '--no-renames', '--name-only', '-z', 'HEAD', '--'])
+      .split('\0')
+      .filter(Boolean),
+  );
+  const reader = createLearningSourceReader(root);
+  const workingNoteChanges = [
+    ...[...dirty]
+      .filter((file) => committedNoteFiles.has(file) && !reader.exists(file))
+      .map((file) => ({ status: 'D', file })),
+    ...[
+      ...new Set(
+        current
+          .flatMap(notes)
+          .filter((note) => !committedNoteFiles.has(note.file))
+          .map((note) => note.file),
+      ),
+    ].map((file) => ({ status: 'A', file })),
+  ];
   const specs = new Set([
     'HEAD:docs/learn/media.json',
+    ...workingNoteChanges
+      .filter(({ status }) => status === 'D')
+      .map(({ file }) => `HEAD:${file}`),
     ...current.map((entry) => `HEAD:${recordPath(entry)}`),
   ]);
   for (const commit of commits) {
@@ -162,6 +242,8 @@ export function deriveReviewHistory(root, state, committedNotes) {
     }
     for (const { status, file } of commit.changes) {
       if (addedNote(status, file)) specs.add(`${commit.revision}:${file}`);
+      if (status === 'D' && addedNote('A', file))
+        specs.add(`${commit.revision}^1:${file}`);
       if (owned.has(file)) {
         specs.add(`${commit.revision}^1:${file}`);
         specs.add(`${commit.revision}:${file}`);
@@ -180,6 +262,26 @@ export function deriveReviewHistory(root, state, committedNotes) {
       bytes,
     ]),
   );
+  // These blobs are immutable for this replay; selectors still include format
+  // and the full pointer, and an absent digest remains a changed input.
+  const blobIdentities = new Map();
+  const valueDigests = new Map();
+  const digest = (input, spec) => {
+    if (!blobIdentities.has(spec))
+      blobIdentities.set(
+        spec,
+        createHash('sha256').update(blobs.get(spec)).digest('hex'),
+      );
+    const identity = blobIdentities.get(spec);
+    let selectors = valueDigests.get(identity);
+    if (!selectors) {
+      selectors = new Map();
+      valueDigests.set(identity, selectors);
+    }
+    if (!selectors.has(input))
+      selectors.set(input, bindingDigest(input, blobs.get(spec)));
+    return selectors.get(input);
+  };
   const json = (spec) =>
     blobs.get(spec) === undefined
       ? undefined
@@ -195,6 +297,25 @@ export function deriveReviewHistory(root, state, committedNotes) {
         typeof source === 'string' ? { path: source } : source,
       ),
     };
+  const deletedNoteBytes = new Map();
+  for (const commit of commits)
+    for (const { status, file } of commit.changes)
+      if (status === 'D' && addedNote('A', file))
+        deletedNoteBytes.set(
+          file,
+          blobs.get(`${commit.revision}^1:${file}`)?.toString('utf8'),
+        );
+  // Include uncommitted deletions before replay: the replacement may have
+  // been committed first, but it still records the original review only.
+  const historicalRedactions = new Map([
+    ...noteRedactions(
+      [...deletedNoteBytes.keys()].map((file) => ({ status: 'D', file })),
+      (file) => deletedNoteBytes.get(file),
+    ),
+    ...noteRedactions(workingNoteChanges, (file) =>
+      blobs.get(`HEAD:${file}`)?.toString('utf8'),
+    ),
+  ]);
   const pending = new Map(current.map((entry) => [entry.path, new Set()]));
   for (const commit of commits) {
     const changed = new Set(commit.changes.map(({ file }) => file));
@@ -209,7 +330,8 @@ export function deriveReviewHistory(root, state, committedNotes) {
           input === file ||
           a === undefined ||
           b === undefined ||
-          bindingDigest(input, a) !== bindingDigest(input, b)
+          digest(input, `${commit.revision}^1:${file}`) !==
+            digest(input, `${commit.revision}:${file}`)
         )
           outstanding.add(input);
       }
@@ -233,7 +355,12 @@ export function deriveReviewHistory(root, state, committedNotes) {
         outstanding.add(entry.path);
     }
     for (const { status, file } of commit.changes) {
-      if (!addedNote(status, file)) continue;
+      if (
+        !addedNote(status, file) ||
+        historicalRedactions.get(file) ===
+          blobs.get(`${commit.revision}:${file}`)?.toString('utf8')
+      )
+        continue;
       for (const note of json(`${commit.revision}:${file}`).notes)
         for (const input of note.inputs ?? [])
           pending.get(note.path)?.delete(input);
@@ -241,12 +368,12 @@ export function deriveReviewHistory(root, state, committedNotes) {
   }
   // Only a note not yet committed may cover a working-tree edit; an archived
   // note is committed even though no loose file carries its name.
-  const committedNoteFiles = committedNotes();
-  const dirty = new Set(
-    git(root, ['diff', '--no-renames', '--name-only', '-z', 'HEAD', '--'])
-      .split('\0')
-      .filter(Boolean),
-  );
+  const redactedWorking = new Map([
+    ...historicalRedactions,
+    ...noteRedactions(workingNoteChanges, (file) =>
+      blobs.get(`HEAD:${file}`)?.toString('utf8'),
+    ),
+  ]);
   for (const entry of current) {
     const outstanding = pending.get(entry.path);
     const committed = decision(json(`HEAD:${recordPath(entry)}`));
@@ -260,7 +387,11 @@ export function deriveReviewHistory(root, state, committedNotes) {
     )
       outstanding.add(entry.path);
     for (const note of notes(entry).filter(
-      (note) => !committedNoteFiles.has(note.file),
+      (note) =>
+        !committedNoteFiles.has(note.file) &&
+        (!redactedWorking.has(note.file) ||
+          reader.read(note.file).toString('utf8') !==
+            redactedWorking.get(note.file)),
     ))
       for (const input of note.inputs ?? []) outstanding.delete(input);
     for (const input of inputs(entry))

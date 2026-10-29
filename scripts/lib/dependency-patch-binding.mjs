@@ -5,7 +5,12 @@ import { pnpmDependencyGraph } from './pnpm-dependency-graph.mjs';
 import { readPnpmLockfile, readPnpmWorkspace } from './pnpm-lockfile.mjs';
 
 const SHA256 = /^[a-f0-9]{64}$/;
-const CORE_FILES = ['src/sprintf.js', 'dist/sprintf.min.js'];
+const FORGE_FILES = [
+  'lib/index.js',
+  'lib/rsa.js',
+  'dist/forge.min.js',
+  'dist/forge.all.min.js',
+];
 const FIELDS = new Set([
   'schemaVersion',
   'package',
@@ -31,32 +36,28 @@ function safePath(value) {
   );
 }
 
-export function requiresDependencyPatchBinding(residual) {
-  return (
-    residual.scope === 'root' &&
-    residual.package === 'sprintf-js' &&
-    residual.version === '1.0.3' &&
-    residual.advisory === 'GHSA-hp3w-g68c-fv3c'
-  );
-}
-
-/** This binding admits only the reviewed formatter remediation, not other patches. */
-export function validateDependencyPatchBinding(residual) {
-  const b = residual.patchBinding;
+/**
+ * Only the reviewed node-forge advisory/version pair can use installed-byte
+ * remediation. A record for any other identity, or a residual (which is for
+ * moderate and low findings), is refused here rather than silently accepted.
+ */
+export function validateDependencyPatchBinding(record) {
+  const b = record.patchBinding;
   if (!b || typeof b !== 'object' || Array.isArray(b))
     refuse('missing binding');
   if (Object.keys(b).some((key) => !FIELDS.has(key)))
     refuse('unknown binding field');
+  const forge =
+    record.scope === 'root' &&
+    record.package === 'node-forge' &&
+    record.version === '1.4.0' &&
+    record.advisory === 'GHSA-86w9-cpqp-85rv' &&
+    record.severity === 'high';
   if (
-    residual.scope !== 'root' ||
-    residual.package !== 'sprintf-js' ||
-    residual.version !== '1.0.3' ||
-    residual.advisory !== 'GHSA-hp3w-g68c-fv3c' ||
-    residual.severity !== 'moderate' ||
-    residual.reachability !== 'production' ||
+    !forge ||
     b.schemaVersion !== 1 ||
-    b.package !== residual.package ||
-    b.version !== residual.version ||
+    b.package !== record.package ||
+    b.version !== record.version ||
     b.nodeMajor !== 24
   )
     refuse('unsupported identity');
@@ -198,9 +199,9 @@ function installedInstances(root, lock, name, version) {
 }
 
 /** Re-read observed graph and bytes at acceptance; no external verification receipt is trusted. */
-export function verifyDependencyPatchBinding(root, residual) {
+export function verifyDependencyPatchBinding(root, record) {
   root = realpathSync(root);
-  const b = validateDependencyPatchBinding(residual);
+  const b = validateDependencyPatchBinding(record);
   if (Number(process.versions.node.split('.')[0]) !== b.nodeMajor)
     refuse('runtime changed');
   const workspace = readPnpmWorkspace(root);
@@ -239,9 +240,12 @@ export function verifyDependencyPatchBinding(root, residual) {
   const consumed = new Set();
   for (const directory of instances) {
     const manifest = json(root, join(directory, 'package.json'));
-    if (manifest.main !== CORE_FILES[0] || manifest.exports || manifest.browser)
+    const browser =
+      JSON.stringify(manifest.browser) ===
+      JSON.stringify({ buffer: false, crypto: false, process: false });
+    if (manifest.main !== FORGE_FILES[0] || manifest.exports || !browser)
       refuse('runtime entrypoint contract changed');
-    for (const file of CORE_FILES) {
+    for (const file of FORGE_FILES) {
       const path = join(directory, file);
       const rel = relative(root, path).split(sep).join('/');
       const digest = expected.get(rel);

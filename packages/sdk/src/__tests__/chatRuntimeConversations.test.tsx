@@ -603,7 +603,7 @@ describe('conversation inventory query controls', () => {
   });
 });
 
-test('conversation open accepts exact execution metadata and refuses wrong-child or cursor-bearing snapshots', async () => {
+test('conversation open accepts declared execution metadata and refuses wrong-child or private snapshots', async () => {
   const data = {
     status: 'resolved',
     currentSessionId: 'child-b',
@@ -626,17 +626,47 @@ test('conversation open accepts exact execution metadata and refuses wrong-child
     },
   };
   try {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(Response.json({ success: true, data })),
-    );
-    await expect(
-      resolveConversationOpen('conversation', 'https://station.example'),
-    ).resolves.toEqual(data);
+    for (const execution of [
+      data.execution,
+      { ...data.execution, environment: { kind: 'current' } },
+      {
+        ...data.execution,
+        environment: { kind: 'current' },
+        executionAgentId: 'claude-runtime',
+        expectedDefinitionFingerprint: `sha256:${'a'.repeat(64)}`,
+      },
+      {
+        ...data.execution,
+        environment: { kind: 'current' },
+        provider: 'acp',
+        engineConnectionId: 'opencode',
+        model: 'zai-coding-plan/glm-5.3-flash',
+      },
+    ]) {
+      const response = { ...data, execution };
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(Response.json({ success: true, data: response })),
+      );
+      await expect(
+        resolveConversationOpen('conversation', 'https://station.example'),
+      ).resolves.toEqual(response);
+    }
     for (const execution of [
       { ...data.execution, sessionId: 'child-a' },
       { ...data.execution, agentId: 'codex-agent' },
       { ...data.execution, resumeCursor: 'private' },
+      { ...data.execution, environment: { kind: 'peer' } },
+      {
+        ...data.execution,
+        environment: { kind: 'current', endpoint: 'private' },
+      },
+      { ...data.execution, environment: null },
+      { ...data.execution, environment: [] },
+      { ...data.execution, executionAgentId: 'invalid/agent' },
+      { ...data.execution, expectedDefinitionFingerprint: 'unbound' },
     ]) {
       vi.stubGlobal(
         'fetch',
@@ -649,6 +679,80 @@ test('conversation open accepts exact execution metadata and refuses wrong-child
       await expect(
         resolveConversationOpen('conversation', 'https://station.example'),
       ).rejects.toMatchObject({ kind: 'invalid-response' });
+    }
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+test('conversation open accepts a boolean or absent nextTurnStartsSession and refuses any other shape (#4179)', async () => {
+  const data = {
+    status: 'resolved',
+    currentSessionId: 'child-b',
+    canContinue: true,
+    recoveryActions: [],
+    answerability: { answerable: true },
+    conversation: { id: 'conversation', title: 'Restored', agentSlug: 'agent' },
+    transcript: { available: true, owner: 'runtime', messageCount: 2 },
+  };
+  const answer = (response: unknown) =>
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(Response.json({ success: true, data: response })),
+    );
+  try {
+    for (const response of [
+      data,
+      { ...data, nextTurnStartsSession: true },
+      { ...data, nextTurnStartsSession: false },
+    ]) {
+      answer(response);
+      await expect(
+        resolveConversationOpen('conversation', 'https://station.example'),
+      ).resolves.toEqual(response);
+    }
+    for (const nextTurnStartsSession of ['true', 1, null, {}]) {
+      answer({ ...data, nextTurnStartsSession });
+      await expect(
+        resolveConversationOpen('conversation', 'https://station.example'),
+      ).rejects.toMatchObject({ kind: 'invalid-response' });
+    }
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+test('fork-ready opening accepts saved context and refuses invented runtime bindings', async () => {
+  const data = {
+    status: 'fork-ready',
+    conversation: { id: 'fork', title: 'Saved fork', agentSlug: 'codex' },
+    transcript: { available: true, owner: 'fork-context', messageCount: 2 },
+    canContinue: true,
+    answerability: { answerable: true },
+    recoveryActions: [],
+  };
+  try {
+    for (const extra of [
+      {},
+      { currentSessionId: 'invented' },
+      { execution: { sessionId: 'invented' } },
+    ]) {
+      const response = { ...data, ...extra };
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(Response.json({ success: true, data: response })),
+      );
+      const opened = resolveConversationOpen('fork', 'https://station.example');
+      if (Object.keys(extra).length === 0)
+        await expect(opened).resolves.toEqual(data);
+      else
+        await expect(opened).rejects.toMatchObject({
+          kind: 'invalid-response',
+        });
     }
   } finally {
     vi.unstubAllGlobals();

@@ -1,0 +1,7 @@
+{
+  "revision": "d6f32ad090cd6e81eeb8dc4cf790fb057581f927",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"Reviewed the development-guide correction from one-to-four to zero-to-four planned shards against the merged exact-plan verifier and hosted CI graph. Server route/domain ownership, focused caller-boundary tests and source-versus-runtime evidence rules remain unchanged. An explicitly validated empty plan does not claim a service test or native/provider result; no server instruction or implementation was edited.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

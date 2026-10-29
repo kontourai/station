@@ -1,0 +1,15 @@
+{
+  "revision": "38fe4b2515b9fb334e11f273556ba36ad5d25bf1",
+
+  "notes": [
+    {"path":"docs/guides/android-build.md","note":"Testing section now states that a cancelled or non-main triggering build skips the Android tests run while a failed main build still fails; checked against the resolve-build if: gate in android-test.yml and the resolver's unchanged validation.","inputs":["docs/guides/android-build.md",".github/workflows/android-test.yml","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Only the resolve-build job gate in android-test.yml changed; this guide makes no claim about when Android tests run or skip. No prose change.","inputs":["docs/guides/desktop-build.md",".github/workflows/android-test.yml","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Only the resolve-build job gate in android-test.yml changed; this guide makes no claim about Android test triggering. No prose change.","inputs":["docs/guides/desktop-tray.md",".github/workflows/android-test.yml","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Only the resolve-build job gate in android-test.yml changed; the Android release icon and port claims here are unaffected. No prose change.","inputs":["docs/guides/release-channel-ports.md",".github/workflows/android-test.yml","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/guides/testing.md","note":"ci-workflow-contract.test.ts gained a test evaluating the android-test.yml resolve-build if: gate; the workflow table row (after Main: Android build; manual dispatch) and the workflow_run name-contract prose remain accurate. No prose change.","inputs":["docs/guides/testing.md","scripts/__tests__/ci-workflow-contract.test.ts"]}
+  ]
+}

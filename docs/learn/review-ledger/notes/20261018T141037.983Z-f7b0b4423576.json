@@ -1,0 +1,23 @@
+{
+  "revision": "8e92595958ee874978d67e5e068c748832c261ff",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the query-core delta against the responsive owner boundaries. Only a generic TanStack callback adapter was added; viewport, focus, geometry and responsive-surface behavior are unchanged. No prose change is needed; this is not new visual/device qualification.","inputs":["docs/guides/responsive-ui.md","packages/sdk/src/query-core.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the query-core delta against theme and startup ownership. The adapter only preserves session callback typing; token cascade, branding queries and startup behavior are unchanged. No prose change is needed; no additional browser claims are made.","inputs":["docs/guides/theming.md","packages/sdk/src/query-core.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the SDK callback change against backend transport and authorization guidance. Session fetch/normalization and server observation semantics are unchanged; generic type erasure now lives in query-core rather than casting a decorated wire shape in the domain. Existing guidance remains accurate.","inputs":["docs/patterns/backend.md","packages/sdk/src/query-core.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed common query ownership and cache/freshness guidance against the typed sharing helper and both callers. QueryConfig remains compatible and query defaults, authority partitioning and cancellation are unchanged. The internal generic adapter bridges TanStack unknown arguments without domain wire-shape casts. Existing prose remains accurate.","inputs":["docs/patterns/frontend.md","packages/sdk/src/query-core.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Traced both session hooks through the generic query-core adapter to the typed sharing helper. Public QueryConfig, SDK exports and timestamp masking/identity behavior remain unchanged. Source invariant and real-hook tests pass; removing both sharing options fails both identity assertions, restored green. SDK and UI typechecks pass. This does not qualify new runtime/device behavior.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-core.ts","packages/sdk/src/query-domains/chatRuntimeOrchestration.ts","packages/sdk/src/query-domains/personalBoards.ts","packages/sdk/src/query-domains/sessionStructuralSharing.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the documented useOrchestrationSessionsQuery data/loading/error surface against the caller delta. It still returns session summaries through the same query/fetch and identity policy; only callback type adaptation moved to query-core. Shipped manual claims and generator inputs remain accurate and unchanged.","inputs":["docs/reference/station-docs.md","packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Traced recent-work query options after the typed callback adapter change. Ten-second refresh, authority-scoped session fetch and timestamp-only identity reuse remain unchanged; the real Board hook passes and fails its identity assertion when sharing is removed. Existing user steps need no prose change.","inputs":["docs/user/personal-boards.md","packages/sdk/src/query-domains/personalBoards.ts"]},
+
+    {"path":"docs/user/work-board.md","note":"Reviewed the query-core change against cached Board resolution and explicit refresh wording. The new generic callback adapter is used only by the session collection queries and does not alter common defaults or spatial Board reads/mutations. Existing cache/refresh guidance remains accurate.","inputs":["docs/user/work-board.md","packages/sdk/src/query-core.ts"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed SDK scope instructions against the typed sharing helper and two production callers. Public imports and QueryConfig remain unchanged; existing real-hook tests check both refetch results and mounted cache identity. Scope/test guidance remains accurate.","inputs":["packages/sdk/AGENTS.md","packages/sdk/src/query-core.ts"]}
+  ]
+}

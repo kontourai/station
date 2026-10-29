@@ -8,17 +8,16 @@ import {
   summarizeFallowReports,
 } from './run-fallow-audit.mjs';
 
-/** Fallow 3.22 health_finding_key excludes line numbers. Summary counts rows,
- * but AuditDomainLedger attribution counts distinct path/name/metric keys.
- * Validate both populations; a matching aggregate alone cannot prove every
- * finding was attributed. See fallow-rs/fallow crates/api/src/audit_keys.rs. */
-function complexityKeyCounts(report, totalRows) {
+/** Fallow 3.33 assigns repeated function names an occurrence suffix, so
+ * each complexity row counts once. Validate every row and both totals.
+ * See fallow-rs/fallow crates/api/src/audit_complexity.rs. */
+function complexityCounts(report, totalRows) {
   if (report.complexity == null && totalRows === 0)
     return { introduced: 0, inherited: 0 };
   const findings = report.complexity?.findings;
   if (!Array.isArray(findings) || findings.length !== totalRows)
     throw new Error('Code-health report has incomplete complexity rows');
-  const keys = new Map();
+  let introduced = 0;
   for (const finding of findings) {
     if (
       !finding ||
@@ -30,15 +29,9 @@ function complexityKeyCounts(report, totalRows) {
       throw new Error(
         'Code-health report has incomplete complexity finding attribution',
       );
-    const key = JSON.stringify([finding.path, finding.name, finding.exceeded]);
-    if (keys.has(key) && keys.get(key) !== finding.introduced)
-      throw new Error(
-        'Code-health report has conflicting complexity key attribution',
-      );
-    keys.set(key, finding.introduced);
+    if (finding.introduced) introduced++;
   }
-  const introduced = [...keys.values()].filter(Boolean).length;
-  return { introduced, inherited: keys.size - introduced };
+  return { introduced, inherited: findings.length - introduced };
 }
 
 /**
@@ -92,7 +85,7 @@ export function evaluateCodeHealthAudit(report, base, head) {
     const added = report.attribution[`${kind}_introduced`];
     const inherited = report.attribution[`${kind}_inherited`];
     const complexity =
-      kind === 'complexity' ? complexityKeyCounts(report, total) : null;
+      kind === 'complexity' ? complexityCounts(report, total) : null;
     if (
       !Number.isSafeInteger(added) ||
       added < 0 ||

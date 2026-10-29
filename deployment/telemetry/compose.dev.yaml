@@ -1,0 +1,15 @@
+# Developer override for compose.diagnostics.yaml: the same pinned Collector,
+# Prometheus, Tempo and Grafana, credential files and dashboard, without the
+# product receiver. Use both files together; see README.md#developer-profile.
+name: ${COMPOSE_PROJECT_NAME:-station-telemetry-dev}
+
+services:
+  prometheus:
+    ports: ["127.0.0.1:${TELEMETRY_PROMETHEUS_PORT:-44483}:9090"]
+
+networks:
+  # Docker publishes no host port for a container attached only to an internal
+  # network, so the loopback OTLP, Prometheus and Grafana ports need a regular
+  # bridge here. That bridge also gives these containers outbound access.
+  diagnostics:
+    internal: false

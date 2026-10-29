@@ -278,6 +278,11 @@ describe('translateChatError', () => {
       'Station is unreachable',
     ],
     [
+      'network_changed',
+      'Station refused unexpectedly.',
+      'Connection to this Station was interrupted',
+    ],
+    [
       'transport_reset',
       'Station refused unexpectedly.',
       'Connection to this Station was interrupted',
@@ -646,6 +651,79 @@ describe('attachment refusal (attachment_input_unsupported)', () => {
     );
     expect(translated.hint).toContain('Remove the attachments');
     expect(translated.hint).not.toContain('temporary');
+    expect(translated.retryable).toBe(false);
+  });
+});
+
+describe('approval governance refusal (acp_approval_governance_refused, #3290)', () => {
+  it('names the setting and the next step, with no "temporary" hint, not retryable', () => {
+    const translated = translateChatError({
+      status: 400,
+      code: 'acp_approval_governance_refused',
+      message:
+        "Station can't apply its approval mode to OpenCode, so the chat was not started: your OpenCode configuration overrides Station's approval rules for bash in the build agent (it would run without asking).",
+    });
+    expect(translated.title).toBe("Station's approval mode wasn't applied");
+    expect(translated.body).toContain('for bash in the build agent');
+    // The server's sentence already says nothing started; it is not repeated.
+    expect(translated.body).not.toContain('Nothing was sent');
+    expect(
+      translateChatError({
+        status: 400,
+        code: 'acp_approval_governance_refused',
+        message:
+          "Station's approval modes cover OpenCode's build and plan agents only; the helper agent keeps its own permission rules.",
+      }).body,
+    ).toMatch(/permission rules\. Nothing was sent\.$/);
+    expect(translated.hint).toBe(
+      'Change the OpenCode setting or mode named above.',
+    );
+    // Whether Default helps is the server's to say for this chat (#3290).
+    expect(translated.hint).not.toContain('Default');
+    expect(translated.hint).not.toContain('temporary');
+    expect(translated.retryable).toBe(false);
+  });
+});
+
+describe('engine changed (execution_engine_changed)', () => {
+  const stale = {
+    status: 409,
+    // The literal the server forwards, not the constant.
+    code: 'execution_engine_changed',
+    message:
+      "Agent 'station' now runs on engine connection 'opencode', not Station's own engine as this request expected. Re-read the Agent and choose again.",
+  };
+
+  it('is a conflict with the user view, not a transient failure or a terminal chat', () => {
+    const translated = translateChatError(stale);
+    expect(translated.title).toBe('This Agent now runs somewhere else');
+    expect(translated.body).toBe(`${stale.message} Nothing was sent.`);
+    expect(translated.hint).toContain('Check the engine and model shown');
+    expect(translated.hint).not.toContain('temporary');
+    expect(translated.retryable).toBe(false);
+    expect(translated.terminalSession).toBeUndefined();
+  });
+});
+
+describe('model refusal (model_not_advertised)', () => {
+  const refusal = {
+    status: 400,
+    // The literal the server forwards, not the constant.
+    code: 'model_not_advertised',
+    message:
+      "ACP model value unsupported: connection 'opencode' did not advertise 'gpt-6.1-sol' for this session.",
+  };
+
+  it('is deterministic and names nothing as started: not retryable, no "temporary" hint', () => {
+    const translated = translateChatError(refusal);
+    expect(translated.title).toBe("This engine doesn't offer that model");
+    expect(translated.body).toBe(`${refusal.message} Nothing was sent.`);
+    expect(translated.hint).toContain('Choose a model this engine offers');
+    expect(translated.hint).toContain('send again');
+    // The conversation continues in a successor session: not a terminal chat.
+    expect(translated.terminalSession).toBeUndefined();
+    expect(translated.hint).not.toContain('temporary');
+    expect(translated.hint).not.toContain('may already have started');
     expect(translated.retryable).toBe(false);
   });
 });

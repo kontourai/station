@@ -1,0 +1,13 @@
+{
+  "revision": "69d1897df7b089a87f6cb84a9d95d6340023b129",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed the final child-work and orchestration window contracts against current producers and UI consumers. Optional native latestTool remains name-only; newest-window fact is watermark-bound current-turn identity independent of transcript caps, with authoritative null and older-server absence semantics. Claude resume evidence and last64 identity-per-category replay horizon are explicit and match the bounded state maps. Deterministic adapters and realSQLite/consumer checks passed; these do not prove live providers or publication.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the final contracts wording including bounded replay history against Agent/engine, Session/turn and observed outcomes. Tool names remain observations and no execution, success, readiness or access claim is inferred. Terms and glossary remain accurate.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed final response metadata and bounded Claude correlation language against the integration/evidence boundaries. Existing routes retain authorization, missing facts stay unknown, and bounded replay deduplication is not an exactly-once delivery promise. No plugin, network or deployment guarantee changed.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed final contract-reference change against the unchanged contracts instructions. The optional name/turn response data is environment-free; SQL remains server-owned and display stays in UI consumers. The README/reference routes and compatibility instruction remain accurate.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

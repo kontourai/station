@@ -101,6 +101,8 @@ function sectionLabel(view: NavigationView): string | null {
       return 'Schedule';
     case 'settings':
       return 'Settings';
+    case 'appearance':
+      return 'Appearance';
     case 'profile':
       return 'Profile';
     case 'notifications':

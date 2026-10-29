@@ -1,12 +1,18 @@
 import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-contracts/deployment-authentication';
+import { isProjectKnowledgeRoot } from '@kontourai/station-contracts/knowledge-store';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
+import { analyticsHomeExportActivation } from '../../analytics/analytics-activation.js';
+import { getBrandingProvider } from '../../providers/registries/registry.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
 import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
 import { OpenCodeSessionSource } from '../../providers/sessions/opencode-session-source.js';
+import { engineSignIn } from '../../services/acp/engine-sign-in.js';
+import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 import { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
 import type { RelayInvitationOwner } from '../../services/connections/relay-invitation-owner.js';
 import { createApplicationSessionRuntime } from '../../services/identity/application-session-runtime.js';
+import { connectedAccountOwnerIdForTurnAccount } from '../../services/identity/connected-account-owner.js';
 import {
   type LoadedDeploymentAuthentication,
   loadDeploymentAuthentication,
@@ -19,8 +25,15 @@ import {
   readLocalAccountConfiguration,
 } from '../../services/identity/local-account-runtime.js';
 import { NativeRelayEnrollmentService } from '../../services/identity/native-relay-enrollment-service.js';
+import { OperatorSessionService } from '../../services/identity/operator-sessions.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { createRelayEnrollmentRuntime } from '../../services/identity/relay-enrollment-service.js';
+import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
+import {
+  createEngineMcpOAuthResolver,
+  currentEngineMcpAccountOwner,
+} from '../../services/plugins/engine-mcp-oauth.js';
+import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
 import {
   closePluginActivationSession,
   completePluginActivationComposition,
@@ -35,13 +48,21 @@ import {
   createLocalRegistryTrustPolicyAuthority,
   type RegistryTrustPolicyAuthority,
 } from '../../services/plugins/registry-trust-policy.js';
+import { ToolLibraryService } from '../../services/plugins/tool-library-service.js';
+import { deriveWorkspaceHomeRoleStatus } from '../../services/plugins/workspace-home-role-service.js';
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { createProjectNativeToolLoader } from '../../services/projects/project-native-tools.js';
+import { hasProjectS3Sources } from '../../services/projects/project-s3-sources.js';
 import { projectMcpServers } from '../../services/projects/project-tools.js';
 import { NativeRelayEnrollmentJournal } from '../../services/relay/native-relay-enrollment-journal.js';
 import { ConnectionSigningKeyStore } from '../../services/ssh/connection-signing-key-store.js';
+import {
+  GitHubWorkItemObserver,
+  type WorkItemObserver,
+} from '../../services/work-item-providers/github-work-item-observer.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { currentNativeForegroundRelay } from '../conversation/native-foreground-invocation.js';
 import {
   createNativeDeviceProofRuntime,
   type NativeApplicationConnectorConfiguration,
@@ -73,7 +94,10 @@ import {
   resolveEngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import {
+  INTERNAL_SESSION_READ_SCOPE,
+  sessionReadAuthorityFromRequest,
+} from '@kontourai/station-contracts/tenancy';
 import type { ConnectionReadinessEvidence } from '@kontourai/station-contracts/tool';
 import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
 import {
@@ -150,6 +174,7 @@ import { OperatorPasskeyEnrollmentService } from '../../services/identity/operat
 import { LazyOperatorPasskeyRegistry } from '../../services/identity/operator-passkey-registry.js';
 import { FleetCandidateService } from '../../services/inference/fleet-candidate-service.js';
 import { FleetProbeService } from '../../services/inference/fleet-probe-service.js';
+import { installSessionTmpDirPolicy } from '../../services/infra/session-tmpdir.js';
 import type { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
 import type { OperationalEventPublisher } from '../../services/operational-events/operational-event-outbox.js';
@@ -167,6 +192,7 @@ import type { MCPService } from '../../services/plugins/mcp-service.js';
 import { FocusPresence } from '../../services/presence/focus-presence.js';
 import type { FileTreeService } from '../../services/projects/file-tree-service.js';
 import type { LayoutService } from '../../services/projects/layout-service.js';
+import { localProjectIdFor } from '../../services/projects/project-local-id.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
 import type { ProjectService } from '../../services/projects/project-service.js';
 import {
@@ -174,6 +200,7 @@ import {
   type WorkspacePathResolver,
 } from '../../services/projects/project-workspace-path.js';
 import type { ProposedChangeService } from '../../services/projects/proposed-change-service.js';
+import { composeTaskBriefSource } from '../../services/projects/task-brief-source.js';
 import { composeTaskDispatcher } from '../../services/projects/task-dispatch-composition.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import { TaskGraphService } from '../../services/projects/task-graph-service.js';
@@ -199,6 +226,7 @@ import {
   orchestrationStreamPresenceRosterOps,
 } from '../../telemetry/metrics.js';
 import { configuredTelemetryShutdownTask } from '../../telemetry.js';
+import { reconfigureOtelTelemetryDelivery } from '../../telemetry-delivery-state.js';
 import { setRuntimeControlApiBase } from '../../tools/station-control-shared.js';
 import {
   applyConfiguredLogLevel,
@@ -243,6 +271,7 @@ import {
 } from '../mcp/mcp-ui-frame-server.js';
 import { createNativeOutputDeclarationTool } from '../native-output-declaration.js';
 import { isAutoApprovedExternalTool } from '../tools/tool-executor.js';
+import { composeLocalMedia } from './local-media-runtime.js';
 
 /**
  * The recovery Adapter accepts only Station runtime connection identities.
@@ -276,9 +305,14 @@ export async function loadStablePreToolPolicySpec(options: {
   return { spec, revision };
 }
 
+import { recordAdoptedBuiltinEngine } from './builtin-engine-adoption.js';
 import { primeEnginePrerequisites } from './engine-prerequisite-priming.js';
 import { adoptDetectedNativeEngines } from './native-engine-adoption.js';
-import { isHostedTenantExecutionRequired } from './runtime-tenant-context.js';
+import {
+  currentTenantExecutionContext,
+  isHostedTenantExecutionRequired,
+  loadHostedTenantRegistryFromEnvironment,
+} from './runtime-tenant-context.js';
 
 const CONFIGURATION_RECONCILIATION_DELAYS_MS = [250, 1_000, 5_000] as const;
 /**
@@ -412,7 +446,12 @@ import {
   createRuntimeSearch,
   type RuntimeSearch,
 } from '../../services/search/runtime-search.js';
-import { continueExecutionTargetMessage } from '../../tools/station-control-delegation.js';
+import type { ServerUpdateCoordinator } from '../../services/server-update/server-update-coordinator.js';
+import {
+  assertTaskDispatchAgentExists,
+  continueExecutionTargetMessage,
+  resolveTaskDispatchAgentStart,
+} from '../../tools/station-control-delegation.js';
 import { buildRuntimeContext as createRuntimeContext } from '../agents/runtime-context-builder.js';
 import { bootstrapRuntimeDefaultAgent } from '../agents/runtime-default-agent.js';
 import { replaceRuntimeTemplateVariables } from '../agents/runtime-template-variables.js';
@@ -481,7 +520,6 @@ import {
   stationDocsRuntimeIdentity,
   stationKnowledgeRuntimeIdentity,
 } from './station-control-runtime-env.js';
-import { isManagedChatOrchestrationFeatureEnabled } from './station-features.js';
 import { startStoreIntegrityVerification } from './store-integrity-verification.js';
 
 interface PersistedAgentActivationTransaction {
@@ -530,6 +568,9 @@ export interface StationRuntimeOptions {
   /** Immutable process identity captured by the entrypoint during bootstrap. */
   buildProvenanceSnapshot?: BuildProvenanceSnapshot;
 }
+
+/** How long session recovery may take before update readiness warns. */
+const SESSION_RECOVERY_WARNING_MS = 5 * 60_000;
 
 /**
  * Main runtime for Station system
@@ -732,6 +773,10 @@ export class StationRuntime {
   /** #1970 device sessions (personal hosts only); their decoders stop with us. */
   private deviceSessions?: DeviceSessionService;
   private agentActivityPublisher?: AgentActivityPublisher;
+  /** #3851: the server's own update lifecycle. */
+  private serverUpdate?: ServerUpdateCoordinator;
+  /** #3851: the warning for a session recovery that does not settle. */
+  private recoveryWarningTimer?: ReturnType<typeof setTimeout>;
   private notificationDeliveryRouter?: NotificationDeliveryRouter;
   /** #90 live surfaces (personal hosts only); disposed after the browsers. */
   private liveSurfaceRegistry?: LiveSurfaceRegistry;
@@ -760,6 +805,7 @@ export class StationRuntime {
   private readonly openCodeSessionSource = new OpenCodeSessionSource();
   private bedrockAdapter = new BedrockAdapter();
   private claudeAdapter = new ClaudeAdapter({
+    resolveMcpOAuth: (input) => this.resolveExternalMcpOAuth(input),
     nativeSessionOwnership: {
       assertMutable: (sessionId) =>
         this.orchestrationEventStore.assertNativeSessionMutable(sessionId),
@@ -880,6 +926,7 @@ export class StationRuntime {
     },
   });
   private codexAdapter = new CodexAdapter({
+    resolveMcpOAuth: (input) => this.resolveExternalMcpOAuth(input),
     nativeSessionOwnership: {
       assertMutable: (sessionId) =>
         this.orchestrationEventStore.assertNativeSessionMutable(sessionId),
@@ -995,6 +1042,7 @@ export class StationRuntime {
   });
   private ollamaAdapter = new OllamaAdapter();
   private orchestrationService!: OrchestrationService;
+  private projectRoomRuntime?: { close(): Promise<void> };
   private resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
   private attachedSessionFollowService?: AttachedSessionFollowService;
   private consoleBridgeService?: ConsoleBridgeService;
@@ -1041,6 +1089,9 @@ export class StationRuntime {
   >;
   private readonly resolveTaskDispatchWorkspace: WorkspacePathResolver;
   private taskDispatcher!: TaskDispatcher;
+  /** #4003: the one exact-identity tracker reader (host `gh` login). */
+  private readonly workItemObserver: WorkItemObserver =
+    new GitHubWorkItemObserver();
   private terminalService!: TerminalService;
   private terminalWsServer!: TerminalWebSocketServer;
   private terminalWsStarted = false;
@@ -1062,13 +1113,16 @@ export class StationRuntime {
   private readonly featurePreviews: FeaturePreviewRegistry;
   /** Bound during composition, then selected at the fleet-routing branch. */
   private fleetConsumerProbesPreview!: FeaturePreviewSelector;
+  private chatHostImagesPreview!: FeaturePreviewSelector;
   private sshEnvironmentService: SshEnvironmentService;
   private timers: NodeJS.Timeout[] = [];
+  private analyticsMaintenance?: (
+    assertRuntime: () => Promise<void>,
+  ) => Promise<void>;
   public readonly eventBus = new EventBus();
-  // archive#1225: shared per-user live-`/events`-subscriber presence, read
-  // by both `createOrchestrationRoutes` and the push-on-completion wiring —
-  // see `ConfigureRuntimeRoutesContext.orchestrationStreamPresence`'s doc
-  // comment for why this must be the ONE instance both sides observe.
+  // archive#1225: shared per-user live-`/events`-subscriber presence for
+  // `createOrchestrationRoutes` — see
+  // `ConfigureRuntimeRoutesContext.orchestrationStreamPresence`'s doc.
   public readonly orchestrationStreamPresence = new OrchestrationStreamPresence(
     {
       onRosterOp: (op) => orchestrationStreamPresenceRosterOps.add(1, { op }),
@@ -1098,11 +1152,52 @@ export class StationRuntime {
   // never creates the database; it is closed with the other private stores.
   private operatorPasskeyRegistry?: LazyOperatorPasskeyRegistry;
   private operatorPasskeys?: OperatorPasskeyEnrollmentService;
+  private operatorSessions?: OperatorSessionService;
   private usageTelemetry?: UsageTelemetryService;
   /** One durable operation authority shared by route and fleet composition. */
   private actionOperations!: ActionOperationService;
   /** #485: durable receiver request-claim owner for opt-in attempts. */
   private delegationAttemptClaims!: FileDelegationAttemptClaimStore;
+
+  private readonly engineMcpOAuth = createEngineMcpOAuthResolver({
+    homeDir: () => this.configLoader.getProjectHomeDir(),
+    port: () => this.port,
+    getIntegration: (id) => this.mcpService.getIntegration(id),
+    needsSignIn: (id, resource) =>
+      this.mcpService.markOAuthNeedsSignIn(id, resource),
+  });
+
+  private async resolveExternalMcpOAuth(input: ProviderSessionStartInput) {
+    const servers = input.agent?.toolServers ?? [];
+    if (
+      !servers.some(
+        (server) =>
+          server.transport === 'sse' || server.transport === 'streamable-http',
+      )
+    )
+      return new Map<string, string>();
+    const spec = input.agent
+      ? await this.configLoader.loadAgent(input.agent.slug)
+      : undefined;
+    const principalId = input.tenantExecutionContext
+      ? undefined
+      : connectedAccountOwnerIdForTurnAccount(
+          this.orchestrationService.sessionRecordedOwnerId(input.threadId) !==
+            undefined
+            ? this.orchestrationService.resolveSessionActingPrincipal(
+                input.threadId,
+              )?.id
+            : currentEngineMcpAccountOwner(),
+        );
+    return this.engineMcpOAuth(
+      servers,
+      principalId,
+      typeof input.metadata?.projectSlug === 'string'
+        ? input.metadata.projectSlug
+        : spec?.project,
+      input.threadId,
+    );
+  }
 
   private async resolveExternalPreToolPolicy(
     input: ProviderSessionStartInput,
@@ -1115,6 +1210,21 @@ export class StationRuntime {
     });
     return createStagedPreToolPolicyEvaluator({
       spec,
+      projectToolPolicy: () => {
+        const policy = new ToolLibraryService(
+          this.configLoader.getProjectHomeDir(),
+        );
+        policy.assertAgent(
+          input.agent!.slug,
+          spec,
+          typeof input.metadata?.projectSlug === 'string'
+            ? this.projectService.getProject(input.metadata.projectSlug).id
+            : spec.project
+              ? this.projectService.getProject(spec.project).id
+              : undefined,
+          input.agent?.toolServers?.map((server) => server.id) ?? [],
+        );
+      },
       agentPolicyService: getAgentPolicyService(this.logger),
       approvalGuardian: new ApprovalGuardianService({
         appConfig: this.appConfig,
@@ -1277,6 +1387,9 @@ export class StationRuntime {
       this.orchestrationEventStore = openedEventStore = new EventStore(
         orchestrationDatabasePath,
       );
+      this.orchestrationEventStore.bindUsageExportActivation(
+        analyticsHomeExportActivation(projectHomeDir),
+      );
       this.operationalEventPublisher =
         this.orchestrationEventStore.createOperationalEventPublisher({
           appended: ({ journalSequence, event }) => {
@@ -1332,6 +1445,7 @@ export class StationRuntime {
         this.logger,
       );
       this.bindFleetConsumerProbesPreview();
+      this.bindChatHostImagesPreview();
       // Journal consumers wire after the quarantine notice: the runtime must
       // report a recorded corruption before anything asks the store for more
       // than its publisher.
@@ -1464,6 +1578,9 @@ export class StationRuntime {
       this.agentService = services.agentService;
       this.skillService = services.skillService;
       this.mcpService = services.mcpService;
+      this.orchestrationEventStore.setMcpAppResourceResolver((ref) =>
+        this.mcpService.getOpenMCPAppResourceUri(ref),
+      );
       this.secretBindingAdministration = services.secretBindingAdministration;
       this.secretBindingIntegrationAdministration =
         services.secretBindingIntegrationAdministration;
@@ -1491,6 +1608,8 @@ export class StationRuntime {
       // same composition seam for the identical reason.
       this.taskGraphService = new TaskGraphService(projectHomeDir, {
         projectService: this.projectService,
+        localProjectIdFor: (identity) =>
+          localProjectIdFor(this.projectService, identity),
         workflowSidecarReader: new WorkflowSidecarService({
           logger: this.logger,
         }),
@@ -1529,7 +1648,21 @@ export class StationRuntime {
             );
           });
         void this.orchestrationService
-          .readSession(sessionId, INTERNAL_SESSION_READ_SCOPE)
+          .readSession(sessionId, INTERNAL_SESSION_READ_SCOPE, {
+            eventMethods: [
+              'session.started',
+              'session.configured',
+              'session.exited',
+              'session.state-changed',
+              'turn.started',
+              'turn.completed',
+              'turn.aborted',
+              'runtime.error',
+              'request.opened',
+              'request.resolved',
+              'session.stop-settled',
+            ],
+          })
           .then(async (detail) => {
             if (!detail) return;
             const binding =
@@ -1621,7 +1754,13 @@ export class StationRuntime {
       const failures: unknown[] = [error];
       let persistenceClosed = true;
       try {
-        openedEventStore?.close();
+        if (openedEventStore) {
+          const closed = openedEventStore.close();
+          if (closed.kind !== 'closed')
+            throw new Error(
+              `Orchestration EventStore did not close: ${closed.kind}`,
+            );
+        }
       } catch (closeError) {
         persistenceClosed = false;
         failures.push(closeError);
@@ -1737,11 +1876,22 @@ export class StationRuntime {
       ) !== null;
 
     const explicitConnectionId = appConfig.builtinAgentEngineConnectionId;
-    return resolveBuiltinAgentEngineBinding({
+    const binding = resolveBuiltinAgentEngineBinding({
       explicitConnectionId,
       stationChatReady,
       readyExternalEngines,
     });
+    // Record an adoption so the choice stops being a per-boot guess. Reading
+    // readiness again must never take back an engine that is already the
+    // built-in agent's — see the recorder's docblock for the failure this
+    // closes.
+    await recordAdoptedBuiltinEngine({
+      configLoader: this.configLoader,
+      explicitConnectionId,
+      binding,
+      logger: this.logger,
+    });
+    return binding;
   }
 
   /**
@@ -2594,6 +2744,7 @@ export class StationRuntime {
       },
       loadAppConfig: async () => {
         stagedAppConfig = await this.configLoader.loadAppConfig();
+        this.applyPersistedNetworkConfiguration(stagedAppConfig);
         return stagedAppConfig;
       },
     });
@@ -2601,7 +2752,6 @@ export class StationRuntime {
     this.rebuildGlobalToolRegistry();
     this.assertAgentConfigurationRevisions(configurationBefore, composition);
     this.appConfig = appConfig;
-    this.usageTelemetry?.reconfigure(appConfig);
     applyConfiguredLogLevel(appConfig.logLevel, this.logger);
     if (registryPolicyApplication)
       await this.registryTrustPolicyAuthority!.publishApplied(
@@ -3159,6 +3309,7 @@ export class StationRuntime {
   async reloadDefaultAgent(): Promise<void> {
     await this.mutateAgentConfiguration(async () => {
       const appConfig = await this.configLoader.loadAppConfig();
+      this.applyPersistedNetworkConfiguration(appConfig);
       const configurationBefore = this.captureAgentConfigurationRevisions();
       this.loadedProviderLaunchabilityRevision = null;
       this.loadedAppConfigLaunchabilityRevision = null;
@@ -3166,9 +3317,108 @@ export class StationRuntime {
       this.rebuildGlobalToolRegistry();
       this.assertAgentConfigurationRevisions(configurationBefore);
       this.appConfig = appConfig;
-      this.usageTelemetry?.reconfigure(appConfig);
       this.recordLoadedConfigurationRevisions(configurationBefore);
     });
+  }
+
+  private applyPersistedNetworkConfiguration(config: AppConfig): void {
+    void lanDiscoveryFor(this.configLoader).configure(config);
+    this.usageTelemetry?.reconfigure(config, true);
+    reconfigureOtelTelemetryDelivery(config);
+  }
+
+  private async initializeUsageTelemetry(): Promise<void> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const snapshot =
+        await this.configLoader.captureAppConfigLaunchabilitySnapshot();
+      if (this.configLoader.getLaunchabilityRevision() !== snapshot.revision)
+        continue;
+      // HTTP is already listening: a saved withdrawal must survive late construction.
+      const telemetry = new UsageTelemetryService({
+        pluginTelemetry: this.registryTrustPolicyAuthority
+          ? {
+              homeDir: this.configLoader.getProjectHomeDir(),
+              journal:
+                this.orchestrationEventStore.createPackageMcpAdmissionJournal(),
+              trustPolicy: this.registryTrustPolicyAuthority,
+            }
+          : undefined,
+        homeDir: this.configLoader.getProjectHomeDir(),
+        appConfig: snapshot.config,
+        version: packageJson.version,
+        buildProvenance: this.buildProvenanceSnapshot ?? null,
+        logger: this.logger,
+        telemetrySecretResolver: this.secretBindingAdministration,
+        dailyFacts: async () => {
+          const homeDir = this.configLoader.getProjectHomeDir();
+          const pluginsDir = `${homeDir}/plugins`;
+          const countBucket = (count: number): '0' | '1' | '2-3' | '4+' =>
+            count === 0 ? '0' : count === 1 ? '1' : count <= 3 ? '2-3' : '4+';
+          const profile = new DistributionProfileService(
+            homeDir,
+            undefined,
+            this.orchestrationEventStore.createPackageMcpAdmissionJournal(),
+          );
+          const home = deriveWorkspaceHomeRoleStatus({
+            projectHomeDir: homeDir,
+            pluginsDir,
+            listContributions: () =>
+              profile.listPluginWorkspacePaneContributions(),
+          });
+          const branding = getBrandingProvider();
+          const [name, logo, theme, welcome] = await Promise.all([
+            branding.getAppName(),
+            branding.getLogo?.(),
+            branding.getTheme?.(),
+            branding.getWelcomeMessage?.(),
+          ]);
+          return {
+            paired_devices_bucket: countBucket(
+              this.environmentSecurityService.devicePairing.listDevices()
+                .length,
+            ),
+            // Installed packages have no authoritative public telemetry catalog yet.
+            private_plugins_bucket: countBucket(
+              scanInstalledPluginInventory(pluginsDir).filter(
+                (entry) => entry.state === 'valid',
+              ).length,
+            ),
+            home_replaced: home.state === 'granted',
+            branding_overridden:
+              name !== 'Station' || !!logo || !!theme || !!welcome,
+            // A saved layout may be a default copy, not evidence of customization.
+            layouts_customized: 'unknown',
+          };
+        },
+      });
+      this.usageTelemetry = telemetry;
+      // Assignment precedes this await so subsequent PUTs reach the live owner.
+      await telemetry.loadDisclosureReceipt();
+      this.orchestrationService.setUsageTelemetry(telemetry);
+      this.eventBus.subscribe((frame) => {
+        if (
+          frame.event === SERVER_EVENTS.PLUGINS_INSTALLED ||
+          frame.event === SERVER_EVENTS.PLUGINS_REMOVED
+        ) {
+          void telemetry
+            .track(
+              frame.event === SERVER_EVENTS.PLUGINS_INSTALLED
+                ? 'plugin_installed'
+                : 'plugin_removed',
+              { plugin: 'custom' },
+            )
+            .catch((error) =>
+              this.logger.warn('Plugin telemetry observation failed', {
+                error: errorMessage(error),
+              }),
+            );
+        }
+      });
+      return;
+    }
+    throw new Error(
+      'App configuration changed before product telemetry initialization.',
+    );
   }
 
   private async reloadDefaultAgentFromConfig(
@@ -3374,6 +3624,38 @@ export class StationRuntime {
       }
       this.virtualApplicationLifetime.signal.throwIfAborted();
       this.recordRuntimeLifecycle('ready');
+      // #3851: the server listens, but orchestration's session recovery
+      // (which re-registers the turns it finds) runs unawaited from its
+      // initialize. A persisted update when idle may read the running turns
+      // only once that recovery settled, which it does whether it succeeded
+      // or failed (the signal resolves in the recovery chain's `finally`).
+      const recovery =
+        this.orchestrationService?.whenSessionAttachmentSettled();
+      if (recovery) {
+        // A recovery that never settles (an adapter that hangs) would keep
+        // update when idle off silently: say so once (round 4 item 4).
+        const slow = setTimeout(
+          () =>
+            this.logger?.warn?.(
+              'Session recovery has not settled after 5 minutes; a pending server update when idle waits for it',
+            ),
+          SESSION_RECOVERY_WARNING_MS,
+        );
+        slow.unref?.();
+        // Shutdown clears it too (round 5 item 4).
+        this.recoveryWarningTimer = slow;
+        void recovery
+          .then(() => {
+            clearTimeout(slow);
+            this.serverUpdate?.markReady();
+          })
+          .catch((error: unknown) => {
+            clearTimeout(slow);
+            this.logger?.warn?.('Server update readiness failed', {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+      }
       void this.usageTelemetry?.stationStarted();
     } catch (error) {
       virtualApplication?.stop();
@@ -3401,11 +3683,19 @@ export class StationRuntime {
           this.applicationSessions = undefined;
         });
         await retire(async () => {
+          // #3586: tokens stop reading the account store before it closes.
+          // Set only after security initialized, so its device pairing exists.
+          if (this.localAccounts)
+            this.environmentSecurityService.devicePairing.setAccountDirectory(
+              undefined,
+            );
           await this.deploymentAuthentication?.service.close();
           this.deploymentAuthentication = undefined;
           this.localAccounts = undefined;
         });
-        await retire(() => {
+        await retire(async () => {
+          await this.projectRoomRuntime?.close();
+          this.projectRoomRuntime = undefined;
           this.projectMembership?.close();
           this.projectMembership = undefined;
         });
@@ -3460,6 +3750,11 @@ export class StationRuntime {
         this.projectMembership.service,
       );
       this.deploymentAuthentication = this.localAccounts;
+      // #3586: account-tied personal access tokens are checked against
+      // this Station's own account standing; no other provider has one.
+      this.environmentSecurityService.devicePairing.setAccountDirectory(
+        this.localAccounts.accountDirectory,
+      );
     } else if (
       this.authenticationConfiguration &&
       !this.deploymentAuthentication
@@ -3560,6 +3855,9 @@ export class StationRuntime {
           readSecureDeviceCookie: (request) =>
             parseSecureDeviceSessionCookie(
               request.headers.get('cookie') ?? undefined,
+              (candidate) =>
+                this.environmentSecurityService.identifyDevice(candidate) !==
+                null,
             ),
           issueAlias: (parentCredential, deviceId, aliasId) =>
             this.environmentSecurityService.devicePairing.issueRelayCredentialAlias(
@@ -3648,6 +3946,20 @@ export class StationRuntime {
           timers: this.timers,
           configLoader: this.configLoader,
           storageAdapter: this.storageAdapter,
+          validateProjectTools: async (slug, spec, input) => {
+            const policy = new ToolLibraryService(
+              this.configLoader.getProjectHomeDir(),
+            );
+            policy.assertAgent(
+              slug,
+              spec,
+              typeof input.metadata?.projectSlug === 'string'
+                ? this.projectService.getProject(input.metadata.projectSlug).id
+                : spec.project
+                  ? this.projectService.getProject(spec.project).id
+                  : undefined,
+            );
+          },
           resolveProjectToolServers: async (input) => {
             const slug = input.metadata?.projectSlug;
             if (typeof slug !== 'string' || !slug) return [];
@@ -3655,11 +3967,11 @@ export class StationRuntime {
             const roots = await this.knowledgeStoreProvider.listRoots();
             return projectMcpServers(
               project,
-              roots.some(
-                (root) =>
-                  root.scope.kind === 'project' &&
-                  root.scope.projectSlug === slug,
-              ),
+              roots.some((root) => isProjectKnowledgeRoot(root, project.id)) ||
+                hasProjectS3Sources(
+                  this.configLoader.getProjectHomeDir(),
+                  project.id,
+                ),
             );
           },
           skillService: this.skillService,
@@ -3674,6 +3986,7 @@ export class StationRuntime {
           // failed-safe on Station's native engine until another config write.
           onACPConnectionsReady: () => this.reloadDefaultAgent(),
           orchestrationEventStore: this.orchestrationEventStore,
+          hostImagesPreview: this.chatHostImagesPreview,
           credentialProfileRecoveryAdapter:
             this.connectionService.createCredentialProfileRecoveryAdapter(
               credentialRecoveryRuntimeConnectionId,
@@ -3770,12 +4083,59 @@ export class StationRuntime {
             // method returns. Publish the Dispatcher at that composition seam,
             // after its concrete orchestration Adapter exists and before any
             // route or capability can read runtime context.
+            const briefTenantRegistry =
+              loadHostedTenantRegistryFromEnvironment();
             this.taskDispatcher = composeTaskDispatcher(
               this.taskGraphService,
               {
                 orchestrationService: this.orchestrationService,
                 assignmentClaimService: this.taskDispatchAssignmentClaims,
                 resolveProjectWorkspace: this.resolveTaskDispatchWorkspace,
+                // Epic #4003: the brief a dispatched Session's first turn
+                // carries. The room runtime is composed later; read lazily.
+                taskBrief: composeTaskBriefSource({
+                  taskGraph: this.taskGraphService,
+                  eventStore: this.orchestrationEventStore,
+                  sessionReadModel: this.orchestrationService,
+                  // The dispatched Session's owner reads its brief: the
+                  // runtime routes' `readAuthorityForExecution`, with tenancy.
+                  localProjectIdFor: (identity) =>
+                    localProjectIdFor(this.projectService, identity),
+                  readAuthorityForUser: (userId) => {
+                    const execution = currentTenantExecutionContext();
+                    return sessionReadAuthorityFromRequest(
+                      userId,
+                      execution ? { tenantId: execution.tenantId } : undefined,
+                      briefTenantRegistry,
+                    );
+                  },
+                  roomRuntime: () => this.projectTaskRoomRuntime,
+                  // The same reader the routes get (`workItemObserver` in
+                  // the route context), so dispatch and get_task_brief
+                  // read the tracker one way.
+                  workItemObserver: this.workItemObserver,
+                  logger: this.logger,
+                }),
+                // #4005: an engine-started Task Session runs as the Task's
+                // Agent, resolved through the foreground `/chat` resolver so
+                // it carries the binding its turns are checked against. Its
+                // loopback reads run as server code, as `/chat`'s do.
+                resolveAgentStart: (input) =>
+                  runAsStationServer(() =>
+                    resolveTaskDispatchAgentStart(
+                      input,
+                      this.orchestrationService,
+                    ),
+                  ),
+                // A seeded dispatch records its Agent; refuse one this
+                // Station does not have.
+                assertAgentExists: (agentId) =>
+                  runAsStationServer(() =>
+                    assertTaskDispatchAgentExists(
+                      agentId,
+                      this.orchestrationService,
+                    ),
+                  ),
               },
               {
                 prepareAgentStarted: (result) => {
@@ -3851,18 +4211,7 @@ export class StationRuntime {
     await this.startConsentListenerOrReport();
     await this.startTaskRoomAcceptanceControlIfConfigured();
     this.discordGatewayService.start();
-    this.usageTelemetry = new UsageTelemetryService({
-      homeDir: this.configLoader.getProjectHomeDir(),
-      appConfig: this.appConfig,
-      version: packageJson.version,
-      buildProvenance: this.buildProvenanceSnapshot ?? null,
-      logger: this.logger,
-    });
-    // A saved, current receipt remains consent after a restart. This read is
-    // fail-closed: loadDisclosureReceipt logs malformed receipts and leaves
-    // telemetry inactive, while a missing receipt stays silent and inactive.
-    await this.usageTelemetry.loadDisclosureReceipt();
-    this.orchestrationService.setUsageTelemetry(this.usageTelemetry);
+    await this.initializeUsageTelemetry();
     this.observeRuntimeConfigurationSources();
     // This is the last awaited startup step. Failed listeners/services above
     // cannot leave an accepted policy decision from an incomplete startup.
@@ -3938,6 +4287,7 @@ export class StationRuntime {
     await attempt(() => this.discordGatewayService.stop());
     await attempt(() => this.pluginDraftService?.dispose());
     this.pluginDraftService = undefined;
+    await attempt(() => engineSignIn()?.dispose());
     // #2443: route composition may have built these before the failure. The
     // same order as shutdown(): browsers, then device sessions (their
     // producers read the hub the toolchain stops), SSH device hosts, the
@@ -4095,7 +4445,7 @@ export class StationRuntime {
         const path = 'plain-text-100k-lines-v1.txt';
         let rebuilt = input.phase === 'cold';
         try {
-          const current = this.fileTreeService.readFileWithin(
+          const current = await this.fileTreeService.readFileWithin(
             workingDirectory,
             path,
           );
@@ -4165,6 +4515,26 @@ export class StationRuntime {
     return this.operatorPasskeys;
   }
 
+  private getOperatorSessions(): OperatorSessionService | undefined {
+    if (!this.getOperatorPasskeys() || !this.operatorPasskeyRegistry)
+      return undefined;
+    this.operatorSessions ??= new OperatorSessionService({
+      registry: this.operatorPasskeyRegistry,
+      origin: this.consentChannel.trustedOrigin,
+      identifyDevice: (credential) =>
+        this.environmentSecurityService.identifyDevice(credential),
+      epoch: () =>
+        this.environmentSecurityService.pseudonymizePairingAuditSource(
+          'operator-session-epoch.v1',
+        ),
+      available: () =>
+        !isHostedTenantExecutionRequired() &&
+        this.consentChannel.state().status === 'listening',
+      logger: this.logger,
+    });
+    return this.operatorSessions;
+  }
+
   private async startConsentListenerOrReport(): Promise<void> {
     if (isHostedTenantExecutionRequired()) {
       // Same posture as the terminal listener above: hosted ingress is
@@ -4197,6 +4567,7 @@ export class StationRuntime {
         credentials: this.environmentSecurityService,
         logger: this.logger,
         passkeys: this.getOperatorPasskeys(),
+        sessions: this.getOperatorSessions(),
       }),
       port,
       host: this.host,
@@ -4234,11 +4605,13 @@ export class StationRuntime {
       transcripts: this.orchestrationService,
     });
     if (this.searchAdmissionStopped) this.runtimeSearch.stop();
+    const localMedia = composeLocalMedia(this.configLoader.getProjectHomeDir());
     const {
       schedulerService,
       notificationService,
       kitLifecycleReady,
       projectTaskRoomRuntime,
+      projectRoomRuntime,
       browserService,
       deviceToolchainService,
       deviceSessions,
@@ -4247,7 +4620,12 @@ export class StationRuntime {
       deviceHosts,
       agentActivityPublisher,
       notificationDeliveryRouter,
+      serverUpdate,
+      analyticsMaintenance,
     } = configureRuntimeRoutes({
+      retainProjectRoomRuntime: (runtime) => {
+        this.projectRoomRuntime = runtime;
+      },
       relayInvitationOwner: this.relayInvitationOwner,
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,
@@ -4273,6 +4651,7 @@ export class StationRuntime {
       approvalRegistry: this.approvalRegistry,
       consentChannel: this.consentChannel,
       operatorPasskeys: this.getOperatorPasskeys(),
+      operatorSessions: this.getOperatorSessions(),
       appConfig: this.appConfig,
       // Delta2 review H2: `appConfig` above is captured once, here, while
       // `this.appConfig` is REPLACED by every configuration reload
@@ -4304,6 +4683,7 @@ export class StationRuntime {
       taskGraphService: this.taskGraphService,
       runtimeSearch: this.runtimeSearch,
       taskDispatcher: this.taskDispatcher,
+      workItemObserver: this.workItemObserver,
       terminalService: this.terminalService,
       actionOperations: this.actionOperations,
       delegationAttemptClaims: this.delegationAttemptClaims,
@@ -4335,8 +4715,8 @@ export class StationRuntime {
       monitoringEvents: this.monitoringEvents,
       monitoringEmitter: this.monitoringEmitter,
       eventLogPath: this.eventLogPath,
-      queryEventsFromDisk: (start: number, end: number, userId: string) =>
-        this.eventLog.queryEvents(start, end, userId),
+      queryEventsFromDisk: (start, end, userId, options) =>
+        this.eventLog.queryEvents(start, end, userId, options ?? {}),
       checkOllamaAvailability,
       buildRuntimeContext: () => this.buildRuntimeContext(),
       getAgentConfigurationRevision: () =>
@@ -4359,21 +4739,25 @@ export class StationRuntime {
       getMcpUiFrameOrigin: () => this.mcpUiFrameServer?.origin,
       getPluginFrameOrigin: () => this.mcpUiFrameServer?.origin,
       featurePreviews: this.featurePreviews,
-      // archive#980 fix (HIGH): read the live env var, never
-      // `this.appConfig` — see `station-features.ts`'s docblock for why.
-      getManagedChatOrchestrationEnabled: () =>
-        isManagedChatOrchestrationFeatureEnabled(),
+      mediaTools: localMedia.mediaTools,
+      walkthroughImportDependencies: {
+        resolver: localMedia.mediaTools,
+        transcriber: localMedia.transcriber,
+      },
       rebindBuiltinAgents: () => this.rebindBuiltinAgents(),
     });
     this.schedulerService = schedulerService;
     this.notificationService = notificationService;
     this.kitLifecycleReady = kitLifecycleReady;
     this.projectTaskRoomRuntime = projectTaskRoomRuntime;
+    this.projectRoomRuntime = projectRoomRuntime;
     this.browserService = browserService;
     this.deviceToolchainService = deviceToolchainService;
     this.deviceSessions = deviceSessions;
     this.agentActivityPublisher = agentActivityPublisher;
     this.notificationDeliveryRouter = notificationDeliveryRouter;
+    this.serverUpdate = serverUpdate;
+    this.analyticsMaintenance = analyticsMaintenance;
     this.liveSurfaceRegistry = liveSurfaceRegistry;
     this.pluginDraftService = pluginDraftService;
     this.deviceHosts = deviceHosts;
@@ -4389,9 +4773,15 @@ export class StationRuntime {
       agentSpecs: this.agentSpecs,
       agentTools: this.agentTools,
       loadProjectTools: createProjectNativeToolLoader({
+        validateProjectTools: (slug, spec, project, servers) =>
+          new ToolLibraryService(
+            this.configLoader.getProjectHomeDir(),
+          ).assertAgent(slug, spec, project.id, servers),
         agentSpecs: this.agentSpecs,
         getProject: (slug) => this.projectService.getProject(slug),
         listRoots: () => this.knowledgeStoreProvider.listRoots(),
+        hasAdditionalKnowledgeSources: (projectId) =>
+          hasProjectS3Sources(this.configLoader.getProjectHomeDir(), projectId),
         loadTools: (slug, spec) =>
           this.framework.loadTools(slug, spec, {
             configLoader: this.configLoader,
@@ -4418,6 +4808,10 @@ export class StationRuntime {
       agentHooksMap: this.agentHooksMap,
       approvalRegistry: this.approvalRegistry,
       configLoader: this.configLoader,
+      // The projected read seam: the reserved Station identity's engine
+      // binding lives in the runtime, not in its stored record (§7.1.1), so
+      // every reader — including the tool-catalog route — must see it.
+      loadProjectedAgent: (slug) => this.agentService.getAgent(slug),
       get appConfig() {
         return runtime.appConfig;
       },
@@ -4478,15 +4872,25 @@ export class StationRuntime {
     await startRuntimeHealthChecks({
       timers: this.timers,
       logger: this.logger,
-      runHealthChecks: async () =>
-        runRuntimeHealthChecks({
+      runHealthChecks: async () => {
+        if (!this.shutdownPromise) {
+          try {
+            await this.analyticsMaintenance?.(async () => {
+              if (this.shutdownPromise) throw new Error('Runtime closing');
+            });
+          } catch {
+            this.logger.warn('Analytics sync outbox expiry did not complete');
+          }
+        }
+        return runRuntimeHealthChecks({
           activeAgents: this.activeAgents,
           agentSpecs: this.agentSpecs,
           memoryAdapters: this.memoryAdapters,
           mcpConnectionStatus: this.mcpConnectionStatus,
           integrationMetadata: this.integrationMetadata,
           monitoringEmitter: this.monitoringEmitter,
-        }),
+        });
+      },
     });
     // archive#3218. The reactive watch (archive#3215) sees corruption a query
     // touches; this sees the pages nothing reads. It runs in a child process
@@ -4517,6 +4921,31 @@ export class StationRuntime {
   ) {
     return {
       agentSlug,
+      validateProjectTools: (
+        slug: string,
+        spec: AgentSpec,
+        invocation?: import('../types.js').InvocationContext,
+        additions: readonly string[] = [],
+      ) => {
+        const foreground = currentNativeForegroundRelay()?.project;
+        const sessionProject = invocation?.sessionId
+          ? this.orchestrationEventStore.readConversationProjectSlug(
+              invocation.sessionId,
+            )
+          : undefined;
+        const effectiveSlug =
+          foreground?.slug ?? sessionProject ?? spec.project;
+        const project =
+          typeof effectiveSlug === 'string'
+            ? this.projectService.getProject(effectiveSlug)
+            : undefined;
+        if (foreground && foreground.id !== project?.id)
+          throw new Error('Project changed.');
+        const policy = new ToolLibraryService(
+          this.configLoader.getProjectHomeDir(),
+        );
+        policy.assertAgent(slug, spec, project?.id, additions);
+      },
       appConfig,
       configLoader: composition
         ? this.configLoader.forPluginActivationComposition(composition)
@@ -4687,6 +5116,24 @@ export class StationRuntime {
     });
   }
 
+  /**
+   * The chat-host-images preview: one selector for every consumer — turn
+   * capture and the agent instruction (orchestration), and the per-session
+   * engine TMPDIR, decided when an engine starts (`session-tmpdir.ts`).
+   */
+  private bindChatHostImagesPreview(): void {
+    this.chatHostImagesPreview = this.featurePreviews.bind({
+      id: 'chat-host-images',
+      label: 'Chat images from the host',
+      description:
+        "Show images an agent saves on this Station and names in its reply, on any device. Station copies each one (PNG, JPEG, GIF or WebP, up to 512 KiB, from the chat's working folder or its own temporary folder) into the chat's attachment storage when the reply finishes.",
+    });
+    const preview = this.chatHostImagesPreview;
+    installSessionTmpDirPolicy(() =>
+      preview.select({ enabled: () => true, disabled: () => false }),
+    );
+  }
+
   private replaceTemplateVariables(text: string, _agentName?: string): string {
     return replaceRuntimeTemplateVariables(text, this.appConfig);
   }
@@ -4771,6 +5218,11 @@ export class StationRuntime {
    */
   getAgent(slug: string): Agent | undefined {
     return this.activeAgents.get(slug);
+  }
+
+  /** Live voice calls; a supervisor drain waits for them to end. */
+  activeVoiceSessionCount(): number {
+    return this.voiceService?.getActiveCount() ?? 0;
   }
 
   /**
@@ -4872,16 +5324,25 @@ export class StationRuntime {
       this.operatorPasskeyRegistry?.close();
       this.operatorPasskeyRegistry = undefined;
       this.operatorPasskeys = undefined;
+      this.operatorSessions = undefined;
     } catch (error) {
       failures.push(error);
     }
     try {
+      await this.projectRoomRuntime?.close();
+      this.projectRoomRuntime = undefined;
       this.projectMembership?.close();
       this.projectMembership = undefined;
     } catch (error) {
       failures.push(error);
     }
     try {
+      // #3586: tokens stop reading the account store before it closes.
+      // Set only after security initialized, so its device pairing exists.
+      if (this.localAccounts)
+        this.environmentSecurityService.devicePairing.setAccountDirectory(
+          undefined,
+        );
       await this.deploymentAuthentication?.service.close();
       this.deploymentAuthentication = undefined;
       this.localAccounts = undefined;
@@ -4907,6 +5368,10 @@ export class StationRuntime {
       this.agentActivityPublisher = undefined;
       this.notificationDeliveryRouter?.stop();
       this.notificationDeliveryRouter = undefined;
+      this.serverUpdate?.stop();
+      this.serverUpdate = undefined;
+      clearTimeout(this.recoveryWarningTimer);
+      this.recoveryWarningTimer = undefined;
     } catch (error) {
       failures.push(error);
     }
@@ -4937,6 +5402,12 @@ export class StationRuntime {
     try {
       this.pluginDraftService?.dispose();
       this.pluginDraftService = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      // A running engine sign-in owns a child process or a host terminal.
+      engineSignIn()?.dispose();
     } catch (error) {
       failures.push(error);
     }
@@ -5056,7 +5527,11 @@ export class StationRuntime {
       // SQLite connection (and its file handle on projectHomeDir) open past
       // shutdown indefinitely. POSIX tolerates deleting a directory with an
       // open file inside it, which hid this; Windows does not.
-      this.orchestrationEventStore.close();
+      const closed = this.orchestrationEventStore.close();
+      if (closed.kind !== 'closed')
+        throw new Error(
+          `Orchestration EventStore did not close: ${closed.kind}`,
+        );
     } catch (error) {
       failures.push(error);
     }

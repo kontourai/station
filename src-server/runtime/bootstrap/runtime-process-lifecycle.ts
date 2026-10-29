@@ -1,13 +1,12 @@
 import {
   appendLifecycleEvent,
   type LifecycleIdentity,
+  type LifecycleShutdownReason,
 } from '@kontourai/station-shared/lifecycle-events';
 
 type RuntimeProcessLifecycle = {
   identity: LifecycleIdentity | null;
-  observeShutdown(
-    reason: 'SIGINT' | 'SIGTERM' | 'uncaughtException' | 'startup_failure',
-  ): void;
+  observeShutdown(reason: LifecycleShutdownReason): void;
   observeExit(exitCode: number | null, signal?: string | null): void;
   installExitObserver(target?: Pick<NodeJS.Process, 'once'>): void;
 };

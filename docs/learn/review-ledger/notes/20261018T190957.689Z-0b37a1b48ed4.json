@@ -1,0 +1,7 @@
+{
+  "revision": "cebd6e0ca096a375c579483056b914af977ac87e",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Reviewed the harness-only diff at cebd6e0ca096a375c579483056b914af977ac87e against the current-cascade and personal-preference/device-startup claims. index.css still imports Station public fonts then published UI foundations; index.html retains the intended DM Sans preload, startup-screen.css retains package fonts/tokens, and boot.ts plus startup-presentation.ts retain the same import recovery, 950ms reveal, 150ms fade and inert handoff. Only browser-fixture font resolution changes: /fonts uses Vite public assets, other font URLs retain the package mapping, and unreadable fonts fail the owning test with their URL. All presentation assertions remain unchanged. Installed Chromium suite passed 9/9 before and after both restored fault injections; the original harness reproduced 9 unhandled ENOENT errors, and the nonexistent preload produced 8 explicit failures with its URL and no unhandled errors. No guide prose change is needed; this does not establish native/device or release evidence.","inputs":["docs/guides/theming.md","src-ui/src/__tests__/startup-presentation.browser.test.tsx"]}
+  ]
+}

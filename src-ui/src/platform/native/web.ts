@@ -13,7 +13,6 @@ import type {
   NativePlatformAdapter,
   NativePlatformError,
   NativeShareEvent,
-  NativeStartupReadinessTicket,
   NativeTrayNavigationEvent,
   NativeWorkspacePanePopOutRequest,
 } from './types';
@@ -183,16 +182,6 @@ export class WebNativePlatformAdapter implements NativePlatformAdapter {
     };
   }
 
-  async commitStartupReadiness(
-    _ticket: NativeStartupReadinessTicket,
-  ): Promise<NativeCommandResult<never>> {
-    return {
-      status: 'unsupported',
-      command: 'restart-bundled-server',
-      reason: 'The web adapter has no native main window to reveal.',
-    };
-  }
-
   async isStartupWindowAdmitted(): Promise<NativeCommandResult<never>> {
     return {
       status: 'unsupported',
@@ -207,20 +196,6 @@ export class WebNativePlatformAdapter implements NativePlatformAdapter {
       command: 'commit-renderer-mount',
       reason: 'The web adapter has no native main window to reveal.',
     };
-  }
-
-  async commitStartupRecoveryUi(): Promise<NativeCommandResult<never>> {
-    return {
-      status: 'unsupported',
-      command: 'commit-startup-recovery-ui',
-      reason: 'The web adapter has no native main window to reveal.',
-    };
-  }
-
-  subscribeToStartupReadinessRetry(
-    _listener: () => void,
-  ): NativeEventSubscription {
-    return { dispose() {} };
   }
 
   async reviewConsentNatively(

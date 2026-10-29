@@ -1,0 +1,7 @@
+{
+  "revision": "a0713b1b3671bc86e74957b50176510c37205344",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed the session-lifecycle-service.ts delta: only the fallback blockedReason text for a failed lifecycle seeded from the binding status changed (the 'turn it was running never finished' clause is gone). contracts.md names no blockedReason fallback wording, no 'engine binding' error text, and no turn claim for it; lifecycle state, transitions and projection shape are unchanged. No prose change needed.","inputs":["docs/reference/contracts.md","src-server/services/orchestration/session-lifecycle-service.ts"]}
+  ]
+}

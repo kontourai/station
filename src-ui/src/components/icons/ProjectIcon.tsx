@@ -27,9 +27,9 @@ interface ProjectIconProps {
   /**
    * What stands in for a missing icon:
    * - `dot` (default): the accent as a round swatch, `size / 2` across.
-   * - `bar`: the accent as the sidebar's 3px bar, most of `size` tall.
-   * - `initials`: the neutral initials tile, for large surfaces (a page
-   *   header) where initials are legible and a dot would read as a glitch.
+   * - `bar`: the accent as a 3px bar, most of `size` tall.
+   * - `initials`: a neutral initials tile, used by workspace map rows and
+   *   page headers.
    * - `none`: nothing, for a surface that draws the accent itself.
    */
   fallback?: 'dot' | 'bar' | 'initials' | 'none';
@@ -48,13 +48,7 @@ interface ProjectIconProps {
 /**
  * A project's identity mark, the way `AgentIcon` is an agent's: the chosen
  * icon rendered through `BrandIcon` (glyph or same-origin image, never a
- * remote hotlink), else the project's colour.
- *
- * Why the colour and not initials for the small fallback: at the 12–28px the
- * rows, sidebar and switcher draw, a two-letter monogram is a smudge, and the
- * sidebar already decided against it (#2150) — the colour is the identity
- * every surface shares (#3353), so an icon-less project looks the same
- * everywhere it appears.
+ * remote hotlink), else the surface's chosen fallback.
  */
 export function ProjectIcon({
   project,
@@ -101,6 +95,7 @@ export function ProjectIcon({
         className,
         swatchClassName,
       )}
+      title={project.name}
       data-project-icon={fallback}
       style={{ ...swatch, backgroundColor: accent }}
       {...a11y}

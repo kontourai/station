@@ -21,6 +21,7 @@ import React, {
 } from 'react';
 import { loadStationVoiceSdk } from '../core/pluginSharedRuntime';
 import { useServerCapabilities } from '../hooks/useServerCapabilities';
+import { useLocalSpeechProvider } from '../providers/voice/useLocalSpeechProvider';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
@@ -54,6 +55,7 @@ export function VoiceProviderContext({
 }) {
   // Fetch server capabilities and register server-backed providers
   useServerCapabilities();
+  useLocalSpeechProvider();
 
   // Subscribe to registry changes — re-renders when providers are added/removed
   const availableSTT = useSyncExternalStore(
@@ -159,6 +161,11 @@ export function VoiceProviderContext({
       {children}
     </VoiceProviderCtx.Provider>
   );
+}
+
+/** The context, or `null` outside a provider (a surface then offers no mic). */
+export function useOptionalVoiceProviderContext(): VoiceProviderContextValue | null {
+  return useContext(VoiceProviderCtx);
 }
 
 export function useVoiceProviderContext(): VoiceProviderContextValue {

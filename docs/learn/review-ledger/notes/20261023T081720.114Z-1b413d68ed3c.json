@@ -1,0 +1,15 @@
+{
+  "revision": "7247b93c7eb727bd1293659c22efa26b1cad681e",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Final documentation-to-document follow-up: Walkthrough current pointer now names Overview/Conversation/Plan/Work chats and Task identity and workspace; the historical176x32 editor/contrast observations remain historical, with current captures and actual browser receipts separately attributed. No old defect or measurement recertified. Source prose reviewed, no further prose change for these linked claims; other spans remain outside this bounded note.","inputs":["docs/architecture/abstraction-review.md","docs/learn/walkthroughs.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Final documentation-to-document follow-up: MCP host design now describes actual found inventory read/page pass-through behind current principal/Session/Task authorization. Existing module-map MCP admission, frame/resource policy and client URL validation boundaries remain accurate; no rendered result or inventory payload becomes authority. Source prose reviewed, no further prose change for these linked claims; other spans remain outside this bounded note.","inputs":["docs/architecture/module-map.md","docs/design/mcp-ui-host.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Final documentation-to-document follow-up: MCP host source now returns admitted found inventory pages; SDK reference still separates rendering/integration pinning/resource policy from ordinary callTool and predicate behavior. No SDK export, frame isolation or resource-network grant changed by the prose correction. Source prose reviewed, no further prose change for these linked claims; other spans remain outside this bounded note.","inputs":["docs/reference/sdk.md","docs/design/mcp-ui-host.md"]},
+
+    {"path":"docs/reference/shared.md","note":"Final documentation-to-document follow-up: Recorded MCP app result predicate remains a cheap successful-content filter, with catalog membership and Station completion stamps separate. Correcting MCP inventory found pass-through does not turn metadata or predicate success into resource-read authority; transcript preview link still points to the separate owner. Source prose reviewed, no further prose change for these linked claims; other spans remain outside this bounded note.","inputs":["docs/reference/shared.md","docs/design/mcp-ui-host.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Final documentation-to-document follow-up: Current MCP host correction concerns authorized inventory App reads; the Station Docs statement about resource policy/frame isolation/network containment limits and rendering versus tool availability stays accurate. No broad tool execution, browser containment, shipped-provider or native qualification renewed. Source prose reviewed, no further prose change for these linked claims; other spans remain outside this bounded note.","inputs":["docs/reference/station-docs.md","docs/design/mcp-ui-host.md"]}
+  ]
+}

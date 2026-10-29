@@ -101,9 +101,46 @@ const derived = pathReadPinEdges({ root: ROOT });
  * construction. Shrinking this list is the goal; growing it is a decision.
  */
 const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
+  // Read captured public Sigstore bundles under __fixtures__/sigstore (test
+  // data, not production source); their verifier and trust-rule imports
+  // select them for changes.
+  'src-server/services/plugins/__tests__/plugin-install-trust.test.ts',
+  'src-server/services/plugins/__tests__/plugin-sigstore-verifier.test.ts',
+  // Reads staged licenses and native binaries only in trackTempDirs fixtures.
+  // Its desktop-server-runtime import selects the real staging behavior.
+  'scripts/__tests__/desktop-runtime-pruning.test.ts',
+  // Reads a deliberately excluded fixtures/ manifest and temporary installed copies,
+  // not production source. Keep fixture paths outside the source pin inventory.
+  'src-server/routes/operations/__tests__/telemetry-events.routes.test.ts',
+  // Delivery suites read captured CLI data under fixtures/ (excluded from
+  // source pins); the scenario suite also reads files it creates in its isolated
+  // workspace. Direct scenario/mapper imports provide behavior-selection edges.
+  'scripts/__tests__/engine-delivery-probes.test.ts',
+  'src-server/providers/__tests__/claude-adapter-events.test.ts',
   // Reads identity/config files created in isolated Station temp homes, never
   // repository source. Direct telemetry imports own changed-test selection.
   'src-server/__tests__/telemetry.test.ts',
+  // Reads the supervisor control token from its isolated temp home; its built
+  // bundles are children, not imports. The supervisor-link and protocol
+  // imports select it for changes.
+  'src-server/runtime/bootstrap/__tests__/supervised-core.real.test.ts',
+  // Reads the instance record its CLI child writes under .station/instances,
+  // runtime state rather than repository source; the server and supervisor
+  // bundles it builds are children, not imports. Its lifecycle import
+  // selects it for changes.
+  'packages/cli/src/__tests__/supervised-lifecycle.real.test.ts',
+  // Reads back the launch record its fake OpenCode engine writes into a temp
+  // directory (#3922), never repository source. Its imports of the approval
+  // mapping and ACP adapter select it for changes.
+  'src-server/providers/__tests__/acp-approval-mode.process.test.ts',
+  // Read back what the fake engine records and the engine key file, both in
+  // temp directories, never repository source. Their imports of the sign-in
+  // service, routes and ACP adapter select them for changes.
+  // Reads setup inputs/effects/receipts created in its isolated temp home;
+  // its service/resolver imports own selection, not a production source-text pin.
+  'src-server/services/projects/__tests__/operator-setup-service.test.ts',
+  'src-server/services/acp/__tests__/engine-sign-in.process.test.ts',
+  'src-server/routes/connections/__tests__/acp-sign-in.routes.test.ts',
   // Reads the receipt its child Playwright run writes into a temp root
   // (#577), never repository source. Its imports select it for changes.
   'scripts/__tests__/interactive-workspace-performance-host-gate.test.ts',
@@ -117,10 +154,17 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   // impact edge selects it (#2922).
   'scripts/__tests__/ci-event-environment.test.ts',
   'packages/cli/src/__tests__/dev-security.test.ts',
+  // Walks every previewable example's src/ for SDK imports (a repo scan in
+  // REPO_SCAN_SUITES); no single pin could stand for it.
+  'packages/cli/src/__tests__/dev-sdk-mock-parity.test.ts',
   'packages/contracts/src/__tests__/answer-share-channel-corpus.test.ts',
   'packages/contracts/src/__tests__/flow-agents-vocabulary-drift.test.ts',
   // Walks the whole SDK source tree (a repo scan), like its neighbours here.
   'packages/sdk/src/__tests__/body-read-deadline.scan.test.ts',
+  // Walks packages/sdk/src and src-ui/src for capability gates (a repo scan in
+  // REPO_SCAN_SUITES, #4177); its anchored roots are directories, which no
+  // single file pin can stand for.
+  'src-server/capabilities/__tests__/client-capability-gates.scan.test.ts',
   'packages/sdk/src/__tests__/client-entry-portability.test.ts',
   'packages/shared/src/__tests__/plugin-build.test.ts',
   'packages/shared/src/__tests__/plugin-dependency-install.test.ts',
@@ -520,6 +564,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
 > = Object.freeze({
   'packages/contracts/src/__tests__/answer-share-channel-corpus.test.ts':
     'walks its own fixture directory',
+  'src-ui/src/__tests__/color-theme-artifacts.test.ts':
+    'lists src-ui/public/color-themes, its own generated output, to refuse a sheet the catalog no longer renders; the color-theme edges in scripts/test-impact-manifest.mjs select it',
   'packages/contracts/src/__tests__/channel-fixture-corpus.test.ts':
     'walks its own fixture directory',
   'scripts/__tests__/ci-event-environment.test.ts':
@@ -528,11 +574,23 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'lists src-server/runtime/bootstrap to pin every gate module to its impact edge; asserts nothing about their content',
   'packages/cli/src/__tests__/profile.test.ts':
     'lists the saved Station store directory under its temporary STATION_HOME',
+  'packages/cli/src/__tests__/service-launcher-link.test.ts':
+    'lists the versions directory of the temporary install root its harness creates',
+  'scripts/__tests__/service-launcher-e2e.test.ts':
+    'lists the archive directory of the temporary install it builds, to read the signed archive size',
+  'src-server/services/infra/__tests__/workload-budget.test.ts':
+    'lists the config directory under its temporary Station home to prove a refused settings save leaves no temporary file beside workload-budgets.json',
+  'packages/supervisor/src/__tests__/control-server.test.ts':
+    'lists the run directory under its temporary Station home to check leftover private socket names',
+  'packages/cli/src/__tests__/supervised-lifecycle.real.test.ts':
+    "lists its temporary Station home's logs/server directory to find a generation's boot record",
   'packages/shared/src/__tests__/workspace-package.test.ts': TEMP_VIA_FIXTURE,
   'scripts/__tests__/android-channel-release-generation.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
   'scripts/__tests__/android-firebase-workflow-env.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
+  'scripts/__tests__/monument-import-boundary-gate.test.ts':
+    'the match is fixture source text (`import.meta.glob(...)`) written into a scratch repository; the suite itself walks no directory',
   'scripts/__tests__/basis-mcp-apps.test.ts':
     'git ls-files over its own generated outputs, to prove they are untracked',
   'scripts/__tests__/desktop-runtime-port-lease.test.ts':
@@ -575,6 +633,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     TEMP_VIA_FIXTURE,
   'src-server/routes/orchestration/__tests__/tasks.routes.test.ts':
     TEMP_VIA_FIXTURE,
+  'src-server/routes/orchestration/__tests__/engine-matrix.integration.test.ts':
+    'lists only the temporary CLI report directory created by makeTempDir to inspect generated matrix results',
   'src-server/routes/plugins/__tests__/plugin-proposal-staged-reinstall.test.ts':
     TEMP_VIA_FIXTURE,
   'src-server/routes/plugins/__tests__/plugin-proposed-install-git-metadata.test.ts':
@@ -588,6 +648,15 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
   'src-server/services/plugins/__tests__/example-manifest-fields.test.ts':
     'walks examples/; its examples/** edge selects it',
   'src-server/services/projects/__tests__/plugin-publish-service.test.ts':
+    TEMP_VIA_FIXTURE,
+  // The sole ls-files call is f.git(...): fixture() passes a tracked temp
+  // directory to codingDiffFixture, whose git closure fixes cwd to that root.
+  // Its index reads and filesystem race controls also use only owned temp roots.
+  'src-server/services/projects/__tests__/workspace-diff-service.test.ts':
+    TEMP_VIA_FIXTURE,
+  // repository() returns a tracked temporary root; git(dir, ...) fixes cwd
+  // to that root for the large-index fixture's sole ls-files call.
+  'src-server/services/projects/__tests__/workspace-commit-pin.test.ts':
     TEMP_VIA_FIXTURE,
   'src-server/services/ssh/__tests__/environment-security-lock-race.test.ts':
     WRAPS_FS,
@@ -616,6 +685,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'git ls-files inside the temporary repository its helper creates',
   'tests/learning-source.spec.ts':
     'a Playwright spec; Vitest cannot schedule it (#1817)',
+  'tests/message-delivery-recovery.spec.ts':
+    'a Playwright spec; reads the instance registry to pair a second browser with its exact runner-owned Station home, not to scan repository source',
   'src-ui/src/__tests__/station-vocabulary.test.ts':
     'walks src-ui/src only; its src-ui/src/** edge selects it on every change there',
   'src-ui/src/__tests__/session-state-word-consistency.test.ts':
@@ -688,6 +759,35 @@ describe('whole-tree scans are run or classified (#2176)', () => {
     ).toEqual([]);
     // A comment naming the call is not a walk.
     expect(realTreeWalks(`// ${read}('docs')\n`)).toEqual([]);
+  });
+
+  it('the worktree diff fixture classification does not absorb additional real walks', () => {
+    const file =
+      'src-server/services/projects/__tests__/workspace-diff-service.test.ts';
+    const source = readFileSync(join(ROOT, file), 'utf8');
+    expect(DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS[file]).toBe(
+      TEMP_VIA_FIXTURE,
+    );
+    // The heuristic cannot follow the imported fixture object's git closure.
+    // Keep the reviewed call identity and walk population narrow: a new walk
+    // or an explicit real cwd must not inherit this fixture classification.
+    expect([
+      ...stripComments(source).matchAll(/\bf\s*\.\s*git\(\[\s*'ls-files'/g),
+    ]).toHaveLength(1);
+    const reviewed = ['ls-files cwd=.'];
+    expect(realTreeWalks(source)).toEqual(reviewed);
+    const read = ['read', 'dirSync'].join('');
+    for (const target of ["join(ROOT, 'src-server')", "'src-server'"]) {
+      const introduced = realTreeWalks(`${source}\n${read}(${target});`);
+      expect(introduced).toContain(target);
+      expect(introduced).not.toEqual(reviewed);
+    }
+    const ls = ['ls', '-files'].join('');
+    expect(
+      realTreeWalks(
+        `${source}\nexecFileSync('git', ['${ls}'], { cwd: ROOT });`,
+      ).map((walk) => walk.trim()),
+    ).toContain('ls-files cwd=ROOT');
   });
 
   it('every real-tree walker is a repo scan or classified with a reason', () => {

@@ -1,9 +1,14 @@
+import { networkInterfaces } from 'node:os';
 import { ACPStatus } from '@kontourai/station-contracts/acp';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { HomeRecoveryDisclosure } from '@kontourai/station-contracts/system-status';
 import { readStationHomeRecovery } from '@kontourai/station-shared/station-home-archive';
+import {
+  servesConnectionRoutes,
+  servesWebPushNotifications,
+} from '../../capabilities/station-capability-flags.js';
 import { getNotificationProviders } from '../../providers/registries/registry.js';
-import { listDetectedUnconnectedACPRegistryEntries } from '../../routes/connections/acp.js';
+import { listUnconnectedACPRegistryEntries } from '../../routes/connections/acp.js';
 import { getCachedUser } from '../../routes/system/auth.js';
 import { readBootHistory } from '../../routes/system/boot-history.js';
 import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
@@ -11,6 +16,8 @@ import {
   ApprovalInboxNotificationProvider,
   wireApprovalInboxNotifications,
 } from '../../services/approvals/approval-inbox.js';
+import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
+import { createStationRoutesResolver } from '../../services/connections/station-routes.js';
 import type { FlowRunService } from '../../services/flow/flow-run-service.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { createEnvironmentRuntimeResourcePostureProbe } from '../../services/infra/resource-posture.js';
@@ -36,6 +43,7 @@ import {
   wireTurnCompletionNotifications,
 } from '../../services/orchestration/turn-completion-notifications.js';
 import { PluginLifecycleProposalService } from '../../services/plugins/plugin-lifecycle-proposals.js';
+import { ToolLibraryService } from '../../services/plugins/tool-library-service.js';
 import {
   AttentionProjectionService,
   type PausedGateReviewAggregate,
@@ -44,6 +52,7 @@ import type { ScheduledTurnAdapter } from '../../services/scheduling/builtin-sch
 import { MonitorTaskTurnSupervisor } from '../../services/scheduling/monitor-task-supervisor.js';
 import { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import { DevicePairingNotificationProvider } from '../../services/ssh/device-pairing-notifications.js';
+import { publicIngressOriginResolver } from '../../services/tailscale/public-ingress-origin.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { isExternalEngineBoundAgent } from '../agents/agent-engine-classification.js';
 import { runWithUnattendedPrincipal } from '../agents/unattended-principal-context.js';
@@ -212,10 +221,26 @@ export function createRuntimeSystemRouteDeps(
     // disagree (station#1194).
     listEngineConnectionStates: () =>
       context.connectionService.listEngineConnectionStates(),
-    listDetectedACPRegistryEntries: () =>
-      listDetectedUnconnectedACPRegistryEntries(context.configLoader),
+    listUnconnectedACPRegistryEntries: () =>
+      listUnconnectedACPRegistryEntries(context.configLoader),
     eventBus: context.eventBus,
     appConfig: context.appConfig,
+    ...(resolveRuntimeConnectionRoutesEnabled()
+      ? {
+          resolveStationRoutes: createStationRoutesResolver({
+            boundAddress: () =>
+              lanDiscoveryFor(context.configLoader).boundAddress(),
+            networkInterfaces,
+            servedOrigins: () =>
+              publicIngressOriginResolver(context.port).resolve(),
+            magicDnsHost: () =>
+              publicIngressOriginResolver(context.port).magicDnsHost(),
+            environmentId: async () =>
+              (await context.environmentSecurityService.getPublicHandshake())
+                .environmentId,
+          }),
+        }
+      : {}),
     port: context.port,
     host: context.host,
     publicOrigins: (process.env.ALLOWED_ORIGINS ?? '')
@@ -321,6 +346,30 @@ export async function readStationSetupRequirement(
   }
 }
 
+/**
+ * Whether this deployment serves Web Push, from the same predicate the public
+ * handshake uses to advertise `webPushNotifications` (#4177).
+ */
+export function resolveRuntimeWebPushEnabled(
+  environment: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return servesWebPushNotifications({
+    hosted: isHostedTenantExecutionRequired(environment),
+  });
+}
+
+/**
+ * Whether this deployment serves Station routes, from the same predicate the
+ * public handshake uses to advertise `connectionRoutes`.
+ */
+export function resolveRuntimeConnectionRoutesEnabled(
+  environment: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return servesConnectionRoutes({
+    hosted: isHostedTenantExecutionRequired(environment),
+  });
+}
+
 export function configureRuntimeSupportServices(
   context: ConfigureRuntimeRoutesContext,
   flowRunService: Pick<FlowRunService, 'getRunConsole'>,
@@ -347,7 +396,7 @@ export function configureRuntimeSupportServices(
   // default there; callers can inject the same resolved boolean when they
   // compose the public Push routes.
   const webPushEnabled =
-    options.webPushEnabled ?? !isHostedTenantExecutionRequired();
+    options.webPushEnabled ?? resolveRuntimeWebPushEnabled();
   const notificationService = new NotificationService(
     context.eventBus,
     context.configLoader.getProjectHomeDir(),
@@ -392,17 +441,14 @@ export function configureRuntimeSupportServices(
     notificationService,
     context.logger,
   );
-  // station#1225 (offline slice 3): push-on-completion — schedules a
-  // notification (and, via the notification delivery router's Web Push
-  // channel below, a Web Push send) when a turn completes/fails for a session
-  // whose owning user has no live `/events` stream open.
-  // `context.orchestrationStreamPresence` is the SAME instance
-  // `createOrchestrationRoutes` registers connect/disconnect against
-  // (`runtime-routes.ts`), so this always observes real connection state.
+  // station#1225: turn-completion notifications — schedules a record when a
+  // turn completes/fails for a session with a reader.
+  // Whether it interrupts a surface (Web Push, native alert, desktop feed)
+  // is the delivery router's focus/liveness decision below, not a check on
+  // whether the owner holds any open `/events` stream.
   wireTurnCompletionNotifications(
     context.eventBus,
     context.orchestrationService,
-    context.orchestrationStreamPresence,
     notificationService,
     context.logger,
   );
@@ -414,7 +460,6 @@ export function configureRuntimeSupportServices(
   wireInternalStopRedispatchFailureNotifications(
     context.eventBus,
     context.orchestrationService,
-    context.orchestrationStreamPresence,
     notificationService,
     context.logger,
   );
@@ -457,6 +502,14 @@ export function configureRuntimeSupportServices(
           () =>
             context.taskDispatcher.dispatch(task.id, {
               agentId: input.agentId,
+              // #4005: a dispatch naming an Agent but no provider now starts
+              // the Agent's engine. A monitor keeps the seeded Session it
+              // always had: nothing on this path sends the Task's prompt as
+              // a turn (the supervisor below only observes and bounds turns
+              // something else starts), so a started engine would sit idle
+              // holding a process. Sending the first turn belongs to the
+              // generalized unattended Task envelope (automations S3).
+              provider: 'task-dispatch',
               sourceSurface: 'external-monitor',
               fullAccessGrant: null,
               // An external monitor acts for no request; this Station's
@@ -601,7 +654,7 @@ export function configureRuntimeSupportServices(
     webPushService,
     canUserReadSession: (sessionId, authority) =>
       context.orchestrationService.canUserReadSession(sessionId, authority),
-    listNotifications: () => notificationService.list(),
+    getNotification: (id) => notificationService.get(id),
     // #2589 iOS alerts and #2588 Android alerts through the push gateway;
     // each channel is dormant until a phone of its platform registers.
     ...(pushGateway
@@ -642,6 +695,10 @@ export function configureRuntimeSupportServices(
     sessionReaderFor: createAgentActivitySessionReader({
       listDevices: () =>
         context.environmentSecurityService.devicePairing.listDevices(),
+      deviceLocality: (deviceId) =>
+        context.environmentSecurityService.devicePairing.deviceLocality(
+          deviceId,
+        ),
       listSessionReadModel: (authority) =>
         context.orchestrationService.listSessionReadModel(authority),
       listProjectionEvents: (threadIds) => {
@@ -703,6 +760,7 @@ export function configureRuntimeSupportServices(
     new PluginLifecycleProposalService(
       context.configLoader.getProjectHomeDir(),
     ),
+    new ToolLibraryService(context.configLoader.getProjectHomeDir()),
   );
   return {
     schedulerService,

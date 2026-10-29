@@ -27,6 +27,7 @@ import {
   openChatIdentitiesSnapshot,
   openChatsStore,
 } from '../contexts/open-chats-store';
+import { pluginRegistry } from '../core/PluginRegistry';
 import { REGION_SURFACE_REGISTRY } from '../regions/region-model';
 
 // --- SDK + navigation mocks ------------------------------------------------
@@ -1053,6 +1054,54 @@ describe('CommandPalette', () => {
     );
     expect(navigateMock).not.toHaveBeenCalled();
     expect(commandFrecencyStorage.read()).toEqual([]);
+  });
+
+  test('a blocked plugin pane points to contextual extension review without navigating', async () => {
+    const loadStatus = vi
+      .spyOn(pluginRegistry, 'getLoadStatus')
+      .mockReturnValue({
+        state: 'degraded',
+        failedPluginNames: [],
+        failure: 'remote-isolation',
+      });
+    const reports = paneAdaptationFromLayoutTab(
+      {
+        id: 'reports',
+        label: 'Reports',
+        component: { kind: 'plugin-component', name: 'reports' },
+      },
+      {
+        layoutSlug: 'reports',
+        pluginId: 'reports',
+        boundContext: { projectId: 'project-uuid' },
+      },
+    )!;
+    paneCatalogMock = {
+      descriptors: [reports.descriptor],
+      instances: [reports.instance],
+      availability: [
+        {
+          descriptorId: reports.descriptor.id,
+          instanceId: reports.instance.instanceId,
+          input: { rollout: 'available', distribution: 'enabled' },
+        },
+      ],
+    };
+    try {
+      await renderCommandPalette();
+      open();
+      fireEvent.click(
+        screen.getByRole('option', { name: /^Reports ?Extensions are off/ }),
+      );
+      expect(screen.getByRole('dialog')).toBeTruthy();
+      expect(screen.getByRole('status').textContent).toContain(
+        'Review extension access in this Project’s pane picker or the current Station’s details.',
+      );
+      expect(navigateMock).not.toHaveBeenCalled();
+      expect(commandFrecencyStorage.read()).toEqual([]);
+    } finally {
+      loadStatus.mockRestore();
+    }
   });
 
   test('a desktop-only settings command stays listed and explains its desktop boundary', async () => {

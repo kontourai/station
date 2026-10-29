@@ -45,6 +45,46 @@ afterEach(() => {
 });
 
 describe('LocalUiSessionGate (station#2093)', () => {
+  test('accepts a fresh launcher link in an already open access screen without reloading or replaying a spent link', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation((_url, init) =>
+        Promise.resolve(
+          new Response('{}', { status: init?.method === 'POST' ? 200 : 401 }),
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const protectedMount = vi.fn();
+    renderGate(<ProtectedDataProbe onMount={protectedMount} />);
+    await screen.findByRole('heading', { name: 'Connect to a Station' });
+
+    const first = 'a'.repeat(43);
+    await act(async () => {
+      window.location.hash = `#station-ui-bootstrap=${first}`;
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    await screen.findByText('Protected application mounted');
+    expect(window.location.hash).toBe('');
+
+    const second = 'b'.repeat(43);
+    await act(async () => {
+      window.location.hash = `#station-ui-bootstrap=${second}`;
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    await waitFor(() => expect(window.location.hash).toBe(''));
+    const exchanges = () =>
+      fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST');
+    expect(exchanges().map(([, init]) => JSON.parse(init.body).token)).toEqual([
+      first,
+      second,
+    ]);
+    await act(async () => {
+      window.location.hash = `#station-ui-bootstrap=${first}`;
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    expect(exchanges()).toHaveLength(2);
+  });
+
   test('keeps protected providers unmounted after one missing-session probe and exposes only pairing/access actions', async () => {
     const fetchMock = vi
       .fn()
@@ -120,7 +160,7 @@ describe('LocalUiSessionGate (station#2093)', () => {
       { timeout: LOCAL_UI_SESSION_HOST_RETRY_TOTAL_DELAY_MS + 750 },
     );
     expect(screen.getByRole('alert').textContent).toMatch(
-      /host process is down or recovering/i,
+      /keep Station running on your computer, then retry/i,
     );
     expect(screen.queryByText('Connect to Station')).toBeNull();
     expect(

@@ -7,10 +7,6 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 const expectedDependencies = new Map(
   Object.entries({
     'packages/contracts/src/diff-comment.ts': 'contract',
-    // #3051: the device-settings registry carries the `codingPanels` record
-    // (the Coding layout's panels, per session). A shape and a default; it
-    // renders, grants and executes nothing.
-    'packages/contracts/src/device-settings.ts': 'contract',
     // #2412: the pairing scope vocabulary names `/api/coding/exec` because
     // its `coding:exec` token is the per-device grant that route requires.
     // `route-authorization`, like the route-scope table beside it: it is a
@@ -19,6 +15,14 @@ const expectedDependencies = new Map(
     'packages/contracts/src/distribution.ts': 'distribution',
     'packages/contracts/src/index.ts': 'contract-export',
     'packages/contracts/src/layout.ts': 'distribution',
+    // #2995: what a Project layout read states as its presentation
+    // declaration, beside the catalog it reads. `distribution`, like
+    // `layout.ts`: it projects a built-in starter's declaration (Coding's
+    // Chat centre and drill-ins come from `BUILTIN_PROJECT_LAYOUTS`) or an
+    // installed plugin's, bound to catalog attribution and the plugin's
+    // grant. It has no Coding branch of its own; the scan sees its comment.
+    'src-server/services/layouts/layout-presentation-declaration.ts':
+      'distribution',
     'packages/contracts/src/workspace-coding-panels.ts': 'pane-contract',
     // station#3798 added this inventory of built-in Pane renderer NAMES; it
     // includes the Coding panes, which is why the semantic scan sees it.
@@ -43,7 +47,6 @@ const expectedDependencies = new Map(
     'packages/sdk/src/query-domains/chatRuntime.ts': 'sdk-export',
     'packages/sdk/src/query-domains/projectData.ts': 'sdk-route-adapter',
     'src-server/routes/projects/coding.ts': 'privileged-route',
-    'src-server/routes/projects/layout-working-directory.ts': 'persistence',
     // #2062: the admission `POST /api/projects/:slug/layouts` applies before
     // writing, extracted so promote (`/api/me/layouts/:slug/promote`) derives
     // the same answer instead of carrying a second copy that drifts. The scan
@@ -58,6 +61,12 @@ const expectedDependencies = new Map(
     // beside the toolbar that calls it: it runs git in the Project's own
     // repository and refuses what Station will not commit or push.
     'src-server/services/projects/coding-git-actions.ts': 'git-review',
+    // Engine sign-in: shows the host terminal session the server started for
+    // an engine's own login (`attachOnly`, so it never becomes a shell) with
+    // the existing terminal renderer as a leaf. The client names only the
+    // sign-in method; the server chose the program and its arguments.
+    'src-ui/src/components/engine-sign-in/EngineSignInPanel.tsx':
+      'terminal-process',
     'src-server/routes/projects/projects.ts': 'project-route',
     'src-server/runtime/routes/runtime-routes.ts': 'route-registration',
     'src-server/security/pairing-route-scopes.ts': 'route-authorization',
@@ -71,15 +80,19 @@ const expectedDependencies = new Map(
     // the same derivation without importing the host or its renderers. It
     // renders nothing and grants nothing; it is the host's own branch table.
     'src-ui/src/app-shell/project-layout-kind.ts': 'aggregate-host',
-    // #2157: a Board or a project Layout as a dock pane. The scan sees it
-    // because it reads `project-layout-kind`'s dispatch to REFUSE the Coding
-    // kind — a Coding layout is a whole `WorkspacePaneHost` keyed on the
-    // same `(projectId, layoutId)` as the main region's, so a docked copy
-    // would share its persisted document — and renders "Open this Layout
-    // in Main" whose action is `setLayout`. `navigation`, ProjectPage's
-    // category: it chooses the host (Main) rather than being one; it mounts
-    // no Coding surface and grants nothing.
-    'src-ui/src/workspace-panes/LayoutWorkspacePane.tsx': 'navigation',
+    // #2995: built-in Coding's own composition inside the generic stack host
+    // — the Coding occurrence gate, Files/Diff/Terminal and the evidence
+    // panes through their Workspace Composition controls, and their receipt
+    // trackers — split out of `ProjectLayoutRenderer.tsx`. Part of the
+    // built-in host like it: it composes Coding's panes, granted only to the
+    // built-in record, and runs nothing itself. Leaves with Coding (#3009).
+    'src-ui/src/app-shell/builtinCodingStack.tsx': 'aggregate-host',
+    // `LayoutWorkspacePane.tsx` was declared here (#2157, `navigation`) for
+    // refusing to dock the built-in Coding host. Since #2995 it refuses the
+    // generic `stack` kind — any layout declaring `presentation: 'stack'` —
+    // for the same reason (a stack is a whole pane host keyed on the main
+    // region's `(projectId, layoutId)`), and names no Coding kind, host or
+    // pane. It no longer depends on Coding, so it is not declared.
     'src-ui/src/app-shell/codingFileCompositionTelemetry.ts':
       'operation-receipt',
     'src-ui/src/app-shell/codingDiffCompositionTelemetry.ts':
@@ -126,12 +139,8 @@ const expectedDependencies = new Map(
     // of the built-in host like the stack page: it places, grants and
     // executes nothing.
     'src-ui/src/components/coding-layout/codingPanels.ts': 'aggregate-host',
-    // The per-session panels record (`codingPanels` device setting): pure
-    // read/write/evict/parse, the device store's import validation for it.
-    'src-ui/src/lib/coding-panels-record.ts': 'persistence',
-    // The device store validates an imported `codingPanels` value with that
-    // record's parser (its one Coding-specific line); everything else in it
-    // is generic per-device persistence.
+    // The v3 envelope deletes the retired Coding-only key; no panel reader
+    // or compatibility branch remains in the store.
     'src-ui/src/lib/device-settings-store.ts': 'persistence',
     'src-ui/src/components/coding-layout/BranchToolbar.css': 'presentation',
     'src-ui/src/components/coding-layout/BranchToolbar.tsx': 'git-review',
@@ -158,6 +167,9 @@ const expectedDependencies = new Map(
     // The Diff toolbar's four glyphs, kept out of the entry's shared Glyph
     // module: drawn pixels, nothing decided.
     'src-ui/src/components/coding-layout/diffGlyphs.tsx': 'presentation',
+    // The terminal's xterm colours, read from the `--terminal-*` theme
+    // variables: a colour mapping, nothing run or granted.
+    'src-ui/src/components/coding-layout/terminalTheme.ts': 'presentation',
     'src-ui/src/components/coding-layout/FileContentViewer.tsx':
       'privileged-renderer',
     'src-ui/src/components/coding-layout/FileTreeContextMenu.tsx':
@@ -165,6 +177,8 @@ const expectedDependencies = new Map(
     'src-ui/src/components/coding-layout/FileTreePanel.css': 'presentation',
     'src-ui/src/components/coding-layout/PullRequestsPanel.css': 'presentation',
     'src-ui/src/components/coding-layout/PullRequestsPanel.tsx': 'git-review',
+    'src-ui/src/components/coding-layout/PullRequestGuide.css': 'presentation',
+    'src-ui/src/components/coding-layout/PullRequestGuide.tsx': 'git-review',
     'src-ui/src/components/coding-layout/PullRequestReviewPanel.css':
       'presentation',
     'src-ui/src/components/coding-layout/PullRequestReviewPanel.tsx':
@@ -187,8 +201,10 @@ const expectedDependencies = new Map(
     'src-ui/src/components/coding-layout/types.ts': 'private-contract',
     'src-ui/src/components/coding-layout/utils.ts': 'presentation',
     'src-ui/src/components/modals/NewChatModal.tsx': 'chat-handoff',
-    'src-ui/src/hooks/useGitActions.ts': 'git-review',
     'src-ui/src/hooks/useNewProjectStarter.ts': 'distribution',
+    // Selects a decorative icon by Layout type; it mounts no Coding pane.
+    'src-ui/src/components/project-sidebar/ProjectLayoutChips.tsx':
+      'presentation',
     'src-ui/src/index.css': 'presentation',
     // #890: ProjectPage is the navigation composition seam that chooses a
     // host before opening a layout-bound Workspace Pane. Every renderer in
@@ -204,6 +220,13 @@ const expectedDependencies = new Map(
     // focusing the chat so the Coding host centres it. It renders no Coding
     // pane and grants no workspace authority: a route choice only.
     'src-ui/src/views/home/useHomeViewModel.ts': 'navigation',
+    // Pane relationships (docs/design/pane-relationships.md): a related
+    // preview's Up to a Files opener reads that Project's layout list and,
+    // when one is a Coding layout, returns there through canonical
+    // `setLayout`; while the dock is bound to that Project it reveals the
+    // dock's `coding:file-browser` surface instead. A route or reveal choice
+    // only: it mounts no Coding pane and grants nothing.
+    'src-ui/src/workspace-panes/RelatedPaneStrip.tsx': 'navigation',
     // #2047: the surface → pane inventory joins the coding dock surfaces
     // (`coding:terminal`, `coding:diff`, `coding:file-browser`) to the
     // coding pane contracts' fixed per-project instances and canonical

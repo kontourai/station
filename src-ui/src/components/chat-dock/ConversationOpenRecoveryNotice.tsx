@@ -1,5 +1,3 @@
-import './ConversationOpenRecoveryNotice.css';
-
 export interface ConversationOpenRecoveryNoticeProps {
   title: string;
   /**
@@ -9,7 +7,8 @@ export interface ConversationOpenRecoveryNoticeProps {
    * in `ChatDockBody` and never reaches this component (#1582 E3/B6).
    *
    * Only `missing-session` (the Session is gone) and `resolved` (the server
-   * resolved it and refused continuation — a writable resolution never
+   * resolved it and refused continuation) or `fork-ready` (the saved fork
+   * refused first start — a writable resolution never
    * reaches this notice) are verdicts, and only they say "read-only". Every
    * other state is a failed check — the open read failed (`error`), the
    * server could not resolve it (`unavailable`), or the chat's own point-read
@@ -20,15 +19,10 @@ export interface ConversationOpenRecoveryNoticeProps {
   state?:
     | 'missing-session'
     | 'resolved'
+    | 'fork-ready'
     | 'unavailable'
     | 'error'
     | 'unverified';
-  /**
-   * Each action renders only when passed. Callers pass one only when this
-   * client can actually take it — e.g. no `onStartNew` for a paired device
-   * that lacks the scope to create a chat — so the notice never offers an
-   * action that would only fail.
-   */
   onRetry?: () => void;
   onStartNew?: () => void;
 }
@@ -43,33 +37,31 @@ export function ConversationOpenRecoveryNotice({
   onRetry,
   onStartNew,
 }: ConversationOpenRecoveryNoticeProps) {
-  const verdict = state === 'missing-session' || state === 'resolved';
-  // The detail names Retry only when Retry is on screen: a caller that cannot
-  // re-check passes no `onRetry`, and the sentence must not point at it.
+  const verdict =
+    state === 'missing-session' ||
+    state === 'resolved' ||
+    state === 'fork-ready';
   const detail =
     state === 'missing-session'
       ? 'Its execution session is no longer available.'
       : verdict
         ? 'Station could not prove this chat can continue.'
-        : onRetry
-          ? 'Checking this chat failed, so sending is paused. Retry to check again.'
-          : 'Checking this chat failed, so sending is paused.';
-  // The title is the user's own text ("New chat" by default), so it is
-  // quoted: interpolated bare it reads as broken grammar ("confirm New chat
-  // can continue"). It stays in the sentence because the picker path shows
-  // this notice for a conversation other than the one in the header.
-  const quoted = `“${title}”`;
+        : // Names Retry only when Retry is on screen: a caller that cannot
+          // re-check passes no `onRetry`, and the sentence must not point at it.
+          onRetry
+          ? 'Sending is paused. Retry to check again.'
+          : 'Sending is paused.';
 
   return (
-    <div className="session-history-error" role="alert">
-      <strong>
-        {verdict
-          ? `${quoted} is read-only.`
-          : `Station couldn't confirm ${quoted} can continue.`}
-      </strong>
-      <span className="session-history-error__detail"> {detail}</span>
+    <div className="conversation-open-recovery" role="status">
+      <span className="conversation-open-recovery__detail">
+        <strong title={title}>
+          {verdict ? 'This chat is read-only.' : "Couldn't check this chat."}
+        </strong>{' '}
+        {detail}
+      </span>
       {onRetry || onStartNew ? (
-        <div className="session-history-error__actions">
+        <span className="conversation-open-recovery__actions">
           {onRetry ? (
             <button
               type="button"
@@ -88,8 +80,10 @@ export function ConversationOpenRecoveryNotice({
               Start new chat
             </button>
           ) : null}
-        </div>
+        </span>
       ) : null}
     </div>
   );
 }
+
+import './ConversationOpenRecoveryNotice.css';

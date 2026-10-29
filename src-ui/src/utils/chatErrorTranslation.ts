@@ -1,12 +1,25 @@
+import {
+  CONTINUATION_WORKSPACE_REFUSAL_CODES,
+  EXECUTION_ENGINE_CHANGED_CODE,
+} from '@kontourai/station-contracts/execution-target';
 import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
 import {
+  ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  ENGINE_MEMORY_EXHAUSTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
+  ENGINE_SIGN_IN_REQUIRED_CODE,
   ENGINE_TURN_FAILED_CODE,
+  MODEL_NOT_ADVERTISED_CODE,
   MUSE_TURN_IDLE_TIMEOUT_CODE,
   MUSE_TURN_TOTAL_TIMEOUT_CODE,
 } from '@kontourai/station-contracts/provider';
+import {
+  MCP_SIGN_IN_REQUIRED_CODE,
+  RESOURCE_ENGINE_START_CAPACITY_CODE,
+  SESSION_START_INDETERMINATE_CODE,
+} from '@kontourai/station-contracts/provider-failure';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
 
 /**
@@ -21,17 +34,16 @@ import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/sessi
  * mid-conversation connection failure, or a model-override failure.
  *
  * Deliberately pattern-matched, not exact-string-matched: the real AWS
- * Bedrock "model not enabled" exception text could not be captured live in
- * planning (no repo precedent, no live AWS call performed — see the plan's
- * Stop-short risks). (archive#196) is where the live text gets confirmed against
- * these patterns; until then these are documented as fixture-based.
+ * Bedrock "model not enabled" exception text has not been captured live (no
+ * repo precedent, no live AWS call performed). archive#196 is where the live
+ * text gets confirmed against these patterns; until then these are
+ * documented as fixture-based.
  *
  * Consumed by both the pre-stream fetch-error path
  * (`useActiveChatSessionMessaging.ts`, via the SDK's `ChatHttpError`) and the
- * mid-stream SSE error path (`useStreamingMessage.ts`, via `writeSSEError`'s
- * `{ errorText, statusCode }` shape) — this module is the single source of
- * classification for both, replacing `useStreamingMessage.ts`'s previous
- * undocumented, partial `isModelError` regex classifier.
+ * mid-stream runtime-error path (`hooks/orchestration/turnHandlers.ts`, for a
+ * `runtime.error` event that carries an engine-binding or turn-failure code)
+ * — this module is the single source of classification for both.
  */
 
 export interface ChatErrorTranslation {
@@ -67,8 +79,7 @@ interface ChatErrorInput {
   status?: number;
   /**
    * The raw underlying message. Callers should pass whichever of
-   * `errorText` / `error` / `message` the wire shape actually populated —
-   * see the mid-stream blind-spot note in `useStreamingMessage.ts`.
+   * `errorText` / `error` / `message` the wire shape actually populated.
    */
   message: string;
   /**
@@ -246,15 +257,9 @@ export function describeInternalStreamFailure(text: string): string | null {
  */
 const TERMINAL_SESSION_PATTERN = /no conversation found with session id/i;
 
-const CONTINUATION_WORKSPACE_CODES = new Set([
-  'continuation_workspace_project_context_missing',
-  'continuation_workspace_corrupt_worktree_binding',
-  'continuation_workspace_worktree_gone',
-  'continuation_workspace_different_project',
-  'continuation_workspace_worktree_moved',
-  'continuation_workspace_direct_mismatch',
-  'continuation_workspace_unbound',
-]);
+const CONTINUATION_WORKSPACE_CODES: ReadonlySet<string> = new Set(
+  CONTINUATION_WORKSPACE_REFUSAL_CODES,
+);
 
 /**
  * Translates a raw chat/provider error into targeted, non-raw copy.
@@ -311,7 +316,8 @@ const CONTINUATION_WORKSPACE_CODES = new Set([
  *      assertion — a stale credential does not improve on retry).
  */
 /** `SessionStartIndeterminateError`'s code (src-server session-turn-boundary). */
-export const SESSION_START_INDETERMINATE_CODE = 'SESSION_START_INDETERMINATE';
+export { SESSION_START_INDETERMINATE_CODE };
+
 const SESSION_START_INDETERMINATE_SUFFIX =
   /\s*Provider session creation may have completed\. Inspect the session before retrying\.\s*$/;
 
@@ -382,6 +388,56 @@ export function translateChatError(
     };
   }
 
+  // #3290: Station could not apply its approval mode to OpenCode (the
+  // user's or an organisation's configuration overrides it, or the chat runs
+  // an agent Station does not govern). The server's sentence names the
+  // setting; sending again is refused again until it changes, so this
+  // carries no "temporary" hint and callers withhold Retry.
+  if (code === ACP_APPROVAL_GOVERNANCE_REFUSED_CODE) {
+    return {
+      title: "Station's approval mode wasn't applied",
+      body: /not (sent|started)/.test(text)
+        ? text
+        : `${text || "Station couldn't apply its approval mode to this engine."} Nothing was sent.`,
+      // What Default would do depends on the chat (a configured default,
+      // or Station's earlier takeover, makes Default apply a mode too), so
+      // the server's sentence says it; this hint claims nothing about it.
+      hint: 'Change the OpenCode setting or mode named above.',
+      retryable: false,
+    };
+  }
+
+  // The Agent now runs on a different engine than the one the composer showed
+  // when this chat was started: refused before anything ran. The client has
+  // re-read the Agent, so the chips now show the engine it is on; resending
+  // blindly would run there without the user having looked, so there is no
+  // Retry and the hint asks for the look. Not a terminal chat: nothing started.
+  if (code === EXECUTION_ENGINE_CHANGED_CODE) {
+    return {
+      title: 'This Agent now runs somewhere else',
+      body: `${text || "The Agent's engine changed after it was shown."} Nothing was sent.`,
+      hint: 'Station has re-read the Agent. Check the engine and model shown, then send again.',
+      retryable: false,
+    };
+  }
+
+  // The engine this chat resolved to refused the model the composer showed.
+  // The adapter ended the refused session (with this as its cause), and the
+  // conversation continues in a successor session on the next send (the
+  // continuation seam starts it with the model then requested), so this is not
+  // a terminal chat: the user picks another model and sends again. Deterministic (the same model is refused
+  // again), so no "temporary" hint and no Retry. This is also what a composer
+  // working from a stale snapshot looks like once the engine behind an Agent
+  // changed; the client re-reads those snapshots.
+  if (code === MODEL_NOT_ADVERTISED_CODE) {
+    return {
+      title: "This engine doesn't offer that model",
+      body: `${text || 'The engine did not offer the selected model.'} Nothing was sent.`,
+      hint: 'Choose a model this engine offers and send again.',
+      retryable: false,
+    };
+  }
+
   // #1796: full access refused before anything ran. Canned words only: the
   // server's prose is not rendered here (this surface is Markdown), and
   // nothing about it is temporary. The foreground send renders a structured
@@ -390,6 +446,21 @@ export function translateChatError(
     return {
       title: 'Full access was not applied',
       body: "Only this Station's operator can allow full access for this device, so the message was not sent. Pick another approval mode to send it.",
+    };
+  }
+
+  // The engine's workload scope was killed for exhausting its memory budget.
+  // The server's sentence is Station's own (budget and peak, no engine
+  // prose), so it is the body. Resending the original prompt would restart
+  // the same concurrent work from scratch: the card offers Continue, whose
+  // next turn carries Station's recovery note (see
+  // `memory-exhaustion-recovery.ts`), instead of Send again.
+  if (code === ENGINE_MEMORY_EXHAUSTED_CODE) {
+    return {
+      title: 'The engine ran out of memory',
+      body: text,
+      hint: 'Continue picks the task up where it stopped.',
+      retryable: false,
     };
   }
 
@@ -484,6 +555,25 @@ export function translateChatError(
     };
   }
 
+  // The engine itself answered that it needs a sign-in. The server's text
+  // names the engine; nothing is temporary until the user signs in.
+  if (code === MCP_SIGN_IN_REQUIRED_CODE)
+    return {
+      title: 'Sign in to this tool integration',
+      body: text,
+      hint: 'Open Connections → Tools, sign in to the integration, then start the session again.',
+      retryable: false,
+    };
+
+  if (code === ENGINE_SIGN_IN_REQUIRED_CODE) {
+    return {
+      title: 'Sign in to this engine',
+      body: text || 'This engine needs you to sign in before it can run.',
+      hint: "Sign in from the engine's page in Connections, then start a new chat.",
+      retryable: false,
+    };
+  }
+
   if (code === STATION_AGENT_TURN_FAILED_CODE) {
     return {
       title: 'This turn did not complete',
@@ -532,6 +622,7 @@ export function translateChatError(
         body: text || 'The secure connection failed.',
         hint: 'Check its address, certificate, and device clock, then Retry.',
       };
+    case 'network_changed':
     case 'transport_reset':
       return {
         title: 'Connection to this Station was interrupted',
@@ -554,7 +645,7 @@ export function translateChatError(
       };
   }
 
-  if (code === 'resource_engine_start_capacity') {
+  if (code === RESOURCE_ENGINE_START_CAPACITY_CODE) {
     return {
       title: 'Another engine is starting',
       body: text || 'Another engine start still owns the start slot.',
@@ -565,7 +656,7 @@ export function translateChatError(
   if (ABORTED_PATTERN.test(text)) {
     return {
       title: 'Response stopped before it finished',
-      body: 'The connection to this Station ended while the model was still responding, so the turn was cut short. Nothing is wrong with the Model connection.',
+      body: 'The connection to this Station ended mid-response. Your Model connection is fine.',
       hint: 'Your message was kept — send it again to retry.',
     };
   }
@@ -573,7 +664,7 @@ export function translateChatError(
   if (STALLED_PATTERN.test(text)) {
     return {
       title: 'Station stopped responding',
-      body: 'The connection went silent mid-turn — no response arrived for a while. This looks like a dropped connection or a Station restart, not a problem with your Model connection.',
+      body: 'No response arrived for a while, likely a dropped connection or Station restart. Your Model connection is fine.',
       hint: 'Your message was kept — Retry to reconnect and resend it.',
     };
   }
@@ -651,6 +742,8 @@ export function translateProjectedRuntimeError(
   if (
     code !== ENGINE_SESSION_BINDING_DEAD_CODE &&
     code !== ENGINE_TURN_FAILED_CODE &&
+    code !== ENGINE_SIGN_IN_REQUIRED_CODE &&
+    code !== MCP_SIGN_IN_REQUIRED_CODE &&
     code !== STATION_AGENT_TURN_FAILED_CODE
   )
     return null;
@@ -662,6 +755,14 @@ export function translateProjectedRuntimeError(
   );
   return repeatSuffix ? `${display}\n${repeatSuffix.trim()}` : display;
 }
+
+/** The memory-kill card once Station has continued on its own. */
+export const MEMORY_EXHAUSTION_CONTINUING_DISPLAY =
+  '**The engine ran out of memory and was restarted — continuing**\n\nStation started it again with a note of the commands that were interrupted.';
+
+/** What the Continue action sends after a memory kill; Station adds the rest. */
+export const MEMORY_EXHAUSTION_CONTINUE_TEXT =
+  'Continue the task from where it stopped.';
 
 /**
  * Renders a `ChatErrorTranslation` as the markdown chat copy shown to the

@@ -5,6 +5,7 @@ import {
   STATION_COMPAT_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { fetchEventStreamResumeCapability } from '../eventStreamResumeCapability.js';
 import {
   claimSessionEventWindowCapabilityRecovery,
   fetchSessionEventWindowCapability,
@@ -37,6 +38,87 @@ describe('fetchSessionEventWindowCapability', () => {
   afterEach(() => {
     resetSessionEventWindowCapabilityCache();
     vi.unstubAllGlobals();
+  });
+
+  test('window and resume discovery share one request per host and manual invalidation refreshes both flags', async () => {
+    const fetcher = vi.fn(async () =>
+      Response.json({
+        ...validHandshake,
+        capabilities: { sessionEventWindow: true, eventStreamResume: true },
+      }),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    await expect(
+      Promise.all([
+        fetchSessionEventWindowCapability('https://capabilities.example.test'),
+        fetchEventStreamResumeCapability('https://capabilities.example.test'),
+      ]),
+    ).resolves.toEqual([true, true]);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await fetchEventStreamResumeCapability(
+      'https://other-capabilities.example.test',
+    );
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    invalidateSessionEventWindowCapabilityCache(
+      'https://capabilities.example.test',
+    );
+    fetcher.mockImplementation(async () =>
+      Response.json({
+        ...validHandshake,
+        capabilities: { sessionEventWindow: false, eventStreamResume: false },
+      }),
+    );
+    await expect(
+      Promise.all([
+        fetchSessionEventWindowCapability('https://capabilities.example.test'),
+        fetchEventStreamResumeCapability('https://capabilities.example.test'),
+      ]),
+    ).resolves.toEqual([false, false]);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+
+  test('resume discovery recovers after a failed shared handshake expires', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetcher = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('offline'))
+        .mockResolvedValue(
+          Response.json({
+            ...validHandshake,
+            capabilities: { eventStreamResume: true, sessionEventWindow: true },
+          }),
+        );
+      vi.stubGlobal('fetch', fetcher);
+      await expect(
+        fetchEventStreamResumeCapability(
+          'https://recover-capabilities.example.test',
+        ),
+      ).resolves.toBe(false);
+      await expect(
+        fetchSessionEventWindowCapability(
+          'https://recover-capabilities.example.test',
+        ),
+      ).resolves.toBeUndefined();
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(
+        SESSION_EVENT_WINDOW_CAPABILITY_RETRY_MS,
+      );
+      await expect(
+        fetchEventStreamResumeCapability(
+          'https://recover-capabilities.example.test',
+        ),
+      ).resolves.toBe(true);
+      await expect(
+        fetchSessionEventWindowCapability(
+          'https://recover-capabilities.example.test',
+        ),
+      ).resolves.toBe(true);
+      expect(fetcher).toHaveBeenCalledTimes(2);
+    } finally {
+      resetSessionEventWindowCapabilityCache();
+      vi.useRealTimers();
+    }
   });
 
   test('reports a transport failure as undetermined and backs off repeated probes', async () => {

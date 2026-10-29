@@ -44,6 +44,7 @@ export function ActivityWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
         showSurface('chat', { session: threadId });
       }}
       apiBase={binding.apiBase}
+      quickReview={binding.quickReview}
       sessionId={binding.sessionId}
       focusHint={binding.focusHint}
       intentToken={binding.intentToken}

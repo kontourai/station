@@ -1,0 +1,7 @@
+{
+  "revision": "9be7f1bcd762b7e726cc8bec1151ad6e54621c1c",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Delta review: cancellation explicitly accepts an empty successful response; real CLI loopback empty-202 regression reproduced failure after first cancellation before repair, then passed with two cancellations. Current-head preservation contract unchanged; nine focused tests including qualification evidence passed. Hosted effect not yet observed.","inputs":["docs/guides/testing.md","scripts/__tests__/pr-ci-supersession.test.ts","scripts/pr-ci-supersession.mjs"]}
+  ]
+}

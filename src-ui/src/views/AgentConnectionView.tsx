@@ -1,7 +1,6 @@
 import {
   type EngineConnectionId,
   engineConnectionId,
-  engineId as toEngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import type {
   CredentialProfile,
@@ -34,9 +33,13 @@ import {
   useUpsertCredentialProfileMutation,
 } from '@kontourai/station-sdk';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { ACPConnectionDetailsField } from '../components/acp-connections/ACPConnectionDetailsField';
+import { ConnectionIcon } from '../components/acp-connections/ConnectionIcon';
 import { Checkbox } from '../components/Checkbox';
 import { ConnectionReadinessNotice } from '../components/connections/ConnectionReadinessNotice';
 import { DetailHeader } from '../components/DetailHeader';
+import { PublicRegistryUpdateNotice } from '../components/engine-install/PublicRegistry';
+import { EngineSignInPanel } from '../components/engine-sign-in/EngineSignInPanel';
 import { BrandIcon } from '../components/icons/BrandIcon';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
@@ -48,13 +51,15 @@ import {
   SkeletonBlock,
 } from '../components/state';
 import {
+  type ACPConnectionInfo,
   type ACPConnectionRegistryEntry,
   useACPConnectionRegistry,
   useACPConnections,
+  useUnregisteredACPConnections,
 } from '../hooks/useACPConnections';
 import { useDevicePresentation } from '../hooks/useDevicePresentation';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
-import type { NavigationView } from '../types';
+import type { AgentSummary, NavigationView } from '../types';
 import {
   capabilityLabel,
   connectionEngineId,
@@ -65,10 +70,13 @@ import {
   runtimeCatalogSourceSentence,
   runtimeCatalogVisibleModels,
 } from '../utils/execution';
+import { formatBytes } from '../utils/formatBytes';
 import { CredentialProfileEnrolment } from './CredentialProfileEnrolment';
 import { CredentialProfileAccess } from './CredentialProfileLoginProfiles';
 import { EngineAccountOverview } from './EngineAccountOverview';
+import { EngineAddFlow, type NotConnectedEngine } from './EngineAddFlow';
 import { EngineProxySettings } from './EngineProxySettings';
+import { NotConnectedEngineDetail } from './NotConnectedEngineDetail';
 import {
   blockingPrerequisite,
   resolveProviderPresentation,
@@ -79,6 +87,13 @@ import './editor-layout.css';
 
 interface AgentConnectionViewProps {
   selectedRuntimeId?: EngineConnectionId | string;
+  /**
+   * With the add route: the catalogue entry to open on its confirm step
+   * (`/connections/engines/new/<id>`; `custom` opens the custom form).
+   */
+  addChoiceId?: string;
+  /** Agents, for an engine's connection details. */
+  agents?: AgentSummary[];
   onNavigate: (view: NavigationView) => void;
 }
 
@@ -120,20 +135,26 @@ function enginePresentation(connection: AgentConnectionViewData) {
 
 export function AgentConnectionView({
   selectedRuntimeId,
+  addChoiceId,
+  agents = [],
   onNavigate,
 }: AgentConnectionViewProps) {
   const [search, setSearch] = useState('');
   const [form, setForm] = useState<AgentConnectionViewData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showAddCatalog, setShowAddCatalog] = useState(false);
   /**
    * The section frame owns this section's single add action (design P3), and
    * it navigates to `/connections/engines/new` rather than reaching into this
    * component's state. `new` is not a connection id: it selects nothing, and
-   * opens the same add catalog the in-page trigger opens.
+   * opens the add flow in the detail pane.
    */
   const isAddRoute = selectedRuntimeId === 'new';
-  const addCatalogOpen = isAddRoute || showAddCatalog;
+  // A repair started on a not-connected engine keeps its page until Done,
+  // even once the engine connects and leaves the not-connected list.
+  const [repair, setRepair] = useState<{
+    engine: NotConnectedEngine;
+    mode: 'recheck' | 'edit';
+  } | null>(null);
 
   const {
     data: runtimes = [],
@@ -151,8 +172,7 @@ export function AgentConnectionView({
   };
   // The merged Add-engine catalogue's second population (#592 slice 2):
   // registry entries not yet installed as a connection. `installed` already
-  // reflects a configured ACP connection, the same fact
-  // `ACPConnectionsSection` filters on for its own registry read.
+  // reflects a configured connection.
   const { data: acpRegistryEntries = [] } = useACPConnectionRegistry() as {
     data?: ACPConnectionRegistryEntry[];
   };
@@ -160,11 +180,20 @@ export function AgentConnectionView({
     () => acpRegistryEntries.filter((entry) => !entry.installed),
     [acpRegistryEntries],
   );
-  const onChooseCommand = (choice: ACPConnectionRegistryEntry | 'custom') =>
-    guardedNavigate({
-      type: 'connections-engine-new',
-      providerId: choice === 'custom' ? 'custom' : choice.id,
-    });
+  // Saved connections whose engine never registered (a failed first add).
+  // Listed for repair here and in Add; never counted as engines Station has
+  // (station#1548). Only a connection no catalogue entry names is custom.
+  const { data: unregistered = [] } = useUnregisteredACPConnections() as {
+    data?: ACPConnectionInfo[];
+  };
+  const notConnected = useMemo<NotConnectedEngine[]>(
+    () =>
+      unregistered.map((connection) => ({
+        connection,
+        custom: !acpRegistryEntries.some((entry) => entry.id === connection.id),
+      })),
+    [unregistered, acpRegistryEntries],
+  );
 
   const selectedEngineConnectionId =
     selectedRuntimeId && !isAddRoute
@@ -231,7 +260,6 @@ export function AgentConnectionView({
       setDirty(false);
       seededConnectionId.current = saved.id;
       setError(null);
-      setShowAddCatalog(false);
       onNavigate({ type: 'connections-engine-edit', id: saved.id });
     },
     onError: (mutationError: Error) => {
@@ -265,12 +293,15 @@ export function AgentConnectionView({
     },
     onError: (mutationError: Error) => {
       setError(mutationError.message);
+      // A failed check changed the engine's readiness too; re-read it so the
+      // status beside this message does not keep saying Ready.
+      void refetchRuntimes();
     },
   });
-  const selectedAcpConnectionId =
-    form && acpBridgeConnections.some((entry) => entry.id === form.id)
-      ? form.id
-      : null;
+  const selectedAcpConnection = form
+    ? (acpBridgeConnections.find((entry) => entry.id === form.id) ?? null)
+    : null;
+  const selectedAcpConnectionId = selectedAcpConnection?.id ?? null;
 
   // #1054 stopped excluding Station here: the Station engine is a row this
   // view legitimately shows, and its test asserts so. This branch renames the
@@ -300,8 +331,8 @@ export function AgentConnectionView({
     [externalEngines],
   );
   const items = useMemo(
-    () =>
-      addedEngines
+    () => [
+      ...addedEngines
         .filter((connection) => {
           if (!search) return true;
           const query = search.toLowerCase();
@@ -332,8 +363,36 @@ export function AgentConnectionView({
             />
           ),
         })),
-    [addedEngines, search],
+      // A failed first add is listed beside the engines, never as one: its
+      // row says so, and its page offers only the repairs.
+      ...notConnected
+        .filter(
+          ({ connection }) =>
+            !search ||
+            connection.name.toLowerCase().includes(search.toLowerCase()),
+        )
+        .map(({ connection }) => ({
+          id: connection.id,
+          name: connection.name,
+          subtitle: 'Not connected yet',
+          icon: (
+            <ConnectionIcon
+              icon={connection.icon}
+              name={connection.name}
+              id={connection.id}
+              size={22}
+            />
+          ),
+        })),
+    ],
+    [addedEngines, notConnected, search],
   );
+  const selectedNotConnected =
+    repair && repair.engine.connection.id === selectedRuntimeId
+      ? repair.engine
+      : notConnected.find(
+          ({ connection }) => connection.id === selectedRuntimeId,
+        );
 
   function setField<K extends keyof ConnectionConfig>(
     key: K,
@@ -420,17 +479,17 @@ export function AgentConnectionView({
       selectedId={isAddRoute ? null : (selectedRuntimeId ?? null)}
       onSelect={(id) => {
         if (id === selectedRuntimeId) return;
-        setShowAddCatalog(false);
+        setRepair(null);
         guardedNavigate({ type: 'connections-engine-edit', id });
       }}
       onDeselect={() => {
-        setShowAddCatalog(false);
+        setRepair(null);
         guardedNavigate({ type: 'connections-engines' } as NavigationView);
       }}
       onSearch={setSearch}
       searchValue={search}
       listFilteredEmptyNoun="engines"
-      collectionEmpty={addedEngines.length === 0}
+      collectionEmpty={addedEngines.length === 0 && notConnected.length === 0}
       /* empty-state action: the section frame's "Add engine" is adjacent. Copy
          stays action-shaped (matching the sibling providers list) rather than
          a bespoke "No engines yet" — the state-primitives ratchet exists to
@@ -440,27 +499,25 @@ export function AgentConnectionView({
       emptyTitle="Select an engine"
       emptyDescription="Select an engine to review its status and setup."
       emptyContent={
-        addCatalogOpen ? (
-          <EngineAddCatalog
+        isAddRoute ? (
+          <EngineAddFlow
+            initialChoiceId={addChoiceId}
+            notConnected={notConnected}
             connections={availableEngines}
             commandEntries={availableCommandEntries}
-            error={error}
-            pendingId={
-              saveMutation.isPending
-                ? saveMutation.variables?.connection.id
-                : undefined
+            onDone={() =>
+              onNavigate({ type: 'connections-engines' } as NavigationView)
             }
-            onAdd={(connection) =>
-              saveMutation.mutate({ connection, isNew: false })
+            onOpenEngine={(id) =>
+              onNavigate({ type: 'connections-engine-edit', id })
             }
-            onChooseCommand={onChooseCommand}
           />
         ) : undefined
       }
-      unselectedDetailOpen={addCatalogOpen}
+      unselectedDetailOpen={isAddRoute}
       searchPlaceholder="Search engines..."
     >
-      {form ? (
+      {form && repair?.engine.connection.id !== selectedRuntimeId ? (
         <div className="editor-layout">
           <DetailHeader
             title={form.name}
@@ -473,18 +530,22 @@ export function AgentConnectionView({
               />
             }
           >
-            {selectedAcpConnectionId && (
-              <button
-                type="button"
-                className="editor-btn"
-                disabled={reconnectMutation.isPending}
-                onClick={() =>
-                  reconnectMutation.mutate(selectedAcpConnectionId)
-                }
-              >
-                {reconnectMutation.isPending ? 'Reconnecting…' : 'Reconnect'}
-              </button>
-            )}
+            {/* Retry check is the repair for a failed check. A Ready engine
+                is checked with Check connection below, so it gets one
+                check action, not two. */}
+            {selectedAcpConnectionId &&
+              providerPresentation?.readiness !== 'Ready' && (
+                <button
+                  type="button"
+                  className="editor-btn"
+                  disabled={reconnectMutation.isPending}
+                  onClick={() =>
+                    reconnectMutation.mutate(selectedAcpConnectionId)
+                  }
+                >
+                  {reconnectMutation.isPending ? 'Checking…' : 'Retry check'}
+                </button>
+              )}
           </DetailHeader>
           <div className="agent-editor__section">
             {/*
@@ -563,6 +624,19 @@ export function AgentConnectionView({
                   engine={form.type}
                 />
               )}
+            <PublicRegistryUpdateNotice
+              entry={acpRegistryEntries.find(
+                (entry) => entry.installed && entry.id === form.id,
+              )}
+            />
+            {selectedAcpConnectionId && (
+              <EngineSignInPanel
+                connectionId={selectedAcpConnectionId}
+                onSignedIn={() =>
+                  reconnectMutation.mutate(selectedAcpConnectionId)
+                }
+              />
+            )}
             {providerPresentation?.readiness !== 'Ready' && (
               <ConnectionReadinessNotice
                 readiness={providerPresentation?.readiness ?? ''}
@@ -600,10 +674,7 @@ export function AgentConnectionView({
                   </option>
                 ))}
               </select>
-              <p className="editor-help">
-                Models reported by this connection. Save connection changes
-                before refreshing this list.
-              </p>
+              <p className="editor-help">Save changes before refreshing.</p>
               <button
                 type="button"
                 className="editor-btn"
@@ -900,6 +971,12 @@ export function AgentConnectionView({
                     <p className="editor-help">No prerequisites reported.</p>
                   )}
                 </div>
+                {selectedAcpConnection && (
+                  <ACPConnectionDetailsField
+                    connection={selectedAcpConnection}
+                    agents={agents}
+                  />
+                )}
                 <div className="editor-field">
                   <button
                     type="button"
@@ -926,7 +1003,7 @@ export function AgentConnectionView({
             <ConfirmModal
               isOpen={confirmResetOpen}
               title="Reset this engine"
-              message={`This removes ${form.name}'s saved settings and disconnects it from this Station. It returns to the Add list and can be connected again. This cannot be undone.`}
+              message={`Removes ${form.name}'s saved settings and disconnects it. This cannot be undone.`}
               confirmLabel="Reset"
               cancelLabel="Cancel"
               onCancel={() => setConfirmResetOpen(false)}
@@ -972,8 +1049,8 @@ export function AgentConnectionView({
                * that the refetch happened.
                */}
               <p className="editor-help">
-                Checking sends one short message and uses a small amount of your
-                model allowance. Save changes first.
+                Sends one short message (uses a little model allowance). Save
+                changes first.
               </p>
               {testMutation.data &&
                 testMutation.data.smoke.testedAt ===
@@ -995,6 +1072,22 @@ export function AgentConnectionView({
             </div>
           </div>
         </div>
+      ) : selectedNotConnected ? (
+        <NotConnectedEngineDetail
+          key={selectedNotConnected.connection.id}
+          engine={selectedNotConnected}
+          repairing={
+            repair?.engine.connection.id === selectedNotConnected.connection.id
+              ? repair.mode
+              : null
+          }
+          onRepairingChange={(mode) =>
+            setRepair(mode ? { engine: selectedNotConnected, mode } : null)
+          }
+          onRemoved={() =>
+            onNavigate({ type: 'connections-engines' } as NavigationView)
+          }
+        />
       ) : (
         <Empty
           variant="prominent"
@@ -1003,165 +1096,6 @@ export function AgentConnectionView({
       )}
       <DiscardModal />
     </SplitPaneLayout>
-  );
-}
-
-/**
- * The Engines tab's one Add catalogue (#592 slice 2): the two catalogues that
- * used to live on separate routes — this file's own detected/supported
- * native engines, and the ACP registry's CLI list inside its add modal — are
- * one list here, sharing the readiness vocabulary every other picker on
- * Connections already uses (`resolveProviderPresentation`) instead of the
- * bespoke Detected/Available chips this replaces.
- *
- * A native engine keeps its existing one-click add (`onAdd`, no
- * confirmation step — this catalogue only ever offers `setup.state ===
- * 'available'` rows, so there is nothing to confirm). An ACP registry entry
- * or the trailing custom option instead navigates into the existing
- * `/connections/engines/new/<id>` setup flow (`ACPConnectionSetupStages`),
- * which still owns confirm/checking/result — that flow is the setup
- * machinery, not a second catalogue.
- */
-function EngineAddCatalog({
-  connections,
-  commandEntries,
-  error,
-  pendingId,
-  onAdd,
-  onChooseCommand,
-}: {
-  connections: AgentConnectionViewData[];
-  commandEntries: ACPConnectionRegistryEntry[];
-  error?: string | null;
-  pendingId?: string;
-  onAdd: (connection: AgentConnectionViewData) => void;
-  onChooseCommand: (entry: ACPConnectionRegistryEntry | 'custom') => void;
-}) {
-  const hasCatalogEntries = connections.length > 0 || commandEntries.length > 0;
-  return (
-    <div className="editor-layout agent-app-catalog">
-      <DetailHeader
-        title="Add engine"
-        subtitle="Station checks local apps and commands before showing them as ready."
-      />
-      {error ? <div className="editor-error">{error}</div> : null}
-      {!hasCatalogEntries && (
-        <Empty
-          variant="prominent"
-          label="Every supported engine is already listed"
-          description="Detected apps and commands that are ready appear in the main list automatically. Connect a custom command below, or install another supported app and reopen this catalog."
-        />
-      )}
-      <div className="plugins__registry-list">
-        {connections.map((connection) => {
-          const presentation = resolveProviderPresentation({
-            id: connection.id,
-            kind: 'agent',
-            type: connection.type,
-            name: connection.name,
-            enabled: connection.enabled,
-            status: connection.status,
-            prerequisites: connection.prerequisites,
-            setup: connection.setup,
-            description: connection.description,
-            href: '',
-          });
-          return (
-            <div className="plugins__registry-item" key={connection.id}>
-              <BrandIcon
-                name={connection.name}
-                id={connection.id}
-                engineId={connectionEngineId(connection)}
-                size={28}
-              />
-              <div className="plugins__registry-info">
-                <div className="plugins__registry-name">
-                  {connection.name}
-                  <span className="plugins__cap plugins__cap--ref">
-                    {presentation.readiness}
-                  </span>
-                </div>
-                <div className="plugins__registry-desc">
-                  {presentation.detail}
-                </div>
-              </div>
-              <button
-                type="button"
-                className="editor-btn"
-                disabled={pendingId === connection.id}
-                onClick={() => onAdd(connection)}
-                aria-label={
-                  pendingId === connection.id
-                    ? `Adding ${connection.name}`
-                    : `Add ${connection.name}`
-                }
-              >
-                {pendingId === connection.id ? 'Adding…' : 'Add'}
-              </button>
-            </div>
-          );
-        })}
-        {commandEntries.map((entry) => {
-          const presentation = resolveProviderPresentation({
-            id: entry.id,
-            kind: 'command',
-            type: 'acp',
-            name: entry.name,
-            enabled: true,
-            status: 'unknown',
-            setup: null,
-            discovery: entry.detected ? 'detected-unconfigured' : undefined,
-            description: entry.description,
-            href: '',
-          });
-          return (
-            <div className="plugins__registry-item" key={entry.id}>
-              <BrandIcon
-                name={entry.name}
-                id={entry.id}
-                engineId={toEngineId(entry.id)}
-                size={28}
-              />
-              <div className="plugins__registry-info">
-                <div className="plugins__registry-name">
-                  {entry.name}
-                  <span className="plugins__cap plugins__cap--ref">
-                    {presentation.readiness}
-                  </span>
-                </div>
-                <div className="plugins__registry-desc">
-                  {presentation.detail}
-                </div>
-              </div>
-              <button
-                type="button"
-                className="editor-btn"
-                onClick={() => onChooseCommand(entry)}
-                aria-label={`${presentation.actionLabel} ${entry.name}`}
-              >
-                {presentation.actionLabel}
-              </button>
-            </div>
-          );
-        })}
-        <div className="plugins__registry-item">
-          <div className="plugins__registry-info">
-            <div className="plugins__registry-name">Custom engine</div>
-            <div className="plugins__registry-desc">
-              Connect an engine that runs its own tools from a local command.
-            </div>
-          </div>
-          <button
-            type="button"
-            className="editor-btn"
-            aria-label="Set up custom engine"
-            onClick={() => onChooseCommand('custom')}
-          >
-            Set up
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -1200,10 +1134,8 @@ function ClaudeSkillsMaterializationField({
           Skills materialization
         </legend>
         <p className="editor-help">
-          Off by default. Checking a skill copies it into this session's{' '}
-          <code>.claude/skills/</code> so Claude Code loads it natively. Station
-          never overwrites files it didn't write there, and removes only what it
-          wrote once the session ends.
+          Checked skills are copied into the session's{' '}
+          <code>.claude/skills/</code> and removed when it ends.
         </p>
         {skills.length === 0 ? (
           <p className="editor-help">
@@ -1238,19 +1170,6 @@ function ClaudeSkillsMaterializationField({
  * explicit user action — never triggered by the toggle or a form save —
  * and always renders its copied/skipped report, never silent.
  */
-/** `sizeBytes` → a short human-readable string (e.g. `1.2 MB`). */
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ['KB', 'MB', 'GB', 'TB'];
-  let value = bytes / 1024;
-  let unitIndex = 0;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-  return `${value.toFixed(1)} ${units[unitIndex]}`;
-}
-
 function AppHomeProfileField({
   connectionId,
   engineLabel,
@@ -1286,16 +1205,16 @@ function AppHomeProfileField({
           Run sessions in a Station-managed app home
         </Checkbox>
         <p className="editor-help">
-          Keeps your global {engineLabel} settings untouched. Station points
-          sessions at ~/.station/app-homes/{connectionId} instead.
+          Leaves your global {engineLabel} settings untouched. Uses{' '}
+          <code>~/.station/app-homes/{connectionId}</code>.
         </p>
         {useAppHome && (
           <div style={{ marginTop: 8 }}>
             {status && (
               <p className="editor-help">
                 {status.exists
-                  ? `This app home is ${status.seededFrom === 'global-import' ? 'seeded from an imported snapshot' : 'currently empty'}. Sign-in status: ${status.authState}.${status.keychainAuthPossible ? ' On macOS, sign-in through the system Keychain works independently of this app home.' : ''}`
-                  : 'No app home exists yet — Station creates it automatically the first time a session runs with this option on.'}
+                  ? `Contents: ${status.seededFrom === 'global-import' ? 'imported snapshot' : 'empty'} · Sign-in: ${status.authState}${status.keychainAuthPossible ? ' · macOS Keychain sign-in also works' : ''}`
+                  : 'Created on the first session with this on.'}
               </p>
             )}
             <label
@@ -1345,11 +1264,7 @@ function AppHomeProfileField({
                   </>
                 )}
                 {!importMutation.data.provenanceUpdated && (
-                  <>
-                    {' '}
-                    · Nothing was copied, so this app home was not marked as
-                    imported.
-                  </>
+                  <> · Not marked as imported.</>
                 )}
               </p>
             )}
@@ -1369,7 +1284,7 @@ function AppHomeProfileField({
         {status?.exists && status.usage && (
           <div style={{ marginTop: 8 }}>
             <p className="editor-help">
-              {`This app home is using ${formatBytes(status.usage.sizeBytes)} across ${status.usage.entryCount}${status.usage.truncated ? '+' : ''} items.`}
+              {`Using ${formatBytes(status.usage.sizeBytes)} across ${status.usage.entryCount}${status.usage.truncated ? '+' : ''} items.`}
             </p>
             <div className="editor-row">
               <button
@@ -1404,7 +1319,7 @@ function AppHomeProfileField({
       <ConfirmModal
         isOpen={confirmClearOpen}
         title="Clear app home"
-        message={`This permanently removes the Station-managed app home at ~/.station/app-homes/${connectionId}, including any imported settings. This cannot be undone.`}
+        message={`Deletes ~/.station/app-homes/${connectionId}, including imported settings. This cannot be undone.`}
         confirmLabel="Clear"
         cancelLabel="Cancel"
         variant="danger"
@@ -1540,9 +1455,7 @@ function CredentialRecoveryLayout({
           Credential entries
         </h3>
         <p className="editor-help">
-          Add opaque credential references for this Station-managed app home.
-          Labels are only for managing entries; Station does not store or show
-          credentials here.
+          References only; Station doesn't store or show credentials here.
         </p>
       </div>
 
@@ -1649,7 +1562,7 @@ function CredentialProfileApplyConfirmation({
     <ConfirmModal
       isOpen={state.profileToApply !== null}
       title="Apply credential entry"
-      message="Station will verify this credential entry with one potentially billable engine turn before making it active. If verification fails, the previous active credential is preserved."
+      message="Verifying uses one potentially billable engine turn. If it fails, the current credential stays active."
       confirmLabel="Apply and verify"
       cancelLabel="Cancel"
       variant="warning"
@@ -1935,9 +1848,8 @@ function CredentialProfileProvisioning({
     <fieldset>
       <legend className="editor-label">Provisioning import</legend>
       <p className="editor-help">
-        Import a selected credential entry’s global {engineLabel} snapshot only
-        when you choose to. Credentials are excluded unless you check the option
-        below.
+        Imports the entry’s global {engineLabel} snapshot. Credentials are
+        excluded unless checked below.
       </p>
       <Checkbox
         id={`${connectionId}-credential-profile-include-credentials`}
@@ -2018,8 +1930,7 @@ function CredentialRecoveryPolicy({
         capacity or rate-limit failure
       </Checkbox>
       <p className="editor-help">
-        Off by default. Station only considers explicitly enrolled credential
-        entries after observed account-scoped capacity or rate-limit failures.
+        Only enrolled entries are tried.
         {unsupported
           ? ' This engine does not declare a safe application capability.'
           : ''}

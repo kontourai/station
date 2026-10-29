@@ -1,0 +1,31 @@
+{
+  "path": "docs/guides/discord-gateway.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Operator guide traced from the runtime construction/start of DiscordGatewayService through the configuration store, authorization, turn relay store and contracts: setup file, field shape and validation, guild/channel scoping, identity mapping and capabilities, channel replies and refusal messages, restart/reconnect/rate-limit/relay failure behaviour, hosted refusal, metric outcomes.",
+
+  "limits": "Source and simulated-gateway test evidence only. Live Discord behaviour (message-content intent and mentions, invalid-token close codes, thread messages), approval timeouts on Discord turns, and desktop/hosted launch wiring are NOT_VERIFIED.",
+
+  "sources": [
+    "packages/contracts/src/discord.ts",
+
+    "src-server/runtime/bootstrap/station-runtime.ts",
+
+    "src-server/services/discord/discord-authorization.ts",
+
+    "src-server/services/discord/discord-gateway-config-store.ts",
+
+    "src-server/services/discord/discord-gateway-service.ts",
+
+    "src-server/services/discord/discord-turn-relay-store.ts",
+
+    "packages/contracts/src/settings-registry.ts"
+  ],
+
+  "checks": [
+    "Read the service, store and authorization code and the gateway service tests; quoted refusal messages and metric outcomes from source."
+  ]
+}

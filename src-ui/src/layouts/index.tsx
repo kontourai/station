@@ -12,11 +12,12 @@ import type { JSX } from 'react';
 import { useSyncExternalStore } from 'react';
 import { FlowRunConsole } from '../components/flow/FlowRunConsole';
 import { MCPToolUIFrame } from '../components/mcp-ui/MCPToolUIFrame';
+import { StationExtensionsAccess } from '../components/registry/StationExtensionsAccess';
 import { Empty, SkeletonBlock } from '../components/state';
-import { useNavigationOptional } from '../contexts/NavigationContext';
 import { pluginRegistry } from '../core/PluginRegistry';
 import type { AgentSummary, LayoutDefinition, LayoutTab } from '../types';
 import { log } from '../utils/logger';
+import { PersonalBoardDashboard } from '../views/personal-board/PersonalBoardDashboard';
 
 export interface AgentLayoutProps {
   agent?: AgentSummary;
@@ -134,7 +135,6 @@ const UnsupportedLayoutComponent: AgentLayoutComponent = ({ activeTab }) => {
     pluginRegistry.subscribe,
     pluginRegistry.getLoadStatus,
   );
-  const navigation = useNavigationOptional();
   const component = activeTab?.component;
 
   // The extension registry is deliberately lazy. On a fresh document the
@@ -159,19 +159,9 @@ const UnsupportedLayoutComponent: AgentLayoutComponent = ({ activeTab }) => {
       <div className="workspace-default" role="status">
         <Empty
           variant="prominent"
-          label="Extensions are disabled for this Station"
-          description={`The "${component}" view is provided by an extension. Remote extensions are off for this Station on this device — you can turn them on from the Registry, which explains the trade-off first.`}
-          action={
-            navigation ? (
-              <button
-                type="button"
-                className="workspace-default__btn"
-                onClick={() => navigation.navigate('/registry')}
-              >
-                Review in Registry
-              </button>
-            ) : undefined
-          }
+          label="Extensions are off on this device"
+          description="This view needs extension code from the selected Station."
+          action={<StationExtensionsAccess onlyWhenOff />}
         />
       </div>
     );
@@ -328,32 +318,6 @@ builtinRegistry['flow-run-console'] = ({ boundProjectSlug }) => (
 );
 builtinRegistry['kit-standard-view'] = KitStandardViewLayout;
 
-/**
- * Reports only whether this UI build has a renderer dispatch branch for a
- * declared component. MCP host support is distinct from a tool's permission
- * or health, which remain resolver-owned facts.
- */
-export function clientLayoutRendererPresence(
-  component: string | LayoutComponentRef,
-): 'present' | 'missing' {
-  let normalized: LayoutComponentRef;
-  try {
-    normalized = normalizeLayoutComponentRef(component);
-  } catch {
-    return 'missing';
-  }
-  switch (normalized.kind) {
-    case 'builtin-component':
-      return builtinRegistry[normalized.name] ? 'present' : 'missing';
-    case 'plugin-component':
-      return pluginRegistry.getLayout(normalized.name) ? 'present' : 'missing';
-    case 'mcp-tool-ui':
-      // MCPToolUILayout is an explicit host branch; this says nothing about
-      // the MCP tool's own permission or availability.
-      return 'present';
-  }
-}
-
 function resolvePluginLayoutComponent(
   componentId: string,
 ): AgentLayoutComponent {
@@ -467,6 +431,12 @@ export function LayoutRenderer({
   try {
     return (
       <>
+        {layout?.dashboard && (
+          <PersonalBoardDashboard
+            boardSlug={layout.slug}
+            definition={layout.dashboard}
+          />
+        )}
         {layout && (
           <LayoutHeader
             layoutName={layout.name}
@@ -548,6 +518,7 @@ export function LayoutRenderer({
             })
           : // Fallback for layouts without tabs
             (() => {
+              if (layout?.dashboard) return null;
               const Component = resolveLayoutComponent(componentId);
               return (
                 <Component

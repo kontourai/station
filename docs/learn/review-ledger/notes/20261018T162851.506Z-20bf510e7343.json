@@ -1,0 +1,7 @@
+{
+  "revision": "aba5a06d5fa5cf4bd002a7c954e977d4fc633479",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed internal typedStructuralSharing adapter and its sole session-sharing caller: public QueryConfig and query lifecycle policy remain unchanged, no app internal imports enter SDK, SDK typecheck passes and 55 focused tests cover both sharing consumers plus retry/placeholder/cancellation. SDK scope instructions still match these owners; no prose change required.","inputs":["packages/sdk/AGENTS.md","packages/sdk/src/query-core.ts"]}
+  ]
+}

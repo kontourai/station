@@ -52,6 +52,15 @@ _Avoid_: shell if Station tracks lifecycle
 OpenTelemetry counters, histograms, traces and attributes describing observed operations. Defining an instrument does not prove a caller records it or an exporter delivered it.
 _Avoid_: logging when the signal is intended for metrics
 
+Disclosed Full product observations are a separate optional path with their own
+inventory, destination, source credential and commit receipt. Identifier-free
+built-in Lite daily aggregates use independent per-publisher sinks and a shown notice. Plugin publishers default Off and require opt-in; plugin-chosen counts can encode identifiers, so plugin Lite is not identifier-free;
+the bounded local ledger is diagnostic accounting, not a receiver commit receipt. They do not
+become a person's usage accounting; that uses canonical usage receipts.
+Current-process delivery health and content-free connection checks describe
+their declared boundary, not complete downstream collection. See
+[Usage telemetry](../../reference/usage-telemetry.md) for the contract.
+
 **Verification lane**:
 A named command or test group that checks specified behavior. Its result proves
 only what the selected checks actually exercised.
@@ -64,9 +73,7 @@ context file.
 _Avoid_: docs-only check if type/unit failures can block it
 
 **Full verification gate**:
-The canonical `npm run full:regression` promotion lane, run by hosted Nightly
-and tagged-release workflows. Ordinary changes use focused evidence and
-`npm run ci:fast`; see the [testing guide](../../guides/testing.md).
+The canonical `npm run full:regression` promotion lane qualifies exact source revisions for coalesced main pushes, scheduled main and tagged Preview/Stable. Nightly has a separate exact-source usability and artifact gate. The [testing guide](../../guides/testing.md) defines focused evidence, local diagnostic lanes, and hosted PR/merge-queue qualification.
 _Avoid_: quick test
 
 **Generated artifact**:
@@ -90,6 +97,10 @@ _Avoid_: source doc unless it is intended for review
 | Stored notifications and source actions | [NotificationService](../../../src-server/services/notifications/notification-service.ts) | [Notification delivery design](../../design/notification-delivery.md), with its stated implementation limits |
 | Desktop alert delivery | [Native feed consumer](../../../src-desktop/src/notification_feed.rs) | [Desktop alerts](../../guides/desktop-tray.md#desktop-alerts-while-the-window-is-hidden); OS results and user attention remain distinct |
 | Voice session lifecycle | [VoiceSession](../../../src-server/voice/voice-session.ts) | [Voice examples](../../../examples/README.md) |
+| Disclosed product observations and local delivery health | [UsageTelemetryService](../../../src-server/services/usage-telemetry-service.ts) | [Usage telemetry](../../reference/usage-telemetry.md) |
+| Durable product ingestion and received-observation trends | [Product receiver](../../../packages/telemetry-broker/src/store.ts) | [Receiver operation and qualification limits](../../../packages/telemetry-broker/README.md) |
+| Principal-owned source grants, sync and saved Personal views | [Analytics route composition](../../../src-server/runtime/routes/runtime-routes.ts) | [Enrollment, private usage and recovery boundaries](../../guides/monitoring.md#source-enrollment-proposals) |
+| Product incident cohorts and local issue references | [Incident query](../../../packages/telemetry-broker/src/product-incidents.ts) and [Core link owner](../../../src-server/services/telemetry-incident-links.ts) | [Incident handoff and limits](../../guides/monitoring.md#review-an-incident-draft) |
 | Verification selection and completion | [Lane registry](../../../scripts/verification-lanes.mjs) | [Testing](../../guides/testing.md) |
 
 Storage, dispatch, and physical delivery have different evidence. A queued

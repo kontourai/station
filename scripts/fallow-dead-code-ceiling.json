@@ -1,0 +1,20 @@
+{
+  "description": "Recorded fallow dead-code counts per category. A category fails when it exceeds its count plus max(3, 5%). Regenerate with npm run fallow:baseline; see docs/guides/code-quality.md#dead-code-ceiling.",
+  "fallow": "fallow 3.33.1",
+  "counts": {
+    "total_issues": 815,
+    "unused_files": 90,
+    "unused_exports": 364,
+    "unused_types": 89,
+    "unused_dependencies": 11,
+    "unused_class_members": 241,
+    "unused_component_props": 2,
+    "unresolved_imports": 2,
+    "unlisted_dependencies": 2,
+    "test_only_dependencies": 1,
+    "dev_dependencies_in_production": 3,
+    "circular_dependencies": 5,
+    "re_export_cycles": 1,
+    "stale_suppressions": 4
+  }
+}

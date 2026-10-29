@@ -1,0 +1,7 @@
+{
+  "revision": "ec26db13aab579375ad1c483260bef9b92b73194",
+
+  "notes": [
+    {"path":"docs/plans/plugin-core-delivery.md","note":"Reviewed the complete plan against #2993 and its open child acceptance criteria, the merged source heads and current main. It records one feature branch and eventual PR, distinguishes source integration from qualification and delivery, retains unfinished security and extraction requirements, and does not treat absent prerequisites or historical checks as completion.","inputs":["docs/plans/plugin-core-delivery.md"]}
+  ]
+}

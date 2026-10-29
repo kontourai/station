@@ -1,8 +1,12 @@
-//! Desktop-only custody for short-lived client routing grants.
+//! Cleanup for the first-generation desktop relay routing-grant keyring
+//! entries.
 //!
-//! The secret is accepted by one narrowly scoped store command and stays in
-//! the OS keyring after that. The only read command returns the binding and
-//! expiry metadata; it has no secret-returning path.
+//! The webview commands that stored, revoked and read these grants were
+//! removed: nothing invoked them, and the native relay owner keeps its grants
+//! in `native_relay_redemption::NativeRelayGrantVault` since #3114. What
+//! remains deletes any first-generation entries bound to a saved relay route
+//! when that route is removed or replaced. The keyring index holds bindings
+//! only, never credentials.
 
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -35,55 +39,6 @@ struct RelayGrantBinding {
     owner: RelayGrantOwner,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub(crate) struct RelayGrantCredential {
-    pub(crate) id: String,
-    pub(crate) secret: String,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub(crate) struct RelayGrantScope {
-    pub(crate) station_id: String,
-    pub(crate) enrollment_id: String,
-    pub(crate) routing_generation: u64,
-    pub(crate) browser_origin: String,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub(crate) struct RelayClientGrant {
-    pub(crate) version: String,
-    pub(crate) credential: RelayGrantCredential,
-    pub(crate) broker_origin: String,
-    pub(crate) scope: RelayGrantScope,
-    pub(crate) station_signing_key_id: String,
-    pub(crate) station_signing_generation: u64,
-    pub(crate) expires_at: u64,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct StoredRelayGrant {
-    schema_version: u8,
-    binding: RelayGrantBinding,
-    grant: RelayClientGrant,
-}
-
-/// The renderer may learn the stored routing scope and expiry. This metadata
-/// is not proof of Station trust or a connected broker route; it never
-/// contains the keyring payload.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub(crate) struct RelayGrantMetadata {
-    pub(crate) route: RelayGrantRouteKey,
-    pub(crate) scope: RelayGrantScope,
-    pub(crate) station_signing_key_id: String,
-    pub(crate) station_signing_generation: u64,
-    pub(crate) expires_at: u64,
-}
-
 trait RelayGrantBackend {
     fn get(&mut self, account: &str) -> Result<Option<String>, String>;
     fn set(&mut self, account: &str, value: &str) -> Result<(), String>;
@@ -112,28 +67,6 @@ fn fixed_base64url(value: &str, length: usize) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
-}
-
-fn relay_browser_origin_allowed(value: &str) -> bool {
-    if super::exact_origin(value).ok().as_deref() != Some(value) {
-        return false;
-    }
-    let Ok(url) = url::Url::parse(value) else {
-        return false;
-    };
-    if url.scheme() == "https" {
-        return true;
-    }
-    if url.scheme() != "http" {
-        return false;
-    }
-    let Some(host) = url.host_str() else {
-        return false;
-    };
-    host.eq_ignore_ascii_case("localhost")
-        || host
-            .parse::<std::net::IpAddr>()
-            .is_ok_and(|address| address.is_loopback())
 }
 
 fn validate_route(route: &RelayGrantRouteKey) -> Result<(), String> {
@@ -167,37 +100,6 @@ fn validate_binding(binding: &RelayGrantBinding) -> Result<(), String> {
     Ok(())
 }
 
-fn route_for(grant: &RelayClientGrant) -> RelayGrantRouteKey {
-    RelayGrantRouteKey {
-        broker_origin: grant.broker_origin.clone(),
-        station_id: grant.scope.station_id.clone(),
-        enrollment_id: grant.scope.enrollment_id.clone(),
-        routing_generation: grant.scope.routing_generation,
-        grant_id: grant.credential.id.clone(),
-    }
-}
-
-fn validate_grant(grant: &RelayClientGrant, now: u64) -> Result<RelayGrantRouteKey, String> {
-    let route = route_for(grant);
-    validate_route(&route)?;
-    if grant.scope.browser_origin.len() > 512
-        || !relay_browser_origin_allowed(&grant.scope.browser_origin)
-    {
-        return Err("invalid relay grant browser origin".to_string());
-    }
-    if grant.station_signing_generation == 0
-        || grant.station_signing_generation > 9_007_199_254_740_991
-        || grant.version != "station-broker-client-grant/v1"
-        || !fixed_base64url(&grant.station_signing_key_id, 43)
-        || !fixed_base64url(&grant.credential.secret, 43)
-        || grant.expires_at <= now
-        || grant.expires_at > 9_007_199_254_740_991
-    {
-        return Err("invalid or expired relay grant".to_string());
-    }
-    Ok(route)
-}
-
 /// Length prefixes make this account mapping injective even when the origin
 /// contains punctuation. It is separate from the `profile:` account namespace
 /// used by ordinary Station credentials.
@@ -226,119 +128,11 @@ fn account_for(binding: &RelayGrantBinding) -> Result<String, String> {
     Ok(account)
 }
 
-fn store_grant(
-    backend: &mut impl RelayGrantBackend,
-    owner: RelayGrantOwner,
-    grant: RelayClientGrant,
-    now: u64,
-) -> Result<RelayGrantMetadata, String> {
-    let route = validate_grant(&grant, now)?;
-    let binding = RelayGrantBinding { route, owner };
-    validate_binding(&binding)?;
-    let account = account_for(&binding)?;
-    let payload = StoredRelayGrant {
-        schema_version: 1,
-        binding: binding.clone(),
-        grant: grant.clone(),
-    };
-    let encoded = serde_json::to_string(&payload)
-        .map_err(|_| "could not encode relay grant for the OS credential store".to_string())?;
-    add_to_index(backend, &binding.owner.channel, &binding)?;
-    backend.set(&account, &encoded)?;
-    Ok(metadata_from(binding, grant))
-}
-
-fn metadata_from(binding: RelayGrantBinding, grant: RelayClientGrant) -> RelayGrantMetadata {
-    RelayGrantMetadata {
-        route: binding.route,
-        scope: grant.scope,
-        station_signing_key_id: grant.station_signing_key_id,
-        station_signing_generation: grant.station_signing_generation,
-        expires_at: grant.expires_at,
-    }
-}
-
-fn read_metadata(
-    backend: &mut impl RelayGrantBackend,
-    binding: &RelayGrantBinding,
-    now: u64,
-) -> Result<Option<RelayGrantMetadata>, String> {
-    let account = account_for(binding)?;
-    let Some(encoded) = backend.get(&account)? else {
-        return Ok(None);
-    };
-    let stored: StoredRelayGrant = serde_json::from_str(&encoded)
-        .map_err(|_| "stored relay grant is unreadable; revoke it and enroll again".to_string())?;
-    if stored.schema_version != 1
-        || stored.binding != *binding
-        || route_for(&stored.grant) != binding.route
-    {
-        return Err("stored relay grant binding does not match the requested route".to_string());
-    }
-    if stored.grant.expires_at <= now {
-        return Ok(None);
-    }
-    validate_grant(&stored.grant, now)?;
-    Ok(Some(metadata_from(stored.binding, stored.grant)))
-}
-
-fn revoke_grant(
-    backend: &mut impl RelayGrantBackend,
-    binding: &RelayGrantBinding,
-) -> Result<(), String> {
-    backend.delete(&account_for(binding)?)?;
-    let mut index = read_index(backend, &binding.owner.channel)?;
-    index.retain(|entry| entry != binding);
-    write_index(backend, &binding.owner.channel, &index)
-}
-
 fn with_vault_lock<T>(operation: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
     let _guard = RELAY_GRANT_VAULT_LOCK
         .lock()
         .map_err(|_| "native relay grant vault is unavailable".to_string())?;
     operation()
-}
-
-/// Commands always acquire `profiles.json.lock` before the in-process vault
-/// lock, matching the profile writer's lock order. This keeps profile
-/// validation, vault mutation, and a concurrent profile replace serialized.
-///
-/// `operation` receives whatever `acquire_profile_lock` produced instead of
-/// resolving its own view of the profile store: on mobile,
-/// `station_profiles_path` takes `profiles.json.lock` on every call, the
-/// lock is not reentrant, and a record owned by our own live pid is never
-/// reclaimable. A callback that re-resolved the store from inside
-/// `operation` (as `owner_for_route` used to, via
-/// `read_station_profile_contents`) could therefore never succeed while this
-/// lock was held — it waited out the full mobile bound and failed busy on
-/// every call (station#2542).
-fn with_profile_and_vault<P, T>(
-    acquire_profile_lock: impl FnOnce() -> Result<P, String>,
-    operation: impl FnOnce(&P) -> Result<T, String>,
-) -> Result<T, String> {
-    let profile_lock = acquire_profile_lock()?;
-    with_vault_lock(|| operation(&profile_lock))
-}
-
-/// The profile lock held for the duration of a relay grant operation,
-/// carrying the one read of the profile store taken while that lock is
-/// held. Callers must consume `contents` rather than re-resolving the store
-/// (which would re-take the same lock on mobile — station#2542).
-struct LockedProfileStore {
-    _lock: super::StationProfileLock,
-    contents: String,
-}
-
-fn locked_profile_store_for_app(app: &AppHandle) -> Result<LockedProfileStore, String> {
-    let path = super::station_profiles_path(app)?;
-    super::validate_station_profile_store(&path)?;
-    let lock = super::lock_station_profiles_for_app(app, &path)?;
-    let contents = super::read_station_profile_store(&path)
-        .map_err(|error| format!("read saved Station metadata for credential access: {error}"))?;
-    Ok(LockedProfileStore {
-        _lock: lock,
-        contents,
-    })
 }
 
 fn index_account(channel: &str) -> Result<String, String> {
@@ -385,24 +179,6 @@ fn write_index(
     let encoded = serde_json::to_string(bindings)
         .map_err(|_| "could not encode relay grant metadata index".to_string())?;
     backend.set(&account, &encoded)
-}
-
-fn add_to_index(
-    backend: &mut impl RelayGrantBackend,
-    channel: &str,
-    binding: &RelayGrantBinding,
-) -> Result<(), String> {
-    let mut index = read_index(backend, channel)?;
-    if !index.contains(binding) {
-        if index.len() >= 10_000 {
-            return Err(
-                "relay grant metadata index is full; revoke expired routes first".to_string(),
-            );
-        }
-        index.push(binding.clone());
-        write_index(backend, channel, &index)?;
-    }
-    Ok(())
 }
 
 /// Remove every client grant for a saved route that was deleted or replaced.
@@ -509,196 +285,9 @@ impl RelayGrantBackend for OsKeyring {
     }
 }
 
-fn unix_time_ms() -> Result<u64, String> {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_millis().min(u64::MAX as u128) as u64)
-        .map_err(|_| "system clock predates the Unix epoch".to_string())
-}
-
-#[tauri::command]
-pub(crate) async fn relay_client_grant_store(
-    app: AppHandle,
-    profile_name: String,
-    grant: RelayClientGrant,
-) -> Result<RelayGrantMetadata, String> {
-    run_vault_command(move || {
-        with_profile_and_vault(
-            || locked_profile_store_for_app(&app),
-            |locked| {
-                let owner = owner_for_profile(
-                    &app.config().identifier,
-                    &locked.contents,
-                    &profile_name,
-                    &grant,
-                )?;
-                store_grant(&mut OsKeyring, owner, grant, unix_time_ms()?)
-            },
-        )
-    })
-    .await
-}
-
-#[tauri::command]
-pub(crate) async fn relay_client_grant_revoke(
-    app: AppHandle,
-    profile_name: String,
-    route: RelayGrantRouteKey,
-) -> Result<(), String> {
-    run_vault_command(move || {
-        with_profile_and_vault(
-            || locked_profile_store_for_app(&app),
-            |locked| {
-                let owner = owner_for_route(
-                    &app.config().identifier,
-                    &locked.contents,
-                    &profile_name,
-                    &route,
-                )?;
-                revoke_grant(&mut OsKeyring, &RelayGrantBinding { route, owner })
-            },
-        )
-    })
-    .await
-}
-
-#[tauri::command]
-pub(crate) async fn relay_client_grant_metadata(
-    app: AppHandle,
-    profile_name: String,
-    route: RelayGrantRouteKey,
-) -> Result<Option<RelayGrantMetadata>, String> {
-    run_vault_command(move || {
-        with_profile_and_vault(
-            || locked_profile_store_for_app(&app),
-            |locked| {
-                let owner = owner_for_route(
-                    &app.config().identifier,
-                    &locked.contents,
-                    &profile_name,
-                    &route,
-                )?;
-                read_metadata(
-                    &mut OsKeyring,
-                    &RelayGrantBinding { route, owner },
-                    unix_time_ms()?,
-                )
-            },
-        )
-    })
-    .await
-}
-
-/// Move profile locking, validation, and OS keyring access off the Tauri
-/// command executor. Keyring backends may block while waiting for an OS prompt.
-async fn run_vault_command<T: Send + 'static>(
-    operation: impl FnOnce() -> Result<T, String> + Send + 'static,
-) -> Result<T, String> {
-    tauri::async_runtime::spawn_blocking(operation)
-        .await
-        .map_err(|_| "native relay grant task failed".to_string())?
-}
-
-fn owner_for_profile(
-    app_identifier: &str,
-    contents: &str,
-    profile_name: &str,
-    grant: &RelayClientGrant,
-) -> Result<RelayGrantOwner, String> {
-    let route = route_for(grant);
-    owner_for_route(app_identifier, contents, profile_name, &route)
-}
-
-/// `contents` must be the profile store already read while the caller's
-/// `profiles.json.lock` is held (see `with_profile_and_vault`). This never
-/// resolves the store itself: on mobile that would re-take the same lock
-/// and self-deadlock (station#2542).
-/// Takes the app identifier rather than the `AppHandle`: with no handle it
-/// cannot re-read the saved Stations, so a regression of #2542 does not
-/// compile.
-fn owner_for_route(
-    app_identifier: &str,
-    contents: &str,
-    profile_name: &str,
-    route: &RelayGrantRouteKey,
-) -> Result<RelayGrantOwner, String> {
-    validate_route(route)?;
-    if profile_name.is_empty() || profile_name.len() > 128 {
-        return Err("invalid saved Station name".to_string());
-    }
-    let store = super::parse_station_profile_store(contents)?;
-    let profile = store
-        .profiles
-        .iter()
-        .find(|profile| profile.name.eq_ignore_ascii_case(profile_name))
-        .ok_or_else(|| "saved Station is unavailable".to_string())?;
-    let saved_route = profile
-        .relay_route
-        .as_ref()
-        .ok_or_else(|| "saved Station has no relay route".to_string())?;
-    if saved_route.broker_origin != route.broker_origin
-        || saved_route.station_id != route.station_id
-        || saved_route.enrollment_id != route.enrollment_id
-    {
-        return Err("relay grant does not match the saved Station route".to_string());
-    }
-    let client_instance_id = profile
-        .client_instance_id
-        .clone()
-        .ok_or_else(|| "saved Station has no client instance id".to_string())?;
-    let owner = RelayGrantOwner {
-        channel: super::native_app_channel(app_identifier, cfg!(debug_assertions)).to_string(),
-        client_instance_id,
-    };
-    validate_binding(&RelayGrantBinding {
-        route: route.clone(),
-        owner: owner.clone(),
-    })?;
-    Ok(owner)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    const RELAY_STORE: &str = r#"{
-      "schemaVersion":1,"revision":1,"defaultProfile":null,"projectProfiles":{},
-      "profiles":[{"schemaVersion":1,"name":"relay-home","endpoint":"https://station.example","relayRoute":{"brokerOrigin":"https://broker.example","stationId":"11111111-1111-4111-8111-111111111111","enrollmentId":"22222222-2222-4222-8222-222222222222"},"clientInstanceId":"33333333-3333-4333-8333-333333333333","setupSource":"manual","configurationState":"unconfigured","createdAt":1,"updatedAt":2}]
-    }"#;
-
-    fn relay_route(enrollment_id: &str) -> RelayGrantRouteKey {
-        RelayGrantRouteKey {
-            broker_origin: "https://broker.example".to_string(),
-            station_id: "11111111-1111-4111-8111-111111111111".to_string(),
-            enrollment_id: enrollment_id.to_string(),
-            routing_generation: 1,
-            grant_id: "AAAAAAAAAAAAAAAAAAAAAA".to_string(),
-        }
-    }
-
-    #[test]
-    fn owner_for_route_reads_only_the_store_it_is_handed() {
-        // The caller read these contents under the held profiles.json.lock;
-        // the owner is derived from them alone (#2542).
-        let owner = owner_for_route(
-            "ai.kontour.station",
-            RELAY_STORE,
-            "relay-home",
-            &relay_route("22222222-2222-4222-8222-222222222222"),
-        )
-        .expect("owner for the saved relay route");
-        assert_eq!(
-            owner.client_instance_id,
-            "33333333-3333-4333-8333-333333333333"
-        );
-        assert!(owner_for_route(
-            "ai.kontour.station",
-            RELAY_STORE,
-            "relay-home",
-            &relay_route("44444444-4444-4444-8444-444444444444"),
-        )
-        .is_err());
-    }
     use std::collections::HashMap;
 
     #[derive(Default)]
@@ -742,42 +331,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn command_work_runs_on_blocking_pool_and_preserves_operation_errors() {
-        let command_thread = std::thread::current().id();
-        let operation_thread =
-            tauri::async_runtime::block_on(run_vault_command(|| Ok(std::thread::current().id())))
-                .unwrap();
-
-        assert_ne!(operation_thread, command_thread);
-        assert_eq!(
-            tauri::async_runtime::block_on(run_vault_command(|| {
-                Err::<(), String>("keyring denied".to_string())
-            })),
-            Err("keyring denied".to_string())
-        );
-    }
-
-    fn grant(secret: &str, expires_at: u64) -> RelayClientGrant {
-        RelayClientGrant {
-            version: "station-broker-client-grant/v1".to_string(),
-            credential: RelayGrantCredential {
-                id: route_key().grant_id,
-                secret: secret.to_string(),
-            },
-            broker_origin: "https://broker.example".to_string(),
-            scope: RelayGrantScope {
-                station_id: "11111111-1111-4111-8111-111111111111".to_string(),
-                enrollment_id: "22222222-2222-4222-8222-222222222222".to_string(),
-                routing_generation: 4,
-                browser_origin: "https://app.example".to_string(),
-            },
-            station_signing_key_id: "K".repeat(43),
-            station_signing_generation: 1,
-            expires_at,
-        }
-    }
-
     fn profile_route() -> super::super::NativeStationRelayRoute {
         super::super::NativeStationRelayRoute {
             broker_origin: "https://broker.example".to_string(),
@@ -786,176 +339,52 @@ mod tests {
         }
     }
 
-    #[test]
-    fn storage_is_bound_to_the_complete_relay_route_identity() {
-        let mut keyring = MemoryKeyring::default();
-        let route = route_key();
-        let binding = binding("stable", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
-        store_grant(
-            &mut keyring,
-            binding.owner.clone(),
-            grant(&"R".repeat(43), 2_000),
-            1_000,
-        )
-        .unwrap();
-        let mut variants = vec![route.clone(); 5];
-        variants[0].broker_origin = "https://other.example".to_string();
-        variants[1].station_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".to_string();
-        variants[2].enrollment_id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb".to_string();
-        variants[3].routing_generation += 1;
-        variants[4].grant_id = "X".repeat(22);
-        for other_route in variants {
-            assert!(read_metadata(
-                &mut keyring,
-                &RelayGrantBinding {
-                    route: other_route,
-                    owner: binding.owner.clone(),
-                },
-                1_001,
-            )
-            .unwrap()
-            .is_none());
-        }
-        assert_eq!(
-            read_metadata(&mut keyring, &binding, 1_001)
-                .unwrap()
-                .unwrap()
-                .expires_at,
-            2_000
-        );
-    }
-
-    #[test]
-    fn replacement_and_revocation_are_exact_and_secret_free_at_ipc() {
-        let mut keyring = MemoryKeyring::default();
-        let binding = binding("stable", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
-        store_grant(
-            &mut keyring,
-            binding.owner.clone(),
-            grant(&"O".repeat(43), 2_000),
-            1_000,
-        )
-        .unwrap();
-        let metadata = store_grant(
-            &mut keyring,
-            binding.owner.clone(),
-            grant(&"R".repeat(43), 3_000),
-            1_001,
-        )
-        .unwrap();
-        let ipc = serde_json::to_string(&metadata).unwrap();
-        assert_eq!(metadata.expires_at, 3_000);
-        assert!(!ipc.contains("secret"));
-        assert!(!ipc.contains(&"R".repeat(43)));
-        let stored = keyring
-            .get(&account_for(&binding).unwrap())
-            .unwrap()
-            .unwrap();
-        assert!(stored.contains(&"R".repeat(43)));
-        assert!(!stored.contains(&"O".repeat(43)));
-        let index = keyring
-            .get(&index_account("stable").unwrap())
-            .unwrap()
-            .unwrap();
-        assert!(!index.contains(&"R".repeat(43)));
-        revoke_grant(&mut keyring, &binding).unwrap();
-        assert!(read_metadata(&mut keyring, &binding, 1_002)
-            .unwrap()
-            .is_none());
-    }
-
-    #[test]
-    fn expiry_and_credential_identity_are_enforced() {
-        let mut keyring = MemoryKeyring::default();
-        let binding = binding("stable", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
-        assert!(store_grant(
-            &mut keyring,
-            binding.owner.clone(),
-            grant(&"R".repeat(43), 1_000),
-            1_000
-        )
-        .is_err());
-        let mut wrong = grant(&"R".repeat(43), 2_000);
-        wrong.credential.id = "not-22-chars".to_string();
-        assert!(store_grant(&mut keyring, binding.owner.clone(), wrong, 1_000).is_err());
-        let mut wrong_version = grant(&"R".repeat(43), 2_000);
-        wrong_version.version = "other/v1".to_string();
-        assert!(store_grant(&mut keyring, binding.owner.clone(), wrong_version, 1_000).is_err());
-        let mut wrong_secret = grant("not-base64url", 2_000);
-        assert!(store_grant(
-            &mut keyring,
-            binding.owner.clone(),
-            wrong_secret.clone(),
-            1_000
-        )
-        .is_err());
-        wrong_secret.credential.secret = "R".repeat(43);
-        wrong_secret.station_signing_key_id = "not-base64url".to_string();
-        assert!(store_grant(&mut keyring, binding.owner.clone(), wrong_secret, 1_000).is_err());
-        let mut local_browser_origin = grant(&"R".repeat(43), 2_000);
-        local_browser_origin.scope.browser_origin = "http://localhost:5173".to_string();
-        assert!(validate_grant(&local_browser_origin, 1_000).is_ok());
-        local_browser_origin.scope.browser_origin = "http://localhost:5173/path".to_string();
-        assert!(validate_grant(&local_browser_origin, 1_000).is_err());
-        store_grant(
-            &mut keyring,
-            binding.owner.clone(),
-            grant(&"R".repeat(43), 1_500),
-            1_000,
-        )
-        .unwrap();
-        assert!(read_metadata(&mut keyring, &binding, 1_500)
-            .unwrap()
-            .is_none());
+    /// Seed an entry the way the removed store command left one: the
+    /// binding in its channel index plus a keyring account for the grant.
+    fn seed(keyring: &mut MemoryKeyring, binding: &RelayGrantBinding) -> String {
+        let mut index = read_index(keyring, &binding.owner.channel).unwrap();
+        index.push(binding.clone());
+        write_index(keyring, &binding.owner.channel, &index).unwrap();
+        let account = account_for(binding).unwrap();
+        keyring.set(&account, "stored-grant").unwrap();
+        account
     }
 
     #[test]
     fn removing_a_relay_route_revokes_its_grants_without_touching_station_bearers() {
         let mut keyring = MemoryKeyring::default();
-        let stable = owner("stable", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
-        let nightly = owner("nightly", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
-        let other_client = owner("stable", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
-        let current = grant(&"R".repeat(43), 3_000);
-        let current_binding = RelayGrantBinding {
-            route: route_key(),
-            owner: stable.clone(),
-        };
-        store_grant(&mut keyring, stable.clone(), current.clone(), 1_000).unwrap();
-        store_grant(&mut keyring, nightly.clone(), current.clone(), 1_000).unwrap();
-        store_grant(&mut keyring, other_client.clone(), current.clone(), 1_000).unwrap();
+        let stable = binding("stable", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+        let nightly = binding("nightly", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+        let other_client = binding("stable", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+        let mut newer_generation = stable.clone();
+        newer_generation.route.routing_generation += 1;
 
-        let mut newer_generation = current.clone();
-        newer_generation.scope.routing_generation += 1;
-        store_grant(&mut keyring, stable.clone(), newer_generation, 1_000).unwrap();
-
+        let stable_account = seed(&mut keyring, &stable);
+        let nightly_account = seed(&mut keyring, &nightly);
+        let other_client_account = seed(&mut keyring, &other_client);
+        let newer_generation_account = seed(&mut keyring, &newer_generation);
         keyring
             .set("profile:station-bearer:unchanged", "station-token")
             .unwrap();
 
-        invalidate_route_bindings(&mut keyring, "stable", &[(profile_route(), stable)]).unwrap();
-        assert!(read_metadata(&mut keyring, &current_binding, 1_001)
-            .unwrap()
-            .is_none());
-        assert!(read_metadata(
+        invalidate_route_bindings(
             &mut keyring,
-            &RelayGrantBinding {
-                route: route_key(),
-                owner: nightly
-            },
-            1_001
+            "stable",
+            &[(profile_route(), stable.owner.clone())],
         )
-        .unwrap()
-        .is_some());
-        assert!(read_metadata(
-            &mut keyring,
-            &RelayGrantBinding {
-                route: route_key(),
-                owner: other_client
-            },
-            1_001
-        )
-        .unwrap()
-        .is_some());
+        .unwrap();
+
+        // Every generation of the removed owner's route is gone.
+        assert_eq!(keyring.get(&stable_account).unwrap(), None);
+        assert_eq!(keyring.get(&newer_generation_account).unwrap(), None);
+        assert_eq!(
+            read_index(&mut keyring, "stable").unwrap(),
+            vec![other_client]
+        );
+        // Another channel and another client instance keep their grants.
+        assert!(keyring.get(&nightly_account).unwrap().is_some());
+        assert!(keyring.get(&other_client_account).unwrap().is_some());
+        assert_eq!(read_index(&mut keyring, "nightly").unwrap(), vec![nightly]);
         assert_eq!(
             keyring.get("profile:station-bearer:unchanged").unwrap(),
             Some("station-token".to_string())
@@ -981,193 +410,5 @@ mod tests {
         assert_eq!(read_index(&mut keyring, "nightly").unwrap(), vec![nightly]);
         assert!(stable_snapshot.is_empty());
         assert!(nightly_snapshot.is_empty());
-    }
-
-    #[test]
-    fn concurrent_store_cannot_restore_a_grant_after_profile_removal_commits() {
-        use std::sync::mpsc;
-        use std::sync::{Arc, Mutex};
-
-        let directory = tempfile::tempdir().unwrap();
-        let profile_path = directory.path().join("profiles.json");
-        let current_contents = serde_json::json!({
-            "schemaVersion": 1,
-            "revision": 1,
-            "defaultProfile": null,
-            "projectProfiles": {},
-            "profiles": [{
-                "schemaVersion": 1,
-                "name": "relay-home",
-                "endpoint": "https://station.example",
-                "relayRoute": {
-                    "brokerOrigin": "https://broker.example",
-                    "stationId": "11111111-1111-4111-8111-111111111111",
-                    "enrollmentId": "22222222-2222-4222-8222-222222222222"
-                },
-                "clientInstanceId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-                "setupSource": "manual",
-                "configurationState": "unconfigured",
-                "createdAt": 1,
-                "updatedAt": 1
-            }]
-        })
-        .to_string();
-        let removed_contents = serde_json::json!({
-            "schemaVersion": 1,
-            "revision": 2,
-            "defaultProfile": null,
-            "projectProfiles": {},
-            "profiles": []
-        })
-        .to_string();
-        std::fs::write(&profile_path, &current_contents).unwrap();
-
-        let owner = owner("stable", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
-        let binding = RelayGrantBinding {
-            route: route_key(),
-            owner: owner.clone(),
-        };
-        let keyring = Arc::new(Mutex::new(MemoryKeyring::default()));
-        store_grant(
-            &mut *keyring.lock().unwrap(),
-            owner.clone(),
-            grant(&"R".repeat(43), 3_000),
-            1_000,
-        )
-        .unwrap();
-
-        let (cleaned_tx, cleaned_rx) = mpsc::channel();
-        let (commit_tx, commit_rx) = mpsc::channel();
-        let (attempting_tx, attempting_rx) = mpsc::channel();
-        let writer_keyring = Arc::clone(&keyring);
-        let writer_path = profile_path.clone();
-        let route_for_cleanup = profile_route();
-        let writer_owner = owner.clone();
-        let writer = std::thread::spawn(move || {
-            let _profile_lock = super::super::lock_station_profiles(&writer_path).unwrap();
-            with_vault_lock(|| {
-                invalidate_route_bindings(
-                    &mut *writer_keyring.lock().unwrap(),
-                    "stable",
-                    &[(route_for_cleanup, writer_owner)],
-                )
-            })
-            .unwrap();
-            cleaned_tx.send(()).unwrap();
-            commit_rx.recv().unwrap();
-            std::fs::write(&writer_path, removed_contents).unwrap();
-        });
-
-        let store_keyring = Arc::clone(&keyring);
-        let store_path = profile_path.clone();
-        let store_owner = owner.clone();
-        let (store_result_tx, store_result_rx) = mpsc::channel();
-        let store = std::thread::spawn(move || {
-            cleaned_rx.recv().unwrap();
-            let result = with_profile_and_vault(
-                || {
-                    attempting_tx.send(()).unwrap();
-                    super::super::lock_station_profiles(&store_path)
-                },
-                |_profile_lock| {
-                    let contents = std::fs::read_to_string(&store_path)
-                        .map_err(|error| format!("read profiles for grant store: {error}"))?;
-                    let parsed = super::super::parse_station_profile_store(&contents)?;
-                    let still_present = parsed.profiles.iter().any(|profile| {
-                        profile.relay_route.as_ref() == Some(&profile_route())
-                            && profile.client_instance_id.as_deref()
-                                == Some(store_owner.client_instance_id.as_str())
-                    });
-                    if !still_present {
-                        return Err("relay profile was removed before grant storage".to_string());
-                    }
-                    store_grant(
-                        &mut *store_keyring.lock().unwrap(),
-                        store_owner,
-                        grant(&"S".repeat(43), 4_000),
-                        1_001,
-                    )
-                    .map(|_| ())
-                },
-            );
-            store_result_tx.send(result.clone()).unwrap();
-            result
-        });
-
-        attempting_rx.recv().unwrap();
-        assert!(matches!(
-            store_result_rx.recv_timeout(std::time::Duration::from_millis(50)),
-            Err(mpsc::RecvTimeoutError::Timeout)
-        ));
-        commit_tx.send(()).unwrap();
-        writer.join().unwrap();
-        assert!(store_result_rx.recv().unwrap().is_err());
-        assert!(store.join().unwrap().is_err());
-        assert!(
-            read_metadata(&mut *keyring.lock().unwrap(), &binding, 1_002)
-                .unwrap()
-                .is_none()
-        );
-        let final_store = super::super::parse_station_profile_store(
-            &std::fs::read_to_string(profile_path).unwrap(),
-        )
-        .unwrap();
-        assert!(final_store.profiles.is_empty());
-    }
-
-    /// station#2542: `with_profile_and_vault` holds `profiles.json.lock` for
-    /// the whole `operation` closure. On mobile, `station_profiles_path`
-    /// re-takes that same lock on every call — `lock_station_profiles_legacy`
-    /// is exactly the primitive it uses — and the lock is not reentrant: a
-    /// record owned by our own live pid is never reclaimable. A callback
-    /// that re-resolved the store from inside `operation` (as
-    /// `owner_for_route` used to, via `read_station_profile_contents`) could
-    /// never succeed while this lock was held; it waited out the full
-    /// mobile bound and failed busy on every call. Reproduce the reentry
-    /// with the identical lock-record shape mobile uses (a short wait
-    /// stands in for the mobile bound so the test stays fast and does not
-    /// require a mobile target or an `AppHandle`), then prove the fixed
-    /// shape — read the store once and thread it through `operation` —
-    /// completes under the same held lock.
-    #[test]
-    fn operation_cannot_relock_the_profile_store_it_already_holds() {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("profiles.json");
-        std::fs::write(&path, super::super::EMPTY_STATION_PROFILE_STORE).unwrap();
-
-        let acquire = |path: &std::path::Path| {
-            super::super::lock_station_profiles_with_record_within(
-                path,
-                &super::super::legacy_profile_lock_record_bytes,
-                &|_| Ok(None),
-                std::time::Duration::from_millis(200),
-                std::time::Duration::from_millis(250),
-            )
-        };
-
-        // The bug: operation ignores the lock it was handed and tries to
-        // take the same file lock again — exactly what the old
-        // `owner_for_route` did on mobile via `read_station_profile_contents`
-        // -> `station_profiles_path`.
-        let reentrant = with_profile_and_vault(
-            || acquire(&path),
-            |_outer_lock| acquire(&path).map(|_inner_lock| ()),
-        );
-        let error =
-            reentrant.expect_err("a held profile lock cannot be reacquired on the same thread");
-        assert!(error.contains("busy"), "{error}");
-
-        // The fix: operation consumes the store already read while the lock
-        // was held and never resolves it again.
-        let fixed = with_profile_and_vault(
-            || {
-                let lock = acquire(&path)?;
-                let contents = std::fs::read_to_string(&path)
-                    .map_err(|error| format!("read profiles for test: {error}"))?;
-                Ok::<_, String>((lock, contents))
-            },
-            |(_lock, contents)| super::super::parse_station_profile_store(contents).map(|_| ()),
-        );
-        assert!(fixed.is_ok(), "{:?}", fixed.err());
     }
 }

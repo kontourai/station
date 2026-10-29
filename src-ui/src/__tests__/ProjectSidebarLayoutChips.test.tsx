@@ -3,8 +3,8 @@
  */
 
 /**
- * #2063 (design record D3): a project's layouts are a chip row under the
- * project name, not a nested tree.
+ * #2063 (design record D3): a project's layouts are a vertical view list under the
+ * selected project, with one roving tab stop.
  *
  * Everything here drives the REAL `ProjectSidebar` composition — the same
  * mock shape as `ProjectSidebar.test.tsx` — because the claims under test are
@@ -261,6 +261,7 @@ describe('project layout chips in the real sidebar (#2063)', () => {
     // The label names the project, so a reader landing on the row from
     // anywhere in a panel of several projects knows whose layouts these are.
     expect(row.getAttribute('aria-label')).toBe('Demo layouts');
+    expect(row.getAttribute('aria-orientation')).toBe('vertical');
     expect(
       Array.from(row.querySelectorAll('button')).map((b) => b.textContent),
     ).toEqual(['Coding', 'Tasks', 'Chat']);
@@ -276,16 +277,16 @@ describe('project layout chips in the real sidebar (#2063)', () => {
     expect(tabbable.map((button) => button.textContent)).toEqual(['Coding']);
 
     chip('Coding').focus();
-    fireEvent.keyDown(chipRow(), { key: 'ArrowRight' });
+    fireEvent.keyDown(chipRow(), { key: 'ArrowDown' });
     expect(document.activeElement).toBe(chip('Tasks'));
     expect(chip('Tasks').tabIndex).toBe(0);
     expect(chip('Coding').tabIndex).toBe(-1);
 
-    fireEvent.keyDown(chipRow(), { key: 'ArrowLeft' });
+    fireEvent.keyDown(chipRow(), { key: 'ArrowUp' });
     expect(document.activeElement).toBe(chip('Coding'));
 
     // Wrapping, so End/Home are not the only way to the ends.
-    fireEvent.keyDown(chipRow(), { key: 'ArrowLeft' });
+    fireEvent.keyDown(chipRow(), { key: 'ArrowUp' });
     expect(document.activeElement).toBe(chip('Chat'));
 
     fireEvent.keyDown(chipRow(), { key: 'Home' });
@@ -322,7 +323,7 @@ describe('project layout chips in the real sidebar (#2063)', () => {
 
     // The reader arrows away from the routed chip, taking the stop with them.
     chip('Coding').focus();
-    fireEvent.keyDown(chipRow(), { key: 'ArrowRight' });
+    fireEvent.keyDown(chipRow(), { key: 'ArrowDown' });
     expect(document.activeElement).toBe(chip('Tasks'));
     expect(chip('Tasks').tabIndex).toBe(0);
 
@@ -586,7 +587,7 @@ describe('project layout chips in the real sidebar (#2063)', () => {
     test('Shift+Enter on the strip opens the menu for the chip holding the tab stop', async () => {
       renderSidebar(<ProjectSidebar />);
       chip('Coding').focus();
-      fireEvent.keyDown(chipRow(), { key: 'ArrowRight' });
+      fireEvent.keyDown(chipRow(), { key: 'ArrowDown' });
       expect(document.activeElement).toBe(chip('Tasks'));
 
       await act(async () => {
@@ -621,10 +622,10 @@ describe('project layout chips in the real sidebar (#2063)', () => {
 
       act(() => {
         fireEvent.keyDown(document.activeElement ?? document.body, {
-          key: 'ArrowRight',
+          key: 'ArrowDown',
         });
         fireEvent.keyDown(document.activeElement ?? document.body, {
-          key: 'ArrowLeft',
+          key: 'ArrowUp',
         });
       });
 

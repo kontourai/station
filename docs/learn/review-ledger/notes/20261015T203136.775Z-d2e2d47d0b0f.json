@@ -1,0 +1,7 @@
+{
+  "revision": "22a2a547024f07da86f2141c7d52a2b1fc30b598",
+
+  "notes": [
+    {"path":"docs/plans/README.md","note":"Reviewed the regenerated plans index against scripts/docs-index.mjs and the tracked plan documents. The only added entry links the dated Task tracker sync upstream-gap handoff; its title, path and blocked scope agree with that document. No runtime or tracker-sync delivery is claimed.","inputs":["docs/plans/README.md"]}
+  ]
+}

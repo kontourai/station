@@ -4,6 +4,10 @@ import {
   resolveEngineCapabilityMatrix,
   type ToolPolicyDelivery,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import {
+  findPrimaryChatLayout,
+  type LayoutMetadataReadView,
+} from '@kontourai/station-contracts/layout';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import {
   type OrchestrationSessionSummary,
@@ -244,6 +248,12 @@ export function useChatDockViewModel({
    * state, and they stay that way.
    */
   const sessionDisplayCwd = sessionCwd || sessionWorkingDir;
+  // Whether that directory is a folder Station made for this chat rather than
+  // one the user chose — the server's call (`cwdManagedWorkspace`), read only
+  // when the label above is showing that session's own `cwd`.
+  const sessionCwdManaged = Boolean(
+    sessionCwd && activeOrchestrationSession?.cwdManagedWorkspace,
+  );
   const { data: sessionLayouts = [] } = useProjectLayoutsQuery(
     sessionProjectSlug ?? '',
     { enabled: !!sessionProjectSlug },
@@ -262,12 +272,14 @@ export function useChatDockViewModel({
     modelConnectionsData && modelConnectionsData.length > 0
       ? modelConnectionsData
       : EMPTY_CONNECTIONS;
-  const sessionCodingLayout = sessionLayouts.find(
-    (layout: any) => layout.type === 'coding',
+  // The session's Project layout that owns Chat (`primary: 'chat'`): where
+  // "open this conversation in its layout" and its file links go (#2995).
+  const sessionCodingLayout = findPrimaryChatLayout(
+    sessionLayouts as LayoutMetadataReadView[],
   );
 
   // Shared with the send path so the approval chip and the dispatched
-  // posture can never be resolved off different bindings (round 2 LOW-5).
+  // posture can never be resolved off different bindings (#2169).
   const agentConnectionId = resolveSessionEngineConnectionId({
     conversationOpenState: activeSessionForHook?.conversationOpenState,
     currentSessionId: activeSessionForHook?.currentSessionId,
@@ -525,6 +537,7 @@ export function useChatDockViewModel({
     modelsStale,
     sessionCodingLayout,
     sessionDisplayCwd,
+    sessionCwdManaged,
     sessionProjectName,
     unreadCount,
   };

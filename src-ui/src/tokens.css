@@ -4,7 +4,9 @@
 
 :root {
   /* Font families */
-  --font-sans: "DM Sans", system-ui, sans-serif;
+  --font-sans:
+    "DM Sans", "DM Sans Fallback", "DM Sans Roboto Fallback", system-ui,
+    sans-serif;
   --font-mono:
     "JetBrains Mono", "SF Mono", "Fira Code", "Cascadia Code", monospace;
 
@@ -35,18 +37,18 @@
   --weight-semibold: 600;
   --weight-bold: 700;
 
-  /* Spacing scale */
-  --space-1: 2px;
-  --space-2: 4px;
-  --space-3: 6px;
-  --space-4: 8px;
-  --space-5: 10px;
-  --space-6: 12px;
-  --space-8: 16px;
-  --space-10: 20px;
-  --space-12: 24px;
-  --space-16: 32px;
-  --space-20: 40px;
+  /* Legacy spacing aliases preserve their original values; the shared scale owns the base values. */
+  --space-1: calc(var(--k-space-1) / 2);
+  --space-2: var(--k-space-1);
+  --space-3: calc(var(--k-space-3) / 2);
+  --space-4: var(--k-space-2);
+  --space-5: calc(var(--k-space-1) * 2.5);
+  --space-6: var(--k-space-3);
+  --space-8: var(--k-space-4);
+  --space-10: calc(var(--k-space-1) * 5);
+  --space-12: var(--k-space-5);
+  --space-16: var(--k-space-6);
+  --space-20: calc(var(--k-space-2) * 5);
 
   /* Responsive breakpoints (documentation/reference only).
      NOTE: CSS @media queries cannot consume a custom property, so the literal
@@ -74,64 +76,23 @@
   --layer-popover: 1000;
   --layer-notice: 9000;
   --layer-dock: 9200;
-  /* A popover/menu that belongs to a dock control. It ESCAPES the dock (its
-     surface portals to the body, so the dock can no longer clamp it) and must
-     therefore outrank it — but it is not a dialog, and
-     `NotificationContainer.css` states the rule this position is derived
-     from: notifications "remain reachable above the chat dock while dialogs
-     and system blockers still supersede both surfaces". A scrim-less popover
-     is neither of those, so it sits above the dock and below every layer the
-     shell keeps persistently over the dock: the floating action, navigation,
-     notifications, the palette and dialogs.
-
-     WHAT THIS REVERSES, stated because it is a deliberate contract and not an
-     oversight. The OUTCOME and the MECHANISM are separate claims here, and
-     each has its own evidence, because a verified outcome does not verify the
-     explanation attached to it.
-
-     OUTCOME, measured on a phone viewport: with a popover open, a #920
-     critical card's own control is unreachable, where on `origin/main` it was
-     reachable. Pinned by the popover-with-a-critical-card shape in
-     `BannerHost.dialog-stacking.test.tsx`.
-
-     MECHANISM: `BannerHost.css` raises a blocking pairing/credential card's
-     own item and cap to `calc(var(--layer-dock) + 1)` — 9201 — expressly so
-     that ONLY a critical card crosses the dock layer, and 9250 is above it.
-     What distinguishes that from the competing explanation (the control being
-     unreachable because it was never raised at all, in which case anything
-     would cover it and this value would be irrelevant) is a fault injection:
-     lowering this token to 9150 makes those same controls REACHABLE. A
-     control that was not raised could not become reachable by moving the
-     popover down, so the raised layer is real and this value is what it is
-     being compared against. The first draft of that pin measured the
-     unraised `--info` cap and passed the injection, which is how the
-     distinction was found.
-
-     ACCEPTED, with the reasoning rather than an assertion. This occlusion is
-     user-initiated and dismissible, which is categorically different from the
-     click theft #1638 reports: there the user aims at a visible control and
-     something else receives the click, with no way to tell; here the user
-     opened the surface that covers it and closing it restores the card. That
-     is one extra interaction, not a lockout, and it is the right trade for
-     the ordinary popover case.
-
-     THE CONSTRAINT is what makes this a fork rather than a free choice, and it
-     is arithmetic rather than a measurement: the raised value is literally
-     `--layer-dock + 1`, and z-index is an integer, so 9200 and 9201 are
-     consecutive and NO value exists between them for a popover to occupy.
-     (The host itself is not uniformly at that layer — it is `--layer-notice`
-     for ordinary notices over a maximized dock, and `auto` under #920 with
-     only the critical item and cap raised. It is the raised critical control
-     that this token is ordered against.) Putting popovers under the banner means
-     moving the BANNER, which is a shell layer-order decision wider than the
-     surface seam. Filed as #1685, not decided here. The pin covers this
-     directly — see the popover-with-a-critical-card shape in
-     `BannerHost.dialog-stacking.test.tsx`, which asserts the accepted
-     behaviour, so a later change to it is a visible decision. */
+  /* Dock-owned popovers portal above the dock; notifications and dialogs
+     retain their higher layers. */
   --layer-surface-popover: 9250;
   --layer-floating-action: 9300;
   --layer-navigation: 9350;
   --layer-notification: 9400;
+  /* A menu the reader opened from the toolbar — the region controls, their
+     chooser, Help, the `⋯` overflow — or from the sidebar's account control.
+     The toolbar's right end, where the region controls now sit, opens straight
+     into the notification column below it, so these panels must outrank it
+     while they are open: otherwise a pending approval's pill takes the press
+     aimed at a menu row (#1638's click theft). Covering a notification with a
+     menu the reader opened is the user-initiated, dismissible occlusion
+     `--layer-surface-popover` accepts; their dismiss backdrops stay at
+     `--layer-navigation` - 1, BELOW the column, so a notification outside the
+     open panel is still pressed directly. */
+  --layer-toolbar-menu: 9450;
   /* The command palette: transient command chrome. It must beat notices and
      toasts so typing is never occluded, and lose to dialogs so a confirm
      opened FROM the palette is reachable. Its own slot because it is neither

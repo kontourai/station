@@ -1,0 +1,7 @@
+{
+  "revision": "a6510d012fca5a84ab7bd3852a0cadae773356ea",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Transitive re-review after the Cursor ACP extension change edited a linked guide (module map, session API, agents, ACP guide); checked this document for harness-question, plan-review, inbound-extension and binding-table claims; none affected; no prose change.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]}
+  ]
+}

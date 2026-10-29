@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { TURN_INTERRUPTED_MESSAGE } from '@kontourai/station-shared/runtime-event-projection';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 // archive#3117: `handleToolCompletedEvent` is the LIVE tool-outcome path —
@@ -15,11 +16,13 @@ let handleToolCompletedEvent: typeof import('../streamHandlers').handleToolCompl
 let handleToolProgressEvent: typeof import('../streamHandlers').handleToolProgressEvent;
 let handleRuntimeErrorEvent: typeof import('../turnHandlers').handleRuntimeErrorEvent;
 let handleTextDeltaEvent: typeof import('../streamHandlers').handleTextDeltaEvent;
+let handleHostImagesEvent: typeof import('../streamHandlers').handleHostImagesEvent;
 // archive#3351: spies on the messageParts module (see the doMock in the
 // text-delta describe below) to prove the dedup actually removed the
 // duplicated per-token work.
 let upsertTextPartCalls = 0;
 let toolToast: ReturnType<typeof vi.fn>;
+let resetTurnAttentionNotifications: typeof import('../turnAttentionNotifications').resetTurnAttentionNotifications;
 
 const threadId = 'thread-tool-outcome-1';
 
@@ -74,8 +77,12 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
       handleToolStartedEvent,
       handleToolCompletedEvent,
       handleToolProgressEvent,
+      handleHostImagesEvent,
     } = await import('../streamHandlers'));
     ({ handleRuntimeErrorEvent } = await import('../turnHandlers'));
+    ({ resetTurnAttentionNotifications } = await import(
+      '../turnAttentionNotifications'
+    ));
 
     activeChatsStore.initChat(threadId, {
       agentSlug: 'assistant',
@@ -85,6 +92,7 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
   });
 
   afterEach(() => {
+    resetTurnAttentionNotifications();
     vi.unstubAllGlobals();
     vi.doUnmock('../../../contexts/ToastContext');
     vi.doUnmock('../../../contexts/active-chats-store');
@@ -109,6 +117,45 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
     expect(part?.sourceEventId).toBe('evt-1');
     expect(part?.error).toBeUndefined();
     expect(part?.approvalStatus).toBeUndefined();
+  });
+
+  test('chat-host-images: a settled turn host images land on that turn committed row', () => {
+    const ref = `sha256-${'d'.repeat(64)}`;
+    activeChatsStore.updateChat(threadId, {
+      messages: [
+        { role: 'assistant', content: 'earlier', turnId: 'turn-0' },
+        { role: 'assistant', content: '![x](/w/x.png)', turnId: 'turn-1' },
+      ],
+    });
+    handleHostImagesEvent({
+      eventId: 'host-1',
+      provider: 'codex',
+      threadId,
+      turnId: 'turn-1',
+      createdAt: '2026-10-27T00:00:00.000Z',
+      method: 'content.host-images',
+      attachments: [
+        {
+          kind: 'image',
+          name: 'x.png',
+          mimeType: 'image/png',
+          size: 3,
+          blobRef: ref,
+        },
+      ],
+      sources: [
+        { path: '/w/x.png', attachmentIndex: 0 },
+        { path: '/etc/y.png', refused: 'outside-allowed-roots' },
+      ],
+    });
+    const messages = activeChatsStore.getSnapshot()[threadId]?.messages ?? [];
+    expect(messages[0].hostImages).toBeUndefined();
+    expect(messages[1].hostImages).toEqual({
+      images: {
+        '/w/x.png': { blobRef: ref, mimeType: 'image/png', name: 'x.png' },
+      },
+      refused: { '/etc/y.png': 'outside-allowed-roots' },
+    });
   });
 
   test('a tool-returned image lands right after its row as a blob reference, once', () => {
@@ -1332,6 +1379,9 @@ describe('handleTextDeltaEvent — per-token plan derivation (station#3351)', ()
       '../../../contexts/active-chats-store'
     ));
     ({ handleTextDeltaEvent } = await import('../streamHandlers'));
+    ({ resetTurnAttentionNotifications } = await import(
+      '../turnAttentionNotifications'
+    ));
 
     activeChatsStore.initChat(threadId, {
       agentSlug: 'assistant',
@@ -1341,10 +1391,47 @@ describe('handleTextDeltaEvent — per-token plan derivation (station#3351)', ()
   });
 
   afterEach(() => {
+    resetTurnAttentionNotifications();
     vi.unstubAllGlobals();
     vi.doUnmock('../../../contexts/active-chats-store');
     vi.doUnmock('../messageParts');
     vi.resetModules();
+  });
+
+  test('plan detection scans streamed prose once rather than rescanning its growing prefix', () => {
+    const original = String.prototype.match;
+    let scanned = 0;
+    const matcher = vi
+      .spyOn(String.prototype, 'match')
+      .mockImplementation(function (
+        this: string,
+        pattern: Parameters<typeof String.prototype.match>[0],
+      ) {
+        scanned += this.length;
+        return original.call(this, pattern);
+      });
+    let characters = 0;
+    const started = performance.now();
+    try {
+      for (let index = 0; index < 200; index++) {
+        const delta = `Result ${index}: ordinary prose with a digit but no plan step.\n`;
+        characters += delta.length;
+        handleTextDeltaEvent(textDelta(delta));
+      }
+    } finally {
+      matcher.mockRestore();
+    }
+    process.stdout.write(
+      `PLAN_PROFILE ${JSON.stringify({ scanned, characters, cpuMs: performance.now() - started })}\n`,
+    );
+    expect(activeChatsStore.getSnapshot()[threadId]!.planArtifact).toBeNull();
+    expect(scanned).toBeLessThan(characters * 8);
+    handleTextDeltaEvent(textDelta('Plan:\n- first\n- second\n'));
+    expect(
+      activeChatsStore
+        .getSnapshot()
+        [threadId]!.planArtifact?.steps.map((step) => step.content),
+    ).toEqual(['first', 'second']);
   });
 
   test('the plan artifact stays live while a plan streams: rawText and steps advance per delta', () => {
@@ -1363,6 +1450,189 @@ describe('handleTextDeltaEvent — per-token plan derivation (station#3351)', ()
     expect(chat.streamingMessage?.content).toBe(
       'Plan:\n- [ ] first\n- [ ] second',
     );
+  });
+
+  test('batches unfinished plan lines and flushes the final line at turn completion', async () => {
+    handleTextDeltaEvent(textDelta('Plan:\n- first\n- second\n'));
+    const first = activeChatsStore.getSnapshot()[threadId]!.planArtifact;
+    expect(first?.steps).toHaveLength(2);
+    for (const delta of ['- ', 'third', ' step']) {
+      handleTextDeltaEvent(textDelta(delta));
+      expect(activeChatsStore.getSnapshot()[threadId]!.planArtifact).toBe(
+        first,
+      );
+    }
+    const { finalizeAssistantTurn } = await import('../assistantTurn');
+    finalizeAssistantTurn(threadId);
+    expect(
+      activeChatsStore.getSnapshot()[threadId]!.planArtifact?.steps,
+    ).toEqual([
+      { content: 'first', status: 'pending' },
+      { content: 'second', status: 'pending' },
+      { content: 'third step', status: 'pending' },
+    ]);
+  });
+
+  function seedUnterminatedPlan() {
+    activeChatsStore.updateChat(threadId, {
+      orchestrationTurnOpen: true,
+      openTurnId: 'turn-plan',
+      orchestrationSessionStarted: true,
+    });
+    handleTextDeltaEvent(textDelta('Plan:\n- first\n'));
+    handleTextDeltaEvent(textDelta('- second'));
+    expect(
+      activeChatsStore.getSnapshot()[threadId]!.planArtifact?.steps,
+    ).toHaveLength(1);
+  }
+
+  test('publishes the last plan line before a tool starts, without waiting for another text delta', async () => {
+    seedUnterminatedPlan();
+    const { handleToolStartedEvent } = await import('../streamHandlers');
+    handleToolStartedEvent({
+      method: 'tool.started',
+      threadId,
+      turnId: 'turn-plan',
+      provider: 'station-agent',
+      eventId: 'tool-start',
+      itemId: 'call',
+      createdAt: '2026-10-17T00:00:00.000Z',
+      toolCallId: 'call',
+      toolName: 'read_file',
+      arguments: {},
+    });
+    expect(
+      activeChatsStore.getSnapshot()[threadId]!.streamingMessage,
+    ).toBeDefined();
+    expect(
+      activeChatsStore
+        .getSnapshot()
+        [threadId]!.planArtifact?.steps.map((step) => step.content),
+    ).toEqual(['first', 'second']);
+  });
+
+  test.each([
+    'abort',
+    'interrupted',
+    'snapshot-idle',
+    'snapshot-exit',
+    'runtime-error',
+  ] as const)(
+    'flushes an unterminated plan before %s ends or replaces the stream',
+    async (terminal) => {
+      seedUnterminatedPlan();
+      const base = {
+        threadId,
+        provider: 'station-agent' as const,
+        eventId: 'terminal',
+        createdAt: '2026-10-17T00:00:00.000Z',
+      };
+      if (terminal === 'abort') {
+        const { handleTurnAbortedEvent } = await import('../turnHandlers');
+        handleTurnAbortedEvent({
+          ...base,
+          method: 'turn.aborted',
+          turnId: 'turn-plan',
+          reason: 'stopped',
+        });
+      } else if (terminal === 'interrupted') {
+        const { handleSessionStateChangedEvent } = await import(
+          '../sessionHandlers'
+        );
+        handleSessionStateChangedEvent({
+          ...base,
+          method: 'session.state-changed',
+          from: 'running',
+          sessionId: threadId,
+          to: 'awaiting-approval',
+          reason: TURN_INTERRUPTED_MESSAGE,
+          sessionState: 'needs_input',
+          transitionReason: 'runtime_exit',
+          transitionSource: 'system_recovery',
+          interruptedTurnBoundary: {
+            boundaryId: 'boundary',
+            priorState: 'accepted',
+            ownerId: 'dead-owner',
+            boundaryCreatedAt: base.createdAt,
+            boundaryUpdatedAt: base.createdAt,
+          },
+        });
+      } else if (terminal === 'runtime-error') {
+        const { handleRuntimeErrorEvent } = await import('../turnHandlers');
+        handleRuntimeErrorEvent({
+          ...base,
+          method: 'runtime.error',
+          turnId: 'turn-plan',
+          severity: 'error',
+          message: 'Engine stopped',
+        });
+      } else {
+        const { applyOrchestrationSnapshot } = await import(
+          '../snapshotHandlers'
+        );
+        applyOrchestrationSnapshot(
+          {
+            sessions:
+              terminal === 'snapshot-exit'
+                ? []
+                : [
+                    {
+                      threadId,
+                      provider: 'station-agent',
+                      status: 'idle',
+                      hasActiveTurn: false,
+                    },
+                  ],
+          },
+          { apiBase: 'http://api', isReconnectFallback: true },
+        );
+      }
+      expect(
+        activeChatsStore
+          .getSnapshot()
+          [threadId]!.planArtifact?.steps.map((step) => step.content),
+      ).toEqual(['first', 'second']);
+      if (terminal !== 'runtime-error')
+        expect(
+          activeChatsStore.getSnapshot()[threadId]!.streamingMessage,
+        ).toBeUndefined();
+    },
+  );
+
+  test('reuses an unchanged artifact but publishes changed raw text even when steps match', () => {
+    handleTextDeltaEvent(textDelta('Plan:\n- first\n- second\n'));
+    const first = activeChatsStore.getSnapshot()[threadId]!.planArtifact;
+    handleTextDeltaEvent(textDelta('\n'));
+    expect(activeChatsStore.getSnapshot()[threadId]!.planArtifact).toBe(first);
+    handleTextDeltaEvent(textDelta('Explanation changed.\n'));
+    const next = activeChatsStore.getSnapshot()[threadId]!.planArtifact;
+    expect(next?.steps).toEqual(first?.steps);
+    expect(next?.rawText).toContain('Explanation changed.');
+  });
+
+  test('flushes reasoning plans with no trailing newline', async () => {
+    const { handleReasoningDeltaEvent } = await import('../streamHandlers');
+    handleReasoningDeltaEvent({
+      ...textDelta('Plan:\n- first\n'),
+      method: 'content.reasoning-delta',
+    });
+    const first = activeChatsStore.getSnapshot()[threadId]!.planArtifact;
+    handleReasoningDeltaEvent({
+      ...textDelta('- second'),
+      method: 'content.reasoning-delta',
+    });
+    expect(activeChatsStore.getSnapshot()[threadId]!.planArtifact).toBe(first);
+    const { finalizeAssistantTurn } = await import('../assistantTurn');
+    finalizeAssistantTurn(threadId);
+    expect(
+      activeChatsStore.getSnapshot()[threadId]!.planArtifact,
+    ).toMatchObject({
+      source: 'reasoning',
+      steps: [
+        { content: 'first', status: 'pending' },
+        { content: 'second', status: 'pending' },
+      ],
+    });
   });
 
   // archive#3351: the pre-dedup handler built the accumulated

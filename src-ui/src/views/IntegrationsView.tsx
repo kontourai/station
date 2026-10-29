@@ -89,8 +89,17 @@ function blankIntegration(): IntegrationDef {
 /* ── Integrations View ── */
 export function IntegrationsView({
   basePath = '/connections/tools',
+  selection,
+  onDirtyChange,
 }: {
   basePath?: string;
+  selection?: {
+    selectedId: string | null;
+    select: (id: string) => void;
+    deselect: () => void;
+    saved?: (id: string) => void;
+  };
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const {
     data: integrations = [],
@@ -103,7 +112,8 @@ export function IntegrationsView({
     type: 'success' | 'warning' | 'error';
     text: string;
   } | null>(null);
-  const { selectedId, select, deselect } = useUrlSelection(basePath);
+  const urlSelection = useUrlSelection(basePath);
+  const { selectedId, select, deselect } = selection ?? urlSelection;
   const [editForm, setEditForm] = useState<IntegrationDef | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [isLocked, setIsLocked] = useState(true);
@@ -150,7 +160,7 @@ export function IntegrationsView({
           : current,
       );
       setMessage({ type: 'success', text: 'Saved' });
-      if (variables.isNew) select(variables.id);
+      if (variables.isNew) (selection?.saved ?? select)(variables.id);
       saveMutation.reset();
       removeSettledSecretMutation(variables);
     },
@@ -275,6 +285,9 @@ export function IntegrationsView({
       ? rawJson !== formToMcpJson(renderedEditForm ?? blankIntegration())
       : integrationDraftSignature(renderedEditForm) !==
         integrationDraftSignature(detailData ?? null));
+  useEffect(() => {
+    onDirtyChange?.(hasUnsavedIntegrationDraft);
+  }, [hasUnsavedIntegrationDraft, onDirtyChange]);
 
   return (
     <>

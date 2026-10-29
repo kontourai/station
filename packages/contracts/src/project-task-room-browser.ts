@@ -1,4 +1,12 @@
-import type { ProjectTaskRoomOutputFeedback } from './project-task-room.js';
+import {
+  isProjectTaskRoomMentions,
+  isTaskRoomAttachments,
+  type ProjectTaskRoomOutputFeedback,
+  type ProjectTaskRoomPersonMention,
+  type ProjectTaskRoomPresenceLocation,
+  parseProjectTaskRoomPresenceLocation,
+  type TaskRoomAttachment,
+} from './project-task-room.js';
 /** Closed browser projection for the Project/Task room transport. */
 export const PROJECT_TASK_ROOM_BROWSER_LIVE_SOURCE_SCHEMA_VERSION =
   'station.live-work-session/v6' as const;
@@ -23,7 +31,12 @@ export type ProjectTaskRoomBrowserLink = {
 };
 export type ProjectTaskRoomBrowserBody =
   | ProjectTaskRoomOutputFeedback
-  | { readonly kind: 'human-message'; readonly text: string }
+  | {
+      readonly kind: 'human-message';
+      readonly text: string;
+      readonly attachments?: TaskRoomAttachment[];
+      readonly mentions?: ProjectTaskRoomPersonMention[];
+    }
   | {
       readonly kind: 'live-work-started';
       readonly sessionId: string;
@@ -47,9 +60,28 @@ export type ProjectTaskRoomBrowserBody =
       readonly kind: 'outcome-link';
       readonly link: ProjectTaskRoomBrowserLink;
     };
+export interface ProjectTaskRoomBrowserPerson {
+  readonly principalId: string;
+  readonly label: string;
+  readonly standing: 'operator' | 'member';
+}
 export interface ProjectTaskRoomBrowserRecord {
-  readonly actor: { readonly kind: 'human' | 'agent'; readonly label: string };
+  readonly actor: {
+    readonly kind: 'human' | 'agent';
+    readonly label: string;
+    readonly id?: string;
+    readonly standing?: 'operator' | 'member';
+  };
+  readonly startedBy?: ProjectTaskRoomBrowserPerson;
   readonly sequence: number;
+  readonly occurredAt?: string;
+  readonly execution?: {
+    readonly sessionId: string;
+    readonly turnId: string;
+    readonly runId?: string;
+  };
+  readonly threadSessionId?: string;
+  readonly system?: boolean;
   readonly body: ProjectTaskRoomBrowserBody;
   readonly digests: { readonly proposal: string; readonly checkpoint: string };
   readonly integrity: 'L0';
@@ -97,7 +129,10 @@ export interface ProjectTaskRoomBrowserLiveParticipant {
     readonly actorId: string;
     readonly kind: 'human' | 'agent';
     readonly label: string;
+    readonly standing?: 'operator' | 'member';
   };
+  readonly startedBy?: ProjectTaskRoomBrowserPerson;
+  readonly location?: ProjectTaskRoomPresenceLocation;
   readonly work: {
     readonly sessionId: string;
     readonly runId?: string;
@@ -168,6 +203,7 @@ type RecordValue = Record<string, unknown>;
 const own = (
   value: unknown,
   fields: readonly string[],
+  optional: readonly string[] = [],
 ): value is RecordValue => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   try {
@@ -175,7 +211,15 @@ const own = (
     if (prototype !== Object.prototype && prototype !== null) return false;
     const descriptors = Object.getOwnPropertyDescriptors(value);
     return (
-      Object.keys(descriptors).length === fields.length &&
+      Object.keys(descriptors).every(
+        (key) => fields.includes(key) || optional.includes(key),
+      ) &&
+      optional.every(
+        (key) =>
+          !descriptors[key] ||
+          (descriptors[key].get === undefined &&
+            descriptors[key].set === undefined),
+      ) &&
       fields.every((field) => {
         const descriptor = descriptors[field];
         return (
@@ -272,10 +316,19 @@ function body(value: unknown): ProjectTaskRoomBrowserBody | undefined {
     };
   if (
     kind === 'human-message' &&
-    own(row, ['kind', 'text']) &&
-    humanText(row.text)
+    own(row, ['kind', 'text'], ['attachments', 'mentions']) &&
+    humanText(row.text) &&
+    (row.attachments === undefined || isTaskRoomAttachments(row.attachments)) &&
+    (!hasOwn(row, 'mentions') || isProjectTaskRoomMentions(row.mentions))
   )
-    return { kind: 'human-message', text: row.text };
+    return {
+      kind: 'human-message',
+      text: row.text,
+      ...(row.attachments ? { attachments: row.attachments } : {}),
+      ...(row.mentions
+        ? { mentions: row.mentions as ProjectTaskRoomPersonMention[] }
+        : {}),
+    };
   if (
     kind === 'live-work-started' &&
     own(
@@ -373,12 +426,44 @@ function checkpoint(
     retainedAnchorDigest: value.retainedAnchorDigest,
   };
 }
+function standing(value: unknown): value is 'operator' | 'member' {
+  return value === 'operator' || value === 'member';
+}
+function person(value: unknown): value is ProjectTaskRoomBrowserPerson {
+  return (
+    own(value, ['principalId', 'label', 'standing']) &&
+    id(value.principalId) &&
+    text(value.label) &&
+    standing(value.standing)
+  );
+}
 function record(value: unknown): ProjectTaskRoomBrowserRecord | undefined {
+  if (!value || typeof value !== 'object') return undefined;
   if (
-    !own(value, ['actor', 'sequence', 'body', 'digests', 'integrity']) ||
-    !own(value.actor, ['kind', 'label']) ||
+    !own(
+      value,
+      ['actor', 'sequence', 'body', 'digests', 'integrity'],
+      ['occurredAt', 'execution', 'threadSessionId', 'system', 'startedBy'],
+    ) ||
+    !own(value.actor, ['kind', 'label'], ['id', 'standing']) ||
     !['human', 'agent'].includes(String(value.actor.kind)) ||
     !text(value.actor.label) ||
+    (value.actor.id !== undefined && !id(value.actor.id)) ||
+    (hasOwn(value.actor, 'standing') &&
+      (value.actor.kind !== 'human' || !standing(value.actor.standing))) ||
+    (hasOwn(value, 'startedBy') &&
+      (value.actor.kind !== 'agent' || !person(value.startedBy))) ||
+    (value.occurredAt !== undefined &&
+      (typeof value.occurredAt !== 'string' ||
+        !Number.isFinite(Date.parse(value.occurredAt)))) ||
+    (value.execution !== undefined &&
+      (!own(value.execution, ['sessionId', 'turnId'], ['runId']) ||
+        !id(value.execution.sessionId) ||
+        !id(value.execution.turnId) ||
+        (value.execution.runId !== undefined && !id(value.execution.runId)) ||
+        value.actor.kind !== 'agent')) ||
+    (value.threadSessionId !== undefined && !id(value.threadSessionId)) ||
+    (value.system !== undefined && typeof value.system !== 'boolean') ||
     !integer(value.sequence) ||
     value.integrity !== 'L0' ||
     !own(value.digests, ['proposal', 'checkpoint']) ||
@@ -393,8 +478,26 @@ function record(value: unknown): ProjectTaskRoomBrowserRecord | undefined {
         actor: {
           kind: value.actor.kind as 'human' | 'agent',
           label: value.actor.label,
+          ...(typeof value.actor.id === 'string' ? { id: value.actor.id } : {}),
+          ...(standing(value.actor.standing)
+            ? { standing: value.actor.standing }
+            : {}),
         },
+        ...(person(value.startedBy) ? { startedBy: value.startedBy } : {}),
         sequence: value.sequence,
+        ...(typeof value.occurredAt === 'string'
+          ? { occurredAt: value.occurredAt }
+          : {}),
+        ...(value.execution
+          ? {
+              execution:
+                value.execution as ProjectTaskRoomBrowserRecord['execution'],
+            }
+          : {}),
+        ...(typeof value.threadSessionId === 'string'
+          ? { threadSessionId: value.threadSessionId }
+          : {}),
+        ...(value.system === true ? { system: true } : {}),
         body: parsed,
         digests: {
           proposal: value.digests.proposal,
@@ -409,11 +512,17 @@ function liveParticipant(
   value: unknown,
 ): ProjectTaskRoomBrowserLiveParticipant | undefined {
   if (
-    !own(value, ['actor', 'work', 'publication']) ||
-    !own(value.actor, ['actorId', 'kind', 'label']) ||
+    !own(value, ['actor', 'work', 'publication'], ['startedBy', 'location']) ||
+    !own(value.actor, ['actorId', 'kind', 'label'], ['standing']) ||
     !id(value.actor.actorId) ||
     !['human', 'agent'].includes(String(value.actor.kind)) ||
     !text(value.actor.label) ||
+    (hasOwn(value.actor, 'standing') &&
+      (value.actor.kind !== 'human' || !standing(value.actor.standing))) ||
+    (hasOwn(value, 'startedBy') &&
+      (value.actor.kind !== 'agent' || !person(value.startedBy))) ||
+    (hasOwn(value, 'location') &&
+      !parseProjectTaskRoomPresenceLocation(value.location)) ||
     !['published', 'private'].includes(String(value.publication))
   )
     return undefined;
@@ -443,7 +552,14 @@ function liveParticipant(
       actorId: value.actor.actorId,
       kind: value.actor.kind as 'human' | 'agent',
       label: value.actor.label,
+      ...(standing(value.actor.standing)
+        ? { standing: value.actor.standing }
+        : {}),
     },
+    ...(person(value.startedBy) ? { startedBy: value.startedBy } : {}),
+    ...(hasOwn(value, 'location')
+      ? { location: parseProjectTaskRoomPresenceLocation(value.location)! }
+      : {}),
     work: {
       sessionId: work.sessionId,
       ...(typeof work.runId === 'string' ? { runId: work.runId } : {}),

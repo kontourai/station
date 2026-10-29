@@ -6,6 +6,7 @@ import {
 import { type FetchSseConnection, fetchSSE } from '@kontourai/station-sdk';
 import type { QueryClient } from '@tanstack/react-query';
 import { activeChatsStore } from '../../contexts/active-chats-store';
+import { workObservation } from '../../contexts/work-observation';
 import { CLIENT_DOCUMENT_SESSION_ID } from '../clientDocumentSession';
 import {
   handleOrchestrationEvent,
@@ -17,11 +18,25 @@ import {
 } from './replay/capture-tap';
 import { createStreamCursorTracker, parseStreamSequence } from './resumeCursor';
 import { clearSequencedLiveEvents } from './sequencedLiveEvents';
+import {
+  sharedOrchestrationStreamFailed,
+  sharedOrchestrationStreamMessage,
+  sharedOrchestrationStreamOpened,
+  sharedOrchestrationStreamRetrying,
+} from './sharedStreamListeners';
 import { applyOrchestrationSnapshot } from './snapshotHandlers';
 import { setStreamConnectionState } from './streamConnectionState';
+import {
+  currentStreamAuthorityKey,
+  currentStreamQueryClient,
+  registerOrchestrationStreamQueryClient,
+  resetStreamQueryClientRegistryForTests,
+  sessionReadModelRefreshState,
+} from './streamQueryClientRegistry';
 import type { OrchestrationEvent, OrchestrationSnapshotPayload } from './types';
 
 interface OwnedStream {
+  authorityKey?: string;
   connection: FetchSseConnection;
   /** Waiting out a terminal (401/403) stop — see `onTerminal` below. */
   parked: boolean;
@@ -101,7 +116,7 @@ const ORCHESTRATION_STREAM_STALL_TIMEOUT_MS = 75_000;
 /**
  * station#2301: every apiBase a caller has asked for, so a recovery signal can
  * re-ensure a stream whose connection ended without anyone remounting the
- * dock. `ChatDock`'s mount effect is the only caller, and it does not re-run
+ * dock. A mounted detail also ensures its shared feed; neither effect re-runs
  * when the page merely comes back to the foreground.
  */
 const requestedBases = new Set<string>();
@@ -121,6 +136,17 @@ function notifyOrchestrationAuthorityChanged(apiBase: string): void {
   } else if (requestedBases.has(apiBase)) {
     ensureOrchestrationEventStream(apiBase);
   }
+}
+
+/** Explicit resync restarts a live stream; auth-refused streams keep the
+ * same retry floor and single deferred retry as focus/online recovery.
+ */
+export { registerOrchestrationStreamQueryClient };
+
+export function resyncOrchestrationEventStream(apiBase: string): void {
+  const owned = activeSources.get(apiBase);
+  if (owned?.parked) ensureOrchestrationEventStream(apiBase);
+  else notifyOrchestrationAuthorityChanged(apiBase);
 }
 
 function reensureRequestedStreams(): void {
@@ -182,8 +208,8 @@ function installRecoveryListeners(): void {
  * failure. The chip and the reason were reading two different sources.
  *
  * The fix is to keep the one derivation current, not to add a second local
- * fold. Only a turn-boundary event triggers it, at most once a second, so a
- * chatty stream cannot turn this into a refetch loop.
+ * fold. Only an event in the list below triggers it, at most once a second,
+ * so a chatty stream cannot turn this into a refetch loop.
  *
  * #2310: `turn.started` is a boundary too. A session nothing has been sent to
  * reads as a Draft (the server's lineage fold), outside the live lanes, and its
@@ -191,95 +217,104 @@ function installRecoveryListeners(): void {
  * throttle window is deferred to the window's end rather than dropped.
  *
  * #2307: the refresh targets the `QueryClient` REGISTERED for the stream's
- * apiBase (see `streamQueryClients` below) at the moment it fires. `ChatDock`
- * registers its own client on mount, so a stream with no mounted dock for its
- * apiBase refreshes nothing. #2309 Phase B, a server-pushed conversation
+ * apiBase (see `streamQueryClientRegistry.ts`) at the moment it fires. `ChatDock`
+ * and the authority query subtree register their client on mount, so list
+ * refresh remains available without a mounted dock. #2309 Phase B, a server-pushed conversation
  * activity record, supersedes this.
+ *
+ * A blocking request opening or resolving moves the session in and out of
+ * `review_pending` (the server folds `pendingReview` from these two events),
+ * and nothing else may follow: a resolved approval resumes the same turn with
+ * tool and content frames only. Without them here the inbox kept a resolved
+ * approval in "Needs you" until some later boundary or the 60s poll.
  */
 const SESSION_READ_MODEL_FACT_METHODS: ReadonlySet<string> = new Set([
+  'session.started',
+  'session.configured',
+  'session.state-changed',
   'child-work.updated',
   'turn.started',
+  'request.opened',
+  'request.resolved',
   'runtime.error',
   'session.exited',
   'turn.completed',
   'turn.aborted',
 ]);
 const SESSION_READ_MODEL_REFRESH_WINDOW_MS = 1000;
-let lastSessionReadModelRefreshAt = 0;
-let deferredSessionReadModelRefresh: ReturnType<typeof setTimeout> | undefined;
-/**
- * #2307: the `QueryClient` each apiBase's stream writes through.
- *
- * There is no single app-lifetime client. `AuthorityQueryContext` mints a
- * FRESH client per verified authority namespace (and a fresh ephemeral one for
- * every unverified fallback) and replaces its whole protected subtree when
- * that changes, while this stream is module-scoped per apiBase and outlives
- * any one of those subtrees. So the client is not bound to the stream's
- * closure: `ChatDock`, which renders inside that protected subtree, registers
- * the client `useQueryClient()` gives it and releases it on unmount, and every
- * consumer below resolves the CURRENT registration for its apiBase when it
- * runs. A retired authority's subtree unmounts before (or in the same commit
- * as) `retireAuthorityClient`, so its client stops receiving invalidations
- * and reconnect refetches at that point, and a stream whose apiBase has no
- * mounted dock writes into no cache at all.
- *
- * The registry is keyed by apiBase, not by authority. A principal switch on
- * the SAME apiBase does not by itself reconnect a live stream (credential
- * change only wakes a parked one), so until that connection cycles, facts it
- * carries under the previous principal invalidate the new authority's client.
- * Invalidation carries no payload — the new client refetches under its own
- * credential — so the effect is spurious refetches, not cross-authority data;
- * a reconnect-fallback snapshot always arrives on a fresh connect, which does
- * carry the current credential.
- *
- * A list, not a slot: more than one dock can mount at once (a docked and a
- * full-screen Chat share one authority's client), and releasing one of them
- * must not unregister the other. Each registration is its own entry, so a
- * release removes exactly that one; the last live entry for an apiBase wins.
- */
-const streamQueryClients: { apiBase: string; queryClient: QueryClient }[] = [];
-
-function currentStreamQueryClient(apiBase: string): QueryClient | undefined {
-  return streamQueryClients.filter((entry) => entry.apiBase === apiBase).at(-1)
-    ?.queryClient;
-}
-
-function registerStreamQueryClient(
-  apiBase: string,
-  queryClient: QueryClient,
-): () => void {
-  const registration = { apiBase, queryClient };
-  streamQueryClients.push(registration);
-  return () => {
-    const index = streamQueryClients.indexOf(registration);
-    if (index !== -1) streamQueryClients.splice(index, 1);
-  };
-}
 
 function refreshSessionReadModelOnFact(
   apiBase: string,
   event: OrchestrationEvent,
 ): void {
-  const client = currentStreamQueryClient(apiBase);
-  if (!client || !SESSION_READ_MODEL_FACT_METHODS.has(event.method)) return;
-  const elapsed = Date.now() - lastSessionReadModelRefreshAt;
-  if (elapsed < SESSION_READ_MODEL_REFRESH_WINDOW_MS) {
-    // One deferred refresh covers every fact that arrives in the window. It
-    // re-resolves the client when it fires: an authority switch inside the
-    // window must not send the refresh to the client it retired.
-    if (deferredSessionReadModelRefresh === undefined) {
-      deferredSessionReadModelRefresh = setTimeout(() => {
-        deferredSessionReadModelRefresh = undefined;
-        lastSessionReadModelRefreshAt = Date.now();
-        void currentStreamQueryClient(apiBase)?.invalidateQueries({
-          queryKey: ['orchestration-sessions'],
-        });
-      }, SESSION_READ_MODEL_REFRESH_WINDOW_MS - elapsed);
-    }
+  if (!SESSION_READ_MODEL_FACT_METHODS.has(event.method)) return;
+  void currentStreamQueryClient(apiBase)?.invalidateQueries(
+    { queryKey: ['conversation-inbox', apiBase], type: 'active' },
+    { cancelRefetch: false },
+  );
+  requestSessionReadModelRefresh(apiBase);
+}
+
+/**
+ * The one way the stream asks for a fresh session read-model, whether a fact
+ * or a server projection-update frame prompted it.
+ *
+ * Throttled to one refresh per window AND single-flight. The read-model is the
+ * whole session list (about a megabyte on a busy Station), and a projection
+ * update arrives on every turn-progress tick. An invalidation that lands while
+ * the previous read is still in flight makes TanStack cancel that read and
+ * start another — but the cancelled HTTP request keeps running, because the
+ * fetcher has no abort path, and its answer is discarded. Over a slow remote
+ * link that is a loop in which no read ever lands: the inbox never shows a
+ * conversation started on another device, and the abandoned reads pile up in
+ * the native request queue until session history and status are refused. So
+ * while a read is in flight this only remembers that another is owed, and
+ * asks again once that read settles. `fetchOrchestrationSessions` explicitly
+ * bounds headers and body inactivity by `DEFAULT_CLIENT_REQUEST_TIMEOUT_MS`,
+ * so a stalled read settles while a progressing slow read can finish.
+ */
+function requestSessionReadModelRefresh(apiBase: string): void {
+  const state = sessionReadModelRefreshState(apiBase);
+  if (state.deferred !== undefined) return;
+  if (state.awaitingSettle !== undefined) {
+    state.owed = true;
     return;
   }
-  lastSessionReadModelRefreshAt = Date.now();
-  void client.invalidateQueries({ queryKey: ['orchestration-sessions'] });
+  const elapsed = Date.now() - state.lastAt;
+  if (elapsed < SESSION_READ_MODEL_REFRESH_WINDOW_MS) {
+    // One deferred refresh covers every request that arrives in the window.
+    // It re-resolves the client when it fires: an authority switch inside the
+    // window must not send the refresh to the client it retired.
+    state.deferred = setTimeout(() => {
+      state.deferred = undefined;
+      refreshSessionReadModelNow(apiBase);
+    }, SESSION_READ_MODEL_REFRESH_WINDOW_MS - elapsed);
+    return;
+  }
+  refreshSessionReadModelNow(apiBase);
+}
+
+function refreshSessionReadModelNow(apiBase: string): void {
+  const client = currentStreamQueryClient(apiBase);
+  if (!client) return;
+  const state = sessionReadModelRefreshState(apiBase);
+  const queryKey = ['orchestration-sessions'];
+  if (client.isFetching({ queryKey }) > 0) {
+    state.owed = true;
+    const stop = client.getQueryCache().subscribe(() => {
+      if (client.isFetching({ queryKey }) > 0) return;
+      stop();
+      state.awaitingSettle = undefined;
+      if (!state.owed) return;
+      state.owed = false;
+      requestSessionReadModelRefresh(apiBase);
+    });
+    state.awaitingSettle = stop;
+    return;
+  }
+  state.owed = false;
+  state.lastAt = Date.now();
+  void client.invalidateQueries({ queryKey });
 }
 
 /**
@@ -288,19 +323,14 @@ function refreshSessionReadModelOnFact(
  * test's (#2310 review L3).
  */
 export function resetSessionReadModelRefreshForTests(): void {
-  if (deferredSessionReadModelRefresh !== undefined) {
-    clearTimeout(deferredSessionReadModelRefresh);
-  }
-  deferredSessionReadModelRefresh = undefined;
-  lastSessionReadModelRefreshAt = 0;
-  streamQueryClients.length = 0;
+  resetStreamQueryClientRegistryForTests();
 }
 
 /**
  * Ensures the one orchestration event stream for `apiBase`.
  *
  * #2307: a supplied `queryClient` is REGISTERED for `apiBase` (see
- * `streamQueryClients`) and the returned function releases that registration;
+ * `streamQueryClientRegistry.ts`) and the returned function releases that registration;
  * `ChatDock` passes its `useQueryClient()` and returns the release as its
  * effect cleanup. The stream itself is created by the first call for an
  * apiBase and deduplicated after that, so the client is never read from this
@@ -314,13 +344,28 @@ export function resetSessionReadModelRefreshForTests(): void {
 export function ensureOrchestrationEventStream(
   apiBase: string,
   queryClient?: QueryClient,
+  authorityKey?: string,
 ): () => void {
   const release = queryClient
-    ? registerStreamQueryClient(apiBase, queryClient)
+    ? registerOrchestrationStreamQueryClient(apiBase, queryClient, authorityKey)
     : () => {};
   requestedBases.add(apiBase);
   installRecoveryListeners();
-  const existing = activeSources.get(apiBase);
+  let existing = activeSources.get(apiBase);
+  if (
+    existing &&
+    authorityKey !== undefined &&
+    existing.authorityKey !== authorityKey
+  ) {
+    existing.connection.close();
+    activeSources.delete(apiBase);
+    setStreamConnectionState(apiBase, 'interrupted');
+    appliedCursors.delete(apiBase);
+    streamEpochs.delete(apiBase);
+    basesWithSnapshot.delete(apiBase);
+    clearSequencedLiveEvents(apiBase);
+    existing = undefined;
+  }
   if (existing && !existing.ended && !existing.connection.signal.aborted) {
     // A parked stream is alive but waiting for a credential change that may
     // have arrived by a path that never announced it. Ask again at most once
@@ -367,6 +412,7 @@ export function ensureOrchestrationEventStream(
   // the catch-up a reconnect fallback triggers.
   let hasReceivedSnapshot = basesWithSnapshot.has(apiBase);
   let receiving = false;
+  sharedOrchestrationStreamRetrying(apiBase);
   const authenticatedStream = fetchSSE(`${apiBase}/api/orchestration/events`, {
     authentication: 'required',
     initialLastEventId,
@@ -389,7 +435,21 @@ export function ensureOrchestrationEventStream(
     retryDelayMs: 2000,
     maxRetryDelayMs: 30_000,
     stallTimeoutMs: ORCHESTRATION_STREAM_STALL_TIMEOUT_MS,
+    onOpen: (response) => {
+      if (
+        activeSources.get(apiBase) !== owned ||
+        owned.connection.signal.aborted
+      )
+        return;
+      sharedOrchestrationStreamOpened(apiBase, response);
+    },
     onMessage: (raw) => {
+      if (
+        activeSources.get(apiBase) !== owned ||
+        owned.connection.signal.aborted
+      )
+        return;
+      sharedOrchestrationStreamMessage(apiBase, raw);
       if (!receiving) {
         recordReplayConnection(apiBase, 'receiving');
         setStreamConnectionState(apiBase, 'receiving');
@@ -416,6 +476,14 @@ export function ensureOrchestrationEventStream(
             isReconnectFallback: hasReceivedSnapshot,
             queryClient: currentStreamQueryClient(apiBase),
           });
+          const client = currentStreamQueryClient(apiBase);
+          if (client)
+            for (const session of caughtUp.sessions) {
+              if (session.conversationActivity)
+                workObservation(client).streamObserved(
+                  session.conversationActivity,
+                );
+            }
           hasReceivedSnapshot = true;
           basesWithSnapshot.add(apiBase);
         }
@@ -423,6 +491,7 @@ export function ensureOrchestrationEventStream(
           cursor.adopt(raw.id);
           appliedCursors.set(apiBase, raw.id!);
         }
+        requestSessionReadModelRefresh(apiBase);
         setStreamConnectionState(apiBase, 'caught-up');
         recordReplayConnection(apiBase, 'caught-up');
       } else if (raw.event === 'orchestration:snapshot') {
@@ -436,6 +505,8 @@ export function ensureOrchestrationEventStream(
         if (payload.epoch && previousEpoch && payload.epoch !== previousEpoch) {
           activeChatsStore.clearConversationActivity();
           clearSequencedLiveEvents(apiBase);
+          const client = currentStreamQueryClient(apiBase);
+          if (client) workObservation(client).resetStreamEpoch();
         }
         if (payload.epoch) streamEpochs.set(apiBase, payload.epoch);
         cursor.adopt(raw.id);
@@ -447,6 +518,28 @@ export function ensureOrchestrationEventStream(
           isReconnectFallback: hasReceivedSnapshot,
           queryClient: currentStreamQueryClient(apiBase),
         });
+        const client = currentStreamQueryClient(apiBase);
+        if (client)
+          for (const session of payload.sessions) {
+            if (session.conversationActivity)
+              workObservation(client).streamObserved(
+                session.conversationActivity,
+              );
+          }
+        // Overflow compaction replaces non-durable list and inbox hints too.
+        if (client) {
+          const currentAuthority = currentStreamAuthorityKey(apiBase, client);
+          const scope =
+            currentAuthority === undefined
+              ? [apiBase]
+              : [apiBase, currentAuthority];
+          void client.invalidateQueries({
+            queryKey: ['orchestration-sessions', ...scope],
+          });
+          void client.invalidateQueries({
+            queryKey: ['conversation-inbox', ...scope],
+          });
+        }
         hasReceivedSnapshot = true;
         basesWithSnapshot.add(apiBase);
       } else if (raw.event === ORCHESTRATION_STREAM_ACTIVITY_EVENT) {
@@ -456,6 +549,9 @@ export function ensureOrchestrationEventStream(
         activeChatsStore.applyConversationActivity(
           payload.conversation?.activity,
         );
+        const client = currentStreamQueryClient(apiBase);
+        if (client && payload.conversation?.activity)
+          workObservation(client).streamObserved(payload.conversation.activity);
       } else if (raw.event === SERVER_EVENTS.ORCHESTRATION_EVENT) {
         if (!cursor.admit(raw.id)) return;
         if (parseStreamSequence(raw.id) !== undefined)
@@ -477,17 +573,19 @@ export function ensureOrchestrationEventStream(
           payload.conversation,
           parseStreamSequence(raw.id),
         );
+        const client = currentStreamQueryClient(apiBase);
+        if (client && payload.conversation?.activity)
+          workObservation(client).streamObserved(payload.conversation.activity);
         refreshSessionReadModelOnFact(apiBase, payload.event);
       } else if (
-        raw.event === SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED
+        raw.event === SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED ||
+        raw.event === SERVER_EVENTS.ORCHESTRATION_SESSIONS_CHANGED
       ) {
         // archive#4054: this frame carries no claim beyond "re-read the
         // server projection". In particular, the client must not turn
         // `lastEventAt` into a second silence detector; the watchdog's
         // narrower progress derivation is serialized on that projection.
-        void currentStreamQueryClient(apiBase)?.invalidateQueries({
-          queryKey: ['orchestration-sessions'],
-        });
+        requestSessionReadModelRefresh(apiBase);
       }
     },
     // `fetchSSE` owns transient retry. Keep its single-flight entry until it
@@ -495,7 +593,13 @@ export function ensureOrchestrationEventStream(
     // backoff window create a second stream while this one is still live and
     // scheduled to reconnect. Both streams then replay and apply the same
     // orchestration events.
-    onError: () => {
+    onError: (error) => {
+      if (
+        activeSources.get(apiBase) !== owned ||
+        owned.connection.signal.aborted
+      )
+        return;
+      sharedOrchestrationStreamFailed(apiBase, error);
       // Do not leave the last partial answer invisible during retry/backoff.
       settleSemanticDeliveryBuffer(apiBase, false);
       receiving = false;
@@ -520,7 +624,13 @@ export function ensureOrchestrationEventStream(
     // Resuming in place keeps this stream's cursor. That assumes the new
     // credential is the same principal's; if it is not, the server still
     // gates every replayed event by the NEW request's authority.
-    onTerminal: () => {
+    onTerminal: (error) => {
+      if (
+        activeSources.get(apiBase) !== owned ||
+        owned.connection.signal.aborted
+      )
+        return;
+      sharedOrchestrationStreamFailed(apiBase, error, true);
       // fetchSSE invokes onError first. Cancel its deferred transient flush:
       // a terminal 401/403 means authority was lost, so hidden content is
       // discarded rather than projected into a later replacement owner.
@@ -533,12 +643,14 @@ export function ensureOrchestrationEventStream(
       owned.lastParkedRetryAt = monotonicNow();
     },
     onRetry: () => {
+      sharedOrchestrationStreamRetrying(apiBase);
       // A deferred retry still pending re-checks `parked` before it fires.
       owned.parked = false;
     },
   });
 
   const owned: OwnedStream = {
+    authorityKey,
     connection: authenticatedStream,
     parked: false,
     lastParkedRetryAt: 0,
@@ -552,10 +664,18 @@ export function ensureOrchestrationEventStream(
   void authenticatedStream.completed.then(
     () => {
       owned.ended = true;
+      if (activeSources.get(apiBase) === owned)
+        sharedOrchestrationStreamFailed(
+          apiBase,
+          new Error('Orchestration stream ended'),
+        );
+
       clearDeferredParkedRetry(owned);
     },
     (error: unknown) => {
       owned.ended = true;
+      if (activeSources.get(apiBase) === owned)
+        sharedOrchestrationStreamFailed(apiBase, error);
       clearDeferredParkedRetry(owned);
       // Not silent: the dock must stop claiming a live feed, and whatever
       // threw is a defect worth seeing. The next recovery signal replaces it.

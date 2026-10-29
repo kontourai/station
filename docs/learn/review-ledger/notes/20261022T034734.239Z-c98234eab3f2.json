@@ -1,0 +1,7 @@
+{
+  "revision": "9995232d1a4a6f24f638ff4b83f5d623e6481525",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Reviewed the verifier-test fixture loading repair: direct JSON import replaces a path read so affected-test selection discovers the signed metadata fixture. Test inputs, signature/integrity assertions, immutable bootstrap source and runtime behavior are unchanged. The documented bootstrap route remains accurate; this does not add hosted or native Windows qualification.","inputs":["docs/guides/development.md","scripts/__tests__/verified-pnpm-bootstrap.test.ts"]}
+  ]
+}

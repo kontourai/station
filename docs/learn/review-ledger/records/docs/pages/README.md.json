@@ -16,9 +16,9 @@
 
     "scripts/check-generated-pages-links.mjs",
 
-    "docs-kit.json",
+    ".github/workflows/pages.yml",
 
-    ".github/workflows/pages.yml"
+    "corpus.json"
   ],
 
   "checks": [

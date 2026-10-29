@@ -37,11 +37,29 @@ import {
   type StationTaskBasisCollection,
 } from '@kontourai/station-contracts/task-basis';
 import {
+  readTaskProposal,
+  taskProposalBrief,
+} from '@kontourai/station-contracts/task-graph';
+import type { TaskMemoryAttention } from '@kontourai/station-contracts/task-memory';
+import {
   isHostedSessionReadAuthority,
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
+import {
+  canonicalGitHubWorkItemRef,
+  isGitHubNamespacedWorkItemRef,
+  type ProviderWorkItem,
+  type StartTaskFromWorkItemResult,
+  type TaskWorkItemObservationResponse,
+  type WorkItemObservationResult,
+} from '@kontourai/station-contracts/work-item-provider';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
+import type { RevisionEvidenceAdmissionRefusal } from '../../domain/revision-bound-evidence.js';
+import {
+  TASK_ROOM_DOCUMENT_PLAIN_TEXT_CAPACITY,
+  taskRoomDocumentSeedFits,
+} from '../../domain/task-room-document-capacity.js';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
 import {
   AnswerNarrativeBindingModule,
@@ -68,6 +86,7 @@ import {
   TaskReferenceAuthorizationError,
   type TaskReferenceCommitAuthorization,
   TaskReferenceRejectedError,
+  TaskWorkItemTakenError,
 } from '../../services/projects/task-graph-service.js';
 import {
   createTaskGateEvaluationReferenceReadAdapter,
@@ -75,6 +94,8 @@ import {
   type TaskGateEvaluationReferenceRead,
   type TaskToolResultReferenceRead,
 } from '../../services/projects/task-tool-result-reference-read-adapter.js';
+import type { WorkItemObserver } from '../../services/work-item-providers/github-work-item-observer.js';
+import { workItemTaskBrief } from '../../services/work-item-providers/work-item-task-brief.js';
 import { taskTurnReferenceResolutionTotal } from '../../telemetry/metrics.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
 import { refuseUngrantedRuntimeCwd } from '../working-directory-authority.js';
@@ -86,6 +107,14 @@ import {
 } from './approval-authority.js';
 
 const taskCreateSchema = z.object({
+  proposalBrief: z.string().trim().min(1).max(12000).optional(),
+  shapingSource: z
+    .object({
+      sessionId: z.string().trim().min(1).max(4096),
+      turnId: z.string().trim().min(1).max(4096),
+    })
+    .strict()
+    .optional(),
   projectId: z.string().min(1),
   title: z.string().min(1),
   description: z.string().optional(),
@@ -108,9 +137,54 @@ const taskCreateSchema = z.object({
   // provider-backed identity, creating a local-only task that could never
   // enter dispatch-as-claim (TaskGraphService.createTask/TaskRecord already
   // carry both — the schema was the only place they were missing).
-  sourceProvider: z.string().optional(),
-  workItemRef: z.string().optional(),
+  sourceProvider: z.string().max(128).optional(),
+  // Bounded like Start Task's ref (review round 2, P3-3).
+  workItemRef: z.string().max(512).optional(),
 });
+
+// Start Task on a tracker item (#4003). The item is named by its ref only;
+// title, brief and provider come from the Project's board and the tracker.
+const taskFromWorkItemSchema = taskCreateSchema
+  .pick({ projectId: true, agentId: true, workspaceBinding: true })
+  .extend({ workItemRef: z.string().min(1).max(512) })
+  .strict();
+
+/** Why a Task's ref is not read: it never went through a board check. */
+const UNCHECKED_WORK_ITEM_REASON =
+  "This Task's work item was not checked against the Project's board, so Station does not read it from the tracker.";
+
+/**
+ * Start Task's answer for an item that already has an open Task. In another
+ * Project, only that Task's id and Project (review F6).
+ */
+function existingTaskResult(
+  graph: Pick<TaskGraphService, 'sameProject'>,
+  task: TaskRecord,
+  projectId: string,
+): StartTaskFromWorkItemResult {
+  // Projects compare as one identity, id or slug (review round 2, P3-1).
+  return graph.sameProject(task.projectId, projectId)
+    ? { task, existing: true, briefSaved: false }
+    : {
+        task: { id: task.id, projectId: task.projectId },
+        existing: true,
+        elsewhere: true,
+        briefSaved: false,
+      };
+}
+
+/** HTTP status for an observation that did not observe the item. A missing
+ * gh login is the Station host's state, not the caller's credential, so it is
+ * not a 401. */
+const observationFailureStatus = {
+  'not-found': 404,
+  unsupported: 422,
+  unauthenticated: 503,
+  unavailable: 503,
+} as const satisfies Record<
+  Exclude<WorkItemObservationResult['status'], 'observed'>,
+  number
+>;
 
 // archive#593: an independently-versioned client may still send the pre-#581
 // status vocabulary. Normalize known removed aliases at the HTTP boundary,
@@ -341,7 +415,45 @@ const taskBasisAppRevokeSchema = z
 export function createTaskRoutes(
   taskGraphService: TaskGraphService,
   options: {
+    logger?: { warn(message: string, meta?: Record<string, unknown>): void };
+    onStatusChanged?: (task: TaskRecord, request: Request) => Promise<void>;
+    onRoomSystemLine?: (input: {
+      task: TaskRecord;
+      request: Request;
+      proposalId: string;
+      text: string;
+      occurredAt: string;
+    }) => Promise<void>;
     taskDispatcher: TaskDispatcher;
+    /**
+     * #4003: open Task-memory questions per Task incarnation, so the Tasks
+     * list carries `openQuestionCount` and Home and the inbox derive "Needs
+     * you" from it. Personal mode only, like the Task room it reads.
+     */
+    openQuestionCounts?: (
+      tasks: readonly TaskRecord[],
+    ) => ReadonlyMap<string, number>;
+    proposalBriefAvailable?: () => boolean;
+    seedProposalBrief?: (input: {
+      taskId: string;
+      request: Request;
+      text: string;
+    }) => Promise<boolean | RevisionEvidenceAdmissionRefusal>;
+    /** Why a proposal brief cannot be seeded, checked before the Task exists. */
+    proposalBriefRefusal?: (
+      text: string,
+    ) => Promise<RevisionEvidenceAdmissionRefusal | null>;
+    /** Exact-identity tracker reads (#4003). Personal mode only. */
+    workItemObserver?: WorkItemObserver;
+    /**
+     * The Project board's provider item with exactly this ref, if the board
+     * lists it. Start Task observes only an item the board offered, never a
+     * ref a caller typed.
+     */
+    resolveProviderWorkItem?: (input: {
+      projectId: string;
+      workItemRef: string;
+    }) => Promise<ProviderWorkItem | undefined>;
     /**
      * Central orchestration predicate. Keeping it as a per-request call is
      * essential: a route singleton must never retain one tenant's authority.
@@ -430,6 +542,16 @@ export function createTaskRoutes(
     answerNarrativeBindingModule?: AnswerNarrativeBindingModule;
   } = {} as {
     taskDispatcher: TaskDispatcher;
+    proposalBriefAvailable?: () => boolean;
+    seedProposalBrief?: (input: {
+      taskId: string;
+      request: Request;
+      text: string;
+    }) => Promise<boolean | RevisionEvidenceAdmissionRefusal>;
+    /** Why a proposal brief cannot be seeded, checked before the Task exists. */
+    proposalBriefRefusal?: (
+      text: string,
+    ) => Promise<RevisionEvidenceAdmissionRefusal | null>;
     canReadSession?: (
       sessionId: string,
       authority: SessionReadAuthority,
@@ -622,7 +744,20 @@ export function createTaskRoutes(
     // route seam without changing personal mode.
     const service = serviceForRequest(c.req.raw);
     if (!service) return c.json({ success: true, data: [] });
-    const data = service.listTasks(c.req.query('projectId'));
+    const tasks = service.listTasks(c.req.query('projectId'));
+    let counts: ReadonlyMap<string, number> | undefined;
+    try {
+      counts = options.openQuestionCounts?.(tasks);
+    } catch {
+      // The count is an attention hint; the Tasks list never fails on it.
+      counts = undefined;
+    }
+    const data: Array<TaskRecord & Partial<TaskMemoryAttention>> = counts
+      ? tasks.map((task) => {
+          const openQuestionCount = counts.get(task.id) ?? 0;
+          return openQuestionCount > 0 ? { ...task, openQuestionCount } : task;
+        })
+      : tasks;
     return c.json({ success: true, data });
   });
 
@@ -630,14 +765,351 @@ export function createTaskRoutes(
     try {
       const service = serviceForRequest(c.req.raw);
       if (!service) return hostedNotFound(c);
+      const input: z.infer<typeof taskCreateSchema> = getBody(c);
+      let authorize: (() => boolean) | undefined;
+      if (input.shapingSource) {
+        if (
+          !input.proposalBrief ||
+          !options.seedProposalBrief ||
+          options.proposalBriefAvailable?.() === false
+        )
+          return c.json(
+            { success: false, error: 'Task brief saving is unavailable' },
+            503,
+          );
+        const authority = options.readAuthorityForRequest?.(c.req.raw);
+        if (!authority || !options.readAssistantTurn) return hostedNotFound(c);
+        const { sessionId, turnId } = input.shapingSource;
+        authorize = () =>
+          options.isRequestPrincipalCurrent?.(c.req.raw) !== false &&
+          (options.canReadSession?.(sessionId, authority) ?? false);
+        if (!authorize()) return hostedNotFound(c);
+        const answer = await options.readAssistantTurn({
+          sessionId,
+          turnId,
+          authority,
+        });
+        if (answer.status === 'unavailable')
+          return c.json(
+            {
+              success: false,
+              error: 'Shaping answer is temporarily unavailable',
+            },
+            503,
+          );
+        if (
+          answer.status !== 'found' ||
+          (answer.projectSlug !== undefined &&
+            answer.projectSlug !== input.projectId) ||
+          !authorize()
+        )
+          return hostedNotFound(c);
+        const proposal = readTaskProposal(
+          answer.message.parts
+            .filter((part) => part.type === 'text')
+            .map((part) => part.text)
+            .join('\n'),
+        );
+        if (
+          !proposal ||
+          input.title !== proposal.title ||
+          input.description !== proposal.goal ||
+          input.proposalBrief !== taskProposalBrief(proposal) ||
+          input.agentId
+        ) {
+          return c.json(
+            {
+              success: false,
+              error: 'Accepted proposal must match the shaping answer',
+            },
+            409,
+          );
+        }
+        // A brief the room cannot seed is refused before the Task exists,
+        // instead of creating it and failing every retry (#4007, #4055).
+        // Re-accepting the same source reuses its Task (createTask below),
+        // so that retry is never refused here: its brief is already seeded
+        // or is seeded below, where a refusal names the existing Task.
+        const alreadyAccepted = service
+          .readSessionRelations(sessionId)
+          .links.some(
+            (link) =>
+              link.sourceType === 'task' &&
+              link.targetType === 'session' &&
+              link.targetId === sessionId &&
+              link.relationType === 'spawned_session' &&
+              link.metadata?.shapingTurnId === turnId,
+          );
+        const refusal = alreadyAccepted
+          ? null
+          : taskRoomDocumentSeedFits(input.proposalBrief)
+            ? ((await options.proposalBriefRefusal?.(input.proposalBrief)) ??
+              null)
+            : 'document-full';
+        if (refusal) return proposalBriefRefusalResponse(c, refusal);
+      }
+      // Review F4: a `github:` ref is read with the Station host's tracker
+      // login, so it is accepted only when it parses and the Project's
+      // board offers it now, as Start Task requires. It is stored in its
+      // canonical spelling, marked as board-checked.
+      let workItemProvenance: 'project-board' | undefined;
+      let createInput = input;
+      if (
+        input.workItemRef !== undefined &&
+        isGitHubNamespacedWorkItemRef(input.workItemRef)
+      ) {
+        const workItemRef = canonicalGitHubWorkItemRef(input.workItemRef);
+        if (!workItemRef)
+          return c.json(
+            {
+              success: false,
+              error:
+                'A GitHub work item must be a github.com issue (github:owner/repo#N).',
+            },
+            422,
+          );
+        if (hostedRequest(c.req.raw) || !options.resolveProviderWorkItem)
+          return c.json(
+            {
+              success: false,
+              error: 'Linking a GitHub work item is unavailable here.',
+            },
+            422,
+          );
+        const offered = await options.resolveProviderWorkItem({
+          projectId: input.projectId,
+          workItemRef,
+        });
+        if (!offered)
+          return c.json(
+            {
+              success: false,
+              error: "This work item is not on the Project's board.",
+            },
+            404,
+          );
+        createInput = { ...input, workItemRef };
+        workItemProvenance = 'project-board';
+      }
       const data = await service.createTask(
-        getBody(c),
+        createInput,
+        resolveClientOriginForRequest(c.req.raw),
+        undefined,
+        authorize,
+        workItemProvenance ? { workItemProvenance } : {},
+      );
+      if (input.shapingSource) {
+        let seeded: boolean | RevisionEvidenceAdmissionRefusal = false;
+        try {
+          seeded = await options.seedProposalBrief!({
+            taskId: data.id,
+            request: c.req.raw,
+            text: input.proposalBrief!,
+          });
+        } catch {
+          /* Retry retains the exact source identity. */
+        }
+        if (typeof seeded === 'string')
+          return proposalBriefRefusalResponse(c, seeded, data.id);
+        if (!seeded)
+          return c.json(
+            {
+              success: false,
+              error:
+                'Task created, but its brief could not be saved. Retry Create Task to finish saving the same Task.',
+            },
+            503,
+          );
+        await service.completeProposalAcceptance(data.id, input.shapingSource);
+        await options.onRoomSystemLine?.({
+          task: data,
+          request: c.req.raw,
+          proposalId: `room-created:${data.id}`,
+          text: 'created this Task from a chat',
+          occurredAt: data.createdAt,
+        });
+      }
+      return c.json({ success: true, data }, 201);
+    } catch (error) {
+      if (error instanceof TaskWorkItemTakenError)
+        return c.json(
+          {
+            success: false,
+            code: 'work_item_has_open_task',
+            error: 'This work item already has an open Task.',
+            data: {
+              taskId: error.existing.id,
+              projectId: error.existing.projectId,
+            },
+          },
+          409,
+        );
+      return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
+  });
+
+  /**
+   * Start Task on a provider work item (#4003). A person's action: Station's
+   * internal agent caller is refused centrally, because no station-control
+   * tool names this route. Hosted requests never reach the host's tracker
+   * login.
+   */
+  app.post('/from-work-item', validate(taskFromWorkItemSchema), async (c) => {
+    if (hostedRequest(c.req.raw)) return hostedNotFound(c);
+    const input: z.infer<typeof taskFromWorkItemSchema> = getBody(c);
+    const workItemRef = canonicalGitHubWorkItemRef(input.workItemRef);
+    if (!workItemRef)
+      return c.json(
+        {
+          success: false,
+          error:
+            'Only GitHub issues on github.com (github:owner/repo#N) can start a Task.',
+        },
+        422,
+      );
+    if (!options.workItemObserver || !options.resolveProviderWorkItem)
+      return c.json(
+        {
+          success: false,
+          error: 'Starting a Task from a work item is unavailable',
+        },
+        503,
+      );
+    // Review F6: the board check comes first, so a ref this Project's board
+    // does not offer learns nothing, not even whether it has a Task.
+    const item = await options.resolveProviderWorkItem({
+      projectId: input.projectId,
+      workItemRef,
+    });
+    if (!item)
+      return c.json(
+        {
+          success: false,
+          error: "This work item is not on the Project's board.",
+        },
+        404,
+      );
+    const existing = taskGraphService.findOpenTaskForWorkItem(workItemRef, {
+      projectId: input.projectId,
+      boardChecked: true,
+    });
+    if (existing)
+      return c.json({
+        success: true,
+        data: existingTaskResult(taskGraphService, existing, input.projectId),
+      });
+    const observed = await options.workItemObserver.observeWorkItem(
+      workItemRef,
+      {},
+    );
+    if (observed.status !== 'observed')
+      return c.json(
+        {
+          success: false,
+          error: observed.reason,
+          observation: observed.status,
+        },
+        observationFailureStatus[observed.status],
+      );
+    const { observation } = observed;
+    let created: { task: TaskRecord; existing: boolean };
+    try {
+      created = await taskGraphService.createTaskForWorkItem(
+        {
+          projectId: input.projectId,
+          title: observation.title,
+          agentId: input.agentId,
+          createdBy: 'user',
+          workspaceBinding: input.workspaceBinding,
+          sourceProvider: 'github',
+          workItemRef,
+        },
+        observation.observedAt,
         resolveClientOriginForRequest(c.req.raw),
       );
-      return c.json({ success: true, data }, 201);
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
+    if (created.existing)
+      return c.json({
+        success: true,
+        data: existingTaskResult(
+          taskGraphService,
+          created.task,
+          input.projectId,
+        ),
+      });
+    let briefSaved = false;
+    try {
+      // A capacity refusal (#4007) is reported as an unsaved brief.
+      briefSaved =
+        (await options.seedProposalBrief?.({
+          taskId: created.task.id,
+          request: c.req.raw,
+          text: workItemTaskBrief(observation),
+        })) === true;
+    } catch {
+      briefSaved = false;
+    }
+    return c.json(
+      {
+        success: true,
+        data: {
+          task: created.task,
+          existing: false,
+          briefSaved,
+        } satisfies StartTaskFromWorkItemResult,
+      },
+      201,
+    );
+  });
+
+  /**
+   * The Task's linked tracker item, re-read now (#4003): read when a person
+   * opens the Task, never polled. Comments are those created after the
+   * Task's last recorded observation.
+   */
+  app.get('/:taskId/work-item', async (c) => {
+    noStore(c);
+    if (hostedRequest(c.req.raw)) return hostedNotFound(c);
+    const task = taskGraphService.readTask(param(c, 'taskId'));
+    if (!task) return hostedNotFound(c);
+    if (!task.workItemRef)
+      return c.json(
+        { success: false, error: 'This Task has no linked work item' },
+        404,
+      );
+    // Review F4: only a ref that entered through a board check is read
+    // with the Station host's tracker login.
+    if (task.workItemProvenance !== 'project-board')
+      return c.json({
+        success: true,
+        data: {
+          status: 'unsupported',
+          reason: UNCHECKED_WORK_ITEM_REASON,
+        } satisfies TaskWorkItemObservationResponse,
+      });
+    if (!options.workItemObserver)
+      return c.json({
+        success: true,
+        data: {
+          status: 'unavailable',
+          reason: 'Reading work items is unavailable',
+        } satisfies TaskWorkItemObservationResponse,
+      });
+    const data = await options.workItemObserver.observeWorkItem(
+      task.workItemRef,
+      task.workItemObservedAt ? { commentsSince: task.workItemObservedAt } : {},
+    );
+    return c.json({
+      success: true,
+      data: {
+        ...data,
+        ...(task.workItemObservedAt
+          ? { commentsSince: task.workItemObservedAt }
+          : {}),
+      } satisfies TaskWorkItemObservationResponse,
+    });
   });
 
   app.get('/sessions/:sessionId/relations', (c) => {
@@ -1178,6 +1650,15 @@ export function createTaskRoutes(
               commit: create,
             })
           : await create();
+      const task = service.readTask(param(c, 'taskId'));
+      if (task)
+        await options.onRoomSystemLine?.({
+          task,
+          request: c.req.raw,
+          proposalId: `room-kept:${data.id}`,
+          occurredAt: data.createdAt,
+          text: `kept ${input.kind === 'turn' ? 'an answer' : input.kind === 'user-input' ? 'a message' : 'a reference'} in Results`,
+        });
       return c.json({ success: true, data }, 201);
     } catch (error) {
       if (error instanceof AnswerNarrativeUnavailableError) {
@@ -1932,6 +2413,47 @@ export function createTaskRoutes(
     return c.json({ success: true, data });
   });
 
+  app.get('/:taskId/kept-pull-requests', async (c) => {
+    const service = serviceForRequest(c.req.raw);
+    if (!service?.readTaskView(param(c, 'taskId'))) return hostedNotFound(c);
+    const authority = options.readAuthorityForRequest?.(c.req.raw);
+    const data = service
+      .listKeptDeclaredPullRequests(param(c, 'taskId'))
+      .filter(
+        (keep) =>
+          authority &&
+          options.canReadSession?.(keep.provenance.sessionId, authority),
+      );
+    return c.json({ success: true, data });
+  });
+
+  app.patch(
+    '/:taskId/title',
+    validate(
+      z
+        .object({
+          title: z.string().trim().min(1).max(512),
+          expectedCreatedAt: z.string().datetime(),
+        })
+        .strict(),
+    ),
+    async (c) => {
+      try {
+        const service = serviceForRequest(c.req.raw);
+        if (!service) return hostedNotFound(c);
+        const data = await service.updateTaskTitle(
+          param(c, 'taskId'),
+          getBody(c).title,
+          getBody(c).expectedCreatedAt,
+          resolveClientOriginForRequest(c.req.raw),
+        );
+        return c.json({ success: true, data });
+      } catch (error) {
+        return c.json({ success: false, error: errorMessage(error) }, 400);
+      }
+    },
+  );
+
   app.patch('/:taskId/status', validate(taskStatusSchema), async (c) => {
     try {
       const service = serviceForRequest(c.req.raw);
@@ -1941,6 +2463,13 @@ export function createTaskRoutes(
         getBody(c).status,
         resolveClientOriginForRequest(c.req.raw),
       );
+      try {
+        await options.onStatusChanged?.(data, c.req.raw);
+      } catch (error) {
+        options.logger?.warn('Task status publication failed', {
+          error: errorMessage(error),
+        });
+      }
       return c.json({ success: true, data });
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
@@ -2063,4 +2592,39 @@ function publishedBasisSessionIds(
   return projection && projection.answer.state === 'available'
     ? [projection.answer.value.ref.threadId]
     : null;
+}
+
+/**
+ * A proposal brief the room cannot seed (#4007). Neither refusal can succeed
+ * on retry, so neither promises one. `createdTaskId` names the Task when it
+ * already exists (the ledger filled between the check and the seed), so the
+ * client can open it; it is sent as `details.taskId`.
+ */
+function proposalBriefRefusalResponse(
+  c: { json(value: unknown, status?: number): Response },
+  refusal: RevisionEvidenceAdmissionRefusal,
+  createdTaskId?: string,
+) {
+  const created = createdTaskId !== undefined;
+  const details = created ? { details: { taskId: createdTaskId } } : {};
+  const prefix = created ? 'Task created, but its brief was not saved. ' : '';
+  return refusal === 'document-full'
+    ? c.json(
+        {
+          success: false,
+          code: 'task-document-full',
+          ...details,
+          error: `${prefix}This brief is too long for a Task document, which holds about ${TASK_ROOM_DOCUMENT_PLAIN_TEXT_CAPACITY.toLocaleString('en-US')} characters of plain text. Ask the agent for a shorter proposal.`,
+        },
+        413,
+      )
+    : c.json(
+        {
+          success: false,
+          code: 'revision-history-full',
+          ...details,
+          error: `${prefix}Station's revision history is full, so it cannot save a Task brief${created ? '' : ', and the Task was not created'}. Retrying will not help until the history has room.`,
+        },
+        507,
+      );
 }

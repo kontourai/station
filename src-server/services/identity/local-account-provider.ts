@@ -742,6 +742,39 @@ export async function createLocalAccountProvider(
         : {}),
       sessionCookies: [cookie],
       endpoints,
+      isVerifiedSessionCurrent(session) {
+        if (closed) return false;
+        const row = database
+          .prepare(
+            `SELECT s.userId, s.createdAt, s.expiresAt, u.emailVerified, u.verifiedAt${localUsername ? ', s.stationPendingEnrollmentId' : ''}
+           FROM session s JOIN user u ON u.id = s.userId WHERE s.id = ?`,
+          )
+          .get(session.sessionId);
+        if (
+          !row ||
+          row.userId !== session.subject ||
+          (localUsername && row.stationPendingEnrollmentId !== null)
+        )
+          return false;
+        const created = new Date(
+          typeof row.createdAt === 'string' ? row.createdAt : NaN,
+        );
+        const expires = new Date(
+          typeof row.expiresAt === 'string' ? row.expiresAt : NaN,
+        );
+        return (
+          Number.isFinite(created.getTime()) &&
+          Number.isFinite(expires.getTime()) &&
+          created.toISOString() === session.authenticatedAt &&
+          expires.toISOString() === session.expiresAt &&
+          expires.getTime() > Date.now() &&
+          (localUsername ||
+            (row.emailVerified === 1 &&
+              typeof row.verifiedAt === 'string' &&
+              Number.isFinite(Date.parse(row.verifiedAt)))) &&
+          administration.permits(session.subject, created)
+        );
+      },
       sessionReferences: {
         async revoke(sessionId, signal) {
           if (closed || signal.aborted)

@@ -1,9 +1,10 @@
 import type { WorkspaceHomeRoleGrant } from '@kontourai/station-contracts/workspace-home-role';
 import { workspaceHomeRoleGrantCoversProjection } from '@kontourai/station-contracts/workspace-home-role';
+import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { Component, type ReactNode, useSyncExternalStore } from 'react';
 import { Button } from '../../components/Button';
+import { StationExtensionsAccess } from '../../components/registry/StationExtensionsAccess';
 import { pluginRegistry } from '../../core/PluginRegistry';
-import { WorkspacePaneStandardDataView } from '../../workspace-panes/WorkspacePaneStandardDataView';
 import {
   resolveClientTrustedPluginLayout,
   selectClientWorkspacePaneRenderer,
@@ -69,7 +70,7 @@ function describeThrow(error: unknown): string {
   if (typeof message !== 'string') {
     return 'It failed with a value that cannot be described.';
   }
-  const trimmed = message.trim();
+  const trimmed = redactSecrets(message).trim();
   const bounded = trimmed.length > 300 ? `${trimmed.slice(0, 300)}…` : trimmed;
   return bounded.length > 0 ? bounded : 'It failed without a message.';
 }
@@ -111,8 +112,10 @@ function HomeRoleFallback({
   onRetry,
   onRevoke,
   builtinHome,
+  extensionBlocked = false,
 }: {
   grant: WorkspaceHomeRoleGrant;
+  extensionBlocked?: boolean;
   reason: string;
   onRetry?: () => void;
   onRevoke: () => void;
@@ -127,6 +130,7 @@ function HomeRoleFallback({
           {grant.descriptor.provenance.pluginId} could not render: {reason}
         </p>
         <div className="home-role-fallback__actions">
+          {extensionBlocked && <StationExtensionsAccess onlyWhenOff compact />}
           {onRetry && <Button onClick={onRetry}>Try again</Button>}
           <Button onClick={onRevoke}>Keep the built-in Home</Button>
         </div>
@@ -181,7 +185,11 @@ function GrantedHomeSelection({
     instance: grant.instance,
   });
 
-  if (selection.state !== 'selected') {
+  // Required slots use their default instead of a plugin's standard-data rung.
+  if (
+    selection.state !== 'selected' ||
+    selection.candidate.renderer.kind === 'standard-data'
+  ) {
     if (loadStatus.state === 'loading') {
       // The inventory has not settled; "missing" would be a claim nothing
       // has derived yet. The floor renders, quietly, and the settled status
@@ -192,6 +200,7 @@ function GrantedHomeSelection({
       <HomeRoleFallback
         grant={grant}
         reason={unavailableReason(grant, loadStatus)}
+        extensionBlocked={loadStatus.failure === 'remote-isolation'}
         onRevoke={onRevoke}
         builtinHome={builtinHome}
       />
@@ -199,55 +208,6 @@ function GrantedHomeSelection({
   }
 
   const candidate = selection.candidate;
-
-  if (candidate.renderer.kind === 'standard-data') {
-    // The descriptor's declared degradation rung: inert, read-only data in
-    // place of a plugin renderer that failed to LOAD. It must not outlive
-    // the grant — the rung's own selection check compares two STORED
-    // snapshots, so it is additionally gated here on the client's live
-    // registry still evidencing the granted plugin: either its loaded
-    // manifest at the approved version, or this generation's inventory
-    // having listed it and its bundle having failed (the case the rung
-    // exists for). An uninstalled or version-bumped plugin satisfies
-    // neither, so the floor renders instead. (The server already derives
-    // `lapsed` for uninstall/version change; this closes the staleness
-    // window between that derivation and this render.)
-    const pluginId = grant.descriptor.provenance.pluginId;
-    const approvedVersion = grant.instance.boundContext?.contribution?.version;
-    const liveManifest =
-      pluginId !== undefined
-        ? pluginRegistry.getLayoutManifest(pluginId)
-        : null;
-    const installLive =
-      pluginId !== undefined &&
-      ((liveManifest !== null &&
-        approvedVersion !== undefined &&
-        liveManifest.version === approvedVersion) ||
-        (loadStatus.failure === 'bundle-load-failure' &&
-          loadStatus.failedPluginNames.includes(pluginId)));
-    if (!installLive) {
-      if (loadStatus.state === 'loading') {
-        return <>{builtinHome}</>;
-      }
-      return (
-        <HomeRoleFallback
-          grant={grant}
-          reason={unavailableReason(grant, loadStatus)}
-          onRevoke={onRevoke}
-          builtinHome={builtinHome}
-        />
-      );
-    }
-    return (
-      <>
-        <HomeRoleBar grant={grant} onRevoke={onRevoke} />
-        <WorkspacePaneStandardDataView
-          renderer={candidate.renderer}
-          instance={grant.instance}
-        />
-      </>
-    );
-  }
 
   if (candidate.renderer.kind !== 'plugin-component') {
     // Unreachable under this host's capability set (no sandboxed hosts, and
@@ -344,7 +304,7 @@ function unavailableReason(
 ): string {
   const pluginId = grant.descriptor.provenance.pluginId;
   if (loadStatus.failure === 'remote-isolation') {
-    return 'Extensions from this remote Station are disabled, so its code is not loaded.';
+    return 'Extensions from this Station are off on this device.';
   }
   if (loadStatus.failure === 'registry-unavailable') {
     return 'Station could not read the installed plugin inventory.';

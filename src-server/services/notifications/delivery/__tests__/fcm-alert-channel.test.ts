@@ -211,7 +211,7 @@ async function harness(
     devicePairing: pairing,
     webPushService: { send: vi.fn().mockResolvedValue('sent') },
     canUserReadSession: (sessionId) => options.canRead?.(sessionId) ?? true,
-    listNotifications: async () => [],
+    getNotification: async () => undefined,
     fcmAlert: {
       devicePairing: pairing,
       signingKey: keys,

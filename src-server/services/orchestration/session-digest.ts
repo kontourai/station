@@ -1,3 +1,5 @@
+import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
+import { unframeAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 /**
  * station#3413: the digest behind Station Control's `get_session_digest`, a
  * compact account of one Session assembled ONLY from facts the event store
@@ -22,6 +24,7 @@ import {
   serializedBytes,
 } from '../../utils/serialized-clip.js';
 import {
+  type EventStore,
   TURN_DIGEST_PROMPT_PREFIX_CHARS,
   type TurnDigestFacts,
 } from './event-store.js';
@@ -64,6 +67,7 @@ export interface DigestTurn {
   requestClipped?: true;
   /** The engine opened this turn on its own: there is no request. */
   providerTriggered?: true;
+  sender?: ClientOriginSender;
   outcome: DigestTurnOutcome;
   /** Tool calls by name, most used first. */
   toolCalls: Array<{ tool: string; calls: number }>;
@@ -145,7 +149,11 @@ export function digestTurn(
 ): DigestTurn {
   const request =
     facts.promptPrefix !== undefined
-      ? firstLine(facts.promptPrefix)
+      ? firstLine(
+          facts.sender
+            ? (unframeAgentMessage(facts.promptPrefix) ?? facts.promptPrefix)
+            : facts.promptPrefix,
+        )
       : undefined;
   const listedTools = facts.toolCalls.slice(0, TOOLS_PER_TURN);
   const otherTools = facts.toolCalls.slice(TOOLS_PER_TURN);
@@ -159,6 +167,7 @@ export function digestTurn(
     // A prompt longer than the prefix the store read is clipped too.
     ...(request?.clipped ? { requestClipped: true as const } : {}),
     ...(facts.providerTriggered ? { providerTriggered: true as const } : {}),
+    ...(facts.sender ? { sender: facts.sender } : {}),
     outcome: digestTurnOutcome(facts.terminal),
     toolCalls: listedTools.map((entry) => ({
       tool: clipSerialized(entry.toolName, TOOL_NAME_MAX_BYTES),
@@ -257,4 +266,54 @@ export function decodeDigestCursor(value: string): DigestCursor | undefined {
   } catch {
     return undefined;
   }
+}
+
+type DigestLineageStore = Pick<
+  EventStore,
+  'conversationForSession' | 'conversationSessions'
+>;
+
+/**
+ * The Sessions one digest reads: the conversation the Session belongs to,
+ * the Session itself, and every Session of that conversation. The
+ * `get_session_digest` route and the Task brief's Session lines (#4003) both
+ * read through it, so they fold the same turns.
+ */
+export function sessionDigestLineage(
+  store: DigestLineageStore,
+  sessionId: string,
+): { conversationId: string; lineage: string[] } {
+  const conversationId =
+    store.conversationForSession(sessionId)?.conversationId ?? sessionId;
+  return {
+    conversationId,
+    lineage: [
+      ...new Set([
+        conversationId,
+        sessionId,
+        ...store
+          .conversationSessions(conversationId)
+          .map((entry) => entry.sessionId),
+      ]),
+    ],
+  };
+}
+
+/**
+ * A Session's digest head (#4003 Task brief): how many turns its digest
+ * counts and its newest turn's digest, without delegated children. The
+ * same recorded facts and the same per-turn fold as `get_session_digest`.
+ * Authority is the caller's.
+ */
+export function readSessionDigestHead(
+  store: DigestLineageStore & Pick<EventStore, 'readTurnDigestFacts'>,
+  sessionId: string,
+): { turnCount: number; lastTurn?: DigestTurn } {
+  const { lineage } = sessionDigestLineage(store, sessionId);
+  const read = store.readTurnDigestFacts(lineage, { turnLimit: 1 });
+  const newest = read.turns[0];
+  return {
+    turnCount: read.totalTurns,
+    ...(newest ? { lastTurn: digestTurn(newest, []) } : {}),
+  };
 }

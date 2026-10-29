@@ -1,0 +1,7 @@
+{
+  "revision": "4603a889674c85e6f35580fe9224dfc9d248f10f",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed current generated StationDocs payload against canonical module-map corrections be93: exact invocation/inputless result proof, server-held read/remove versus unmigrated composer placement, and scoped Task tab/reveal behavior. Generator preserved117topic identities and changed only SessionMessageDelivery/ProjectTaskRoom bodies plus content digest. No dynamic runtime/provider/native/release authority added. Full document and assigned implementation deltas were read by existing runtime owner at39d9; this note covers subsequent canonical generator drift, not execution qualification.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

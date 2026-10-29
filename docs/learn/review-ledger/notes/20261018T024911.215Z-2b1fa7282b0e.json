@@ -1,0 +1,9 @@
+{
+  "revision": "ba25aad0a9a715b5bba06f68150c91b40a6599cf",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"scripts/vitest-resource-manifest.mjs delta adds only six packages/supervisor test files (listener-handle, stale-generation, generation-registry, cli, bundle, build-root) to the process-heavy list. This document describes process-heavy classification generically and enumerates no manifest entries; the new child-process tests follow the rule that they are classified there. No prose change.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"scripts/vitest-resource-manifest.mjs delta adds only six packages/supervisor test files (listener-handle, stale-generation, generation-registry, cli, bundle, build-root) to the process-heavy list. This document describes process-heavy classification generically and enumerates no manifest entries; the new child-process tests follow the rule that they are classified there. No prose change.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

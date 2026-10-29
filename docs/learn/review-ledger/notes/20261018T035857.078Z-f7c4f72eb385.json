@@ -1,0 +1,7 @@
+{
+  "revision": "f6ebd3d4aaa822634d3725435ddb36f5c511948b",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Round 5 compatibility API follow-up: reviewed the narrow unused-export annotation on the compatibility re-export in usage-telemetry-inventory.ts. The deprecated acknowledgement alias remains available to stacked consumers; executable in-repo users use FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION. Export value and all receipt, wire, DNT, and sender behavior remain unchanged.","inputs":["docs/reference/usage-telemetry.md","src-server/services/usage-telemetry-inventory.ts"]}
+  ]
+}

@@ -3,7 +3,7 @@ import type { ACPConnectionInfo } from '../../hooks/useACPConnections';
 type ACPConnectionReadiness =
   | 'Checking'
   | 'Ready'
-  | 'Setup needed'
+  | 'Setup required'
   | 'Unavailable'
   | 'Off';
 
@@ -14,7 +14,7 @@ type ACPConnectionStatusTone =
   | 'unavailable'
   | 'off';
 
-type RecommendedAction = 'Enable' | 'Reconnect' | null;
+type RecommendedAction = 'Enable' | 'Reconnect' | 'Retry check' | null;
 
 export function getACPConnectionStatusView(conn: ACPConnectionInfo) {
   const isConnected = conn.status === 'available';
@@ -30,23 +30,25 @@ export function getACPConnectionStatusView(conn: ACPConnectionInfo) {
       : isConnected
         ? 'Ready'
         : isUnavailable
-          ? 'Setup needed'
+          ? 'Setup required'
           : 'Unavailable';
   const recommendedAction: RecommendedAction = isPlugin
     ? null
     : !conn.enabled
       ? 'Enable'
-      : isError ||
-          isDisconnected ||
-          (!isConnected && !isConnecting && !isUnavailable)
-        ? 'Reconnect'
-        : null;
+      : isUnavailable
+        ? // Setup required: the engine ran its check and failed; re-running
+          // it after fixing the cause is the next step.
+          'Retry check'
+        : isError || isDisconnected || (!isConnected && !isConnecting)
+          ? 'Reconnect'
+          : null;
   const statusTone: ACPConnectionStatusTone =
     statusLabel === 'Ready'
       ? 'ready'
       : statusLabel === 'Checking'
         ? 'checking'
-        : statusLabel === 'Setup needed'
+        : statusLabel === 'Setup required'
           ? 'setup-needed'
           : statusLabel === 'Unavailable'
             ? 'unavailable'

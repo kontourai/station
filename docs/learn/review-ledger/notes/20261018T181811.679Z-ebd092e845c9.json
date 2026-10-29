@@ -1,0 +1,21 @@
+{
+  "revision": "e94a07915c0e59d2a4af13a9e9b9eacaaa8cd46d",
+
+  "notes": [
+    {"path":"README.md","note":"PR 3830 round 2 scoped delta review: the FIFO refusal paragraph in the CLI reference refines delegate source-file validation. The README CLI routing and remote delegation overview remain accurate; no availability or live-provider claim changed.","inputs":["README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"PR 3830 round 2 scoped delta review: nonblocking attachment opens and direct portable executor refusal tests do not alter the recorded CLI request-assembly, model-option or checkpoint findings. The CLI reference remains the behavior owner.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"PR 3830 round 2 scoped delta review: delegate attachment FIFO refusal changes no triage capture, redaction, process launch, consent or output behavior. Its reference link remains correct; no prose change needed.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"PR 3830 round 2 scoped delta review: the operator-workflow row still routes exact CLI command and failure behavior to the CLI reference. Prompt FIFO refusal does not change deployment, integration or hosting contracts.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/testing.md","note":"PR 3830 round 2 scoped delta review: classified the delegation-files integration suite as process-heavy because it now creates real FIFOs via bounded mkfifo. This uses the documented manifest and two-worker process-heavy scheduling without changing worker policy. The FIFO regression has a one-second assertion deadline, deterministic unblock cleanup and a five-second Vitest timeout.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/reference/cli.md","note":"PR 3830 round 2 scoped review: followed delegate attachment loading through nonblocking open and descriptor fstat. The CLI refuses FIFOs and symlinks to FIFOs with delegation_files_invalid_data before upload, while symlinks to regular files still preserve bytes and link basename. Focused fake-provider tests pass for both FIFO inputs and direct executor refusals of each portable intent; no Windows or live-model execution claimed.","inputs":["docs/reference/cli.md","packages/cli/src/commands/delegate-attachments.ts","src-server/routes/orchestration/__tests__/delegation-files.integration.test.ts"]},
+
+    {"path":"packages/cli/README.md","note":"PR 3830 round 2 scoped delta review: the README remains the published client and CLI-reference entry point. The delegate-only nonblocking file open preserves client/checkout distribution, target selection and availability distinctions; the reference owns the new FIFO detail.","inputs":["packages/cli/README.md","docs/reference/cli.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"PR 3830 round 2 scoped delta review: the new bounded mkfifo launch uses windowsHide and bounded-capture, and its test is explicitly classified process-heavy in the existing manifest. No executable policy, script entry point or instructions changed.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

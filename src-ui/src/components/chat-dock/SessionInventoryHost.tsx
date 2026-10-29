@@ -24,6 +24,7 @@ type FullBasisTrigger = HTMLElement & {
  */
 export function SessionInventoryHost({
   scope,
+  full = false,
   projectId,
   chatStoreId,
   hostId,
@@ -32,8 +33,10 @@ export function SessionInventoryHost({
   dockMode,
   fullscreen,
   onClose,
+  restoreFocusFallback,
 }: {
   scope: SessionInventoryScope;
+  full?: boolean;
   projectId?: string;
   chatStoreId: string;
   hostId?: string;
@@ -42,6 +45,8 @@ export function SessionInventoryHost({
   dockMode: DockMode;
   fullscreen: boolean;
   onClose(): void;
+  /** Focus target when `trigger` is no longer in the document. */
+  restoreFocusFallback?: () => void;
 }) {
   const [fullTrigger, setFullTrigger] = useState<{
     trigger: HTMLElement;
@@ -65,10 +70,24 @@ export function SessionInventoryHost({
   );
   const close = useCallback(
     (restoreFocus = true) => {
-      if (restoreFocus && trigger?.isConnected) trigger.focus();
+      if (restoreFocus) {
+        if (trigger?.isConnected) trigger.focus();
+        else restoreFocusFallback?.();
+      }
       onClose();
+      // A narrow dock covers and hides the transcript. Its answer trigger can
+      // receive focus only after the close commits and makes the chat visible.
+      if (
+        restoreFocus &&
+        trigger?.isConnected &&
+        document.activeElement !== trigger
+      )
+        requestAnimationFrame(() => {
+          if (trigger.isConnected && document.activeElement === document.body)
+            trigger.focus();
+        });
     },
-    [onClose, trigger],
+    [onClose, restoreFocusFallback, trigger],
   );
   const onHostOpened = useCallback((focus: () => boolean) => {
     setFocusFullHost(() => focus);
@@ -95,7 +114,7 @@ export function SessionInventoryHost({
   // Phone inventory is always an unanchored full-height sheet. Passing null
   // prevents a desktop pane host or a detached header from becoming focus
   // origin; the concrete menu trigger remains the fallback focus target.
-  if (host === 'full-fallback')
+  if (full || host === 'full-fallback')
     return (
       <SessionInventoryFullFallback
         scope={scope}
@@ -103,11 +122,9 @@ export function SessionInventoryHost({
         trigger={trigger}
         chatStoreId={chatStoreId}
         hostId={hostId}
-        forceFallback
-        onClose={() => {
-          setFullTrigger(null);
-          close();
-        }}
+        forceFallback={isMobile}
+        onHostOpened={onHostOpened}
+        onClose={onFullFallbackClose}
       />
     );
   return fullTrigger ? (

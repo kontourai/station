@@ -27,8 +27,8 @@ const SUPPORTED_IOS_BUNDLE_IDS = new Set([
   'io.kontourai.station.nightly',
 ]);
 
-// The Live Activity widget extension each channel's app embeds, keyed by the
-// app's bundle id; a channel without one (Stable) is absent.
+// Reviewed extension identities, including owner-gated Stable. Delivery
+// admission separately decides whether to build them for this channel.
 const AGENT_ACTIVITY_BUNDLE_IDS = new Map(
   Object.values(IOS_TESTFLIGHT_CHANNELS)
     .filter((channel) => channel.agentActivityBundleId)
@@ -460,35 +460,16 @@ export function writeIosAgentActivitySigning(
 }
 
 /**
- * Cargo `[env]` for a device build. `liveActivity` sets
- * STATION_IOS_LIVE_ACTIVITY, the plugin half of the Live Activity switch
- * (plugins/agent-activity/build.rs); Xcode runs cargo without the shell's
- * environment, so it travels as cargo config like the endpoint.
+ * Cargo `[env]` for the plugin half of the Live Activity switch.
+ * Xcode runs cargo without the shell's environment, so the build passes this
+ * flag through Cargo config. Connection addresses come from runtime pairing.
  *
- * @param {string} [endpoint]
  * @param {{ liveActivity?: boolean }} [options]
  */
-export function mobileCargoConfig(endpoint, { liveActivity = false } = {}) {
-  const liveActivityLine = liveActivity
-    ? 'STATION_IOS_LIVE_ACTIVITY = { value = "1", force = true }\n'
+export function mobileCargoConfig({ liveActivity = false } = {}) {
+  return liveActivity
+    ? '[env]\nSTATION_IOS_LIVE_ACTIVITY = { value = "1", force = true }\n'
     : '';
-  if (!endpoint) return liveActivityLine ? `[env]\n${liveActivityLine}` : '';
-  let parsed;
-  try {
-    parsed = new URL(endpoint);
-  } catch {
-    throw new Error('Mobile endpoint must be an HTTPS origin.');
-  }
-  if (
-    parsed.protocol !== 'https:' ||
-    parsed.username ||
-    parsed.password ||
-    parsed.pathname !== '/' ||
-    parsed.search ||
-    parsed.hash
-  )
-    throw new Error('Mobile endpoint must be an HTTPS origin or URL.');
-  return `[env]\nSTATION_MOBILE_DEFAULT_ENDPOINT = { value = ${JSON.stringify(parsed.origin)}, force = true }\n${liveActivityLine}`;
 }
 
 if (invokedDirectly(import.meta.url) && process.argv[2] === 'agent-activity') {

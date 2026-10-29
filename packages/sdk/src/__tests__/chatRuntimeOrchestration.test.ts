@@ -88,7 +88,10 @@ describe('chatRuntimeOrchestration', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/orchestration/sessions/read-model',
-      { headers: { 'X-Station-Client-Protocol': '2' } },
+      expect.objectContaining({
+        headers: { 'X-Station-Client-Protocol': '4' },
+        signal: expect.any(AbortSignal),
+      }),
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -102,7 +105,7 @@ describe('chatRuntimeOrchestration', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/orchestration/sessions/loaded',
-      { headers: { 'X-Station-Client-Protocol': '2' } },
+      { headers: { 'X-Station-Client-Protocol': '4' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -120,7 +123,7 @@ describe('chatRuntimeOrchestration', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/orchestration/sessions/thread-3',
-      { headers: { 'X-Station-Client-Protocol': '2' } },
+      { headers: { 'X-Station-Client-Protocol': '4' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -449,7 +452,7 @@ describe('chatRuntimeOrchestration', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/orchestration/commands/receipts?threadId=thread-5',
-      { headers: { 'X-Station-Client-Protocol': '2' } },
+      { headers: { 'X-Station-Client-Protocol': '4' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
 
@@ -460,7 +463,7 @@ describe('chatRuntimeOrchestration', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       2,
       'http://example.test/api/orchestration/commands/receipts/cmd-5',
-      { headers: { 'X-Station-Client-Protocol': '2' } },
+      { headers: { 'X-Station-Client-Protocol': '4' } },
     );
     expect(fetch).toHaveBeenCalledTimes(2);
   });
@@ -473,7 +476,7 @@ describe('chatRuntimeOrchestration', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/orchestration/processes/terminals',
-      { headers: { 'X-Station-Client-Protocol': '2' } },
+      { headers: { 'X-Station-Client-Protocol': '4' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
 
@@ -488,7 +491,7 @@ describe('chatRuntimeOrchestration', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       2,
       'http://example.test/api/orchestration/processes/terminals/demo%3At1',
-      { headers: { 'X-Station-Client-Protocol': '2' } },
+      { headers: { 'X-Station-Client-Protocol': '4' } },
     );
     expect(fetch).toHaveBeenCalledTimes(2);
   });
@@ -502,7 +505,7 @@ describe('chatRuntimeOrchestration', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/orchestration/processes/terminals/demo%3At1',
-      { method: 'DELETE', headers: { 'X-Station-Client-Protocol': '2' } },
+      { method: 'DELETE', headers: { 'X-Station-Client-Protocol': '4' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });

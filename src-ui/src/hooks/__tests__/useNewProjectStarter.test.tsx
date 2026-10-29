@@ -11,10 +11,11 @@
  * beneath it, so a request either happens or it does not.
  */
 
+import { _setApiBase } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const fetchMock = vi.hoisted(() => vi.fn());
 const availableLayoutsState = vi.hoisted(() => ({
@@ -34,8 +35,8 @@ const availableLayoutsState = vi.hoisted(() => ({
   ] as unknown[],
 }));
 
-vi.mock('@kontourai/station-sdk', () => ({
-  authenticatedFetch: (...args: unknown[]) => fetchMock(...args),
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   useAvailableProjectLayoutsQuery: () => ({
     data: availableLayoutsState.data,
     isLoading: false,
@@ -46,13 +47,6 @@ vi.mock('@kontourai/station-sdk', () => ({
   telemetry: { track: vi.fn() },
 }));
 
-vi.mock('../../contexts/ApiBaseContext', () => ({
-  useApiBase: () => ({
-    apiBase: 'http://localhost:3141',
-    credentialState: 'ok',
-  }),
-}));
-
 import { useNewProjectStarter } from '../useNewProjectStarter';
 
 /** The repo-discovery answer for `GET /api/coding/repos?path=…`. */
@@ -61,13 +55,14 @@ function respondWithRepos(repos: Array<{ root: string }>) {
     if (!String(url).includes('/api/coding/repos')) {
       throw new Error(`unexpected request: ${url}`);
     }
-    return Promise.resolve({
-      json: () =>
-        Promise.resolve({
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
           success: true,
           data: { workspace: '/tmp/repo', workspaceIsRepo: true, repos },
         }),
-    });
+      ),
+    );
   });
 }
 
@@ -104,9 +99,15 @@ async function settleDiscovery() {
 
 describe('useNewProjectStarter repo discovery gate (#1536 E4)', () => {
   beforeEach(() => {
+    _setApiBase('http://localhost:3141');
+    vi.stubGlobal('fetch', fetchMock);
     fetchMock.mockReset();
     respondWithRepos([{ root: '/tmp/repo' }]);
     localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   test('a bare typed absolute path with a repository selects the Coding starter', async () => {

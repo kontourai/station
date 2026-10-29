@@ -1,0 +1,46 @@
+--- a/index.js
++++ b/index.js
+@@ -332,6 +332,16 @@
+         return !result.revalidation;
+     }
+
++    /** @returns {boolean} Whether stale reuse has the required shared-cache opt-in. */
++    _allowsStaleReuse() {
++        return !(
++            this._isShared &&
++            this._resHeaders['set-cookie'] &&
++            !this._rescc.public &&
++            !this._rescc.immutable
++        );
++    }
++
+     /**
+      * @param {{headers: Record<string, string>, synchronous: boolean}|undefined} revalidation - Revalidation information, if any.
+      * @returns {{response: HttpResponse, revalidation: {headers: Record<string, string>, synchronous: boolean}|undefined}} An object with a cached response headers and revalidation info.
+@@ -429,7 +439,7 @@
+             const allowsStaleWithoutRevalidation = 'max-stale' in requestCC &&
+                 (true === requestCC['max-stale'] || requestCC['max-stale'] > this.age() - this.maxAge());
+
+-            if (allowsStaleWithoutRevalidation) {
++            if (this._allowsStaleReuse() && allowsStaleWithoutRevalidation) {
+                 return this._evaluateRequestHitResult(undefined);
+             }
+
+@@ -706,7 +716,7 @@
+      * @returns {boolean} `true` if `stale-if-error` condition allows use of a stale response.
+      */
+     _useStaleIfError() {
+-        return this.maxAge() + toNumberOrZero(this._rescc['stale-if-error']) > this.age();
++        return this._allowsStaleReuse() && this.maxAge() + toNumberOrZero(this._rescc['stale-if-error']) > this.age();
+     }
+
+     /** See `evaluateRequest()` for a more complete solution
+@@ -714,7 +724,7 @@
+      */
+     useStaleWhileRevalidate() {
+         const swr = toNumberOrZero(this._rescc['stale-while-revalidate']);
+-        return swr > 0 && this.maxAge() + swr > this.age();
++        return this._allowsStaleReuse() && swr > 0 && this.maxAge() + swr > this.age();
+     }
+
+     /**

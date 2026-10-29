@@ -25,7 +25,7 @@ import { createFfmpegDecoderProvider } from '../h264-jpeg-decoder.js';
  * when what it needs is absent:
  *
  * - `STATION_REAL_DEVICE_HUB_URL`: an explicitly started expo-device-hub
- *   (see experiments/mobile-device/README.md), e.g. http://127.0.0.1:43891.
+ *   (see docs/guides/mobile-device-workspace.md), e.g. http://127.0.0.1:43891.
  * - iOS uses an already-booted simulator; with `STATION_REAL_DEVICE_BOOT=1`
  *   it boots one through the hub (Start) and powers it off afterwards.
  * - Android runs only with `STATION_REAL_DEVICE_ANDROID=1` (it boots the

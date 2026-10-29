@@ -346,6 +346,32 @@ describe('DiffPanel', () => {
     ).toBeTruthy();
   });
 
+  test('paints the real diff from Station variables, not literal theme pigments', async () => {
+    diffQueryResult = { data: SAMPLE_PATCH, isLoading: false, error: null };
+    const { container } = render(
+      <DiffPanel workingDir="/repo" projectSlug="project" />,
+    );
+    const diffContainer = await waitFor(() => {
+      const element = container.querySelector('diffs-container');
+      expect(element?.shadowRoot).toBeTruthy();
+      return element as HTMLElement;
+    });
+    // The surface, the change tones and the token colours all reach the
+    // shadow root as var() references, so a palette or light/dark change on
+    // <html> restyles the mounted diff through inheritance.
+    await waitFor(() => {
+      const html = diffContainer.shadowRoot?.innerHTML ?? '';
+      expect(html).toContain('var(--diff-background)');
+      expect(html).toContain('var(--diff-addition)');
+      expect(html).toContain('var(--diff-deletion)');
+      expect(html).toContain('color:var(--syntax-keyword)');
+    });
+    const html = diffContainer.shadowRoot?.innerHTML ?? '';
+    // pierre-dark's surface and keyword pigments are gone.
+    expect(html).not.toContain('#0a0a0a');
+    expect(html).not.toMatch(/style="[^"]*color:#[0-9a-f]{6}/i);
+  }, 30_000);
+
   test('marks the actual parsed diff layout commit without exposing patch content', async () => {
     diffQueryResult = { data: SAMPLE_PATCH, isLoading: false, error: null };
     const marks: unknown[] = [];

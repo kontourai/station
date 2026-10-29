@@ -301,6 +301,22 @@ export function registerBrowserTools(registry: StationControlToolRegistry) {
   );
 
   registry.tool(
+    'browser_capture_to_task',
+    'Save a Screen in the bound Task, pinned to its clean workspace commit. Commit changes first; submodules are refused. Omit browserSessionId only with one live session in your Project profile. Returns captureId, commit, digest and the image.',
+    {
+      browserSessionId: sessionId.optional(),
+      label: z.string().min(1).max(120).optional(),
+    },
+    async (args) =>
+      callBrowser('capture-to-task', {
+        ...(args.browserSessionId !== undefined
+          ? { browserSessionId: args.browserSessionId }
+          : {}),
+        ...(args.label !== undefined ? { label: args.label } : {}),
+      }),
+  );
+
+  registry.tool(
     'browser_snapshot',
     'Read the page as an accessibility outline with element refs (e.g. [ref=e12]) for click/type/scroll. Bounded (very large pages may time out instead); optional viewport screenshot.',
     {
@@ -332,6 +348,66 @@ export function registerBrowserTools(registry: StationControlToolRegistry) {
         target: targetOf(args),
         ...(args.button ? { button: args.button } : {}),
         ...(args.clickCount ? { clickCount: args.clickCount } : {}),
+      }),
+  );
+
+  registry.tool(
+    'browser_hover',
+    'Move the pointer onto an element or viewport point. Refused while a person holds control.',
+    { browserSessionId: sessionId, ...targetShape },
+    async (args) =>
+      callBrowser('hover', {
+        browserSessionId: args.browserSessionId,
+        target: targetOf(args),
+      }),
+  );
+
+  registry.tool(
+    'browser_drag',
+    'Drag with the left pointer from source to target (refs, locators or CSS-pixel points). Both ends must fit in the viewport. Does not transfer files.',
+    {
+      browserSessionId: sessionId,
+      source: z.object(targetShape),
+      target: z.object(targetShape),
+    },
+    async (args) =>
+      callBrowser('drag', {
+        browserSessionId: args.browserSessionId,
+        source: targetOf(args.source),
+        target: targetOf(args.target),
+      }),
+  );
+
+  registry.tool(
+    'browser_select',
+    'Select one enabled option in a native <select> by exact value or label; fires input and change. Supply exactly one value or label. Does not require page evaluation permission.',
+    {
+      browserSessionId: sessionId,
+      ref: targetShape.ref,
+      locator: targetShape.locator,
+      value: z.string().max(8192).optional(),
+      label: z.string().max(8192).optional(),
+    },
+    async (args) =>
+      callBrowser('select', {
+        browserSessionId: args.browserSessionId,
+        target: targetOf(args),
+        ...(args.value !== undefined ? { value: args.value } : {}),
+        ...(args.label !== undefined ? { label: args.label } : {}),
+      }),
+  );
+
+  registry.tool(
+    'browser_color_scheme',
+    'Emulate prefers-color-scheme for this page: light, dark, or system (clear the override). Cleared on human takeover or when the browser session is reopened.',
+    {
+      browserSessionId: sessionId,
+      scheme: z.enum(['light', 'dark', 'system']),
+    },
+    async (args) =>
+      callBrowser('color-scheme', {
+        browserSessionId: args.browserSessionId,
+        scheme: args.scheme,
       }),
   );
 

@@ -1,0 +1,7 @@
+{
+  "revision": "73ba1974b2ccd56c007d2f7c656cc49c1a5704dd",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed Codex CLI0.160.0 generated GetAccountRateLimitsResponse schema and real account/rateLimits/read: primary weekly window with secondary null is valid. The adapter now treats nullable windows as absent, nullable numeric metadata and credit balance as unknown, and explicitly unavailable reset metadata revokes a prior qualified deadline. Invalid non-null groups still refuse. Three transport-boundary regressions failed before repair and all245 focused adapter/contract/service tests passed after repair. Real one-account native quota probe now succeeds with profile scope and a qualified reset; two independently authorized accounts and observed application remain pending.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

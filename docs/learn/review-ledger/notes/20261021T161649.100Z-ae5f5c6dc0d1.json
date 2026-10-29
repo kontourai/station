@@ -1,0 +1,7 @@
+{
+  "revision": "76766fd0391094e0d6a144b32ce50e02028e7822",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Added Cursor plan review to the acceptForSession-as-accept rule; question answers already documented by the input-request section apply to harness:cursor forms.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/acp-adapter-events.ts","src-server/providers/adapters/acp-adapter.ts","src-server/providers/adapters/harness-questions.ts"]}
+  ]
+}

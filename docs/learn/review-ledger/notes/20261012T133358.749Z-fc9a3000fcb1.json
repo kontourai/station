@@ -1,0 +1,7 @@
+{
+  "revision": "16f89f242108bc8515bc1faaac6d1bd2f3843a4a",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"#187 accepted-release record review (branch fix/update-key-pin-187, merged with main 154624a872). install.sh now carries a generated ACCEPTED RELEASE PROGRAM block (packages/shared/src/accepted-release.mjs) plus check_accepted_release/record_accepted_release and a nothing-to-do seed; the installer refuses a public manifest older than the install root's .station-release-accepted.json unless STATION_VERSION + STATION_INSTALL_ALLOW_ROLLBACK=1. Also archive-update.ts (server check refuses such a manifest as unverified, with per-relation messages), prebuilt-archive.ts (record helpers; compareStationReleaseVersions delegates to the same release order, unchanged results) and a comment-only release-manifest.mjs edit. The ADR's never-backwards, pinned-key manifest and home-schema downgrade decisions still hold; the record strengthens never-backwards for the host stream and contradicts nothing recorded.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/shared/src/prebuilt-archive.ts","packages/shared/src/release-manifest.mjs","src-server/routes/system/archive-update.ts","install.sh"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "a67a63fa6fafb31ef5fea485df93fe8483e130e3",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed against the sdk.md enable-transition sentence: this guide does not describe the inventory hooks; no prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]}
+  ]
+}

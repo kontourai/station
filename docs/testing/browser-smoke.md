@@ -1,15 +1,17 @@
 # Deterministic PR browser smoke
 
 The `fast-checks-statics` job runs `npm run test:e2e:pr-smoke` for
-same-repository pull requests and merge-group candidates. The required
+same-repository source events and merge-group candidates; metadata-only edits
+do not repeat browser verification. The required
 `fast-checks` aggregator requires that job and the affected-test plan/shards to
-succeed; it also validates their exact-plan receipts. Fork pull requests
+succeed; it validates exact-plan receipts or the independently checked empty-plan
+case. Fresh browser startup builds the candidate UI and enforces its bundle budget. Fork pull requests
 use a separate isolated job. The smoke runner creates its own Station instance,
 temporary home, and dynamically allocated loopback API/UI ports, keeping it
 separate from an always-on dogfood environment on the same host.
 
 The normative manifest is
-[`PR_BROWSER_SMOKE_CONTRACT`](../../tests/e2e-manifest.mjs). Its seven selected
+[`PR_BROWSER_SMOKE_CONTRACT`](../../tests/e2e-manifest.mjs). Its eight selected
 specs cover these journeys:
 
 | Spec | Journey |
@@ -21,10 +23,23 @@ specs cover these journeys:
 | `orchestration-chat-flow` | Transcript, tool activity, and approval UI driven by synthetic canonical events |
 | `cross-runtime-chat-switching` | Deterministic provider continuity and mobile layout containment, including the required 320/390/412-pixel switcher observations |
 | `pr-smoke-live-chat-send` | A real orchestration HTTP dispatch and rendered reply from a local Ollama-compatible fixture server |
+| `chat-inventory-drilldown-mobile` | At 390x844, a real chat started from Home opens the phone dock on its own; the header keeps Chat actions and New chat in one row of 44px targets at 320 and 390 pixels; Chat inventory opens from the Chat actions sheet and the chat's authored input is drilled into, read back through the exact input read, and measured for overflow, chip width, and 44px targets; the reader carries one "Chat inventory" title, at 390 and 1440, with its header clear of its content (#4176) |
 
-The last journey tests Station's request and rendering path; the fixture returns
+The live-chat send journey tests Station's request and rendering path; the fixture returns
 fixed text and does not run a model or contact a provider. A phone-sized browser
 viewport is not physical-phone evidence.
+
+Task review remains in `extended`. Its credential-free cases passed the
+candidate lane, but the full lane failed the existing chat approval assertion.
+The strict browser receipt also rejects the explicit signed-in Claude skip in
+that spec. Admission needs separate credential-free selection and three clean
+full-lane runs within the existing budget; a successful live-provider run alone
+does not satisfy it.
+
+The project-creation journey waits for the initial **Starting Station** dialog
+to leave before filling the form. The form can mount behind the cold-launch
+presentation while that modal still blocks input; its heading alone does not
+establish interaction readiness.
 
 [`monitorBrowserHealth`](../../tests/helpers/browser-health.ts) catches page
 errors, application console errors, HTTP 5xx responses, and selected failed

@@ -13,7 +13,7 @@ function bridgeWith(
   };
 }
 
-/** #764 review round 2: the production derivation, exercised directly with a
+/** #764: the production derivation, exercised directly with a
  * fake acpBridge.getStatus(). The four connections cover every evidence
  * state the manager view can project for `loadSession`. */
 describe('acpResumeCursorSupport', () => {

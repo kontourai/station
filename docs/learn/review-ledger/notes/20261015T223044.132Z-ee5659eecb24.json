@@ -1,0 +1,7 @@
+{
+  "revision": "16679bd96ba7c79d605c771fc969646e4d886ecf",
+
+  "notes": [
+    {"path":"docs/design/project-task-room-history.md","note":"Reworded the remaining synchronous writer list as non-exhaustive and added the EventStore writers an independent review found missing; #3701 stays open.","inputs":["docs/design/project-task-room-history.md"]}
+  ]
+}

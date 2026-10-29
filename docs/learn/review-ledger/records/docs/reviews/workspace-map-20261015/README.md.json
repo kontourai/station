@@ -1,0 +1,39 @@
+{
+  "path": "docs/reviews/workspace-map-20261015/README.md",
+
+  "kind": "historical",
+
+  "state": "source-reviewed",
+
+  "summary": "Exact-base and reviewed-source local workspace map implementation, browser screenshots, independent review and fault evidence; includes a separate panel-discovery assessment.",
+
+  "limits": "Local Chrome and focused evidence only. No hosted checks, native device, provider execution, full-regression or Gallery comparator qualification. Screenshot connection badges are sample-instance observations.",
+
+  "sources": [
+    "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+
+    "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+
+    "src-ui/src/components/project-sidebar/ProjectSidebarFooter.tsx",
+
+    "src-ui/src/components/project-sidebar/SidebarPopover.tsx",
+
+    "src-ui/src/components/header/Header.tsx",
+
+    "src-ui/src/__tests__/ProjectSidebarRow.test.tsx",
+
+    "src-ui/src/__tests__/ProjectSidebarFooter.test.tsx",
+
+    "src-ui/src/__tests__/ProjectSidebarReorder.coarseGeometry.test.tsx",
+
+    "src-ui/src/workspace-panes/RegionEmptyChooser.tsx",
+
+    "src-ui/src/components/header/Header.css",
+
+    "tests/sidebar-geometry.spec.ts"
+  ],
+
+  "checks": [
+    "Reviewed actual branch implementation and named acceptance tests; retained exact base/source revisions, direct Chrome observations and independent reports. Historical captures do not qualify another source revision."
+  ]
+}

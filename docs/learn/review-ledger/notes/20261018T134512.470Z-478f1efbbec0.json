@@ -1,0 +1,13 @@
+{
+  "revision": "9eb818bb73cf5815e1c11234b449a568597d032a",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Bounded responsive-inventory re-review: added the kernel Lite notice action row using ResponsiveSurfaceActions and existing tokens/dock clearance. The gallery at desktop and 390px trial-clicks both Off and Dismiss; this is local browser evidence, not native or universal geometry qualification. Existing component adoption, wrapping, focus and authority guidance remains accurate.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Bounded responsive-inventory re-review: added the kernel Lite notice action row using ResponsiveSurfaceActions and existing tokens/dock clearance. The gallery at desktop and 390px trial-clicks both Off and Dismiss; this is local browser evidence, not native or universal geometry qualification. Existing component adoption, wrapping, focus and authority guidance remains accurate.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Bounded responsive-inventory re-review: added the kernel Lite notice action row using ResponsiveSurfaceActions and existing tokens/dock clearance. The gallery at desktop and 390px trial-clicks both Off and Dismiss; this is local browser evidence, not native or universal geometry qualification. Existing component adoption, wrapping, focus and authority guidance remains accurate.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Bounded responsive-inventory re-review: added the kernel Lite notice action row using ResponsiveSurfaceActions and existing tokens/dock clearance. The gallery at desktop and 390px trial-clicks both Off and Dismiss; this is local browser evidence, not native or universal geometry qualification. Existing component adoption, wrapping, focus and authority guidance remains accurate.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

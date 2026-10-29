@@ -1,0 +1,7 @@
+{
+  "revision": "e88208d9cffe2f47a0252fb051de939a04019a79",
+
+  "notes": [
+    {"path":"docs/guides/android-build.md","note":"runtime-path-resolver.ts change is additive: new exported stationTreeContaining(path, env) returns the canonical Station root or STATION_HOME containing a path; resolveStationRoot, admitStationRuntimeHome and every existing export are unchanged. Searched this doc for admission/temp-home claims; none affected, no prose change.","inputs":["docs/guides/android-build.md","packages/shared/src/runtime-path-resolver.ts"]}
+  ]
+}

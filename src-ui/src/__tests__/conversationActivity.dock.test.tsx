@@ -188,7 +188,6 @@ function Thread({
         attachments={[]}
         textareaRef={{ current: null }}
         disabled={false}
-        isSending={chat.status === 'sending'}
         turnInFlight={isTurnInFlight(chat)}
         stopPending={!!chat.stopPending}
         modelSupportsAttachments={false}
@@ -735,8 +734,12 @@ describe('#2309 review F7: one clock, one silence', () => {
       ),
     );
     expect(progressText()).toBe('Last: bash · failed');
-    // The working clock keeps its own interval; the progress row's is gone.
-    expect(vi.getTimerCount()).toBe(whileRunning - 1);
+    // Every elapsed label reads the one shared clock, which the working clock
+    // still holds: the row going still neither leaves nor takes a timer of
+    // its own, and a tick no longer changes it.
+    expect(vi.getTimerCount()).toBe(whileRunning);
+    act(() => vi.advanceTimersByTime(5_000));
+    expect(progressText()).toBe('Last: bash · failed');
   });
 
   test('when the host shows the silence with its Stop action, the row does not repeat it', () => {

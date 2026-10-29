@@ -3,6 +3,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
@@ -14,18 +15,23 @@ import {
   subscribeBrowserRelayAccountScope,
 } from '../lib/browserRelayAccountScope';
 import { captureBrowserRelayRoute } from '../lib/browserRelayRouteBinding';
+import { deviceSettingsStore } from '../lib/device-settings-store';
 import {
   getLocalUiSessionAttempt,
-  recheckLocalUiSessionAfterPairing,
+  recheckLocalUiSession,
   resolveLocalUiSession,
   subscribeLocalUiSessionAttempt,
 } from '../lib/local-ui-bootstrap';
 import { LOCAL_UI_SESSION_ATTEMPT_LIMIT } from '../lib/local-ui-session-retry';
 import { probeServerConnection } from '../lib/serverHealth';
 import { primeNativeNotifications } from '../platform/native/notify';
+import { Button } from './Button';
 import { ElapsedWait } from './ElapsedWait';
 import { LazyBoundary } from './LazyBoundary';
+import { StartupHandoff } from './StartupHandoff';
+import { StartupScreen } from './StartupScreen';
 import { SkeletonBlock } from './state';
+import './LocalUiSessionGate.css';
 
 const loadGuidedConnect = () =>
   import('./GuidedConnect').then((module) => ({
@@ -94,12 +100,17 @@ export function LocalUiSessionGate({
     connectionId: string;
     scopeKey: string;
     authenticated: boolean;
+    /** The Station refused this account (not merely unreachable or unknown). */
+    refused: boolean;
   } | null>(null);
   const [relayOnboardingOpen, setRelayOnboardingOpen] = useState(false);
-  const pairingRecheck = useRef<Promise<
-    Awaited<ReturnType<typeof resolveLocalUiSession>>
-  > | null>(null);
+  const sessionCheck = useRef<{
+    promise: Promise<Awaited<ReturnType<typeof resolveLocalUiSession>>>;
+    reason: 'launcher' | 'pairing' | 'recovery';
+  } | null>(null);
   const [sampleOpen, setSampleOpen] = useState(false);
+  const [checkingRecovery, setCheckingRecovery] = useState(false);
+  const resolutionRequest = useRef(0);
   const [accessStartedAt] = useState(Date.now);
   // Deliberately NOT passed as `useDegradedQueryState`'s `resetKey`: the
   // degraded window measures how long this browser has been waiting for ONE
@@ -115,11 +126,39 @@ export function LocalUiSessionGate({
 
   useEffect(() => {
     let active = true;
-    void resolveLocalUiSession(apiBase).then((next) => {
-      if (active) setResolution(next);
-    });
+    const resolve = () => {
+      const current = ++resolutionRequest.current;
+      const pending = resolveLocalUiSession(apiBase);
+      sessionCheck.current = { promise: pending, reason: 'launcher' };
+      setCheckingRecovery(true);
+      void pending
+        .then((next) => {
+          if (active && current === resolutionRequest.current)
+            setResolution(next);
+        })
+        .finally(() => {
+          if (active && sessionCheck.current?.promise === pending) {
+            sessionCheck.current = null;
+            setCheckingRecovery(false);
+          }
+        });
+    };
+    const acceptLauncherLink = () => {
+      if (
+        !new URLSearchParams(window.location.hash.slice(1)).has(
+          'station-ui-bootstrap',
+        )
+      )
+        return;
+      resolve();
+    };
+    resolve();
+    window.addEventListener('hashchange', acceptLauncherLink);
     return () => {
       active = false;
+      resolutionRequest.current += 1;
+      sessionCheck.current = null;
+      window.removeEventListener('hashchange', acceptLauncherLink);
     };
   }, [apiBase]);
 
@@ -138,6 +177,7 @@ export function LocalUiSessionGate({
     let current = true;
     void (async () => {
       let authenticated = false;
+      let refused = false;
       try {
         const result = await probeServerConnection(
           connection.url,
@@ -152,6 +192,13 @@ export function LocalUiSessionGate({
           result.ok &&
           typeof result.bootId === 'string' &&
           result.bootId.length > 0;
+        // Only an authentication refusal is a definite "not this person";
+        // unreachable, timeout, identity or version failures are not.
+        refused =
+          typeof result === 'object' &&
+          result !== null &&
+          !result.ok &&
+          result.reason === 'authentication-failed';
       } catch {
         // Missing or rejected account/Device authority keeps the access
         // screen visible. It is not evidence that the broker route is offline.
@@ -170,6 +217,7 @@ export function LocalUiSessionGate({
           connectionId: connection.id,
           scopeKey: scope.scopeKey,
           authenticated,
+          refused,
         });
     })();
     return () => {
@@ -199,18 +247,80 @@ export function LocalUiSessionGate({
       : ({ kind: 'access-required' } as const)
     : resolution;
 
+  const recheckSession = useCallback(
+    (reason: 'pairing' | 'recovery' = 'recovery') => {
+      if (
+        !sessionCheck.current ||
+        (reason === 'pairing' && sessionCheck.current.reason !== 'pairing')
+      ) {
+        const current = ++resolutionRequest.current;
+        const pending = recheckLocalUiSession(apiBase);
+        sessionCheck.current = { promise: pending, reason };
+        setCheckingRecovery(true);
+        void pending
+          .then((next) => {
+            if (current === resolutionRequest.current) setResolution(next);
+          })
+          .finally(() => {
+            if (sessionCheck.current?.promise === pending) {
+              sessionCheck.current = null;
+              setCheckingRecovery(false);
+            }
+          });
+      }
+    },
+    [apiBase],
+  );
+
   const handleSessionEstablished = useCallback(() => {
-    // A connection-manager success can be surfaced twice while its modal
-    // completes. Keep the resulting authenticated identity check singular.
-    pairingRecheck.current ??= recheckLocalUiSessionAfterPairing(apiBase);
-    void pairingRecheck.current.then(setResolution).finally(() => {
-      pairingRecheck.current = null;
-    });
+    recheckSession('pairing');
     // First usable session in this browser: the moment the boot-time prime
     // skips on a fresh device (see PlatformProfileContext). Idempotent, so a
     // boot prime makes this a no-op.
     void primeNativeNotifications();
-  }, [apiBase]);
+  }, [recheckSession]);
+
+  useEffect(() => {
+    if (effectiveResolution?.kind !== 'host-unavailable') return;
+    const resume = () => {
+      if (document.visibilityState === 'visible') recheckSession();
+    };
+    window.addEventListener('online', resume);
+    window.addEventListener('focus', resume);
+    document.addEventListener('visibilitychange', resume);
+    return () => {
+      window.removeEventListener('online', resume);
+      window.removeEventListener('focus', resume);
+      document.removeEventListener('visibilitychange', resume);
+    };
+  }, [effectiveResolution?.kind, recheckSession]);
+
+  // No session: the connect screen is this device's, not the account's whose
+  // appearance the startup path painted from its cache (lib/appearance-cache.ts).
+  // The protected tree, and with it the account boundary that otherwise
+  // releases that cache, never mounts here. Only a definite answer counts: on
+  // a relay route the gate shows the connect screen while the account and its
+  // Station identity are still being checked, which is "not checked yet", not
+  // "signed out". There the definite answers are a settled account scope with
+  // no account (none selected, or signed out), or a completed identity check
+  // for the current account that the Station refused. An unreachable or
+  // otherwise failed check is not one.
+  const relayRefused = Boolean(
+    activeConnection &&
+      relayRoute &&
+      relayScope?.state === 'ready' &&
+      (!relayScope.authorityKey ||
+        (verifiedRelay !== null &&
+          verifiedRelay.connectionId === activeConnection.id &&
+          verifiedRelay.scopeKey === relayScope.scopeKey &&
+          verifiedRelay.refused)),
+  );
+  const noSession = relayRoute
+    ? relayRefused
+    : resolution?.kind === 'access-required';
+  useLayoutEffect(() => {
+    if (noSession) deviceSettingsStore.releaseBootAppearance();
+  }, [noSession]);
 
   if (!effectiveResolution) {
     // The ONE loading treatment that legitimately replaces the shell: nothing
@@ -223,6 +333,7 @@ export function LocalUiSessionGate({
     if (accessCheck === 'degraded') {
       return (
         <main aria-live="polite">
+          <StartupHandoff recovery />
           <p role="alert">
             Station is taking longer than expected to answer this
             browser&rsquo;s access check.
@@ -237,7 +348,7 @@ export function LocalUiSessionGate({
     }
     return (
       <main aria-live="polite">
-        <p>Checking this browser's Station access…</p>
+        <StartupScreen message="Checking this browser's Station access…" />
         <RetryAttempt attempt={identityAttempt} />
         <ElapsedWait startedAt={accessStartedAt} />
       </main>
@@ -288,16 +399,12 @@ export function LocalUiSessionGate({
       // it makes a settled screen read as pending and the wait spin to its
       // deadline. Rename it there in the same change.
       <main className="local-ui-session-recovery" aria-live="polite">
+        <StartupHandoff recovery />
         <h1>Reconnecting to this Station</h1>
-        <p role="alert">
-          Station&rsquo;s host process is down or recovering — it answered that
-          way {LOCAL_UI_SESSION_ATTEMPT_LIMIT} times in a row. This
-          browser&rsquo;s current access stays in place; reload after the host
-          restarts.
-        </p>
-        <button type="button" onClick={() => window.location.reload()}>
+        <p role="alert">Keep Station running on your computer, then retry.</p>
+        <Button onClick={() => recheckSession()} disabled={checkingRecovery}>
           Try again
-        </button>
+        </Button>
       </main>
     );
   }

@@ -1,0 +1,7 @@
+{
+  "revision": "7f9b4627faa25c984dc51f588cbf96323296186c",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"Added UI definition of done. Verified each primitive path: components/state exports Empty, ErrorState, FilteredEmpty, SkeletonList, SkeletonBlock; ErrorState variant passes to Empty (default|prominent|compact); components/Button re-exports station-sdk/action-control; @kontourai/ui/react 1.20.1 exports Badge, StatusBadge, Skeleton; DESIGN.md designates Badge/StatusBadge for status and lists tables/inspectors as no shipped primitive; DisclosureToggle, Dialog, ConfirmModal exist.","inputs":["src-ui/AGENTS.md"]}
+  ]
+}

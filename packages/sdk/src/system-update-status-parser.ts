@@ -17,6 +17,11 @@
 import type {
   DevicePresentation,
   SelfUpdateUnavailableCode,
+  ServerUpdateDownloadPolicy,
+  ServerUpdateRunningTurns,
+  ServerUpdateState,
+  ServiceStagePhase,
+  ServiceUpdateIntent,
   ServiceUpdatePhase,
   ServiceUpdateProgress,
   SystemIdentityResponse,
@@ -27,6 +32,127 @@ import type { CoreUpdateStatus } from './query-domains/systemRuntime';
 
 /** The SHA rule `build-provenance.ts` validates its identity sha against. */
 const GIT_SHA = /^[0-9a-f]{40,64}$/i;
+
+const SERVICE_UPDATE_INTENTS: readonly ServiceUpdateIntent[] = [
+  'stage',
+  'apply',
+  'update',
+];
+const SERVICE_STAGE_PHASES: readonly ServiceStagePhase[] = [
+  'downloading',
+  'verifying',
+  'installing',
+];
+const DOWNLOAD_POLICIES: readonly ServerUpdateDownloadPolicy[] = [
+  'never',
+  'after-24h',
+  'immediately',
+];
+
+function isByteCount(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+
+function optionalTimestamp(value: unknown): string | null {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value))
+    ? value
+    : null;
+}
+
+/**
+ * `GET /api/system/core-update/state` and the `server-update:changed`
+ * payload (#3851). Anything unreadable reads as an unsupported server, which
+ * offers nothing: never a half-read state a client would act on.
+ */
+export function parseServerUpdateState(value: unknown): ServerUpdateState {
+  const unsupported: ServerUpdateState = {
+    supported: false,
+    currentVersion: null,
+    availability: null,
+    progress: { state: 'unavailable' },
+    downloadPolicy: 'after-24h',
+    autoDownloadAt: null,
+    applyWhenIdle: null,
+  };
+  if (!isRecord(value) || value.supported !== true) return unsupported;
+  const availability = isRecord(value.availability) ? value.availability : null;
+  const idle = isRecord(value.applyWhenIdle) ? value.applyWhenIdle : null;
+  return {
+    supported: true,
+    currentVersion: isNonEmptyString(value.currentVersion)
+      ? value.currentVersion
+      : null,
+    availability:
+      availability &&
+      optionalTimestamp(availability.checkedAt) &&
+      typeof availability.updateAvailable === 'boolean' &&
+      RELEASE_CHECKS.includes(
+        availability.releaseCheck as (typeof RELEASE_CHECKS)[number],
+      )
+        ? {
+            checkedAt: availability.checkedAt as string,
+            releaseCheck: availability.releaseCheck as NonNullable<
+              ServerUpdateState['availability']
+            >['releaseCheck'],
+            latestVersion: isNonEmptyString(availability.latestVersion)
+              ? availability.latestVersion
+              : null,
+            updateAvailable: availability.updateAvailable,
+            availableSince: optionalTimestamp(availability.availableSince),
+          }
+        : null,
+    progress: parseServiceUpdateProgress(value.progress),
+    downloadPolicy: DOWNLOAD_POLICIES.includes(
+      value.downloadPolicy as ServerUpdateDownloadPolicy,
+    )
+      ? (value.downloadPolicy as ServerUpdateDownloadPolicy)
+      : 'after-24h',
+    autoDownloadAt: optionalTimestamp(value.autoDownloadAt),
+    autoDownloadPausedReason:
+      value.autoDownloadPausedReason === 'update-failed' ||
+      value.autoDownloadPausedReason === 'download-failed'
+        ? value.autoDownloadPausedReason
+        : null,
+    applyWhenIdle:
+      idle &&
+      isNonEmptyString(idle.version) &&
+      optionalTimestamp(idle.requestedAt)
+        ? {
+            version: idle.version,
+            requestedAt: idle.requestedAt as string,
+            ...(isByteCount(idle.waitingForTurns)
+              ? { waitingForTurns: idle.waitingForTurns }
+              : {}),
+          }
+        : null,
+  };
+}
+
+/** `GET /api/system/core-update/running-turns` (#3851). */
+export function parseServerUpdateRunningTurns(
+  value: unknown,
+): ServerUpdateRunningTurns {
+  if (!isRecord(value) || !Array.isArray(value.turns))
+    throw new Error('Running turns are unavailable');
+  return {
+    turns: value.turns.filter(isRecord).flatMap((turn) =>
+      isNonEmptyString(turn.sessionId) && isNonEmptyString(turn.engine)
+        ? [
+            {
+              sessionId: turn.sessionId,
+              conversationId: isNonEmptyString(turn.conversationId)
+                ? turn.conversationId
+                : null,
+              title: isNonEmptyString(turn.title) ? turn.title : null,
+              engine: turn.engine,
+              startedAt: optionalTimestamp(turn.startedAt),
+            },
+          ]
+        : [],
+    ),
+    hiddenCount: isByteCount(value.hiddenCount) ? value.hiddenCount : 0,
+  };
+}
 
 const PROVENANCE_ISSUES: readonly UpdateProvenanceIssue[] = [
   'missing',
@@ -166,7 +292,46 @@ export function parseServiceUpdateProgress(
     case 'queued':
     case 'staging': {
       const requestId = text('requestId');
-      return requestId ? { state: value.state, requestId } : unavailable;
+      if (!requestId) return unavailable;
+      // #3851, all optional: an older server sends none of them.
+      const intent = SERVICE_UPDATE_INTENTS.includes(
+        value.intent as ServiceUpdateIntent,
+      )
+        ? { intent: value.intent as ServiceUpdateIntent }
+        : {};
+      if (value.state === 'queued')
+        return { state: 'queued', requestId, ...intent };
+      const stagePhase = SERVICE_STAGE_PHASES.includes(
+        value.stagePhase as ServiceStagePhase,
+      )
+        ? (value.stagePhase as ServiceStagePhase)
+        : undefined;
+      const bytes =
+        stagePhase === 'downloading' &&
+        isByteCount(value.downloadedBytes) &&
+        isByteCount(value.totalBytes) &&
+        value.totalBytes > 0 &&
+        value.downloadedBytes <= value.totalBytes
+          ? {
+              downloadedBytes: value.downloadedBytes,
+              totalBytes: value.totalBytes,
+            }
+          : {};
+      return {
+        state: 'staging',
+        requestId,
+        ...intent,
+        ...(stagePhase ? { stagePhase } : {}),
+        ...bytes,
+      };
+    }
+    case 'staged': {
+      const requestId = text('requestId');
+      const version = text('version');
+      const stagedAt = text('stagedAt');
+      return requestId && version && stagedAt
+        ? { state: 'staged', requestId, version, stagedAt }
+        : unavailable;
     }
     case 'updating': {
       const requestId = optionalRequestId(value.requestId);
@@ -355,6 +520,7 @@ export function parseSystemUpdateStatus(value: unknown): CoreUpdateStatus {
       value.serviceUpdate === undefined
         ? undefined
         : parseServiceUpdateProgress(value.serviceUpdate),
+    ...(value.stagedUpdates === true ? { stagedUpdates: true as const } : {}),
     remoteUnreachable: value.remoteUnreachable as boolean | undefined,
     message: typeof value.message === 'string' ? value.message : undefined,
     error: typeof value.error === 'string' ? value.error : undefined,

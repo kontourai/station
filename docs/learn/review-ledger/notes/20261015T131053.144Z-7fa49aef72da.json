@@ -1,0 +1,7 @@
+{
+  "revision": "151ed992d53efc9af37ae11d1740160650435bbd",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Re-reviewed tests/android/mobile-layout.spec.ts after typing the sweep's querySelectorAll as HTMLElement so el.tabIndex typechecks (typecheck:e2e failed on Element). Type-only; runtime behavior is the same as the earlier reviews. The touch-target sweep skips an element only when it is inside aria-hidden=true AND has tabIndex below 0 (StartComposer's clipped file input from #3673); every focusable or non-aria-hidden visible control is still measured, confirmed by fault injection (20px start-composer tool button, and the same input made focusable) turning the sweep red by name. The matrix row citing Android mobile-layout for mobile geometry stays accurate.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/android/mobile-layout.spec.ts"]}
+  ]
+}

@@ -33,6 +33,15 @@ interface PushRouteDeps {
   enabled?: boolean;
   getVapidPublicKey: () => string;
   identifyDevice: (credential: string) => PairedDevice | null;
+  /**
+   * The relay alias id when the credential is a relay alias of a paired
+   * device, else undefined. An alias is a read-scoped relay bearer for the
+   * same device id that never carries the device's home-possession stamp,
+   * so a registration made with it would be filed under a device whose
+   * other credential may read as the operator: refused, as a personal
+   * access token is.
+   */
+  credentialAliasId: (credential: string) => string | undefined;
   setPushSubscription: (
     deviceId: string,
     subscription: WebPushSubscription,
@@ -61,12 +70,15 @@ function isValidSubscription(value: unknown): value is WebPushSubscription {
   );
 }
 
-function extractCredential(req: {
-  header: (name: string) => string | undefined;
-}): string | undefined {
+function extractCredential(
+  req: {
+    header: (name: string) => string | undefined;
+  },
+  identifies: (credential: string) => boolean,
+): string | undefined {
   const bearer = parseStrictBearer(req.header('authorization'));
   if (bearer) return bearer;
-  return parseDeviceSessionCookie(req.header('cookie'));
+  return parseDeviceSessionCookie(req.header('cookie'), identifies);
 }
 
 export function createPushRoutes(deps: PushRouteDeps) {
@@ -87,9 +99,18 @@ export function createPushRoutes(deps: PushRouteDeps) {
   );
 
   app.post('/push-subscribe', async (c) => {
-    const credential = extractCredential(c.req);
+    const credential = extractCredential(
+      c.req,
+      (candidate) => deps.identifyDevice(candidate) !== null,
+    );
     const device = credential ? deps.identifyDevice(credential) : null;
-    if (!device) {
+    // #3557: a personal access token is not a device a notification reaches;
+    // nor is a relay alias (see `credentialAliasId`).
+    if (
+      !device ||
+      device.credentialKind === 'personal-token' ||
+      deps.credentialAliasId(credential!) !== undefined
+    ) {
       webPushSubscriptions.add(1, { op: 'subscribe', outcome: 'denied' });
       return c.json({ error: 'device_pairing_required' }, 403);
     }
@@ -110,9 +131,13 @@ export function createPushRoutes(deps: PushRouteDeps) {
   });
 
   app.post('/push-unsubscribe', async (c) => {
-    const credential = extractCredential(c.req);
+    const credential = extractCredential(
+      c.req,
+      (candidate) => deps.identifyDevice(candidate) !== null,
+    );
     const device = credential ? deps.identifyDevice(credential) : null;
-    if (!device) {
+    // #3557: a personal access token is not a device a notification reaches.
+    if (!device || device.credentialKind === 'personal-token') {
       webPushSubscriptions.add(1, { op: 'unsubscribe', outcome: 'denied' });
       return c.json({ error: 'device_pairing_required' }, 403);
     }

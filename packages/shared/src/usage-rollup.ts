@@ -118,10 +118,58 @@ export function foldUsageReceipts(input: UsageRollupFoldInput): UsageRollup {
     );
   }
   const accepted = aggregateMaterial.slice(0, USAGE_ROLLUP_MAX_RECEIPTS);
-  const rows = new Map<string, UsageRollupRow>();
-  for (const receipt of accepted) {
-    const key = keyFor(receipt, input.groupBy);
-    const row = rows.get(key) ?? {
+  const accumulator = new UsageReceiptRowAccumulator(input.groupBy);
+  for (const receipt of accepted) accumulator.add(receipt);
+  // Source cursors are consumed before this fold. Keeping this function free
+  // of a second offset prevents a remote page from being skipped twice.
+  // `receipts` has already been selected by its source cursor. Never apply a
+  // second offset here; doing so skips an entire page after a remote source
+  // has advanced its observed-time/id cursor.
+  const receipts = input.receipts
+    .filter(
+      (receipt) =>
+        receipt.observedAt !== undefined &&
+        receipt.observedAt >= `${input.from}T00:00:00.000Z` &&
+        receipt.observedAt <= `${input.to}T23:59:59.999Z`,
+    )
+    .sort(
+      (left, right) =>
+        left.observedAt!.localeCompare(right.observedAt!) ||
+        left.id.localeCompare(right.id),
+    )
+    .slice(0, pageSize);
+  return {
+    window: { from: input.from, to: input.to },
+    rows: accumulator.snapshot(),
+    aggregateReceipts: accepted,
+    coverage: input.coverage.map((coverage) => {
+      const droppedReceiptCount = droppedByStation.get(coverage.stationId);
+      return droppedReceiptCount === undefined
+        ? coverage
+        : {
+            ...coverage,
+            state: 'partial' as const,
+            reason: 'aggregate receipt cap reached',
+            droppedReceiptCount,
+            droppedReceiptWindow: { from: input.from, to: input.to },
+          };
+    }),
+    receipts,
+  };
+}
+
+/** Aggregates already reconciled receipts; the caller owns deduplication and query budgets. */
+export class UsageReceiptRowAccumulator {
+  private readonly rowMap = new Map<string, UsageRollupRow>();
+  constructor(
+    private readonly groupBy: UsageRollupFoldInput['groupBy'],
+    initial: readonly UsageRollupRow[] = [],
+  ) {
+    for (const row of initial) this.rowMap.set(row.key, cloneUsageRow(row));
+  }
+  add(receipt: UsageReceipt): void {
+    const key = keyFor(receipt, this.groupBy);
+    const row = this.rowMap.get(key) ?? {
       key,
       stationId: receipt.stationId,
       provider: receipt.provider,
@@ -134,6 +182,11 @@ export function foldUsageReceipts(input: UsageRollupFoldInput): UsageRollup {
       pricingStatus: receipt.pricing?.status ?? 'unpriced',
       receiptCount: 0,
     };
+    const hadTokenMeasurements =
+      row.inputTokens !== undefined ||
+      row.outputTokens !== undefined ||
+      row.cacheReadTokens !== undefined ||
+      row.cacheWriteTokens !== undefined;
     row.inputTokens = addMeasured(row.inputTokens, receipt.inputTokens);
     row.outputTokens = addMeasured(row.outputTokens, receipt.outputTokens);
     row.cacheReadTokens = addMeasured(
@@ -212,48 +265,60 @@ export function foldUsageReceipts(input: UsageRollupFoldInput): UsageRollup {
       receipt.cacheReadTokens !== undefined ||
       receipt.cacheWriteTokens !== undefined
     )
-      row.pricingStatus = worstPricingStatus(
-        row.pricingStatus,
-        receipt.pricing?.status ?? 'unpriced',
-      );
+      row.pricingStatus = hadTokenMeasurements
+        ? worstPricingStatus(
+            row.pricingStatus,
+            receipt.pricing?.status ?? 'unpriced',
+          )
+        : (receipt.pricing?.status ?? 'unpriced');
     row.receiptCount += 1;
-    rows.set(key, row);
+    this.rowMap.set(key, row);
   }
-  // Source cursors are consumed before this fold. Keeping this function free
-  // of a second offset prevents a remote page from being skipped twice.
-  // `receipts` has already been selected by its source cursor. Never apply a
-  // second offset here; doing so skips an entire page after a remote source
-  // has advanced its observed-time/id cursor.
-  const receipts = input.receipts
-    .filter(
-      (receipt) =>
-        receipt.observedAt !== undefined &&
-        receipt.observedAt >= `${input.from}T00:00:00.000Z` &&
-        receipt.observedAt <= `${input.to}T23:59:59.999Z`,
-    )
-    .sort(
-      (left, right) =>
-        left.observedAt!.localeCompare(right.observedAt!) ||
-        left.id.localeCompare(right.id),
-    )
-    .slice(0, pageSize);
+  snapshot(): UsageRollupRow[] {
+    return [...this.rowMap.values()].map((value) => {
+      const row = cloneUsageRow(value);
+      if (row.reportedCostBuckets?.length === 1)
+        row.reportedCost = { ...row.reportedCostBuckets[0] };
+      else if ((row.reportedCostBuckets?.length ?? 0) > 1)
+        delete row.reportedCost;
+      if (row.estimatedCostBuckets?.length === 1) {
+        const bucket = row.estimatedCostBuckets[0];
+        row.estimatedCost = {
+          amount: bucket.amount,
+          currency: bucket.currency,
+          pricingSnapshotId: bucket.pricingSnapshotId,
+          ...(bucket.pricingSnapshotCapturedAt
+            ? { pricingSnapshotObservedAt: bucket.pricingSnapshotCapturedAt }
+            : {}),
+          ...(bucket.pricingSnapshotSource
+            ? { pricingSnapshotSource: bucket.pricingSnapshotSource }
+            : {}),
+        };
+      } else if ((row.estimatedCostBuckets?.length ?? 0) > 1)
+        delete row.estimatedCost;
+      return row;
+    });
+  }
+}
+function cloneUsageRow(row: UsageRollupRow): UsageRollupRow {
   return {
-    window: { from: input.from, to: input.to },
-    rows: [...rows.values()],
-    aggregateReceipts: accepted,
-    coverage: input.coverage.map((coverage) => {
-      const droppedReceiptCount = droppedByStation.get(coverage.stationId);
-      return droppedReceiptCount === undefined
-        ? coverage
-        : {
-            ...coverage,
-            state: 'partial' as const,
-            reason: 'aggregate receipt cap reached',
-            droppedReceiptCount,
-            droppedReceiptWindow: { from: input.from, to: input.to },
-          };
-    }),
-    receipts,
+    ...row,
+    ...(row.reportedCost ? { reportedCost: { ...row.reportedCost } } : {}),
+    ...(row.estimatedCost ? { estimatedCost: { ...row.estimatedCost } } : {}),
+    ...(row.reportedCostBuckets
+      ? {
+          reportedCostBuckets: row.reportedCostBuckets.map((bucket) => ({
+            ...bucket,
+          })),
+        }
+      : {}),
+    ...(row.estimatedCostBuckets
+      ? {
+          estimatedCostBuckets: row.estimatedCostBuckets.map((bucket) => ({
+            ...bucket,
+          })),
+        }
+      : {}),
   };
 }
 

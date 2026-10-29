@@ -1,0 +1,7 @@
+{
+  "revision": "70543a91ff89e8a0b566805c046948fc445ab2f3",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Generated-content delta review at70543a91: canonical generator and check both produced112topics digestbddea2bd1deba66d309e6a23a47eae67ea337ba25f486050c80daa762675dff6. Parsed pre/post generatedpayloads and compared every topic; only architecture-secretbindingadministration-and-integrationsecretresolver changed, carrying the reviewed telemetry instance-grant/Datum-child/export-authority explanation from module-map. Other111topic objects were byte-equivalent under stable serialization. No live-state lookup, retrieval credential, tool authorization or manual/catalog/navigation change was introduced. This is source/generator correspondence, not rendering, browser, release, packaged retrieval or complete manual acceptance.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

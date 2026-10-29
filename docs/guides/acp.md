@@ -82,11 +82,30 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
 
 1. Receives the server-resolved ACP connection binding (the raw connection id never comes from the UI request)
 2. Spawns the configured command as a subprocess via `ACPProcess`
-3. Calls `connection.initialize()` with `clientCapabilities` (fs read/write, terminal)
+3. Calls `connection.initialize()` with `clientCapabilities`: terminal, plus fs read/write for every engine except OpenCode, which is offered no file methods ([why](#file-system-and-terminal-tools-station--runtime))
 4. For a fresh start, calls `connection.newSession()`. A restored Session uses
-   its persisted resume cursor only after validating the connection identity,
-   execution fingerprint and live `agentCapabilities.loadSession` capability;
-   then the adapter calls `connection.loadSession()` for that native session.
+   its persisted resume cursor only after validating the connection identity
+   and execution fingerprint, and that the engine advertises a way to
+   reattach. When the engine advertises `sessionCapabilities.resume`, the
+   adapter calls `session/resume`, which restores the native session without
+   replaying it. It falls back to `connection.loadSession()` when `resume` is
+   not advertised, or when the engine answers it with method-not-found and
+   advertises `loadSession`. Any other resume failure fails the start rather
+   than loading: the fallback is closed, so an unexplained resume failure is
+   reported instead of hidden behind a replayed load.
+   On `session/load`, ACP has the agent replay the whole conversation as
+   `session/update` notifications before it answers. Station already stored
+   that history, so while the session reattaches the adapter does not publish
+   message, thought, tool or plan updates; commands, mode, config and usage
+   updates still apply. A turn sent before the start finishes waits for it
+   (up to 15 seconds, before orchestration takes the thread's turn-start
+   claim, so Stop is never held behind it) instead of racing it. A Stop or
+   an explicit cancel ends the wait with nothing sent. Past the wait it is
+   refused with the retryable code `provider_session_starting`, which the
+   client queues and re-sends. If the start fails, the send is refused with
+   `provider_session_start_failed` and stays queued with a Retry.
+   Station's restore eligibility upstream of the adapter still requires
+   `loadSession` (`src-server/runtime/bootstrap/acp-resume-cursor-support.ts`).
 
 `OrchestrationService` reconstructs the start input with `existing.resumeCursor`
 when it must re-establish an adapter Session. A malformed cursor, changed
@@ -105,6 +124,8 @@ A reattached session can answer from its own stored state rather than the agent'
 
 Stored sessions now grow by a few a day per connection instead of one per probe. Reattaching still writes to the agent's store: Grok appends about 670 bytes to the session's update log per resume, roughly 160 KB a day per connection, compared with about 30 MB a day before. An agent that advertises none of these methods still gets a new session on every probe, and Station logs a warning once per connection. `session/close` is not used, because it frees runtime resources and does not remove the stored session. Station does not delete sessions that leaked before this change; remove them with the agent's own tooling. The owner is `src-server/services/acp/acp-probe-session.ts`.
 
+Each successful probe also records what the engine declared about itself at `initialize`: its protocol version, `agentInfo` (name, title and version, when sent), the core session methods named under `sessionCapabilities` (`list`, `resume`, `close`, `fork`, `delete`), its `authMethods` reduced to `id`, `name`, `description` and `type` (a terminal method's `args`, `env` and any `_meta` are not served), and any extension methods listed under an `agentCapabilities._meta.<namespace>.extensionMethods` list (ADR 0013). These are bounded (`ACP_DECLARED_FACT_BOUNDS`: 256 characters per identifier or label, 1024 per description, at most 32 sign-in methods, 256 extension methods and 1024 listed models). A fact beyond a bound is refused whole, never shortened: it is left out, named in `declaredHandshake.refused`, and logged as a warning; the probe itself still succeeds. A `models` list beyond its bound is named `models` in `refused`, offers no catalog, and a start that requests a model from it is refused. These appear as `declaredHandshake` on the connection status and as `capabilityInventory.declaredHandshake`, dated by the handshake. They are the engine's own claims, never proof that a surface works, and are not written into the capability matrix. The inventory's `displayName` is the connection's configured name and its `version` is the declared `agentInfo.version`.
+
 | Status | Meaning |
 |---|---|
 | `available` | Last probe succeeded — command found, handshake completed |
@@ -117,7 +138,7 @@ Each configured ACP engine connection owns **one persisted default Agent** in th
 
 This is a deliberate, adapter-inherited scope reduction: per-mode virtual agents (the previous `{connectionId}-{modeId}` slug shape, e.g. `kiro-chat` / `kiro-agent`) could not be routed through the orchestration seam regardless of slug format, so collapsing to one agent per connection is the shape the adapter can serve today.
 
-Advertised session modes are honored on that one agent (station#1945). `ProviderSessionStartInput`/`ProviderSendTurnInput` carry the requested id as `modelOptions.mode`. The adapter prefers `session/set_config_option` when the fresh session advertised a `category: "mode"` config option, and otherwise calls `session/set_mode`. Ids and labels are whatever the agent advertised — Station does not map them onto `ask`/`auto`/`never`. The composer shows that advertised picker when the connection has modes, and shows nothing when it advertised none. Remaining permission-policy gaps (OpenCode HTTP rulesets, engines that never advertise modes, ACP v2 dropping `session/set_mode`, `_meta.permission`) are tracked in station#1944.
+Advertised session modes are honored on that one agent (station#1945). `ProviderSessionStartInput`/`ProviderSendTurnInput` carry the requested id as `modelOptions.mode`. The adapter prefers `session/set_config_option` when the fresh session advertised a `category: "mode"` config option, and otherwise calls `session/set_mode`. Ids and labels are whatever the agent advertised — Station does not map them onto `ask`/`auto`/`never`. The composer shows that advertised picker, captioned Mode, when the connection has modes, and shows nothing when it advertised none. It sits beside the approval control, not in place of it: OpenCode's `build` and `plan` are agents, a choice separate from how much asks ([which side decides](#which-side-decides-which-calls-ask)). Remaining permission-policy gaps (engines that never advertise modes, ACP v2 dropping `session/set_mode`, `_meta.permission`) are tracked in station#1944.
 
 The current Agent catalog reports `engineId`, `engineDisplayName` and
 `engineConnectionType` for engine grouping and connection-method display. For an
@@ -152,7 +173,7 @@ provide no confirmed safe execution boundary, so the composer waits for the turn
 to finish. Attachments remain in the draft until then. See the
 [composer contract](../design/chat-composer.md#turn-activity-and-follow-up-delivery).
 
-An explicit adapter `steerTurn` command can still steer the open turn. Kiro and Grok receive it through their own extension methods. Every other ACP engine, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, and re-prompting on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
+An explicit adapter `steerTurn` command can still steer the open turn. The channel follows the live session's own `initialize` answer, never the launch command: a declared `_session/steer` or `_x.ai/interject` extension method is used by whichever engine declares it. Kiro and Grok answer these methods without declaring them, so a small table in `acp-steer.ts` matches them on exact facts their handshake states (Kiro's `agentInfo.name` `Kiro CLI Agent`, or Kiro `--v3`'s `_meta.kiro` capability namespace; Grok's `_meta.grokShell` flag). Every other ACP engine, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, and re-prompting on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
 
 ### Canonical Event Vocabulary
 
@@ -174,7 +195,7 @@ Do not re-document per-field shapes here — read them from the contract file di
 
 ### Plan Rendering
 
-`plan.updated` events carry the agent's full, ordered plan (`entries: { content, status }[]`, a full replace, not a delta — mirroring ACP's own `plan` session-update shape without leaking ACP vocabulary into the canonical contract). Station feeds these events directly into the existing typed Plan surface: the CodingLayout's "Plan" inspector tab renders `ChatUIState.planArtifact`, which `plan.updated` populates with `source: 'canonical'` steps (no regex/heuristic text parsing — the entries are structured data end to end). A later `content.text-delta`/`content.reasoning-delta` event does not clobber a typed plan artifact with plain prose; the heuristic parser used by other providers only fills in when no typed artifact is already present.
+`plan.updated` events carry the agent's full, ordered plan (`entries: { content, status }[]`, a full replace, not a delta — mirroring ACP's own `plan` session-update shape without leaking ACP vocabulary into the canonical contract). Station feeds these events directly into the existing typed Plan surface: the CodingLayout's "Plan" inspector tab renders `ChatUIState.planArtifact`, which `plan.updated` populates with `source: 'canonical'` steps (no regex/heuristic text parsing — the entries are structured data end to end). A plan too large to keep inside one event, or an entry whose text is, arrives with a reference in its place ([event content spill](../design/event-content-spill.md)); the Plan tab shows the preview and offers Load full content. Plain prose does not clobber a typed plan artifact, and neither does the turn completing (a plan sent mid-turn, before the answer is committed, stays on the surface). Prose that itself reads as a plan (for example a numbered list in the answer) does replace it, while streaming or when its turn completes, the same rule the heuristic parser applies to every provider; a later turn without a plan leaves the typed plan in place.
 
 ### Extension Rendering
 
@@ -182,6 +203,8 @@ Do not re-document per-field shapes here — read them from the contract file di
 
 - `_kiro.dev/mcp/oauth_request` → a clickable **Open authentication page** link to the supplied URL when an MCP server the engine depends on needs the user to sign in.
 - `_kiro.dev/compaction/status` / `_kiro.dev/clear/status` → a plain status line (`"Context compacted."` / `"History cleared."`).
+
+Cursor's `cursor/update_todos` notification is not rendered as a message: the adapter folds its todo list (`merge: true` updates entries by id, `merge: false` replaces the list) into the same typed Plan surface as `plan.updated`. Station's plan has no cancelled state, so a cancelled todo is left off the plan. A malformed or oversized update (over 200 todos, or 256 KiB of JSON) leaves the plan as it was. The binding's evidence is Cursor's published ACP contract (cursor.com/docs/cli/acp), not a live observation.
 
 Within this ACP/Kiro transcript branch, other notifications are transcript no-ops unless the exact shared binding table assigns a handler. Other engines have separate evidenced bindings, including Claude Code API retry activity and the context-compaction and rewind markers attached-session sources record (drawn by the transcript projection as a quiet line, not an ephemeral message); namespace similarity never grants those semantics. A separate, narrower mechanism (below) does read one more shape of extension notification, but not to render it — only to enrich a later, otherwise-generic turn failure.
 
@@ -191,7 +214,11 @@ station#4084: a rejected `prompt()` can surface as a bare, uninformative error �
 
 The adapter retains an extension notification for this purpose only when it is bound to the `acp.turn-error-cause` consumer in the same **exact-tuple, evidence-backed registry** every other extension-notification behavior is driven from (`src-shared/extension-notification-bindings.ts`; see [Extension Rendering](#extension-rendering) above — "namespace similarity is never authority" is that registry's own rule, not a special case for this feature). Today that registry has exactly one such tuple: `_kiro.dev/error/rate_limit`. A structurally similar but unobserved tuple — a different `_kiro.dev/error/*` code, or an analogous notification from a different vendor — is **not** matched until it is itself observed and added with its own evidence, the same discipline `commands/available`/`oauth_request`/`compaction`/`clear` already follow. Sibling Kiro extensions that only carry an opaque `error: unknown` (e.g. `_kiro.dev/mcp/server_init_failure`, `_kiro.dev/agent/config_error`) were never candidates: there is no human-readable text to quote, exact tuple or not. The payload is still null-checked before its `message` field is read — a notification's `params` are not validated by the JSON-RPC layer, so a malformed or missing payload is treated as "no message," never as a crash or a fabricated cause.
 
-Retention is also **suppressed** for a turn that starts while any interrupted (`interruptTurn`) prompt from this session has not yet settled. Extension notifications carry no turn id, so a notification arriving after a cancel cannot be proven to belong to the turn that's active by the time it arrives, or to the one that was just cancelled. This is decided **once, as a snapshot, at the moment the turn starts** — not by re-checking live per notification. A live per-notification check would let a turn's suppression lapse mid-window: the cancelled prompt's own settlement handler deletes its bookkeeping entry as soon as that prompt actually settles (purely so the bookkeeping set doesn't grow forever), and that deletion can land partway through a *later* turn's window — a notification delivered after it would then read as unquarantined even though its provenance is exactly as ambiguous as one delivered before it. So: if any interrupted-but-unsettled prompt exists for the session at the instant a turn starts, that turn's entire retention window is suppressed for its full duration, immune to the bookkeeping entry being cleared later. The ordinary `extension.notification` transcript event still fires as always; only enrichment retention is withheld, and only for the turn(s) where provenance was genuinely ambiguous when they started — nothing blocks the user from starting that turn, and a subsequent turn, begun once the ambiguity has cleared, retains normally. Retention is also capped at the last few notifications per turn, so a turn that never settles cannot grow the tracked list without bound.
+Retention is also **suppressed** for a turn that starts while any interrupted (`interruptTurn`) prompt from this session has not yet settled. Extension notifications carry no turn id, so a notification arriving after a cancel cannot be proven to belong to the turn that is active when it arrives, or to the one that was just cancelled.
+
+- **Decided once, when the turn starts.** If any interrupted-but-unsettled prompt exists for the session at the instant a turn starts, that turn's entire retention window is suppressed for its full duration. It is a snapshot, not re-checked per notification. A live per-notification check would let suppression lapse mid-window: the cancelled prompt's settlement handler deletes its bookkeeping entry as soon as that prompt settles (only so the bookkeeping set does not grow without bound), and that deletion can land partway through a *later* turn's window. A notification delivered after it would then read as unquarantined, although its provenance is exactly as ambiguous as one delivered before it.
+- **Only enrichment is withheld.** The ordinary `extension.notification` transcript event still fires. Retention is withheld only for the turns whose provenance was ambiguous when they started; nothing blocks the user from starting such a turn, and a later turn, begun once the ambiguity has cleared, retains normally.
+- **Bounded.** Retention is capped at the last few notifications per turn, so a turn that never settles cannot grow the tracked list without bound.
 
 If the turn then fails, the adapter's `runtime.error` message is enriched with the most recently retained notification's message, framed as **co-occurrence, not causation**: `"<original error> — engine also reported during this turn: <notification message>"`. Station observed the two events in the same turn window; it did not verify that the notification caused the failure, and the wording says exactly that. This mirrors the credential-refusal `runtime.warning` mechanism above — track what was actually received, then say so — rather than inventing a parallel path: nothing here is synthesized. A bare `-32603` with no prior bound notification in that turn's window still reports the generic error unchanged. The tracked notification list is reset to empty at the start of every turn and explicitly cleared again when a turn resolves — succeeds or fails. It is deliberately NOT cleared when a turn is interrupted: an interrupted turn's stray notifications are simply overwritten by the next turn's own start-of-turn reset, and the interrupted turn's suppression-snapshot mechanism above (not this list) is what stops a late one from being read in the meantime — so a notification never enriches a turn it wasn't received during.
 
@@ -202,6 +229,7 @@ mechanism. Station's answer is a spec-conformant refusal:
 
 | Inbound | Station's response |
 |---|---|
+| `cursor/ask_question`, `cursor/create_plan` (chat sessions only) | Answered with what a person decided; see [Cursor's blocking requests](#cursors-blocking-requests) |
 | Unrecognized extension **request** | JSON-RPC `-32601` (Method not found), plus a `warn` log naming the method and a `station.acp.inbound_extension_requests` increment |
 | Unrecognized extension **notification** | Ignored (per spec) |
 | A request naming a token or credential | `-32601`, always — see below |
@@ -216,8 +244,9 @@ extension request with an empty JSON-RPC *success*, which an agent reads as
 **No-credential-bridging invariant.** Station never answers an agent's
 token/credential request. What enforces it, most load-bearing first:
 
-1. **The allowlist is empty**, and filling it takes a reviewed code change.
-   Nothing is answerable out of the box.
+1. **The allowlist is a reviewed table** (`REVIEWED_INBOUND_EXTENSION_REQUESTS`),
+   and extending it takes a reviewed code change. Its entries are requests
+   addressed to a person, answered with that person's decision.
 2. **Each call site owns a private registry** (one per session, one per
    connection) that no other code holds a reference to, so nothing can add a
    handler at runtime. Pinned by test.
@@ -243,15 +272,17 @@ expiry** — so a long Station chat previously received `{}` *as its refreshed
 token* and then failed downstream in a confusing way.
 
 Station holds `STATION_INTERNAL_API_TOKEN` and model-connection credentials
-in the same process; an external agent is a less-trusted principal. And
-Station holds no credential belonging to an engine at all: **Station does
-not become an engine's auth host.** Answering that request is not a feature
-to be added carefully — it is the thing that cannot be built.
+in the same process; an external agent is a less-trusted principal.
+Station does not read or bridge an engine's own login tokens or answer its
+credential callbacks. **Station does not become an engine's auth host.**
+A person may separately save an API key for a connection; Station stores it
+in its engine credential store and passes it through that connection's process
+environment (see [Sign an engine in](connections.md#sign-an-engine-in)).
 
 After refusing the credential callback on the wire, the adapter attempts at
 most one bounded re-establishment from its own validated resume cursor. It
 requires the same connection/fingerprint and live `loadSession` support; it
-does not read, refresh, or forward an engine credential. A missing safe cursor,
+does not read, refresh, or forward the engine's own login tokens. A missing safe cursor,
 failed recovery, or repeated refusal falls back to one `runtime.warning` per
 session per method (`code: acp.credential-request-refused`) telling the user
 to sign in with the engine's own CLI and start a new chat, since a fresh
@@ -290,7 +321,39 @@ start a session under this policy; that is disclosed rather than papered
 over, and the probe and the chat path now agree — both fail, which is true.
 
 Answering any inbound extension method at all requires a reviewed registry
-entry. The registry is empty today.
+entry. The only entries are Cursor's two blocking requests, below.
+
+### Cursor's blocking requests
+
+Cursor sends `cursor/ask_question` and `cursor/create_plan` to the client and
+waits for the answer (cursor.com/docs/cli/acp). Cursor does not declare them at
+`initialize` (checked against `cursor-agent` 2026.05.01), so the reviewed
+table keys them by exact method name. Only the chat adapter registers them;
+the availability probe has no person to ask and refuses them like any other
+request. Any ACP engine may send them, so every label names the connection
+that did (its display name), never Cursor. Every answer uses Cursor's
+documented nested `outcome` shape.
+
+| Request | What the person sees | Answers |
+|---|---|---|
+| `cursor/ask_question` | The harness-question form (`station.input-request/v1`, source `harness:cursor`), one choice or multi-choice field per question | `answered` with the chosen option ids; `skipped` when declined; `cancelled` when the prompt ends, the turn is interrupted, the engine exits or the session stops |
+| `cursor/create_plan` | A plan-review form: the plan's name, overview, Markdown and todos (each phase's todos listed under the phase name) as its message, rendered as Markdown without raw HTML, and one Approve/Reject choice. When that is longer than one form message (8000 characters), the todo list becomes a count; only if the plan text alone is still too long is it cut, with a note saying how many characters were left out | `accepted` on Approve, then the todos replace the Session's plan; `rejected` on Reject or decline, with the plan left as it was; `cancelled` as above |
+
+Both forms are published under their method name, so no surface offers a
+session grant, and the approval inbox card offers no Allow/Deny decision: a
+form is answered on its own card, from the Session.
+
+A session with nobody to ask (a delegated child that may not ask a person) is
+answered at once, never left waiting: the question `skipped`, the plan
+`rejected`. A request Station cannot show (malformed, over 256 KiB of JSON,
+over 16 questions or 32 options per question, an option id that is blank or
+repeated, over 200 todos including phases) gets the same refusal outcome, a `warn` log and a
+`runtime.warning` (`acp.extension-request-unreadable`). Accepting a plan
+answers the request only: Station does not switch the engine out of plan mode
+or send a follow-up prompt, so the Approve option says "Station doesn't resume
+<engine> after approval; send a message to continue." Notifications name the
+connection: "<engine> asked a question." or "<engine> wants you to review a
+plan: <name>".
 
 **Error codes are emitted, never inferred.** Station emits `-32601` because
 the spec says so, and derives nothing from the codes it *receives*: the
@@ -311,13 +374,76 @@ The ACP `kind` the runtime reports (`read`, `edit`, `execute`, `search`, …) ri
 
 ### Tool Approval (Runtime → User)
 
-When the runtime needs permission before running a tool, it calls back via `requestPermission`. Station's staged policy, the Agent's `autoApprove` patterns and a session grant can answer a plain call first; none of them, an approval-guardian allow included, answers a plan exit ([delivery boundary](../conformance/tool-policy-delivery.md)). Otherwise the adapter emits a `request.opened` canonical event (`requestType: 'approval'`, carrying the call's `toolCallId`, `rawInput` and ACP `toolKind`), the UI shows the approval prompt, and the resolved decision is sent back to the runtime via `respondToRequest` on the adapter, mapped to the offered ACP option: `allow_once`, `allow_always` for the session grant, or `reject_once`. When the runtime reports the call's programmatic `name`, the request carries it as `toolName`, Station records its session grant under that name (every later call of that tool is allowed without asking), and the button names it ("Allow write for this session"). Without a name Station records no grant of its own: the decision is the runtime's `allow_always` rule, and the button says only "Allow for this session".
+When the runtime needs permission before running a tool, it calls back via `requestPermission`. Station's staged policy, the Agent's `autoApprove` patterns and a session grant can answer a plain call first; none of them, an approval-guardian allow included, answers a plan exit ([delivery boundary](../conformance/tool-policy-delivery.md)). Otherwise the adapter emits a `request.opened` canonical event (`requestType: 'approval'`, carrying the call's `toolCallId`, `rawInput` and ACP `toolKind`), the UI shows the approval prompt, and the resolved decision is sent back to the runtime via `respondToRequest` on the adapter, mapped to the offered ACP option: `allow_once`, `allow_always` for the session grant, or `reject_once`. When the runtime reports the call's programmatic `name`, the request carries it as `toolName`, Station records its session grant under that name (every later call of that tool is allowed without asking), and the button names it ("Allow write for this session"). Without a name Station records no grant of its own: the decision is the runtime's `allow_always` rule, and the button says only "Allow for this session". The exception is a file edit on an OpenCode session Station governs (#3924): OpenCode's own "always" for an edit covers every later edit, so Station sends allow-once and keeps the grant itself, and the grant never covers an edit that must go to a person ([what the modes cannot govern](#what-ask-and-auto-cannot-govern-on-opencode)).
+
+#### Which side decides which calls ask
+
+ACP standardizes how a client answers `session/request_permission`, not which calls must reach it: each engine decides that from its own configuration. So Station's approval mode governs an ACP engine only where Station can set that configuration. Which side decides is a property of the connection (`acpApprovalControl` in `@kontourai/station-contracts/engine-capability-matrix`), read from the command it launches.
+
+**OpenCode (`station`).** A connection whose command is the `opencode` executable (any directory; a wrapper such as `npx opencode-ai` is not recognized) is governed by Station once Station applies an approval mode to the chat. Until then it is left on its own configuration, as Claude Code and Codex are: while a chat is at Default with no Agent or Station default and Station has set no mode on it, the server sends none, OpenCode launches without Station's rules, and your OpenCode permission settings decide (including `"permission": "allow"`). The approval sheet says so ("Uses OpenCode's own permission settings until you pick a mode here"), and the chip reports no applied mode.
+
+When Station applies a mode (a pick, or an Agent or Station default at start), OpenCode runs with `OPENCODE_CONFIG_CONTENT` carrying rules for its agents ([launch configuration](../../src-server/services/acp/opencode-approval-launch.ts)), in one of two floors:
+
+- **Ask, Auto, and full access confined to Auto.** `bash`, `edit`, `webfetch`, `websearch`, `codesearch`, `external_directory` (any path outside the project) and every MCP tool ask before they run. Reads are left to OpenCode's defaults and your own rules; OpenCode asks before reading a `.env` file. `task` is denied, so no subagent starts: OpenCode never forwards a child session's permission request over ACP (a child that asked would wait forever), so a subagent can run only where nothing it does can ask.
+- **Full access in a `host` session.** Everything is allowed, so nothing asks. `task` may start OpenCode's built-in `general` and `explore` subagents, whose rules are restated so they cannot ask either: `general` allows everything except `question` (a question asks a person) and any subagent but `explore`, `explore` keeps its read-only limits with each tool it has allowed, and `external_directory` is allowed on the parent because a child inherits that rule. Your own subagents stay denied, because their rules could ask.
+- In both, `plan` keeps edits denied (except a plan file under `.opencode/plans/`), and only the built-in `explore` subagent is open to it under full access, as OpenCode's own `plan` allows.
+- In both, `default_agent` is pinned to `build`, and a governed session runs only `build` or `plan`. Your own primary agents (and a project's `default_agent`) keep their own rules, so the Mode picker offers only `build` and `plan` while Station governs (once OpenCode reports running a Station mode; before that it lists every agent), the server refuses the others, and refuses to take over a chat that is running one, naming the agent. Pick Default to use them on OpenCode's own settings.
+
+The value is merged into any `OPENCODE_CONFIG_CONTENT` Station itself was started with (an unquoted `{env:NAME}` in it is substituted first, as OpenCode does; an unquoted `{file:…}` still refuses the launch), and OpenCode still loads your configuration files.
+
+OpenCode evaluates an agent's rules last-match-wins in key order and merges inline content over your files key by key, so a key you already have keeps your position: with `{"edit": "allow", "*": "allow"}` in your `agent.build.permission`, a plain `edit: ask` from Station would be overridden by your later `*`. Station therefore writes each rule under the permission's name with its last character as `?` (`bas?`, `edi?`, `tas?`), which OpenCode's wildcard matches against that one name and which is a key you do not already hold, so it lands after yours. The MCP rule is written under `*_**`, which matches the same names as `*_*` (an MCP tool is `<server>_<tool>`), so your own `*_*` or `github_*` allow does not land after it.
+
+That is not relied on. Before Station claims to govern, at a start with a mode and at a takeover, it reads the rules OpenCode actually resolved for each agent it covers, with `opencode debug agent <name>` in the session's environment and directory ([verification](../../src-server/services/acp/opencode-approval-verify.ts)), and checks them per permission over every request pattern: below full access nothing it governs may resolve to allow (for MCP tools, no allow evaluated after Station's MCP rule whose pattern can match a `<server>_<tool>` name), and no subagent may start; at full access only `general` and `explore` may start, and nothing they can do may ask. The check models OpenCode's wildcard matching, and does not rely on that model alone: OpenCode hides a tool whose last matching rule denies it, so below full access Station also requires `debug agent` to report `task` (shown by default) hidden under its `tas?` deny. An agent whose own rules deny `task` shows nothing about Station's key and is not counted; if neither `build` nor `plan` can show it (for example a global `"task": "deny"`), Station does not govern. An OpenCode that reads the key otherwise is not governed, whatever its version. Nothing is observed at full access, where Station hides no tool OpenCode shows by default; a misread key there can only leave OpenCode's own stricter rules in force. If the rules are not effective (your own rules evaluated later, an organisation's managed configuration, or a binary that ignores inline content or cannot report them), Station does not govern: a start is refused, and a takeover is refused with the turn, each with the code `acp_approval_governance_refused` (no Retry is offered) and naming the cause (for example "your OpenCode configuration overrides Station's approval rules for bash in the build agent (it would run without asking)"). The start check runs before Station claims the start, so a refused start is reported as not started, never as a start that may have happened. The refusal then says what Default would do in this chat: keep OpenCode on its own settings, or, where an Agent or Station default is set or Station already applied its rules in the chat, apply a mode that needs the same change. A refused mode is not counted as applied, so after a refused first pick Default still means OpenCode's own settings. The reads add about a second per agent to such a start or takeover.
+
+Station answers each request that does arrive by the chat's approval mode ([answer rules](../../src-server/providers/adapters/acp-approval-mode.ts)):
+
+| Approval mode | What Station does with a request |
+|---|---|
+| Default, before Station takes over | Shows it to a person; your OpenCode rules decided it should ask |
+| Ask | Shows it to a person. Plugins and custom tools send no request ([below](#what-ask-and-auto-cannot-govern-on-opencode)) |
+| Auto | Allows a file edit (ACP kind `edit`) inside the project; shows anything else to a person, including an edit of OpenCode configuration or outside the project ([below](#what-ask-and-auto-cannot-govern-on-opencode)) |
+| Full access | Allows it (on the full-access floor nothing asks). In a session that is not `host`-confined, applies Auto instead: an ACP engine has no process sandbox |
+| Default, after Station took over | Ask, reported as "Ask — Ask first", as on other engines (`resolveDefaultPick`). For OpenCode this survives the engine exiting (an idle park, a crash): the takeover is read from the engine's own durable report that it ran a Station mode, not only from memory, so a respawned OpenCode is not silently handed back to its own settings. The chip learns the applied mode from the engine's reports, which a reloaded page has not seen yet: until the next turn starts, it reads "Engine default — OpenCode's own settings" there while the server applies Ask |
+
+A pick takes effect from the next turn, like every engine's: it is recorded as a `session.approval-mode-set` decision and reaches the adapter with that turn. Moving between Ask and Auto needs no restart. OpenCode reads its rules only at launch, so Station's first mode on a chat, and every move into or out of full access, relaunches OpenCode and resumes the same ACP session in the new process: `session/resume` when the engine advertises it (OpenCode does; no history is replayed), otherwise `session/load` with its replay dropped. The new process is started and the session resumed in it first, while the old process keeps running (two `opencode acp` processes can hold one session at once); only after the resume succeeds does the new process take over and the old one stop. The session's Mode (`build`/`plan`) and model are then re-applied if the resumed session reports others, so the conversation, Mode and model carry over.
+
+If the switch fails (Station's rules are not effective, the chat runs your own agent, the engine cannot resume the session, refuses or fails the resume, or start plus resume outlasts the 60-second cold-start bound an engine probe already allows), the new process is discarded and the chat keeps its old one. A notice says what happened and why (`runtime.warning` code `acp-approval-takeover-failed`, for example "Couldn't switch OpenCode to Station's approval rules; it's still using its own settings: …"), and the chip marks the pick not applied ("Own settings", or "Ask · kept"). A turn runs only under rules at least as strict as the pick:
+
+- From OpenCode's own settings, the turn is refused: those settings are not known to be as strict as the pick (OpenCode's defaults allow shell commands and edits). Pick Default to keep going on them (the refusal says so only where Default would).
+- From full access toward a stricter mode, the turn is refused rather than run with full access.
+- From Ask or Auto toward full access, the turn runs at the stricter mode it already had, and its `turn.started` carries `approvalTakeoverFailed`.
+
+The recorded pick stays the conversation's decision, so the next turn tries the switch again. Authored policy (`autoApprove`, the staged evaluator, session grants) still runs first, and a plan exit or a question still goes to a person. A rule OpenCode itself denies never reaches Station, so no approval mode can allow it.
+
+#### What Ask and Auto cannot govern on OpenCode
+
+OpenCode runs some code without any permission request, so no approval mode reaches it. Station keeps the agent from adding such code without a person, and refuses to govern a project that already has it (#3924, checked against OpenCode 1.18.18):
+
+- **Project configuration that runs code.** OpenCode loads `opencode.json`, `opencode.jsonc` and `.opencode/` from every directory between the session's directory and the git root (with no git root, upward from the session's directory). It imports plugins (`.opencode/plugin/`, `.opencode/plugins/`, a config `plugin` list) and custom tools (`.opencode/tool/`, `.opencode/tools/`) as it loads, `opencode debug agent` included, and starts the local MCP servers, formatters and language servers that configuration declares. Before a governed start or takeover, and before Station reads OpenCode's rules, Station checks those places without running OpenCode ([project scan](../../src-server/services/acp/opencode-project-config.ts)). A start that reuses a check made moments before is checked again. If any such code is declared, or a configuration file there cannot be read or parsed, Station does not govern the chat: the refusal (`acp_approval_governance_refused`) names each file. A cloned repository's own plugins count the same as ones written in the chat. Your home directory and OpenCode's global configuration are not scanned.
+- **Edits of OpenCode configuration.** In Ask, in Auto, and in full access outside a `host` session (which applies Auto), an edit of a path through a `.opencode` directory, or of a file named `opencode.json` or `opencode.jsonc`, at any depth and in any letter case, goes to a person. So do these edits:
+
+  - an edit outside the project (the git root of the session's directory), which is where OpenCode's global configuration usually lives;
+  - an edit of the global configuration locations themselves (`$XDG_CONFIG_HOME/opencode` or `~/.config/opencode`, `OPENCODE_CONFIG_DIR`, `OPENCODE_CONFIG`), for a project that contains them. On macOS and Windows these are matched in any letter case;
+  - an edit whose target Station cannot read;
+  - an edit whose path goes through a symbolic link in the project, whether or not the link resolves. Such a link can point anywhere, and the write follows it;
+  - an edit whose path is not already normalized, such as one with a `.` or `..` segment or a repeated separator. OpenCode passes an absolute path on as written, and the file system resolves `link/..` through the link, so Station judges the path as written instead of simplifying it.
+
+  Links above the project are resolved. No approval mode, session grant or authored allow answers these edits.
+- **Your own plugins and custom tools.** Plugins and custom tools from your global OpenCode configuration still load, and their tools do not ask in any mode.
+- **Tooling that runs project files.** Auto allows ordinary project edits, and OpenCode's formatters and language servers can run project tooling on edited files without asking. So a file Auto allows can change what that tooling runs.
+- **Approved commands.** A shell command a person allows can change anything, OpenCode configuration included.
+
+The `build`/`plan` agents are overridden in place rather than given approval copies selected through `session/set_config_option`: OpenCode attaches plan behaviour to the agent named `plan` (its plan-mode reminder, and `plan_exit` switching to the agent named `build`), so a renamed copy would lose plan mode.
+
+**Every other ACP engine (`engine`).** Station has no channel into its permission rules. It answers the requests the engine chooses to send, but it cannot make the engine ask for others. Such a connection gets no approval mode: the server sends none, a `setApprovalMode` is refused with "This engine has no approval control.", a carried `approvalMode` is refused as an unsupported option, and the composer's approval control reads "Set by engine" and explains that the engine decides. An engine whose own modes are approval levels (claude-code-acp advertises `default`, `acceptEdits`, `plan`, `auto` and, when allowed, `bypassPermissions`) is changed through its Mode picker; Station does not map those modes onto its own, and a full-access mode is withheld outside a `host` session (#2569).
 
 A permission request belongs to the prompt that raised it. When `session/prompt` settles while one is still open — the turn completed or failed without waiting for the answer — the adapter settles it as `cancelled` (`request.resolved`) before the turn's terminal, the same way an interrupt does, so no approval surface keeps offering a decision nothing will read.
 
 ### File System and Terminal Tools (Station → Runtime)
 
 The adapter reuses `createACPBridgeClient`'s file-system and terminal callback handlers unchanged, so the runtime can read/write files and spawn subprocesses on the Station host exactly as before this cutover.
+
+The client file-system methods (`fs/read_text_file`, `fs/write_text_file`) act in Station's own process (#3957). Station serves them only for absolute, normalized paths: a relative path would resolve against Station's working directory, so it is refused for every engine (on Windows, `/` counts as a separator). Station does not offer the methods to OpenCode, because OpenCode's own tools write every edit. OpenCode 1.18.18 still sends `fs/write_text_file` after each allowed edit, at the permission's path, which for `apply_patch` is worktree-relative. It does not wait for the answer, so Station refuses that call and reads or writes nothing for it. The edit is still applied by OpenCode's tool, and the refusal does not end the engine (checked against OpenCode 1.18.18). An engine that decides for itself keeps the methods for absolute paths anywhere, as before.
 
 ### Station-control over HTTP MCP
 
@@ -424,8 +550,132 @@ ACP connections are configured in `<station-home>/config/acp.json`:
 | `command` | ✓ | Executable to spawn. Must be on PATH. |
 | `args` | | Arguments passed to the command. |
 | `icon` | | Emoji or string shown next to the agent name. Defaults to `🔌`. |
-| `cwd` | | Working directory for a Session that has no workspace of its own; a Session's own working directory takes precedence. A leading `~` is expanded and a relative path is resolved. When unset, Station prepares a private managed workspace instead of inheriting its own directory. A [station-control dispatch](self-configuring-agent.md#dispatch-authority) with no workspace is scoped by this directory. |
+| `cwd` | | Working directory for a Session that has no workspace of its own; a Session's own working directory takes precedence. A leading `~` is expanded and a relative path is resolved. When unset, Station prepares a private managed workspace instead of inheriting its own directory. A [station-control dispatch](self-configuring-agent.md#dispatch-authority) with no workspace from an Agent in the global space, or in a Project with no working directory, starts here and is scoped by this directory; an Agent in a Project with a working directory starts it in that Project instead. |
 | `enabled` | ✓ | Set to `false` to disable without removing the config. |
+| `publicRegistry` | | Set by Station on a connection added from the public agent registry: `{ id, version }` of the listing it was added from. Used only to report a later listing change. |
+
+### Catalogue descriptors
+
+`GET /acp/registry` lists the catalogue engines from every
+`acpConnectionRegistry` provider: the built-in list in
+[builtin-acp-engines.ts](../../src-server/providers/llm/builtin-acp-engines.ts)
+and any a plugin contributes. Besides the launch fields above, an entry
+(`ACPConnectionRegistryEntry` in
+[the ACP contract](../../packages/contracts/src/acp.ts)) may carry:
+
+| Field | Description |
+|---|---|
+| `install` | Per platform (`darwin`, `linux`, `win32`): a copyable `command`, an https `docsUrl`, and a `note`. Station shows it and never runs it. The response adds `hostInstall`, the recipe for the platform Station runs on. |
+| `launchEnv` | Built-in entries only. Non-secret variables set when Station starts a connection whose executable has the entry's command name, by name or full path (`/opt/homebrew/bin/goose` gets Goose's; on Windows `C:\tools\Goose.EXE` matches too, case-insensitively and without `.exe`/`.cmd`/`.bat`). Names must start with an engine-scoped prefix (`GOOSE_`, `DROID_`, `FACTORY_`, `AUGMENT_`). The environment Station already launches with wins a conflict. |
+| `platforms` | The host platforms the entry launches on; absent means all. Elsewhere it is reported as not detected and `POST /acp/registry/:id/install` refuses it. |
+| `auth` | Sign-in, matched like `launchEnv` and read from built-in entries only. `statusCommand` (argv) runs only with a `statusRule` (`signedInJsonField`, `signedOutText`, `signedOutExitCodes`, `signedInText`, `exitZeroMeansSignedIn`); anything the rule does not name reads as unknown. `signInHint`; `credentialEnvVars`, the variables whose values a person may store for a connection; `hiddenAuthMethodIds`, advertised methods Station does not offer; `subscriptionTermsNotices` (`provider`, https `termsUrl`, optional `authMethodIds`). See [Sign an engine in](connections.md#sign-an-engine-in). |
+| `homepageUrl` | An https link to the engine's docs. Data only; nothing renders it yet. |
+
+`validateACPEngineDescriptor` checks these fields and the entry's `name`,
+`description` and `sourceName`. An entry that fails is left out of the
+catalogue and logged rather than shown with some fields dropped: an unknown
+platform, a URL that is not https, an over-long value, text with
+control characters, line breaks, bidi override marks or characters that render
+as nothing (zero-width and directional marks, the byte order mark, tag
+characters, variation selectors), a `launchEnv` name
+without an engine-scoped prefix (so `NODE_OPTIONS`, `LD_PRELOAD`, `PATH` or a
+proxy variable is refused), or one that looks like a credential (a `KEY`,
+`TOKEN`, `SECRET`, `PASSWORD`, `AUTH` or `SESSION` segment, or a name the entry
+lists as a credential variable). A plugin entry is also refused when it
+carries `launchEnv`, reuses a built-in entry's id, or has a name that reads as
+a built-in's (compared after NFKC, case-folding and mapping common Cyrillic and
+Greek look-alikes), and every entry from a plugin provider registered as
+"Station", "Kontour" or a built-in engine's name is refused; the built-in card
+stays.
+A plugin entry's `sourceName` is always the identity its provider registered
+under, whatever the entry says, and its install recipe is shown with
+"Provided by" and that name.
+
+`POST /acp/registry/recheck` re-reads the login-shell `PATH`, then answers
+like `GET /acp/registry`, so an engine whose installer added its own bin
+directory to the shell rc after Station started can be found. Because it runs
+the host user's shell it needs `orchestration:operate`, while the `GET` never
+re-reads anything. The re-read is bounded by the login-shell timeout, runs at
+most once every 10 seconds, is shared by every request that arrives while one
+is running (including during the startup capture), and a failed re-read keeps
+the `PATH` Station already had. **Check again** uses it; a device without that
+scope is told so and still gets the plain list.
+
+### Public agent registry
+
+When this Station reads the public agent registry
+([public-agent-registry.ts](../../src-server/services/acp/public-agent-registry.ts)),
+`GET /acp/registry` also lists its listings with `source: 'registry'`, mapped
+by
+[public-agent-registry-catalog.ts](../../src-server/services/acp/public-agent-registry-catalog.ts).
+The registry is a catalogue source of the routes, not an
+`acpConnectionRegistry` provider: a provider is either a built-in, whose
+`launchEnv` is trusted, or a plugin, whose clashing ids are refused, and a
+listing is neither.
+
+- The index at `https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json`
+  is fetched with no credentials, a 10-second timeout and no redirects; an
+  answer from any other address is refused. An index over 1 MiB
+  (counted as it arrives), listing more than 500 agents, not JSON, or not
+  format version 1 is refused whole; the last good copy, saved in
+  `<station-home>/cache/public-agent-registry/registry.json`, stays in use. A
+  listing with a malformed id, an over-long or control-character field, a
+  non-https URL, an https URL with a user name or password, or a malformed
+  distribution is refused with every reason.
+  Unknown fields and unknown platform keys are ignored.
+- A listing whose id is a built-in's, or one of `antigravity-acp`,
+  `github-copilot-cli` and `pi-acp`, adds a `publicRegistry` object (id,
+  version, publishers, licence, links, distributions) to the built-in entry and
+  is not listed again. Nothing else on the built-in changes. `claude-acp` and
+  `codex-acp` are listed unavailable, naming the native engine. A listing
+  whose name reads as a built-in's, as "Station" or as "Kontour", or whose id
+  a plugin entry holds, is refused. A plugin entry's own `publicRegistry` is dropped.
+- What can run is bounded by a reviewed list in Station's source,
+  `REVIEWED_REGISTRY_LISTINGS` in
+  [public-agent-registry-catalog.ts](../../src-server/services/acp/public-agent-registry-catalog.ts):
+  for each reviewed registry id, the program and exact arguments its vendor
+  documents, with the citation. Today it holds `cortex-code` (`cortex acp
+  serve`), `crow-cli` (`crow-cli acp`), `stakpak` (`stakpak acp`) and `vtcode`
+  (`vtcode acp`). A listing is connectable only when all of these hold:
+  - its id is on the reviewed list;
+  - it has a `binary` build for the host's `os-arch` key (`darwin-aarch64`,
+    `linux-x86_64`, `windows-x86_64`, …);
+  - the program name in that build's `cmd` (`./dist-package\cursor-agent.cmd`
+    is `cursor-agent`; only `.exe`, `.cmd` and `.bat` are dropped, and only on
+    Windows is case ignored) is the reviewed program;
+  - its arguments are at most 4, each a plain word or flag
+    (`^--?[a-z][a-z0-9-]*(=[A-Za-z0-9._:/-]*)?$` or `^[a-z][a-z0-9-]*$`), and
+    equal to the reviewed ones.
+
+  Then `command` is the reviewed program, looked up on `PATH`, and `args` are
+  the reviewed arguments. Station never downloads a program, never runs `npx`
+  or `uvx`, and runs nothing without the confirm step below. Every other
+  listing, a listing not yet reviewed included, is listed with an empty
+  `command`, `detected: false` and `publicRegistry.unavailableReason`. A
+  build's `env` is returned as `publicRegistry.recommendedEnv` and never
+  applied (VT Code reads the same switches from its own `vtcode.toml`).
+- `POST /acp/registry/:id/install` for a listing requires the `coding:exec`
+  grant on a paired device (`403 command-not-granted`) and a JSON body
+  `{ "confirmCommand": { "command", "args" } }` equal to the listing's
+  `hostLaunch`; otherwise it answers `409` with
+  `code: 'registry-listing-not-confirmed'` and saves nothing. An unavailable
+  listing answers `400` with its reason. The saved connection records
+  `publicRegistry: { id, version }`.
+- For an added connection with that record, a listing whose version, or whose
+  command or arguments, differ from the saved ones gets `publicRegistry.update`.
+  The saved connection is not changed. Changing the connection's `command`
+  or `args` removes its `publicRegistry` record, so it is no longer compared.
+- Reading `GET /acp/registry` or `GET /acp/registry/source` starts a
+  background download when the copy in use is more than 24 hours old (or
+  dated in the future), at most
+  once every 15 minutes after a failed attempt. `GET /acp/registry/source`
+  returns `ACPPublicRegistrySourceStatus`: `origin` (`network`, `cache` or
+  `none`), `fetchedAt`, `checkedAt`, `lastError`, `refreshing` and the refused
+  listings with their reasons. `POST /acp/registry/source/refresh` downloads
+  now (`orchestration:operate`), joining one already running and reusing a
+  result less than 30 seconds old. `STATION_PUBLIC_AGENT_REGISTRY` set to `off`,
+  `0`, `false` or `no` (any case), or the deterministic first-run mode, turns the source off; the status then reads
+  `enabled: false`.
 
 ### Runtime API
 
@@ -438,6 +688,18 @@ PUT    /acp/connections/:id            Update connection configuration and its p
 DELETE /acp/connections/:id            Remove and shut down a connection
 POST   /acp/connections/:id/reconnect  Request an availability probe
 GET    /acp/status                     Get status of all connections
+GET    /acp/registry                   List catalogue engines, with host detection and install recipe
+POST   /acp/registry/recheck           Re-read the login-shell PATH, then list as GET does (orchestration:operate)
+POST   /acp/registry/:id/install       Add a catalogue entry as a connection; a public listing needs its confirmed command
+GET    /acp/registry/source            Where the public agent registry listing comes from, and how fresh it is
+POST   /acp/registry/source/refresh    Download the public agent registry index now (orchestration:operate)
+GET    /acp/connections/:id/sign-in    Sign-in status, offered methods and key names (orchestration:read)
+POST   /acp/connections/:id/sign-in/check   Run the status command and a sign-in handshake again (orchestration:operate)
+POST   /acp/connections/:id/sign-in/start   Start a sign-in by method id (engine:login; a terminal method also coding:exec and terminal:operate)
+GET    /acp/connections/:id/sign-in/attempt Read the running or last sign-in, with links the engine printed (engine:login)
+DELETE /acp/connections/:id/sign-in/attempt Cancel it (engine:login)
+PUT    /acp/connections/:id/credentials/:name  Store a key for one of the engine's credentialEnvVars (engine:login)
+DELETE /acp/connections/:id/credentials/:name  Remove it (engine:login)
 ```
 
 Creating a connection, or changing its `command`, `args` or `cwd`, chooses a
@@ -485,7 +747,7 @@ If the binary is installed but not on the server's PATH, use an absolute path in
 
 ### Probe does not establish availability
 
-Check server logs for `[ACPProcess]` entries and `ACPProbe failed` warnings. Common causes:
+The reason shown in Station (`lastError.message`) is written for people: it names the engine, says a time-out as the wait that ran out ("didn't answer within a minute"), and says a command that cannot be found or run, including one with its arguments typed into the command, in words. The raw error is in the server log. Check server logs for `[ACPProcess]` entries and `ACPProbe failed` warnings. Common causes:
 
 - The subprocess exits immediately — run the command manually to see its output
 - The runtime doesn't speak ACP ndjson on stdio — verify it implements the ACP SDK server side
@@ -493,7 +755,26 @@ Check server logs for `[ACPProcess]` entries and `ACPProbe failed` warnings. Com
 
 ### Agent not appearing in the New Chat picker
 
-Every configured connection should surface as one External agent with the same clean ID, even while disabled, unprobed, unavailable, or in error. If it is missing, inspect `config/agent-registry.json` and the connection lifecycle error; probe state should change availability, never Agent existence.
+A connection surfaces as an External agent with the same clean ID once its probe has handshaked at least once. Adding or installing a connection saves its config first and registers the engine and its Agent only when that probe succeeds; a failed first add keeps the config, answers with the probe's `status` and `lastError`, and stays out of `GET /api/acp/connections`. Repeat the same add (the setup dialog's **Retry check**) after fixing the cause: it re-probes and registers on success. Saved connections that never registered are listed by `GET /api/acp/connections/unregistered` (shown as **Not connected yet** cards), and `POST /api/acp/connections/:id/check` re-probes one from its saved config, also after a restart, registering it on success; an edit through `PUT /api/acp/connections/:id` re-probes and registers the same way. When the first probe of a never-connected engine runs out of the request budget (a cold start), the add answers `status: probing` and the same probe continues in the background on the cold first-contact budget, outside the configuration queue; `GET /api/acp/status` reports its progress. A background probe that gives a saved, unregistered connection its first handshake (that continuation or the periodic sweep) registers the engine and its Agent through the configuration queue, and only if the saved config still matches the config it probed; otherwise the result is dropped. A registry reload keeps a continuation that is still running for an unchanged config. Startup probes only registered connections, so after a restart a saved, never-registered connection is not checked until something adds it to the probe set again: adding it again, its **Retry check**, or a registry reload, which re-reads every saved connection (from then on the periodic check can register it). Once registered, probe state changes availability, never Agent existence. If a connection that has handshaked is missing, inspect `config/agent-registry.json` and the connection lifecycle error.
+
+### Sign-in shows as not checked
+
+The login prerequisite reads only the engine's documented status command
+([engine-auth-status.ts](../../src-server/services/acp/engine-auth-status.ts),
+supplied as `detectAuthState`). Without one, or when it is inconclusive, the
+row says sign-in is not checked; that row is optional and never blocks a chat.
+A command answer of signed out is a required, missing prerequisite. A
+successful probe proves the engine started a session, not that it is signed
+in: some engines refuse only at the first prompt. An `auth_required` refusal
+(from a chat or a probe) and a finished Station sign-in are shown in the
+engine's sign-in panel but never gate readiness, because only a later answered
+prompt clears a refusal.
+
+The sign-in handshake is a separate short-lived process that advertises
+`clientCapabilities.auth.terminal`, so an engine may list `type: "terminal"`
+methods; their `args` and `env` stay on the server. A terminal method is never
+passed to `authenticate`
+([engine-sign-in.ts](../../src-server/services/acp/engine-sign-in.ts)).
 
 ### A previous ACP session cannot be restored
 
@@ -523,6 +804,50 @@ initialization with `station acp connections reconnect <connection-id>` after
 addressing the reported failure. A failed reconnect returns an explicit error;
 its bounded diagnostic describes the latest attempt. A missing connection
 returns not-found.
+
+An engine offers models in one of two ways (#352). Most send a `session/new`
+config option of category `model` and switch with `session/set_config_option`;
+Station reads the applied value back and refuses a mismatch. Some, such as
+earlier Grok releases, send no model option and instead a `models` list
+(`availableModels`, `currentModelId`) switched with `session/set_model`, a
+method the pinned ACP SDK no longer declares. Station uses the config option
+(category `model` with a non-empty `id`) when one exists, and the `models` list
+otherwise, by one rule (`acpAdvertisedModelCatalog`) for the connection's
+`advertisedModels` and `currentModel`, the model picker's catalog, and a session
+start. The current model falls back to the list's `currentModelId` when the
+option reports none. `session/set_model` answers with no current
+value, so for that dialect the engine's success answer is the only confirmation
+Station gets. Either way the model is chosen at session start only.
+
+A new session on a model the engine's fresh `session/new` options did not offer
+is refused by the adapter with the `model_not_advertised` code
+(`SessionStartRefusedError`). The start is settled rather than uncertain: the
+receipt is `rejected`, the thread is not fenced behind "Station may already have
+started this session", and a fresh start's session ends with the engine's
+refusal as its cause (lifecycle `failed`, which survives a reload). In the chat
+composer the
+error offers no Retry (the same model is refused again), re-reads the Agent
+catalog, the ACP connection list and the engine inventory, because the
+composer's snapshot of those is what let the model be chosen, and keeps the
+draft: choose another model and send again, and the conversation continues in a
+successor session. This is the case where the Agent's engine changed after the
+snapshot was taken (the built-in Station Agent re-binds to an external engine
+once its ACP handshake completes). The engine is still spawned and handshaked
+before it can refuse: Station does not refuse from the connection list's cached
+model options, because those come from a probe session that can differ from the
+session a start actually creates. A refusal whose process teardown cannot be
+confirmed stays an uncertain start.
+
+An engine that answers `session/new` or `session/load` with ACP's
+`auth_required` error (code `-32000` with a message beginning "Authentication
+required", the ACP SDK's `RequestError.authRequired` shape; any other `-32000`
+stays a generic error) is refused the same settled way, with the
+`engine-sign-in-required` code (kind `auth`): the announced session ends with
+that cause and the thread is not fenced. The same error on a prompt is that
+turn's `runtime.error` with the same code. Chat shows **Sign in to this engine**
+with the engine's own words, and a **Sign in** action that opens the engine's
+page. Any other `session/new` failure keeps the
+uncertain-start behaviour.
 
 OpenCode's own model listing and Station's ACP model listing are different
 observations. Station obtains model options through its ACP connection. An

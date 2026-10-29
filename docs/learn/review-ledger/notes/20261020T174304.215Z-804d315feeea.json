@@ -1,0 +1,7 @@
+{
+  "revision": "e2928a92641e84c051183929897d8e592316aaee",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Rollup fix: the phone Project and Chats-and-tasks buttons' accessible names now include their on-screen words (New chats caption, title, agent eyebrow) for WCAG 2.5.3, with a space between stacked spans; the cross-runtime spec follows the new project name. Checked this doc's claims about the phone header (caption naming future context, folder-icon width, opening Chats and tasks, switcher reachability): unchanged behavior; the doc states no exact accessible name.","inputs":["docs/testing/browser-smoke.md","tests/cross-runtime-chat-switching.spec.ts"]}
+  ]
+}

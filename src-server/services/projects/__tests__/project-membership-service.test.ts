@@ -368,3 +368,109 @@ describe('Project membership through revision and administration routes', () => 
     );
   });
 });
+
+test('scoped domain actions distinguish view, discussion and execution and recheck revocation at commit', async () => {
+  const h = await harness();
+  const enabled = await h.service.enable('example', h.project.id, h.access);
+  const offer = await h.service.invite(
+    enabled.scope,
+    { ...invitation(), role: 'contributor', email: null },
+    h.access,
+  );
+  h.setActor(invitee);
+  await h.service.accept(offer.token, h.access);
+  const apply = vi.fn((_actor, assertCurrent: () => void) => {
+    assertCurrent();
+    return 'committed';
+  });
+  expect(
+    await h.service.withProjectAction(
+      enabled.scope,
+      'discuss',
+      h.access,
+      invitee.id,
+      apply,
+      () => true,
+    ),
+  ).toBe('committed');
+  expect(
+    await h.service.currentActionAdmission(
+      enabled.scope,
+      'execute',
+      h.access,
+      invitee.id,
+      () => true,
+    ),
+  ).toBe(true);
+  const live = h.store.require(enabled.scope, invitee, 'view');
+  h.setActor(owner, true);
+  await h.service.changeMember(
+    enabled.scope,
+    invitee.id,
+    live.revision,
+    { role: 'viewer', status: 'active' },
+    h.access,
+  );
+  h.setActor(invitee);
+  expect(
+    await h.service.currentActionAdmission(
+      enabled.scope,
+      'view',
+      h.access,
+      invitee.id,
+      () => true,
+    ),
+  ).toBe(true);
+  expect(
+    await h.service.currentActionAdmission(
+      enabled.scope,
+      'discuss',
+      h.access,
+      invitee.id,
+      () => true,
+    ),
+  ).toBe(false);
+  expect(
+    await h.service.currentActionAdmission(
+      enabled.scope,
+      'execute',
+      h.access,
+      invitee.id,
+      () => true,
+    ),
+  ).toBe(false);
+  expect(apply).toHaveBeenCalledTimes(1);
+  await expect(
+    h.service.withProjectAction(
+      enabled.scope,
+      'view',
+      h.access,
+      owner.id,
+      apply,
+      () => true,
+    ),
+  ).rejects.toMatchObject({ code: 'forbidden' });
+  let effect = false;
+  await expect(
+    h.service.withProjectAction(
+      enabled.scope,
+      'view',
+      h.access,
+      invitee.id,
+      (_actor, assertCurrent) => {
+        const member = h.store.require(enabled.scope, invitee, 'view');
+        h.store.changeMember(
+          enabled.scope,
+          owner,
+          invitee.id,
+          member.revision,
+          { role: 'viewer', status: 'revoked' },
+        );
+        assertCurrent();
+        effect = true;
+      },
+      () => true,
+    ),
+  ).rejects.toMatchObject({ code: 'forbidden' });
+  expect(effect).toBe(false);
+});

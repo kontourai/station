@@ -1,5 +1,7 @@
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
+  appendFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -13,6 +15,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { execFileSyncBounded } from '../lib/bounded-capture.mjs';
+import { incompleteDiagnosticReasons } from '../lib/changed-verification-diagnostics.mjs';
 import { loadProductLawManifest } from '../lib/product-laws.mjs';
 import { attachCiFastDiagnostics } from '../lib/verification-ci-fast-diagnostics.mjs';
 import { runProductLawGate } from '../product-law-gate.mjs';
@@ -187,6 +191,12 @@ function splitResourceGroups(files: string[]) {
   };
 }
 
+const DOCS_FRAMEWORK_TESTS = [
+  'scripts/__tests__/documentation-impact.test.ts',
+  'scripts/__tests__/documentation-freshness.test.ts',
+  'scripts/__tests__/documentation-review-notes.test.ts',
+];
+
 describe('changed verification selection', () => {
   test.each([
     'pnpm-lock.yaml',
@@ -224,7 +234,7 @@ describe('changed verification selection', () => {
     );
     // Pinned by count, independently: the loop below is satisfied by an
     // empty list.
-    expect(UNMODELLED_INPUT_EDGES).toHaveLength(13);
+    expect(UNMODELLED_INPUT_EDGES).toHaveLength(16);
     for (const edge of UNMODELLED_INPUT_EDGES) {
       expect(edge.supplemental, edge.pattern).toBe(true);
       const path = edge.pattern.endsWith('/**')
@@ -294,9 +304,16 @@ describe('changed verification selection', () => {
           },
         ]
       : [];
+    const supplementalDocs = path.startsWith('scripts/')
+      ? [...DOCS_FRAMEWORK_TESTS].sort().map((test) => ({
+          path: test,
+          reasons: [`documentation validator framework self-tests: ${path}`],
+        }))
+      : [];
     expect(selection.tests).toEqual([
       ...supplementalShellChrome,
       ...supplementalVocabulary,
+      ...supplementalDocs,
     ]);
     expect(selection.lanes).toEqual([]);
     expect(selection.escalated, reason).toBe(false);
@@ -460,12 +477,28 @@ describe('changed verification selection', () => {
     ]);
     expect(selection.lanes).toEqual([]);
   });
+  test('a Basis pane manifest change names its readers instead of reaching related discovery (#3860)', () => {
+    // Vitest's default forceRerunTriggers match any package.json, so a
+    // manifest handed to related discovery selects all ~3,700 suites on a
+    // hosted checkout and overruns the fast-checks shard budget.
+    const selection = selectChangedVerification([
+      'packages/basis-pane/package.json',
+    ]);
+    expect(selection.relatedPaths).toEqual([]);
+    expect(selection.tests.map(({ path }) => path)).toEqual([
+      'packages/basis-pane/src/__tests__/task-basis-collection-boundary.test.ts',
+      'scripts/__tests__/basis-mcp-apps.test.ts',
+    ]);
+  });
   test('a root package.json change escalates and still names its readers (#2176)', () => {
     // Before, its ordinary doc-example edge cancelled the escalation, so a
     // package.json-only change completed on one documentation suite.
     const selection = selectChangedVerification(['package.json']);
     expect(selection.escalated).toBe(true);
-    expect(selection.lanes.map(({ id }) => id)).toEqual(['ci-fast']);
+    expect(selection.lanes.map(({ id }) => id)).toEqual([
+      'ci-fast',
+      'test-full',
+    ]);
     expect(selection.tests.map(({ path }) => path)).toEqual(
       expect.arrayContaining([
         'scripts/__tests__/public-doc-contract-examples.test.ts',
@@ -710,6 +743,7 @@ describe('changed verification selection', () => {
       [
         'src-server/routes/orchestration/__tests__/attachments.routes.test.ts',
         'src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts',
+        'src-server/services/orchestration/__tests__/event-store-append-statements.test.ts',
         'src-server/services/orchestration/__tests__/event-store-corruption-watch.test.ts',
         'src-server/services/orchestration/__tests__/event-store-quarantine.test.ts',
         'src-server/services/orchestration/__tests__/event-store-tool-images.test.ts',
@@ -953,7 +987,9 @@ describe('changed verification selection', () => {
     const path = `${scenarios.sourceEdges.dynamicScript}.bak`;
     const selection = selectChangedVerification([path]);
     expect(selection.relatedPaths).toEqual([path]);
-    expect(selection.tests).toEqual([]);
+    expect(selection.tests.map(({ path }) => path)).toEqual(
+      [...DOCS_FRAMEWORK_TESTS].sort(),
+    );
   });
   test('routes non-code fixture files to a bounded lane instead of related', () => {
     const selection = selectChangedVerification([
@@ -1462,12 +1498,12 @@ describe('changed verification selection', () => {
     //
     // What this does NOT prove is that the reference is an execution or a
     // source read rather than a command-text pin. A call-argument scan cannot
-    // decide it: most of these ten tests build the path through a const or
+    // decide it: most of these twelve tests build the path through a const or
     // a join() before spawning it, and one splits it across join arguments,
     // so the literal never appears inside a spawn call. That judgement stays
     // with the reviewer of the edge; the pin-only candidates were rejected by
     // hand and the docblock on SPAWNED_SCRIPT_EDGES records the rule.
-    expect(SPAWNED_SCRIPT_EDGES.length).toBe(10);
+    expect(SPAWNED_SCRIPT_EDGES.length).toBe(12);
     for (const edge of SPAWNED_SCRIPT_EDGES) {
       expect(existsSync(edge.pattern), edge.pattern).toBe(true);
       expect(edge.related, edge.pattern).toBe(true);
@@ -1480,12 +1516,45 @@ describe('changed verification selection', () => {
       expect(
         selection.tests.map(({ path }) => path),
         edge.pattern,
-      ).toEqual([...edge.tests]);
+      ).toEqual([...new Set([...edge.tests, ...DOCS_FRAMEWORK_TESTS])].sort());
       // The explicit tests supplement the import graph rather than replacing
       // it, so a future importing test still selects.
       expect(selection.relatedPaths, edge.pattern).toEqual([edge.pattern]);
     }
   });
+  test.each([
+    { files: [], globalTriggeredPaths: ['foreign.ts'] },
+    { files: [], globalTriggeredPaths: null },
+    { files: {}, globalTriggeredPaths: [] },
+    {
+      files: [],
+      globalTriggeredPaths: [
+        join(process.cwd(), 'scripts/run-changed-verification.mjs'),
+        join(process.cwd(), 'scripts/run-changed-verification.mjs'),
+      ],
+    },
+    [],
+  ])(
+    'refuses malformed hosted global-trigger metadata %j',
+    async (metadata) => {
+      await expect(
+        discoverRelatedTestFiles(
+          process.cwd(),
+          ['scripts/run-changed-verification.mjs'],
+          {
+            deferGlobalTriggers: true,
+            refine: (_root, paths) => ({ paths, decisions: [] }),
+            run: async () => ({
+              status: 0,
+              stdout: JSON.stringify(metadata),
+              stderr: '',
+            }),
+          },
+        ),
+      ).rejects.toMatchObject({ phase: 'related-discovery' });
+    },
+  );
+
   test('reads an empty related discovery array as an empty selection', () => {
     expect(parseRelatedTestDiscovery({ status: 0, stdout: '[]' })).toEqual([]);
   });
@@ -2507,6 +2576,96 @@ setInterval(() => {}, 1000);`,
       'Vitest JSON report contains 1 test(s) that never finished',
     );
   });
+  test('a diff that escalates to ci-fast writes an incomplete diagnostic (#1706)', async () => {
+    const run = reportedRun({ report: passingReport });
+    const writeReceipt = vi.fn();
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run,
+      changedPathsFn: () => ({
+        mergeBase: 'base-sha',
+        // README.md has no impact edge, so it escalates to ci-fast.
+        paths: [scenarios.sourceEdges.server, 'README.md'],
+      }),
+      collectProvenance: provenance,
+      writeReceipt,
+    });
+    expect(result.exitCode).toBe(3);
+    expect(result.selection).toMatchObject({ escalated: true });
+    const diagnostics = JSON.parse(
+      writeReceipt.mock.calls.find(
+        ([path]) => path === '.kontourai/test-impact/changed-diagnostics.json',
+      )?.[1],
+    );
+    expect(diagnostics.selection).toMatchObject({
+      relatedPathCount: 1,
+      deferredLanes: ['ci-fast'],
+      escalated: true,
+    });
+    expect(diagnostics.executions).toEqual([]);
+    expect(diagnostics.complete).toBe(false);
+    expect(diagnostics.incompleteReasons).toEqual([
+      'ci-fast deferred: its suite did not run here; Merge-queue regression runs it before merge',
+      '1 selected target(s), and no test executed',
+    ]);
+  });
+  test('a deferral owned outside the selection leaves a run that executed complete (#1706)', () => {
+    // The shape of a healthy hosted receipt: E2E defers on every pull
+    // request by design, and the selected suites ran.
+    expect(
+      incompleteDiagnosticReasons({
+        selection: {
+          relatedPathCount: 4,
+          exactTestCount: 7,
+          deferredLanes: ['verify-e2e-full'],
+          escalated: false,
+        },
+        executions: [
+          {
+            kind: 'explicit',
+            exitCode: 0,
+            infrastructureError: false,
+            counts: { executed: 88, passed: 88, failed: 0 },
+            failureIdentitiesComplete: true,
+          },
+        ],
+      }),
+    ).toEqual([]);
+    expect(
+      incompleteDiagnosticReasons({
+        selection: {
+          relatedPathCount: 5,
+          exactTestCount: 3,
+          deferredLanes: ['ci-fast'],
+          escalated: true,
+        },
+        executions: [
+          {
+            kind: 'explicit',
+            exitCode: 0,
+            infrastructureError: false,
+            counts: { executed: 75, passed: 75, failed: 0 },
+            failureIdentitiesComplete: true,
+          },
+        ],
+      }),
+    ).toEqual([
+      'ci-fast deferred: its suite did not run here; Merge-queue regression runs it before merge',
+    ]);
+    // An owned deferral does not excuse selected suites that never ran:
+    // nothing outside this selection runs them either.
+    expect(
+      incompleteDiagnosticReasons({
+        selection: {
+          relatedPathCount: 1,
+          exactTestCount: 0,
+          deferredLanes: ['verify-e2e-full'],
+          escalated: false,
+        },
+        executions: [],
+      }),
+    ).toEqual(['1 selected target(s), and no test executed']);
+  });
   test('escalates a selection in which every test declined to run', async () => {
     const writeReceipt = vi.fn();
     const result = await runChangedVerification(['--base=origin/main'], {
@@ -2546,6 +2705,7 @@ setInterval(() => {}, 1000);`,
     expect(diagnostics.complete).toBe(false);
     expect(diagnostics.incompleteReasons).toEqual([
       'related: Vitest executed zero of 3 selected test(s) (3 skipped, 0 todo)',
+      'test-full deferred: its suite did not run here; Merge-queue regression runs it before merge',
     ]);
   });
   test('names the identity shortfall when failures outrun the identity bound', async () => {
@@ -2606,6 +2766,325 @@ setInterval(() => {}, 1000);`,
       status: 'parser_error',
       passed: false,
     });
+  });
+  test.each([
+    'retained',
+    'missing',
+    'oversized',
+    'missing-companion',
+    'malformed-companion',
+    'ambiguous-companion',
+    'retention-unavailable',
+    'repeated',
+  ] as const)(
+    'keeps a real Vitest failure truthful with %s diagnostic reports',
+    async (mode) => {
+      const root = makeTempDir('station-vitest-primary-error-');
+      const fixture = 'scripts/__tests__/primary-error.test.ts';
+      mkdirSync(join(root, 'config'), { recursive: true });
+      writeFileSync(
+        join(root, 'config/product-laws.json'),
+        readFileSync(join(process.cwd(), 'config/product-laws.json')),
+      );
+      mkdirSync(dirname(join(root, fixture)), { recursive: true });
+      writeFileSync(
+        join(root, fixture),
+        `import { describe, test } from ${JSON.stringify(import.meta.resolve('vitest'))};
+describe('primary error fixture', () => {
+  test('preserves the primary message api_key=secret-query-token', () => {
+    const cause = new Error('nested root failure; Authorization: Bearer secret-fixture-token');
+    const message = process.env.STATION_FIXTURE_FAILURE_MESSAGE;
+    const error = new Error(message, { cause });
+    error.stack = 'Error: STACK_TRACE_ERROR\\n at declaration (fixture.js:1:1)\\n attempt ' + process.env.STATION_FIXTURE_ATTEMPT;
+    throw error;
+  });
+});\n`,
+      );
+      writeFileSync(
+        join(root, 'vitest.config.mjs'),
+        'export default { test: { testTimeout: 30000, hookTimeout: 30000 } };\n',
+      );
+      execFileSyncBounded('git', ['init', '--quiet'], {
+        cwd: root,
+        windowsHide: true,
+      });
+      execFileSyncBounded('git', ['add', '.'], {
+        cwd: root,
+        windowsHide: true,
+      });
+      execFileSyncBounded(
+        'git',
+        [
+          '-c',
+          'user.name=Fixture',
+          '-c',
+          'user.email=fixture@example.test',
+          'commit',
+          '--quiet',
+          '-m',
+          'reporter fixture',
+        ],
+        { cwd: root, windowsHide: true },
+      );
+      let originalReport:
+        | {
+            testResults: {
+              assertionResults: { failureMessages: string[] }[];
+            }[];
+          }
+        | undefined;
+      let temporaryReport = '';
+      let attempt = 0;
+      const runFailure = () =>
+        runChangedVerification(['--base=HEAD'], {
+          root,
+          vitestPath: join(process.cwd(), 'node_modules/vitest/vitest.mjs'),
+          changedPathsFn: () => ({ mergeBase: 'HEAD', paths: [fixture] }),
+          collectProvenance: () => ({ ...provenance(), worktree: root }),
+          // The fixture deliberately has no installed graph: this control owns
+          // reporting through the real pinned Vitest, not dependency admission.
+          assertDependencyProvenance: () => {},
+          resourcePartition: splitResourceGroups,
+          run: async (command, args, options) => {
+            const currentAttempt = ++attempt;
+            const child = await runOwnedChangedCommand(command, args, {
+              ...options,
+              env: {
+                ...(options.env ?? process.env),
+                STATION_FIXTURE_FAILURE_MESSAGE:
+                  currentAttempt === 1
+                    ? 'fixture primary failure'
+                    : 'fixture primary failure second attempt',
+                STATION_FIXTURE_ATTEMPT: String(currentAttempt),
+              },
+            });
+            temporaryReport = args
+              .find((arg) => arg.startsWith('--outputFile='))!
+              .slice('--outputFile='.length);
+            originalReport = JSON.parse(readFileSync(temporaryReport, 'utf8'));
+            if (mode === 'missing') rmSync(temporaryReport);
+            if (mode === 'oversized')
+              appendFileSync(temporaryReport, ' '.repeat(16 * 1024 * 1024));
+            if (mode === 'retention-unavailable') {
+              mkdirSync(join(root, '.kontourai/test-impact'), {
+                recursive: true,
+              });
+              writeFileSync(
+                join(root, '.kontourai/test-impact/failed-reports'),
+                'blocked',
+              );
+            }
+            const companionPath = `${temporaryReport}.errors.json`;
+            if (existsSync(companionPath)) {
+              if (mode === 'missing-companion') rmSync(companionPath);
+              if (mode === 'malformed-companion')
+                writeFileSync(companionPath, '{invalid-json');
+              if (mode === 'ambiguous-companion') {
+                const companion = JSON.parse(
+                  readFileSync(companionPath, 'utf8'),
+                );
+                companion.tests.push(companion.tests[0]);
+                writeFileSync(companionPath, JSON.stringify(companion));
+              }
+            }
+            return child;
+          },
+        });
+      const result = await runFailure();
+      const officialMessages =
+        originalReport?.testResults[0].assertionResults[0].failureMessages.join(
+          '\n',
+        );
+      expect(officialMessages).toContain('STACK_TRACE_ERROR');
+      expect(officialMessages).not.toContain('fixture primary failure');
+      expect(result.exitCode).toBe(1);
+      expect(result.receipt.terminal.passed).toBe(false);
+      expect(existsSync(temporaryReport)).toBe(
+        mode === 'retention-unavailable',
+      );
+      if (mode === 'retention-unavailable') {
+        expect(result.receipt.counts).toMatchObject({
+          executed: 1,
+          passed: 0,
+          failed: 1,
+          infrastructureErrors: 0,
+        });
+        expect(result.executed[0].failedTests[0].excerpt).toContain(
+          'fixture primary failure',
+        );
+        expect(result.executed[0].retainedReports).toEqual([]);
+        expect(result.executed[0].retentionFailure.reasons).toHaveLength(2);
+        expect(result.executed[0].retentionFailure.temporaryDirectory).toBe(
+          dirname(temporaryReport),
+        );
+        expect(existsSync(`${temporaryReport}.errors.json`)).toBe(true);
+        rmSync(dirname(temporaryReport), { recursive: true });
+        return;
+      }
+      if (mode === 'retained' || mode === 'oversized') {
+        expect(
+          result.executed[0].failedTests[0].excerpt,
+          'the primary error must survive a differing declaration stack',
+        ).toContain('fixture primary failure');
+      }
+      expect(
+        Array.isArray(result.executed[0].retainedReports),
+        'failed raw reports must survive temporary cleanup',
+      ).toBe(true);
+      const reports = result.executed[0].retainedReports;
+      for (const report of reports)
+        expect(report.path).toMatch(
+          /^\.kontourai\/test-impact\/failed-reports\/[a-f0-9]{64}\//,
+        );
+      const standard = reports.find(
+        (report) => !report.path.endsWith('.errors.json'),
+      );
+      expect(result.receipt.artifacts).toContainEqual(standard);
+      const retained = readFileSync(join(root, standard.path), 'utf8');
+      expect(createHash('sha256').update(retained).digest('hex')).toBe(
+        standard.sha256,
+      );
+      if (mode === 'missing') {
+        expect(JSON.parse(retained)).toEqual({
+          omitted: 'Vitest wrote no JSON report',
+        });
+        expect(result.receipt.terminal.status).toBe('parser_error');
+      } else {
+        expect(result.receipt.counts).toMatchObject({
+          executed: 1,
+          passed: 0,
+          failed: 1,
+          infrastructureErrors: 0,
+        });
+        const failure = result.executed[0].failedTests[0];
+        if (
+          mode === 'missing-companion' ||
+          mode === 'malformed-companion' ||
+          mode === 'ambiguous-companion'
+        ) {
+          expect(failure.excerpt).toContain('STACK_TRACE_ERROR');
+          expect(failure.excerpt).not.toContain('fixture primary failure');
+          expect(failure.errors).toBeUndefined();
+          expect(failure.primaryErrorUnavailable).toContain(
+            mode === 'ambiguous-companion' ? 'ambiguous' : 'no readable',
+          );
+        } else {
+          expect(failure.excerpt).toContain('fixture primary failure');
+          expect(failure.excerpt).toContain('nested root failure');
+          expect(failure.errors[0]).toMatchObject({
+            message: 'fixture primary failure',
+            stack: expect.stringContaining('STACK_TRACE_ERROR'),
+            cause: { message: expect.stringContaining('nested root failure') },
+          });
+        }
+        if (mode === 'oversized')
+          expect(JSON.parse(retained).omitted).toContain('exceeds 16777216');
+        else expect(JSON.parse(retained).numFailedTests).toBe(1);
+      }
+      const companion = reports.find((report) =>
+        report.path.endsWith('.errors.json'),
+      );
+      const details = readFileSync(join(root, companion.path), 'utf8');
+      expect(createHash('sha256').update(details).digest('hex')).toBe(
+        companion.sha256,
+      );
+      if (mode === 'missing-companion') {
+        expect(JSON.parse(details)).toEqual({
+          omitted: 'Vitest wrote no JSON report',
+        });
+      } else if (mode !== 'malformed-companion') {
+        expect(details).toContain('fixture primary failure');
+        expect(details).toContain('nested root failure');
+      } else
+        expect(JSON.parse(details)).toEqual({
+          omitted: 'Vitest report is not valid JSON',
+        });
+      expect(details).not.toContain('secret-fixture-token');
+      expect(retained).not.toContain('secret-query-token');
+      expect(details).not.toContain('secret-query-token');
+      expect(result.receipt.artifacts).toContainEqual(companion);
+      const attached = attachCiFastDiagnostics(
+        {
+          lane: { id: 'ci-fast' },
+          env: {},
+          before: { ...provenance(), worktree: root },
+        },
+        {},
+      );
+      expect(attached.unavailableAttachments).toBeUndefined();
+      const diagnostic = JSON.parse(
+        readFileSync(attached.attachments[0].path, 'utf8'),
+      );
+      expect(diagnostic.executions[0].retainedReports).toEqual(reports);
+      if (mode === 'repeated') {
+        const subsequent = await runFailure();
+        expect(subsequent.receipt.request.key).toBe(result.receipt.request.key);
+        expect(subsequent.executed[0].resourceGroup).toBe(
+          result.executed[0].resourceGroup,
+        );
+        expect(subsequent.executed[0].failedTests[0].excerpt).toContain(
+          'fixture primary failure second attempt',
+        );
+        const allReports = [
+          ...reports,
+          ...subsequent.executed[0].retainedReports,
+        ];
+        for (const report of allReports) {
+          const bytes = readFileSync(join(root, report.path));
+          expect(createHash('sha256').update(bytes).digest('hex')).toBe(
+            report.sha256,
+          );
+        }
+        expect(new Set(allReports.map((report) => report.path)).size).toBe(4);
+      }
+    },
+  );
+  test('retains real suite setup errors when every assertion is skipped', async () => {
+    const root = makeTempDir('station-vitest-suite-error-');
+    const report = join(root, 'result.json');
+    writeFileSync(
+      join(root, 'setup-failure.test.mjs'),
+      `import { beforeAll, describe, test } from ${JSON.stringify(import.meta.resolve('vitest'))};
+describe('service prerequisite', () => {
+  beforeAll(() => { throw new Error('fixture setup failed; Authorization: Bearer secret-fixture-token'); });
+  test('requires the service', () => { throw new Error('assertion must not run'); });
+});\n`,
+    );
+    writeFileSync(join(root, 'vitest.config.mjs'), 'export default {};\n');
+    const child = await runOwnedChangedCommand(
+      process.execPath,
+      [
+        join(process.cwd(), 'node_modules/vitest/vitest.mjs'),
+        'run',
+        '--maxWorkers=1',
+        '--reporter=json',
+        `--reporter=${fileURLToPath(new URL('../lib/vitest-error-reporter.mjs', import.meta.url))}`,
+        `--outputFile=${report}`,
+      ],
+      { cwd: root, processLabel: 'suite failure reporter fixture' },
+    );
+    expect(child.status).toBe(1);
+    expect(JSON.parse(readFileSync(report, 'utf8'))).toMatchObject({
+      numFailedTests: 0,
+      numPendingTests: 1,
+      success: false,
+    });
+    const details = readFileSync(`${report}.errors.json`, 'utf8');
+    expect(JSON.parse(details)).toMatchObject({
+      tests: [],
+      suites: [
+        {
+          name: expect.stringContaining('service prerequisite'),
+          errors: [
+            { message: expect.stringContaining('fixture setup failed') },
+          ],
+        },
+      ],
+      omittedSuites: 0,
+    });
+    expect(child.stderr).toContain('fixture setup failed');
+    expect(details).not.toContain('secret-fixture-token');
+    expect(child.stderr).not.toContain('secret-fixture-token');
   });
   test('escalates a deleted related path to test-full without spawning', async () => {
     const run = vi.fn();
@@ -3091,9 +3570,14 @@ describe('related discovery takes its timeout from the caller budget (#2855)', (
           return {
             status: 0,
             signal: null,
-            stdout: JSON.stringify([
-              'scripts/__tests__/changed-verification.test.ts',
-            ]),
+            stdout: JSON.stringify(
+              args.includes('--defer-global-triggers')
+                ? {
+                    files: ['scripts/__tests__/changed-verification.test.ts'],
+                    globalTriggeredPaths: [],
+                  }
+                : ['scripts/__tests__/changed-verification.test.ts'],
+            ),
             stderr: '',
             launch: { attempted: true, started: true },
             cleanup: { status: 'passed', survivingOwnedChildren: 0 },
@@ -3385,6 +3869,41 @@ describe('documentation is evidence, not a whole-diff deferral (#2803)', () => {
     );
   });
 
+  test('a source-only Starter registry change plans documentation and discovered behavior without deferral', async () => {
+    const registry = 'src-server/services/starter-work/starter-registry.ts';
+    const behavioralSuites = [
+      'src-server/services/starter-work/__tests__/starter-registry.test.ts',
+      'src-server/routes/__tests__/starter-work.routes.test.ts',
+      'src-server/routes/orchestration/__tests__/task-dispatch-full-access.routes.test.ts',
+    ];
+    const selection = select([registry]);
+    expect(selection.relatedPaths).toEqual([registry]);
+    expect(selection.tests.map(({ path }) => path)).toContain(
+      'scripts/__tests__/documentation-foundations.test.ts',
+    );
+    const discoverRelatedFiles = vi.fn(async () => behavioralSuites);
+    const plan = await planChangedVerificationShards('HEAD', {
+      root: process.cwd(),
+      changedPathsFn: () => ({ mergeBase: 'HEAD', paths: [registry] }),
+      discoverRelatedFiles,
+    });
+    expect(discoverRelatedFiles).toHaveBeenCalledWith(
+      process.cwd(),
+      [registry],
+      expect.objectContaining({ base: 'HEAD' }),
+    );
+    expect(plan.groups.flatMap(({ files }) => files)).toEqual(
+      expect.arrayContaining([
+        'scripts/__tests__/documentation-foundations.test.ts',
+        ...behavioralSuites,
+      ]),
+    );
+    expect(plan.deferredLanes).toEqual([]);
+    expect(plan.mergeQueueRegressionPaths).toEqual([]);
+    expect(plan.escalated).toBe(false);
+    expect(plan.emptyRelatedSelection).toBeUndefined();
+  });
+
   test('a docs change beside a truly unknown path still defers', () => {
     const selection = select([DOC, 'docs-private/notes.bin']);
     expect(selection.escalated).toBe(true);
@@ -3404,5 +3923,63 @@ describe('documentation is evidence, not a whole-diff deferral (#2803)', () => {
     expect(result.receipt.terminal.status).toBe('completed');
     const commands = result.executed.flatMap((execution) => execution.command);
     for (const suite of DOC_SUITES) expect(commands).toContain(`./${suite}`);
+  });
+});
+
+describe('documentation framework affected coverage', () => {
+  test.each([
+    'scripts/check-documentation-freshness.mjs',
+    'scripts/lib/review-binding.mjs',
+    'scripts/generate-station-docs.mjs',
+    'scripts/__tests__/helpers/documentation-freshness-fixture.ts',
+    'scripts/__tests__/documentation-review-notes.test.ts',
+    'schemas/documentation-review.schema.json',
+    '.github/workflows/docs-freshness-sweep.yml',
+  ])('%s retains all fixture suites outside the repeated docs gate', (path) => {
+    const selection = selectChangedVerification([path]);
+    expect(
+      selection.tests.map((entry: { path: string }) => entry.path),
+    ).toEqual(expect.arrayContaining(DOCS_FRAMEWORK_TESTS));
+  });
+
+  test.each([
+    'package.json',
+    'pnpm-lock.yaml',
+    'vitest.config.ts',
+    'vitest.setup.ts',
+  ])(
+    '%s requires full framework qualification without displacing inline evidence',
+    (path) => {
+      const selection = selectChangedVerification([path]);
+      expect(selection.lanes.map((lane: { id: string }) => lane.id)).toContain(
+        'test-full',
+      );
+    },
+  );
+
+  test('an unrelated source edit does not repeat documentation framework fixtures', () => {
+    const selection = selectChangedVerification([
+      'src-server/unrelated-owner.ts',
+    ]);
+    const selectedTests = selection.tests.map(
+      (entry: { path: string }) => entry.path,
+    );
+    for (const framework of DOCS_FRAMEWORK_TESTS)
+      expect(selectedTests).not.toContain(framework);
+  });
+
+  test('unknown and empty diffs still escalate instead of claiming no affected tests', () => {
+    const unknown = selectChangedVerification([
+      'new-tooling/unknown-validator.xyz',
+    ]);
+    expect(unknown.escalated).toBe(true);
+    expect(unknown.lanes.map((lane: { id: string }) => lane.id)).toContain(
+      'ci-fast',
+    );
+    const empty = selectChangedVerification([]);
+    expect(empty.escalated).toBe(true);
+    expect(empty.lanes.map((lane: { id: string }) => lane.id)).toContain(
+      'test-full',
+    );
   });
 });

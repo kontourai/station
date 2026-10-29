@@ -1,0 +1,129 @@
+{
+  "path": "packages/agent-runtime/CONTEXT.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Implementation and evidence ownership map for the private model runtime, including command/receipt fences, memory custody, same-host SQLite bodies and projections, retention, native codec/consumer guards, and the shared journal/ready completion relation.",
+
+  "limits": "This maps source owners and specific primary test boundaries, not universal execution or Station adoption. The approved product source is 2f15ae2e04fae8c00958876263f4c43a53ad8882. Named affected-owner and one causal guard receipts retain their original source and environment; stable/default30s completion is NOT_VERIFIED and original293 partial mutation caveat remains. No full #3573/#3558, hosted/live-provider/native-device, durable tool/approval/affinity, packed-release/publication, physical BLOB/audit GC or bounded raw disk claim.",
+
+  "sources": [
+    "packages/agent-runtime/README.md",
+
+    "packages/agent-runtime/package.json",
+
+    "packages/agent-runtime/tsconfig.json",
+
+    "packages/agent-runtime/tsconfig.build.json",
+
+    "packages/agent-runtime/src/types.ts",
+
+    "packages/agent-runtime/src/decisions.ts",
+
+    "packages/agent-runtime/src/receipts.ts",
+
+    "packages/agent-runtime/src/records.ts",
+
+    "packages/agent-runtime/src/memory.ts",
+
+    "packages/agent-runtime/src/sqlite.ts",
+
+    "packages/agent-runtime/src/retention.ts",
+
+    "packages/agent-runtime/src/codecs.ts",
+
+    "packages/agent-runtime/src/encoding.ts",
+
+    "packages/agent-runtime/src/command-codec.ts",
+
+    "packages/agent-runtime/src/coordinator.ts",
+
+    "packages/agent-runtime/src/outbox.ts",
+
+    "packages/agent-runtime/src/ai-sdk.ts",
+
+    "packages/agent-runtime/src/voltagent.ts",
+
+    "packages/agent-runtime/src/strands.ts",
+
+    "packages/agent-runtime/src/index.ts",
+
+    "packages/agent-runtime/src/policy.ts",
+
+    "packages/agent-runtime/src/__tests__/journal.test.ts",
+
+    "packages/agent-runtime/src/__tests__/bodies.test.ts",
+
+    "packages/agent-runtime/src/__tests__/stream.test.ts",
+
+    "packages/agent-runtime/src/__tests__/frameworks.test.ts",
+
+    "packages/agent-runtime/src/__tests__/body-process.test.ts",
+
+    "packages/agent-runtime/src/__tests__/body-process.fixture.ts",
+
+    "packages/agent-runtime/src/__tests__/fixture.ts",
+
+    "packages/agent-runtime/src/__tests__/r1-fixture.ts",
+
+    "packages/agent-runtime/src/__tests__/r2-fixture.ts",
+
+    "packages/agent-runtime/src/__tests__/contract-availability.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r1-ownership.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r1-first-template.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r1-public-cancel.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r1-stream.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r1-codecs.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r1-outbox.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r1-retention.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r1-native-controls.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r1-pinned-equality.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r2-admission.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r2-retention.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r2-receipts.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r3-ready.test.ts",
+
+    "packages/agent-runtime/src/__tests__/r4-replay.test.ts",
+
+    "packages/monument/src/commands.ts",
+
+    "packages/monument/src/testing/crash-point-store.ts",
+
+    "packages/monument/src/testing/index.ts",
+
+    "packages/monument/src/__tests__/crash-point-compatibility.test.ts",
+
+    "scripts/agent-runtime-import-boundary-gate.mjs",
+
+    "scripts/__tests__/agent-runtime-import-boundary-gate.test.ts",
+
+    "scripts/typecheck-aggregate.mjs",
+
+    "scripts/test-impact-manifest.mjs",
+
+    "scripts/vitest-resource-manifest.mjs",
+
+    "package.json#/scripts/typecheck:agent-runtime",
+
+    "package.json#/scripts/build:agent-runtime",
+
+    "package.json#/scripts/agent-runtime-import-boundary:gate"
+  ],
+
+  "checks": []
+}

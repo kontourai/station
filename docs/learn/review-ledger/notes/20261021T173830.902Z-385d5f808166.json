@@ -1,0 +1,7 @@
+{
+  "revision": "dd331da303a0db764bbf2b0dd44d4d8ac61e8e38",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"L1 round 3: depends on remote-access-threat-model.md, whose only change adds POST /acp/connections/:id/check to the stored-command re-probe note; automations claims unaffected. No prose change.","inputs":["docs/design/automations.md","docs/security/remote-access-threat-model.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "ec6ccf3eda2510b0189af4c807e417fccf2a23ea",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed inherited generated deploy ledger against its JSON source: no changes to either input in the ip-address lockfile-only delta. Retained as historical deployment receipts, not new provider, installed runtime or release qualification. The deterministic projection remains owned by the deployment ledger check.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

@@ -34,7 +34,7 @@ const CONTINUE_SECTION_ID = 'home-continue';
 /**
  * The one Home (archive#3122's experiment, concluded).
  *
- * Reading order (design round 2026-10, V1-V6, Q3, U2): the start form, then
+ * Reading order (#3239): the start form, then
  * the work. With recent work on the page the lanes come right after the
  * form and the heading, the action cards and the chart wait below them —
  * someone with work does not need to be asked what they want to work on
@@ -62,7 +62,7 @@ export function HomeSurface({
   // derive its own; a second `useHomeWorkLanes` instance carries its own
   // snooze snapshot, so the counts and the list they caption could disagree
   // about what is snoozed.
-  const lanes = useHomeWorkLanes(model.workItems);
+  const lanes = useHomeWorkLanes(model.workItems, model.workFacts);
   // #928: Activity is a region surface with no standalone placement. "View
   // Activity" goes to its PAGE — Activity takes `main` in Home's place, the
   // same verb as the sidebar row — rather than docking it beside Home.
@@ -128,6 +128,7 @@ export function HomeSurface({
     !model.actionsLoading && model.primaryWorkItem ? (
       <HomeContinueCard
         model={model}
+        childrenById={lanes.childrenById}
         id={CONTINUE_SECTION_ID}
         onViewActivity={
           listEmpty ? () => showSurfacePage('activity') : undefined
@@ -184,7 +185,17 @@ export function HomeSurface({
           Skip to recent work
         </a>
       )}
-      <h1 className="sr-only">Home</h1>
+      {model.firstSession ? (
+        <header className="home-view__welcome">
+          <h1>Start your first conversation</h1>
+          <p>
+            Choose an agent, write what you need, and start. Add a Project when
+            you want to work with files.
+          </p>
+        </header>
+      ) : (
+        <h1 className="sr-only">Home</h1>
+      )}
       {/* A plain wrapper: the form is the one "Start work" landmark. A
           section named the same nested a second landmark with one name. */}
       <div
@@ -202,7 +213,7 @@ export function HomeSurface({
       ) : (
         <>
           {actions}
-          {recentWork}
+          {!model.firstSession && recentWork}
         </>
       )}
     </>

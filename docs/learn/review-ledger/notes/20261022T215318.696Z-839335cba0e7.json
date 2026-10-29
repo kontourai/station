@@ -1,0 +1,7 @@
+{
+  "revision": "2a16fb233ee8b5d52b32a736c598f067335faa56",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed session-list polling against the SDK query policy, mounted shared-cache tests and orchestration GET reconciliation. Healthy streams retain the 60-second safety poll; a GET may return before peer reconciliation, so quiet changes can require two ticks (about 120 seconds plus request/reconciliation time). Focused mounted-hook and route tests passed; no provider or production freshness measurement was performed.","inputs":["docs/reference/sdk.md","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

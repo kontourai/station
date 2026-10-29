@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
@@ -230,6 +231,28 @@ describe('verification policy gate', () => {
     ]);
   });
 
+  // A listing past Node's 1 MiB default capture killed git on a Windows
+  // runner (ENOBUFS); the default capture must hold a listing that size.
+  test('reads a tracked listing larger than the 1 MiB default capture', () => {
+    const NODE_DEFAULT_MAX_BUFFER = 1024 * 1024;
+    // 20,000 paths of ~70 bytes: well past the default, built in the child.
+    const emit = `const parts = Array.from({ length: 20000 }, (_, i) => 'src-ui/src/padding/' + 'x'.repeat(48) + '-' + i + '.ts'); parts.push('scripts/__tests__/kept.test.ts'); process.stdout.write(parts.join('\\0') + '\\0');`;
+    let bytes = 0;
+    const files = discoverTrackedVitestTestFiles({
+      rootDir: process.cwd(),
+      execFile: (_command, _args, options) => {
+        const out = execFileSync(process.execPath, ['-e', emit], {
+          ...options,
+          encoding: 'utf8',
+        });
+        bytes = Buffer.byteLength(out);
+        return out;
+      },
+    });
+    expect(bytes).toBeGreaterThan(NODE_DEFAULT_MAX_BUFFER);
+    expect(files).toContain('scripts/__tests__/kept.test.ts');
+  });
+
   test('fails closed when independently tracked Vitest discovery cannot run', () => {
     const errors = executableVerificationPolicyErrors({
       discoverVitest: () => completeVitestGroups(),
@@ -314,6 +337,58 @@ describe('verification policy gate', () => {
     ).toContain(
       'ci:fast must run only its fixed bounded static invariant allowlist',
     );
+  });
+
+  test('admits the runtime import guard once and rejects altered fixed command vectors', () => {
+    const guard = 'scripts/agent-runtime-import-boundary-gate.mjs';
+    const refusal =
+      'ci:fast must run only its fixed bounded static invariant allowlist';
+    expect(
+      verificationPolicyErrors({ ciFastStaticCommands: FAST_STATIC_COMMANDS }),
+    ).toEqual([]);
+    expect(
+      FAST_STATIC_COMMANDS.filter(
+        ([command, args]) =>
+          command === process.execPath &&
+          args.length === 1 &&
+          args[0] === guard,
+      ),
+    ).toHaveLength(1);
+
+    expect(
+      verificationPolicyErrors({
+        ciFastStaticCommands: FAST_STATIC_COMMANDS.filter(
+          ([, args]) => args[0] !== guard,
+        ),
+      }),
+    ).toContain(refusal);
+    expect(
+      verificationPolicyErrors({
+        ciFastStaticCommands: [
+          ...FAST_STATIC_COMMANDS,
+          [process.execPath, ['scripts/unregistered-invariant.mjs']],
+        ],
+      }),
+    ).toContain(refusal);
+    expect(
+      verificationPolicyErrors({
+        ciFastStaticCommands: [
+          ...FAST_STATIC_COMMANDS,
+          [process.execPath, [guard]],
+        ],
+      }),
+    ).toContain(refusal);
+    for (const replacement of [
+      ['scripts/agent-runtime-import-boundary.mjs'],
+      [guard, '--skip-check'],
+    ])
+      expect(
+        verificationPolicyErrors({
+          ciFastStaticCommands: FAST_STATIC_COMMANDS.map(([command, args]) =>
+            args[0] === guard ? [command, replacement] : [command, args],
+          ),
+        }),
+      ).toContain(refusal);
   });
 
   test('pins admission headroom for ci:fast beside every ordinary shard', () => {

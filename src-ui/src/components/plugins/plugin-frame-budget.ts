@@ -120,3 +120,18 @@ export const pluginConfirmBudget = createPluginBudget({
   burst: 2,
   refillMs: 30_000,
 });
+
+/**
+ * Related panes (`PaneRelatedPanesHost`, docs/design/pane-relationships.md),
+ * one bucket per plugin shared by the direct and the frame tier: an open
+ * changes what the user sees beside their work, so a plugin may not spend
+ * more of that by being in a different tier. Four at once covers stepping
+ * through a short list on purpose; one more every five seconds keeps a loop
+ * from churning Related. Reveal spends from the same bucket, and so does a
+ * close that would ask the pane's unsaved-changes guard; a close that asks
+ * nothing does not.
+ */
+export const pluginRelatedPaneBudget = createPluginBudget({
+  burst: 4,
+  refillMs: 5_000,
+});

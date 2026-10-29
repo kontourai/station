@@ -7,6 +7,7 @@
 import { useCallback, useRef, useSyncExternalStore } from 'react';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import {
+  type BackgroundTaskEntry,
   backgroundTasksStore,
   type ChatBackgroundTasksView,
   selectChatBackgroundTasks,
@@ -32,7 +33,9 @@ export function useChatBackgroundTasks(
   chatThreadId: string | null,
 ): ChatBackgroundTasksView {
   const cacheRef = useRef<{
+    chatThreadId: string;
     tasksState: ReturnType<typeof backgroundTasksStore.getSnapshot>;
+    entries: BackgroundTaskEntry[];
     providerTasks: ReturnType<
       typeof activeChatsStore.getSnapshot
     >[string]['backgroundTasks'];
@@ -47,9 +50,29 @@ export function useChatBackgroundTasks(
     const cached = cacheRef.current;
     if (
       cached &&
+      cached.chatThreadId === chatThreadId &&
       cached.tasksState === tasksState &&
       cached.providerTasks === providerTasks
     ) {
+      return cached.view;
+    }
+    // Provider cards also read their spawning tool's start time.
+    const providerToolCallIds = new Set(
+      providerTasks?.map((task) => task.toolCallId),
+    );
+    const entries = Object.values(tasksState.entries).filter(
+      (entry) =>
+        entry.chatThreadId === chatThreadId ||
+        providerToolCallIds.has(entry.id),
+    );
+    if (
+      cached &&
+      cached.chatThreadId === chatThreadId &&
+      cached.providerTasks === providerTasks &&
+      cached.entries.length === entries.length &&
+      cached.entries.every((entry, index) => entry === entries[index])
+    ) {
+      cacheRef.current = { ...cached, tasksState };
       return cached.view;
     }
     const view = selectChatBackgroundTasks(
@@ -57,7 +80,13 @@ export function useChatBackgroundTasks(
       chatThreadId,
       providerTasks,
     );
-    cacheRef.current = { tasksState, providerTasks, view };
+    cacheRef.current = {
+      chatThreadId,
+      tasksState,
+      entries,
+      providerTasks,
+      view,
+    };
     return view;
   }, [chatThreadId]);
 

@@ -1,5 +1,6 @@
 import type { FormEvent } from 'react';
 import { projectIconInputProblem } from '../components/project-icon/ProjectIconPicker';
+import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import type { useNewProjectModalState } from './useNewProjectModalState';
 
 type NewProjectModalState = ReturnType<typeof useNewProjectModalState>;
@@ -7,10 +8,29 @@ type NewProjectModalState = ReturnType<typeof useNewProjectModalState>;
 /** Builds the immutable create request while submit owns the create-once retry state. */
 export function useNewProjectFormSubmit(state: NewProjectModalState) {
   const { draft, submission } = state;
+  const authority = useHostRequestAuthorityScope();
+  const recoveryKey =
+    authority &&
+    JSON.stringify([
+      authority.apiBase,
+      authority.draftRecoveryKey ?? authority.authorityKey,
+    ]);
   const { resolvedName } = draft;
+  const sourceError =
+    draft.repositoryAcquisition &&
+    draft.repositoryAcquisition.recoveryKey !== recoveryKey
+      ? submission.hasCreatedProject
+        ? 'Return to the Station account that created this Project to finish its starter.'
+        : 'Station access changed. Choose the repository again before creating the Project.'
+      : undefined;
 
   function submit(event: FormEvent) {
-    if (!resolvedName) {
+    if (
+      (!resolvedName &&
+        !submission.hasRecoveryIntent &&
+        !submission.hasCreatedProject) ||
+      sourceError
+    ) {
       event.preventDefault();
       return;
     }
@@ -20,6 +40,11 @@ export function useNewProjectFormSubmit(state: NewProjectModalState) {
       icon: draft.icon.trim() || undefined,
       description: draft.description.trim() || undefined,
       workingDirectory: draft.normalizedDirectory || undefined,
+      ...(draft.repositoryAcquisition &&
+      draft.repositoryAcquisition.directory === draft.normalizedDirectory &&
+      draft.repositoryAcquisition.recoveryKey === recoveryKey
+        ? { repositoryAcquisitionId: draft.repositoryAcquisition.id }
+        : {}),
       ...(draft.defaultEnvironment.kind === 'saved'
         ? { defaultEnvironment: draft.defaultEnvironment }
         : {}),
@@ -45,8 +70,14 @@ export function useNewProjectFormSubmit(state: NewProjectModalState) {
   // inline under the field, so Create cannot send a value the server will
   // answer with a bare "Validation failed".
   return {
+    sourceError,
     canSubmit:
-      Boolean(resolvedName) &&
+      !sourceError &&
+      (Boolean(resolvedName) ||
+        submission.hasRecoveryIntent ||
+        submission.hasCreatedProject) &&
+      !submission.recoveryBusy &&
+      !submission.recovery.corrupt &&
       !submission.directoryError &&
       !submission.slugError &&
       !projectIconInputProblem(draft.icon.trim()),

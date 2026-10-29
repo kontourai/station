@@ -18,6 +18,7 @@ import {
   renderHook,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { AgentData } from '../../../contexts/AgentsContext';
@@ -57,8 +58,13 @@ vi.mock('@kontourai/station-sdk', () => ({
 vi.mock('../../../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => devicePresentation,
 }));
+const refetchStatus = vi.fn();
+const recheck = vi.fn();
 vi.mock('../../../hooks/useSystemStatus', () => ({
-  useSystemStatus: () => statusState,
+  useSystemStatus: () => ({ ...statusState, refetch: refetchStatus }),
+}));
+vi.mock('../../../hooks/useACPConnections', () => ({
+  recheckACPConnectionRegistry: () => recheck(),
 }));
 
 import {
@@ -262,6 +268,77 @@ describe('the checklist', () => {
     ).toBeNull();
   });
 
+  test('an uninstalled catalogue engine is listed under "also works with" with how to install it', async () => {
+    // The exact row `/api/system/status` writes for a catalogue engine whose
+    // command the host lookup did not find.
+    const GOOSE = {
+      engineId: 'goose',
+      name: 'Goose',
+      detected: false,
+      ready: false,
+      source: null,
+      reason: 'not_installed',
+      install: {
+        command: 'brew install block-goose-cli',
+        docsUrl: 'https://goose-docs.ai/docs/getting-started/installation',
+      },
+    } as ExternalEngineReadinessProjection;
+    renderChapter([CODEX, GOOSE]);
+
+    const goose = row('goose');
+    expect(goose.closest('details')).not.toBeNull();
+    expect(goose.querySelector('input')).toBeNull();
+    expect(goose.textContent).toContain('Not found on this machine.');
+    const hint = within(goose).getByRole('group', {
+      name: 'How to install Goose',
+    });
+    expect(within(hint).getByText('brew install block-goose-cli')).toBeTruthy();
+    expect(
+      within(hint).getByRole('link', { name: 'Goose install guide' }),
+    ).toBeTruthy();
+    // Installed while the chapter is open, it can be found without leaving:
+    // Check again re-reads the host's PATH, then the engine list.
+    const order: string[] = [];
+    recheck.mockImplementationOnce(async () => {
+      order.push('recheck');
+      return { status: 'rechecked', entries: [] };
+    });
+    refetchStatus.mockImplementationOnce(() => order.push('refetch'));
+    fireEvent.click(
+      within(hint).getByRole('button', { name: 'Check again for Goose' }),
+    );
+    await waitFor(() => expect(order).toEqual(['recheck', 'refetch']));
+    // Nothing to connect: confirming creates nothing for it.
+    fireEvent.click(screen.getByRole('button', { name: /Set up|Continue/ }));
+    expect(connectAndMaterializeEngine).not.toHaveBeenCalled();
+    expect(materializeEngineAgent).not.toHaveBeenCalledWith(
+      'goose',
+      expect.anything(),
+    );
+  });
+
+  // With nothing to pick, the install hints are the way forward, so they are
+  // not folded behind a disclosure.
+  test('opens the other engines when none is installed', () => {
+    renderChapter([OPENCODE]);
+    expect(
+      screen
+        .getByText('Station also works with')
+        .closest('details')
+        ?.hasAttribute('open'),
+    ).toBe(true);
+  });
+
+  test('keeps the other engines folded beside an installed one', () => {
+    renderChapter([CODEX, OPENCODE]);
+    expect(
+      screen
+        .getByText('Station also works with')
+        .closest('details')
+        ?.hasAttribute('open'),
+    ).toBe(false);
+  });
+
   test('says nothing about other engines when there are none', () => {
     renderChapter([CODEX]);
     expect(screen.queryByText('Station also works with')).toBeNull();
@@ -380,6 +457,37 @@ describe('confirming the checklist', () => {
     ).toContain(
       'Kiro CLI: could not be set up. Kiro CLI could not be connected',
     );
+  });
+
+  // A cold engine's first start continues on the server after the add
+  // answers: it has not failed, so it is not offered as a retry or counted
+  // as one, and the report says what will happen.
+  test('reports a registry Engine still on its first start as starting, not failed', async () => {
+    const { EngineStillStartingError } = await vi.importActual<
+      typeof import('@kontourai/station-sdk')
+    >('@kontourai/station-sdk');
+    const detectedKiro = engine({
+      name: 'Kiro CLI',
+      engineId: 'kiro' as never,
+      detected: true,
+      reason: 'not_connected',
+      registryEntryId: 'kiro',
+    });
+    connectAndMaterializeEngine.mockRejectedValueOnce(
+      new EngineStillStartingError('Kiro CLI'),
+    );
+    const { onDone } = renderChapter([detectedKiro]);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Set up 1' }));
+    });
+    const report = await screen.findByTestId('first-run-engines-report');
+    expect(report.textContent).toContain(
+      'Kiro CLI: still starting for the first time.',
+    );
+    expect(report.textContent).not.toContain('could not be set up');
+    expect(report.querySelector('[data-status="starting"]')).not.toBeNull();
+    expect(screen.queryByTestId('first-run-engines-retry')).toBeNull();
+    expect(onDone).not.toHaveBeenCalled();
   });
 
   test('creates exactly one Agent per newly ticked engine', async () => {

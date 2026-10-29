@@ -414,7 +414,199 @@
 
     "src-server/routes/system/resource-posture-routes.ts",
 
-    "packages/contracts/src/system-status.ts"
+    "packages/contracts/src/system-status.ts",
+
+    "src-ui/src/lib/task-shaping.ts",
+
+    "src-ui/src/components/chat/TaskShapingComposer.tsx",
+
+    "src-ui/src/components/chat/TaskProposalCard.tsx",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-project-task-room-principal.test.ts",
+
+    "packages/contracts/src/task-graph.ts",
+
+    "src-server/routes/orchestration/tasks.ts",
+
+    "src-ui/src/contexts/active-chats-state.ts",
+
+    "src-server/routes/operations/usage-telemetry-disclosure.ts",
+
+    "src-server/services/usage-telemetry-service.ts",
+
+    "src-server/telemetry-delivery-state.ts",
+
+    "packages/contracts/src/telemetry-delivery.ts",
+
+    "packages/sdk/src/query-domains/telemetryDelivery.ts",
+
+    "packages/contracts/src/usage-export.ts",
+
+    "src-server/analytics/usage-export-reader.ts",
+
+    "src-server/services/layouts/personal-board-authoring.ts",
+
+    "src-server/services/layouts/personal-layout-operation.ts",
+
+    "packages/sdk/src/personal-board.ts",
+
+    "src-server/security/coding-authority.ts",
+
+    "packages/contracts/src/tool-library.ts",
+
+    "src-server/routes/tool-library.ts",
+
+    "src-server/runtime/routes/tool-library-runtime.ts",
+
+    "src-server/services/plugins/install-registry-integration.ts",
+
+    "src-server/services/plugins/tool-library-catalog.ts",
+
+    "src-server/services/plugins/tool-library-service.ts",
+
+    "src-server/domain/telemetry-configuration.ts",
+
+    "packages/cli/src/commands/telemetry.ts",
+
+    "src-server/monitoring/otlp-receiver.ts",
+
+    "src-server/routes/telemetry-producers.ts",
+
+    "src-server/services/telemetry-producers/telemetry-producer-store.ts",
+
+    "packages/contracts/src/plugin-telemetry.ts",
+
+    "packages/shared/src/plugin-telemetry.ts",
+
+    "src-server/services/plugin-telemetry-service.ts",
+
+    "src-server/services/plugins/plugin-telemetry-admission.ts",
+
+    "src-server/routes/operations/telemetry-events.ts",
+
+    "packages/sdk/src/client/plugin-telemetry.ts",
+
+    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts",
+
+    "src-server/services/projects/repository-acquisition-service.ts",
+
+    "src-server/routes/projects/repository-acquisition-routes.ts",
+
+    "src-server/domain/file-storage-schemas.ts",
+
+    "src-server/services/projects/project-creation-service.ts",
+
+    "src-ui/src/hooks/useProjectCreationRecovery.ts",
+
+    "src-server/services/knowledge/knowledge-document-import-service.ts",
+
+    "src-server/routes/knowledge/knowledge-document-import-routes.ts",
+
+    "src-server/knowledge-store/knowledge-write-authority.ts",
+
+    "src-server/services/projects/project-s3-sources.ts",
+
+    "src-server/routes/projects/project-s3-source-routes.ts",
+
+    "src-server/services/projects/repository-provider-catalog.ts",
+
+    "src-server/services/projects/operator-setup-service.ts",
+
+    "src-server/routes/projects/operator-setup-routes.ts",
+
+    "src-server/utils/process-group-exec.ts",
+
+    "src-ui/src/views/project-settings/ProjectOperatorSetup.tsx",
+
+    "src-server/utils/git-exec.ts",
+
+    "src-server/routes/orchestration/task-relationships.ts",
+
+    "src-server/services/projects/task-graph-service.ts",
+
+    "src-server/runtime/routes/task-relationship-authority.ts",
+
+    "src-server/services/projects/project-room-store.ts",
+
+    "src-server/services/projects/project-room-agent-module.ts",
+
+    "src-server/services/projects/project-room-agent-publication.ts",
+
+    "src-server/routes/projects/project-room-routes.ts",
+
+    "src-ui/src/views/project-page/ProjectRoom.tsx",
+
+    "src-ui/src/lib/project-onboarding-recovery.ts",
+
+    "src-server/analytics/source-grant-store.ts",
+
+    "src-server/analytics/source-export-proof.ts",
+
+    "src-server/analytics/recipient-store.ts",
+
+    "src-server/routes/operations/source-grant-export.ts",
+
+    "src-server/routes/operations/source-grant-approvals.ts",
+
+    "src-server/routes/operations/__tests__/source-credential-delivery.test.ts",
+
+    "src-server/routes/orchestration/task-room-attachment-http.ts",
+
+    "src-server/routes/orchestration/project-task-rooms.ts",
+
+    "src-server/services/consent/consent-transactions.ts",
+
+    "src-server/runtime/consent/consent-listener.ts",
+
+    "src-server/services/identity/operator-sessions.ts",
+
+    "src-server/routes/walkthroughs.ts",
+
+    "src-server/routes/chat/chat-primary-stream.ts",
+
+    "src-server/routes/orchestration/task-review.ts",
+
+    "src-server/services/projects/task-review-module.ts",
+
+    "src-server/services/orchestration/task-review-store.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-task-review.test.ts",
+
+    "src-server/services/terminal/shell-host.ts",
+
+    "src-server/services/terminal/terminal-sessions.ts",
+
+    "src-server/services/terminal/terminal-journal.ts",
+
+    "src-server/services/terminal/terminal-output-sanitizer.ts",
+
+    "src-server/adapters/file-terminal-history-store.ts",
+
+    "src-server/routes/projects/terminal-session-routes.ts",
+
+    "src-server/services/terminal/__tests__/terminal-sessions.process.test.ts",
+
+    "src-server/services/terminal/terminal-gateway.ts",
+
+    "src-server/services/terminal/terminal-channel-connection.ts",
+
+    "packages/contracts/src/terminal-transport.ts",
+
+    "src-server/adapters/pty-process-groups.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts",
+
+    "src-server/services/projects/task-browser-capture.ts",
+
+    "src-server/routes/orchestration/task-review-captures.ts",
+
+    "src-server/routes/__tests__/browser-agent-capture.test.ts",
+
+    "src-server/services/orchestration/task-review-send.ts",
+
+    "src-server/routes/orchestration/task-review-station-control.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-task-review-engine.test.ts"
   ],
 
   "checks": [

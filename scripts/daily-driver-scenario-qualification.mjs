@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// UNWIRED(#419): no lane runs the daily-driver qualification; #419's automated turn-2 qualification is the intended caller. See docs/strategy/daily-driver-qualification.md.
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
@@ -41,6 +42,7 @@ function sourceRevision(root, runGit = execFileSync) {
   const revision = runGit('git', ['rev-parse', 'HEAD'], {
     cwd: root,
     encoding: 'utf8',
+    windowsHide: true,
   }).trim();
   if (!/^[0-9a-f]{40}$/.test(revision))
     throw new Error('could not resolve a bounded source revision');
@@ -51,7 +53,7 @@ function assertCleanCheckout(root, runGit = execFileSync) {
   const status = runGit(
     'git',
     ['status', '--porcelain=v1', '--untracked-files=all'],
-    { cwd: root, encoding: 'utf8' },
+    { cwd: root, encoding: 'utf8', windowsHide: true },
   ).trim();
   if (status)
     throw new Error(
@@ -88,6 +90,7 @@ function executeFocusedPlaywright({
           [WRAPPER_ENV]: '1',
         },
         stdio: 'inherit',
+        windowsHide: true,
         timeout: remainingMs,
         killSignal: 'SIGTERM',
       },

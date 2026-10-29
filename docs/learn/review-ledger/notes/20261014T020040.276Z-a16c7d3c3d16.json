@@ -1,0 +1,7 @@
+{
+  "revision": "988949305e1df68541059efcb1e81d3e5f8ea739",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Reviewed the new 'Transcript layout tracing' section against transcriptLayoutTrace.ts (request check: explicit localStorage.debug matching app:transcript-layout via debug.enabled, or developerToolsEnabled; mark = sink null check then requested check; 200-mark pending replay with pending-marks-dropped) and transcriptLayoutTracer.ts (2,000-record ring with total/dropped, record fields, kinds, programmatic-vs-reader labelling only for ChatMessageList writes, layout-shift Chromium-only, overlay persisted in localStorage, data-testid node naming). Corrected two of my own draft claims: a development build also prints under the Developer tools setting (logger.ts enables app:* by default), and app WebViews are inspectable only in builds that allow it. Executed: tracer unit tests and the e2e journey that asserts the tracer attaches and records row resizes. Device workflows (chrome://inspect, Safari Web Inspector) are described from platform knowledge, not exercised on a device in this change. Rest of the guide unchanged and not re-reviewed.","inputs":["docs/guides/development.md","src-ui/src/components/chat/transcriptLayoutTrace.ts","src-ui/src/components/chat/transcriptLayoutTracer.ts","tests/transcript-load-stability.spec.ts"]}
+  ]
+}

@@ -29,8 +29,11 @@ vi.mock('@kontourai/station-sdk', () => ({
 
 import {
   answerOrchestrationRequest,
+  contentRefreshVersion,
   forgetApprovalAnswer,
   inspectApprovalAnswer,
+  readApprovalAnswerState,
+  recordViewedContentDigest,
 } from '../answerRequest';
 
 const request = {
@@ -77,6 +80,86 @@ describe('answerOrchestrationRequest', () => {
       answerOrchestrationRequest('http://api', request),
     ).rejects.toThrow('network error');
   });
+
+  test.each([undefined, 'server'] as const)(
+    'does not coalesce a different session grant scope into %s',
+    async (sessionGrantScope) => {
+      let finish!: () => void;
+      vi.mocked(resolveOrchestrationRequest).mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          }),
+      );
+      const intent = {
+        ...request,
+        decision: 'acceptForSession' as const,
+        ...(sessionGrantScope ? { sessionGrantScope } : {}),
+      };
+      const first = answerOrchestrationRequest('http://api', intent);
+      expect(answerOrchestrationRequest('http://api', intent)).toBe(first);
+      const other = {
+        ...request,
+        decision: 'acceptForSession' as const,
+        ...(sessionGrantScope ? {} : { sessionGrantScope: 'server' as const }),
+      };
+      const oppositeScopeAnswer = answerOrchestrationRequest(
+        'http://api',
+        other,
+      );
+      expect(oppositeScopeAnswer).not.toBe(first);
+      await expect(oppositeScopeAnswer).rejects.toThrow('still being sent');
+      expect(resolveOrchestrationRequest).toHaveBeenCalledTimes(1);
+      expect(
+        vi.mocked(resolveOrchestrationRequest).mock.calls[0][0]
+          .sessionGrantScope,
+      ).toBe(sessionGrantScope);
+      finish();
+      await expect(first).resolves.toBe('answered');
+      await expect(
+        answerOrchestrationRequest('http://api', intent),
+      ).resolves.toBe('answered');
+      expect(resolveOrchestrationRequest).toHaveBeenCalledTimes(1);
+      inspectAttentionRequest.mockResolvedValueOnce({
+        state: 'open',
+        canRespond: true,
+      });
+      await expect(inspectApprovalAnswer('http://api', request)).resolves.toBe(
+        'pending',
+      );
+
+      vi.mocked(resolveOrchestrationRequest).mockRejectedValueOnce(
+        new TypeError('Reply lost'),
+      );
+      inspectAttentionRequest.mockRejectedValueOnce(
+        new Error('Inspection unavailable'),
+      );
+      await expect(
+        answerOrchestrationRequest('http://api', intent),
+      ).rejects.toMatchObject({ code: 'approval_delivery_unconfirmed' });
+      const reference = { apiBase: 'http://api', ...request };
+      expect(readApprovalAnswerState(reference)).toMatchObject({
+        phase: 'unconfirmed',
+        decision: 'acceptForSession',
+      });
+      expect(readApprovalAnswerState(reference)?.sessionGrantScope).toBe(
+        sessionGrantScope,
+      );
+      inspectAttentionRequest.mockResolvedValueOnce({ state: 'resolved' });
+      await expect(inspectApprovalAnswer('http://api', request)).resolves.toBe(
+        'already-settled',
+      );
+      expect(readApprovalAnswerState(reference)).toEqual({
+        phase: 'already-settled',
+        decision: 'acceptForSession',
+        ...(sessionGrantScope ? { sessionGrantScope } : {}),
+      });
+      await expect(
+        answerOrchestrationRequest('http://api', other),
+      ).resolves.toBe('already-settled');
+      expect(resolveOrchestrationRequest).toHaveBeenCalledTimes(2);
+    },
+  );
 
   test('a first, successful answer resolves answered', async () => {
     vi.mocked(resolveOrchestrationRequest).mockResolvedValue(undefined as any);
@@ -134,6 +217,24 @@ describe('answerOrchestrationRequest', () => {
       expect(resolveOrchestrationRequest).toHaveBeenCalledTimes(2);
     },
   );
+  test('confirmed receipts cannot exhaust approval capacity after missed resolution events', async () => {
+    vi.mocked(resolveOrchestrationRequest).mockResolvedValue(undefined);
+    const requests = Array.from({ length: 257 }, (_, index) => ({
+      ...request,
+      requestId: `capacity-${index}`,
+    }));
+    try {
+      for (const reference of requests)
+        expect(await answerOrchestrationRequest('http://api', reference)).toBe(
+          'answered',
+        );
+      expect(resolveOrchestrationRequest).toHaveBeenCalledTimes(257);
+    } finally {
+      for (const reference of requests)
+        forgetApprovalAnswer(reference.threadId, reference.requestId);
+    }
+  });
+
   test('a verified Station refusal remains a refusal when inspection is unavailable', async () => {
     const refused = new ChatHttpError(
       403,
@@ -152,5 +253,37 @@ describe('answerOrchestrationRequest', () => {
       answerOrchestrationRequest('http://api', request),
     ).rejects.toBe(refused);
     expect(resolveOrchestrationRequest).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('docs/design/event-content-spill.md: allow digests', () => {
+  test('sends the recorded digest and reloads the content after a 409', async () => {
+    const resolve = vi.mocked(resolveOrchestrationRequest);
+    resolve.mockReset();
+    recordViewedContentDigest('thread-c', 'evt-c', `sha256-${'1'.repeat(64)}`);
+    resolve.mockRejectedValueOnce(
+      Object.assign(new Error('Load the full request before allowing it.'), {
+        code: 'request_content_not_loaded',
+      }),
+    );
+    inspectAttentionRequest.mockResolvedValue({
+      state: 'open',
+      canRespond: true,
+    });
+    const before = contentRefreshVersion('thread-c', 'evt-c');
+    await expect(
+      answerOrchestrationRequest('http://station.test', {
+        threadId: 'thread-c',
+        requestId: 'req-c',
+        requestEventId: 'evt-c',
+        decision: 'accept',
+      }),
+    ).rejects.toThrow('Station is loading more of this request');
+    expect(resolve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        viewedContentDigest: `sha256-${'1'.repeat(64)}`,
+      }),
+    );
+    expect(contentRefreshVersion('thread-c', 'evt-c')).toBe(before + 1);
   });
 });

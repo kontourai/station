@@ -172,6 +172,37 @@ describe('schema definitions', () => {
     expect(() =>
       credentialRecoveryPolicyRequestSchema.parse({ automatic: 'false' }),
     ).toThrow();
+    expect(
+      credentialRecoveryPolicyRequestSchema.parse({
+        automatic: true,
+        allowancePreference: {
+          windowId: 'secondary',
+          minimumRemainingPercent: 20,
+        },
+      }),
+    ).toMatchObject({
+      allowancePreference: {
+        windowId: 'secondary',
+        minimumRemainingPercent: 20,
+      },
+    });
+    for (const minimumRemainingPercent of [
+      0,
+      101,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      '20',
+    ]) {
+      expect(() =>
+        credentialRecoveryPolicyRequestSchema.parse({
+          automatic: true,
+          allowancePreference: {
+            windowId: 'secondary',
+            minimumRemainingPercent,
+          },
+        }),
+      ).toThrow();
+    }
     expect(() =>
       credentialProfileApplyRequestSchema.parse({ confirmed: false }),
     ).toThrow();

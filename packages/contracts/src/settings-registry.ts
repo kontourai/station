@@ -19,7 +19,7 @@ import { type AppConfig, templateVariableFormatError } from './config.js';
  */
 
 /** Who or what a setting controls, per docs/design/settings-architecture.md §3. */
-export type SettingScope = 'station' | 'defaults' | 'device';
+export type SettingScope = 'station' | 'defaults' | 'device' | 'account';
 
 export type SettingValueDescriptor =
   | { kind: 'string'; minLength?: number; maxLength?: number; pattern?: string }
@@ -96,6 +96,8 @@ export interface SettingDefinition<
    * declare it for a key whose resolver does not consult it.
    */
   envFallback?: string;
+  /** Compatibility fallbacks, in order, after a valid canonical environment value. */
+  envAliases?: readonly string[];
   secret?: boolean;
   /**
    * `null` is a legitimate STORED value for this key, distinct from absent
@@ -218,15 +220,129 @@ export const APP_SETTINGS_REGISTRY = [
     description: 'Minimum severity Station writes to its server logs.',
   }),
   defineSetting({
+    key: 'serverUpdateDownloadPolicy',
+    scope: 'station',
+    // `SERVER_UPDATE_DOWNLOAD_POLICIES` in system-status.ts, restated as a
+    // literal for the schema-parity test (see defaultApprovalMode below).
+    descriptor: {
+      kind: 'enum',
+      values: ['never', 'after-24h', 'immediately'],
+    },
+    label: 'Automatic server download',
+    help: 'A Station service downloads an available update by itself on this schedule; it restarts only when someone applies it.',
+    description:
+      'For a Station service installed from a release archive: download an available server update never, once it has been available for 24 hours, or immediately. Downloading verifies the release and keeps the server running; restarting into it always takes an explicit Restart (or Update when idle).',
+    // Confirmed against ServerUpdateCoordinator's policy read: absent falls
+    // through to DEFAULT_SERVER_UPDATE_DOWNLOAD_POLICY.
+    defaultValue: 'after-24h',
+  }),
+  defineSetting({
+    key: 'lanDiscoveryEnabled',
+    scope: 'station',
+    descriptor: { kind: 'boolean' },
+    label: 'Discover this Station nearby',
+    help: 'Make this Station name and local API address visible to nearby devices.',
+    description:
+      'Opt-in DNS-SD publication on reachable local interfaces. Discovery does not grant access; connecting still requires consent and host approval.',
+    defaultValue: false,
+  }),
+  defineSetting({
+    key: 'telemetryTier',
+    scope: 'station',
+    descriptor: { kind: 'composite' },
+    label: 'Telemetry tiers',
+    help: 'Choose Off, Lite aggregates, or acknowledged Full events independently for each publisher.',
+    description:
+      'Per-publisher consent. Absent choices default to Lite; DO_NOT_TRACK forces Off. Full requires the current disclosure. Lite sends only after the current publisher notice is shown.',
+    defaultValue: { kontour: 'lite', operator: 'lite' },
+  }),
+  defineSetting({
+    key: 'publicTelemetryRegistries',
+    scope: 'station',
+    descriptor: { kind: 'composite' },
+    userFacing: false,
+    label: 'Public telemetry registries',
+    help: 'Classify public catalog source keys; signature verification is also required.',
+    description:
+      'Only these public registries may supply publisher telemetry declarations.',
+  }),
+  defineSetting({
+    key: 'telemetryPublisherPolicy',
+    scope: 'station',
+    descriptor: { kind: 'composite' },
+    userFacing: false,
+    label: 'Telemetry publisher defaults',
+    help: 'Lower a publisher default; user choices take precedence and Full is never a default.',
+    description:
+      'Operator policy for publisher defaults. Distribution manifests will use the same resolver.',
+  }),
+  defineSetting({
     key: 'telemetryEnabled',
     scope: 'station',
     descriptor: { kind: 'boolean' },
-    label: 'Usage telemetry',
-    help: 'Station sends the documented anonymous product-usage events only while this is on and a telemetry endpoint is configured.',
+    userFacing: false,
+    label: 'Legacy usage telemetry',
+    help: 'Legacy input migrates to per-publisher telemetry tiers when the configuration is loaded.',
     description:
-      'Allow Station to send the documented anonymous product-usage events when this Station has a telemetry endpoint configured. No endpoint is configured by default, so nothing is sent.',
+      'Deprecated compatibility input: false becomes Off; true becomes Full only with a current disclosure, otherwise Lite.',
     defaultValue: true,
-    envFallback: 'STATION_TELEMETRY_ENABLED',
+    envFallback: 'STATION_PRODUCT_TELEMETRY_ENABLED',
+    envAliases: ['STATION_TELEMETRY_ENABLED'],
+  }),
+  defineSetting({
+    key: 'productTelemetryEndpoint',
+    scope: 'station',
+    descriptor: {
+      kind: 'string',
+      maxLength: 2048,
+      pattern: '^https?://[^\\s?#@]+$',
+    },
+    label: 'Product receiver address',
+    help: 'Station sends disclosed product observations to this full POST address.',
+    description:
+      'A saved address takes precedence over the product environment destination. No address is configured by default. Saving does not acknowledge disclosure or configure the OTel collector.',
+    envFallback: 'STATION_PRODUCT_TELEMETRY_ENDPOINT',
+    envAliases: ['STATION_TELEMETRY_ENDPOINT'],
+  }),
+  defineSetting({
+    key: 'productTelemetryKeyRef',
+    scope: 'station',
+    descriptor: {
+      kind: 'string',
+      maxLength: 64,
+      pattern: '^[a-z][a-z0-9-]{0,63}$',
+    },
+    label: 'Product receiver key reference',
+    help: 'Station resolves this instance secret binding for the configured product receiver.',
+    description:
+      'Enter a SecretBinding ID, never a key. The binding must grant this exact product destination; missing, revoked, person-owned or ungranted bindings fail without falling back to an environment key.',
+  }),
+  defineSetting({
+    key: 'otelTelemetryEndpoint',
+    scope: 'station',
+    descriptor: {
+      kind: 'string',
+      maxLength: 2048,
+      pattern: '^https?://[^\\s?#@]+$',
+    },
+    label: 'Collector address',
+    help: 'Station uses this collector for metrics and traces after restart.',
+    description:
+      'A saved OTLP HTTP base address takes precedence over OTEL_EXPORTER_OTLP_ENDPOINT. Restart activates it. It does not configure product observations or acknowledge disclosure.',
+    envFallback: 'OTEL_EXPORTER_OTLP_ENDPOINT',
+  }),
+  defineSetting({
+    key: 'otelTelemetryKeyRef',
+    scope: 'station',
+    descriptor: {
+      kind: 'string',
+      maxLength: 64,
+      pattern: '^[a-z][a-z0-9-]{0,63}$',
+    },
+    label: 'Collector key reference',
+    help: 'Station resolves this instance secret binding for its collector after restart.',
+    description:
+      'Enter a SecretBinding ID, never a key. The binding must grant this exact OTLP destination. It does not confer product or person authority; missing or revoked grants fail without environment fallback.',
   }),
   defineSetting({
     key: 'registryUrl',
@@ -291,6 +407,33 @@ export const APP_SETTINGS_REGISTRY = [
     help: 'After a restart, only the skill registries you add yourself appear, and Station’s built-in catalogs are skipped.',
     description:
       'Skip Station’s built-in skill catalogs after the next Station restart so only registries you add yourself appear.',
+  }),
+  defineSetting({
+    key: 'reviewGuidesEnabled',
+    scope: 'station',
+    descriptor: { kind: 'boolean' },
+    label: 'Review guides',
+    help: 'Allow AI-written tours of pull requests on this server.',
+    description:
+      'Enable shared, head-bound pull request guides. Generation sends the change to the configured model.',
+    defaultValue: false,
+  }),
+  defineSetting({
+    key: 'reviewGuideModel',
+    scope: 'station',
+    descriptor: { kind: 'string', maxLength: 255 },
+    label: 'Review guide model',
+    help: 'Choose the model that writes pull request guides.',
+    description: 'Uses the structure model when empty.',
+  }),
+  defineSetting({
+    key: 'reviewGuideInstructions',
+    scope: 'station',
+    descriptor: { kind: 'string', maxLength: 4000 },
+    label: 'Review guide instructions',
+    help: 'Change the emphasis and reading order of generated guides.',
+    description:
+      'Preferences cannot change file coverage, excerpt validation, or the guide format.',
   }),
   defineSetting({
     key: 'approvalGuardian',
@@ -396,9 +539,9 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'number', min: 1, integer: true },
     label: 'Default max turns',
-    help: 'Station stops an agent run once it has taken this many steps.',
+    help: 'Set the fallback step limit for VoltAgent runs; Strands and native engines do not apply this setting.',
     description:
-      'How many steps an agent may take in one run before Station stops it. Raise it for long-running work; lower it to rein in runaway agents.',
+      'Fallback step limit for VoltAgent runs when the Agent has no maxSteps or guardrails.maxSteps override. Strands and native engines do not apply this setting.',
     // `resolveMaxSteps` (src-server/constants.ts) falls through
     // `defaultMaxTurns || DEFAULT_MAX_STEPS` — the code's real absent-value
     // behavior is 200, not the file schema's stale documented "default": 10
@@ -472,7 +615,7 @@ export const APP_SETTINGS_REGISTRY = [
     // a settings row is not the place to teach it (round 4 N2: this
     // description had grown to 833 characters against a median of 110).
     description:
-      'Applied when any session starts, including unattended ones (webhooks, Discord, scheduled jobs, delegations): Full access here runs those with no sandbox and no approval prompts. Never applied to a session already running. Chats on Station’s own engine, and engines without an approval knob, ignore it.',
+      'Applied when any session starts, including unattended ones (webhooks, Discord, scheduled jobs, delegations), never to a session already running. Full access turns off approval prompts where the engine allows it; a start without a full-access grant, such as a webhook, still runs inside Station’s workspace confinement. Chats on Station’s own engine, and engines without an approval knob, ignore it.',
     // `'connection-default'` IS the honest fallback, not a placeholder for
     // one: `adapterDefaultApprovalMode` returns undefined for every engine
     // (station#1950 — Station no longer guesses Ask/Never), so "defer to the
@@ -660,12 +803,23 @@ export const NULLABLE_APP_CONFIG_KEYS: ReadonlySet<keyof AppConfig> = new Set(
 export const INTERNAL_APP_CONFIG_FIELDS = [
   'mcpUiFrameOrigin',
   'pluginFrameOrigin',
-  'managedChatOrchestration',
   // #1582 D9: runtime-derived on GET only — the shell this host would try
   // first when `terminalShell` is unset. It is the DEFAULT for a registered
   // setting, never a setting of its own, so it must not be writable.
   'defaultTerminalShell',
 ] as const satisfies readonly (keyof AppConfig)[];
+
+/**
+ * Keys an earlier release could leave in `config/app.json` that are no
+ * longer `AppConfig` fields. The loader deletes them on read, so a stale file
+ * still loads but neither echoes them from `GET /config/app` nor keeps them
+ * on disk. `PUT /config/app` ignores them as unknown keys.
+ *
+ * `managedChatOrchestration` was the runtime-derived
+ * `STATION_FEATURES=managed-chat-orchestration` flag (ADR 0010). ADR 0014
+ * recorded it as inert, and it was retired.
+ */
+export const RETIRED_APP_CONFIG_KEYS = ['managedChatOrchestration'] as const;
 
 type RegisteredKey = (typeof APP_SETTINGS_REGISTRY)[number]['key'];
 type InternalKey = (typeof INTERNAL_APP_CONFIG_FIELDS)[number];
@@ -727,7 +881,7 @@ export interface SanitizeAppConfigUpdateResult {
  * - Keys in `INTERNAL_APP_CONFIG_FIELDS` are runtime-derived and are always
  *   ignored (reason `'runtime-derived'`) — this is what stops a client that
  *   round-trips a `GET /config/app` response (which injects
- *   `mcpUiFrameOrigin`/`pluginFrameOrigin`/`managedChatOrchestration`) from persisting them.
+ *   `mcpUiFrameOrigin`/`pluginFrameOrigin`) from persisting them.
  * - Unknown keys are ignored (reason `'unknown'`), not rejected: earlier
  *   `app.json` files can carry stray keys that prior clients still
  *   round-trip, and rejecting the whole request over them would be a

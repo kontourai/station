@@ -1,0 +1,11 @@
+{
+  "revision": "6b8e06ef46f3c80bf1e10edf416e694658b3b4b9",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed the child-bearing transcript change at 6b8e06ef46f against MessageContent, child selection and the mounted streaming-parity regression. Settled phone folding now keeps original runs when they anchor children, preserving the focused second card and its expansion across widths. Old MessageContent injection failed the intended focus assertion; source restored byte-identically. UIBlock rendering and form/action semantics are unchanged; browser/provider evidence remains separately qualified.","inputs":["docs/design/placement.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the child-bearing transcript change at 6b8e06ef46f against MessageContent, child selection and the mounted streaming-parity regression. Settled phone folding now keeps original runs when they anchor children, preserving the focused second card and its expansion across widths. Old MessageContent injection failed the intended focus assertion; source restored byte-identically. UIBlock rendering and form/action semantics are unchanged; browser/provider evidence remains separately qualified.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/message-bubble/MessageContent.tsx"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Reviewed the MessageContent delta only against this dated bridge proposal: child-bearing tool folding changes preserve render order and state, while UIBlock dispatch, form submission and app authorization are untouched. Existing historical-versus-current distinctions remain accurate. No whole-bridge or live-provider qualification claimed.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/message-bubble/MessageContent.tsx"]}
+  ]
+}

@@ -26,9 +26,7 @@
   border-radius: 8px;
   background: var(--bg-secondary);
   color: var(--status-error, var(--text-primary));
-  /* The design-system step, shared with the dock's recovery notice
-     (`.session-history-error`), which stacks directly under this banner. */
-  font-size: var(--k-text-sm);
+  font-size: 0.82rem;
   min-width: 0;
 }
 

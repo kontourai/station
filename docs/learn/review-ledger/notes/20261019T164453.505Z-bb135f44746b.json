@@ -1,0 +1,7 @@
+{
+  "revision": "fa08748729eaaa67830668ab9c34982156ea20b7",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed the #342 delta to ChatMessageList.tsx and chat.css (turn rail rendered as a zero-height sibling after the transcript scroller; turn steps beside Scroll to bottom in the existing activity-row portal; one selector added to the narrow activity row 44px rule). No region, surface, pane, dock placement or opener behavior described here changes; no prose change.","inputs":["docs/design/placement.md","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

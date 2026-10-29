@@ -1,0 +1,13 @@
+{
+  "revision": "711d92ef138364f96b0084d0e79f9d50d559dd5e",
+
+  "notes": [
+    {"path":"packages/cli/CHANGELOG.md","note":"Reviewed the formatting-only delta at 711d92ef against e95ab1a: removed only spaces from 2 blank lines in the new release section. All nonblank text, versions, dependency statements and historical sections remain byte-identical. The original full-range whitespace check reproduced 14 errors; the corrected full-range check and ignore-space-at-eol comparison pass. This review covers formatting only and makes no new runtime or publication claim.","inputs":["packages/cli/CHANGELOG.md"]},
+
+    {"path":"packages/contracts/CHANGELOG.md","note":"Reviewed the formatting-only delta at 711d92ef against e95ab1a: removed only spaces from 5 blank lines in the new release section. All nonblank text, versions, dependency statements and historical sections remain byte-identical. The original full-range whitespace check reproduced 14 errors; the corrected full-range check and ignore-space-at-eol comparison pass. This review covers formatting only and makes no new runtime or publication claim.","inputs":["packages/contracts/CHANGELOG.md"]},
+
+    {"path":"packages/sdk/CHANGELOG.md","note":"Reviewed the formatting-only delta at 711d92ef against e95ab1a: removed only spaces from 5 blank lines in the new release section. All nonblank text, versions, dependency statements and historical sections remain byte-identical. The original full-range whitespace check reproduced 14 errors; the corrected full-range check and ignore-space-at-eol comparison pass. This review covers formatting only and makes no new runtime or publication claim.","inputs":["packages/sdk/CHANGELOG.md"]},
+
+    {"path":"packages/shared/CHANGELOG.md","note":"Reviewed the formatting-only delta at 711d92ef against e95ab1a: removed only spaces from 2 blank lines in the new release section. All nonblank text, versions, dependency statements and historical sections remain byte-identical. The original full-range whitespace check reproduced 14 errors; the corrected full-range check and ignore-space-at-eol comparison pass. This review covers formatting only and makes no new runtime or publication claim.","inputs":["packages/shared/CHANGELOG.md"]}
+  ]
+}

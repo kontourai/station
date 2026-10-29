@@ -55,6 +55,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
       staleTime: 10_000,
     }),
 }));
+vi.mock('../../contexts/AgentsContext', () => ({ useAgents: () => [] }));
 vi.mock('../../contexts/ApiBaseContext', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useApiBase: () => ({ apiBase: current.apiBase }),

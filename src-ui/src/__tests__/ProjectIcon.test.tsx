@@ -61,6 +61,7 @@ describe('ProjectIcon', () => {
     const dot = mark(
       <ProjectIcon project={{ name: 'Station' }} size={12} accent="red" />,
     );
+    expect(dot?.getAttribute('title')).toBe('Station');
     expect(dot?.classList.contains('project-icon--dot')).toBe(true);
     expect([dot?.style.width, dot?.style.height]).toEqual(['6px', '6px']);
 

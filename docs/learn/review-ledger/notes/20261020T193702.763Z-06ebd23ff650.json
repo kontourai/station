@@ -1,0 +1,7 @@
+{
+  "revision": "7c104d7d9247539436187599f2e38a3e81ada7ee",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"#3800 round 6: only the linked approval-posture design section on the Codex confinement root changed (canonical comparison). This document makes no claim about it; no prose change needed.","inputs":["docs/design/automations.md","docs/design/approval-posture-server-ordered.md"]}
+  ]
+}

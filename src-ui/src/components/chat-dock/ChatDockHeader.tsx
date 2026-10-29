@@ -1,4 +1,5 @@
 import type React from 'react';
+import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { toastStore } from '../../contexts/ToastContext';
@@ -15,17 +16,14 @@ import {
   ChatDockHeaderMoreMenu,
   type DockMoreAction,
 } from './ChatDockHeaderMoreMenu';
-import { inboxToggleLabel } from './inbox-toggle-label';
+import { inboxToggleLabel, workingChatsLabel } from './inbox-toggle-label';
 import {
   toggleSessionInventoryOccurrence,
   useSessionInventoryHostRegistered,
   useSessionInventoryOccurrence,
 } from './sessionInventoryOccurrence';
+import './ChatDockHeader.css';
 
-const loadChatDockSessionInventoryHost = () =>
-  import('./ChatDockWorkspaceControls').then((module) => ({
-    default: module.ChatDockSessionInventoryHost,
-  }));
 const loadChatDockWorkspaceActions = () =>
   import('./ChatDockWorkspaceControls').then((module) => ({
     default: module.ChatDockWorkspaceActions,
@@ -67,6 +65,11 @@ export interface ChatDockWorkspaceControls {
   isInboxOpen: boolean;
   /** The inbox's "Needs you" count, named on the toggle while it is hidden. */
   inboxNeedsYouCount?: number;
+  /**
+   * The inbox's Running rows (`useInboxWorkingCount`): the "N working" the
+   * toggle wears is the count of exactly those rows.
+   */
+  inboxWorkingCount?: number;
   onToggleInbox: () => void;
   /** station#1301 slice 1: the Background tasks sheet's desktop anchor. */
   backgroundTasksTriggerRef: React.RefObject<HTMLButtonElement | null>;
@@ -95,6 +98,18 @@ export interface ChatDockWorkspaceControls {
     mountRef: React.RefObject<HTMLDivElement | null>;
     dockMode: DockMode;
     fullscreen: boolean;
+    /**
+     * A phone presents the inventory as its full-height sheet. The desktop
+     * header never mounts on a phone, so only the dock's own phone host
+     * sets this.
+     */
+    isMobile?: boolean;
+    /**
+     * Where focus goes when the inventory closes and the element that opened
+     * it is gone (#3882: the session context card folds while the inventory
+     * is open, taking its Chat inventory button with it).
+     */
+    restoreFocusFallback?: () => void;
   };
   onOpenConversation: () => void;
   /** Opens the New Chat picker, where installed Skills appear too (#3170). */
@@ -102,35 +117,38 @@ export interface ChatDockWorkspaceControls {
 }
 
 /**
- * Chat's OWN toolbar (#2046 2b): the identity, context meter, project
- * context, unread badge and More menu of the Chat pane.
- * Inside a region host it renders into the region bar's two slots
- * (`RegionChromeSlots`) so the dock keeps one chrome bar; the region's own
- * controls — placement grab, tab strip, maximize, visibility, the click
- * surface that collapses the bar — are `RegionChromeBar`'s, rendered by the
- * host from the shell's chrome, and no longer live here. The full-screen
- * placement has no region bar and renders this as its own `.chat-dock__header`.
+ * Chat's OWN toolbar (#2046 2b). What belongs here is the chat on screen and
+ * the dock's primary verbs: the identity (title, agent, engine, on one line),
+ * the inbox toggle, New with its destination project, and ONE overflow menu
+ * that holds everything else — the working chats, the chat's commands, and
+ * the region's own commands when the region host offers them
+ * (`RegionMenu`). The context meter lives in the composer beside the model
+ * it measures; branch and directory facts live in the session context card.
+ * See docs/design/placement.md, "What the dock header holds".
+ *
+ * Inside a region host it renders into the region bar's slots
+ * (`RegionChromeSlots`) so the dock keeps one chrome bar; the region's
+ * placement grab, tab strip and visibility chevron are `RegionChromeBar`'s.
+ * The full-screen placement has no region bar and renders this as its own
+ * `.chat-dock__header`.
  */
 interface ChatDockHeaderProps {
   /** Absent for a non-Chat occupant — see `ChatDockHeaderChatControls`. */
   chatControls?: ChatDockHeaderChatControls;
   /**
-   * The active chat's project context, rendered inline in this row rather
-   * than as a third chrome bar below it. The desktop dock used to stack
-   * header / identity+actions / project-context; the header's left side was
-   * mostly empty and the project NAME was already shown as a badge in the
-   * identity row, so the third row cost a row of vertical space to repeat
-   * one label (#1064).
+   * Where New starts a chat: the dock's project, as the second half of the
+   * New split button (`ChatDockProjectContext`). It changes the destination
+   * only; switching never opens or creates a chat (#4524).
    */
   projectContext?: React.ReactNode;
   /** Active conversation title + engine/Flow identity, sharing this row. */
   chatIdentity?: React.ReactNode;
+  /** Imported chats keep their origin visible when no composer owns that context. */
+  retainIdentityInNamedPane?: boolean;
   /** Full-screen layout placement: no region bar, so this renders its own. */
   fullscreen?: boolean;
   /** #3309: tab-strip controls folded into this bar. Absent while collapsed. */
   workspaceControls?: ChatDockWorkspaceControls;
-  /** The active session's compact context meter, rendered beside identity. */
-  contextMeter?: React.ReactNode;
   /**
    * Whether the region is showing: a collapsed bar offers the icon-only New
    * chat action in place of the open pane's own CTA (#800).
@@ -143,17 +161,29 @@ interface ChatDockHeaderProps {
    * own rows.
    */
   moreActions?: readonly DockMoreAction[];
+  /**
+   * The session context card's chip, shown while the dock is too narrow for
+   * the card itself. Absent while the card is beside the transcript.
+   */
+  sessionContextChip?: React.ReactNode;
+  /**
+   * The session context card carries the background-task count while it is
+   * beside the transcript, so the More trigger does not repeat it.
+   */
+  backgroundTasksBadgeHidden?: boolean;
 }
 
 export function ChatDockHeader({
   chatIdentity,
+  retainIdentityInNamedPane = false,
   projectContext,
   chatControls,
   fullscreen = false,
   workspaceControls,
-  contextMeter,
   regionVisible,
   moreActions,
+  sessionContextChip,
+  backgroundTasksBadgeHidden = false,
 }: ChatDockHeaderProps) {
   const isDockOpen = regionVisible;
   const slots = useRegionChromeSlots();
@@ -164,6 +194,13 @@ export function ChatDockHeader({
   const activeSessions = (chatControls?.sessions ?? []).filter((s) =>
     isSessionWorkActive(s),
   );
+  const unreadCount = chatControls?.unreadCount ?? 0;
+  const regionMenu = slots && !fullscreen ? slots.regionMenu : undefined;
+  const absorbRegionActions = regionMenu?.absorb;
+  // While this toolbar is in the bar, the region's commands are rows of its
+  // More menu and the bar drops its own buttons for them.
+  useEffect(() => absorbRegionActions?.(), [absorbRegionActions]);
+  const showInboxToggle = Boolean(workspaceControls?.showInboxToggle);
   const inventory = workspaceControls?.sessionInventory;
   const inventoryOccurrence = useSessionInventoryOccurrence(
     inventory?.hostId ?? '',
@@ -181,6 +218,28 @@ export function ChatDockHeader({
    * them holding width the title needs.
    */
   const dockMoreActions: DockMoreAction[] = [
+    // The working chats, first: the quick jump the bar's "N chats working"
+    // dropdown used to be. Their count rides the inbox toggle (or, without
+    // one, this menu's trigger); the per-chat chords still work everywhere.
+    ...activeSessions.map((session) => {
+      const index = (chatControls?.sessions ?? []).findIndex(
+        (item) => item.id === session.id,
+      );
+      const shortcut =
+        index >= 0 && index < 9
+          ? shortcutDisplay(`dock.session${index + 1}`)
+          : '';
+      return {
+        key: `working-${session.id}`,
+        label: session.title,
+        glyph: <span className="chat-dock__working-glyph" aria-hidden="true" />,
+        ...(shortcut ? { shortcut } : {}),
+        onSelect: (trigger: HTMLElement) => {
+          trigger.focus();
+          chatControls?.focusSession(session.id);
+        },
+      };
+    }),
     // B1: "Open" was the bar's second labelled button for the same noun as
     // "New". It is the menu's first row, with its chord where the tooltip
     // used to carry it.
@@ -246,6 +305,7 @@ export function ChatDockHeader({
               // the same route).
               if (
                 !toggleSessionInventoryOccurrence({
+                  full: true,
                   hostId: inventory.hostId,
                   projectId: inventory.projectId,
                   executionRead: inventory.executionRead,
@@ -260,7 +320,29 @@ export function ChatDockHeader({
         ]
       : []),
     ...(moreActions ?? []),
-  ];
+    ...(regionMenu?.actions ?? []),
+  ].map((action, index, rows) =>
+    // The commands after the working chats start their own group.
+    index > 0 &&
+    rows[index - 1]?.key.startsWith('working-') &&
+    !action.key.startsWith('working-')
+      ? { ...action, separatorBefore: true }
+      : action,
+  );
+  // The same fact the inbox rows show when the dock has it; the open chat
+  // tabs only without one (a dock with no inbox behind it).
+  const workingCount =
+    workspaceControls?.inboxWorkingCount ?? activeSessions.length;
+  const workingLabel = workingChatsLabel(workingCount, unreadCount);
+  const backgroundTasksCount = backgroundTasksBadgeHidden
+    ? 0
+    : (workspaceControls?.backgroundTasksRunningCount ?? 0);
+  const backgroundTasksLabel =
+    backgroundTasksCount > 0
+      ? `${backgroundTasksCount} background task${backgroundTasksCount === 1 ? '' : 's'} running`
+      : undefined;
+  // The inbox toggle shows the working count as a number.
+  const toggleWearsNumber = showInboxToggle && workingCount > 0;
 
   // No "Chat Dock" label: the dock is the only thing this chrome can belong
   // to, and the row's space is worth more to the project context than to
@@ -273,126 +355,103 @@ export function ChatDockHeader({
   // More menu in the actions cluster now. #1529 (#928 C2b) took the occupant
   // picker with the legacy docked-Home path. #2046 2b took the placement grab
   // too: it moved to the region bar with the tab strip, since it moves the
-  // REGION and not this pane. What is left is the invisible inventory host
-  // and the pane's own identity.
+  // REGION and not this pane. The inbox toggle sits before that chrome.
+  const inboxToggle =
+    showInboxToggle && workspaceControls ? (
+      <button
+        type="button"
+        className="chat-dock__icon-btn chat-dock__inbox-toggle"
+        aria-label={inboxToggleLabel(
+          workspaceControls.isInboxOpen,
+          workspaceControls.inboxNeedsYouCount,
+          workingCount,
+          unreadCount,
+        )}
+        title={inboxToggleLabel(
+          workspaceControls.isInboxOpen,
+          workspaceControls.inboxNeedsYouCount,
+          workingCount,
+          unreadCount,
+        )}
+        aria-pressed={workspaceControls.isInboxOpen}
+        data-unread={unreadCount > 0 ? '' : undefined}
+        onClick={workspaceControls.onToggleInbox}
+      >
+        <svg
+          aria-hidden="true"
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="none"
+        >
+          <rect
+            x="2"
+            y="2"
+            width="12"
+            height="12"
+            rx="2"
+            stroke="currentColor"
+          />
+          <path d="M6 2v12" stroke="currentColor" />
+          <path
+            d={workspaceControls.isInboxOpen ? 'm10 6-2 2 2 2' : 'm9 6 2 2-2 2'}
+            stroke="currentColor"
+          />
+        </svg>
+        {workingCount > 0 ? (
+          <span className="chat-dock__inbox-working" aria-hidden="true">
+            {workingCount}
+          </span>
+        ) : null}
+      </button>
+    ) : null;
+
   const leading = (
     <>
-      {inventory ? (
-        <LazyBoundary
-          load={loadChatDockSessionInventoryHost}
-          pending={null}
-          componentProps={{ sessionInventory: inventory }}
-        />
+      {slots?.start === undefined ? inboxToggle : null}
+      {chatIdentity && (!slots?.namesPane || retainIdentityInNamedPane) ? (
+        <div
+          className={`chat-dock__header-identity${slots?.namesPane ? ' chat-dock__header-identity--pane' : ''}`}
+        >
+          {chatIdentity}
+        </div>
       ) : null}
-      {chatIdentity && !slots?.namesPane ? (
-        <div className="chat-dock__header-identity">{chatIdentity}</div>
-      ) : null}
-      {contextMeter ? (
-        <div className="chat-dock__header-meter">{contextMeter}</div>
-      ) : null}
-      {projectContext ? (
-        <div className="chat-dock__header-context">{projectContext}</div>
-      ) : null}
+      {sessionContextChip ?? null}
     </>
   );
 
   const trailing = (
     <>
-      {workspaceControls?.showInboxToggle && (
+      {inventory ? (
         <button
           type="button"
-          className="chat-dock__icon-btn"
-          aria-label={inboxToggleLabel(
-            workspaceControls.isInboxOpen,
-            workspaceControls.inboxNeedsYouCount,
-          )}
-          title={inboxToggleLabel(
-            workspaceControls.isInboxOpen,
-            workspaceControls.inboxNeedsYouCount,
-          )}
-          aria-pressed={workspaceControls.isInboxOpen}
-          onClick={workspaceControls.onToggleInbox}
+          className="chat-dock__inventory-button"
+          aria-label="Chat inventory"
+          title="Messages, tool results, decisions and outputs in this chat"
+          aria-expanded={Boolean(inventoryOccurrence)}
+          disabled={!inventoryReady}
+          onClick={(event) =>
+            dockMoreActions
+              .find((action) => action.key === 'session-inventory')
+              ?.onSelect(event.currentTarget)
+          }
         >
-          <svg
-            aria-hidden="true"
-            width="16"
-            height="16"
-            viewBox="0 0 16 16"
-            fill="none"
-          >
-            <rect
-              x="2"
-              y="2"
-              width="12"
-              height="12"
-              rx="2"
-              stroke="currentColor"
-            />
-            <path d="M6 2v12" stroke="currentColor" />
-            <path
-              d={
-                workspaceControls.isInboxOpen ? 'm10 6-2 2 2 2' : 'm9 6 2 2-2 2'
-              }
-              stroke="currentColor"
-            />
-          </svg>
+          Inventory
         </button>
-      )}
-      {workspaceControls ? (
-        <LazyBoundary
-          load={loadChatDockWorkspaceActions}
-          pending={null}
-          componentProps={{
-            ...workspaceControls,
-            iconOnly: Boolean(slots?.namesPane),
-          }}
-        />
       ) : null}
-      {activeSessions.length > 0 && (
-        <div className="chat-dock__activity">
-          <button type="button" className="chat-dock__activity-btn">
-            <span className="loading-dots">
-              <span>●</span>
-              <span>●</span>
-              <span>●</span>
-            </span>
-            {activeSessions.length}
-          </button>
-          <div className="chat-dock__activity-dropdown">
-            {activeSessions.map((session) => {
-              const idx = (chatControls?.sessions ?? []).findIndex(
-                (s) => s.id === session.id,
-              );
-              return (
-                <button
-                  type="button"
-                  key={session.id}
-                  className="chat-dock__activity-item"
-                  onClick={() => chatControls?.focusSession(session.id)}
-                >
-                  <span className="chat-dock__activity-label">
-                    {session.title}
-                  </span>
-                  {/*
-                      `dock.session1`…`dock.session9` are Cmd-N on macOS and
-                      Ctrl-N everywhere else; the literal `⌘{n}` that used to
-                      sit here named a chord no Windows or Linux user could
-                      press (#1649). `getDisplay` returns '' for a session
-                      index nothing has registered, and
-                      `.chat-dock__subtitle:empty` hides the badge rather than
-                      drawing an empty keycap.
-                    */}
-                  {idx < 9 && (
-                    <span className="chat-dock__subtitle">
-                      {shortcutDisplay(`dock.session${idx + 1}`)}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+      {workspaceControls ? (
+        <div className="chat-dock__new-split">
+          <LazyBoundary
+            load={loadChatDockWorkspaceActions}
+            pending={null}
+            componentProps={{
+              ...workspaceControls,
+              iconOnly: Boolean(slots?.namesPane),
+            }}
+          />
+          {projectContext && !slots?.namesPane ? projectContext : null}
         </div>
-      )}
+      ) : null}
       {/* #800: the COLLAPSED bar's one affordance, a real action: the same
           New chat action every other chrome uses, icon-only and named, so
           the bar no longer offers a second worded way to start ("Start a
@@ -414,26 +473,36 @@ export function ChatDockHeader({
             }}
           />
         )}
-      {chatControls && chatControls.unreadCount > 0 && (
-        <span className="chat-dock__badge">{chatControls.unreadCount}</span>
-      )}
-      <ChatDockHeaderMoreMenu
-        actions={dockMoreActions}
-        // The Background tasks sheet anchors to the control that opened it,
-        // and since #1536 F that control is this menu's trigger.
-        triggerRef={workspaceControls?.backgroundTasksTriggerRef}
-        // Folding Background tasks into the menu took its running-count badge
-        // off the bar with it, and a count that only exists inside a closed
-        // menu is not a signal. It rides the trigger instead.
-        badgeCount={workspaceControls?.backgroundTasksRunningCount ?? 0}
-        badgeLabel={
-          workspaceControls && workspaceControls.backgroundTasksRunningCount > 0
-            ? `${workspaceControls.backgroundTasksRunningCount} background task${
-                workspaceControls.backgroundTasksRunningCount === 1 ? '' : 's'
-              } running`
-            : undefined
-        }
-      />
+      {/* The working chats are rows of this menu, so choosing one may hand
+          focus on to that chat's composer (`useWorkingChatFocus`). */}
+      <span className="chat-dock__more" data-working-chat-origin="">
+        <ChatDockHeaderMoreMenu
+          actions={dockMoreActions.filter(
+            (action) => action.key !== 'session-inventory',
+          )}
+          // With no inbox toggle on the bar (a side dock, a collapsed bar),
+          // the working and unread counts ride this trigger instead, the way
+          // the phone's Chat actions trigger carries them. While the toggle
+          // wears its own number, the background-task count rides here as a
+          // dot (still named in the trigger), so the bar never shows two
+          // number badges side by side.
+          status={
+            showInboxToggle
+              ? toggleWearsNumber
+                ? backgroundTasksLabel
+                : undefined
+              : workingLabel
+          }
+          // The Background tasks sheet anchors to the control that opened it,
+          // and since #1536 F that control is this menu's trigger.
+          triggerRef={workspaceControls?.backgroundTasksTriggerRef}
+          // Folding Background tasks into the menu took its running-count badge
+          // off the bar with it, and a count that only exists inside a closed
+          // menu is not a signal. It rides the trigger instead.
+          badgeCount={toggleWearsNumber ? 0 : backgroundTasksCount}
+          badgeLabel={toggleWearsNumber ? undefined : backgroundTasksLabel}
+        />
+      </span>
     </>
   );
 
@@ -451,6 +520,7 @@ export function ChatDockHeader({
   if (slots && (!fullscreen || slots.namesPane)) {
     return (
       <>
+        {slots.start ? createPortal(inboxToggle, slots.start) : null}
         {slots.leading ? createPortal(leading, slots.leading) : null}
         {slots.trailing ? createPortal(trailing, slots.trailing) : null}
       </>
@@ -460,6 +530,7 @@ export function ChatDockHeader({
   return (
     <div className="chat-dock__header">
       <div className="chat-dock__title">
+        {slots?.start !== undefined ? inboxToggle : null}
         {leading}
         {/* The row's growth, on an empty element rather than inside any of the
             labels above: the identity and the project context used to grow

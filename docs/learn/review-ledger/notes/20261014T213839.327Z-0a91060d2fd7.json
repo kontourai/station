@@ -1,0 +1,7 @@
+{
+  "revision": "4e7d83dccc95df9e8ad1bcb4f9348de5f9eed179",
+
+  "notes": [
+    {"path":"docs/learn/media/repository-knowledge.png","note":"packages/sdk/src/client/knowledge.ts changed only by adding searchKnowledgeIndexWithReport and splitting envelope unwrapping; unwrapKnowledgeResponse still returns data for every fetcher this capture's repository-knowledge view uses (roots, records, graph), so the captured render is unaffected. Image bytes not re-captured.","inputs":["docs/learn/media/repository-knowledge.png","packages/sdk/src/client/knowledge.ts"]}
+  ]
+}

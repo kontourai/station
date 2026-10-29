@@ -125,7 +125,7 @@ interface NativeEngineAdoptionDeps {
  *
  * 'interrupted' is that case: the window closed before this candidate got a
  * usable answer, or got one and was stopped before it could act on it.
- * Added in station#1815, corrected in its second review round — the first
+ * Added in station#1815 and corrected within that issue — the first
  * version consulted the signal only BEFORE the probe, which is a few
  * instructions, while the window an abort actually lands in is the probe's
  * whole duration.
@@ -186,7 +186,7 @@ export async function adoptDetectedNativeEngines(
     }
     return { outcomes };
   }
-  // archive#3662 review MEDIUM-2: its OWN failure boundary. A home this
+  // archive#3662: its OWN failure boundary. A home this
   // process cannot write is a real state (read-only mount, a filesystem that
   // refuses the atomic replace), and it must neither abort native-engine
   // detection — which is a separate question — nor pass silently. The record
@@ -211,7 +211,7 @@ export async function adoptDetectedNativeEngines(
   // intact, but close the adoption window before any host probe can run.
   if (nativeEngineAdoptionSuppressed(deps.env ?? process.env)) {
     for (const candidate of NATIVE_ENGINE_CANDIDATES) {
-      // 'suppressed', not 'absent' (station#1815 review round 2): `detect` is
+      // 'suppressed', not 'absent' (station#1815): `detect` is
       // called zero times here, so an absence would be a claim about a host
       // nothing looked at.
       outcomes[candidate.id] = 'suppressed';
@@ -265,8 +265,8 @@ export async function adoptDetectedNativeEngines(
           signal: deps.signal,
           timeoutMs: ADOPTION_PROBE_TIMEOUT_MS,
         });
-        // Consulted AFTER the probe, which is the correction the second
-        // #1815 review round forced. `detectCliOnPath` resolves `false` on
+        // Consulted AFTER the probe; #1815 corrected an earlier check that
+        // ran only before it. `detectCliOnPath` resolves `false` on
         // abort rather than rejecting, so under an aborted signal `found` is
         // not an answer about the host — it is the cancellation arriving
         // through the answer channel. The guard above this `try` covers only

@@ -1,0 +1,7 @@
+{
+  "revision": "116a15b10aa2f78a7a353789d3fc8f71a29cccb1",
+
+  "notes": [
+    {"path":"docs/design/task-room-agent-requests.md","note":"Added the 256-per-Session reply admission cap and its refusal behaviour, verified against MAX_REQUESTS in task-room-work-module.ts.","inputs":["docs/design/task-room-agent-requests.md"]}
+  ]
+}

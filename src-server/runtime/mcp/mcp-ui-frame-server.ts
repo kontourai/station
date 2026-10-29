@@ -9,7 +9,10 @@
  */
 import { randomBytes } from 'node:crypto';
 import { serve } from '@hono/node-server';
+import { buildHtmlReplyProxyDocument } from '@kontourai/station-shared/html-reply-document';
+import { MCP_UI_NETWORK_BOOTSTRAP_TAG } from '@kontourai/station-shared/mcp-ui-csp';
 import { Hono } from 'hono';
+import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
 import { mcpUiFrameServeTotal } from '../../telemetry/metrics.js';
 import { sanitizedTransportError } from '../../utils/outward-error.js';
 
@@ -32,17 +35,19 @@ export interface McpUiFrameAppOptions {
 /**
  * Build the fixed Station UI origin set used by the proxy's framing policy.
  *
- * This mirrors the runtime's trusted browser origins, but stays local to the
- * proxy so an untrusted request can never expand the frame-ancestors policy.
+ * The origins are the runtime's trusted browser origins
+ * (`resolveStationBrowserOrigins`), narrowed to what a CSP `frame-ancestors`
+ * source list can express. They come from configuration only, so an untrusted
+ * request can never expand the policy.
  */
 export function resolveMcpUiFrameAncestors(options: {
   port: number;
   host?: string;
-  additionalOrigins?: readonly string[];
+  /** Comma-separated `ALLOWED_ORIGINS` value; defaults to the environment. */
+  allowedOriginsEnv?: string;
 }): string[] {
   const origins = new Set<string>();
-  const add = (origin: string | undefined) => {
-    if (!origin) return;
+  const add = (origin: string) => {
     try {
       const url = new URL(origin);
       if (
@@ -53,6 +58,9 @@ export function resolveMcpUiFrameAncestors(options: {
       ) {
         return;
       }
+      // CSP host-source grammar does not accept IPv6 literals in these
+      // browsers, so localhost and IPv4 are the supported loopback origins.
+      if (url.hostname.startsWith('[')) return;
       // URL.origin is "null" for Tauri's custom scheme, while CSP accepts
       // the concrete tauri://localhost source expression.
       origins.add(url.protocol === 'tauri:' ? 'tauri://localhost' : url.origin);
@@ -61,17 +69,7 @@ export function resolveMcpUiFrameAncestors(options: {
     }
   };
 
-  for (const origin of options.additionalOrigins ?? []) add(origin);
-  add(`http://localhost:${options.port}`);
-  add(`http://127.0.0.1:${options.port}`);
-  add(`http://[::1]:${options.port}`);
-  add('tauri://localhost');
-  add('https://tauri.localhost');
-  add('http://tauri.localhost');
-  if (options.host && options.host !== '0.0.0.0' && options.host !== '::') {
-    add(`http://${options.host}:${options.port}`);
-    add(`https://${options.host}:${options.port}`);
-  }
+  for (const origin of resolveStationBrowserOrigins(options)) add(origin);
   return [...origins];
 }
 
@@ -108,6 +106,16 @@ export function createMcpUiFrameApp(options: McpUiFrameAppOptions = {}): Hono {
     );
   });
 
+  app.get('/html-reply/frame', (c) =>
+    c.html(buildHtmlReplyProxyDocument(options.frameAncestors ?? []), 200, {
+      ...SECURITY_HEADERS,
+      ...frameHeaders,
+      // Restrict child navigations as well as its initial srcdoc. This policy
+      // is inherited by the opaque child; its own policy denies nested frames.
+      'Content-Security-Policy': `frame-ancestors ${frameAncestors}; frame-src 'none'`,
+    }),
+  );
+
   // Plugins use the same dedicated, asset-free origin as MCP Apps.  In
   // particular, do not add a static-file fallback here: extension bytes cross
   // the authenticated host bridge and are never fetched by this document.
@@ -143,8 +151,8 @@ export function createMcpUiFrameApp(options: McpUiFrameAppOptions = {}): Hono {
  * archive#4201 step 3 makes the downlink load-bearing: the pane-host
  * contract's `confirm` resolves with the user's decision and its `facts` push
  * on change, and a request/response member whose response cannot be delivered
- * is a capability that only looks implemented. So the three pane-host replies
- * are relayed down to the plugin frame.
+ * is a capability that only looks implemented. So the pane-host replies are
+ * relayed down to the plugin frame.
  *
  * The relay is an ALLOWLIST, not a pass-through, and the uplink's rule is why:
  * one layer up, a message the adapter does not recognise is refused rather
@@ -152,13 +160,18 @@ export function createMcpUiFrameApp(options: McpUiFrameAppOptions = {}): Hono {
  * future host→frame message reaches plugin code with nobody deciding it
  * should.
  *
- * `DOWN` therefore names the three pane-host replies and nothing else. It is
- * NOT a list of one message being withheld: it is the general property that
+ * `DOWN` therefore names the pane-host replies and nothing else. It is NOT a
+ * list of one message being withheld: it is the general property that
  * every host→frame message is decided one at a time. This list previously
  * carried an argument about `api-response`, the reply half of the frame's
  * `api-request` bridge; archive#4300 deleted that bridge outright, so there is
  * no longer a message being kept out — there is only the allowlist, and the
  * next member added to it needs its own reason on its own review.
+ *
+ * `pane-host/related-result` is the answer to the frame's own related-pane
+ * request (`PaneRelatedPanesHost`): plain data — an outcome, an opaque handle
+ * the host minted, or the target this pane was opened for — correlated by the
+ * id the frame sent, so it carries nothing the plugin did not ask for.
  *
  * `'*'` is the only available targetOrigin: the inner frame is
  * `sandbox="allow-scripts"` without `allow-same-origin`, so it has an opaque
@@ -179,7 +192,7 @@ const escape=(value)=>String(value).replaceAll('&','&amp;').replaceAll('"','&quo
 const scriptBytes=(value)=>String(value).replace(/<\\/script/gi,'<\\\\/script');
 const styleBytes=(value)=>String(value).replace(/<\\/style/gi,'<\\/style');
 const cssTokens=(tokens)=>Object.entries(tokens&&typeof tokens==='object'?tokens:{}).map(([key,value])=>'--'+key.replace(/[^a-zA-Z0-9_-]/g,'')+':'+String(value).replace(/[;{}]/g,'')).join(';');
-const DOWN=new Set(['pane-host/confirm-result','pane-host/facts-changed','pane-host/refused','pane-host/experience-result']);
+const DOWN=new Set(['pane-host/confirm-result','pane-host/facts-changed','pane-host/refused','pane-host/experience-result','pane-host/related-result']);
 let inner=null;
 const load=(params={})=>{if(typeof params.runtimeJs!=='string'||typeof params.bundleJs!=='string')return;const frame=document.createElement('iframe');frame.title='Plugin';frame.sandbox.value='allow-scripts';const csp="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; frame-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'";const doc='<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="'+escape(csp)+'"><style>:root{'+cssTokens(params.themeTokens)+'}</style><style>'+styleBytes(params.bundleCss||'')+'</style><script>'+scriptBytes(params.runtimeJs)+'<\\/script><script>'+scriptBytes(params.bundleJs)+'<\\/script></head><body><div id="app"></div></body></html>';frame.srcdoc=doc;document.getElementById('app').replaceChildren(frame);inner=frame;};
 addEventListener('message',(event)=>{if(inner&&event.source===inner.contentWindow){postHost(event.data);return;}if(event.source!==parent)return;if(!host){if(!allowed.has(event.origin)&&!(opaqueTauri&&event.origin==='null'))return;host={inboundOrigin:event.origin,outboundOrigin:event.origin==='null'?'*':event.origin};}else if(event.origin!==host.inboundOrigin)return;const method=event.data&&event.data.method;if(method===RESOURCE){load(event.data.params);return;}if(method==='teardown'){document.getElementById('app').replaceChildren();inner=null;return;}if(inner&&DOWN.has(method))inner.contentWindow&&inner.contentWindow.postMessage(event.data,'*');});postHost({method:READY,params:{}});})();</script></body></html>`;
@@ -255,7 +268,7 @@ export function buildMcpAppsSandboxProxyDocument(
           withResources('img-src data:'),
           'font-src data:',
           'connect-src ' + sources(csp.connectDomains, ['https:', 'wss:']),
-          'frame-src ' + sources(csp.frameDomains),
+          "frame-src 'none'",
           'base-uri ' + sources(csp.baseUriDomains),
           "object-src 'none'",
           "form-action 'none'"
@@ -263,13 +276,14 @@ export function buildMcpAppsSandboxProxyDocument(
       };
       const escapeAttribute = (value) =>
         value.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+      const networkBootstrap = ${JSON.stringify(MCP_UI_NETWORK_BOOTSTRAP_TAG).replaceAll('<', '\\u003c')};
       const wrapHtml = (html, csp) => {
         const meta = '<meta http-equiv="Content-Security-Policy" content="' +
           escapeAttribute(csp) + '">';
         // The policy must precede every byte of untrusted markup. Wrapping the
         // raw resource after a host-owned head prevents a script placed before
         // the resource's own <head> from running before CSP takes effect.
-        return '<!doctype html><html><head>' + meta +
+        return '<!doctype html><html><head>' + meta + networkBootstrap +
           '</head><body>' + html + '</body></html>';
       };
       const isPlainObject = (value) =>
@@ -359,10 +373,6 @@ export async function startMcpUiFrameServer(opts: {
     frameAncestors: resolveMcpUiFrameAncestors({
       port: opts.stationPort,
       host: opts.stationHost,
-      additionalOrigins: (process.env.ALLOWED_ORIGINS ?? '')
-        .split(',')
-        .map((origin) => origin.trim())
-        .filter(Boolean),
     }),
   });
   return new Promise((resolve) => {

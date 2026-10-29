@@ -1,8 +1,14 @@
 import { realpathSync } from 'node:fs';
-import type { ServiceUpdateProgress } from '@kontourai/station-contracts/system-status';
+import type {
+  ServiceUpdateIntent,
+  ServiceUpdateProgress,
+} from '@kontourai/station-contracts/system-status';
 import {
   type ArchiveInstallState,
+  acceptedReleasePath,
   compareStationReleaseVersions,
+  compareWithAcceptedRelease,
+  readAcceptedRelease,
   readArchiveInstallState,
 } from '@kontourai/station-shared/prebuilt-archive';
 import {
@@ -60,6 +66,11 @@ export type ArchiveReleaseCheck =
 
 export interface ArchiveUpdateOptions {
   env?: NodeJS.ProcessEnv;
+  /**
+   * The reader knows `staged` (#3851); see `readServiceUpdateProgress`.
+   * Defaults to true; the legacy GET routes pass the client's opt-in.
+   */
+  includeStaged?: boolean;
   fetchFn?: typeof fetch;
   /** The pinned signing-key table; tests pass their own. */
   pinnedKeys?: unknown;
@@ -245,6 +256,37 @@ async function fetchVerifiedReleaseManifest(
   }
 }
 
+/**
+ * Why a verified manifest offering `version` is stale for this install root
+ * (the installer's own rule, `readAcceptedRelease`), or null when it is not.
+ */
+function acceptedReleaseRefusal(
+  installRoot: string,
+  ring: string,
+  version: string,
+): { message: string; technicalDetail: string } | null {
+  const path = acceptedReleasePath(installRoot);
+  const mark = readAcceptedRelease(installRoot, ring);
+  if (mark.state === 'absent') return null;
+  if (mark.state === 'invalid')
+    return {
+      message:
+        "This install's record of the newest release it accepted is unreadable, so no update is offered. On the host, fix its owner and permissions or remove it, then check again.",
+      technicalDetail: `${path} is not a private file of this user holding a ${ring} release record`,
+    };
+  const relation = compareWithAcceptedRelease(ring, version, mark.version);
+  if (relation === 'not-older') return null;
+  return relation === 'older'
+    ? {
+        message: `The ${ring} release manifest offers ${version}, older than ${mark.version} which this install already accepted, so it is not offered.`,
+        technicalDetail: `the manifest is stale or replayed (accepted release recorded in ${path})`,
+      }
+    : {
+        message: `The ${ring} release manifest offers ${version}, which cannot be compared with ${mark.version}, the newest release this install accepted, so it is not offered.`,
+        technicalDetail: `incomparable with the accepted release recorded in ${path}`,
+      };
+}
+
 export interface ArchiveUpdateStatus {
   installKind: 'archive' | 'archive-service';
   applyMethod: ArchiveApplyMethod;
@@ -259,6 +301,12 @@ export interface ArchiveUpdateStatus {
   selfUpdateUnavailableReason: string | null;
   selfUpdateUnavailableCode: null;
   serviceUpdate?: ServiceUpdateProgress;
+  /**
+   * #3851: this server takes `stage` and `apply` requests (and the
+   * apply-when-idle intent) besides the one-click update. Present only for
+   * `service-update`; clients that see it offer Download, then Restart.
+   */
+  stagedUpdates?: true;
 }
 
 /** The newest-release check for an archive install, never an `error`. */
@@ -281,7 +329,12 @@ export async function archiveUpdateStatus(
     currentVersion: provenance.version,
     selfUpdateUnavailableCode: null,
     ...(method === 'service-update' && provenance.installRoot
-      ? { serviceUpdate: readServiceUpdateProgress(provenance.installRoot) }
+      ? {
+          serviceUpdate: readServiceUpdateProgress(provenance.installRoot, {
+            includeStaged: options.includeStaged ?? true,
+          }),
+          stagedUpdates: true as const,
+        }
       : {}),
   };
   let refusal: string | null =
@@ -322,6 +375,22 @@ export async function archiveUpdateStatus(
     };
   }
 
+  // The installer refuses a manifest older than the newest release this
+  // install root accepted (a replay after a rollback), so it is not offered
+  // here either, and the operator sees why.
+  const replayRefusal = provenance.installRoot
+    ? acceptedReleaseRefusal(provenance.installRoot, ring, payload.version)
+    : null;
+  if (replayRefusal) {
+    return {
+      ...base,
+      releaseCheck: 'unverified',
+      updateAvailable: false,
+      ...replayRefusal,
+      selfUpdateUnavailableReason: refusal,
+    };
+  }
+
   const order = compareStationReleaseVersions(
     payload.version,
     provenance.version,
@@ -355,7 +424,7 @@ export async function archiveUpdateStatus(
 }
 
 export type ArchiveApplyResult =
-  | { ok: true; requestId: string }
+  | { ok: true; requestId: string; targetVersion?: string }
   | { ok: false; status: 409 | 500; error: string };
 
 const IN_FLIGHT: ReadonlySet<ServiceUpdateProgress['state']> = new Set([
@@ -373,11 +442,19 @@ function isServiceUpdateInFlight(progress: ServiceUpdateProgress): boolean {
  * downloaded here: the running version's own install.sh stages and verifies
  * the release, and the launcher trials it. Progress and the outcome are read
  * back from the runtime files (`readServiceUpdateProgress`).
+ *
+ * `intent` (#3851): `update` (the default, and every caller before #3851)
+ * stages and trials in one request; `stage` only downloads and verifies the
+ * newest release the check finds, and nothing restarts; `apply` trials the
+ * version a stage left `staged`, which must be `version` when one is named
+ * (the version the person confirmed), and downloads nothing.
  */
 export async function applyArchiveUpdate(
   provenance: ArchiveProvenance,
   options: ArchiveUpdateOptions = {},
+  request: { intent?: ServiceUpdateIntent; version?: string } = {},
 ): Promise<ArchiveApplyResult> {
+  const intent = request.intent ?? 'update';
   const method = archiveApplyMethod(provenance, options.env);
   if (method !== 'service-update' || !provenance.installRoot) {
     const reason = archiveApplyRefusal(
@@ -411,6 +488,26 @@ export async function applyArchiveUpdate(
       error: `The update to ${progress.targetVersion} could not be rolled back and needs an operator on the host first.`,
     };
   }
+  if (intent === 'apply') {
+    // The staged record is the authority: a version is applied only once a
+    // stage verified it, and only the one the person was shown.
+    if (progress.state !== 'staged') {
+      return {
+        ok: false,
+        status: 409,
+        error:
+          'No downloaded update is ready to apply; download the update first.',
+      };
+    }
+    if (request.version !== undefined && request.version !== progress.version) {
+      return {
+        ok: false,
+        status: 409,
+        error: `The downloaded update is ${progress.version}, not ${request.version}; check for updates again.`,
+      };
+    }
+    return writeRequest(provenance.installRoot, progress.version, 'apply');
+  }
   // The same verified check the GET reports: an apply is refused unless it
   // finds a newer release this host and this launcher can run.
   const status = await archiveUpdateStatus(provenance, options);
@@ -431,10 +528,58 @@ export async function applyArchiveUpdate(
             : `${status.message ?? 'The release check did not verify.'} Nothing was requested; ${UPGRADE_ON_HOST}.`,
     };
   }
+  if (intent === 'stage') {
+    if (
+      progress.state === 'staged' &&
+      progress.version === status.latestVersion
+    )
+      return {
+        ok: false,
+        status: 409,
+        error: `Station ${progress.version} is already downloaded and ready to apply.`,
+      };
+    // The exact version the check verified, so the stage downloads what was
+    // offered even if the manifest moves meanwhile.
+    return writeRequest(provenance.installRoot, status.latestVersion, 'stage');
+  }
+  return writeRequest(provenance.installRoot);
+}
+
+/**
+ * THE apply step (#3851): restarts this server into the version a stage left
+ * `staged`. Every apply goes through here (the POST route, the coordinator's
+ * Restart and its apply-when-idle), so it is the one seam where a server
+ * run by the process supervisor (packages/supervisor) will later hand off
+ * through `requestSupervisorHandoff()` instead of writing
+ * `update-request.json` for the fixed launcher. Today it only does the
+ * latter. It writes the request before its first await: the coordinator's
+ * apply-when-idle cancel relies on the re-read of the intent and this write
+ * happening in one synchronous stretch.
+ */
+export function applyStagedServerUpdate(
+  provenance: ArchiveProvenance,
+  options: ArchiveUpdateOptions = {},
+  version?: string,
+): Promise<ArchiveApplyResult> {
+  return applyArchiveUpdate(provenance, options, {
+    intent: 'apply',
+    ...(version ? { version } : {}),
+  });
+}
+
+function writeRequest(
+  installRoot: string,
+  targetVersion?: string,
+  mode?: 'stage' | 'apply',
+): ArchiveApplyResult {
   try {
+    const written = writeServiceUpdateRequest(installRoot, targetVersion, {
+      ...(mode ? { mode } : {}),
+    });
     return {
       ok: true,
-      requestId: writeServiceUpdateRequest(provenance.installRoot).id,
+      requestId: written.id,
+      ...(targetVersion ? { targetVersion } : {}),
     };
   } catch (error) {
     // A request published between the check above and the write is the one

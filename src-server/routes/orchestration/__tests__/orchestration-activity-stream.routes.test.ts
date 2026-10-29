@@ -186,6 +186,66 @@ describe('conversation activity through GET /events (#2309)', () => {
     });
   }
 
+  test.each(['snapshot', 'replay', 'oversized replay', 'global'] as const)(
+    '%s session summaries fold only the stream scope',
+    async (mode) => {
+      publish({
+        eventId: 'scope-replay',
+        provider: 'claude',
+        threadId: root,
+        createdAt: '2026-09-22T09:00:01.000Z',
+        method: 'content.text-delta',
+        itemId: 'scope-item',
+        delta: mode === 'oversized replay' ? 'x'.repeat(60_000) : 'scope',
+      });
+      if (mode === 'oversized replay')
+        publish({
+          eventId: 'scope-replay-two',
+          provider: 'claude',
+          threadId: root,
+          createdAt: '2026-09-22T09:00:02.000Z',
+          method: 'content.text-delta',
+          itemId: 'scope-item',
+          delta: 'y'.repeat(60_000),
+        });
+      const folds = vi.spyOn(
+        eventStore,
+        'listSessionProjectionEventsForThreads',
+      );
+      const response = await app(service).request(
+        mode === 'global' ? '/events' : `/events?threadId=${root}`,
+        mode === 'replay' || mode === 'oversized replay'
+          ? { headers: { 'Last-Event-ID': '2' } }
+          : undefined,
+      );
+      const reader = new StreamReader(response.body!);
+      try {
+        await reader.until((text) => text.includes('orchestration:caughtUp'));
+        const summaries = reader
+          .frames()
+          .find(
+            (frame) =>
+              frame.event ===
+              (mode === 'replay'
+                ? 'orchestration:caughtUp'
+                : 'orchestration:snapshot'),
+          );
+        expect(summaries).toBeDefined();
+        expect(
+          JSON.parse(summaries!.data).sessions.map(
+            (session: { threadId: string }) => session.threadId,
+          ),
+        ).toEqual(mode === 'global' ? [root, child] : [root]);
+        expect(folds).toHaveBeenCalled();
+        for (const [threadIds] of folds.mock.calls)
+          expect(threadIds).toEqual(mode === 'global' ? [root, child] : [root]);
+      } finally {
+        await reader.close();
+        folds.mockRestore();
+      }
+    },
+  );
+
   const midTurn: CanonicalRuntimeEvent[] = [
     {
       eventId: 'e-turn',

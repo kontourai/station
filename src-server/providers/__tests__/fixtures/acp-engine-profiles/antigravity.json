@@ -1,0 +1,42 @@
+{
+  "engine": "antigravity",
+  "registry": {
+    "id": "antigravity-acp",
+    "version": "1.4.1",
+    "distribution": "binary",
+    "cmd": "agy_acp_server.par",
+    "args": []
+  },
+  "initialize": {
+    "protocolVersion": 1,
+    "agentInfo": {
+      "name": "antigravity",
+      "title": "Google Antigravity",
+      "version": "1.4.1"
+    },
+    "agentCapabilities": {
+      "loadSession": true,
+      "promptCapabilities": {
+        "image": true
+      }
+    },
+    "authMethods": [
+      {
+        "id": "oauth-personal",
+        "name": "Google account"
+      },
+      {
+        "id": "oauth-business",
+        "name": "Google Workspace account"
+      },
+      {
+        "id": "gemini-api-key",
+        "name": "Gemini API key"
+      },
+      {
+        "id": "agent-platform",
+        "name": "Agent Platform"
+      }
+    ]
+  }
+}

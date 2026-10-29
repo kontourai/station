@@ -1,0 +1,7 @@
+{
+  "revision": "99f4614fb0a5af25beda3037a1b3a9c9bc0db059",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Checked the repo-scan suite description after adding scripts/__tests__/core-update-route.test.ts to REPO_SCAN_SUITES (it walks tests/ to refuse a whole-URL glob for the server update check). The guide's rule that real-tree walkers run as repo scans via npm run test:repo-scans is unchanged and still accurate.","inputs":["docs/guides/testing.md","scripts/test-impact-manifest.mjs"]}
+  ]
+}

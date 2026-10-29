@@ -1,0 +1,17 @@
+{
+  "revision": "04b6cad0f45dcbd0157dfa3e5d69874f0fd53604",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Fix round: MemorySwapMax=0 now applies only where 1536 MiB fits in 1/8 of RAM (12 GiB and up); smaller hosts get MemorySwapMax=infinity, matching controlPlaneProperties and its boundary tests (12 GiB gives 0, 12 GiB minus 1 MiB gives infinity with 1535 MiB). MemoryLow is qualified as capped by ancestors under host-wide reclaim. The oomd sentence matches systemd.resource-control on systemd 259 (xattrs on user-owned cgroups are respected only for pressure candidates at or below user@.service, never for swap). The CPU 80% figure is limited to the case where only the two slices contend. The process fixture now asserts boot-applied MemoryLow, ManagedOOMPreference and slice CPUWeight; the guide makes no claim about that test.","inputs":["docs/guides/development.md","src-server/services/infra/__tests__/workload-resources.process.test.ts","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Re-checked after the fix round and the process-fixture assertion: the paragraph still says the fixture exercises OOM containment, descriptor/PTY behavior and lifecycle cleanup (all still true; the new protection assertion adds to it) and defers budgets and protections to the development guide. It states no protection values.","inputs":["docs/architecture/module-map.md","docs/guides/development.md","src-server/services/infra/__tests__/workload-resources.process.test.ts","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"Re-checked after the fix round: it still only says workload budgets separate child scopes from the server's failure domain and states no protection values.","inputs":["docs/design/process-supervisor.md","docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Re-checked after the fix round and the process-fixture change: the typecheck-slot section only links to the workload budgets guide and makes no claim about the fixture or protection values.","inputs":["docs/guides/testing.md","docs/guides/development.md","src-server/services/infra/__tests__/workload-resources.process.test.ts","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"packages/shared/README.md","note":"Re-checked after the fix round: the child-workload leaf is unchanged and budgets still belong to the server.","inputs":["packages/shared/README.md","docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"src-server/AGENTS.md","note":"Re-checked after the fix round: no new process launch, route or console call. The fixture's new systemctl show call passes windowsHide through spawnSyncBounded.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

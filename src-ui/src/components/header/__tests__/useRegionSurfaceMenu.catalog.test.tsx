@@ -73,7 +73,8 @@ vi.mock('../../../contexts/RegionModelContext', async (importOriginal) => {
   };
 });
 
-vi.mock('../../../hooks/useIsMobile', () => ({
+vi.mock('../../../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../hooks/useIsMobile')>()),
   useIsMobile: () => true,
   useDockSlotDevice: () => ({ viewportWidth: 390, coarsePointer: true }),
   availablePlacements: () => ['bottom'],

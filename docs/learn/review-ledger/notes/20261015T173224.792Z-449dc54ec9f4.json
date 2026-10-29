@@ -1,0 +1,7 @@
+{
+  "revision": "7dfd9fa0cf7f42bd3df6c573e9bf120ecb981d10",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the final direct mobile Project restoration against ChatDockMobileProjectButton, ChatDockMobileOverflowControls, the mobile primary-actions product law, and the three passing 320/390/412 browser journeys. Project and conversation switching remain direct; moving Project into Chat actions is only a proposal. Historical captures are not requalified.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx"]}
+  ]
+}

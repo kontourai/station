@@ -15,7 +15,7 @@ import {
   installE2EWorkspacePaneCatalog,
 } from './helpers/current-station-contract';
 import { dismissSetupLauncher } from './helpers/orchestration';
-import { dragDockTo } from './helpers/region-placement';
+import { chooseChatRegionRow, dragDockTo } from './helpers/region-placement';
 
 const STATUS_READY = JSON.stringify({
   ready: true,
@@ -236,12 +236,17 @@ test.describe('Dock Mode Preference', () => {
       .locator('.chat-dock__tab-actions')
       .getByRole('button', { name: 'New chat', exact: true });
     await expect(newButton).toHaveCount(1);
-    const maximizeButton = page.locator('.chat-dock__maximize-btn');
+    // Chat folds Maximize into its More menu (the More trigger keeps the
+    // placement grab's 28px square), so New's two halves are the row's
+    // sized pair.
+    const destinationButton = page
+      .locator('.chat-dock__header')
+      .getByRole('button', { name: 'Choose a project', exact: true });
 
     // Consistent sizing is the rendered box, not the CSS that produces it:
     // the controls share one row height and none drops below 28px.
     const heights = await Promise.all(
-      [newButton, maximizeButton].map(
+      [newButton, destinationButton].map(
         async (button) => (await button.boundingBox())!.height,
       ),
     );
@@ -367,9 +372,7 @@ test.describe('Dock Mode Preference', () => {
     const dock = page.locator('.chat-dock');
     await expect(dock).toHaveClass(/chat-dock--right/);
     await expect(dock).not.toHaveClass(/is-maximized/);
-    await page
-      .getByRole('button', { name: 'Expand dock region to workspace' })
-      .click();
+    await chooseChatRegionRow(page, 'Maximize');
     await expect(dock).toHaveClass(/is-maximized/);
 
     const mainBox = await page.locator('.app__main').boundingBox();

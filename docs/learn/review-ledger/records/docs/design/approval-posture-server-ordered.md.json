@@ -14,7 +14,13 @@
 
     "src-server/services/orchestration/approval-posture.ts",
 
-    "src-server/services/orchestration/orchestration-service.ts"
+    "src-server/services/orchestration/orchestration-service.ts",
+
+    "src-server/security/confinement/confinement-provider.ts",
+
+    "src-server/providers/adapters/codex-confinement.ts",
+
+    "packages/contracts/src/execution-confinement.ts"
   ],
 
   "checks": [

@@ -203,4 +203,40 @@ describe('planCodexTurnSandbox (#2559)', () => {
       ).sandboxPolicy,
     ).toMatchObject({ type: 'workspaceWrite', networkAccess: false });
   });
+
+  // #3800: a sent policy would replace Station's permission profile (and its
+  // deny rules for engine configuration) for this and every later turn.
+  test('a thread under the permission profile is never sent workspaceWrite outside a host session', () => {
+    for (const thread of [
+      { stationProfile: true as const },
+      {
+        stationProfile: true as const,
+        requestedMode: 'workspace-write' as const,
+      },
+    ])
+      for (const sandbox of ['workspace-write', 'danger-full-access'] as const)
+        expect(
+          planCodexTurnSandbox(
+            { approvalPolicy: 'never', sandbox },
+            thread,
+            'workspace',
+          ),
+        ).toEqual({ applied: 'workspace-write' });
+    // Narrower than the profile still applies.
+    expect(
+      planCodexTurnSandbox(
+        { approvalPolicy: 'never', sandbox: 'read-only' },
+        { stationProfile: true },
+        'workspace',
+      ).sandboxPolicy,
+    ).toEqual({ type: 'readOnly', networkAccess: false });
+    // A host session has no profile to keep.
+    expect(
+      planCodexTurnSandbox(
+        { approvalPolicy: 'never', sandbox: 'danger-full-access' },
+        { stationProfile: true },
+        'host',
+      ).sandboxPolicy,
+    ).toEqual({ type: 'dangerFullAccess' });
+  });
 });

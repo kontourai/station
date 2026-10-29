@@ -1,0 +1,7 @@
+{
+  "revision": "01ec5df148677d2999ee223428a08a30cdf020af",
+
+  "notes": [
+    {"path":"docs/design/connection-list-recovery.md","note":"Independent review response at01ec5df: revised both P1 publication/abandon findings and P2 import, vault, evidence-size, read-cost and headless gaps. Commit precedes final consuming no-replace rename; no post-publication completion or marker write. Prepublication preparation and positive unconsumed-stage proof permit byte-preserving attempt archive, never unknown-publication reset. Every import needs ack, zero-row import is new-list, export refuses missing/pending. Old evidence stays in place; readability-only per-service vault queries replace global inventory digests. Normal reads use a bounded commit guard; coordinator keeps ACL/digest checks. Defined service-stop exclusion, headless limitation, fixed-code logs, real pinned-old-build and paused-vault lock tests. All7issue4023bullets remain verbatim. Denied-vault policy still pending Brian; no implementation or platform proof claimed.","inputs":["docs/design/connection-list-recovery.md"]}
+  ]
+}

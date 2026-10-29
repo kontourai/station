@@ -25,6 +25,9 @@ export function preserveBasisInteropEnvironment(): () => void {
   };
 }
 
+/** A real-shape Station session id (`${agentSlug}:${epoch}`), colon included (#418). */
+export const BASIS_INTEROP_SESSION_ID = 'station:1792425046978';
+
 /** Non-sensitive, positively parsed owner fixture for real host interoperability. */
 export function basisInteropCollection(): StationTaskBasisCollection {
   const answers = Array.from({ length: 9 }, (_, index) => {
@@ -125,7 +128,7 @@ export function basisInteropCollection(): StationTaskBasisCollection {
             schemaVersion: '1.2.0',
             kind: 'assistant-message',
             standing: 'observed',
-            threadId: 'fixture-session',
+            threadId: BASIS_INTEROP_SESSION_ID,
             messageId: `fixture-message-${index}`,
           },
           fact: 'answer-observed',
@@ -165,7 +168,7 @@ export function basisInteropCollection(): StationTaskBasisCollection {
         authority: '@kontourai/thread' as const,
         schemaVersion: '1.2.0' as const,
         kind: 'result' as const,
-        threadId: 'fixture-session',
+        threadId: BASIS_INTEROP_SESSION_ID,
         resultId: `fixture-result-${index}`,
       },
       kept: true as const,

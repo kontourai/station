@@ -16,11 +16,17 @@ import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
 import { Button } from '../components/Button';
+import { useConstrainedNetwork } from '../platform/networkCost';
 import { mapClientPointToSurface } from './liveSurfaceGeometry';
+import {
+  liveSurfaceStreamBudget,
+  useSteppedPixelBox,
+} from './liveSurfaceStreamBudget';
 import {
   type LiveSurfaceFrame,
   type UseLiveSurfaceResult,
@@ -349,10 +355,16 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     decodingRef.current = false;
   }, []);
 
+  const constrainedNetwork = useConstrainedNetwork();
+  const pixels = useSteppedPixelBox(containerRef);
   const surface = useLiveSurface({
     apiBase: props.apiBase,
     surfaceId: props.surfaceId,
-    params: props.params,
+    params: liveSurfaceStreamBudget(props.params, {
+      constrained: constrainedNetwork,
+      pixels: pixels.box,
+    }),
+    paramsPending: !pixels.measured,
     visibilityRef: containerRef,
     onFrame: (frame) => void draw(frame),
     transport: props.transport,
@@ -382,7 +394,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     height: number;
   } | null>(null);
   const fitting = props.fit !== undefined;
-  useEffect(() => {
+  useLayoutEffect(() => {
     const stage = stageRef.current;
     if (!fitting || !stage) return;
     const measure = () => {

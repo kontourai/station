@@ -63,7 +63,7 @@ function changedDiagnostic(provenance: Record<string, string>) {
 
 function writeChangedDiagnosticBundle(
   diagnosticRoot: string,
-  diagnostic: ReturnType<typeof changedDiagnostic> & Record<string, unknown>,
+  diagnostic: { provenance: Record<string, string> } & Record<string, unknown>,
 ) {
   const contents = `${JSON.stringify(diagnostic)}\n`;
   writeFileSync(join(diagnosticRoot, 'changed-diagnostics.json'), contents);
@@ -292,6 +292,112 @@ test('attaches the required changed-test diagnostic to a ci-fast owner result', 
   expect(contents).toContain('[REDACTED]');
   expect(contents).not.toContain('fixture-ci-fast-secret');
 });
+
+test.each([
+  {
+    infrastructureError: true,
+    parserErrors: 0,
+    message: 'Changed Vitest process-heavy SIGTERM',
+  },
+  {
+    infrastructureError: false,
+    parserErrors: 1,
+    message: 'Malformed Vitest JSON report',
+  },
+])(
+  'retains interrupted/parser diagnostic evidence without promoting the owner result: %j',
+  ({ infrastructureError, parserErrors, message }) => {
+    const worktree = makeTempDir('station-ci-fast-classification-');
+    const diagnosticRoot = join(worktree, '.kontourai/test-impact');
+    mkdirSync(diagnosticRoot, { recursive: true });
+    const provenance = {
+      repositoryId: 'a'.repeat(64),
+      headSha: 'b'.repeat(40),
+      workspaceDigest: 'c'.repeat(64),
+      environmentDigest: 'd'.repeat(64),
+      dependencyDigest: 'e'.repeat(64),
+    };
+    const baseline = changedDiagnostic(provenance);
+    const diagnostic = {
+      ...baseline,
+      complete: false,
+      incompleteReasons: [
+        ...(infrastructureError
+          ? ['combined: the Vitest child did not run to completion']
+          : []),
+        `combined: ${message}`,
+      ],
+      counts: {
+        ...baseline.counts,
+        infrastructureErrors: infrastructureError ? 1 : 0,
+        parserErrors,
+      },
+      executions: [
+        ...baseline.executions,
+        {
+          kind: 'combined',
+          resourceGroup: 'process-heavy',
+          exitCode: 1,
+          infrastructureError,
+          error: message,
+        },
+      ],
+    };
+    writeChangedDiagnosticBundle(diagnosticRoot, diagnostic);
+    const context = {
+      lane: { id: 'ci-fast' },
+      before: { worktree, ...provenance },
+    };
+    const raw = __verificationCoordinatorInternals.attachCiFastDiagnostics(
+      context,
+      {
+        output: { stdout: { text: '' }, stderr: { text: message } },
+      },
+    );
+    expect(raw.unavailableAttachments).toBeUndefined();
+    const counts = {
+      executed: 1,
+      passed: 0,
+      failed: 0,
+      infrastructureErrors: 1,
+    };
+    const reported = reportExecution({
+      raw,
+      result: { status: 'infrastructure_error', exitCode: null, counts },
+      cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+      worktree,
+      request: { key: 'f'.repeat(64) },
+    });
+    expect(reported.result.status).toBe('infrastructure_error');
+    expect(reported.result.counts).toEqual(counts);
+    expect(reported.result.reconcileNote).toBeUndefined();
+    expect(reported.artifacts).toHaveLength(3);
+    expect(
+      JSON.parse(
+        readFileSync(join(worktree, reported.artifacts[2].path), 'utf8'),
+      ),
+    ).toMatchObject({
+      complete: false,
+      counts: {
+        parserErrors,
+        infrastructureErrors: infrastructureError ? 1 : 0,
+      },
+    });
+
+    writeChangedDiagnosticBundle(diagnosticRoot, {
+      ...diagnostic,
+      counts: {
+        ...diagnostic.counts,
+        parserErrors: parserErrors === 0 ? 1 : 0,
+      },
+    });
+    const inconsistent =
+      __verificationCoordinatorInternals.attachCiFastDiagnostics(context, {});
+    expect(inconsistent.unavailableAttachments?.[0]?.reason).toContain(
+      'did not reconcile',
+    );
+  },
+);
 
 test('retained ci-fast diagnostics accept resource groups and discovery preparation failures', () => {
   const worktree = mkdtempSync(join(tmpdir(), 'station-ci-fast-diagnostic-'));
@@ -600,6 +706,72 @@ test('binds a reporter-only nonzero exit instead of treating passed assertions a
   expect(raw.attachments).toEqual([
     expect.objectContaining({ name: 'changed-test-diagnostics' }),
   ]);
+});
+
+// #1706: the receipt hosted ci:fast published for an escalated diff. It
+// deferred its own ci-fast lane and still declared itself complete.
+test.each([
+  {
+    name: 'refuses a ci-fast deferral that claims to be complete',
+    deferredLanes: ['ci-fast'],
+    complete: true,
+    incompleteReasons: [] as string[],
+    accepted: false,
+  },
+  {
+    name: 'accepts a ci-fast deferral that names itself incomplete',
+    deferredLanes: ['ci-fast'],
+    complete: false,
+    incompleteReasons: [
+      'ci-fast deferred: its suite did not run here; Merge-queue regression runs it before merge',
+    ],
+    accepted: true,
+  },
+  {
+    name: 'accepts an E2E deferral, owned outside the selection, as complete',
+    deferredLanes: ['verify-e2e-full'],
+    complete: true,
+    incompleteReasons: [] as string[],
+    accepted: true,
+  },
+])('$name', ({ deferredLanes, complete, incompleteReasons, accepted }) => {
+  const worktree = makeTempDir('station-ci-fast-diagnostic-');
+  const diagnosticRoot = join(worktree, '.kontourai/test-impact');
+  mkdirSync(diagnosticRoot, { recursive: true });
+  const provenance = {
+    repositoryId: 'a'.repeat(64),
+    headSha: 'b'.repeat(40),
+    workspaceDigest: 'c'.repeat(64),
+    environmentDigest: 'd'.repeat(64),
+    dependencyDigest: 'e'.repeat(64),
+  };
+  const diagnostic = changedDiagnostic(provenance);
+  diagnostic.selection.deferredLanes = deferredLanes as never[];
+  diagnostic.selection.escalated = deferredLanes.includes('ci-fast');
+  diagnostic.complete = complete;
+  diagnostic.incompleteReasons = incompleteReasons;
+  writeChangedDiagnosticBundle(diagnosticRoot, diagnostic);
+
+  const raw = __verificationCoordinatorInternals.attachCiFastDiagnostics(
+    { lane: { id: 'ci-fast' }, before: { worktree, ...provenance } },
+    { output: { stdout: { text: '' }, stderr: { text: '' } } },
+  );
+
+  if (accepted) {
+    expect(raw.unavailableAttachments).toBeUndefined();
+    expect(raw.attachments).toEqual([
+      expect.objectContaining({ name: 'changed-test-diagnostics' }),
+    ]);
+  } else {
+    expect(raw.attachments).toEqual([]);
+    expect(raw.unavailableAttachments).toEqual([
+      {
+        name: 'changed-test-diagnostics',
+        reason:
+          'the changed-verification diagnostic did not reconcile with its own executions',
+      },
+    ]);
+  }
 });
 
 test('names why a ci-fast diagnostic was unavailable instead of a file extension', () => {

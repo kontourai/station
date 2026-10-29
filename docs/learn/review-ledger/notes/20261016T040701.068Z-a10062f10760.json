@@ -1,0 +1,9 @@
+{
+  "revision": "2e940aa38e572bf25e0db55c45a271d1f87d92d7",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Reviewed the unchanged authored-definition policy extracted into a dependency-free owner and imported directly by recovered-session state. Foreground/catalog retain the resolver export; refusal semantics and guide claims are unchanged. Recovery test adapter is fully typed, shared Empty has a required label, both previously failing typecheck lanes passed, and the focused behavior set passed 177 tests.","inputs":["docs/guides/agents.md","src-server/services/orchestration/session-agent-resolution.ts","src-ui/src/views/project-settings/ProjectAgentsPanel.tsx","src-server/services/orchestration/session-agent-start-policy.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the failclosed policy implementation before and after dependency-boundary extraction: identical predicate, unavailable reason and caller exemption. Recovery still rejects policy errors and unresolved authored agents. No tool delivery or grant semantics changed.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/services/orchestration/session-agent-resolution.ts","src-server/services/orchestration/session-agent-start-policy.ts"]}
+  ]
+}

@@ -23,6 +23,7 @@ import {
   resolve,
   sep,
 } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import receiptSchema from '../schemas/verification-receipt.schema.json' with {
   type: 'json',
@@ -58,8 +59,15 @@ import {
   createVerificationReceipt,
   createVerificationRequest,
 } from './lib/verification-receipt.mjs';
-import { redactVerificationOutput } from './lib/verification-redaction.mjs';
+import {
+  redactVerificationOutput,
+  redactVerificationValue,
+} from './lib/verification-redaction.mjs';
 import { prepareVerificationExecution } from './lib/verification-request-context.mjs';
+import {
+  readVitestErrorReport,
+  vitestErrorIdentity,
+} from './lib/vitest-error-reporter.mjs';
 import { groupFiles, VITEST_CORPUS_GROUPS } from './run-vitest-corpus.mjs';
 import {
   buildTestImpactManifest,
@@ -115,24 +123,32 @@ const CHANGED_CHILD_OUTPUT_LIMIT_BYTES = 2 * 1024 * 1024;
 const VITEST_FILE_PATTERN = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
 const RELATED_DISCOVERY_SOURCE = `
 import { relative, sep } from 'node:path';
+import { createRequire } from 'node:module';
+import { realpathSync } from 'node:fs';
 import { createVitest } from 'vitest/node';
 const root = process.cwd();
+const deferGlobalTriggers = process.argv[1] === '--defer-global-triggers';
+const related = process.argv.slice(deferGlobalTriggers ? 2 : 1);
 const vitest = await createVitest('test', {
-  root,
-  watch: false,
-  run: true,
-  passWithNoTests: true,
-  related: process.argv.slice(1),
+  root, watch: false, run: true, passWithNoTests: true, related,
 });
 try {
+  const globalTriggeredPaths = [];
+  if (deferGlobalTriggers) {
+    const patterns = vitest.config.forceRerunTriggers;
+    if (!Array.isArray(patterns) || patterns.some((pattern) => typeof pattern !== 'string')) throw new Error('Invalid resolved Vitest global triggers');
+    const matcher = createRequire(import.meta.resolve('vitest/package.json'))('picomatch')(patterns);
+    vitest.config.related = vitest.config.related.filter((path) => {
+      if (!matcher(path)) return true;
+      globalTriggeredPaths.push(realpathSync(path));
+      return false;
+    });
+  }
   const specifications = await vitest.getRelevantTestSpecifications();
-  const files = [...new Set(specifications.map((item) =>
-    relative(root, item.moduleId).split(sep).join('/'),
-  ))].sort();
-  process.stdout.write(JSON.stringify(files));
-} finally {
-  await vitest.close();
-}`;
+  const files = [...new Set(specifications.map((item) => relative(root, item.moduleId).split(sep).join('/')))].sort();
+  process.stdout.write(JSON.stringify(deferGlobalTriggers ? { files, globalTriggeredPaths } : files));
+} finally { await vitest.close(); }
+`;
 
 export function parseRelatedTestDiscovery(result) {
   if (result.error || result.status !== 0 || result.signal)
@@ -362,6 +378,8 @@ export function changedDeadlineFromEnv(env = process.env) {
  * @param {number} [options.deadlineAt] the caller's budget end (epoch ms)
  * @param {() => number} [options.now]
  * @param {(timeoutMs: number) => void} [options.onTimeout] told the timeout the child runs under
+ * @param {boolean} [options.deferGlobalTriggers] Preserve global reruns as hosted deferred obligations.
+ * @param {(paths: string[]) => void} [options.onGlobalTriggeredPaths] Records configured global seeds omitted from related discovery.
  */
 export async function discoverRelatedTestFiles(
   root,
@@ -384,6 +402,8 @@ export async function discoverRelatedTestFiles(
     deadlineAt,
     now = Date.now,
     onTimeout = () => {},
+    deferGlobalTriggers = false,
+    onGlobalTriggeredPaths = () => {},
   } = {},
 ) {
   if (!Array.isArray(relatedPaths) || relatedPaths.length === 0)
@@ -406,6 +426,7 @@ export async function discoverRelatedTestFiles(
         '--input-type=module',
         '--eval',
         RELATED_DISCOVERY_SOURCE,
+        ...(deferGlobalTriggers ? ['--', '--defer-global-triggers'] : []),
         ...refined.paths.map((path) => resolve(root, path)),
       ],
       {
@@ -416,7 +437,32 @@ export async function discoverRelatedTestFiles(
         timeoutMs: childTimeoutMs,
       },
     );
-    return parseRelatedTestDiscovery(result);
+    if (!deferGlobalTriggers) return parseRelatedTestDiscovery(result);
+    if (result.error || result.status !== 0 || result.signal)
+      return parseRelatedTestDiscovery(result);
+    const metadata = JSON.parse(String(result.stdout ?? '').trim());
+    const allowed = new Map(
+      refined.paths.map((path) => [
+        realpathSync(resolve(root, path)),
+        relative(root, resolve(root, path)).split(sep).join('/'),
+      ]),
+    );
+    if (
+      !metadata ||
+      !Array.isArray(metadata.globalTriggeredPaths) ||
+      metadata.globalTriggeredPaths.some((path) => !allowed.has(path)) ||
+      new Set(metadata.globalTriggeredPaths).size !==
+        metadata.globalTriggeredPaths.length
+    )
+      throw new Error('Invalid global-trigger discovery metadata');
+    const files = parseRelatedTestDiscovery({
+      ...result,
+      stdout: JSON.stringify(metadata.files),
+    });
+    onGlobalTriggeredPaths(
+      metadata.globalTriggeredPaths.map((path) => allowed.get(path)),
+    );
+    return files;
   } catch (error) {
     const discoveryError = new Error(
       error instanceof Error ? error.message : String(error),
@@ -770,7 +816,7 @@ function reportFile(name, root) {
   );
 }
 
-function failedTestIdentities(report, root) {
+function failedTestIdentities(report, root, structuredReport) {
   const found = [];
   for (const suite of Array.isArray(report.testResults)
     ? report.testResults
@@ -790,10 +836,43 @@ function failedTestIdentities(report, root) {
         assertion.failureMessages?.find((message) => message) ??
         suite?.message ??
         'No assertion excerpt was reported';
+      const matching = structuredReport?.tests?.filter(
+        (test) => test.id === vitestErrorIdentity(suite.name, fullName),
+      );
+      const details = matching?.length === 1 ? matching[0] : undefined;
+      const primary = details?.errors
+        .map((error) => {
+          const messages = [];
+          for (let current = error; current; current = current.cause) {
+            if (current.message)
+              messages.push(`${current.name || 'Error'}: ${current.message}`);
+            if (current.omitted) messages.push(current.omitted);
+          }
+          return messages.join('\nCaused by: ');
+        })
+        .filter(Boolean)
+        .join('\n');
       found.push({
         file: reportFile(suite?.name, root),
         name: boundedRedactedText(fullName, FAILURE_NAME_LIMIT),
-        excerpt: boundedRedactedText(failureMessage, FAILURE_EXCERPT_LIMIT),
+        excerpt: boundedRedactedText(
+          primary || failureMessage,
+          FAILURE_EXCERPT_LIMIT,
+        ),
+        ...(details
+          ? { errors: details.errors, duration: details.duration }
+          : {}),
+        ...(!primary
+          ? {
+              primaryErrorUnavailable:
+                structuredReport?.omitted ??
+                (matching?.length > 1
+                  ? 'ambiguous structured error identity'
+                  : details
+                    ? 'structured errors contain no primary message'
+                    : 'no matching structured error identity'),
+            }
+          : {}),
       });
     }
   }
@@ -840,7 +919,10 @@ function countAssertionsWithStatus(report, status) {
  * `skipped` field: `isPassingCounts` requires `passed === executed` and
  * `executed > 0`, so a skipped-only or partial run still cannot pass.
  */
-function parseVitestReport(contents, { root = process.cwd() } = {}) {
+function parseVitestReport(
+  contents,
+  { root = process.cwd(), structuredReport } = {},
+) {
   let report;
   try {
     report = JSON.parse(contents);
@@ -877,7 +959,7 @@ function parseVitestReport(contents, { root = process.cwd() } = {}) {
   if (total === 0 || suites === 0) return { empty: true };
   const skipped = pending - unfinished;
   const counts = { executed: passed + failed, passed, failed, skipped, todo };
-  const failures = failedTestIdentities(report, root);
+  const failures = failedTestIdentities(report, root, structuredReport);
   const parsed = {
     counts,
     ...failures,
@@ -1005,28 +1087,57 @@ export function vitestExecutionsForGroups(groups, { kind, vitest }) {
 const FAILED_REPORT_LIMIT_BYTES = 16 * 1024 * 1024;
 
 /** Diagnostics only: a report that cannot be kept never changes the verdict. */
-function retainFailedReport(reportPath, directory, execution, index) {
-  const target = join(directory, `${execution.resourceGroup}-${index}.json`);
+function retainFailedReport(
+  reportPath,
+  directory,
+  execution,
+  index,
+  root,
+  suffix = '',
+) {
   try {
-    mkdirSync(directory, { recursive: true });
-    if (!existsSync(reportPath)) {
-      writeFileSync(
-        target,
-        `${JSON.stringify({ omitted: 'Vitest wrote no JSON report' })}\n`,
-      );
-      return;
+    const size = existsSync(reportPath) ? statSync(reportPath).size : null;
+    let contents =
+      size === null
+        ? `${JSON.stringify({ omitted: 'Vitest wrote no JSON report' })}\n`
+        : size > FAILED_REPORT_LIMIT_BYTES
+          ? `${JSON.stringify({ omitted: `report of ${size} bytes exceeds ${FAILED_REPORT_LIMIT_BYTES}` })}\n`
+          : (() => {
+              let report;
+              try {
+                report = JSON.parse(readFileSync(reportPath, 'utf8'));
+              } catch {
+                return `${JSON.stringify({ omitted: 'Vitest report is not valid JSON' })}\n`;
+              }
+              return `${JSON.stringify(redactVerificationValue(report))}\n`;
+            })();
+    if (Buffer.byteLength(contents) > FAILED_REPORT_LIMIT_BYTES)
+      contents = `${JSON.stringify({ omitted: 'redacted report exceeds byte limit' })}\n`;
+    const sha256 = createHash('sha256').update(contents).digest('hex');
+    const target = join(
+      directory,
+      `${execution.resourceGroup}-${index}-${sha256}${suffix}.json`,
+    );
+    const local = relative(root, target);
+    if (local && !local.startsWith('..') && !isAbsolute(local))
+      writeReceiptSecurely(local, contents, root);
+    else {
+      mkdirSync(directory, { recursive: true });
+      writeFileSync(target, contents);
     }
-    const size = statSync(reportPath).size;
-    writeFileSync(
-      target,
-      size > FAILED_REPORT_LIMIT_BYTES
-        ? `${JSON.stringify({ omitted: `report of ${size} bytes exceeds ${FAILED_REPORT_LIMIT_BYTES}` })}\n`
-        : redactVerificationOutput(readFileSync(reportPath, 'utf8')),
-    );
+    return {
+      path: local.split(sep).join('/'),
+      sha256,
+    };
   } catch (error) {
-    process.stderr.write(
-      `[fast-checks] could not retain the failing Vitest report: ${error instanceof Error ? error.message : String(error)}\n`,
+    const omitted = boundedRedactedText(
+      error instanceof Error ? error.message : String(error),
+      FAILURE_EXCERPT_LIMIT,
     );
+    process.stderr.write(
+      `[fast-checks] could not retain the failing Vitest report: ${omitted}\n`,
+    );
+    return { omitted };
   }
 }
 
@@ -1087,6 +1198,7 @@ async function runVitest(
   let preparation;
   const reportDirectory = mkdtempSync(join(tmpdir(), 'station-test-changed-'));
   let durable = false;
+  let reportsDurable = true;
   try {
     for (const [index, execution] of plannedExecutions.entries()) {
       if (selection.signal?.aborted) {
@@ -1098,6 +1210,7 @@ async function runVitest(
         break;
       }
       const reportPath = join(reportDirectory, `${index}.json`);
+      const structuredPath = `${reportPath}.errors.json`;
       let child;
       try {
         child = await run(
@@ -1105,6 +1218,7 @@ async function runVitest(
           [
             ...execution.command,
             '--reporter=json',
+            `--reporter=${fileURLToPath(new URL('./lib/vitest-error-reporter.mjs', import.meta.url))}`,
             `--outputFile=${reportPath}`,
             '--passWithNoTests',
           ],
@@ -1153,10 +1267,25 @@ async function runVitest(
       }
       if (!execution.infrastructureError) {
         try {
+          const structuredReport = readVitestErrorReport(structuredPath);
           Object.assign(
             execution,
-            parseVitestReport(readReport(reportPath, 'utf8'), { root }),
+            parseVitestReport(readReport(reportPath, 'utf8'), {
+              root,
+              structuredReport,
+            }),
           );
+          if (execution.counts?.failed > 0 || execution.exitCode !== 0)
+            execution.structuredErrorReport = structuredReport.omitted
+              ? { omitted: structuredReport.omitted }
+              : {
+                  omittedTests: structuredReport.omittedTests,
+                  suites: structuredReport.suites,
+                  omittedSuites: structuredReport.omittedSuites,
+                  unhandledErrors: structuredReport.unhandledErrors,
+                  omittedUnhandledErrors:
+                    structuredReport.omittedUnhandledErrors,
+                };
         } catch {
           execution.error = 'Vitest JSON report was missing or unreadable';
         }
@@ -1166,13 +1295,43 @@ async function runVitest(
         execution.infrastructureError ||
         execution.error
       ) {
-        if (failedReportDir)
-          retainFailedReport(reportPath, failedReportDir, execution, index);
+        if (failedReportDir) {
+          const retained = [
+            retainFailedReport(
+              reportPath,
+              failedReportDir,
+              execution,
+              index,
+              root,
+            ),
+            retainFailedReport(
+              structuredPath,
+              failedReportDir,
+              execution,
+              index,
+              root,
+              '.errors',
+            ),
+          ];
+          execution.retainedReports = retained.filter(
+            (report) => 'path' in report,
+          );
+          const reasons = retained
+            .filter((report) => 'omitted' in report)
+            .map((report) => report.omitted);
+          if (reasons.length) {
+            reportsDurable = false;
+            execution.retentionFailure = {
+              reasons,
+              temporaryDirectory: reportDirectory,
+            };
+          }
+        }
         break;
       }
     }
     beforeCleanup(executions, preparation);
-    durable = true;
+    durable = reportsDurable;
   } finally {
     // Preserve the raw reporter directory if durable diagnostic persistence
     // fails. Successful runs remove it only after the stable artifact exists.
@@ -1329,6 +1488,15 @@ function diagnosticsArtifact(result, counts, provenance) {
       exitCode: execution.exitCode,
       infrastructureError: execution.infrastructureError === true,
       ...(execution.error ? { error: execution.error } : {}),
+      ...(execution.structuredErrorReport
+        ? { structuredErrorReport: execution.structuredErrorReport }
+        : {}),
+      ...(execution.retainedReports
+        ? { retainedReports: execution.retainedReports }
+        : {}),
+      ...(execution.retentionFailure
+        ? { retentionFailure: execution.retentionFailure }
+        : {}),
       ...(execution.empty ? { empty: true } : {}),
       ...(execution.emptyReason ? { emptyReason: execution.emptyReason } : {}),
       ...(execution.counts ? { counts: execution.counts } : {}),
@@ -1620,7 +1788,8 @@ export async function runRepresentativeNarrowDiffFixture({
  * The selection half of the lane, before any child process: the diff, the
  * manifest routing and its escalations, product-law routing, and the subset
  * that is actually executed. Shared by the unsharded lane and the fast-checks
- * plan (#2709), so both select exactly the same suites.
+ * plan (#2709). Hosted planning preserves mapped targets beside deferrals;
+ * local diagnostics retain their bounded execution budget.
  *
  * @param {string} base
  * @param {{
@@ -1628,6 +1797,7 @@ export async function runRepresentativeNarrowDiffFixture({
  *   changedPathsFn?: typeof changedPaths;
  *   pathExists?: typeof existsSync;
  *   readBaseFile?: (path: string) => string | null;
+ *   preserveMappedTargets?: boolean;
  * }} [options] `readBaseFile` reads a changed file at the merge base (null
  *   when absent there); it defaults to `git show`.
  */
@@ -1638,6 +1808,7 @@ export function prepareChangedSelection(
     changedPathsFn = changedPaths,
     pathExists = existsSync,
     readBaseFile,
+    preserveMappedTargets = false,
   } = {},
 ) {
   const changed = changedPathsFn({ root, base });
@@ -1671,27 +1842,34 @@ export function prepareChangedSelection(
     changed.paths,
   );
   const selection = productLawRouting.selection;
-  // Broad import expansion remains deferred. Explicit, existing test targets
-  // still provide bounded diagnostic failures; passing them cannot complete
-  // the deferred obligations. Never truncate a selection into a green claim.
-  // A lane deferred only by supplemental edges (#2922) keeps the other
-  // paths' related discovery; the deferring paths themselves go to the lane.
-  const deferredOnly = supplementalOnlyDeferredPaths(selection);
+  // Hosted shards retain mapped targets beside broad obligations without
+  // expanding the paths whose supplemental edges explicitly defer discovery.
+  // Local diagnostics keep their bounded explicit-only fallback. Neither
+  // profile discharges a deferred obligation by passing its known targets.
+  const deferredOnly = preserveMappedTargets
+    ? new Set((selection.supplementalDeferrals ?? []).map(({ path }) => path))
+    : supplementalOnlyDeferredPaths(selection);
   const executionSelection =
     selection.lanes.length === 0
       ? selection
       : {
           ...selection,
           relatedPaths: deferredOnly
-            ? selection.relatedPaths.filter((path) => !deferredOnly.has(path))
+            ? selection.relatedPaths.filter(
+                (path) =>
+                  !deferredOnly.has(path) &&
+                  (!preserveMappedTargets || pathExists(resolve(root, path))),
+              )
             : [],
           ownedRelatedPaths: deferredOnly
             ? (selection.ownedRelatedPaths ?? []).filter(
-                (path) => !deferredOnly.has(path),
+                (path) =>
+                  !deferredOnly.has(path) &&
+                  (!preserveMappedTargets || pathExists(resolve(root, path))),
               )
             : selection.ownedRelatedPaths,
           tests:
-            selection.tests.length <= 32
+            preserveMappedTargets || selection.tests.length <= 32
               ? selection.tests.filter((entry) =>
                   pathExists(resolve(root, entry.path)),
                 )
@@ -1784,6 +1962,11 @@ export async function runChangedVerification(
       { ...executionSelection, signal },
       {
         vitestPath,
+        failedReportDir: join(
+          root,
+          '.kontourai/test-impact/failed-reports',
+          request.key,
+        ),
         // The merge base, not the ref: SDK barrel refinement compares
         // purity and exported names against the tree this diff was taken
         // from (#2707).
@@ -1885,7 +2068,13 @@ export async function runChangedVerification(
     status,
     exitCode: receiptExitCode,
     counts: receiptCounts,
-    artifacts: [artifact, diagnostics.artifact],
+    artifacts: [
+      artifact,
+      diagnostics.artifact,
+      ...result.executed.flatMap(
+        (execution) => execution.retainedReports ?? [],
+      ),
+    ],
     cleanup: cleanupFor(result),
     before,
     after,
@@ -1974,12 +2163,14 @@ export async function planChangedVerificationShards(
     root,
     changedPathsFn,
     pathExists,
+    preserveMappedTargets: true,
   });
   const { changed, productLawRouting, executionSelection } = prepared;
   let { selection } = prepared;
   let groups = [];
   let emptyRelatedSelection;
   let relatedDiscovery;
+  const globalTriggeredPaths = new Set();
   if (
     executionSelection.tests.length ||
     executionSelection.relatedPaths.length
@@ -2000,6 +2191,10 @@ export async function planChangedVerificationShards(
         let timeoutMilliseconds;
         const files = await discover(discoveryRoot, relatedPaths, {
           base: changed.mergeBase,
+          deferGlobalTriggers: true,
+          onGlobalTriggeredPaths: (paths) => {
+            for (const path of paths) globalTriggeredPaths.add(path);
+          },
           onTimeout: (value) => {
             timeoutMilliseconds = value;
           },
@@ -2019,10 +2214,36 @@ export async function planChangedVerificationShards(
       partition: resourcePartition,
     });
     groups = planned?.groups ?? [];
-    const uncovered = uncoveredRelatedPaths(executionSelection, {
-      emptySelection: groups.length === 0,
-      relatedDiscoveryEmpty: relatedDiscoveryCount === 0,
-    });
+    if (globalTriggeredPaths.size) {
+      const lanes = new Map(
+        selection.lanes.map(({ id, reasons }) => [id, new Set(reasons)]),
+      );
+      for (const path of globalTriggeredPaths)
+        addReason(
+          lanes,
+          'test-full',
+          `configured Vitest global rerun deferred: ${path}`,
+        );
+      selection = {
+        ...selection,
+        escalated: true,
+        lanes: [...lanes]
+          .map(([id, reasons]) => ({ id, reasons: [...reasons].sort() }))
+          .sort((a, b) => a.id.localeCompare(b.id)),
+      };
+    }
+    const uncovered = uncoveredRelatedPaths(
+      {
+        ...executionSelection,
+        relatedPaths: executionSelection.relatedPaths.filter(
+          (path) => !globalTriggeredPaths.has(path),
+        ),
+      },
+      {
+        emptySelection: groups.length === 0,
+        relatedDiscoveryEmpty: relatedDiscoveryCount === 0,
+      },
+    );
     if (uncovered.length > 0) {
       emptyRelatedSelection = {
         relatedPaths: [...uncovered].sort(),
@@ -2040,13 +2261,16 @@ export async function planChangedVerificationShards(
     shardCount,
     changedPathCount: changed.paths.length,
     deferredLanes: selection.lanes,
-    // Paths whose consumers only the merge-queue full regression runs; the
-    // queue's decision reads this beside deferredLanes.
+    // Legacy schema name for consumers deferred to main/release qualification.
+    // Integration reports this beside deferredLanes without claiming completion.
     mergeQueueRegressionPaths: mergeQueueRegressionPaths(changed.paths),
     escalated: selection.escalated,
     productLaws: productLawRouting.productLaws,
     ...(emptyRelatedSelection ? { emptyRelatedSelection } : {}),
     ...(relatedDiscovery ? { relatedDiscovery } : {}),
+    ...(globalTriggeredPaths.size
+      ? { globalTriggeredPaths: [...globalTriggeredPaths].sort() }
+      : {}),
     groups,
     fileCount: groups.reduce((total, group) => total + group.files.length, 0),
   };
@@ -2140,6 +2364,15 @@ export async function runChangedVerificationShard(
       ...(execution.error ? { error: execution.error } : {}),
       ...(execution.empty ? { empty: true } : {}),
       ...(execution.failedTests ? { failedTests: execution.failedTests } : {}),
+      ...(execution.structuredErrorReport
+        ? { structuredErrorReport: execution.structuredErrorReport }
+        : {}),
+      ...(execution.retainedReports
+        ? { retainedReports: execution.retainedReports }
+        : {}),
+      ...(execution.retentionFailure
+        ? { retentionFailure: execution.retentionFailure }
+        : {}),
     })),
   };
 }

@@ -1,0 +1,7 @@
+{
+  "revision": "66b70700898a7dd80f3a9ea517873b381e718aef",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Scoped follow-up at 66b70700898a7dd80f3a9ea517873b381e718aef: reviewed the code-health prevention claim and the exact analyzer configuration delta. The companion reporter default is the real Vitest plugin entry loaded by runVitest through --reporter; the preserved e31 real negative controls executed it and distinguished primary message/cause from declaration stack. Added only that exact module to the existing dynamicallyLoaded list; all rules, publicPackages, overrides and immutable upstream baselines remain byte-equivalent. The first afc CI failed on this new default-export finding before changed tests/readiness/types; the material candidate metadata correction then passed the actual code-health CLI on the frozen working bytes later committed here. Neither source/metadata review nor those earlier runtime controls is a current-head CI/hosted/landing receipt. Added the actual JSON field citation for this analysis-limit claim; no blanket unused-export exemption or test-only caller was introduced.","inputs":["docs/guides/code-quality.md",".fallowrc.json#/dynamicallyLoaded"]}
+  ]
+}

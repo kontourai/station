@@ -1,3 +1,4 @@
+// UNWIRED(#495): only the unwired room-write adapter and receipt verifier use this.
 import { createHash } from 'node:crypto';
 import { plannedHomeAdmissionIdentifier } from './planned-home-admission-schema.js';
 

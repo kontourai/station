@@ -1,6 +1,9 @@
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { KnowledgeDocumentMeta } from '@kontourai/station-contracts/knowledge';
-import { KnowledgeFileTransactions } from '../../knowledge-store/adapters/shared/file-transactions.js';
+import {
+  type ProjectDocumentFiles,
+  ProjectFileTransactions,
+} from '../../domain/project-file-transactions.js';
 import { KnowledgeStoreCorruptionError } from '../../knowledge-store/errors.js';
 
 export const DEFAULT_KNOWLEDGE_NAMESPACE = 'default';
@@ -133,12 +136,16 @@ export interface KnowledgeDocumentFileTransaction {
   ): Array<{ name: string; kind: 'file' | 'directory' }>;
 }
 
+type KnowledgeDocumentRoot = {
+  storageDir: string;
+  dataDir: string;
+  projectSlug: string;
+  namespace: string;
+};
+
 function documentTransaction(
-  files: KnowledgeFileTransactions,
-  storageDir: string,
-  dataDir: string,
-  projectSlug: string,
-  namespace: string,
+  files: ProjectDocumentFiles,
+  { storageDir, dataDir, projectSlug, namespace }: KnowledgeDocumentRoot,
 ): KnowledgeDocumentFileTransaction {
   return {
     metadata: () => {
@@ -172,49 +179,25 @@ function documentTransaction(
 }
 
 export async function mutateKnowledgeDocuments<T>(
-  input: {
-    storageDir: string;
-    dataDir: string;
-    projectSlug: string;
-    namespace: string;
-    operation: string;
-  },
+  input: KnowledgeDocumentRoot & { operation: string },
   body: (transaction: KnowledgeDocumentFileTransaction) => T | Promise<T>,
 ): Promise<T> {
-  const files = new KnowledgeFileTransactions(input.storageDir);
-  return files.mutate(input.operation, () =>
-    body(
-      documentTransaction(
-        files,
-        input.storageDir,
-        input.dataDir,
-        input.projectSlug,
-        input.namespace,
-      ),
-    ),
+  return new ProjectFileTransactions(input.dataDir).mutateDocuments(
+    input.projectSlug,
+    input.storageDir,
+    input.operation,
+    (files) => body(documentTransaction(files, input)),
   );
 }
 
 export async function readKnowledgeDocuments<T>(
-  input: {
-    storageDir: string;
-    dataDir: string;
-    projectSlug: string;
-    namespace: string;
-  },
+  input: KnowledgeDocumentRoot,
   body: (transaction: KnowledgeDocumentFileTransaction) => T | Promise<T>,
 ): Promise<T> {
-  const files = new KnowledgeFileTransactions(input.storageDir);
-  return files.read(() =>
-    body(
-      documentTransaction(
-        files,
-        input.storageDir,
-        input.dataDir,
-        input.projectSlug,
-        input.namespace,
-      ),
-    ),
+  return new ProjectFileTransactions(input.dataDir).readDocuments(
+    input.projectSlug,
+    input.storageDir,
+    (files) => body(documentTransaction(files, input)),
   );
 }
 
@@ -412,17 +395,19 @@ function loadLegacyKnowledgeMeta(
 }
 
 export async function saveKnowledgeMeta(
-  storageDir: string,
+  input: Omit<KnowledgeDocumentRoot, 'namespace'>,
   docs: KnowledgeDocumentMeta[],
 ): Promise<void> {
-  const files = new KnowledgeFileTransactions(storageDir);
-  await files.mutate('replace-document-metadata', () => {
-    validateDocumentMeta(docs, join(storageDir, 'metadata.json'));
-    files.writeText(
-      join(storageDir, 'metadata.json'),
-      `${JSON.stringify(docs, null, 2)}\n`,
-    );
-  });
+  await new ProjectFileTransactions(input.dataDir).mutateDocuments(
+    input.projectSlug,
+    input.storageDir,
+    'replace-document-metadata',
+    (files) => {
+      const metadataPath = join(input.storageDir, 'metadata.json');
+      validateDocumentMeta(docs, metadataPath);
+      files.writeText(metadataPath, `${JSON.stringify(docs, null, 2)}\n`);
+    },
+  );
 }
 
 export function knowledgeVectorNamespace(

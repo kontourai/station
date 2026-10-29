@@ -102,6 +102,15 @@ vi.mock('../resolvedWorkspacePaneCatalog', () => ({
   }),
 }));
 
+// The related-pane host reads which Project the dock binds; none here.
+vi.mock('../useDockProject', () => ({
+  useDockProject: () => ({
+    projectId: null,
+    projectSlug: null,
+    pending: false,
+  }),
+}));
+
 vi.mock('../../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: vi.fn() }),
 }));

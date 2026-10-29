@@ -1,0 +1,65 @@
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import {
+  type ChatAttachmentInput,
+  parseChatAttachmentDataUrl,
+} from '@kontourai/station-contracts/chat-attachment';
+import {
+  assertDelegationFileData,
+  DelegationFileRefusal,
+} from '@kontourai/station-shared/delegation-files';
+
+/** Route-owned staging authority; neither methods nor upload grants cross JSON. */
+export interface DelegationStagedFiles {
+  resolve(binding: {
+    threadId: string;
+    clientTurnId: string;
+  }): ChatAttachmentInput[];
+  accept(binding: { threadId: string; clientTurnId: string }): void;
+  release(binding: { threadId: string; clientTurnId: string }): void;
+}
+
+/** Preserve bytes and basenames without overwriting any existing workspace file. */
+export async function materializeDelegationFiles(
+  cwd: string,
+  attachments: ChatAttachmentInput[],
+): Promise<{
+  paths: string[];
+  remove(): Promise<void>;
+}> {
+  assertDelegationFileData(attachments);
+  let directory: string | undefined;
+  try {
+    // A fresh directory directly under the resolved workspace avoids traversing
+    // caller-named subdirectories or following an existing attachment symlink.
+    directory = await mkdtemp(join(await realpath(cwd), '.station-delegate-'));
+    const paths: string[] = [];
+    for (const attachment of attachments) {
+      const parsed = parseChatAttachmentDataUrl(attachment.dataUrl)!;
+      const path = join(directory, attachment.name);
+      await writeFile(path, Buffer.from(parsed.base64, 'base64'), {
+        flag: 'wx',
+        mode: 0o600,
+      });
+      paths.push(path);
+    }
+    const ownedDirectory = directory;
+    return {
+      paths,
+      remove: () => rm(ownedDirectory, { recursive: true, force: true }),
+    };
+  } catch (error) {
+    if (directory) {
+      try {
+        await rm(directory, { recursive: true, force: true });
+      } catch (cause) {
+        throw new DelegationFileRefusal('delegation_files_cleanup_failed', {
+          cause,
+        });
+      }
+    }
+    throw new DelegationFileRefusal('delegation_files_unavailable', {
+      cause: error,
+    });
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "revision": "1e7d72c1e715b721fbf74117fdf911e5bb86b403",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"#3603 fix round 2 re-review: the only change to memory-adapter-messages.ts is the torn-tail parse cap, now 2 x CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES (44 MiB) instead of 8 MiB, so a complete record that lost only its newline stays in the transcript. The guide's NDJSON/tear-safe passages concern monitoring events and the session-coverage record, and the usage scan still reads only .ndjson. Claims unchanged.","inputs":["docs/guides/monitoring.md","src-server/adapters/file/memory-adapter-messages.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#3603 fix round 2 re-review of the file-memory and attachment claims: the torn-tail parse cap is now derived from CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES (2 x 22 MiB), so attachment-bearing records that lost only their newline remain readable through conversation read and rescan. No documented limit, route, or response shape changed.","inputs":["docs/reference/api.md","src-server/adapters/file/memory-adapter-messages.ts"]}
+  ]
+}

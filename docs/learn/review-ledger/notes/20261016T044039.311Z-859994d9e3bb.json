@@ -1,0 +1,7 @@
+{
+  "revision": "7285da4592f76b508e63f55f9f2b602a6b295525",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the merge integration against origin/main: this branch changes runtime-routes only in pairing-cookie parsing and issuer naming at the two credential exchanges. The telemetry acknowledgement, disclosure protocol, selected-Station status/probe authorization, late configuration activation and event inventory routes are unchanged from upstream. The usage telemetry guide remains accurate for this bounded delta; no prose change is needed. This is source correspondence review, not new live ingestion or telemetry qualification.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

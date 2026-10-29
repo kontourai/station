@@ -6,6 +6,7 @@ import {
 import { useEffect, useRef } from 'react';
 import { Button } from '../../components/Button';
 import { SkeletonBlock } from '../../components/state';
+import './ChildWorkTranscript.css';
 
 /**
  * #3163: an engine subagent's own transcript, read-only. The server resolves

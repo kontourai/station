@@ -9,11 +9,11 @@ import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
 import { Readable, Writable } from 'node:stream';
 import {
-  type AgentCapabilities,
   type Client,
   ClientSideConnection,
   type ContentBlock,
   type DisableProviderResponse,
+  type InitializeResponse,
   type ListProvidersResponse,
   type McpServer,
   ndJsonStream,
@@ -63,8 +63,40 @@ export interface ACPProcessOptions {
   clientCapabilities?: {
     fs?: { readTextFile?: boolean; writeTextFile?: boolean };
     terminal?: boolean;
+    /** Offered only by the sign-in handshake, which can run terminal logins. */
+    auth?: { terminal?: boolean };
   };
   logger: any;
+  /**
+   * #3290: the child's environment, derived from the one Station would
+   * otherwise launch it with (the login-shell-augmented environment). The
+   * adapter uses it to carry an engine's launch configuration; a throw fails
+   * the start before anything is spawned.
+   */
+  spawnEnv?: (base: NodeJS.ProcessEnv) => NodeJS.ProcessEnv;
+  /**
+   * The engine descriptor's non-secret launch variables. Applied UNDER the
+   * environment Station would otherwise launch with, so a value the user
+   * already set wins; `spawnEnv` then runs over the merged result.
+   */
+  launchEnv?: Readonly<Record<string, string>>;
+  /**
+   * Credentials Station holds for this one connection (engine-credentials.ts),
+   * read at each start. Applied OVER the inherited environment: a key the
+   * person gave Station for this engine is the one it should use.
+   */
+  credentialEnv?: () => Readonly<Record<string, string>> | undefined;
+  /**
+   * A session's own Station-owned TMPDIR (`session-tmpdir.ts`). Replaces the
+   * shared engine-spawn directory the augmented environment carries, after
+   * the credential layer, so neither a descriptor nor a credential moves it.
+   */
+  tmpDir?: string;
+  /**
+   * Receives the child's stderr instead of it being inherited. Only the
+   * short-lived sign-in process sets it, to show links the engine prints.
+   */
+  onStderr?: (text: string) => void;
   terminateProcess?: (proc: ChildProcess) => Promise<void>;
   resolveCommand?: (command: string) => Promise<string | null>;
   /**
@@ -107,17 +139,28 @@ function quickLivenessGone(pid: number): boolean {
   }
 }
 
-export interface InitializeResult {
-  protocolVersion: number;
-  agentInfo?: { name: string; version?: string };
-  // archive#895 wave B: the SDK's full AgentCapabilities shape (loadSession,
-  // promptCapabilities, mcpCapabilities, sessionCapabilities, …) — was a
-  // locally-typed subset (loadSession/promptCapabilities only); switched to
-  // the SDK type so probe evidence (acp-probe.ts) can cache the whole
-  // handshake without a parallel type to keep in sync.
-  agentCapabilities?: AgentCapabilities;
+/**
+ * The agent's `initialize` answer as the SDK types it, kept whole: agentInfo,
+ * authMethods and the result's own `_meta` are handshake facts too (ADR 0013
+ * Layer 2), and the pinned SDK passes them through unvalidated.
+ */
+export type InitializeResult = InitializeResponse & {
   /** Present only when initialize advertised `providers` and list succeeded. */
   providerRouting?: ProviderInfo[];
+};
+
+/** The engine's command could not be found or run; nothing was spawned. */
+export class ACPCommandNotFoundError extends Error {
+  constructor(command: string) {
+    super(
+      // A command with whitespace that is not a path to a program is most
+      // often a program plus its arguments typed into one field.
+      /\s/.test(command.trim())
+        ? `Station could not find a program named "${command}". If that includes arguments, put them in Advanced → Arguments and keep only the program in Command.`
+        : `Station could not start ${command}: it is not installed, or not runnable, on the computer Station runs on. Install it there, then check the engine again.`,
+    );
+    this.name = 'ACPCommandNotFoundError';
+  }
 }
 
 export class ACPProviderRoutingUnsupportedError extends Error {
@@ -223,6 +266,20 @@ function describeSpawnFailure(
     : new Error(`Cannot start '${command}': ${detail}`);
 }
 
+/**
+ * #352: the `models` field of a `session/new` (or load/resume) answer, the
+ * model dialect switched with `session/set_model`. The pinned SDK no longer
+ * types it; Grok and other agents still send it.
+ */
+export interface AcpSessionModelState {
+  currentModelId?: string;
+  availableModels: Array<{
+    modelId: string;
+    name?: string;
+    description?: string | null;
+  }>;
+}
+
 interface SessionResult {
   sessionId: string;
   modes?: {
@@ -230,6 +287,7 @@ interface SessionResult {
     currentModeId?: string;
   };
   configOptions?: any[];
+  models?: unknown;
 }
 
 export class ACPProcess extends EventEmitter {
@@ -352,17 +410,25 @@ export class ACPProcess extends EventEmitter {
 
     const bin = await this.findCommand();
     if (this.destroyed) throw new Error('ACPProcess already destroyed');
-    if (!bin)
-      throw new Error(
-        `Station could not start ${this.opts.command}: it is not installed, or not runnable, on the computer Station runs on. Install it there, then reconnect the engine.`,
-      );
+    if (!bin) throw new ACPCommandNotFoundError(this.opts.command);
 
     // archive#977: layer the login-shell-resolved PATH onto the spawned
     // process's own env too, not just Station's own binary lookup above --
     // otherwise a service-launched Station can resolve the binary but the
     // engine subprocess itself still cannot find nix/mise/homebrew-managed
     // tools it shells out to internally.
-    const env = await augmentedSpawnEnv();
+    const augmentedEnv = await augmentedSpawnEnv();
+    const launchedEnv = this.opts.launchEnv
+      ? { ...this.opts.launchEnv, ...augmentedEnv }
+      : augmentedEnv;
+    const credentialEnv = this.opts.credentialEnv?.();
+    const credentialedEnv = credentialEnv
+      ? { ...launchedEnv, ...credentialEnv }
+      : launchedEnv;
+    const baseEnv = this.opts.tmpDir
+      ? { ...credentialedEnv, TMPDIR: this.opts.tmpDir }
+      : credentialedEnv;
+    const env = this.opts.spawnEnv ? this.opts.spawnEnv(baseEnv) : baseEnv;
     // archive#1863: spawn through the owned-process primitive so the child is
     // tagged with this Station's identity and recorded in the host-wide
     // registry. `detached: true` is preserved deliberately — a group kill reaps
@@ -374,9 +440,15 @@ export class ACPProcess extends EventEmitter {
     const { proc, release } = spawnOwnedChild(bin, this.opts.args || [], {
       cwd: this.opts.cwd,
       env,
-      stdio: ['pipe', 'pipe', 'inherit'],
+      stdio: ['pipe', 'pipe', this.opts.onStderr ? 'pipe' : 'inherit'],
     });
     this.proc = proc;
+    if (this.opts.onStderr) {
+      const onStderr = this.opts.onStderr;
+      proc.stderr?.setEncoding('utf8');
+      proc.stderr?.on('data', (chunk: string) => onStderr(chunk));
+      proc.stderr?.on('error', () => undefined);
+    }
     // Kept independently of `proc`, which destroy() nulls: this is the only
     // thing left to ask the kernel about afterwards (archive#3422).
     this.spawnedPid = proc.pid ?? null;
@@ -494,6 +566,23 @@ export class ACPProcess extends EventEmitter {
     return this.connection.unstable_disableProvider({ providerId });
   }
 
+  /**
+   * ACP `authenticate` with one of the methods this process advertised. A
+   * terminal method is refused: the protocol says a client runs those itself
+   * and never passes them here.
+   */
+  async authenticate(methodId: string): Promise<void> {
+    if (!this.connection || !this._initResult)
+      throw new Error('ACPProcess not started');
+    const method = (this._initResult.authMethods ?? []).find(
+      (candidate) => candidate.id === methodId,
+    );
+    if (!method) throw new Error('The engine does not offer that sign-in.');
+    if ('type' in method && method.type === 'terminal')
+      throw new Error('That sign-in runs in a terminal.');
+    await this.connection.authenticate({ methodId });
+  }
+
   /** Create a new ACP session. */
   async newSession(
     cwd: string,
@@ -572,6 +661,20 @@ export class ACPProcess extends EventEmitter {
       sessionId: this._sessionId,
       configId,
       value,
+    });
+  }
+
+  /**
+   * #352: select a model through `session/set_model`, the dialect paired with
+   * a session's `models` field. Sent by name because the pinned SDK no longer
+   * declares the method; the agent answers it like any other request.
+   */
+  async setModel(modelId: string): Promise<unknown> {
+    if (!this.connection || !this._sessionId)
+      throw new Error('No active session');
+    return this.connection.request('session/set_model', {
+      sessionId: this._sessionId,
+      modelId,
     });
   }
 

@@ -1,0 +1,7 @@
+{
+  "revision": "ac8a19d35e2586d147a7fcbdc8ee95d86dc5c114",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed generated Station Docs delta: only OutboundDispatchModule body and its content digest change, matching the canonical module map exact-key acceptance and durable-flush boundary. Manual topics, tool availability, credential custody, metadata and runtime access remain unchanged. No manual prose change needed; generator reports 112 topics. This review establishes source correspondence, not live MCP or platform qualification.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

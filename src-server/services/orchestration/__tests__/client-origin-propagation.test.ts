@@ -36,6 +36,117 @@ describe('client origin propagation', () => {
     ).toEqual({ clientOrigin: origin });
   });
 
+  it('stamps the send key on the turn that send started, and never believes an adapter-supplied key', () => {
+    const propagation = new ClientOriginTurnPropagation();
+    const base = {
+      provider: 'test',
+      threadId: 'thread-k',
+      createdAt: '2026-10-13T00:00:00.000Z',
+      method: 'turn.started' as const,
+    };
+    // A user send (it has an origin) holds its early start and stamps it.
+    expect(
+      propagation.begin('thread-k', origin, undefined, undefined, 'key-1'),
+    ).toBe(true);
+    expect(
+      propagation.apply({ ...base, eventId: 'e-1', turnId: 'turn-k1' }),
+    ).toBeUndefined();
+    const settled = propagation.settle('thread-k', 'turn-k1', origin);
+    expect(settled?.method === 'turn.started' && settled.clientTurnId).toBe(
+      'key-1',
+    );
+    // A key alone holds nothing back (an internal keyed send's events keep
+    // flowing); a start arriving after acceptance is still stamped.
+    expect(
+      propagation.begin('thread-i', undefined, undefined, undefined, 'key-2'),
+    ).toBe(false);
+    expect(
+      propagation.settle(
+        'thread-i',
+        'turn-i1',
+        undefined,
+        undefined,
+        undefined,
+        'key-2',
+      ),
+    ).toBeUndefined();
+    const late = propagation.apply({
+      ...base,
+      threadId: 'thread-i',
+      eventId: 'e-3',
+      turnId: 'turn-i1',
+    });
+    expect(late?.method === 'turn.started' && late.clientTurnId).toBe('key-2');
+    // No reservation: an adapter's own claim of a key is stripped.
+    const forged = propagation.apply({
+      ...base,
+      eventId: 'e-2',
+      turnId: 'turn-k2',
+      clientTurnId: 'someone-elses-key',
+    });
+    expect(forged).toBeDefined();
+    expect(forged && 'clientTurnId' in forged).toBe(false);
+  });
+
+  it.each(['early', 'late'])(
+    'binds a legacy %s start only to its accepted turn',
+    (timing) => {
+      const propagation = new ClientOriginTurnPropagation();
+      propagation.begin('legacy', origin, undefined, undefined, 'trusted-key');
+      propagation.bindInvocation('legacy', 'invocation');
+      const event = {
+        eventId: 'legacy-event',
+        provider: 'test',
+        threadId: 'legacy',
+        createdAt: '2026-10-22T00:00:00.000Z',
+        method: 'turn.started' as const,
+        turnId: 'accepted-turn',
+        clientTurnId: 'forged-key',
+      };
+      expect(
+        propagation.apply({ ...event, invocationId: 'other' }),
+      ).not.toHaveProperty('clientTurnId');
+      if (timing === 'early') expect(propagation.apply(event)).toBeUndefined();
+      propagation.settle(
+        'legacy',
+        'accepted-turn',
+        origin,
+        undefined,
+        undefined,
+        'trusted-key',
+        'invocation',
+      );
+      const result =
+        timing === 'early'
+          ? propagation.takeLegacyRouting('legacy', 'accepted-turn')
+          : propagation.apply(event);
+      expect(result).toMatchObject({
+        turnId: 'accepted-turn',
+        clientTurnId: 'trusted-key',
+        clientOrigin: origin,
+      });
+      expect(
+        propagation.apply({ ...event, turnId: 'unrelated' }),
+      ).not.toHaveProperty('clientTurnId');
+    },
+  );
+
+  it('a send that fails before acceptance hands back the start it held, instead of losing it', () => {
+    const propagation = new ClientOriginTurnPropagation();
+    propagation.begin('thread-c', origin);
+    const start = {
+      eventId: 'event-c',
+      provider: 'test',
+      threadId: 'thread-c',
+      createdAt: '2026-10-13T00:00:00.000Z',
+      method: 'turn.started' as const,
+      turnId: 'turn-c',
+    };
+    expect(propagation.apply(start)).toBeUndefined();
+    expect(propagation.cancel('thread-c')).toEqual([start]);
+    expect(propagation.cancel('thread-c')).toEqual([]);
+  });
+
   it('#2324: passes a provider-triggered start straight through while a send holds a reservation', () => {
     const propagation = new ClientOriginTurnPropagation();
     propagation.begin('thread-p', origin);
@@ -224,5 +335,44 @@ describe('client origin propagation', () => {
         propagation.settle('thread-p4', 'turn-p4', undefined, undefined),
       ).toBeUndefined();
     });
+  });
+});
+
+it('keeps old and untagged starts away from a pending invocation without rewriting origin', () => {
+  const propagation = new ClientOriginTurnPropagation();
+  expect(propagation.begin('t', origin, undefined, undefined, 'B-key')).toBe(
+    true,
+  );
+  propagation.bindInvocation('t', 'B');
+  const base = {
+    method: 'turn.started' as const,
+    eventId: 'start',
+    provider: 'claude',
+    threadId: 't',
+    turnId: 'N',
+    createdAt: '2030-01-01T00:00:00Z',
+  };
+  for (const invocationId of ['A', undefined]) {
+    expect(
+      propagation.apply({ ...base, invocationId })?.clientOrigin,
+    ).toBeUndefined();
+    propagation.retire('t', undefined, 'A');
+  }
+  expect(
+    propagation.apply({ ...base, eventId: 'B', invocationId: 'B' }),
+  ).toBeUndefined();
+  const accepted = propagation.settle(
+    't',
+    'N',
+    origin,
+    undefined,
+    undefined,
+    'B-key',
+    'B',
+  );
+  expect(accepted).toMatchObject({
+    invocationId: 'B',
+    clientTurnId: 'B-key',
+    clientOrigin: origin,
   });
 });

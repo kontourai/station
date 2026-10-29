@@ -91,7 +91,7 @@
 
 /* Kind 3: Station's own backlog. One sentence naming every slot it covers,
    rather than a row per slot under a heading repeating the same words (#1536
-   B3 replaced the row form, and review L1 removed the now-unreachable
+   B3 replaced the row form, and #1562 removed the now-unreachable
    `--value--not-captured` rule with it). Deliberately smaller than an absence
    row and NOT lower-contrast — review fix, station#1802 L-2: stacking
    `opacity` on top of the already-muted `--k-text-muted` measured below WCAG

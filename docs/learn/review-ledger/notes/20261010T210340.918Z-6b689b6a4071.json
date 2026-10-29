@@ -1,0 +1,7 @@
+{
+  "revision": "33c5c4f2f9c237999284d2553a21e934cc5b6e59",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Gallery reference delta review for PR3534: inspected screenshot-baseline merge/volatile/path guards and the exact-diff implementation against the guide sections on partial refresh, pinned Linux renderer, failed capture refusal and independent PR-head recapture. Hosted run38085482432 at c9ee6f93 completed54 screens; only Profile changed,52 other comparisons unchanged,one existing volatile screen. Viewed the actual Profile PNG and retained only its PNG/hash in standalone33c5c4f2. Full retained artifact now53/53 comparisons pass. Inherited baseline digest changes since the historical review do not change the manifest schema, writer/diff contracts or renderer route; no guide prose change is needed. New-head hosted capture and merge-queue qualification remain pending; this note does not claim them.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json"]}
+  ]
+}

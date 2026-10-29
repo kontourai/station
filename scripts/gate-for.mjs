@@ -13,22 +13,21 @@
 // Veritas guidance. It runs no evidence checks and exits 2 when the edit scope
 // or required governance context cannot be read.
 import { execFileSync } from 'node:child_process';
-import { resolve } from 'node:path';
-import {
-  buildExplainGuidance,
-  loadRepoMap,
-  loadRepoStandards,
-} from '@kontourai/veritas';
 import { decideOrchestrationTransferScope } from './check-prepush-orchestration-transfer.mjs';
 import { decideSdkBarrelScope } from './check-prepush-sdk-barrel.mjs';
 import { decideStaticGateScope } from './check-prepush-static-gates.mjs';
-import { decideTypecheckScope } from './check-prepush-typecheck.mjs';
 import {
   collectDocumentationChanges,
   formatDocumentationImpact,
   readDocumentationImpact,
 } from './documentation-impact.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
+import {
+  formatGalleryCoverage,
+  galleryCoverage,
+} from './lib/gallery-screen-coverage.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { npmInvocation } from './lib/npm-cli.mjs';
 import { fixturePolicyCommands } from './test-fixture-policy.mjs';
 
 function resolveBaseSha(base) {
@@ -57,10 +56,6 @@ export const EVERY_PUSH_CHECKS = Object.freeze([
     note: 'classifies actual pushed refs against remote main (#3101)',
   }),
   Object.freeze({
-    command: 'npm run veritas:readiness',
-    note: 'Veritas readiness; pure merges defer this check to required CI',
-  }),
-  Object.freeze({
     command: 'node scripts/commit-message-gate.mjs --prepush-stdin',
     note: 'commit subjects in the push range',
   }),
@@ -74,14 +69,15 @@ export const LANE_LADDER = Object.freeze([
     detail: null,
   }),
   Object.freeze({
-    stage: 'Bounded feedback before push',
+    stage: 'Only to reproduce a specific failure or when explicitly requested',
     command: 'npm run ci:fast',
     detail: null,
   }),
   Object.freeze({
     stage: 'Ordinary PR integration',
     command: null,
-    detail: 'required checks on the GitHub merge queue candidate',
+    detail:
+      'required hosted fast-checks owns readiness and all typecheck lanes; the merge queue checks the combined candidate',
   }),
   Object.freeze({
     stage: 'Promotion completion',
@@ -106,7 +102,6 @@ export function gateScopes({ changedPaths, baseSha }) {
   const statics = decideStaticGateScope({ baseSha, changedPaths });
   const barrel = decideSdkBarrelScope({ baseSha, changedPaths });
   const transfer = decideOrchestrationTransferScope({ baseSha, changedPaths });
-  const typecheck = decideTypecheckScope({ baseSha, changedPaths });
   return [
     {
       name: 'orchestration transfer budgets',
@@ -123,11 +118,6 @@ export function gateScopes({ changedPaths, baseSha }) {
       decision: barrel,
       command: 'node scripts/check-prepush-sdk-barrel.mjs',
     },
-    {
-      name: 'typecheck (twelve tsc lanes, ~91s)',
-      decision: typecheck,
-      command: 'node scripts/check-prepush-typecheck.mjs',
-    },
   ].map(({ name, decision, command }) => ({
     name,
     runs: decision.run,
@@ -143,6 +133,7 @@ export function gatePlan({ changedPaths, baseSha }) {
     everyPush: EVERY_PUSH_CHECKS,
     scoped: gateScopes({ changedPaths, baseSha }),
     fixtureCommands: fixturePolicyCommands(changedPaths),
+    gallery: galleryCoverage({ changedPaths }),
     ladder: LANE_LADDER,
   };
 }
@@ -172,6 +163,7 @@ export function gateReport({ changedPaths, baseSha }) {
       'Fixture and test-effectiveness route:',
       ...plan.fixtureCommands.map((command) => `  ${command}`),
     );
+  if (plan.gallery) lines.push('', ...formatGalleryCoverage(plan.gallery));
   lines.push(
     '',
     ...plan.ladder.map(
@@ -180,12 +172,6 @@ export function gateReport({ changedPaths, baseSha }) {
     ),
   );
   return lines.join('\n');
-}
-
-function addGuidanceRule(selected, rule, filePath) {
-  const existing = selected.get(rule.id);
-  if (existing) existing.paths.add(filePath);
-  else selected.set(rule.id, { rule, paths: new Set([filePath]) });
 }
 
 function guidanceLinesForRule(rule) {
@@ -204,32 +190,40 @@ function guidanceLinesForRule(rule) {
 /**
  * The Veritas rules that govern `changedPaths`, as data: each rule once,
  * with the paths it matched.
+ * @returns {(ReturnType<typeof import('@kontourai/veritas').buildExplainGuidance>['rules'][number] & { paths: string[] })[]}
  */
 export function veritasGuidanceRules(changedPaths, rootDir = process.cwd()) {
   if (changedPaths.length === 0) return [];
-  const repoMap = loadRepoMap(resolve(rootDir, '.veritas/repo-map.json'));
-  const repoStandards = loadRepoStandards(
-    resolve(rootDir, '.veritas/repo-standards/default.repo-standards.json'),
+  const invocation = npmInvocation([
+    'exec',
+    '--no',
+    '--',
+    'veritas',
+    'plan',
+    '--root',
+    rootDir,
+    '--json',
+    ...changedPaths,
+  ]);
+  const resource = JSON.parse(
+    execFileSyncBounded(invocation.command, invocation.args, {
+      cwd: rootDir,
+      encoding: 'utf8',
+      windowsHide: true,
+    }),
   );
-  const selected = new Map();
-  for (const filePath of changedPaths) {
-    const guidance = buildExplainGuidance({
-      rootDir,
-      repoMap,
-      repoStandards,
-      filePath,
-    });
-    for (const rule of guidance.rules)
-      addGuidanceRule(selected, rule, filePath);
+  if (
+    resource.apiVersion !== 'veritas.kontour.ai/v1alpha1' ||
+    resource.kind !== 'ChangePlan' ||
+    resource.status.executed !== false
+  ) {
+    throw new Error(
+      'Veritas did not return an unexecuted ChangePlan resource.',
+    );
   }
-  return [...selected.values()].map(({ rule, paths }) => ({
-    id: rule.id,
-    enforcementLevel: rule.enforcementLevel,
-    summary: rule.summary,
-    evidenceCheckIds: [...rule.evidenceCheckIds],
-    mustDo: [...rule.mustDo],
-    mustNotDo: [...rule.mustNotDo],
-    paths: [...paths],
+  return resource.status.guidance.map(({ files, ...rule }) => ({
+    ...rule,
+    paths: files,
   }));
 }
 

@@ -1,0 +1,117 @@
+{
+  "revision": "e6c241b755c7090ab87dd08878d3d9def1f77df3",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Read the full map; it names responsibility areas, not module-map entries. docs/architecture/module-map.md gained only a ColorThemes section and index row; the sections this doc links to are unchanged. No prose change.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Read the module-map references (lines 9, 141) and the surrounding responsibility text. docs/architecture/module-map.md gained only a ColorThemes section and index row; the sections this doc links to are unchanged. No prose change.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Read the Architecture row and surrounding reading path. docs/architecture/module-map.md gained only a ColorThemes section and index row; the sections this doc links to are unchanged. No prose change.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Read the audience routes that point at the module map. docs/architecture/module-map.md gained only a ColorThemes section and index row; the sections this doc links to are unchanged. No prose change.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Read the module-map ownership statement and checked the review lists no theme or preference module. docs/architecture/module-map.md gained only a ColorThemes section and index row; the sections this doc links to are unchanged. No prose change.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Added the ColorThemes section (catalog, resolver, applier, renderer, generator, tests, limits) and index row, checked against the committed sources. Re-read AccountPreferences: device-settings-store changed only to derive nullable string settings from a null default (same accentColor/chatDockProjectSlug behaviour) and gained three account-scope keys; envelope, migration and overlay behaviour are unchanged; its prose stays true.","inputs":["docs/architecture/module-map.md","src-ui/src/lib/device-settings-store.ts","src-ui/src/lib/color-theme-catalog.ts","src-ui/src/lib/color-themes.ts","src-ui/src/lib/color-theme-apply.ts","src-ui/src/lib/color-theme-css.ts","scripts/gen-color-themes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Read section 6 and the L-2 limits that cite main.tsx. main.tsx gained one pre-render bindColorThemeToSettings call that only stamps root attributes and theme-color; mount order, lazy boundaries and provider tree are unchanged; /share is still mounted above the provider tree and App is still statically imported. No prose change.","inputs":["docs/design/answer-share-permalinks.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Read the account-preference and appearance claims (lines 55-62, 452-462, 566). color themes add only attribute-gated rules (data-color-theme*), and color-theme-cascade.test.ts shows the Station default computes identically in dark, light, Beta, Nightly and Dev; the new device-settings keys do not touch composer or model-picker preferences. No prose change.","inputs":["docs/design/chat-composer.md","packages/contracts/src/device-settings.ts","src-ui/src/index.css"]},
+
+    {"path":"docs/design/collaborative-editor-pane.md","note":"Read the full (historical, not-shipped) design; it makes no styling claim. color themes add only attribute-gated rules (data-color-theme*), and color-theme-cascade.test.ts shows the Station default computes identically in dark, light, Beta, Nightly and Dev. No prose change.","inputs":["docs/design/collaborative-editor-pane.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Read the module-map citations (lines 7, 22). docs/architecture/module-map.md gained only a ColorThemes section and index row; the sections this doc links to are unchanged. No prose change.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/placement.md","note":"Read the region-arrangement record claims citing device-settings.ts (lines 330-365, 1670-1680) and the index.css shell/maximize claims. color themes add only attribute-gated rules (data-color-theme*), and color-theme-cascade.test.ts shows the Station default computes identically in dark, light, Beta, Nightly and Dev; the region record and its validation are unchanged. No prose change.","inputs":["docs/design/placement.md","packages/contracts/src/device-settings.ts","src-ui/src/index.css","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Read the installer and script-boundary claims. package.json#/scripts gained only gen:color-themes; no command this doc names changed. No prose change.","inputs":["docs/design/pnpm-workspace-installation.md","package.json#/scripts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Read the browser-matrix claim (both themes, line 102). color themes add only attribute-gated rules (data-color-theme*), and color-theme-cascade.test.ts shows the Station default computes identically in dark, light, Beta, Nightly and Dev. No prose change.","inputs":["docs/design/session-tape-replay.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Read the account-preferences section, S3 device list and section-6 compatibility note. Added the named color theme to the account preference list (commit 208a505421e). Checked against account-preferences.ts, the server id schema and the store's nullable-string derivation; the pre-React compatibility note stays true (color themes have no prior keys; startup-theme.js reads the envelope).","inputs":["docs/design/settings-architecture.md","packages/contracts/src/account-preferences.ts","src-server/services/identity/account-preferences.ts","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Read the branding/theme claims (lines 268-290, 541, 590-606, 771). The theming guide gained a Named color themes section and a startup sentence; the white-label anchor and its claims are unchanged, and white-label branding still wins as inline style. No prose change.","inputs":["docs/design/shell-plugins-distributions.md","docs/guides/theming.md"]},
+
+    {"path":"docs/glossary.md","note":"Read the module-map citation (line 388) and checked the glossary defines no theme or preference term affected. docs/architecture/module-map.md gained only a ColorThemes section and index row; the sections this doc links to are unchanged. No prose change.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Read the gate and command sections. package.json#/scripts gained only gen:color-themes; no command this doc names changed. No prose change.","inputs":["docs/guides/code-quality.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/connections.md","note":"Read the setup-dialog theme claim (line 352). color themes add only attribute-gated rules (data-color-theme*), and color-theme-cascade.test.ts shows the Station default computes identically in dark, light, Beta, Nightly and Dev. No prose change.","inputs":["docs/guides/connections.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Read the dependency command sections. package.json#/scripts gained only gen:color-themes; no command this doc names changed. No prose change.","inputs":["docs/guides/dependency-security.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/development.md","note":"Read the just/contributor-command and focused-command sections. package.json#/scripts gained only gen:color-themes; no command this doc names changed; the generated contributor reference covers just recipes, not npm generators. No prose change.","inputs":["docs/guides/development.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Read the full guide; the envelope and export/import claims (lines 19-33) still hold. device-settings-store changed only to derive nullable string settings from a null default (same accentColor/chatDockProjectSlug behaviour) and gained three account-scope keys; envelope, migration and overlay behaviour are unchanged. No prose change.","inputs":["docs/guides/keyboard-shortcuts.md","src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Read the claims tied to the UI stylesheet and checked none is about colour or theme. color themes add only attribute-gated rules (data-color-theme*), and color-theme-cascade.test.ts shows the Station default computes identically in dark, light, Beta, Nightly and Dev. No prose change.","inputs":["docs/guides/knowledge.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Read the startup/readiness and renderer bootstrap sections. main.tsx gained one pre-render bindColorThemeToSettings call that only stamps root attributes and theme-color; mount order, lazy boundaries and provider tree are unchanged; native readiness ownership is unchanged. No prose change.","inputs":["docs/guides/native-shell-verification.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"Read the full guide. package.json#/scripts gained only gen:color-themes; no command this doc names changed. No prose change.","inputs":["docs/guides/repository-knowledge-graph.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Read the token/theme ownership, entry-sheet and main.tsx publisher claims (lines 10, 67-72, 130, 224, 314). color themes add only attribute-gated rules (data-color-theme*), and color-theme-cascade.test.ts shows the Station default computes identically in dark, light, Beta, Nightly and Dev. main.tsx gained one pre-render bindColorThemeToSettings call that only stamps root attributes and theme-color; mount order, lazy boundaries and provider tree are unchanged. No prose change.","inputs":["docs/guides/responsive-ui.md","src-ui/src/index.css","src-ui/src/lib/device-settings-store.ts","src-ui/src/main.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Read the full guide; it makes no styling or device-settings claim. color themes add only attribute-gated rules (data-color-theme*), and color-theme-cascade.test.ts shows the Station default computes identically in dark, light, Beta, Nightly and Dev; the new device-settings keys are unrelated. No prose change.","inputs":["docs/guides/starter-work.md","packages/contracts/src/device-settings.ts","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/testing.md","note":"Read the Chromium flag and dock-grid sections and the command lists near them. package.json#/scripts gained only gen:color-themes; no command this doc names changed. No prose change.","inputs":["docs/guides/testing.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/theming.md","note":"Added the Named color themes section and a startup sentence (startup-theme.js stamps the color theme and theme-color; main.tsx binds it to the settings store). Re-read the cascade, channel, accent and white-label sections against index.css, branding-theme.ts and the cascade test; they remain true with no theme selected.","inputs":["docs/guides/theming.md","src-ui/src/index.css","src-ui/src/lib/device-settings-store.ts","src-ui/src/main.tsx","src-ui/src/lib/color-theme-catalog.ts","src-ui/src/lib/color-themes.ts","src-ui/src/lib/color-theme-apply.ts","src-ui/src/lib/color-theme-css.ts","scripts/gen-color-themes.ts"]},
+
+    {"path":"docs/learn/README.md","note":"Read the atlas.json ownership and builder-rejection claims (lines 99-170). atlas.json gained ColorThemes in the navigation branch; docs:learn:build accepted it. No prose change.","inputs":["docs/learn/README.md","docs/learn/atlas.json"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Read the SplitPane selected-row claim (line 55-64). color themes add only attribute-gated rules (data-color-theme*), and color-theme-cascade.test.ts shows the Station default computes identically in dark, light, Beta, Nightly and Dev. No prose change.","inputs":["docs/learn/walkthroughs.md","src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/backend.md","note":"Read the composition table and runtime claims; none concerns the UI stylesheet, boot or device store. color themes add only attribute-gated rules (data-color-theme*), and color-theme-cascade.test.ts shows the Station default computes identically in dark, light, Beta, Nightly and Dev. main.tsx gained one pre-render bindColorThemeToSettings call that only stamps root attributes and theme-color; mount order, lazy boundaries and provider tree are unchanged. No prose change.","inputs":["docs/patterns/backend.md","src-ui/src/index.css","src-ui/src/lib/device-settings-store.ts","src-ui/src/main.tsx"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Read the token example and theming-guide pointer (lines 150-165). color themes add only attribute-gated rules (data-color-theme*), and color-theme-cascade.test.ts shows the Station default computes identically in dark, light, Beta, Nightly and Dev; new styles should still use --k-* tokens, which the themes override. No prose change.","inputs":["docs/patterns/frontend.md","src-ui/src/index.css","src-ui/src/lib/device-settings-store.ts","src-ui/src/main.tsx"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Read the full inventory; it cites no module this change adds or alters. docs/architecture/module-map.md gained only a ColorThemes section and index row; the sections this doc links to are unchanged. No prose change.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Read the claims tied to UI evidence; none concerns colour. color themes add only attribute-gated rules (data-color-theme*), and color-theme-cascade.test.ts shows the Station default computes identically in dark, light, Beta, Nightly and Dev. No prose change.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/tools/station-control-delegation.ts","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Read the VITE_API_BASE row and frontend entries. main.tsx gained one pre-render bindColorThemeToSettings call that only stamps root attributes and theme-color; mount order, lazy boundaries and provider tree are unchanged; API base resolution is unchanged. No prose change.","inputs":["docs/reference/env-vars.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Read the full page. color themes add only attribute-gated rules (data-color-theme*), and color-theme-cascade.test.ts shows the Station default computes identically in dark, light, Beta, Nightly and Dev. No prose change.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/sdk.md","note":"Read the branding, themed-components and account-preferences sections (lines 1008, 2375, 4596-4612). main.tsx gained one pre-render bindColorThemeToSettings call that only stamps root attributes and theme-color; mount order, lazy boundaries and provider tree are unchanged; the SDK account-preference client is unchanged and the new keys travel through the same patch. No prose change.","inputs":["docs/reference/sdk.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Read the section/row claims (around line 69) and the registry delivery text; no new Settings row or catalog entry was added. docs/architecture/module-map.md gained only a ColorThemes section and index row; the sections this doc links to are unchanged. No prose change.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Read the build/topic description (lines 1-40). station-docs-content.ts was regenerated with the new ColorThemes architecture topic by docs:mcp:generate; the claims about how topics are compiled stay true. No prose change.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Read the receipt owner and dependency-identity claims (package.json at line 86). package.json#/scripts gained only gen:color-themes; no command this doc names changed. No prose change.","inputs":["docs/reference/verification-receipts.md","package.json#/scripts"]},
+
+    {"path":"docs/user/concepts.md","note":"Read the full concept guide; it cites no affected module. docs/architecture/module-map.md gained only a ColorThemes section and index row; the sections this doc links to are unchanged. No prose change.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Read the preview-theme and account-preference claims (lines 74-80, 138-155). color themes add only attribute-gated rules (data-color-theme*), and color-theme-cascade.test.ts shows the Station default computes identically in dark, light, Beta, Nightly and Dev; color themes are appearance and follow the account like the rest of Appearance. No prose change.","inputs":["docs/user/getting-started.md","src-ui/src/index.css"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Read the full page. main.tsx gained one pre-render bindColorThemeToSettings call that only stamps root attributes and theme-color; mount order, lazy boundaries and provider tree are unchanged; native startup cover and readiness are unchanged. No prose change.","inputs":["docs/user/native-recovery.md","src-ui/src/main.tsx"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"Read the full README. color themes add only attribute-gated rules (data-color-theme*), and color-theme-cascade.test.ts shows the Station default computes identically in dark, light, Beta, Nightly and Dev. No prose change.","inputs":["examples/knowledge-library/README.md","src-ui/src/index.css"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Read the full README. The module map gained ColorThemes and atlas.json assigns it; the exporter derives modules from atlas membership as described, so the claims hold. No prose change.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md","docs/learn/atlas.json"]},
+
+    {"path":"src-desktop/icons/README.md","note":"Read the channel-token and startup-mark claims (lines 28-31, 66-80). The is-dev-build favicon swap and startup-mark selection in startup-theme.js are unchanged; color themes add only attribute-gated rules (data-color-theme*), and color-theme-cascade.test.ts shows the Station default computes identically in dark, light, Beta, Nightly and Dev. No prose change.","inputs":["src-desktop/icons/README.md","src-ui/src/index.css"]},
+
+    {"path":"src-server/AGENTS.md","note":"Read the full file. docs/architecture/module-map.md gained only a ColorThemes section and index row; the sections this doc links to are unchanged. No prose change.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Read the full file. docs/architecture/module-map.md gained only a ColorThemes section and index row; the sections this doc links to are unchanged. No prose change.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Capture taken with Station's default theme. color themes add only attribute-gated rules (data-color-theme*), and color-theme-cascade.test.ts shows the Station default computes identically in dark, light, Beta, Nightly and Dev, so the captured rendering is unchanged.","inputs":["docs/learn/media/project-with-task.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Capture taken with Station's default theme. color themes add only attribute-gated rules (data-color-theme*), and color-theme-cascade.test.ts shows the Station default computes identically in dark, light, Beta, Nightly and Dev, so the captured rendering is unchanged.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Capture taken with Station's default theme. color themes add only attribute-gated rules (data-color-theme*), and color-theme-cascade.test.ts shows the Station default computes identically in dark, light, Beta, Nightly and Dev, so the captured rendering is unchanged.","inputs":["docs/learn/media/connections-models.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Capture taken with Station's default theme. color themes add only attribute-gated rules (data-color-theme*), and color-theme-cascade.test.ts shows the Station default computes identically in dark, light, Beta, Nightly and Dev, so the captured rendering is unchanged.","inputs":["docs/learn/media/inspect-request.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Capture taken with Station's default theme. color themes add only attribute-gated rules (data-color-theme*), and color-theme-cascade.test.ts shows the Station default computes identically in dark, light, Beta, Nightly and Dev, so the captured rendering is unchanged.","inputs":["docs/learn/media/inspect-request.webm","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Capture taken with Station's default theme. color themes add only attribute-gated rules (data-color-theme*), and color-theme-cascade.test.ts shows the Station default computes identically in dark, light, Beta, Nightly and Dev, so the captured rendering is unchanged.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"Capture taken with Station's default theme. color themes add only attribute-gated rules (data-color-theme*), and color-theme-cascade.test.ts shows the Station default computes identically in dark, light, Beta, Nightly and Dev, so the captured rendering is unchanged.","inputs":["docs/learn/media/repository-knowledge.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"Capture taken with Station's default theme. color themes add only attribute-gated rules (data-color-theme*), and color-theme-cascade.test.ts shows the Station default computes identically in dark, light, Beta, Nightly and Dev, so the captured rendering is unchanged.","inputs":["docs/learn/media/repository-knowledge-narrow.png","src-ui/src/index.css"]}
+  ]
+}

@@ -1,0 +1,38 @@
+name: "Diagnostic: Hosted background admission"
+
+# Admission-only proof. This workflow performs no source qualification.
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: station-background-compute
+  queue: max
+  cancel-in-progress: false
+
+jobs:
+  admission-only:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 2
+    steps:
+      - name: Record admission interval without executing repository source
+        run: |
+          python3 - <<'PY'
+          import datetime
+          import json
+          import os
+          import time
+
+          identity = {
+              "kind": "ADMISSION_ONLY",
+              "runId": os.environ["GITHUB_RUN_ID"],
+              "runAttempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "workflowSha": os.environ["GITHUB_WORKFLOW_SHA"],
+              "headSha": os.environ["GITHUB_SHA"],
+          }
+          print(json.dumps({**identity, "phase": "start", "at": datetime.datetime.now(datetime.timezone.utc).isoformat()}), flush=True)
+          time.sleep(10)
+          print(json.dumps({**identity, "phase": "end", "at": datetime.datetime.now(datetime.timezone.utc).isoformat()}), flush=True)
+          PY

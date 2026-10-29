@@ -39,6 +39,7 @@ import {
   loadHostedTenantRegistryFromEnvironment,
 } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import * as ConversationManager from '../../runtime/conversation/conversation-manager.js';
+import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
 import type { RuntimeContext } from '../../runtime/types.js';
 import type { CurrentRuntimeRequestPrincipalSecurity } from '../../security/runtime-request-security.js';
 import { isPrincipalScopedAgentRequest } from '../../security/station-control-request-authority.js';
@@ -54,9 +55,17 @@ import {
 import type { ConversationAcknowledgementStore } from '../../services/orchestration/conversation-acknowledgement-store.js';
 import {
   FORK_REPLAY_DISCLOSURE,
-  renderForkTranscript,
   selectForkTranscriptSlice,
 } from '../../services/orchestration/conversation-fork.js';
+import {
+  ConversationForkContextError,
+  type ConversationForkContextReference,
+  type ConversationForkContextSnapshot,
+  createConversationForkContext,
+  forkMemoryMessages,
+  forkRequestMatches,
+} from '../../services/orchestration/conversation-fork-context.js';
+import { readConversationContextSeedPin } from '../../services/orchestration/conversation-handoff-module.js';
 import type { ConversationForkProvenance } from '../../services/orchestration/event-store.js';
 import type { SummaryRelatedEvidenceObservation } from '../../services/session-summary/conversation-intent-summary-source.js';
 import { AuthoritativeConversationIntentSummarySource } from '../../services/session-summary/conversation-intent-summary-source.js';
@@ -73,6 +82,7 @@ import {
   conversationOps,
 } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
+import { refuseOutOfScopeDispatch } from '../orchestration/dispatch-scope.js';
 import {
   contextActionSchema,
   conversationUpdateSchema,
@@ -117,6 +127,37 @@ const forkConversationSchema = z
   .strict();
 const CONVERSATION_ID_MAX_LENGTH = 256;
 
+interface ForkContextPorts {
+  readConversationForkContextForRequest(
+    sourceId: string,
+    key: string,
+    scope: SessionReadAuthority,
+  ): ConversationForkContextReference | undefined;
+  reserveConversationForkContext(
+    snapshot: ConversationForkContextSnapshot,
+    scope: SessionReadAuthority,
+  ): ConversationForkContextReference;
+  readConversationForkContextSnapshot(
+    id: string,
+    scope: SessionReadAuthority,
+  ): ConversationForkContextSnapshot | undefined;
+  publishConversationForkContext(
+    event: import('@kontourai/station-contracts/runtime-events').CanonicalRuntimeEvent,
+    digest: string,
+    scope: SessionReadAuthority,
+  ): boolean;
+}
+function hasForkContextPorts(
+  store: Partial<ForkContextPorts>,
+): store is ForkContextPorts {
+  return (
+    typeof store.readConversationForkContextForRequest === 'function' &&
+    typeof store.reserveConversationForkContext === 'function' &&
+    typeof store.readConversationForkContextSnapshot === 'function' &&
+    typeof store.publishConversationForkContext === 'function'
+  );
+}
+
 function parseConversationIdSegment(value: string): string | null {
   if (
     value.length < 1 ||
@@ -144,6 +185,16 @@ function conversationRouteFailure(
   message: string,
   error: unknown,
 ) {
+  if (error instanceof ConversationForkContextError)
+    return c.json(
+      {
+        success: false,
+        code: error.code,
+        error:
+          'The requested conversation context is unavailable. Reconcile the fork before continuing.',
+      },
+      409,
+    );
   if (error instanceof ConversationLineageTooLongError) {
     return c.json(
       {
@@ -243,6 +294,32 @@ async function sanitizePublicConversationUpdate(
  * events into the same conversation-message shape via the shared projection.
  */
 interface SessionMessageReader {
+  readForkConversationTranscript?(
+    id: string,
+    scope: SessionReadAuthority,
+  ):
+    | import('../../services/orchestration/conversation-fork-context.js').ForkConversationTranscriptRead
+    | null
+    | undefined;
+  readForkConversation?(
+    id: string,
+    scope: SessionReadAuthority,
+  ):
+    | {
+        id: string;
+        resourceId: string;
+        userId: string;
+        title: string;
+        createdAt: string;
+        updatedAt: string;
+        metadata: Record<string, unknown>;
+      }
+    | null
+    | undefined;
+  deleteUnstartedConversationForkContext?(
+    id: string,
+    scope: SessionReadAuthority,
+  ): Promise<boolean>;
   readSessionMessages(
     threadId: string,
     authority: SessionReadAuthority,
@@ -626,7 +703,7 @@ export function createConversationRoutes(
         forkedTo: ConversationForkProvenance[];
       }
     >;
-  },
+  } & Partial<ForkContextPorts>,
   /** Avoid treating a lazily creatable file adapter as proof an agent exists. */
   isKnownAgent?: (
     slug: string,
@@ -661,6 +738,13 @@ export function createConversationRoutes(
     }): Promise<SummaryRelatedEvidenceObservation[]>;
   },
   resolveForkReadAuthority?: (context: Context) => SessionReadAuthority,
+  /**
+   * The scope a Station Control caller's fork is held to
+   * (`fork_conversation`): the source is a conversation it may view, and the
+   * new conversation lands where it could start a Session. Absent, a
+   * station-control caller's fork is refused; other callers are not decided.
+   */
+  stationControlDispatchScope?: StationControlDispatchScope,
 ) {
   const app = new Hono();
   const sessionSummaries =
@@ -754,6 +838,169 @@ export function createConversationRoutes(
     return adapter || null;
   };
 
+  const forkReply = (
+    c: Context,
+    snapshot: ConversationForkContextSnapshot,
+    idempotent: boolean,
+  ) =>
+    c.json({
+      success: true,
+      data: {
+        conversationId: snapshot.targetConversationId,
+        seed: readConversationContextSeedPin(snapshot.seedPinJson).text,
+        branchPointTurnId: snapshot.branchPointTurnId,
+        sourceSessionId: snapshot.sourceSessionId,
+        continuation: 'replay-seed' as const,
+        disclosure: FORK_REPLAY_DISCLOSURE,
+        idempotent,
+      },
+    });
+
+  const finishSavedFork = async (
+    c: Context,
+    proposed: ConversationForkContextSnapshot,
+    authority: SessionReadAuthority,
+    actor: ReturnType<typeof actionOperationActorForRequest>,
+  ) => {
+    if (!eventStore || !hasForkContextPorts(eventStore))
+      throw new ConversationForkContextError(
+        'Fork context persistence is unavailable.',
+      );
+    const writer = eventStore;
+    const actionOperation = await beginActionOperationTracking({
+      service: actionOperations,
+      actor,
+      logger,
+      operation: {
+        scope: { accountId: actor.accountId },
+        title: 'Fork conversation',
+        cancellation: 'unsupported',
+        domain: {
+          kind: 'conversation-fork',
+          sourceConversationId: proposed.sourceConversationId,
+          targetConversationId: proposed.targetConversationId,
+        },
+        reentry: {
+          kind: 'conversation',
+          agentId: proposed.targetAgent,
+          conversationId: proposed.targetConversationId,
+        },
+      },
+    });
+    await actionOperation?.update({
+      status: 'running',
+      progress: { kind: 'phase', code: 'creating-continuation' },
+    });
+    try {
+      const result = await reserveFork(
+        proposed.targetConversationId,
+        async () => {
+          const reference = writer.reserveConversationForkContext(
+            proposed,
+            authority,
+          );
+          const snapshot = writer.readConversationForkContextSnapshot(
+            reference.targetConversationId,
+            authority,
+          );
+          if (!snapshot)
+            throw new ConversationForkContextError(
+              'Saved fork context is unavailable.',
+            );
+          if (reference.state === 'ready')
+            return { snapshot, idempotent: true };
+          const targetAdapter = getAdapter(
+            runtimeAgentKey(snapshot.targetAgent),
+          );
+          if (!targetAdapter)
+            throw new ConversationForkContextError(
+              'The target Agent is unavailable.',
+            );
+          await createTargetConversation({
+            conversationStorage: targetAdapter,
+            conversationId: snapshot.targetConversationId,
+            userId: snapshot.ownerUserId,
+            slug: runtimeAgentKey(snapshot.targetAgent),
+            input: readConversationContextSeedPin(snapshot.seedPinJson).text,
+            title: snapshot.title,
+            ...(snapshot.projectSlug
+              ? { projectSlug: snapshot.projectSlug }
+              : {}),
+            metadata: {
+              parentConversationId: snapshot.sourceConversationId,
+              branchPointTurnId: snapshot.branchPointTurnId,
+              sourceSessionId: snapshot.sourceSessionId,
+              continuation: 'replay-seed',
+              continuityDisclosure: FORK_REPLAY_DISCLOSURE,
+              forkContextDigest: snapshot.digest,
+              ...(snapshot.tenantId ? { tenantId: snapshot.tenantId } : {}),
+            },
+          });
+          const record = await targetAdapter.getConversation(
+            snapshot.targetConversationId,
+          );
+          if (
+            !record ||
+            record.id !== snapshot.targetConversationId ||
+            record.userId !== snapshot.ownerUserId ||
+            record.resourceId !== runtimeAgentKey(snapshot.targetAgent) ||
+            record.metadata?.forkContextDigest !== snapshot.digest
+          )
+            throw new ConversationForkContextError(
+              'The target record does not match its fork intent.',
+            );
+          const existingIds = new Set<string>(
+            (
+              await targetAdapter.getMessages(
+                snapshot.ownerUserId,
+                snapshot.targetConversationId,
+              )
+            ).flatMap((message) =>
+              typeof message?.id === 'string' ? [message.id] : [],
+            ),
+          );
+          const missing = forkMemoryMessages(snapshot).filter(
+            (message) => !existingIds.has(message.id),
+          );
+          if (missing.length)
+            await targetAdapter.addMessages(
+              missing,
+              snapshot.ownerUserId,
+              snapshot.targetConversationId,
+            );
+          const inserted = writer.publishConversationForkContext(
+            {
+              eventId: snapshot.forkEventId,
+              provider: 'station',
+              threadId: snapshot.sourceConversationId,
+              method: 'conversation.forked',
+              sourceConversationId: snapshot.sourceConversationId,
+              targetConversationId: snapshot.targetConversationId,
+              targetAgent: snapshot.targetAgent,
+              forkedAt: snapshot.createdAt,
+              branchPointTurnId: snapshot.branchPointTurnId,
+              sourceSessionId: snapshot.sourceSessionId,
+              continuation: 'replay-seed',
+              contextDigest: snapshot.digest,
+              createdAt: snapshot.createdAt,
+            },
+            snapshot.digest,
+            authority,
+          );
+          return { snapshot, idempotent: !inserted };
+        },
+      );
+      await actionOperation?.update({ status: 'succeeded' });
+      return forkReply(c, result.snapshot, result.idempotent);
+    } catch (error) {
+      await actionOperation?.update({
+        status: 'failed',
+        errorSummary: 'Conversation fork could not be completed.',
+      });
+      throw error;
+    }
+  };
+
   app.post(
     '/:slug/conversations/:conversationId/fork',
     validate(forkConversationSchema),
@@ -761,6 +1008,20 @@ export function createConversationRoutes(
       try {
         let sourceAgent: string;
         let targetAgent: string;
+        // `fork_conversation`: a fork lands only where the caller could start
+        // a Session itself (the dispatch rule, Project `execute`), so forking
+        // never reaches a scope the caller could not otherwise reach.
+        const refuseOutOfScopeTarget = (projectSlug: string | undefined) =>
+          refuseOutOfScopeDispatch(c, stationControlDispatchScope, (ownerId) =>
+            ownerId
+              ? {
+                  kind: 'new',
+                  ownerId,
+                  ...(projectSlug ? { projectSlug } : {}),
+                  remote: false,
+                }
+              : undefined,
+          );
         try {
           sourceAgent = agentId(param(c, 'slug'));
           const rawTarget = getBody(c).targetAgent;
@@ -781,6 +1042,19 @@ export function createConversationRoutes(
             400,
           );
         }
+        // The source is a conversation the caller's scope admits (Project
+        // `view`), decided before anything of it is read.
+        const sourceRefused = refuseOutOfScopeDispatch(
+          c,
+          stationControlDispatchScope,
+          () => ({
+            kind: 'conversation',
+            conversationId: sourceConversationId,
+            remote: false,
+          }),
+          'view',
+        );
+        if (sourceRefused) return sourceRefused;
         const body = getBody(c);
         const requestedBranchPoint =
           typeof body.branchPointTurnId === 'string'
@@ -833,6 +1107,48 @@ export function createConversationRoutes(
               authority,
             )) != null,
         );
+        if (!hasForkContextPorts(eventStore))
+          throw new ConversationForkContextError(
+            'Fork context persistence is unavailable.',
+          );
+        if (idempotencyKey) {
+          const previous = eventStore.readConversationForkContextForRequest(
+            sourceConversationId,
+            idempotencyKey,
+            authority,
+          );
+          if (previous) {
+            if (
+              previous.state === 'deleted' ||
+              !forkRequestMatches(previous, {
+                sourceAgent,
+                targetAgent,
+                requestedProjectSlug,
+                requestedBranchPointTurnId: requestedBranchPoint,
+              })
+            )
+              throw new ConversationForkContextError(
+                'The fork key already names another request or a deleted fork.',
+              );
+            const saved = eventStore.readConversationForkContextSnapshot(
+              previous.targetConversationId,
+              authority,
+            );
+            if (!saved)
+              throw new ConversationForkContextError(
+                'Saved fork context is unavailable.',
+              );
+            const replayRefused = refuseOutOfScopeTarget(saved.projectSlug);
+            if (replayRefused) return replayRefused;
+            if (previous.state === 'ready') return forkReply(c, saved, true);
+            return await finishSavedFork(
+              c,
+              saved,
+              authority,
+              actionOperationActor,
+            );
+          }
+        }
         const sourceAdapter = isHostedSessionReadAuthority(authority)
           ? null
           : getAdapter(runtimeAgentKey(sourceAgent));
@@ -980,6 +1296,8 @@ export function createConversationRoutes(
             404,
           );
         }
+        const targetRefused = refuseOutOfScopeTarget(targetProjectSlug);
+        if (targetRefused) return targetRefused;
         if (targetProjectSlug || ownedTargetProject) {
           try {
             const target =
@@ -1014,209 +1332,68 @@ export function createConversationRoutes(
             404,
           );
         }
-        const seed = renderForkTranscript({
-          sourceTitle,
-          sourceAgent,
-          messages: slice.messages,
-        });
         const targetConversationId = idempotencyKey
-          ? `${getUserId()}:fork:${createHash('sha256')
+          ? `conversation:fork:${createHash('sha256')
               .update(
-                `${sourceConversationId}\u0000${slice.branchPointTurnId ?? ''}\u0000${targetAgent}\u0000${targetProjectSlug ?? ''}\u0000${idempotencyKey}`,
+                JSON.stringify([
+                  authority.userId,
+                  authority.tenantExecutionContext?.tenantId ?? null,
+                  sourceConversationId,
+                  idempotencyKey,
+                ]),
               )
               .digest('hex')
-              .slice(0, 24)}`
-          : createChatConversationId(getUserId());
-        const existingFork = eventStore
-          .readConversationForkProvenance(sourceConversationId)
-          .forkedTo.find(
-            (fork) => fork.targetConversationId === targetConversationId,
-          );
-        if (existingFork) {
-          return c.json({
-            success: true,
-            data: {
-              conversationId: targetConversationId,
-              seed,
-              branchPointTurnId: slice.branchPointTurnId,
-              sourceSessionId: slice.sourceSessionId,
-              continuation: 'replay-seed' as const,
-              disclosure: FORK_REPLAY_DISCLOSURE,
-              idempotent: true,
-            },
-          });
+              .slice(0, 32)}`
+          : createChatConversationId('fork');
+        if (idempotencyKey) {
+          const legacyId = `${getUserId()}:fork:${createHash('sha256')
+            .update(
+              `${sourceConversationId}\u0000${slice.branchPointTurnId ?? ''}\u0000${targetAgent}\u0000${targetProjectSlug ?? ''}\u0000${idempotencyKey}`,
+            )
+            .digest('hex')
+            .slice(0, 24)}`;
+          if (
+            eventStore
+              .readConversationForkProvenance(sourceConversationId)
+              .forkedTo.some((fork) => fork.targetConversationId === legacyId)
+          )
+            throw new ConversationForkContextError(
+              'This legacy fork has no saved context. Start a new fork request explicitly.',
+            );
         }
-        const actionOperation = await beginActionOperationTracking({
-          service: actionOperations,
-          actor: actionOperationActor,
-          logger,
-          operation: {
-            scope: { accountId: actionOperationActor.accountId },
-            title: 'Fork conversation',
-            cancellation: 'unsupported',
-            domain: {
-              kind: 'conversation-fork',
-              sourceConversationId,
-              targetConversationId,
-            },
-            reentry: {
-              kind: 'conversation',
-              agentId: targetAgent,
-              conversationId: targetConversationId,
-            },
-          },
+        const forkEventId = `conversation-fork:${createHash('sha256').update(`${sourceConversationId}\u0000${targetConversationId}`).digest('hex')}`;
+        const snapshot = createConversationForkContext({
+          forkEventId,
+          sourceConversationId,
+          sourceAgent,
+          targetConversationId,
+          targetAgent,
+          ownerUserId: authority.userId,
+          createdAt: new Date().toISOString(),
+          sourceTitle,
+          messages: slice.messages,
+          ...(authority.tenantExecutionContext
+            ? { tenantId: authority.tenantExecutionContext.tenantId }
+            : {}),
+          ...(targetProjectSlug ? { projectSlug: targetProjectSlug } : {}),
+          ...(requestedProjectSlug ? { requestedProjectSlug } : {}),
+          ...(requestedBranchPoint
+            ? { requestedBranchPointTurnId: requestedBranchPoint }
+            : {}),
+          ...(idempotencyKey ? { idempotencyKey } : {}),
+          ...(slice.branchPointTurnId
+            ? { branchPointTurnId: slice.branchPointTurnId }
+            : {}),
+          ...(slice.sourceSessionId
+            ? { sourceSessionId: slice.sourceSessionId }
+            : {}),
         });
-        await actionOperation?.update({
-          status: 'running',
-          progress: { kind: 'phase', code: 'creating-continuation' },
-        });
-
-        try {
-          const forkEventId = `conversation-fork:${createHash('sha256')
-            .update(`${sourceConversationId}\u0000${targetConversationId}`)
-            .digest('hex')}`;
-          const idempotent = await reserveFork(
-            targetConversationId,
-            async () => {
-              if (
-                eventStore
-                  .readConversationForkProvenance(sourceConversationId)
-                  .forkedTo.some(
-                    (fork) =>
-                      fork.targetConversationId === targetConversationId,
-                  )
-              ) {
-                return true;
-              }
-              // Create before appending: a created-but-unfacted target is an
-              // acceptable checkpoint. On retry the deterministic child id and
-              // source-message checkpoints prevent a second transcript copy.
-              await createTargetConversation({
-                conversationStorage: targetAdapter,
-                conversationId: targetConversationId,
-                userId: getUserId(),
-                slug: runtimeAgentKey(targetAgent),
-                input: seed,
-                title: `Fork of ${sourceTitle}`,
-                ...(targetProjectSlug
-                  ? { projectSlug: targetProjectSlug }
-                  : {}),
-                ...(authority.tenantExecutionContext
-                  ? {
-                      metadata: {
-                        tenantId: authority.tenantExecutionContext.tenantId,
-                        parentConversationId: sourceConversationId,
-                        branchPointTurnId: slice.branchPointTurnId,
-                        sourceSessionId: slice.sourceSessionId,
-                        continuation: 'replay-seed',
-                        continuityDisclosure: FORK_REPLAY_DISCLOSURE,
-                      },
-                    }
-                  : {
-                      metadata: {
-                        parentConversationId: sourceConversationId,
-                        branchPointTurnId: slice.branchPointTurnId,
-                        sourceSessionId: slice.sourceSessionId,
-                        continuation: 'replay-seed',
-                        continuityDisclosure: FORK_REPLAY_DISCLOSURE,
-                      },
-                    }),
-              });
-              const copiedSourceIds = new Set(
-                (
-                  await targetAdapter.getMessages(
-                    getUserId(),
-                    targetConversationId,
-                  )
-                )
-                  .map(
-                    (message) =>
-                      (
-                        message as {
-                          metadata?: { forkSourceMessageId?: unknown };
-                        }
-                      ).metadata?.forkSourceMessageId,
-                  )
-                  .filter((id): id is string => typeof id === 'string'),
-              );
-              const missing = slice.messages.filter(
-                (message) => !copiedSourceIds.has(message.id),
-              );
-              if (missing.length > 0) {
-                await targetAdapter.addMessages(
-                  missing.map((message) => ({
-                    ...message,
-                    id: createHash('sha256')
-                      .update(`${forkEventId}\u0000${message.id}`)
-                      .digest('hex'),
-                    metadata: {
-                      ...message.metadata,
-                      forkSourceMessageId: message.id,
-                    },
-                  })) as unknown as Parameters<
-                    typeof targetAdapter.addMessages
-                  >[0],
-                  getUserId(),
-                  targetConversationId,
-                );
-              }
-              const forkedAt = new Date().toISOString();
-              let inserted: boolean;
-              if (eventStore.appendConversationForkIfAbsent) {
-                inserted = eventStore.appendConversationForkIfAbsent({
-                  eventId: forkEventId,
-                  provider: 'station',
-                  threadId: sourceConversationId,
-                  method: 'conversation.forked',
-                  sourceConversationId,
-                  targetConversationId,
-                  targetAgent,
-                  forkedAt,
-                  branchPointTurnId: slice.branchPointTurnId,
-                  sourceSessionId: slice.sourceSessionId,
-                  continuation: 'replay-seed',
-                  createdAt: forkedAt,
-                });
-              } else {
-                eventStore.appendConversationFork({
-                  eventId: forkEventId,
-                  provider: 'station',
-                  threadId: sourceConversationId,
-                  method: 'conversation.forked',
-                  sourceConversationId,
-                  targetConversationId,
-                  targetAgent,
-                  forkedAt,
-                  branchPointTurnId: slice.branchPointTurnId,
-                  sourceSessionId: slice.sourceSessionId,
-                  continuation: 'replay-seed',
-                  createdAt: forkedAt,
-                });
-                inserted = true;
-              }
-              return !inserted;
-            },
-          );
-          await actionOperation?.update({ status: 'succeeded' });
-          return c.json({
-            success: true,
-            data: {
-              conversationId: targetConversationId,
-              seed,
-              branchPointTurnId: slice.branchPointTurnId,
-              sourceSessionId: slice.sourceSessionId,
-              continuation: 'replay-seed' as const,
-              disclosure: FORK_REPLAY_DISCLOSURE,
-              idempotent,
-            },
-          });
-        } catch (error) {
-          await actionOperation?.update({
-            status: 'failed',
-            errorSummary: 'Conversation fork could not be completed.',
-          });
-          throw error;
-        }
+        return await finishSavedFork(
+          c,
+          snapshot,
+          authority,
+          actionOperationActor,
+        );
       } catch (error: unknown) {
         return conversationRouteFailure(
           c,
@@ -1557,7 +1734,32 @@ export function createConversationRoutes(
         );
       }
 
-      await adapter.deleteConversation(conversationId);
+      await reserveFork(conversationId, async () => {
+        const fork = sessionMessageReader?.readForkConversation?.(
+          conversationId,
+          authority,
+        );
+        if (
+          fork === null ||
+          (fork && runtimeAgentKey(fork.resourceId) !== runtimeAgentKey(slug))
+        )
+          throw new ConversationForkContextError(
+            'The requested fork was not found.',
+          );
+        if (fork) {
+          if (!sessionMessageReader?.deleteUnstartedConversationForkContext)
+            throw new ConversationForkContextError(
+              'The fork lifecycle owner is unavailable.',
+            );
+          // Tombstone before file cleanup: a failed file deletion must never
+          // leave the retained seed eligible for a provider start.
+          await sessionMessageReader.deleteUnstartedConversationForkContext(
+            conversationId,
+            authority,
+          );
+        }
+        await adapter.deleteConversation(conversationId);
+      });
       // Derived summaries do not outlive their source conversation. Their
       // owner-scoped coordinate prevents an ID reused later from inheriting
       // this conversation's derived text.
@@ -2214,6 +2416,7 @@ export function createGlobalConversationRoutes(
     | 'readSessionConversation'
     | 'searchSessionMessages'
     | 'successorConversationId'
+    | 'readForkConversation'
   > & {
     listConversationHistoryPage(
       authority: SessionReadAuthority,
@@ -2294,6 +2497,45 @@ export function createGlobalConversationRoutes(
   const app = new Hono();
   const authorityFor =
     getSessionReadAuthority ?? createRequestAuthorityResolver(getUserId);
+
+  const readSavedForkMetadata = async (
+    id: string,
+    authority: SessionReadAuthority,
+  ) => {
+    const saved = sessionConversationReader.readForkConversation?.(
+      id,
+      authority,
+    );
+    if (!saved) return saved;
+    const stored = await memoryAdapters
+      .get(runtimeAgentKey(saved.resourceId))
+      ?.getConversation(id);
+    if (
+      stored &&
+      (stored.id !== saved.id ||
+        stored.userId !== saved.userId ||
+        stored.resourceId !== saved.resourceId ||
+        stored.metadata?.forkContextDigest !== saved.metadata.forkContextDigest)
+    )
+      throw new ConversationForkContextError(
+        'The saved fork record binding is unavailable.',
+      );
+    const source = stored?.metadata.titleSource;
+    const titleSource: ConversationListItem['titleSource'] =
+      source === 'user' ||
+      source === 'agent' ||
+      source === 'generated' ||
+      source === 'provider' ||
+      source === 'prompt'
+        ? source
+        : undefined;
+    return {
+      ...saved,
+      title: stored?.title ?? saved.title,
+      updatedAt: stored?.updatedAt ?? saved.updatedAt,
+      titleSource,
+    };
+  };
 
   app.get('/search', async (c) => {
     const parsed = messageSearchQuerySchema.safeParse({
@@ -2538,6 +2780,27 @@ export function createGlobalConversationRoutes(
         const callerAccess = principalSecurity
           ? conversationOpenCallerAccess(c.req.raw, principalSecurity, id)
           : undefined;
+        if (resolved.status === 'fork-ready') {
+          const saved = await readSavedForkMetadata(id, authority);
+          if (!saved)
+            return c.json(
+              { success: false, error: 'Conversation not found' },
+              404,
+            );
+          return c.json({
+            success: true,
+            data: {
+              ...resolved,
+              conversation: {
+                ...resolved.conversation,
+                title: saved.title,
+                updatedAt: saved.updatedAt,
+                titleSource: saved.titleSource,
+              },
+              ...(callerAccess ? { callerAccess } : {}),
+            },
+          });
+        }
         return c.json({
           success: true,
           data: callerAccess ? { ...resolved, callerAccess } : resolved,
@@ -2562,6 +2825,41 @@ export function createGlobalConversationRoutes(
       const id = param(c, 'id');
       const authority = authorityFor(c.req.raw);
       const hosted = isHostedSessionReadAuthority(authority);
+      const fork = await readSavedForkMetadata(id, authority);
+      if (fork === null)
+        return c.json({ success: false, error: 'Conversation not found' }, 404);
+      if (fork) {
+        const resolution =
+          await sessionConversationReader.resolveConversationOpen?.(
+            id,
+            authority,
+          );
+        const metadata =
+          resolution && resolution.status !== 'fork-ready'
+            ? resolution.conversation
+            : {
+                id: fork.id,
+                agentSlug: publicAgentIdFromRuntimeKey(fork.resourceId),
+                title: fork.title,
+                titleSource: fork.titleSource,
+                createdAt: fork.createdAt,
+                updatedAt: fork.updatedAt,
+                ...(typeof fork.metadata.projectSlug === 'string'
+                  ? { projectSlug: fork.metadata.projectSlug }
+                  : {}),
+              };
+        return c.json({
+          success: true,
+          data: {
+            ...metadata,
+            ...(eventStore
+              ? {
+                  forkProvenance: eventStore.readConversationForkProvenance(id),
+                }
+              : {}),
+          },
+        });
+      }
 
       // Try project storage first (has projectId/projectSlug)
       const projectRecord = hosted ? null : storageAdapter.getConversation(id);

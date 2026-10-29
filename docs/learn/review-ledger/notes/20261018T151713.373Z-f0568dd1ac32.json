@@ -1,0 +1,7 @@
+{
+  "revision": "95ccc9b63bd5ea68b94bfa9d5030611e5a57f070",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Round 2: reviewed targeted gallery capture contract against tests/screenshots.spec.ts. Changes only rename the Settings feedback heading locator and assert pending Off after selecting it. Scene names, 1440x900 and 390x844 viewports, runner subset selection and capture manifest behavior are unchanged; four requested captures passed and were visually inspected.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]}
+  ]
+}

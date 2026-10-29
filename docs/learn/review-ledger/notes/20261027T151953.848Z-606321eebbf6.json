@@ -1,0 +1,7 @@
+{
+  "revision": "5c3631951e5b27656f30daf8b207e438caf6e987",
+
+  "notes": [
+    {"path":"docs/reference/skill-experiences.md","note":"Checked visual-skill and attachment claims; the useChatInput restage change does not alter skill experiences or their role ids. No change.","inputs":["docs/reference/skill-experiences.md","src-ui/src/hooks/useChatInput.ts"]}
+  ]
+}

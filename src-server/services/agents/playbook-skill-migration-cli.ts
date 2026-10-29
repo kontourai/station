@@ -1,4 +1,6 @@
 /**
+ * SUNSET(#3878): delete with `playbook-skill-migration.ts` after 2027-01-31.
+ *
  * The Playbooks→Skills pass, composed for a one-shot process.
  *
  * `station doctor --migrate-playbooks` runs with no Station server, so it

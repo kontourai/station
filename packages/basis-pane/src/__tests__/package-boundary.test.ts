@@ -13,13 +13,15 @@ const external = [
   '@kontourai/*',
 ];
 
-// The complete V1 public browser boundary is the native SessionInventory
-// renderer (2,351 gzip bytes alone) plus the separately exported
-// session-inventory-view model (2,029 gzip bytes alone). The bundled entry is
-// exactly 4,067 gzip bytes: it contains no private Station dependency or
-// accidental duplicate module. Keep this cap exact rather than reserving
-// unearned headroom for the V1 desktop/mobile progressive-disclosure contract.
-const SESSION_INVENTORY_V1_BROWSER_GZIP_BYTES = 4_067;
+// The combined public SessionInventory renderer and view-model boundary was
+// 4,065 gzip bytes before the selected-row detail slot. The visible detail
+// action and expanded semantics add 58 bytes. Body readers remain in the lazy
+// Station host. Cap the measured combined boundary without extra headroom.
+// #4176 lets a host whose chrome titles the reader own that title
+// (`titleOwner`), so the pane does not repeat it: measured 4,148.
+// #4178 names a command with no recorded result with the shared StatusBadge
+// (imported from @kontourai/ui, external here): measured 4,234.
+const SESSION_INVENTORY_V1_BROWSER_GZIP_BYTES = 4_234;
 
 async function bundledGzipBytes(entry: string) {
   const result = await build({
@@ -86,7 +88,15 @@ describe('@kontourai/station-basis-pane package boundary', () => {
     // `AnswerBasisRequestError` check, and review H3 added the title that
     // states what is true of BOTH 404 cases without claiming which.
     // Measured 6_862 at that change.
-    expect(await bundledGzipBytes('index.ts')).toBeLessThanOrEqual(6_880);
+    // Raised from 6_880 for the owner decision on #926 (epic #418): the
+    // answer chip names a notable Surface standing on its face (a closed list
+    // of Surface's standing codes), carries the standing in its accessible
+    // name and uses Surface's description as its title. Measured 6_925 at
+    // that change (main was 6_877). Raised again to 7_020 when the notable
+    // chip split its text into a "Basis · " lead and an ellipsizable Surface
+    // label with the full label in its tooltip (narrow docks, #3926 review):
+    // measured 6_982, leaving 38 bytes of headroom.
+    expect(await bundledGzipBytes('index.ts')).toBeLessThanOrEqual(7_020);
     expect(
       await bundledGzipBytes('workspace-basis-pane.ts'),
     ).toBeLessThanOrEqual(1_536);

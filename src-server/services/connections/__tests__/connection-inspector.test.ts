@@ -451,8 +451,7 @@ describe('ConnectionInspector Interface', () => {
       });
 
     const failed = await subject({
-      message:
-        'ACP probe initialize did not settle within its 60000ms share of the 60000ms probe budget.',
+      message: "OpenCode didn't answer within a minute.",
       phase: 'initialize',
     }).inspect({ kind: 'runtime-capability-inventory' });
     const failedView = (
@@ -465,7 +464,7 @@ describe('ConnectionInspector Interface', () => {
     ).connections[0];
     expect(failedView.status).toBe('degraded');
     expect(failedView.config.readinessReason).toBe(
-      'ACP probe initialize did not settle within its 60000ms share of the 60000ms probe budget.',
+      "OpenCode didn't answer within a minute.",
     );
 
     const silent = await subject(null).inspect({

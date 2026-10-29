@@ -1,0 +1,7 @@
+{
+  "revision": "67bc2a8a49f731d434757dcc50c76679ecddd671",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Reviewed notification-service get(id) delta at 67bc2a8a49f against notification types and envelope claims. It uses the existing read/validation and public projection, stripping revision/actionLease and cloning only the selected row. No status, envelope, scheduling, or shared export contract changes; prose remains accurate. Notification owner/route suites passed 162 tests; production reversion caught by the route cloning assertion. No platform or live delivery qualification.","inputs":["docs/reference/shared.md","src-server/services/notifications/notification-service.ts"]}
+  ]
+}

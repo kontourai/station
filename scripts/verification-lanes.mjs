@@ -312,10 +312,10 @@ export const LANES = Object.freeze([
       '.kontourai/test-impact/',
     ]),
     manifest: MANIFEST_TEST_IMPACT,
-    trigger: 'per-push / bounded feedback',
+    trigger: 'hosted feedback / explicit local diagnosis',
     scope: `base-pinned affected Vitest tests + fixed static invariants (configured timeout: ${CI_FAST_TIMEOUT_MS / 60_000}m)`,
     description:
-      'Bounded fast feedback (trigger: per-push). Scope: the affected Vitest selection against STATION_CI_FAST_BASE (origin/main by default) followed by fixed runtime, lockfile, workflow, verification-policy, typecheck, lint, and governance invariants. Its 20-unit weight is reserved alongside the 80-unit full-regression test phase, so completion work yields admission headroom for feedback. Full static gates and the full Vitest corpus belong only to full-regression. Evidence: diagnostic only; a deferred selector intentionally requires the full-regression completion gate. Invalidation: test-impact manifest plus the request workspace/HEAD/dependency/toolchain and STATION_CI_FAST_BASE environment identity.',
+      'Bounded fast feedback (trigger: hosted CI or explicit local diagnosis). Scope: the affected Vitest selection against STATION_CI_FAST_BASE (origin/main by default) followed by fixed runtime, lockfile, workflow, verification-policy, typecheck, lint, and governance invariants. Its 20-unit weight is reserved alongside the 80-unit full-regression test phase, so completion work yields admission headroom for feedback. Full static gates and the full Vitest corpus belong only to full-regression. Evidence: diagnostic only; a deferred selector intentionally requires the full-regression completion gate. Invalidation: test-impact manifest plus the request workspace/HEAD/dependency/toolchain and STATION_CI_FAST_BASE environment identity.',
   }),
   Object.freeze({
     id: 'test-changed',
@@ -445,12 +445,13 @@ export const LANES = Object.freeze([
       'packages/connect/dist',
       'packages/cli/dist/',
       'src-desktop/target/',
+      'src-desktop/binaries/',
     ]),
     manifest: MANIFEST_NONE,
     trigger: 'diagnostic native / local',
     scope: 'verify:static + desktop Rust + mobile Cargo compile',
     description:
-      'Local/native escalation (trigger: diagnostic/local). Scope: the private verify:local:raw adapter explicitly invokes verify:static:raw, then verify:desktop-rust and mobile Cargo checks under src-desktop (creating dist-server/, dist-desktop-runtime/, packages/cli/dist/, and src-desktop/target/). Evidence: diagnostic. Invalidation: command-only.',
+      'Local/native escalation (trigger: diagnostic/local). Scope: the private verify:local:raw adapter explicitly invokes verify:static:raw, then verify:desktop-rust and mobile Cargo checks under src-desktop (creating dist-server/, dist-desktop-runtime/, packages/cli/dist/, src-desktop/target/, and src-desktop/binaries/). Evidence: diagnostic. Invalidation: command-only.',
   }),
   Object.freeze({
     id: 'verify-e2e-full',

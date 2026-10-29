@@ -398,6 +398,39 @@ export class DeploymentAuthenticationService {
     }
     return result ? structuredClone(result) : undefined;
   }
+  /** Capture verified identity and transport; the returned witness re-reads the owner. */
+  captureCurrentSession(request: Request): () => boolean {
+    const captured = this.current(request);
+    const cookie = request.headers.get('cookie');
+    // Continuations need an independently current application/native grant.
+    // A live provider session alone cannot witness that grant's revocation.
+    if (
+      captured?.kind !== 'authenticated' ||
+      this.hasContinuation(request) ||
+      !this.provider.isVerifiedSessionCurrent
+    )
+      return () => false;
+    return () => {
+      const current = this.current(request);
+      if (
+        current?.kind !== 'authenticated' ||
+        this.hasContinuation(request) ||
+        request.headers.get('cookie') !== cookie ||
+        current.issuer !== captured.issuer ||
+        current.principal.id !== captured.principal.id ||
+        JSON.stringify(current.session) !== JSON.stringify(captured.session)
+      )
+        return false;
+      try {
+        return (
+          this.provider.isVerifiedSessionCurrent!(captured.session) === true
+        );
+      } catch {
+        return false;
+      }
+    };
+  }
+
   /** Historical request admission, used only to require a fresh check before response delivery. */
   admittedPrincipalSnapshot(request: Request): PrincipalRef | undefined {
     const principal = this.admissions.get(request);

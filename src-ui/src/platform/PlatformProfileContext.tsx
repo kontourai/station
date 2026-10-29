@@ -21,6 +21,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { StartupHandoff } from '../components/StartupHandoff';
 import { StartupScreen } from '../components/StartupScreen';
 import { nativePlatformPromise } from './native';
 import { primeNativeNotifications } from './native/notify';
@@ -55,8 +56,6 @@ export interface PlatformProfile {
   channel?: 'stable' | 'dev' | 'beta' | 'nightly';
   /** Native scheme selected by this installed client, never a backend URL. */
   pairingDeepLinkScheme?: string;
-  /** Trusted, secret-free mobile bootstrap; explicit saved selection wins. */
-  mobileDefaultEndpoint?: string;
   /** Build evidence for this native app, never the connected Station host. */
   clientBuild?: NativeClientBuildProvenance;
 }
@@ -158,9 +157,6 @@ async function resolvePlatformProfile(): Promise<PlatformProfile> {
       report.value.channel ??
       (report.value.devBuild === true ? 'dev' : 'stable'),
     pairingDeepLinkScheme: report.value.pairingDeepLinkScheme,
-    ...(isMobile && report.value.mobileDefaultEndpoint
-      ? { mobileDefaultEndpoint: report.value.mobileDefaultEndpoint }
-      : {}),
     ...(report.value.clientBuild
       ? { clientBuild: report.value.clientBuild }
       : {}),
@@ -430,6 +426,19 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
     };
   }, [profile]);
 
+  useEffect(() => {
+    if (!profile?.isMobile || !profile.isTauri) return;
+    let disposed = false;
+    let unregister: (() => void) | undefined;
+    void import('./native/connectionDiscovery').then((module) => {
+      if (!disposed) unregister = module.registerNativeConnectionDiscovery();
+    });
+    return () => {
+      disposed = true;
+      unregister?.();
+    };
+  }, [profile]);
+
   // A dev build sits next to a real install under a near-identical name, so
   // tint the whole app rather than relying on the launcher icon alone. Toggled
   // rather than only added: the profile can resolve after a release-build
@@ -438,26 +447,42 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
     const root = document.documentElement;
     root.dataset.appChannel = profile?.channel ?? 'stable';
     root.classList.toggle('is-dev-build', profile?.isDevBuild === true);
+    // Remember which mark this install shows, so public/startup-theme.js can
+    // put it on the next launch's splash before the host report arrives.
+    if (profile) {
+      const mark = profile.isDevBuild ? 'dev' : (profile.channel ?? 'stable');
+      root.dataset.startupMark = mark;
+      try {
+        localStorage.setItem('station-startup-mark', mark);
+      } catch {
+        // Storage can be unavailable in a WebView; the splash then shows
+        // the stable mark until the report arrives, as on a first launch.
+      }
+    }
     return () => {
       delete root.dataset.appChannel;
       root.classList.remove('is-dev-build');
+      delete root.dataset.startupMark;
     };
   }, [profile]);
 
   if (profileBootstrapError) {
     return (
-      <FullScreenLoader
-        label="Station"
-        message="Station couldn’t finish starting"
-        action={
-          <div role="alert" aria-label="Station couldn’t finish starting">
-            <pre>{profileBootstrapError}</pre>
-            <button type="button" onClick={() => window.location.reload()}>
-              Reload Station
-            </button>
-          </div>
-        }
-      />
+      <>
+        <StartupHandoff recovery />
+        <FullScreenLoader
+          label="Station"
+          message="Station couldn’t finish starting"
+          action={
+            <div role="alert" aria-label="Station couldn’t finish starting">
+              <pre>{profileBootstrapError}</pre>
+              <button type="button" onClick={() => window.location.reload()}>
+                Reload Station
+              </button>
+            </div>
+          }
+        />
+      </>
     );
   }
   if (!profile) return <StartupScreen message="Preparing this device" />;

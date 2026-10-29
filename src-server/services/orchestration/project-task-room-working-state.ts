@@ -5,6 +5,28 @@ import type {
   WorkingStateSnapshot,
 } from '../../domain/shared-working-state.js';
 import { DEFAULT_RETAINED_WORKING_STATE_OPERATIONS } from '../../domain/shared-working-state.js';
+import { createLogger } from '../../utils/logger.js';
+
+const logger = createLogger({ name: 'project-task-room-working-state' });
+type UnavailableReason =
+  | 'response-deadline'
+  | 'worker-error'
+  | 'worker-exit'
+  | 'malformed-response'
+  | 'post-message-failed'
+  | 'worker-unavailable-reply'
+  | 'closed';
+
+function reportUnavailable(operation: string, reason: UnavailableReason) {
+  // Diagnostics must not interrupt settlement of the unavailable result.
+  try {
+    logger.warn('Task room working state unavailable', {
+      event: 'project-task-room-working-state-unavailable',
+      operation,
+      reason,
+    });
+  } catch {}
+}
 
 export interface ProjectTaskRoomWorkingState {
   read(input: {
@@ -29,6 +51,10 @@ export interface ProjectTaskRoomWorkingState {
     };
     epoch: number;
     operations: readonly TextDocumentOperation[];
+    /** Proposal seeding rechecks emptiness inside the write transaction. */
+    onlyIfEmpty?: boolean;
+    /** Keep a replaceable candidate until an explicit revision reference. */
+    coalesceRevisionPublication?: true;
     /** E2E/reference-only bulk replay seed; never emits immutable evidence. */
     suppressRevisionPublicationForDiagnostic?: true;
     /** Parent-owned authorization fence immediately before SQLite COMMIT. */
@@ -42,6 +68,37 @@ export interface ProjectTaskRoomWorkingState {
   readRevisionPublication(input: {
     scope: { projectId: string; taskId: string; documentId: string };
   }): Promise<RevisionPublicationRead>;
+  /**
+   * Stored receipts plus claimed publications not yet frozen. Replaceable
+   * candidates do not reserve immutable ledger capacity (#4055).
+   */
+  revisionLedgerUsage?(): Promise<
+    | {
+        readonly kind: 'available';
+        readonly count: number;
+        readonly recordBytes: number;
+      }
+    | { readonly kind: 'unavailable' }
+  >;
+  requestRevisionPublication?(input: {
+    scope: { projectId: string; taskId: string; documentId: string };
+    workingRevision: string;
+    initialPrincipal: {
+      operatorId: string;
+      deviceId: string;
+      policyRevision: string;
+    };
+    initialActorId: string;
+    beforeCommit: () => Promise<boolean>;
+  }): Promise<
+    | { kind: 'requested' }
+    | { kind: 'existing'; evidenceRevision: string }
+    | { kind: 'unavailable' }
+  >;
+  releaseRevisionPublication?(input: {
+    scope: { projectId: string; taskId: string; documentId: string };
+    intentId: string;
+  }): Promise<'released' | 'unavailable'>;
   markRevisionPublication(input: {
     scope: { projectId: string; taskId: string; documentId: string };
     intentId: string;
@@ -97,12 +154,22 @@ export interface WorkingSettlement {
     | 'unavailable';
   readonly revision?: string;
   readonly text?: string;
-  readonly reason?: 'revision-publication-pending';
+  /**
+   * With `rejected`. `document-full`: this document's revision evidence would
+   * exceed its record bounds. `evidence-ledger-full`: the Station-wide
+   * revision evidence ledger has no room for an eager internal publication.
+   * Coalesced room saves apply only the per-document bound (#4055).
+   */
+  readonly reason?:
+    | 'revision-publication-pending'
+    | 'document-full'
+    | 'evidence-ledger-full';
 }
 
 export interface RevisionPublication {
   readonly intentId: string;
   readonly scope: { projectId: string; taskId: string; documentId: string };
+  readonly freezeRequested?: boolean;
   readonly baseWorkingRevision: string;
   readonly workingRevision: string;
   readonly snapshot: WorkingStateSnapshot;
@@ -179,21 +246,25 @@ export function createProjectTaskRoomWorkingState(
   });
   let closed = false;
   let terminal = false;
+  let terminalReason: UnavailableReason = 'closed';
   let closeSettlement: Promise<void> | undefined;
   let sequence = 0;
   const pending = new Map<
     number,
     {
       resolve: (value: any) => void;
+      operation: string;
       timer: ReturnType<typeof setTimeout>;
       beforeCommit?: () => Promise<boolean>;
     }
   >();
   const watchers = new Set<() => void>();
-  const fail = () => {
+  const fail = (reason: UnavailableReason) => {
+    if (!terminal) terminalReason = reason;
     terminal = true;
     for (const entry of pending.values()) {
       clearTimeout(entry.timer);
+      reportUnavailable(entry.operation, terminalReason);
       entry.resolve({ kind: 'unavailable' });
     }
     pending.clear();
@@ -228,32 +299,38 @@ export function createProjectTaskRoomWorkingState(
         });
       return;
     }
-    if (!value || !Number.isSafeInteger(value.id)) return fail();
+    if (!value || !Number.isSafeInteger(value.id))
+      return fail('malformed-response');
     const entry = pending.get(value.id);
     if (entry) {
       pending.delete(value.id);
       clearTimeout(entry.timer);
+      if (value.result?.kind === 'unavailable')
+        reportUnavailable(entry.operation, 'worker-unavailable-reply');
       entry.resolve(value.result);
     }
   });
-  worker.on('error', fail);
-  worker.on('exit', fail);
+  worker.on('error', () => fail('worker-error'));
+  worker.on('exit', () => fail('worker-exit'));
   const request = <T>(
-    value: unknown,
+    value: { type: string },
     beforeCommit?: () => Promise<boolean>,
   ): Promise<T> =>
     new Promise((resolve) => {
-      if (closed || terminal) return resolve({ kind: 'unavailable' } as T);
+      if (closed || terminal) {
+        reportUnavailable(value.type, closed ? 'closed' : terminalReason);
+        return resolve({ kind: 'unavailable' } as T);
+      }
       const id = ++sequence;
       const timer = setTimeout(() => {
-        fail();
+        fail('response-deadline');
         void worker.terminate().catch(() => {});
       }, responseTimeoutMs);
-      pending.set(id, { resolve, timer, beforeCommit });
+      pending.set(id, { resolve, timer, beforeCommit, operation: value.type });
       try {
         worker.postMessage({ id, value });
       } catch {
-        fail();
+        fail('post-message-failed');
       }
     });
   return Object.freeze({
@@ -271,6 +348,11 @@ export function createProjectTaskRoomWorkingState(
         type: 'receipt',
         ...input,
       }),
+    revisionLedgerUsage: () =>
+      request<
+        | { kind: 'available'; count: number; recordBytes: number }
+        | { kind: 'unavailable' }
+      >({ type: 'revision-ledger-usage' }),
     readRevisionPublication: (
       input: Parameters<
         ProjectTaskRoomWorkingState['readRevisionPublication']
@@ -280,6 +362,29 @@ export function createProjectTaskRoomWorkingState(
         type: 'read-revision-publication',
         ...input,
       }),
+    requestRevisionPublication: (
+      input: Parameters<
+        NonNullable<ProjectTaskRoomWorkingState['requestRevisionPublication']>
+      >[0],
+    ) => {
+      const { beforeCommit, ...value } = input;
+      return request<
+        | { kind: 'requested' }
+        | { kind: 'existing'; evidenceRevision: string }
+        | { kind: 'unavailable' }
+      >({ type: 'request-revision-publication', ...value }, beforeCommit);
+    },
+    releaseRevisionPublication: async (
+      input: Parameters<
+        NonNullable<ProjectTaskRoomWorkingState['releaseRevisionPublication']>
+      >[0],
+    ) =>
+      (
+        await request<{ kind: 'released' | 'unavailable' }>({
+          type: 'release-revision-publication',
+          ...input,
+        })
+      ).kind,
     markRevisionPublication: async (
       input: Parameters<
         ProjectTaskRoomWorkingState['markRevisionPublication']
@@ -370,7 +475,7 @@ export function createProjectTaskRoomWorkingState(
     close: async () => {
       if (closeSettlement) return closeSettlement;
       closed = true;
-      fail();
+      fail('closed');
       closeSettlement = worker
         .terminate()
         .catch(() => undefined)

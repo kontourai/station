@@ -1,10 +1,16 @@
 /** @vitest-environment jsdom */
 
 import { WORKSPACE_ACTIVITY_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-activity-pane';
+import {
+  WORKSPACE_PLAN_PANE_DESCRIPTOR,
+  WORKSPACE_READINESS_PANE_DESCRIPTOR,
+  WORKSPACE_TRUST_PANE_DESCRIPTOR,
+} from '@kontourai/station-contracts/workspace-evidence-panels';
 import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import { paneAdaptationFromLayoutTab } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
+import { deviceSettingsStore } from '../../lib/device-settings-store';
 
 // Only `useResolvedWorkspacePaneCatalog` reads these hooks; the pure
 // projection tests below never call them.
@@ -850,4 +856,49 @@ describe('direct plugin Pane occurrences (station#3543)', () => {
       ).toHaveProperty('rendererResolution', 'pending');
     });
   });
+});
+
+test('pane discovery withdraws experimental panes by default and admits each device opt-in independently', () => {
+  const keys = [
+    'developerToolsEnabled',
+    'experimentalFlowEnabled',
+    'experimentalReadinessEnabled',
+    'experimentalTrustEnabled',
+  ] as const;
+  deviceSettingsStore.resetMany(keys);
+  hookInputs.catalog = {
+    projectId: 'demo',
+    descriptors: [
+      WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
+      WORKSPACE_PLAN_PANE_DESCRIPTOR,
+      WORKSPACE_READINESS_PANE_DESCRIPTOR,
+      WORKSPACE_TRUST_PANE_DESCRIPTOR,
+    ],
+    instances: [],
+    availability: [],
+  };
+  const hook = renderHook(() => useResolvedWorkspacePaneCatalog('demo'));
+  const ids = () =>
+    hook.result.current.entries.map((entry) => entry.descriptor.id);
+  try {
+    expect(ids()).toEqual([WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.id]);
+    act(() => deviceSettingsStore.set('developerToolsEnabled', true));
+    expect(ids()).toEqual([WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.id]);
+    act(() => deviceSettingsStore.set('experimentalTrustEnabled', true));
+    expect(ids()).toEqual([
+      WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.id,
+      WORKSPACE_TRUST_PANE_DESCRIPTOR.id,
+    ]);
+    act(() => deviceSettingsStore.set('experimentalFlowEnabled', true));
+    expect(ids()).toContain(WORKSPACE_PLAN_PANE_DESCRIPTOR.id);
+    expect(ids()).not.toContain(WORKSPACE_READINESS_PANE_DESCRIPTOR.id);
+    act(() => deviceSettingsStore.set('experimentalReadinessEnabled', true));
+    expect(ids()).toHaveLength(4);
+    act(() => deviceSettingsStore.set('developerToolsEnabled', false));
+    expect(ids()).toEqual([WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.id]);
+  } finally {
+    hook.unmount();
+    hookInputs.catalog = undefined;
+    deviceSettingsStore.resetMany(keys);
+  }
 });

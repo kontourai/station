@@ -2,6 +2,7 @@ import {
   type BuiltInToolCategory,
   type EngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import './EngineCapabilitySummary.css';
 
 /**
@@ -45,7 +46,8 @@ export function deriveCapabilityChips(
   const chips = CAPABILITY_CHIPS.filter(
     ({ key }) => matrix[key].state !== 'unsupported',
   ).map(({ label }) => label);
-  if (matrix.midTurnSteer) chips.push('Mid-turn steering');
+  if (matrix.durability.steerPlacement.state !== 'none')
+    chips.push('Mid-turn steering');
   return chips;
 }
 
@@ -140,6 +142,24 @@ export function deriveGatingSummary(matrix: EngineCapabilityMatrix): string {
   }
 }
 
+const RECOVERY_LABELS = [
+  { key: 'steerPlacement', label: 'Steering' },
+  { key: 'crashContinuation', label: 'Continue after restart' },
+  { key: 'toolReplay', label: 'Tool replay' },
+  { key: 'pendingApprovals', label: 'Pending approvals' },
+  { key: 'contextCarriage', label: 'Context delivery' },
+  { key: 'fork', label: 'Fork' },
+  { key: 'compaction', label: 'Compaction recovery' },
+  { key: 'partialOutput', label: 'Partial output' },
+  { key: 'usage', label: 'Usage' },
+] satisfies { key: keyof ProviderDurabilityProfile; label: string }[];
+
+const FIDELITY_LABELS = {
+  native: 'Native',
+  emulated: 'Station fallback',
+  none: 'Unavailable',
+};
+
 export function EngineCapabilitySummary({
   matrix,
   connectionName,
@@ -157,6 +177,32 @@ export function EngineCapabilitySummary({
   const chips = deriveCapabilityChips(matrix);
   return (
     <div className="engine-capability-summary">
+      <details className="engine-capability-summary__recovery">
+        <summary>Recovery and delivery</summary>
+        <span className="engine-capability-summary__body">
+          <span className="engine-capability-summary__tools">
+            <strong>Compaction owner</strong>
+            {' — '}
+            {
+              { station: 'Station', engine: 'Engine', unknown: 'Unknown' }[
+                matrix.durability.compaction.owner
+              ]
+            }
+          </span>
+          {RECOVERY_LABELS.map(({ key, label }) => {
+            const cell = matrix.durability[key];
+            return (
+              <span className="engine-capability-summary__tools" key={key}>
+                <strong>{label}</strong>
+                {' — '}
+                {FIDELITY_LABELS[cell.state]}
+                {': '}
+                <span>{cell.detail}</span>
+              </span>
+            );
+          })}
+        </span>
+      </details>
       <div className="engine-capability-summary__row">
         <span className="engine-capability-summary__label">What it can do</span>
         <span className="engine-capability-summary__body">

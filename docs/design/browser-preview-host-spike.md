@@ -1,4 +1,4 @@
-# Browser-preview host spike (Station #1376)
+# Browser-preview host spike (archive#1376)
 
 > **Historical host-selection research:** platform observations below belong
 > to the dated desktop experiment. For the current server-hosted pane,
@@ -93,21 +93,15 @@ availability result, or native capability.
 
 ## Isolated experiments
 
-`experiments/browser-host/` has no production import path. It contains:
+The spike kept its fixtures under `experiments/browser-host/`, with no
+production import path: a stable `WebviewWindowBuilder` compile fixture, an
+`unstable` child-webview compile fixture that proved only the feature boundary,
+and a Node test that kept Pane `1.0` identities distinct from native runtime
+data and selected an external open action when native hosting was unavailable.
+Nothing ran them after the decision closed, so they were removed in the
+2026-10 repository hygiene pass (#2722); they remain in git history.
 
-- a stable `WebviewWindowBuilder` compile fixture;
-- an `unstable` child-webview compile fixture that proves only the feature
-  boundary; and
-- a Node test that keeps Pane `1.0` identities distinct from native runtime
-  data and selects an external open action when native hosting is unavailable.
-
-```sh
-npx tsx --test experiments/browser-host/scripts/workspace-pane-adapter.node.ts
-cargo check --manifest-path experiments/browser-host/tauri-separate-window/Cargo.toml
-cargo check --manifest-path experiments/browser-host/tauri-child-webview/Cargo.toml
-```
-
-Compile success does not prove visual interaction, storage isolation,
+Compile success did not prove visual interaction, storage isolation,
 permissions, CPU/memory, binary size, signing, or packaging.
 
 ## Platform and control matrix
@@ -178,8 +172,8 @@ requirements:
 
 ## Scope record
 
-The original isolated spike remains limited to
+The original isolated spike was limited to
 `docs/adr/0017-browser-preview-host.md`, this record, and
-`experiments/browser-host/**`. The bounded implementation changes only the
+`experiments/browser-host/**` (since removed). The bounded implementation changes only the
 desktop host adapter and its platform-neutral caller; it does not change a
 release configuration, package manifest, or Workspace Pane contract.

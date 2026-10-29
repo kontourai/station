@@ -402,7 +402,7 @@ describe('SessionRecoveryCoordinator', () => {
     vi.useRealTimers();
   });
 
-  test('RECOVERY TELEMETRY DEFECT: emits the existing transient and terminal classifier decisions', () => {
+  test('RECOVERY TELEMETRY DEFECT: emits the existing transient and terminal classifier decisions', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'recovery-coordinator-'));
     dirs.push(dir);
     const store = new EventStore(join(dir, 'orchestration.sqlite'));
@@ -456,6 +456,8 @@ describe('SessionRecoveryCoordinator', () => {
       decision: 'reconnect',
       outcome: 'manual',
     });
+    // The armed transient intent holds a real timer; see #2324 below.
+    await coordinator.dispose().catch(() => undefined);
     store.close();
   });
 
@@ -1702,7 +1704,7 @@ describe('SessionRecoveryCoordinator', () => {
     vi.useRealTimers();
   });
 
-  test('#2324: a failed turn the engine opened on its own is never armed for replay — a user turn with the same failure is', () => {
+  test('#2324: a failed turn the engine opened on its own is never armed for replay — a user turn with the same failure is', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'recovery-coordinator-'));
     dirs.push(dir);
     const store = new EventStore(join(dir, 'orchestration.sqlite'));
@@ -1770,6 +1772,10 @@ describe('SessionRecoveryCoordinator', () => {
       decision: 'retry-now',
       outcome: 'armed',
     });
+    // The armed control holds a real timer. Dispose before closing the store
+    // so it cannot fire into a later test against a closed database, where
+    // the fire-time fence (#3563) would keep re-arming it.
+    await coordinator.dispose().catch(() => undefined);
     store.close();
   });
 
@@ -1862,6 +1868,259 @@ describe('SessionRecoveryCoordinator', () => {
     ).not.toContain('typed input');
     store.close();
     vi.useRealTimers();
+  });
+
+  /**
+   * #3563: the startup source-terminal repair is a bulk CAS. When it answers
+   * `unavailable`, a timer must still never replay a turn whose source
+   * already ended, and must still resume one whose source is alive. Each
+   * intent is fenced by the same rule when its timer fires; the startup
+   * repair is defence in depth, not a gate on every recovery.
+   */
+  describe('a failed source-terminal repair at boot', () => {
+    function armedPair(store: EventStore, now: Date) {
+      for (const thread of ['ended', 'open'] as const) {
+        store.appendEvent({
+          eventId: `started-${thread}`,
+          provider: 'claude',
+          threadId: `thread-${thread}`,
+          turnId: `turn-${thread}`,
+          createdAt: now.toISOString(),
+          method: 'turn.started',
+          prompt: 'replayable input',
+        });
+        recoveryLedger(store).arm({
+          fingerprint: `thread-${thread}:turn-${thread}:rate-limit:server`,
+          threadId: `thread-${thread}`,
+          provider: 'claude',
+          sourceEventId: `started-${thread}`,
+          sourceTurnId: `turn-${thread}`,
+          failureKind: 'rate-limit',
+          scope: 'server',
+          decision: 'retry-now',
+          dueAt: now.toISOString(),
+          maxAttempts: 1,
+          outcome: 'armed',
+          createdAt: now.toISOString(),
+          updatedAt: now.toISOString(),
+        });
+      }
+      // The source turn of `thread-ended` reached a durable terminal while
+      // its intent stayed armed (the original cancellation CAS was lost).
+      store.appendEvent({
+        eventId: 'aborted-ended',
+        provider: 'claude',
+        threadId: 'thread-ended',
+        turnId: 'turn-ended',
+        createdAt: now.toISOString(),
+        method: 'turn.aborted',
+        reason: 'interrupted',
+      });
+    }
+
+    function coordinatorWithFaults(
+      store: EventStore,
+      now: Date,
+      faults: { repair: number; fence: number },
+    ) {
+      const real = recoveryLedger(store);
+      let repairFaults = faults.repair;
+      let fenceFaults = faults.fence;
+      const repairs = vi.fn((at: string) => {
+        if (repairFaults > 0) {
+          repairFaults -= 1;
+          return { kind: 'unavailable' as const };
+        }
+        return real.cancelSourceTerminated(at);
+      });
+      const fences = vi.fn((fingerprint: string, at: string) => {
+        if (fenceFaults > 0) {
+          fenceFaults -= 1;
+          return { kind: 'unavailable' as const };
+        }
+        return real.cancelIfSourceTerminated(fingerprint, at);
+      });
+      const sendTurn = vi.fn(async (input: { threadId: string }) => ({
+        turnId: `recovered-${input.threadId}`,
+      }));
+      const warn = vi.fn();
+      const coordinator = new SessionRecoveryCoordinator({
+        eventStore: store,
+        recoveryLedger: {
+          ...real,
+          cancelSourceTerminated: repairs,
+          cancelIfSourceTerminated: fences,
+        },
+        adapterForProvider: () =>
+          ({ metadata: { recovery: { sameSession: true } } }) as any,
+        sendTurn,
+        now: () => now,
+        logger: { warn },
+      });
+      return { coordinator, fences, sendTurn, warn };
+    }
+
+    test('a repair that never lands still cancels the ended source and resumes the live one', async () => {
+      vi.useFakeTimers();
+      const dir = makeTempDir('recovery-coordinator-');
+      const store = new EventStore(join(dir, 'orchestration.sqlite'));
+      const now = new Date('2026-07-29T12:00:00.000Z');
+      armedPair(store, now);
+      const { coordinator, sendTurn, warn } = coordinatorWithFaults(
+        store,
+        now,
+        { repair: Number.POSITIVE_INFINITY, fence: 0 },
+      );
+      try {
+        coordinator.reconcile();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(sendTurn.mock.calls.map(([input]) => input.threadId)).toEqual([
+          'thread-open',
+        ]);
+        expect(coordinator.latestProjection('thread-ended')).toMatchObject({
+          outcome: 'canceled',
+        });
+        expect(warn).toHaveBeenCalledWith(
+          expect.stringContaining('source-terminal repair'),
+          expect.anything(),
+        );
+      } finally {
+        await coordinator.dispose().catch(() => undefined);
+        store.close();
+        vi.useRealTimers();
+      }
+    });
+
+    test('an unavailable fire-time fence defers the dispatch and keeps retrying', async () => {
+      vi.useFakeTimers();
+      const dir = makeTempDir('recovery-coordinator-');
+      const store = new EventStore(join(dir, 'orchestration.sqlite'));
+      const now = new Date('2026-07-29T12:00:00.000Z');
+      armedPair(store, now);
+      const { coordinator, fences, sendTurn, warn } = coordinatorWithFaults(
+        store,
+        now,
+        { repair: 0, fence: 3 },
+      );
+      try {
+        coordinator.reconcile();
+        await vi.advanceTimersByTimeAsync(0);
+        // The startup repair already canceled `thread-ended`; only the live
+        // intent fires, and its fence cannot be read yet.
+        expect(sendTurn).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenCalledWith(
+          expect.stringContaining('fire-time'),
+          expect.anything(),
+        );
+        // Three unavailable answers, then the fence reads: never given up.
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+        expect(fences.mock.calls.length).toBeGreaterThanOrEqual(4);
+        expect(sendTurn.mock.calls.map(([input]) => input.threadId)).toEqual([
+          'thread-open',
+        ]);
+      } finally {
+        await coordinator.dispose().catch(() => undefined);
+        store.close();
+        vi.useRealTimers();
+      }
+    });
+
+    // Review F4: a ledger read that throws inside a timer must neither
+    // escape as an uncaught error nor drop the recovery for good.
+    test('a throwing intent read at fire time is retried, not lost', async () => {
+      vi.useFakeTimers();
+      const dir = makeTempDir('recovery-coordinator-');
+      const store = new EventStore(join(dir, 'orchestration.sqlite'));
+      const now = new Date('2026-07-29T12:00:00.000Z');
+      armedPair(store, now);
+      const real = recoveryLedger(store);
+      let findFaults = 1;
+      const sendTurn = vi.fn(async (input: { threadId: string }) => ({
+        turnId: `recovered-${input.threadId}`,
+      }));
+      const coordinator = new SessionRecoveryCoordinator({
+        eventStore: store,
+        recoveryLedger: {
+          ...real,
+          find: (fingerprint: string) => {
+            if (fingerprint.startsWith('thread-open:') && findFaults-- > 0)
+              throw new Error('SQLITE_BUSY');
+            return real.find(fingerprint);
+          },
+        },
+        adapterForProvider: () =>
+          ({ metadata: { recovery: { sameSession: true } } }) as any,
+        sendTurn,
+        now: () => now,
+        logger: { warn: vi.fn() },
+        // Production always wires the setting, which puts an intent read in
+        // the timer callback itself, ahead of the fence (review M1).
+        autoResume: async () => true,
+      });
+      try {
+        coordinator.reconcile();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(sendTurn).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+        expect(sendTurn.mock.calls.map(([input]) => input.threadId)).toEqual([
+          'thread-open',
+        ]);
+      } finally {
+        await coordinator.dispose().catch(() => undefined);
+        store.close();
+        vi.useRealTimers();
+      }
+    });
+
+    // Review L2: the source can end after the fence read it as live and
+    // before the claim lands (credential recovery awaits in between). The
+    // claim's compare-and-set carries the same rule, so the pair is atomic.
+    test('a source that ends between the fence and the claim is not resumed', async () => {
+      vi.useFakeTimers();
+      const dir = makeTempDir('recovery-coordinator-');
+      const store = new EventStore(join(dir, 'orchestration.sqlite'));
+      const now = new Date('2026-07-29T12:00:00.000Z');
+      armedPair(store, now);
+      const real = recoveryLedger(store);
+      const sendTurn = vi.fn(async (input: { threadId: string }) => ({
+        turnId: `recovered-${input.threadId}`,
+      }));
+      const coordinator = new SessionRecoveryCoordinator({
+        eventStore: store,
+        recoveryLedger: {
+          ...real,
+          cancelIfSourceTerminated: (fingerprint: string, at: string) => {
+            const fenced = real.cancelIfSourceTerminated(fingerprint, at);
+            if (fingerprint.startsWith('thread-open:')) {
+              store.appendEvent({
+                eventId: 'aborted-open-after-fence',
+                provider: 'claude',
+                threadId: 'thread-open',
+                turnId: 'turn-open',
+                createdAt: now.toISOString(),
+                method: 'turn.aborted',
+                reason: 'interrupted',
+              });
+            }
+            return fenced;
+          },
+        },
+        adapterForProvider: () =>
+          ({ metadata: { recovery: { sameSession: true } } }) as any,
+        sendTurn,
+        now: () => now,
+        logger: { warn: vi.fn() },
+      });
+      try {
+        coordinator.reconcile();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(sendTurn).not.toHaveBeenCalled();
+      } finally {
+        await coordinator.dispose().catch(() => undefined);
+        store.close();
+        vi.useRealTimers();
+      }
+    });
   });
 
   test('refuses to replay a turn whose attachment bytes are gone (#3374)', async () => {
@@ -2343,6 +2602,97 @@ describe('SessionRecoveryCoordinator', () => {
     await expect(restarted.dispose()).resolves.toBeUndefined();
     restartedStore.close();
     vi.useRealTimers();
+  });
+
+  /** A prior process claimed a due recovery and exited before invoking it. */
+  function abandonedDueClaim() {
+    const path = join(
+      makeTempDir('recovery-due-startup-'),
+      'orchestration.sqlite',
+    );
+    const first = new EventStore(path);
+    const ledger = recoveryLedger(first);
+    const intent = ledger.arm({
+      fingerprint: 'due-thread:turn:capacity:account',
+      threadId: 'due-thread',
+      provider: 'claude',
+      sourceEventId: 'due-event',
+      sourceTurnId: 'turn',
+      failureKind: 'capacity',
+      scope: 'account',
+      decision: 'retry-now',
+      dueAt: '2026-08-11T12:00:00.000Z',
+      maxAttempts: 1,
+      outcome: 'armed',
+      createdAt: '2026-08-11T12:00:00.000Z',
+      updatedAt: '2026-08-11T12:00:00.000Z',
+    });
+    expect(
+      ledger.claim({
+        fingerprint: intent.fingerprint,
+        kind: 'due',
+        now: '2026-08-11T12:00:00.000Z',
+      }).kind,
+    ).toBe('owner');
+    // Closing releases this process's owner registration, as an exit would.
+    first.close();
+    return { path, fingerprint: intent.fingerprint };
+  }
+
+  function restartedCoordinator(store: EventStore) {
+    const outcomes = vi.fn();
+    const coordinator = new SessionRecoveryCoordinator({
+      eventStore: store,
+      adapterForProvider: () =>
+        ({ metadata: { recovery: { sameSession: true } } }) as any,
+      sendTurn: vi.fn(async () => ({ turnId: 'must-not-run' })),
+      onOutcome: outcomes,
+      now: () => new Date('2026-08-11T12:00:01.000Z'),
+    });
+    return { coordinator, outcomes };
+  }
+
+  test('#2823: startup records indeterminate for an abandoned due claim that its scan fenced', () => {
+    const { path, fingerprint } = abandonedDueClaim();
+    const store = new EventStore(path);
+    const { coordinator, outcomes } = restartedCoordinator(store);
+
+    coordinator.reconcile();
+
+    expect(recoveryLedger(store).find(fingerprint)).toMatchObject({
+      outcome: 'indeterminate',
+    });
+    expect(outcomes).toHaveBeenCalledWith({
+      failureKind: 'capacity',
+      decision: 'retry-now',
+      outcome: 'indeterminate',
+    });
+    store.close();
+  });
+
+  test('#2823: startup records nothing when the due scan is unavailable', () => {
+    const { path, fingerprint } = abandonedDueClaim();
+    const store = new EventStore(path);
+    vi.spyOn(
+      store as unknown as {
+        preparedRecoveryDispatches: (...args: unknown[]) => unknown;
+      },
+      'preparedRecoveryDispatches',
+    ).mockImplementation(() => {
+      throw new Error('SQLITE_BUSY: database is locked');
+    });
+    const { coordinator, outcomes } = restartedCoordinator(store);
+
+    coordinator.reconcile();
+
+    // Nothing was fenced, so there is no outcome to record; the claim stays
+    // durable for a later startup.
+    expect(outcomes).not.toHaveBeenCalled();
+    expect(recoveryLedger(store).find(fingerprint)).toMatchObject({
+      outcome: 'resumed',
+      dispatchSettlement: 'prepared',
+    });
+    store.close();
   });
 
   test('refuses a re-entrant runtime error after dispose publishes its stopping gate', async () => {

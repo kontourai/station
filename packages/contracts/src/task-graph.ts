@@ -364,7 +364,7 @@ const TASK_USER_INPUT_REFERENCE_PREFIX = 'user-input/';
 const TASK_TOOL_RESULT_REFERENCE_PREFIX = 'tool-result/';
 const TASK_GATE_EVALUATION_REFERENCE_PREFIX = 'gate-evaluation/';
 
-function isWellFormedUnicode(value: string): boolean {
+export function isWellFormedUnicode(value: string): boolean {
   for (let index = 0; index < value.length; index += 1) {
     const code = value.charCodeAt(index);
     if (code >= 0xd800 && code <= 0xdbff) {
@@ -518,6 +518,61 @@ export function parseTaskGateEvaluationReference(
   }
 }
 
+/** Exact Task incarnation; IDs alone never authorize a relationship. */
+export interface TaskIdentity {
+  taskId: string;
+  taskCreatedAt: string;
+}
+
+export interface TaskParentMutationInput {
+  operationId: string;
+  child: TaskIdentity;
+  expectedRevision: number;
+  parent: TaskIdentity | null;
+}
+
+export interface TaskChildCreateInput {
+  operationId: string;
+  parent: TaskIdentity;
+  task: Pick<
+    TaskCreateInput,
+    'projectId' | 'title' | 'description' | 'priority' | 'skillName' | 'agentId'
+  >;
+}
+
+export interface TaskParentMutationResult {
+  child: TaskIdentity;
+  parent: TaskIdentity | null;
+  previousParent: TaskIdentity | null;
+  revision: number;
+}
+
+export interface TaskWorkChatMutationInput {
+  operationId: string;
+  task: TaskIdentity;
+  conversationId: string;
+  expectedRevision: number;
+  linked: boolean;
+}
+
+export interface TaskWorkChatMutationResult {
+  task: TaskIdentity;
+  conversationId: string;
+  linked: boolean;
+  revision: number;
+}
+
+/** Only currently readable children appear; no hidden count or sentinel. */
+export interface TaskChildrenResult {
+  task: TaskIdentity;
+  children: TaskRecord[];
+}
+
+export interface TaskWorkChatsResult {
+  task: TaskIdentity;
+  chats: { conversationId: string; revision: number }[];
+}
+
 export interface TaskRecord {
   id: string;
   projectId: string;
@@ -545,6 +600,21 @@ export interface TaskRecord {
    * issue URL or id). Absent for tasks created directly in Station. */
   workItemRef?: string;
   /**
+   * When Station last read `workItemRef` into this Task (#4003): set by the
+   * observation that seeded the brief on Start Task, and advanced by each
+   * dispatch whose tracker read observed the item. Comments created after
+   * it are the item's "new comments". Absent until one of those reads.
+   */
+  workItemObservedAt?: string;
+  /**
+   * How `workItemRef` entered the Task (#4003 review F4). `project-board`:
+   * the create checked that the Project's board offered exactly this ref
+   * (Start Task, or `POST /api/tasks` with a `github:` ref). Station reads
+   * the tracker for a Task's ref only when this is set; a ref without it is
+   * shown, never observed with the host's tracker login.
+   */
+  workItemProvenance?: 'project-board';
+  /**
    * A person's opt-in (#3161): move this Task to `done` once every pull
    * request kept on it is merged at its provider. Only a person sets it
    * (`PUT /api/tasks/:taskId/close-on-merge`); no agent tool does, and the
@@ -552,9 +622,16 @@ export interface TaskRecord {
    * Absent means off.
    */
   closeOnMerge?: boolean;
+  /** Deliverable hierarchy, independent of execution Sessions and status. */
+  parent?: TaskIdentity;
+  relationshipRevision?: number;
 }
 
 export interface TaskCreateInput {
+  /** Explicitly accepted chat proposal; creation atomically retains its source Session. */
+  shapingSource?: { sessionId: string; turnId: string };
+  /** Accepted markdown for the shared Task document, not its summary. */
+  proposalBrief?: string;
   projectId: string;
   title: string;
   description?: string;
@@ -819,6 +896,14 @@ export function validateTaskCreateInput(input: TaskCreateInput): string[] {
   if (input.priority && !isTaskPriority(input.priority)) {
     errors.push(`priority must be one of: ${TASK_PRIORITIES.join(', ')}`);
   }
+  if (
+    input.shapingSource &&
+    (!isNonBlankString(input.shapingSource.sessionId) ||
+      !isNonBlankString(input.shapingSource.turnId))
+  )
+    errors.push('shapingSource requires an exact Session and turn');
+  if (input.shapingSource && !isNonBlankString(input.description))
+    errors.push('an accepted proposal requires a brief');
   errors.push(...validateTaskWorkspaceBinding(input.workspaceBinding));
   return errors;
 }
@@ -1165,4 +1250,73 @@ export function createTaskSessionId(
   dispatchIndex: number,
 ): string {
   return `task-${taskId}-${dispatchIndex}`;
+}
+
+/** Shared wording for Task controls and server-authored room status lines. */
+export function taskStatusLabel(status: TaskStatus): string {
+  return {
+    todo: 'To do',
+    ready: 'To do',
+    triage: 'To do',
+    verification: 'In review',
+    in_progress: 'In progress',
+    review: 'In review',
+    blocked: 'Blocked',
+    done: 'Done',
+    canceled: 'Canceled',
+  }[status];
+}
+
+/** Station's prompt/proposal seam. This is not a Builder Kit invocation. */
+export interface TaskProposal {
+  title: string;
+  goal: string;
+  doneWhen: string[];
+  firstStep: string;
+}
+
+export function readTaskProposal(text: string): TaskProposal | null {
+  const matches = [
+    ...text.matchAll(/```station-task-proposal\s*\n([\s\S]*?)\n```/g),
+  ];
+  if (matches.length !== 1 || matches[0][1].length > 12_000) return null;
+  try {
+    const value: unknown = JSON.parse(matches[0][1]);
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      return null;
+    if (
+      !('title' in value) ||
+      !('goal' in value) ||
+      !('doneWhen' in value) ||
+      !('firstStep' in value)
+    )
+      return null;
+    const { title, goal, doneWhen, firstStep } = value;
+    if (
+      typeof title !== 'string' ||
+      !title.trim() ||
+      title.length > 240 ||
+      typeof goal !== 'string' ||
+      !goal.trim() ||
+      typeof firstStep !== 'string' ||
+      !firstStep.trim() ||
+      !Array.isArray(doneWhen) ||
+      doneWhen.length === 0 ||
+      doneWhen.length > 32 ||
+      doneWhen.some((item) => typeof item !== 'string' || !item.trim())
+    )
+      return null;
+    return {
+      title: title.trim(),
+      goal: goal.trim(),
+      doneWhen: doneWhen.map((item: string) => item.trim()),
+      firstStep: firstStep.trim(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function taskProposalBrief(proposal: TaskProposal): string {
+  return `## Goal\n\n${proposal.goal}\n\n## Done when\n\n${proposal.doneWhen.map((item) => `- [ ] ${item}`).join('\n')}\n\n## Suggested first step\n\n${proposal.firstStep}`;
 }

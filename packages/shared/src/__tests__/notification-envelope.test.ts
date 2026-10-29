@@ -328,6 +328,30 @@ describe('readNotificationEnvelope', () => {
       },
     ],
     [
+      'path target whose dot segments normalize to //host',
+      (e) => {
+        e.target.path = '/%2E%2e//evil.example/';
+      },
+    ],
+    [
+      'path target naming a record to mark read',
+      (e) => {
+        e.target.path = '/notifications?openedNotification=victim';
+      },
+    ],
+    [
+      'path target naming a record through an encoded parameter name',
+      (e) => {
+        e.target.path = '/notifications?opened%4Eotification=victim';
+      },
+    ],
+    [
+      'path target with a fragment',
+      (e) => {
+        e.target.path = '/x#station-ui-bootstrap=abc';
+      },
+    ],
+    [
       'path target with whitespace',
       (e) => {
         e.target.path = '/sessions/ s';

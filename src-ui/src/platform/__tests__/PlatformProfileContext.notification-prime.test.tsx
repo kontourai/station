@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const profileStorage = vi.hoisted(() => ({
@@ -25,6 +25,12 @@ vi.mock('../native', () => ({
   }),
 }));
 
+// Discovery IPC is covered by connectionDiscovery.test.ts; this notification
+// fixture owns only boot priming and waits for its unrelated lazy effect.
+vi.mock('../native/connectionDiscovery', () => ({
+  registerNativeConnectionDiscovery: vi.fn(() => () => {}),
+}));
+
 vi.mock('../native/notify', () => ({
   primeNativeNotifications: vi.fn(),
 }));
@@ -39,17 +45,24 @@ async function renderFreshBootstrap() {
   vi.resetModules();
   const { PlatformBootstrap } = await import('../PlatformProfileContext');
   const { primeNativeNotifications } = await import('../native/notify');
+  const { registerNativeConnectionDiscovery } = await import(
+    '../native/connectionDiscovery'
+  );
   render(
     <PlatformBootstrap>
       <div>boot child</div>
     </PlatformBootstrap>,
   );
   await screen.findByText('boot child');
+  await waitFor(() =>
+    expect(registerNativeConnectionDiscovery).toHaveBeenCalledOnce(),
+  );
   return vi.mocked(primeNativeNotifications);
 }
 
 describe('PlatformBootstrap notification priming', () => {
   afterEach(() => {
+    cleanup();
     vi.clearAllMocks();
     profileStorage.hasSavedProfiles.mockReturnValue(true);
   });
