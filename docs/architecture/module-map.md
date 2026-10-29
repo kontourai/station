@@ -2223,7 +2223,7 @@ cannot substitute the first turn on the same Session.
 [CliSessionGroups](../../src-server/services/orchestration/cli-session-group.ts)
 retains personal-host group definitions, seat launch intents, actual session and
 initial-turn identities, and bounded revision events in the configured Station
-home. Bound Station Control callers use the same routes with their verified
+home. Bound Station Control callers use the same routes with their
 verified Session and recorded principal as durable group custody; request-time
 caller-token revalidation fences long operations. Older credential-bound groups
 retain their original ownership. Event tools read bounded pages rather than holding a stream. The [orchestration route](../../src-server/routes/orchestration/orchestration.ts)

@@ -1182,7 +1182,7 @@ test('registered CLI preserves a zero reserved-start allowance through run witho
   expect(f.adapter.turns).toHaveLength(0);
 }, 30_000);
 
-test('a preset authenticates all members before starts, fences canceled or changed contexts, and retains its roster', async () => {
+async function presetFixture() {
   const f = await fixture(true);
   const security = f.security!;
   const offer = security.devicePairing.createOffer({ endpoint: f.apiBase });
@@ -1246,6 +1246,16 @@ test('a preset authenticates all members before starts, fences canceled or chang
       ]),
     ),
   };
+  setClientCredentialResolver(() => ({
+    origin: f.apiBase,
+    credential: local.credential,
+  }));
+  return { f, security, local, preset, path, bytes, input };
+}
+
+test('preset authentication fences unsupported and changed contexts and retains its roster', async () => {
+  const { f, security, local, preset, path, bytes, input } =
+    await presetFixture();
   const denied = await f.app.request(
     '/api/orchestration/session-groups/from-ensemble',
     {
@@ -1350,10 +1360,6 @@ test('a preset authenticates all members before starts, fences canceled or chang
   expect(bothSources.status).toBe(409);
   const browserHostRead = await submitUpload(input);
   expect(browserHostRead.status).toBe(403);
-  setClientCredentialResolver(() => ({
-    origin: f.apiBase,
-    credential: local.credential,
-  }));
   const group = await createEnsembleCliSessionGroup(f.apiBase, input);
   expect(f.adapter.starts).toHaveLength(0);
   expect(group.members.map((member) => member.seatId)).toEqual([
@@ -1500,6 +1506,42 @@ test('a preset authenticates all members before starts, fences canceled or chang
   expect(replayed.status).toBe(200);
   expect(f.adapter.authentications).toHaveLength(8);
   expect(f.adapter.turns).toHaveLength(3);
+  writeFileSync(path, `${bytes} `);
+  await expect(
+    createEnsembleCliSessionGroup(f.apiBase, {
+      ...input,
+      operationId: 'stale',
+    }),
+  ).rejects.toThrow();
+  expect(f.adapter.turns).toHaveLength(3);
+  const recordPath = join(
+    f.root,
+    'runtime',
+    'cli-session-groups',
+    `${group.groupId}.json`,
+  );
+  const originalRecord = readFileSync(recordPath);
+  const stored: { preset: { members: { seatId: string }[] } } = JSON.parse(
+    originalRecord.toString(),
+  );
+  stored.preset.members[0]!.seatId = 'foreign-seat';
+  try {
+    writeFileSync(recordPath, JSON.stringify(stored));
+    const mismatched = await f.app.request(
+      `/api/orchestration/session-groups/${group.groupId}`,
+      {
+        headers: { Authorization: `Bearer ${local.credential}` },
+      },
+    );
+    expect(mismatched.status).toBe(409);
+    expect(await mismatched.text()).toContain('group_storage_unavailable');
+  } finally {
+    writeFileSync(recordPath, originalRecord);
+  }
+}, 30_000);
+
+test('preset authentication cancellation and changed start context stop member effects', async () => {
+  const { f, local, input } = await presetFixture();
   const cancelledGroup = await createEnsembleCliSessionGroup(f.apiBase, {
     ...input,
     operationId: 'cancel-during-auth',
@@ -1535,9 +1577,9 @@ test('a preset authenticates all members before starts, fences canceled or chang
   );
   expect(cancelled.status).toBe(200);
   expect((await cancellingRun).status).toBe(409);
-  expect(f.adapter.authentications).toHaveLength(9);
-  expect(f.adapter.starts).toHaveLength(3);
-  expect(f.adapter.turns).toHaveLength(3);
+  expect(f.adapter.authentications).toHaveLength(1);
+  expect(f.adapter.starts).toHaveLength(0);
+  expect(f.adapter.turns).toHaveLength(0);
   f.adapter.onAuthentication = undefined;
   const changedBeforeStart = await createEnsembleCliSessionGroup(f.apiBase, {
     ...input,
@@ -1558,41 +1600,9 @@ test('a preset authenticates all members before starts, fences canceled or chang
   expect(
     changedView.members.every((member) => member.handle === undefined),
   ).toBe(true);
-  expect(f.adapter.starts).toHaveLength(3);
-  expect(f.adapter.turns).toHaveLength(3);
+  expect(f.adapter.starts).toHaveLength(0);
+  expect(f.adapter.turns).toHaveLength(0);
   f.setPreparation(async () => {});
-  writeFileSync(path, `${bytes} `);
-  await expect(
-    createEnsembleCliSessionGroup(f.apiBase, {
-      ...input,
-      operationId: 'stale',
-    }),
-  ).rejects.toThrow();
-  expect(f.adapter.turns).toHaveLength(3);
-  const recordPath = join(
-    f.root,
-    'runtime',
-    'cli-session-groups',
-    `${group.groupId}.json`,
-  );
-  const originalRecord = readFileSync(recordPath);
-  const stored: { preset: { members: { seatId: string }[] } } = JSON.parse(
-    originalRecord.toString(),
-  );
-  stored.preset.members[0]!.seatId = 'foreign-seat';
-  try {
-    writeFileSync(recordPath, JSON.stringify(stored));
-    const mismatched = await f.app.request(
-      `/api/orchestration/session-groups/${group.groupId}`,
-      {
-        headers: { Authorization: `Bearer ${local.credential}` },
-      },
-    );
-    expect(mismatched.status).toBe(409);
-    expect(await mismatched.text()).toContain('group_storage_unavailable');
-  } finally {
-    writeFileSync(recordPath, originalRecord);
-  }
 }, 30_000);
 
 test('bound Station Control operates its real session group and cannot read another caller group', async () => {
