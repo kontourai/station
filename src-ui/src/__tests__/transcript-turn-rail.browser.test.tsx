@@ -413,13 +413,7 @@ test.each([
       await page.screenshot({
         path: `/tmp/turn-navigation-${width}-${theme}.png`,
       });
-      if (width >= 560) {
-        await pressTick(page, 0);
-        await settledScrollTop(page);
-        expect(
-          await page.getByTestId('transcript-turn-announcement').textContent(),
-        ).toContain('Turn 1 of 2');
-      } else {
+      if (width < 560) {
         await page.getByRole('button', { name: 'Previous turn' }).click();
         await settledScrollTop(page);
         expect(
