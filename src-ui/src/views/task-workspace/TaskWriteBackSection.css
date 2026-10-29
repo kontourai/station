@@ -48,3 +48,9 @@
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
 }
+
+.task-write-back__entries a {
+  display: inline-flex;
+  align-items: center;
+  min-height: calc(var(--k-space-6) + var(--k-space-3));
+}
