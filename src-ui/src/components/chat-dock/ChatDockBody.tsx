@@ -1242,11 +1242,16 @@ export function ChatDockBody({
   // engine override to the Agent's defaults: both open the same dialog, so
   // neither opens it only for its submit to refuse a blocked switch. Pending
   // attachments are not known here; the dialog disables its submit for them.
+  // An engine override with no engine change offered (the conversation is
+  // read-only, unverified, busy or still resolving) refuses its reset too:
+  // the model-only reset would leave the override in place while reading as
+  // "Use Agent defaults".
   const engineChangeBlockedReason = secondaryActions?.handoffDisabledReason;
-  const engineResetBlockedReason =
-    activeSession.executionAgentId && onExecutionModelSelect
+  const engineResetBlockedReason = activeSession.executionAgentId
+    ? onExecutionModelSelect
       ? engineChangeBlockedReason
-      : undefined;
+      : 'This conversation can’t change its engine right now.'
+    : undefined;
   const pickerModels = executionModels
     ?.filter(
       (model) =>
@@ -2648,8 +2653,8 @@ export function ChatDockBody({
               }
             }}
             onModelReset={() => {
-              if (activeSession.executionAgentId && onExecutionModelSelect) {
-                if (engineResetBlockedReason) return;
+              if (activeSession.executionAgentId) {
+                if (engineResetBlockedReason || !onExecutionModelSelect) return;
                 chatInput.handleModelClose();
                 onExecutionModelSelect();
               } else {
