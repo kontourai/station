@@ -45,6 +45,9 @@
    caret or pointer. */
 .start-composer__station--fixed {
   cursor: default;
+  /* A span does not get the global `button { line-height: 1.4 }`, so its
+     text sat about 1px below the Project chip's beside it. */
+  line-height: 1.4;
 }
 .start-composer__station-mark {
   flex: none;
