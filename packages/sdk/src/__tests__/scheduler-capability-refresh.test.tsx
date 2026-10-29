@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
+import { readPublicStationCapabilities } from '../client/publicStationCapabilities';
 import { resetPublicStationCapabilities } from '../publicStationCapabilities';
 import { useScheduledConversationTargetCapability } from '../query-domains/scheduler';
 
@@ -12,6 +13,26 @@ afterEach(() => {
   vi.unstubAllGlobals();
   resetPublicStationCapabilities();
 });
+
+test('a stalled handshake body times out and remains unknown', async () => {
+  let aborted = false;
+  vi.stubGlobal('fetch', async (_input: unknown, init?: RequestInit) => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"schemaVersion":'));
+        init?.signal?.addEventListener('abort', () => {
+          aborted = true;
+          controller.error(init.signal?.reason ?? new Error('aborted'));
+        });
+      },
+    });
+    return new Response(body, { status: 200 });
+  });
+  await expect(
+    readPublicStationCapabilities('http://station.test'),
+  ).resolves.toBeUndefined();
+  expect(aborted).toBe(true);
+}, 15_000);
 
 test('refresh after a host upgrade reads a new descriptor even when history was supported', async () => {
   let supported = false;
