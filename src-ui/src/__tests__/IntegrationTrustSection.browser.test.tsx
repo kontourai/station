@@ -44,6 +44,23 @@ test('trust controls fit and remain usable in both themes and widths', async () 
         await page.getByText('Change history (1)').click();
         await page.getByText('person').waitFor();
         expect(
+          await page.locator('.integration-trust-history time').textContent(),
+        ).toBe(
+          await page.evaluate(() =>
+            new Date('2026-01-01T00:00:00Z').toLocaleString(),
+          ),
+        );
+        expect(
+          await page
+            .locator('.integration-trust-history')
+            .evaluate((element) => getComputedStyle(element).fontSize),
+        ).toBe(
+          await page
+            .locator('.editor-label')
+            .first()
+            .evaluate((element) => getComputedStyle(element).fontSize),
+        );
+        expect(
           await page.evaluate(
             () => document.documentElement.scrollWidth <= window.innerWidth,
           ),

@@ -10,7 +10,12 @@
 
 .integration-trust-history {
   padding-inline-start: var(--k-space-5);
+  font-size: var(--text-md);
   overflow-wrap: anywhere;
+}
+
+.integration-trust-history ul {
+  padding-inline-start: var(--k-space-5);
 }
 
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {

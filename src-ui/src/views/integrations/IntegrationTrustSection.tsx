@@ -168,8 +168,12 @@ export function IntegrationTrustSection({
               .reverse()
               .map((change, index) => (
                 <li key={`${change.at}-${index}`}>
-                  <time>{change.at}</time> ·{' '}
-                  {change.by ?? (change.source ? 'Local import' : 'Station')}
+                  <time dateTime={change.at}>
+                    {Number.isNaN(Date.parse(change.at))
+                      ? change.at
+                      : new Date(change.at).toLocaleString()}
+                  </time>{' '}
+                  · {change.by ?? (change.source ? 'Local import' : 'Station')}
                   <ul>
                     {change.contentTrust && (
                       <li>Content: {change.contentTrust}</li>
