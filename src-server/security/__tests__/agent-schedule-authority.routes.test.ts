@@ -2672,6 +2672,23 @@ describe('acting on an automation is admitted against its stored target', () => 
       expect(result.body.data.automations[0]).not.toHaveProperty(
         'lastSuccessAt',
       );
+      expect(result.body.data.automations[0]).not.toHaveProperty(
+        'consecutiveFailures',
+      );
+      facts.mayNotRead.add('conv-victim');
+      const person = await personRequest(
+        'GET',
+        '/api/orchestration/agent-schedule/conv-new',
+        undefined,
+        world.at.baseUrl,
+      );
+      expect(person.status).toBe(200);
+      expect(person.body.data.automations[0]).not.toHaveProperty(
+        'lastSuccessAt',
+      );
+      expect(person.body.data.automations[0]).not.toHaveProperty(
+        'consecutiveFailures',
+      );
     } finally {
       await world.close();
     }
