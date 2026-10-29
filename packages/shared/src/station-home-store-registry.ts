@@ -130,6 +130,9 @@ export const STATION_HOME_ROOTS: Readonly<
   'terminal-sessions.json': 'state',
   'turn-checkpoints': 'state',
   'turn-checkpoints-evicted': 'state',
+  // #3483: durable untrusted-content marks per conversation. A protection,
+  // so it is restored with the conversations it marks.
+  'untrusted-conversation-marks.json': 'state',
   vectordb: 'state',
   workflows: 'state',
   'workspace-home-role.json': 'state',
