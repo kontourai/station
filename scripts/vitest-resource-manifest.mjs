@@ -537,6 +537,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // to prove reclaim, and runs one real `tsc` on a two-file temp project
   // three times to prove a warm incremental run still reports errors.
   'scripts/__tests__/typecheck-host-slots.test.ts',
+  // Host heavy-check slots: runs the slot runner as short-lived children
+  // against a PRIVATE slot directory (never the host's) to prove queueing
+  // order, dead-holder reclaim, the bounded wait and nested admission.
+  'scripts/__tests__/heavy-check-slots.test.ts',
   // Drives verification CLI admission without launching compilers.
   'scripts/__tests__/live-service-verification.process.test.ts',
   // Real loopback file-server CLI with owned child cleanup and artifact replacement.
@@ -1872,8 +1876,17 @@ export function assertOrdinaryVitestSelection(
     selected.length !== groups.ordinary.length ||
     selected.some((file, index) => file !== groups.ordinary[index])
   ) {
+    const expected = new Set(groups.ordinary);
+    const actual = new Set(selected);
+    const missing = groups.ordinary.filter((file) => !actual.has(file));
+    const unexpected = selected.filter((file) => !expected.has(file));
+    const describe = (files) =>
+      files
+        .slice(0, 10)
+        .map((file) => file.slice(0, 240))
+        .join(', ') || 'none';
     throw new Error(
-      'compact ordinary Vitest selection does not exactly equal the manifest partition',
+      `compact ordinary Vitest selection does not exactly equal the manifest partition; missing from selection (${missing.length}): ${describe(missing)}; unexpected in selection (${unexpected.length}): ${describe(unexpected)}`,
     );
   }
   return selected;
