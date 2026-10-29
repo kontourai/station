@@ -245,6 +245,7 @@
     "packages/cli/src/commands/ensemble.ts",
 
     "packages/contracts/src/ensemble.ts",
+
     "packages/cli/src/commands/mcp-clients.ts",
 
     "packages/cli/src/__tests__/mcp-clients.test.ts",

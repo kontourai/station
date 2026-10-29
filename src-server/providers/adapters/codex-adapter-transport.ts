@@ -21,13 +21,13 @@ import {
   WORKLOAD_COMMAND_OOM_KILLED_TYPE,
   WORKLOAD_TRANSCRIPT_NAMESPACE,
 } from '@kontourai/station-shared/extension-transcript-markers';
-import { WORKLOAD_SESSION_ENV } from '../../services/infra/workload-budget.js';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
   releaseOwnedChildAfterGroupExit,
   spawnOwnedChild,
 } from '../../services/infra/process-utils.js';
 import { stampLaunchExit } from '../../services/infra/session-tmpdir.js';
+import { WORKLOAD_SESSION_ENV } from '../../services/infra/workload-budget.js';
 import { raceWithSignal } from '../../utils/bounded-async.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
 import { onNdjsonLines } from '../../utils/ndjson-lines.js';
@@ -1535,7 +1535,10 @@ export class CodexAdapterTransport {
 }
 
 /** The binary and environment owned by every real fresh Codex process. */
-export function resolveCodexSpawnContext(extraEnv?: Record<string, string>, tmpDir?: string): {
+export function resolveCodexSpawnContext(
+  extraEnv?: Record<string, string>,
+  tmpDir?: string,
+): {
   binary: string;
   env: NodeJS.ProcessEnv;
 } {

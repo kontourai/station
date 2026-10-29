@@ -5809,6 +5809,54 @@ state and process-local run status without a forge snapshot.
 or false reuses a completed guide for the current head.
 
 
+### Analytics enrollment consent preparation
+
+`performAnalyticsSetup(authority, {kind:"offer", ...})` accepts optional
+`operationalConsent:"terminal-outcomes/v1"` and preserves it in the strict
+public offer decoder. Omit it for usage-only enrollment. Consent is immutable
+for an operation ID and is bound to the receiving candidate, source requester
+approval and encrypted credential; rotation cannot expand it. Older strict
+servers or SDKs may reject this optional profile, so use matching versions. The
+server exports and stores consented terminal outcomes and serves the receiving
+[outcome summary route](api.md#query-receiving-terminal-outcomes).
+`fetchPrivateOutcomes` checks the `privateOperationalOutcomes` capability before
+reading that route. Saved `kind:"outcomes"` definitions select completed,
+aborted or failed counts grouped by engine/day; the setup UI offers the explicit
+opt-in and Personal Insights renders independent source populations with unknown
+coverage. Full consent-to-PostgreSQL/UI execution and installed/native
+qualification remain unverified by this source review.
+
+### Private enrolled Insights and saved views
+
+The lazy `@kontourai/station-sdk/private-insights-query` entry exposes the scoped
+private usage client and hooks. `usePrivateInsightsInventory(authority)` reads
+owned recipient metadata and saved definitions. `usePrivateInsightsResult` takes
+recipient ID, date/filter/group query, semantic selection key and bounded polling
+interval; it advances index/summary progress without retaining a previous
+selection as placeholder data. Principal/API base, recipient, account filters,
+dates, group, mode and the view's semantic selection partition its key. Current
+host authority is required before dispatch and display. Its `refetch()` rejects
+on failure or a selection change, including the waiting caller.
+
+`useSavedAnalyticsViewMutation` creates, updates or deletes definitions under the
+captured authority; revisions prevent silent overwrites. Client helpers include
+fetch/create/update/delete/export. `usePrivateInsightsSyncWindow` wraps explicit
+foreground sync: one or two windows, original-operation recovery, seven-second
+pacing between incomplete pages, cancellation, no retry-to-success and a bounded
+page budget. It does not turn a persisted pending status into process liveness.
+
+Current `data` is withheld on failure. Only an explicitly retained-copy, still
+valid, completed snapshot may appear in the separate `historical` field during
+service failure. Known source validation/access refusal invalidates older cached
+snapshots across windows/remounts; earlier in-flight successes cannot undo it.
+The inventory hook also fences snapshots for an observed inactive slot (including
+`restore-required`), and person-level 401/403 inventory refusals fence the scope's
+source snapshots. A subsequent service outage cannot revive those older copies.
+A newer successful source check is required. UI consumers label historical data
+and unknown coverage explicitly, and never treat a saved ID as source authority.
+These APIs require matching server/contracts versions. Controlled tests and
+browser fixtures do not establish native/installed/release qualification.
+
 ## Ensemble configuration inspection
 
 The local source client exports `inspectEnsemble(apiBase, input, options?)` from
@@ -6147,53 +6195,6 @@ A 404 reports that the host does not support recovery and suggests updating it.
 Unknown usage remains held; an overrun may retain partial accounting writes.
 The response exposes amounts and a receipt reference, never private ledger records.
 
-### Analytics enrollment consent preparation
-
-`performAnalyticsSetup(authority, {kind:"offer", ...})` accepts optional
-`operationalConsent:"terminal-outcomes/v1"` and preserves it in the strict
-public offer decoder. Omit it for usage-only enrollment. Consent is immutable
-for an operation ID and is bound to the receiving candidate, source requester
-approval and encrypted credential; rotation cannot expand it. Older strict
-servers or SDKs may reject this optional profile, so use matching versions. The
-server exports and stores consented terminal outcomes and serves the receiving
-[outcome summary route](api.md#query-receiving-terminal-outcomes).
-`fetchPrivateOutcomes` checks the `privateOperationalOutcomes` capability before
-reading that route. Saved `kind:"outcomes"` definitions select completed,
-aborted or failed counts grouped by engine/day; the setup UI offers the explicit
-opt-in and Personal Insights renders independent source populations with unknown
-coverage. Full consent-to-PostgreSQL/UI execution and installed/native
-qualification remain unverified by this source review.
-
-### Private enrolled Insights and saved views
-
-The lazy `@kontourai/station-sdk/private-insights-query` entry exposes the scoped
-private usage client and hooks. `usePrivateInsightsInventory(authority)` reads
-owned recipient metadata and saved definitions. `usePrivateInsightsResult` takes
-recipient ID, date/filter/group query, semantic selection key and bounded polling
-interval; it advances index/summary progress without retaining a previous
-selection as placeholder data. Principal/API base, recipient, account filters,
-dates, group, mode and the view's semantic selection partition its key. Current
-host authority is required before dispatch and display. Its `refetch()` rejects
-on failure or a selection change, including the waiting caller.
-
-`useSavedAnalyticsViewMutation` creates, updates or deletes definitions under the
-captured authority; revisions prevent silent overwrites. Client helpers include
-fetch/create/update/delete/export. `usePrivateInsightsSyncWindow` wraps explicit
-foreground sync: one or two windows, original-operation recovery, seven-second
-pacing between incomplete pages, cancellation, no retry-to-success and a bounded
-page budget. It does not turn a persisted pending status into process liveness.
-
-Current `data` is withheld on failure. Only an explicitly retained-copy, still
-valid, completed snapshot may appear in the separate `historical` field during
-service failure. Known source validation/access refusal invalidates older cached
-snapshots across windows/remounts; earlier in-flight successes cannot undo it.
-The inventory hook also fences snapshots for an observed inactive slot (including
-`restore-required`), and person-level 401/403 inventory refusals fence the scope's
-source snapshots. A subsequent service outage cannot revive those older copies.
-A newer successful source check is required. UI consumers label historical data
-and unknown coverage explicitly, and never treat a saved ID as source authority.
-These APIs require matching server/contracts versions. Controlled tests and
-browser fixtures do not establish native/installed/release qualification.
 ## Workspace visual files
 
 `@kontourai/station-sdk/workspace-file-preview` exports

@@ -2150,19 +2150,23 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       this,
       input.threadId,
     );
-    const engineProcess = createClaudeEngineProcess(undefined, (launch) => {
-      const authenticatedLaunch =
-        assertAuthenticatedLaunch &&
-        claudeExecutable?.toLowerCase().endsWith('.js') &&
-        launch.command === 'node' &&
-        launch.args[0] === claudeExecutable
-          ? { ...launch, command: process.execPath }
-          : launch;
-      assertAuthenticatedLaunch?.(authenticatedLaunch);
-      return seatbeltSpawn
-        ? seatbeltSpawn.wrap(authenticatedLaunch)
-        : authenticatedLaunch;
-    }, input.threadId);
+    const engineProcess = createClaudeEngineProcess(
+      undefined,
+      (launch) => {
+        const authenticatedLaunch =
+          assertAuthenticatedLaunch &&
+          claudeExecutable?.toLowerCase().endsWith('.js') &&
+          launch.command === 'node' &&
+          launch.args[0] === claudeExecutable
+            ? { ...launch, command: process.execPath }
+            : launch;
+        assertAuthenticatedLaunch?.(authenticatedLaunch);
+        return seatbeltSpawn
+          ? seatbeltSpawn.wrap(authenticatedLaunch)
+          : authenticatedLaunch;
+      },
+      input.threadId,
+    );
     if (sessionToolRestriction(input.threadId))
       this.restrictedStartingProcesses.set(input.threadId, engineProcess);
     let sdkQuery: ReturnType<typeof query>;

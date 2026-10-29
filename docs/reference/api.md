@@ -27,6 +27,7 @@ is 409 with
 state rather than automatically replay the operation. Neither response revokes
 the client's credential. The [home writer owner](../../src-server/services/ssh/home-writer-owner.ts)
 supplies this distinction to the existing HTTP error boundary.
+
 ## Local speech and media tools
 
 Personal hosts mount these Project-independent routes; hosted deployments do

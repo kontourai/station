@@ -134,12 +134,12 @@ import {
 } from '../../runtime/mcp/station-control-mcp-token.js';
 import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
-import { withSessionToolRestriction } from '../../services/orchestration/session-tool-restriction.js';
 import {
   installSessionTmpDirPolicy,
   sessionTempRoot,
   sessionTmpDirPath,
 } from '../../services/infra/session-tmpdir.js';
+import { withSessionToolRestriction } from '../../services/orchestration/session-tool-restriction.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
 import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';

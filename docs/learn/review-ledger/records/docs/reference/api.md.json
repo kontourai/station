@@ -607,6 +607,7 @@
     "packages/contracts/src/ensemble.ts",
 
     "packages/sdk/src/client/cli-session-groups.ts",
+
     "src-server/services/terminal/terminal-gateway.ts",
 
     "src-server/services/terminal/terminal-channel-connection.ts",
