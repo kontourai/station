@@ -537,7 +537,10 @@ function intelMacosPnpmFindings(file, jobId, job) {
   const nativeSetups = steps.filter(
     (step) =>
       typeof step?.uses === 'string' &&
-      step.uses.toLowerCase().startsWith('pnpm/setup@'),
+      (step.uses.toLowerCase().startsWith('pnpm/setup@') ||
+        (file === '.github/workflows/portable-server-archives.yml' &&
+          jobId === 'archive' &&
+          step.uses === VERIFIED_PNPM_SETUP_ACTION)),
   );
   const { labels } = resolvedRunnerLabels(job);
   if (
@@ -1984,7 +1987,9 @@ function isPinnedVerifiedPnpmSetup(step) {
   return (
     step?.uses === VERIFIED_PNPM_SETUP_ACTION &&
     step?.name === 'Setup pinned pnpm' &&
-    Object.keys(step).sort().join(',') === 'name,uses'
+    (Object.keys(step).sort().join(',') === 'name,uses' ||
+      (Object.keys(step).sort().join(',') === 'if,name,uses' &&
+        step.if === PNPM_SETUP_NATIVE_GUARD))
   );
 }
 

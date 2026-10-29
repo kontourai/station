@@ -22,6 +22,35 @@ const workflow = load(source) as {
 };
 
 describe('internal iOS TestFlight cohort workflow', () => {
+  test('build delivery uses the verified pnpm bootstrap before managed install', () => {
+    const reusable = load(delivery) as {
+      jobs: {
+        deliver: {
+          steps: Array<{
+            name?: string;
+            uses?: string;
+            run?: string;
+            with?: unknown;
+          }>;
+        };
+      };
+    };
+    const steps = reusable.jobs.deliver.steps;
+    const setup = steps.findIndex((step) => step.name === 'Setup pinned pnpm');
+    const node = steps.findIndex((step) =>
+      step.uses?.startsWith('actions/setup-node@'),
+    );
+    const install = steps.findIndex(
+      (step) => step.run === 'npm run dependencies:ci',
+    );
+    expect(setup).toBeGreaterThanOrEqual(0);
+    expect(steps[setup].uses).toBe(
+      'kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20',
+    );
+    expect(steps[setup].with).toBeUndefined();
+    expect(node).toBeGreaterThan(setup);
+    expect(install).toBeGreaterThan(node);
+  });
   test('external distribution is a non-blocking Nightly opt-in, excluded from internal authority', () => {
     const reusable = load(delivery) as {
       on: {
