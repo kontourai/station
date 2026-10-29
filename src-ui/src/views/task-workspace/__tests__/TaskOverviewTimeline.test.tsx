@@ -37,6 +37,8 @@ function setup(
     empty?: boolean;
     partial?: boolean;
     mismatchedCommit?: boolean;
+    count?: number;
+    sameDigest?: boolean;
   } = {},
 ) {
   _setApiBase('https://timeline.test');
@@ -50,6 +52,7 @@ function setup(
     {
       ...capture,
       captureId: 'verified',
+      digest: `sha256:${'b'.repeat(64)}` as const,
       label: 'Refunds fixed',
       createdAt: '2026-10-25T11:20:00Z',
     },
@@ -60,6 +63,21 @@ function setup(
       label: 'Other Task',
     },
   ];
+  if (options.count) {
+    entries.splice(
+      0,
+      entries.length,
+      ...Array.from({ length: options.count }, (_, index) => ({
+        ...capture,
+        captureId: `screen-${index}`,
+        label: `Screen ${index}`,
+        digest: options.sameDigest
+          ? capture.digest
+          : (`sha256:${`${index}`.padStart(64, '0')}` as const),
+        createdAt: new Date(Date.UTC(2026, 9, 25, 0, index)).toISOString(),
+      })),
+    );
+  }
   const evidence = (captureId: string, gateVerified: boolean) => ({
     commit: capture.commit,
     commitVerified: true,
@@ -158,10 +176,10 @@ function setup(
           { status: failList ? 503 : 200 },
         );
       if (
-        ['reproduced', 'verified'].some(
-          (id) =>
+        entries.some(
+          (entry) =>
             url.pathname ===
-            `/api/tasks/${capture.taskId}/review/captures/${id}/content`,
+            `/api/tasks/${capture.taskId}/review/captures/${entry.captureId}/content`,
         )
       )
         return failScreen
@@ -290,4 +308,106 @@ test('a verified gate for another commit stays claimed for this Screen', async (
   await screen.findByRole('button', { name: 'Review Refunds fixed' });
   expect(screen.queryByText('Verified')).toBeNull();
   expect(screen.getAllByText('claimed')).toHaveLength(2);
+});
+
+test('bounds initial requests and admits more only after Show more and viewport entry', async () => {
+  const callbacks = new Map<Element, IntersectionObserverCallback>();
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class {
+      constructor(private callback: IntersectionObserverCallback) {}
+      observe(element: Element) {
+        callbacks.set(element, this.callback);
+      }
+      disconnect() {}
+    },
+  );
+  const h = setup({ count: 200 });
+  render(h.tree(true));
+  await screen.findByRole('button', { name: 'Show more' });
+  expect(screen.getAllByRole('listitem')).toHaveLength(12);
+  expect(h.reads.filter((path) => path.endsWith('/content'))).toHaveLength(0);
+  for (const [element, callback] of callbacks)
+    callback(
+      [{ target: element, isIntersecting: true } as IntersectionObserverEntry],
+      {} as IntersectionObserver,
+    );
+  await waitFor(() =>
+    expect(h.reads.filter((path) => path.endsWith('/content'))).toHaveLength(
+      12,
+    ),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+  expect(screen.getAllByRole('listitem')).toHaveLength(24);
+  expect(h.reads.filter((path) => path.endsWith('/content'))).toHaveLength(12);
+  const more = [...callbacks].filter(([element]) =>
+    element.textContent?.includes('Screen 176'),
+  )[0]!;
+  more[1](
+    [{ target: more[0], isIntersecting: true } as IntersectionObserverEntry],
+    {} as IntersectionObserver,
+  );
+  await waitFor(() =>
+    expect(h.reads.filter((path) => path.endsWith('/content'))).toHaveLength(
+      13,
+    ),
+  );
+});
+
+test('shares one content read for captures with the same digest', async () => {
+  const h = setup({ count: 4, sameDigest: true });
+  render(h.tree(true));
+  await screen.findByRole('button', { name: 'Review Screen 3' });
+  expect(h.reads.filter((path) => path.endsWith('/content'))).toHaveLength(1);
+});
+
+test('limits concurrent content reads and releases a slot when one completes', async () => {
+  const h = setup({ count: 12 });
+  const fetchContent = globalThis.fetch;
+  const releases: Array<() => void> = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((input: string | Request | URL, init?: RequestInit) => {
+      if (!String(input).endsWith('/content')) return fetchContent(input, init);
+      return new Promise<Response>((resolve, reject) => {
+        releases.push(() => {
+          void fetchContent(input, init).then(resolve, reject);
+        });
+      });
+    }),
+  );
+  render(h.tree(true));
+  await waitFor(() => expect(releases).toHaveLength(4));
+  releases[0]!();
+  await waitFor(() => expect(releases).toHaveLength(5));
+});
+
+test('revokes an image when its entry leaves the viewport', async () => {
+  let callback: IntersectionObserverCallback = () => {};
+  let element: Element;
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class {
+      constructor(onChange: IntersectionObserverCallback) {
+        callback = onChange;
+      }
+      observe(target: Element) {
+        element = target;
+      }
+      disconnect() {}
+    },
+  );
+  const h = setup({ count: 1 });
+  render(h.tree(true));
+  await screen.findByText('Screen 0');
+  callback(
+    [{ target: element!, isIntersecting: true } as IntersectionObserverEntry],
+    {} as IntersectionObserver,
+  );
+  await screen.findByRole('button', { name: 'Review Screen 0' });
+  callback(
+    [{ target: element!, isIntersecting: false } as IntersectionObserverEntry],
+    {} as IntersectionObserver,
+  );
+  await waitFor(() => expect(h.revoke).toHaveBeenCalledTimes(1));
 });

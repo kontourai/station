@@ -20,7 +20,7 @@
 }
 .task-timeline__screens {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 13rem));
   gap: var(--k-space-3);
   margin: 0;
   padding: 0;
@@ -40,7 +40,7 @@
 .task-timeline__screen img {
   display: block;
   width: 100%;
-  aspect-ratio: 1;
+  height: 8rem;
   object-fit: contain;
   background: var(--k-bg);
 }
@@ -75,4 +75,25 @@
 .task-timeline__screen:focus-visible {
   outline: var(--k-focus-ring-width) solid var(--k-focus);
   outline-offset: var(--k-focus-ring-offset);
+}
+
+@media (max-width: 600px) {
+  .task-timeline__screens {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .task-timeline__capture {
+    display: grid;
+    grid-template-columns: 7rem minmax(0, 1fr);
+    column-gap: var(--k-space-3);
+    align-items: start;
+  }
+  .task-timeline .task-timeline__screen {
+    grid-row: span 2;
+  }
+  .task-timeline__screen img {
+    height: 5rem;
+  }
+  .task-timeline__caption {
+    margin-top: 0;
+  }
 }

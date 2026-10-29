@@ -197,7 +197,7 @@ async function timelineShots(page: Page, testInfo: TestInfo, empty = false) {
   if (!directory) return;
   mkdirSync(directory, { recursive: true });
   const taskUrl = page.url();
-  for (const theme of empty ? ['dark'] : ['dark', 'light']) {
+  for (const theme of ['dark', 'light']) {
     await page.goto(new URL('/appearance', taskUrl).href);
     const mode = page.getByRole('radiogroup', { name: 'Mode', exact: true });
     const label = theme === 'dark' ? 'Dark' : 'Light';
@@ -226,13 +226,13 @@ async function timelineShots(page: Page, testInfo: TestInfo, empty = false) {
         timeline.getByText('Capture a Screen in Review to start the Timeline.'),
       ).toBeVisible();
     else
-      await expect(timeline.locator('.task-timeline__capture')).toHaveCount(2);
-    for (const width of empty ? [390] : [390, 1440]) {
+      await expect(timeline.locator('.task-timeline__capture')).toHaveCount(4);
+    for (const width of [390, 1440]) {
       await page.setViewportSize({ width, height: 1000 });
       await expect(timeline).toBeVisible();
-      if (!empty) await expect(timeline.locator('img')).toHaveCount(2);
+      if (!empty) await expect(timeline.locator('img')).toHaveCount(4);
       const name = empty
-        ? 'timeline-empty.png'
+        ? `timeline-empty-${theme}-${width}.png`
         : `timeline-${theme}-${width}.png`;
       await page.screenshot({
         path: testInfo.outputPath(name),
@@ -644,12 +644,14 @@ syncBuiltinESMExports();
       await expect(target).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await shots(page, info, 'screens');
       if (process.env.STATION_REVIEW_SHOTS_DIR) {
-        await page
-          .getByRole('button', { name: 'Capture', exact: true })
-          .click();
-        await page
-          .getByRole('button', { name: 'Capture Screen', exact: true })
-          .click();
+        for (let i = 0; i < 3; i++) {
+          await page
+            .getByRole('button', { name: 'Capture', exact: true })
+            .click();
+          await page
+            .getByRole('button', { name: 'Capture Screen', exact: true })
+            .click();
+        }
         await timelineShots(page, info);
       }
     });
