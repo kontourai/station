@@ -78,6 +78,20 @@ class GatewaySocket {
 }
 
 describe('messaging core at the Discord and SQLite seams', () => {
+  test('the kill switch survives reopening the SQLite store', () => {
+    const { homeDir, core } = fixture();
+    core.setKillSwitch(
+      {
+        app: 'discord',
+        disabled: true,
+        updatedAt: now,
+        updatedByPrincipalId: 'operator-principal',
+      },
+      () => true,
+    );
+    expect(new ChatAppCore(homeDir).isDisabled('discord')).toBe(true);
+  });
+
   test('the persisted kill switch blocks running ingress, outbound delivery and connection after restart', async () => {
     const { homeDir, core } = fixture();
     const socket = new GatewaySocket();
