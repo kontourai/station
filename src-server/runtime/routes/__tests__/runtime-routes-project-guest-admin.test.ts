@@ -656,6 +656,7 @@ describe('project guest administration over the production composition', () => {
     };
     const people: {
       cookie: string;
+      clientInstanceId: string;
       paired: ReturnType<typeof h.pairAccountBound>;
       authenticated: Extract<
         Awaited<ReturnType<typeof h.localAccounts.service.authenticate>>,
@@ -806,8 +807,123 @@ describe('project guest administration over the production composition', () => {
       ).toBe(200);
       const paired =
         await readJson<ReturnType<typeof h.pairAccountBound>>(exchanged);
-      people.push({ cookie, authenticated, paired });
+      people.push({ cookie, authenticated, paired, clientInstanceId });
     }
+    // A correlation id and shared WhoIs do not let Bob replace Alice's Device.
+    const sharedId = people[0]!.clientInstanceId;
+    const exchangeFor = async (
+      cookie: string | undefined,
+      bindAccount: boolean,
+    ) => {
+      const headers = {
+        ...serveHeaders,
+        ...(cookie ? { Cookie: cookie } : {}),
+        Origin: ORIGIN,
+        'Content-Type': 'application/json',
+      };
+      const request = await h.request(
+        '/.well-known/station/v1/pairing/access-request',
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            deviceName: 'Replacement browser',
+            clientInstanceId: sharedId,
+            ...(bindAccount ? { requireAccountBinding: true } : {}),
+          }),
+        },
+        serveEnv,
+      );
+      expect(
+        request.status,
+        `replacement request: ${await request.clone().text()}`,
+      ).toBe(202);
+      const offer = await readJson<{
+        offerId: string;
+        proof: string;
+        requestId: string;
+      }>(request);
+      const approved = await h.request(
+        `/api/pairing/requests/${offer.requestId}/confirm`,
+        h.operatorHeaders({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(
+            bindAccount ? { bindAccountIdentity: true } : {},
+          ),
+        }),
+      );
+      expect(
+        approved.status,
+        `replacement approval: ${await approved.clone().text()}`,
+      ).toBe(200);
+      const result = await h.request(
+        '/.well-known/station/v1/pairing/exchange',
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ ...offer, clientInstanceId: sharedId }),
+        },
+        serveEnv,
+      );
+      expect(
+        result.status,
+        `replacement exchange: ${await result.clone().text()}`,
+      ).toBe(200);
+      return readJson<ReturnType<typeof h.pairAccountBound>>(result);
+    };
+    const alice = people[0]!;
+    const bob = people[1]!;
+    const aliceProject = () =>
+      h.request(
+        `/api/projects/${project.slug}`,
+        {
+          headers: {
+            ...serveHeaders,
+            Cookie: alice.cookie,
+            Authorization: `Bearer ${alice.paired.credential}`,
+          },
+        },
+        serveEnv,
+      );
+    expect((await aliceProject()).status).toBe(200);
+    const bobCollision = await exchangeFor(bob.cookie, true);
+    expect(bobCollision.device.principalBinding).toMatchObject({
+      kind: 'account',
+      subject: bob.authenticated.session.subject,
+    });
+    expect(
+      h.security.devicePairing.identifyDevice(alice.paired.credential),
+      'Bob must not revoke Alice',
+    ).toBeTruthy();
+    expect((await aliceProject()).status).toBe(200);
+    const unbound = await exchangeFor(undefined, false);
+    expect(
+      h.security.devicePairing.identifyDevice(alice.paired.credential),
+    ).toBeTruthy();
+    expect(
+      h.security.devicePairing.identifyDevice(bobCollision.credential),
+    ).toBeTruthy();
+    const aliceOld = alice.paired;
+    alice.paired = await exchangeFor(alice.cookie, true);
+    expect(
+      h.security.devicePairing.identifyDevice(aliceOld.credential),
+    ).toBeFalsy();
+    expect(
+      h.security.devicePairing
+        .listDevices()
+        .find((device) => device.id === aliceOld.device.id)?.revocation,
+    ).toMatchObject({ reason: 'same-client-replacement' });
+    expect(
+      h.security.devicePairing.identifyDevice(alice.paired.credential),
+    ).toBeTruthy();
+    expect(
+      h.security.devicePairing.identifyDevice(bobCollision.credential),
+    ).toBeTruthy();
+    expect(
+      h.security.devicePairing.identifyDevice(unbound.credential),
+    ).toBeTruthy();
+    expect((await aliceProject()).status).toBe(200);
     const parent = await h.graph.createTask({
       projectId: project.id,
       title: 'Shared parent',

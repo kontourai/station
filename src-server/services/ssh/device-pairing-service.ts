@@ -1141,13 +1141,29 @@ function cloneRegistry(registry: DeviceRegistry): DeviceRegistry {
 
 /**
  * A caller-controlled instance id is only a replacement key inside an
- * already-proven principal. It must never let one tailnet identity, or an
- * identityless source, revoke another's device.
+ * existing provenance domain. Account-bound Devices also require the same
+ * approved issuer and subject; WhoIs alone cannot link accounts.
  */
 function isSameReplacementDomain(
-  existing: Pick<StoredDevice, 'source' | 'requester'>,
+  existing: Pick<StoredDevice, 'source' | 'requester' | 'principalBinding'>,
   request: PairingProvenance,
+  approvedBinding: DevicePrincipalBinding | undefined,
 ): boolean {
+  const existingAccount =
+    existing.principalBinding && 'kind' in existing.principalBinding
+      ? existing.principalBinding
+      : undefined;
+  const approvedAccount =
+    approvedBinding && 'kind' in approvedBinding ? approvedBinding : undefined;
+  if (existingAccount || approvedAccount) {
+    if (
+      !existingAccount ||
+      !approvedAccount ||
+      existingAccount.issuer !== approvedAccount.issuer ||
+      existingAccount.subject !== approvedAccount.subject
+    )
+      return false;
+  }
   if (request.source === 'tailnet') {
     return (
       existing.source === 'tailnet' &&
@@ -1914,7 +1930,11 @@ export class DevicePairingService {
           (item) =>
             item.revokedAt === null &&
             item.clientInstanceId === input.clientInstanceId &&
-            isSameReplacementDomain(item, requestProvenance),
+            isSameReplacementDomain(
+              item,
+              requestProvenance,
+              offer.principalBinding,
+            ),
         )
       : false;
     if (input.clientInstanceId) {
@@ -1923,7 +1943,11 @@ export class DevicePairingService {
         if (
           item.revokedAt === null &&
           item.clientInstanceId === input.clientInstanceId &&
-          isSameReplacementDomain(item, requestProvenance)
+          isSameReplacementDomain(
+            item,
+            requestProvenance,
+            offer.principalBinding,
+          )
         ) {
           item.revokedAt = revokedAt;
           item.revocation = {

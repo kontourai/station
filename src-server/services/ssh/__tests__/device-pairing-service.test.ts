@@ -1322,6 +1322,54 @@ describe('DevicePairingService', () => {
     expect(service.verifyCredential(other.credential)).toBe(true);
   });
 
+  test('account replacement distinguishes issuers even when subject and WhoIs match', () => {
+    const { service } = harness();
+    const clientInstanceId = '11111111-1111-4111-8111-111111111111';
+    const exchangeAccount = (issuer: string) => {
+      const offer = service.createOffer({
+        endpoint: 'https://station.example.test',
+      });
+      const request = service.requestPairing({
+        requesterPosition: 'off-box',
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        deviceName: 'Account browser',
+        clientInstanceId,
+        source: 'tailnet',
+        requester: {
+          provider: 'tailscale-serve',
+          login: 'shared@example.test',
+        },
+        accountCandidate: {
+          issuer,
+          subject: 'same-subject',
+          displayName: 'Person',
+        },
+        accountCandidateSessionId: 'verified-session',
+        requireAccountBinding: true,
+      });
+      service.confirmRequest(request.requestId, OPERATOR_APPROVAL, {
+        kind: 'account',
+        principalId: 'human:deployment:operator',
+      });
+      return service.exchange({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: request.requestId,
+        clientInstanceId,
+      });
+    };
+    const first = exchangeAccount('https://first.example.test');
+    const other = exchangeAccount('https://second.example.test');
+    expect(other.replacement).toBe('none');
+    expect(service.verifyCredential(first.credential)).toBe(true);
+    const replacement = exchangeAccount('https://first.example.test');
+    expect(replacement.replacement).toBe('superseded');
+    expect(service.verifyCredential(first.credential)).toBe(false);
+    expect(service.verifyCredential(other.credential)).toBe(true);
+    expect(service.verifyCredential(replacement.credential)).toBe(true);
+  });
+
   test('never lets one identityless source replace another by client instance', () => {
     const { service } = harness();
     const clientInstanceId = '11111111-1111-4111-8111-111111111111';

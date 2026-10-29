@@ -263,6 +263,12 @@ bounded `principalBinding` receipt, including its account kind, issuer,
 subject, display name, approval ID, approver and time. Station rechecks the
 provider session and operator credential after reading the confirmation body.
 
+Reusing a client-instance correlation can replace an earlier Device only within
+the existing ingress replacement domain. If either Device has an account
+binding, the approved issuer and subject must match on both; different accounts
+and unbound Devices remain separate even when they share a Serve WhoIs login.
+The correlation is not account proof or Project membership.
+
 The exchanged Device must present a current account for that exact
 issuer/subject on protected resource requests, apart from the narrowly scoped
 Device-binding self-read and native neutral observations described below.

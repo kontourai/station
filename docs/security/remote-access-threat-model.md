@@ -264,6 +264,12 @@ account's `POST /api/account-auth/sign-out` remains available to end that
 account session; it does not revoke the Device credential. Account-tied
 personal tokens retain their separate conflict refusal described below.
 
+An approved account-bound Device exchange can supersede a Device with the same
+client-instance correlation only when both approved account issuer and subject
+match, in addition to the existing ingress replacement domain. A different
+account or an unbound Device is not superseded by that exchange. WhoIs and the
+correlation alone do not link accounts or grant authority.
+
 
 The account-authentication exception is specified in the
 [deployment authentication guide](../guides/deployment-authentication.md).
