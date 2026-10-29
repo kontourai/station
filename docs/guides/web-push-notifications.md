@@ -134,9 +134,11 @@ without a write; a failed write is returned to the producer. The feed keeps the
 newest 100 records per person and scopes read and dismissal state to that person.
 Future-scheduled principal writes are refused; expiry is settled when the feed
 is next accessed. These records do not enter the owner feed or shared
-notification stream and do not trigger push. The person-facing route and
-preferences are not implemented yet; account-bound device push and the
-corresponding inbox UI are deferred to 2F-b.
+notification stream and do not trigger push. The authenticated person reads,
+marks read, and dismisses their own entries through the
+[person notification routes](../reference/api.md#person-notifications). A
+per-person notification preference, account-bound Device push, producers, and
+the corresponding inbox UI remain future work.
 
 The router consumes `NOTIFICATION_DELIVERED`. It also handles content changes to
 previously seen, delivered, unread enveloped records on `NOTIFICATION_UPDATED`;
