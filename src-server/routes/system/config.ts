@@ -39,7 +39,7 @@ import {
   sanitizeAppConfigUpdate,
 } from '../../domain/settings-registry-server.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
-import { resolveTelemetryConfiguration } from '../../domain/telemetry-configuration.js';
+import { telemetryChoiceDefaults } from '../../domain/telemetry-configuration.js';
 import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
 import {
   persistableCredentialProfiles,
@@ -855,13 +855,11 @@ export function createConfigRoutes(
               ...Object.keys(current.telemetryTier ?? {}),
               ...Object.keys(next.telemetryTier ?? {}),
             ]);
-            const defaults = resolveTelemetryConfiguration(
-              { ...current, telemetryTier: {} },
-              { ...process.env, DO_NOT_TRACK: '' },
-              {},
-              {},
+            const defaults = telemetryChoiceDefaults(
+              current,
+              process.env,
               [...publishers].filter(isTelemetryPublisherId),
-            ).publishers;
+            );
             telemetryChanges = {};
             let raisesTelemetry = false;
             for (const publisher of publishers) {
@@ -870,9 +868,9 @@ export function createConfigRoutes(
               >;
               const fallback = key.startsWith('publisher:') ? 'off' : 'lite';
               const before =
-                current.telemetryTier?.[key] ?? defaults[key]?.tier ?? fallback;
+                current.telemetryTier?.[key] ?? defaults[key] ?? fallback;
               const after =
-                next.telemetryTier?.[key] ?? defaults[key]?.tier ?? fallback;
+                next.telemetryTier?.[key] ?? defaults[key] ?? fallback;
               telemetryChanges[key] = { before, after };
               if (rank[after] < rank[before]) lowerings.push(key);
               if (rank[after] > rank[before]) raisesTelemetry = true;

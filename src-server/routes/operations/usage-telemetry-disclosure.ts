@@ -38,15 +38,22 @@ export function createUsageTelemetryDisclosureRoutes(
 ) {
   const resolve = () =>
     typeof serviceOrGetter === 'function' ? serviceOrGetter() : serviceOrGetter;
-  const forCaller = <T extends object>(c: Context, disclosure: T) =>
+  const forCaller = <T extends object>(
+    c: Context,
+    service: UsageTelemetryService,
+    disclosure: T,
+  ) =>
     security
       ? {
           ...disclosure,
-          capabilities: telemetryChoiceCapabilities(
-            c.req.raw,
-            security,
-            grantedPairingScope(c),
-          ),
+          capabilities: {
+            ...telemetryChoiceCapabilities(
+              c.req.raw,
+              security,
+              grantedPairingScope(c),
+            ),
+            defaults: service.telemetryChoiceDefaults(),
+          },
         }
       : disclosure;
   const app = new Hono();
@@ -237,7 +244,7 @@ export function createUsageTelemetryDisclosureRoutes(
       );
     return c.json({
       success: true,
-      data: forCaller(c, await service.disclosure(publisher)),
+      data: forCaller(c, service, await service.disclosure(publisher)),
     });
   });
   app.post('/disclosure/acknowledgements', async (c) => {
@@ -344,10 +351,10 @@ export function createUsageTelemetryDisclosureRoutes(
         disclosure.destination,
       );
     else await service.acknowledgeDisclosure(body.inventoryRevision);
-    // The client caches this in place of the GET's answer.
+    // Same shape as the GET's answer, for any client that caches it instead.
     return c.json({
       success: true,
-      data: forCaller(c, await service.disclosure(publisher)),
+      data: forCaller(c, service, await service.disclosure(publisher)),
     });
   });
   return app;

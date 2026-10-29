@@ -44,7 +44,7 @@ export function telemetryChoiceCapabilities(
   request: Request,
   security: CurrentRuntimeRequestPrincipalSecurity,
   presentedScope: string | undefined,
-): TelemetryChoiceCapabilities {
+): Omit<TelemetryChoiceCapabilities, 'defaults'> {
   const reaches = (method: string, path: string) =>
     runtimeRequestPrincipalMayAccessHttpRoute(request, security, {
       method,

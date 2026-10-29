@@ -588,7 +588,11 @@ test.each([
       const disclosure = await readJson<{
         data: { inventoryRevision: string; capabilities: unknown };
       }>(await call('/api/usage-telemetry/disclosure'));
-      expect(disclosure.data.capabilities).toEqual(expected);
+      expect(disclosure.data.capabilities).toEqual({
+        ...expected,
+        // Not caller-specific: the baseline a write is compared against.
+        defaults: { kontour: 'lite', operator: 'lite' },
+      });
       const status = await readJson<{
         data: { liteInventoryRevision: string };
       }>(await call('/api/usage-telemetry/status'));
@@ -628,6 +632,138 @@ test.each([
         outcomes,
         'a reported capability disagreed with its route',
       ).toEqual(expected);
+    } finally {
+      await service.shutdown();
+      loader.dispose();
+    }
+  },
+);
+
+/**
+ * Under Do Not Track the EFFECTIVE tier is Off, but the config route compares
+ * a write against the saved choice or, with none saved, the default with DNT
+ * ignored. The disclosure reports that baseline (`capabilities.defaults`), and
+ * the route's lower/raise answer for a standard device agrees with it,
+ * including when the environment default is not Lite.
+ */
+test.each([
+  { environmentTier: undefined, baseline: 'lite', keepStatus: 200 },
+  { environmentTier: 'off', baseline: 'off', keepStatus: 403 },
+] as const)(
+  'under DNT the reported baseline is the one PUT /config/app uses (environment tier $environmentTier)',
+  async ({ environmentTier, baseline, keepStatus }) => {
+    vi.stubEnv('DO_NOT_TRACK', '1');
+    vi.stubEnv('STATION_TELEMETRY_TIER', environmentTier);
+    vi.stubEnv('STATION_PRODUCT_TELEMETRY_ENABLED', undefined);
+    vi.stubEnv('STATION_TELEMETRY_ENABLED', undefined);
+    vi.stubEnv('STATION_PRODUCT_TELEMETRY_ENDPOINT', undefined);
+    vi.stubEnv('STATION_TELEMETRY_ENDPOINT', undefined);
+    const home = makeTempDir('station-telemetry-dnt-baseline-');
+    ensureStationHomeSchemaSync(home);
+    // No saved choice: the baseline is the DNT-ignored default.
+    await saveAppConfigFile(home, {
+      defaultModel: '',
+      invokeModel: '',
+      structureModel: '',
+    });
+    const loader = new ConfigLoader({
+      projectHomeDir: home,
+      watchFiles: false,
+    });
+    const logger = createLogger({
+      name: 'telemetry-dnt-baseline',
+      level: 'error',
+    });
+    const service = new UsageTelemetryService({
+      homeDir: home,
+      appConfig: await loader.loadAppConfig(),
+      version: '1.2.3',
+      logger,
+      env: process.env,
+    });
+    const security = new EnvironmentSecurityService({ homeDir: home });
+    await security.initialize();
+    const offer = security.devicePairing.createOffer({
+      endpoint: 'https://station.example.test',
+      scope: pairingScopePresetString('standard'),
+    });
+    const pending = security.devicePairing.requestPairing({
+      requesterPosition: 'off-box',
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'DNT baseline device',
+    });
+    security.devicePairing.confirmRequest(pending.requestId, {
+      kind: 'presented-credential',
+    });
+    const device = security.devicePairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: pending.requestId,
+    });
+    const app = new Hono<{ Bindings: HttpBindings }>();
+    configureRuntimeHttp({
+      app: app as never,
+      logger,
+      eventBus: { emit() {} } as unknown as EventBus,
+      security: {
+        verifyCredential: (credential, request) =>
+          request
+            ? security.authorizeCredential(credential, request)
+            : security.verifyCredential(credential),
+        resolveGrantedScope: (credential) =>
+          security.resolveGrantedScope(credential),
+        resolveCredentialAuthority: () => 'device-credential',
+        resolveCredentialDeviceId: (credential) =>
+          security.identifyDevice(credential)?.id,
+        resolveCredentialDeviceKind: () => 'device',
+        allowedOrigins: [],
+      },
+    });
+    app.route('/config', createConfigRoutes(loader, logger));
+    app.route(
+      '/api/usage-telemetry',
+      createUsageTelemetryDisclosureRoutes(service, security),
+    );
+    const call = (path: string, method = 'GET', body?: unknown) =>
+      app.request(
+        path,
+        {
+          method,
+          headers: {
+            Authorization: `Bearer ${device.credential}`,
+            'content-type': 'application/json',
+          },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        },
+        {
+          incoming: { socket: { remoteAddress: '127.0.0.1' } },
+        } as HttpBindings,
+      );
+    try {
+      const disclosure = await readJson<{
+        data: {
+          publishers: Record<string, { tier: string; reason: string }>;
+          capabilities: { defaults: Record<string, string> };
+        };
+      }>(await call('/api/usage-telemetry/disclosure'));
+      // DNT forces the effective tier Off; that is NOT the write baseline.
+      expect(disclosure.data.publishers.operator).toMatchObject({
+        tier: 'off',
+        reason: 'DNT',
+      });
+      expect(disclosure.data.capabilities.defaults).toEqual({
+        kontour: baseline,
+        operator: baseline,
+      });
+      // Choosing Anonymous counts keeps a Lite baseline and raises an Off one.
+      expect(
+        (
+          await call('/config/app', 'PUT', {
+            telemetryTier: { kontour: 'lite', operator: 'lite' },
+          })
+        ).status,
+      ).toBe(keepStatus);
     } finally {
       await service.shutdown();
       loader.dispose();

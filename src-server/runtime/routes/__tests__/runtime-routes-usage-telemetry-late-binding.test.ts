@@ -154,6 +154,8 @@ const NO_CAPABILITIES = {
   recordNotice: false,
   lower: false,
   raise: false,
+  // Not caller-specific: the write baseline for destinations with no choice.
+  defaults: { kontour: 'lite', operator: 'lite' },
 };
 
 function loopbackEnv() {

@@ -116,6 +116,34 @@ export function resolveTelemetryConfiguration(
 }
 
 /** Compatibility projection for the existing acknowledged operator event stream. */
+/**
+ * The tier each destination's usage-sharing write is compared against when it
+ * has no saved choice: its default with Do Not Track ignored, because DNT
+ * blocks sending without changing the choice. `PUT /config/app` decides
+ * whether a write RAISES a tier against this, and the disclosure read reports
+ * it so a client offers the same direction. One function, so the two cannot
+ * disagree.
+ */
+export function telemetryChoiceDefaults(
+  config: AppConfig,
+  environment: NodeJS.ProcessEnv,
+  publisherIds: readonly TelemetryPublisherId[],
+): Partial<Record<TelemetryPublisherId, TelemetryTier>> {
+  const resolved = resolveTelemetryConfiguration(
+    { ...config, telemetryTier: {} },
+    { ...environment, DO_NOT_TRACK: '' },
+    {},
+    {},
+    [...publisherIds],
+  ).publishers;
+  return Object.fromEntries(
+    publisherIds.map((id) => [
+      id,
+      resolved[id]?.tier ?? (id.startsWith('publisher:') ? 'off' : 'lite'),
+    ]),
+  );
+}
+
 export function resolveProductTelemetryEnabled(
   config: AppConfig,
   environment: NodeJS.ProcessEnv,

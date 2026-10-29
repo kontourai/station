@@ -36,6 +36,12 @@ export interface TelemetryChoiceCapabilities {
   lower: boolean;
   /** `PUT /config/app` with a tier that raises any publisher. */
   raise: boolean;
+  /**
+   * For a destination with no saved choice, the tier `PUT /config/app`
+   * compares a write against to decide lower or raise: its default with Do
+   * Not Track ignored. A saved choice is its own baseline. Not caller-specific.
+   */
+  defaults: Partial<Record<TelemetryPublisherId, TelemetryTier>>;
 }
 
 export interface TelemetryTierResolution {
