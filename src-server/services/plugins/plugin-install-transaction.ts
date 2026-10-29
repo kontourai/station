@@ -199,6 +199,7 @@ import {
   type PluginPublicServerQuiescence,
   quiescePluginPublicServerModule,
 } from './plugin-public-server.js';
+import { recordRecoveryOwner } from './plugin-recovery-inventory.js';
 import { pluginInstallationGeneration } from './plugin-runtime-artifact.js';
 import {
   detectWorkspacePaneCatalogConflicts,
@@ -3888,6 +3889,7 @@ async function installPluginFromSourceUnderContext(
       try {
         const installBackupRoot = createStationTempDirSync('plugin-install');
         backupRoot = installBackupRoot;
+        recordRecoveryOwner(installBackupRoot, projectHomeDir);
         // Plugin directory + integrations are backed up BEFORE the grants
         // snapshot: backupPluginDurableState throws typed on a corrupt grants
         // store, and the destructive delete-and-restore rollback below is only

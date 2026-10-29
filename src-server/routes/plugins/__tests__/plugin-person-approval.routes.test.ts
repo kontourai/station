@@ -43,6 +43,7 @@ import {
 } from '../../../services/plugins/plugin-install-trust-store.js';
 import { PluginLifecycleProposalService } from '../../../services/plugins/plugin-lifecycle-proposals.js';
 import { attestProposalSourceContext } from '../../../services/plugins/plugin-proposal-provenance.js';
+import { recordRecoveryOwner } from '../../../services/plugins/plugin-recovery-inventory.js';
 import {
   LOCAL_SOURCE_DIGEST_MAX_BYTES,
   LOCAL_SOURCE_DIGEST_MAX_ENTRIES as PROPOSAL_DIGEST_MAX_ENTRIES,
@@ -191,6 +192,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all(
     cleanup
       .splice(0, cleanup.length)
@@ -322,6 +324,39 @@ const CONSENT = {
   permissions: [],
   contentDigest: `sha256:${'a'.repeat(64)}`,
 };
+
+test('recovery inventory is available to the operator and refuses other callers', async () => {
+  const { root, home } = makeHome();
+  const temp = join(root, 'temporary');
+  const backup = join(temp, 'plugin-install-abc123');
+  mkdirSync(join(backup, 'integrations', 'email'), { recursive: true });
+  writeFileSync(join(backup, '.station-retained-recovery'), 'retained');
+  recordRecoveryOwner(backup, home);
+  vi.stubEnv('STATION_TEMP_ROOT', temp);
+  const { request } = createHarness(home);
+  const response = await request(
+    'person',
+    'GET',
+    '/api/plugins/recovery-backups',
+  );
+  expect(response.status).toBe(200);
+  const body = await readJson(response);
+  expect(body.data.backups).toHaveLength(1);
+  expect(body.data.backups[0]).toMatchObject({
+    id: 'plugin-install-abc123',
+    integrations: ['email'],
+    path: backup,
+  });
+  expect(body.data.instructions.join(' ')).toContain(
+    'Automated restore is unavailable',
+  );
+  expect(
+    (await request('internal', 'GET', '/api/plugins/recovery-backups')).status,
+  ).toBe(403);
+  expect(
+    (await request('member', 'GET', '/api/plugins/recovery-backups')).status,
+  ).toBe(403);
+});
 /**
  * The approval a preview of a source an open proposal names produces: that
  * preview staged it without git metadata and said so (#2719).

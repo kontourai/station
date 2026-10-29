@@ -4957,6 +4957,16 @@ describe('installPluginFromSource', () => {
       );
       expect(errorMessage(failure)).toContain(`backup id ${backups[0]}`);
       const backupPath = join(root, 'station-temp', backups[0]);
+      const { listRetainedPluginBackups } = await import(
+        '../plugin-recovery-inventory.js'
+      );
+      expect(listRetainedPluginBackups(root)).toEqual([
+        expect.objectContaining({
+          id: backups[0],
+          path: backupPath,
+          integrations: ['mail'],
+        }),
+      ]);
       expect(failing.logger.error).toHaveBeenCalledWith(
         'Plugin install recovery required',
         { backupId: backups[0], backupPath },

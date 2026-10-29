@@ -546,6 +546,10 @@
       "exempt": "person-only",
       "reason": "Preview yields the permission set/digest a person approves; agents must not echo it into an install."
     },
+    "plugin recovery-backups": {
+      "exempt": "person-only",
+      "reason": "Recovery inventory includes operator-local paths and is restricted to the operator."
+    },
     "plugin registry": {
       "missing": 4285,
       "want": "List_registry_plugins"

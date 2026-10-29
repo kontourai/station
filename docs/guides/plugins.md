@@ -1547,6 +1547,23 @@ of managed recovery. See [Applied registry trust policy](../design/registry-trus
 and [installation lifecycle](../design/plugin-installation-lifecycle.md) for
 refusals, retention and the legacy path's limits.
 
+If an install and its compensation both fail, the error gives a retained
+backup id. An operator can run `station plugin recovery-backups` against that
+Station to list the id, creation time, integration names, size, local path and
+manual recovery guidance. The API is `GET /api/plugins/recovery-backups` and
+requires the operator credential. Newly created backups carry their home
+identity; older backups without that identity are omitted because the shared
+temporary root may contain other Stations' backups. Find an older backup by
+its id and full path in the Station operator log.
+
+Stop Station and take a separate copy of its home and the retained backup.
+Compare the saved plugin and integrations with the current home, trust
+overlays and grant records. Preserve later person choices, and restore only
+reviewed components manually. Do not overwrite the entire registry-install
+file with its saved copy. Restart Station and review plugin permissions and
+integrations before enabling it. Automated restore is intentionally absent
+until a cross-store atomic boundary can protect newer state and grants.
+
 ## Build System
 
 Layout plugins (with `entrypoint`) are built automatically by the server using esbuild. No custom build script needed.

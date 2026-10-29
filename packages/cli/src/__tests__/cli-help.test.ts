@@ -116,6 +116,36 @@ describe('--version', () => {
   });
 });
 
+test('plugin recovery-backups prints the inventory returned by the Station API', async () => {
+  const fetchMock = vi
+    .spyOn(globalThis, 'fetch')
+    .mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            backups: [{ id: 'plugin-install-abc123' }],
+            instructions: ['Review backup'],
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+  const { runCli, printed } = await loadCli();
+  await runCli([
+    'plugin',
+    'recovery-backups',
+    '--api-base=http://127.0.0.1:14386',
+    '--credential=test',
+  ]);
+  expect(fetchMock).toHaveBeenCalled();
+  expect(String(fetchMock.mock.calls[0][0])).toContain(
+    '/api/plugins/recovery-backups',
+  );
+  expect(printed()).toContain('plugin-install-abc123');
+  expect(printed()).toContain('Review backup');
+});
+
 describe('top-level help', () => {
   test('is a grouped one-line-per-command summary, not a flag wall', async () => {
     const text = usageText();

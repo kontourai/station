@@ -3874,6 +3874,11 @@ Output includes suggested `--skip` flags if conflicts are detected.
 
 ### `plugin list`
 
+`station plugin recovery-backups` lists retained install recovery material for
+the targeted Station and prints manual recovery guidance. It requires the
+operator credential. See [plugin recovery](../guides/plugins.md) for the
+identity and manual-recovery limitations.
+
 List the installed-plugin projection visible to this caller, including rejected
 rows when the server exposes them. Records can include contributions,
 dependencies and readiness; presence alone does not prove activation.
