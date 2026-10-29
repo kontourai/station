@@ -58,6 +58,17 @@ export function readNotificationEnvelope(
   }
 }
 
+/** A private audience stays private even when its envelope cannot be parsed. */
+export function hasPrincipalNotificationAudience(value: unknown): boolean {
+  if (!isPlainRecord(value) || !isPlainRecord(value.metadata)) return false;
+  const envelope = value.metadata.envelope;
+  return (
+    isPlainRecord(envelope) &&
+    isPlainRecord(envelope.audience) &&
+    envelope.audience.kind === 'principal'
+  );
+}
+
 /**
  * Lenient v1 read of an envelope value. Returns a fresh normalized object
  * (never the input). An optional key holding `undefined` counts as absent.
