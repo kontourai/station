@@ -87,6 +87,7 @@ import {
 } from './task-workspace/TaskRoomPage';
 import { TaskTurnReferenceView } from './task-workspace/TaskTurnReferenceView';
 import { TaskUserInputReferences } from './task-workspace/TaskUserInputReferences';
+import { TaskWriteBackSection } from './task-workspace/TaskWriteBackSection';
 import './page-layout.css';
 import './TaskWorkspaceView.css';
 
@@ -222,7 +223,9 @@ function isTaskNotFound(error: unknown): boolean {
 }
 
 export function TaskWorkspaceView({ taskId }: { taskId: string }) {
-  const reviewEnabled = useSurfaceVisibilityFlags().has('task-review');
+  const visibilityFlags = useSurfaceVisibilityFlags();
+  const reviewEnabled = visibilityFlags.has('task-review');
+  const chatAppsEnabled = visibilityFlags.has('chat-apps');
   const { apiBase } = useApiBase();
   const requestScope = useHostRequestAuthorityScope();
   // Navigation survives authority verification remounts; protected pane state does not.
@@ -299,6 +302,7 @@ export function TaskWorkspaceView({ taskId }: { taskId: string }) {
           projectSlug={taskProject.slug}
           projectId={taskProject.id}
           reviewEnabled={reviewEnabled}
+          chatAppsEnabled={chatAppsEnabled}
           tab={tab}
           setTab={setTab}
         />
@@ -433,6 +437,7 @@ function TaskWorkspaceContent({
   projectSlug,
   projectId,
   reviewEnabled,
+  chatAppsEnabled,
   tab,
   setTab,
 }: {
@@ -441,6 +446,7 @@ function TaskWorkspaceContent({
   projectSlug: string;
   projectId: string;
   reviewEnabled: boolean;
+  chatAppsEnabled: boolean;
   tab: string;
   setTab: (tab: string) => void;
 }) {
@@ -663,6 +669,12 @@ function TaskWorkspaceContent({
         id="task-panel-Details"
         aria-labelledby="task-tab-Details"
       >
+        {chatAppsEnabled && tab === 'Details' && (
+          <TaskWriteBackSection
+            taskId={taskId}
+            taskCreatedAt={graph.task.createdAt}
+          />
+        )}
         <details className="task-workspace__record-details">
           <summary>Task identity and workspace</summary>
           <TaskIdentitySection task={graph.task} />

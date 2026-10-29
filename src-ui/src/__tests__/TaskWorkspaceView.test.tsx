@@ -27,6 +27,9 @@ import {
 vi.mock('../views/task-workspace/TaskRelationships', () => ({
   TaskRelationships: () => null,
 }));
+vi.mock('../views/task-workspace/TaskWriteBackSection', () => ({
+  TaskWriteBackSection: () => <div data-testid="task-write-back-section" />,
+}));
 vi.mock('../views/task-workspace/review/TaskReviewTab', () => ({
   TaskReviewTab: () => (
     <section aria-label="Task review">Review content</section>
@@ -2086,6 +2089,22 @@ describe('TaskWorkspaceView', () => {
         .getByRole('tab', { name: 'Overview' })
         .getAttribute('aria-selected'),
     ).toBe('true');
+  });
+
+  test('mounts write-back history only in Details while the chat apps preview is enabled', () => {
+    featurePreviews = [{ id: 'chat-apps', enabled: true }];
+    const view = render(<TaskWorkspaceView taskId="task-alpha" />, {
+      openDetails: false,
+    });
+    expect(screen.queryByTestId('task-write-back-section')).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    expect(screen.getByTestId('task-write-back-section')).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    expect(screen.queryByTestId('task-write-back-section')).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    featurePreviews = [];
+    view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
+    expect(screen.queryByTestId('task-write-back-section')).toBeNull();
   });
 
   test('reads Task view deep links and browser Back without carrying the view to a different Task', async () => {
