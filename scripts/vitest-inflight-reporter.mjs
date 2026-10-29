@@ -26,7 +26,12 @@ const MAX_MODULE_LABEL_LENGTH = 240;
 const MAX_VISIBLE_ACTIVITIES = 2;
 
 function safeLabel(value, length) {
-  return String(value).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, length);
+  return String(value)
+    .replace(/[\s\S]/g, (character) => {
+      const code = character.charCodeAt(0);
+      return code < 32 || code === 127 ? ' ' : character;
+    })
+    .slice(0, length);
 }
 
 function moduleLabel(testModule) {
