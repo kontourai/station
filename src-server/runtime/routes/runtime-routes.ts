@@ -1493,6 +1493,10 @@ export async function jobEditRetargetsGrantedWork(
 export function configureRuntimeRoutes(
   context: ConfigureRuntimeRoutesContext,
 ): ConfigureRuntimeRoutesResult {
+  // Shared by the operator grant routes and diagnostics admission.
+  const unattendedGrantStore = new UnattendedGrantStore(
+    context.configLoader.getProjectHomeDir(),
+  );
   const connectedClientPresence = new ClientConnectionPresence({
     record: (op) => connectedClientPresenceOps.add(1, { op }),
   });
@@ -3712,6 +3716,13 @@ export function configureRuntimeRoutes(
           'server',
         ),
       }),
+      {
+        agentGrant: (sessionId) =>
+          unattendedGrantStore.isGranted(
+            JSON.stringify({ kind: 'diagnostics-session', sessionId }),
+            'station-control:read_logs',
+          ),
+      },
     ),
   );
   context.app.route(
@@ -8335,9 +8346,6 @@ export function configureRuntimeRoutes(
   // station#2037: persistent exact-tool grants share the runtime's STATION_HOME
   // with the resolver already wired by slice 3. The narrower route-family
   // scope below makes this an operator-management surface, never an agent tool.
-  const unattendedGrantStore = new UnattendedGrantStore(
-    context.configLoader.getProjectHomeDir(),
-  );
   registerPullRequestProvider(new GitHubPullRequestProvider());
   registerPullRequestProvider(new GitLabPullRequestProvider());
   const reviewGuides = new PullRequestReviewGuideService(

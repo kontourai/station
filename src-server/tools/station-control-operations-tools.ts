@@ -551,7 +551,7 @@ export function registerOperationsTools(
 
   server.tool(
     'read_logs',
-    "Read Station's own server logs to debug runtime behavior; filter by minimum level/time/substring. Returns the most recent matches (tail semantics). Lines come back unredacted only for the operator in person on this machine (a same-origin UI-bootstrap or local-grant session) and for an agent acting for the operator from an engine Station hosts in-process; every other caller, including this tool from any other engine, receives the redacted rendering.",
+    "Read Station's server logs to debug runtime behavior; filter by level, time or substring. Agent calls require an explicit operator grant for this verified bound session. Logs can contain private conversation content; rendering follows the caller's locality.",
     {
       level: z
         .enum(LOG_LEVEL_ORDER as [string, ...string[]])

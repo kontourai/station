@@ -16,6 +16,8 @@
  * operator, `host-` runs unconfined; each session's conversation is
  * `conv-<session id>`.
  */
+
+import { writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -48,6 +50,7 @@ import {
   vi,
 } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { createUnattendedGrantRoutes } from '../../routes/agents/unattended-grants-routes.js';
 import { createStationControlMcpRoutes } from '../../routes/mcp/station-control-mcp-route.js';
 import { createNotificationRoutes } from '../../routes/operations/notifications.js';
 import {
@@ -78,6 +81,7 @@ import {
   admitWakeUpAtFire,
   composeAgentSchedule,
 } from '../../runtime/routes/agent-schedule-composition.js';
+import { UnattendedGrantStore } from '../../services/agents/unattended-grant-store.js';
 import {
   LOCAL_OPERATOR_PRINCIPAL_ID,
   principalForRecordedSessionOwner,
@@ -230,6 +234,7 @@ async function boot(options: {
   scheduler?: SchedulerService;
   notifications?: NotificationService;
   logDirectory?: string;
+  diagnosticGrantStore?: UnattendedGrantStore;
   /**
    * The guard's grant-store answer. Production answers false for a job that
    * holds no unattended grants (conversation runs need none); absent, the
@@ -329,7 +334,10 @@ async function boot(options: {
     security: {
       verifyCredential: (candidate: string) =>
         candidate === OPERATOR_CREDENTIAL,
-      resolveGrantedScope: () => 'orchestration:read orchestration:operate',
+      resolveGrantedScope: () =>
+        options.diagnosticGrantStore
+          ? 'orchestration:read orchestration:operate access:manage'
+          : 'orchestration:read orchestration:operate',
       resolveCredentialAuthority: () => 'operator-credential',
       now: () => Date.now(),
       maxFailures: 1_000,
@@ -392,7 +400,25 @@ async function boot(options: {
         { generateBundle: async () => ({}) } as never,
         quietLogger(),
         createServerLogReader({ directory: options.logDirectory }),
+        {
+          agentGrant: (sessionId) =>
+            options.diagnosticGrantStore?.isGranted(
+              JSON.stringify({ kind: 'diagnostics-session', sessionId }),
+              'station-control:read_logs',
+            ) ?? false,
+        },
       ),
+    );
+  if (options.diagnosticGrantStore)
+    app.route(
+      '/api/agents/unattended-grants',
+      createUnattendedGrantRoutes(options.diagnosticGrantStore, {
+        operatorIdentityForRequest: (c) =>
+          getRuntimeAuthenticatedRequestPrincipal(c.req.raw)?.authority ===
+          'operator-credential'
+            ? LOCAL_OPERATOR_PRINCIPAL_ID
+            : undefined,
+      }),
     );
   if (options.notifications)
     app.route(
@@ -2899,13 +2925,162 @@ describe('round3 independent reviewer probes', () => {
         undefined,
         at,
       );
-      expect(diagnostics.status).toBe(200);
+      expect(diagnostics.status).toBe(403);
       expect(JSON.stringify(diagnostics.body)).not.toContain('round3-private');
     } finally {
       await served.close();
       await scheduler.stop();
       await notifications.shutdown();
       resetServerLogSinkForTests();
+    }
+  });
+});
+
+describe('diagnostics agent authority', () => {
+  const makeTempDir = trackTempDirs();
+  test('an agent cannot read diagnostics without an explicit operator grant', async () => {
+    const served = await boot({
+      hosted: false,
+      logDirectory: makeTempDir('diagnostics-agent-'),
+    });
+    try {
+      for (const channel of [
+        'bound',
+        'delegated-custody',
+        'bearer-exposed',
+      ] as const) {
+        const response = await agent(
+          channel,
+          'victim',
+          'GET',
+          '/api/diagnostics/logs',
+          undefined,
+          served,
+        );
+        expect(response.status).toBe(403);
+      }
+      const person = await personRequest(
+        'GET',
+        '/api/diagnostics/logs',
+        undefined,
+        served.baseUrl,
+      );
+      expect(person.status).toBe(200);
+    } finally {
+      await served.close();
+    }
+  });
+
+  test('an operator can grant and revoke diagnostics for one bound agent session', async () => {
+    const root = makeTempDir('diagnostics-grant-');
+    const directory = makeTempDir('diagnostics-grant-logs-');
+    writeFileSync(
+      join(directory, 'server-2026-10-29.ndjson'),
+      JSON.stringify({
+        level: 'info',
+        timestamp: '2026-10-29T00:00:00.000Z',
+        msg: 'private conversation marker',
+      }) + '\n',
+    );
+    const store = new UnattendedGrantStore(root);
+    const served = await boot({
+      hosted: false,
+      logDirectory: directory,
+      diagnosticGrantStore: store,
+    });
+    const grant = {
+      principalKey: JSON.stringify({
+        kind: 'diagnostics-session',
+        sessionId: 'victim',
+      }),
+      toolName: 'station-control:read_logs',
+    };
+    try {
+      const denied = await agent(
+        'bound',
+        'victim',
+        'GET',
+        '/api/diagnostics/logs',
+        undefined,
+        served,
+      );
+      expect(denied.status).toBe(403);
+      const attempted = await agent(
+        'bound',
+        'victim',
+        'POST',
+        '/api/agents/unattended-grants',
+        grant,
+        served,
+      );
+      expect(attempted.status).toBeGreaterThanOrEqual(400);
+      const granted = await personRequest(
+        'POST',
+        '/api/agents/unattended-grants',
+        grant,
+        served.baseUrl,
+      );
+      expect(granted.status, JSON.stringify(granted.body)).toBe(200);
+      const allowed = await agent(
+        'bound',
+        'victim',
+        'GET',
+        '/api/diagnostics/logs',
+        undefined,
+        served,
+      );
+      expect(allowed.status).toBe(200);
+      expect(JSON.stringify(allowed.body)).toContain(
+        'private conversation marker',
+      );
+      expect(
+        (
+          await agent(
+            'bound',
+            'other',
+            'GET',
+            '/api/diagnostics/logs',
+            undefined,
+            served,
+          )
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await agent(
+            'bearer-exposed',
+            'victim',
+            'GET',
+            '/api/diagnostics/logs',
+            undefined,
+            served,
+          )
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await personRequest(
+            'POST',
+            '/api/agents/unattended-grants/revoke',
+            grant,
+            served.baseUrl,
+          )
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await agent(
+            'bound',
+            'victim',
+            'GET',
+            '/api/diagnostics/logs',
+            undefined,
+            served,
+          )
+        ).status,
+      ).toBe(403);
+    } finally {
+      await served.close();
     }
   });
 });
@@ -2989,7 +3164,7 @@ describe('legacy scheduler diagnostics privacy', () => {
         undefined,
         at,
       );
-      expect(diagnostics.status).toBe(200);
+      expect(diagnostics.status).toBe(403);
       expect(JSON.stringify(diagnostics.body)).not.toContain(
         'round4-legacy-private',
       );
