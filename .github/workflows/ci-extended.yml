@@ -109,7 +109,7 @@ jobs:
           node-version-file: .nvmrc
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
         with: { install: false }
 
       - name: Install pinned actionlint
@@ -210,7 +210,7 @@ jobs:
           node-version-file: .nvmrc
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
         with: { install: false }
 
       - run: npm run dependencies:ci
@@ -304,7 +304,7 @@ jobs:
           owner-lifetime-seconds: "7800"
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
         with: { install: false }
 
       - run: npm run dependencies:ci

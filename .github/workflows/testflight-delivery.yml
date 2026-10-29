@@ -655,7 +655,7 @@ jobs:
           node scripts/verify-ios-testflight-authority.mjs --source-ref "$source_ref" --source-sha '${{ inputs.source_sha }}'
           echo "AUTHORITY_REF=$source_ref" >> "$GITHUB_ENV"
       - name: Setup pinned pnpm
-        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
         with: { install: false }
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -715,7 +715,7 @@ jobs:
           --github-output "$GITHUB_OUTPUT"
       - name: Upload a previously unobserved IPA to TestFlight
         if: steps.reconcile.outputs.upload == 'true'
-        uses: apple-actions/upload-testflight-build@155ea93be9ee6d5186c71f660a612f5eddb14510 # v5.6.0
+        uses: apple-actions/upload-testflight-build@acf1166e95edc302069b74b258a788004fe39a08 # v5.7.0
         with:
           app-path: ${{ steps.staged.outputs.ipa }}
           app-type: ios
