@@ -65,6 +65,7 @@ import {
 } from '../utils/approvalMode';
 import {
   type ChatErrorTranslation,
+  chatErrorHintFor,
   SESSION_START_INDETERMINATE_CODE,
   translateChatError,
 } from '../utils/chatErrorTranslation';
@@ -1764,6 +1765,13 @@ export function useSendMessage(
         // so id/timestamp are always assigned (never defaulting to
         // timestamp 0, which used to sort this notice ahead of the whole
         // transcript instead of next to the turn it belongs to).
+        // A hint recommending a new chat follows the server's last answer on
+        // whether this caller may start one (`callerAccess.startChat`).
+        const failureHint = chatErrorHintFor(
+          translated,
+          activeChatsStore.getSnapshot()[sessionId]?.conversationOpenState
+            ?.callerAccess,
+        );
         clearEphemeralMessages(sessionId);
         addEphemeralMessage(sessionId, {
           role: 'system',
@@ -1772,7 +1780,7 @@ export function useSendMessage(
           // transcript's error markers: "Error: thread … Provider session…"
           // ran the label into the engine's text.
           content: `**${translated.title}**\n\n${translated.body}${
-            translated.hint ? `\n\n${translated.hint}` : ''
+            failureHint ? `\n\n${failureHint}` : ''
           }${
             // Said only when the rollback put the draft back: a user who
             // typed during the send keeps what they typed instead.

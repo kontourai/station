@@ -106,6 +106,18 @@ function parseConversationOpenResolution(
       'boolean'
   )
     return false;
+  // Optional (older servers omit it), but a present value must be the exact
+  // pair of booleans: a malformed one is a hostile shape, not "unknown".
+  if (record.callerAccess !== undefined) {
+    const access = record.callerAccess as Record<string, unknown> | null;
+    if (
+      !access ||
+      typeof access !== 'object' ||
+      typeof access.continue !== 'boolean' ||
+      typeof access.startChat !== 'boolean'
+    )
+      return false;
+  }
   const actions = record.recoveryActions as unknown[];
   if (
     actions.some(
