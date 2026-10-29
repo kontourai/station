@@ -241,12 +241,28 @@ Previously verified cookie sessions require the provider's synchronous live witn
 relationship commit/delivery seams; missing support, revoked/expired sessions and
 pending enrollment fail closed. A historical authenticated result alone is insufficient.
 
-A currently witnessed local-account session supplies the acting person for
-account and membership operations. A verified Serve WhoIs identity on that
-request is ingress provenance and does not establish membership or link people.
-Device and account bindings must agree, and an account cannot borrow an operator
-or another Device grant. Revoked sessions fail closed. Without an account
-session, existing WhoIs and Device attribution remains unchanged.
+On the scoped surfaces below, a currently witnessed local-account session
+supplies the acting person. A verified Serve WhoIs identity is ingress
+provenance and does not establish membership or link people. Device and account
+bindings must agree, and an account cannot borrow an operator or another Device
+grant. Revoked sessions fail closed. Without an account session, existing
+WhoIs and Device attribution remains unchanged.
+
+The WhoIs exception applies to these exact surfaces:
+
+- Any method on `/api/account-auth` and its descendants.
+- `POST` to `/.well-known/station/v1/pairing/access-request` and `/.well-known/station/v1/pairing/exchange`.
+- Any method on `/api/projects/:slug/access` and its descendants.
+- `GET` or `HEAD` on `/api/projects`, `/api/projects/:slug`, and the Project's `room` and `shared-work` paths and descendants.
+- `GET` or `HEAD` on `/api/tasks/:id/children`, `/api/tasks/:id/work-chats`, and `/api/tasks/:id/work-chats/:chatId`; `PUT` on `/api/tasks/:id/parent`; `POST` on the children and work-chats paths; and `DELETE` on the work-chats path.
+
+Other leaves retain their existing ingress-agreement behavior. This exception
+changes person attribution only; each route still enforces its own admission and
+resource permissions. A conflicting account and operator or Device remains
+refused with `403 account_identity_conflict`. The local account's `POST
+/api/account-auth/sign-out` remains available to end that account session;
+it does not revoke the Device credential.
+
 
 The account-authentication exception is specified in the
 [deployment authentication guide](../guides/deployment-authentication.md).

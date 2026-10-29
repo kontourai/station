@@ -164,13 +164,29 @@ Disable stale session-cookie caches for authorization reads. For example,
 explains that cookie caching can delay revocation visibility. Session renewal
 belongs to an explicit operation that can deliver its cookie response; ordinary
 verification must not consume the destination body or silently refresh cookies.
-Original device/person bindings and historical authorship are preserved. A
-current, synchronously witnessed local-account session is the person for account
-and membership operations even when Tailscale Serve supplies a WhoIs identity;
-WhoIs is ingress provenance, not a linked account. A Device credential must
-still be bound to that exact account, and an account session cannot use operator
-authority. Other providers retain their existing ingress agreement checks.
-Without an account session, WhoIs attribution is unchanged.
+Original device/person bindings and historical authorship are preserved. On
+the scoped surfaces below, a current, synchronously witnessed local-account
+session names the person even when Tailscale Serve supplies WhoIs. WhoIs is
+ingress provenance, not a linked account. A Device credential must still be
+bound to that account, and an account session cannot use operator authority.
+Other providers retain their existing ingress agreement checks. Without an
+account session, WhoIs attribution is unchanged.
+
+The WhoIs exception applies to these exact surfaces:
+
+- Any method on `/api/account-auth` and its descendants.
+- `POST` to `/.well-known/station/v1/pairing/access-request` and `/.well-known/station/v1/pairing/exchange`.
+- Any method on `/api/projects/:slug/access` and its descendants.
+- `GET` or `HEAD` on `/api/projects`, `/api/projects/:slug`, and the Project's `room` and `shared-work` paths and descendants.
+- `GET` or `HEAD` on `/api/tasks/:id/children`, `/api/tasks/:id/work-chats`, and `/api/tasks/:id/work-chats/:chatId`; `PUT` on `/api/tasks/:id/parent`; `POST` on the children and work-chats paths; and `DELETE` on the work-chats path.
+
+Other leaves retain their existing ingress-agreement behavior. This exception
+changes person attribution only; each route still enforces its own admission and
+resource permissions. A conflicting account and operator or Device remains
+refused with `403 account_identity_conflict`. The local account's `POST
+/api/account-auth/sign-out` remains available to end that account session;
+it does not revoke the Device credential.
+
 
 ## HTTP behavior
 
