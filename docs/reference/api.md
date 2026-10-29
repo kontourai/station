@@ -5754,6 +5754,36 @@ current. An account-bound device manages its own tokens through `GET`/`POST
 /api/access/tokens` and `DELETE /api/access/tokens/:tokenId` alongside its
 account session.
 
+## Project sharing setting
+
+`/api/operator/account-sharing` turns Project sharing with built-in local
+accounts on or off from Settings (#4305). See
+[deployment authentication](../guides/deployment-authentication.md#turn-it-on-from-settings)
+for precedence, rollback and what turning it off keeps.
+
+| Method | Body | Success `data` |
+| --- | --- | --- |
+| `GET` | none | `AccountSharingSettingView`: `source` (`setting` or `deployment`), `lockedBy`, `active`, `stored`, `lastApply`, `startupFailure`, the offered `origins` and `restart` (`supervised` or `unavailable`). |
+| `PUT` | `{ "enabled": false }` or `{ "enabled": true, "publicOrigin": "<offered origin>" }`, at most 4 KiB | `{ "changed": false }`, or `{ "changed": true, "restarting": true }` once the supervisor has started the handoff. |
+
+Both require the same operator authority as `/api/operator/accounts` (an
+operator credential or a home-possession Device; a device-bound operator
+session is not accepted) and the `access:manage` pairing scope. Responses are
+`Cache-Control: no-store`. Refusals use the `success: false` envelope with a
+`code`:
+
+| Status | `code` | When |
+| --- | --- | --- |
+| 403 | `operator_required` | The caller is not the Station operator. |
+| 404 | `feature_preview_disabled` | The `project-sharing-setting` preview is off. |
+| 400 | `invalid_request` | The body is malformed, too large or has another field. |
+| 400 | `origin_not_offered` | `publicOrigin` is not a selectable offered origin. |
+| 409 | `set_by_deployment` | Deployment variables decide; the message names them. |
+| 409 | `restart_unavailable` | No process supervisor runs this Station. |
+| 409 | `apply_in_flight` | A previous change is already restarting this Station. |
+| 409/504 | `restart_failed` | The supervisor refused, rolled back (409) or did not answer (504); the staged change is withdrawn. |
+| 503 | `setting_unavailable` | The change could not be saved. |
+
 ## Create a device invitation
 
 `GET /api/pairing/endpoint-suggestions` uses pairing-management admission and
