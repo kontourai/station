@@ -10,9 +10,7 @@ happened and bring you the result or the decision.
 
 ## Set up Houston
 
-1. Open a chat on Claude Code, an ACP agent or Station's own engine.
-   Station can't send updates to Codex or Muse chats yet (see
-   [Limits](#limits)).
+1. Open a chat on a supported engine.
 2. Open the chat's **More** menu (the **⋯** sheet on a phone) and choose
    **Make this Houston**.
 
@@ -74,11 +72,6 @@ still waiting for that chat are withdrawn together.
 
 ## Limits
 
-- **Codex and Muse.** Station can't deliver updates to a Codex or Muse chat
-  yet: those engines don't report when a turn ends, so Station keeps the chat
-  marked busy and holds the message. The Houston card says "Updates can't reach
-  this chat yet" when this applies. Tracked in
-  [#4051](https://github.com/kontourai/station/issues/4051).
 - Requested stops, pairing requests and scheduler notices don't wake Houston.
   Only work that names a Session does.
 - A message that is already being delivered can't be withdrawn.

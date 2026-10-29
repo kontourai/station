@@ -125,12 +125,12 @@ designation replaces it without `replace`.
 The person is told what Station can do: the read and write routes return
 `delivery`, derived from the current Session. Wakes are `blocked` when the
 Session's last turn has ended in the log but its durable turn boundary is
-still held (#4051: Codex and Muse turn terminals carry no invocation id). It
+still held (for example, if a terminal lacks its invocation id). It
 does not use `hasActiveTurn`, which reads that same boundary and so cannot
 tell a stuck one from a running turn; a long turn, an approval wait, or a
 Codex retry in progress reads `ready`. `toolsPending` holds while the live Session
 started without the Station tools. This is derived rather than keyed to engine
-names, so it stops reporting `blocked` once #4051 is fixed.
+names, so it stops reporting `blocked` when the boundary retires.
 
 ## Provisioning and permissions
 

@@ -22,12 +22,15 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { GateTestAdapter } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FakeAcpProcess } from '../../../providers/__tests__/fake-acp-process.js';
+import { FakeMuseProcess } from '../../../providers/__tests__/fake-muse-process.js';
+import { MUSE_META_RUN_TERMINAL } from '../../../providers/__tests__/muse-adapter-fixtures.js';
 import type {
   ProviderAdapterShape,
   ProviderSendTurnInput,
   ProviderTurnStartResult,
 } from '../../../providers/adapter-shape.js';
 import { AcpAdapter } from '../../../providers/adapters/acp-adapter.js';
+import { MuseAdapter } from '../../../providers/adapters/muse-adapter.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { createCoordinatorRoutes } from '../../../routes/orchestration/coordinator.js';
 import type { ACPProcess } from '../../acp/acp-process.js';
@@ -484,6 +487,63 @@ describe('a worker finishing wakes the coordinator once', () => {
     expect(sends.get(COORDINATOR)).toHaveLength(1);
     // The worker's terminal was turned into exactly one waiting-then-sent item.
     expect(world.store.coordinatorStore().waitingItems(OWNER)).toEqual([]);
+  });
+});
+
+describe('Muse inbox delivery after a completed turn', () => {
+  test('a queued follow-up reaches the engine after the first boundary retires', async () => {
+    const processes: FakeMuseProcess[] = [];
+    const adapter = new MuseAdapter({
+      newSessionId: () => 'muse-session-fixed',
+      processFactory: () => {
+        const process = new FakeMuseProcess();
+        processes.push(process);
+        return { process };
+      },
+      terminateProcess: async (process) => {
+        process.kill('SIGTERM');
+      },
+      logger: { warn: vi.fn(), info: vi.fn() },
+    });
+    const world = boot([adapter]);
+    await world.service.dispatch(
+      {
+        type: 'startSession',
+        input: {
+          threadId: COORDINATOR,
+          provider: 'muse',
+          metadata: { userId: OWNER },
+        },
+      },
+      { userId: OWNER },
+    );
+    await world.service.dispatchWithReceipt(
+      { type: 'sendTurn', input: { threadId: COORDINATOR, input: 'first' } },
+      { userId: OWNER },
+    );
+    expect(
+      world.inbox.submit({
+        conversationId: COORDINATOR,
+        clientTurnId: 'muse-follow-up',
+        payload: { message: 'follow-up', actor: { userId: OWNER } },
+      }),
+    ).toMatchObject({ outcome: 'queued' });
+    processes[0]!.stdout.write(MUSE_META_RUN_TERMINAL + '\n');
+    processes[0]!.exit(0);
+    await waitFor(
+      () => world.inbox.entry(COORDINATOR, 'muse-follow-up')?.state,
+      (state) => state === 'sent',
+      'Muse follow-up placement',
+    );
+    expect(processes).toHaveLength(2);
+    const events = world.store
+      .listEvents(COORDINATOR)
+      .map((row) => row.payload);
+    const start = events.find((event) => event.method === 'turn.started');
+    const terminal = events.find((event) => event.method === 'turn.completed');
+    expect(start?.invocationId).toBeTruthy();
+    expect(terminal?.invocationId).toBe(start?.invocationId);
+    processes[1]!.exit(0);
   });
 });
 
