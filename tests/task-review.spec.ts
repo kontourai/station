@@ -221,7 +221,10 @@ async function timelineShots(page: Page, testInfo: TestInfo, empty = false) {
       name: 'Timeline',
       exact: true,
     });
-    if (empty) await expect(timeline.getByText('No Screens yet')).toBeVisible();
+    if (empty)
+      await expect(
+        timeline.getByText('Capture a Screen in Review to start the Timeline.'),
+      ).toBeVisible();
     else
       await expect(timeline.locator('.task-timeline__capture')).toHaveCount(2);
     for (const width of empty ? [390] : [390, 1440]) {

@@ -265,7 +265,11 @@ test('retains captions when an image fails and retries that authorized content r
 test('shows the empty state', async () => {
   const h = setup({ empty: true });
   render(h.tree(true));
-  expect(await screen.findByText('No Screens yet')).toBeTruthy();
+  expect(
+    await screen.findByText(
+      'Capture a Screen in Review to start the Timeline.',
+    ),
+  ).toBeTruthy();
 });
 
 test('keeps available Screens visible alongside an unavailable item', async () => {
@@ -275,7 +279,9 @@ test('keeps available Screens visible alongside an unavailable item', async () =
   expect(
     screen.getByRole('button', { name: 'Retry unavailable Screens' }),
   ).toBeTruthy();
-  expect(screen.queryByText('No Screens yet')).toBeNull();
+  expect(
+    screen.queryByText('Capture a Screen in Review to start the Timeline.'),
+  ).toBeNull();
 });
 
 test('a verified gate for another commit stays claimed for this Screen', async () => {

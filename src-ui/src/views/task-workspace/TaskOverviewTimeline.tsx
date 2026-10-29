@@ -193,7 +193,10 @@ function Timeline({
           ))}
         </ol>
       ) : (
-        !review.error && !unavailable && <Empty label="No Screens yet" />
+        !review.error &&
+        !unavailable && (
+          <Empty label="Capture a Screen in Review to start the Timeline." />
+        )
       )}
     </section>
   );
