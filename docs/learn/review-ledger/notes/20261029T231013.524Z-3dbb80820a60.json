@@ -1,0 +1,7 @@
+{
+  "revision": "2e7dfbecc1c317a153b8d1c0c58bd1d046798cf7",
+
+  "notes": [
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Scoped source-impact review at 2e7dfbecc1c against pending manifest changes since 42b6272cc4f. Read the complete context and inspected the resource-manifest diff and its discovery/ordinary-exclusion partition. The manifest now places r1-outbox in processExclusive: its real SQLite outbox test creates 1026 parts and retains its 120000ms completion guard. body-process and sqlite-compatibility are processHeavy; compatibility still disables lazy fetch and transports and names missing immutable sources or Git prerequisites NOT VERIFIED. Other added manifest entries classify other owners; compactExactPaths changes discovery arguments and assertOrdinaryVitestSelection still compares the discovered set to the exact partition. These scheduling changes do not change the context’s model-only ownership, future Station-consumer status, storage/replay semantics or explicit lack of provider/publication qualification. No prose change required for this named input. Source inspection only: no model-runtime test execution, new compatibility receipt, performance/platform/provider acceptance, capture refresh, baseline advance or classification change.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}
