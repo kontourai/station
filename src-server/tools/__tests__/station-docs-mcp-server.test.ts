@@ -62,6 +62,13 @@ function readSource(file: string): string {
 }
 
 describe('station-docs content', () => {
+  test('the automation topic warns that old scheduler logs can retain private details', () => {
+    const body = findStationDocsTopic('scheduled-jobs')?.body ?? '';
+    expect(body).toContain(
+      'Previously written server logs may still contain automation names and errors',
+    );
+    expect(body).toContain('The active UTC day is retained');
+  });
   test('every topic is complete and its id is a stable kebab-case key', () => {
     expect(STATION_DOCS_TOPICS.length).toBeGreaterThanOrEqual(8);
     for (const topic of STATION_DOCS_TOPICS) {

@@ -239,6 +239,11 @@ unattended-deny approval policy and writes its output to a file. Either way
 the scheduler records its outcome. See [Automations](../user/automations.md).
 See the [scheduler API](api.md#scheduler) for exact inputs and outcomes.
 
+Previously written server logs may still contain automation names and errors.
+Upgrading does not rewrite those files; review access to retained files and
+collector copies. The active UTC day is retained even if retention limits are
+lowered. See [server log retention](config.md#logging).
+
 Scheduler receipts describe the observed execution outcome. They do not attach
 a Flow run or prove the requested business result by themselves. Inspect the
 recorded output and any explicitly attached evidence workflow before claiming

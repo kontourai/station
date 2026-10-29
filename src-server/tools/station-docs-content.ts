@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  '47956a6c85996a2ae61490989fd26ef732acc2085f21d8946de664d8e5e270ae';
+  'b182beb1a0211b5b9928ea74ab3ec97ce23fda3729f6f0c415e260b8891f2d91';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -189,7 +189,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
       'one-time',
       'notifications',
     ],
-    body: "A scheduled job can use a cron expression, a fixed interval (`every`), or a\none-time timestamp (`at`); manual runs are also supported. The product calls\nthese Automations. A job with a `target` runs each time as a turn in its\nconversation, on that conversation's engine and approval mode, and its result\nis in the chat; a job without one invokes a Station-engine Agent with\nunattended-deny approval policy and writes its output to a file. Either way\nthe scheduler records its outcome. See [Automations](../user/automations.md).\nSee the [scheduler API](api.md#scheduler) for exact inputs and outcomes.\n\nScheduler receipts describe the observed execution outcome. They do not attach\na Flow run or prove the requested business result by themselves. Inspect the\nrecorded output and any explicitly attached evidence workflow before claiming\nunattended work achieved its goal.\n\nNotifications are provider-based: subsystems and plugins contribute notifications that Station aggregates, persists, and delivers, so a long-running or scheduled piece of work can tell you it needs attention.",
+    body: "A scheduled job can use a cron expression, a fixed interval (`every`), or a\none-time timestamp (`at`); manual runs are also supported. The product calls\nthese Automations. A job with a `target` runs each time as a turn in its\nconversation, on that conversation's engine and approval mode, and its result\nis in the chat; a job without one invokes a Station-engine Agent with\nunattended-deny approval policy and writes its output to a file. Either way\nthe scheduler records its outcome. See [Automations](../user/automations.md).\nSee the [scheduler API](api.md#scheduler) for exact inputs and outcomes.\n\nPreviously written server logs may still contain automation names and errors.\nUpgrading does not rewrite those files; review access to retained files and\ncollector copies. The active UTC day is retained even if retention limits are\nlowered. See [server log retention](config.md#logging).\n\nScheduler receipts describe the observed execution outcome. They do not attach\na Flow run or prove the requested business result by themselves. Inspect the\nrecorded output and any explicitly attached evidence workflow before claiming\nunattended work achieved its goal.\n\nNotifications are provider-based: subsystems and plugins contribute notifications that Station aggregates, persists, and delivers, so a long-running or scheduled piece of work can tell you it needs attention.",
     parentId: 'manual',
     sourcePath: 'docs/reference/station-docs.md',
     sourceAnchor: 'scheduled-jobs-and-notifications',

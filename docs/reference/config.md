@@ -216,6 +216,12 @@ event-loop delays; foreground config reads still check the current signature.
 
 Station's server logger (`src-server/utils/logger.ts`) writes structured trace/debug/info/warn/error/fatal lines to stdout and, once boot has installed the sink, to a durable NDJSON store under `<STATION_HOME>/logs/server/server-YYYY-MM-DD.ndjson` (one file per UTC day). Retention mirrors the runtime event log: age- and size-bounded, with the active day always protected.
 
+**Upgrade note for Automations.** Previously written server logs may still
+contain automation names and engine errors. Upgrading does not rewrite or
+redact those files. Review access to retained files and copies at external
+collectors. The retention settings below remove older, inactive day files;
+the active UTC day is retained even when a lower limit is configured.
+
 The local store batches pending lines for 10 ms, draining earlier at 64 KiB.
 The actual batch write is synchronous; this removes the syscall per line but
 can still block briefly on slow storage. Day rollover, sink replacement, close,
