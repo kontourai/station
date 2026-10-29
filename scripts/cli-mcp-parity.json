@@ -1,11 +1,5 @@
 {
-  "app": {
-    "conversation fork": {
-      "missing": 4281,
-      "route": "POST /agents/:slug/conversations/:conversationId/fork",
-      "want": "A `station conversation fork` action and a fork_conversation tool"
-    }
-  },
+  "app": {},
   "cli": {
     "acp command-options": {
       "missing": 4286,
@@ -108,6 +102,10 @@
     "checkpoints status": {
       "exempt": "local-host",
       "reason": "Reads git checkpoint refs in this Station home on disk."
+    },
+    "claims list": {
+      "tools": ["list_project_activity"],
+      "note": "A person lists claims over GET /api/orchestration/work-claims; agents read the same claims through list_project_activity. Claim, renew and release stay agent-only until a person can be a claimant (#3427)."
     },
     "cloud import-project": {
       "exempt": "local-host",
@@ -227,6 +225,9 @@
       "tools": ["get_conversation_messages", "read_conversation"],
       "note": "Export endpoint GET /agents/:slug/conversations/:id/export?format= has no tool; transcript read is covered."
     },
+    "conversation fork": {
+      "tools": ["fork_conversation"]
+    },
     "delegate attempt": {
       "exempt": "client-local",
       "reason": "Looks up a CLI invocation's lost handle by client attempt id (GET /api/orchestration/delegations/attempts/:id); MCP returns the handle synchronously."
@@ -239,6 +240,9 @@
     },
     "delegate interrupt": {
       "tools": ["interrupt_task"]
+    },
+    "delegate list": {
+      "tools": ["list_delegated_tasks"]
     },
     "delegate respond": {
       "tools": ["respond_to_task_request"]
@@ -1114,6 +1118,9 @@
     "enable_job": {
       "cli": ["schedule enable"]
     },
+    "fork_conversation": {
+      "cli": ["conversation fork"]
+    },
     "get_achievements": {
       "missing": 4284,
       "want": "Achievements"
@@ -1239,8 +1246,7 @@
       "cli": ["agents conversations"]
     },
     "list_delegated_tasks": {
-      "missing": 3427,
-      "want": "Delegate list"
+      "cli": ["delegate list"]
     },
     "list_delegation_environments": {
       "cli": ["environment list"]

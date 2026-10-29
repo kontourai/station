@@ -4536,6 +4536,24 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
         [],
       ],
       [
+        'reviewed signed pnpm bootstrap with the exact non-Intel condition',
+        {
+          name: 'Setup pinned pnpm',
+          uses: VERIFIED_PNPM_SETUP_ACTION,
+          if: PNPM_SETUP_NATIVE_GUARD,
+        },
+        [],
+      ],
+      [
+        'signed pnpm bootstrap with an unreviewed condition',
+        {
+          name: 'Setup pinned pnpm',
+          uses: VERIFIED_PNPM_SETUP_ACTION,
+          if: 'always()',
+        },
+        [UNREVIEWED],
+      ],
+      [
         'signed pnpm bootstrap at a different source',
         {
           name: 'Setup pinned pnpm',
@@ -4680,10 +4698,12 @@ describe('Intel macOS pnpm provisioning (#2675)', () => {
     return { workflows, job };
   }
   const nativeSetup = (job: Job) => {
-    const step = job.steps.find((candidate) =>
-      String(candidate.uses).startsWith('pnpm/setup@'),
+    const step = job.steps.find(
+      (candidate) =>
+        String(candidate.uses).startsWith('pnpm/setup@') ||
+        candidate.uses === VERIFIED_PNPM_SETUP_ACTION,
     );
-    if (!step) throw new Error('Expected pnpm/setup.');
+    if (!step) throw new Error('Expected a pinned pnpm setup.');
     return step;
   };
   const withoutJsStep = (job: Job) => {
@@ -4824,6 +4844,16 @@ describe('Intel macOS pnpm provisioning (#2675)', () => {
       ).not.toContainEqual(INTEL_MESSAGE);
     },
   );
+
+  test('does not require the native pnpm Intel workaround for verified JS setup in another job', () => {
+    expect(
+      persistentRunnerPolicyFindings(
+        oneJob('macos-15-intel', [
+          { name: 'Setup pinned pnpm', uses: VERIFIED_PNPM_SETUP_ACTION },
+        ]),
+      ).map(({ message }) => message),
+    ).not.toContainEqual(INTEL_MESSAGE);
+  });
 });
 
 describe('landing policy revision and credential binding', () => {

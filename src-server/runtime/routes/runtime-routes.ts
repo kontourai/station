@@ -9636,6 +9636,7 @@ export function configureRuntimeRoutes(
         sessionQueries: context.orchestrationService.sessionQueries,
       }),
       conversationReadAuthorityForContext,
+      stationControlDispatchScope,
     ),
   );
   // The bytes behind a transcript's attachment chips. Separate from
