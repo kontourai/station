@@ -44,7 +44,12 @@ export async function installRegistryIntegration(
     };
   const persisted = { ...definition, enabled: false };
   delete persisted.secretEnvRefs;
-  await loader.saveIntegration(definition.id, persisted);
+  await loader.saveIntegration(definition.id, persisted, {
+    externalDefaults: true,
+    ...('stationCuratedTrust' in installed && installed.stationCuratedTrust
+      ? { stationCuratedTrust: installed.stationCuratedTrust }
+      : {}),
+  });
   if ('origin' in installed && installed.origin)
     recordIntegrationOrigin(
       loader.getProjectHomeDir(),

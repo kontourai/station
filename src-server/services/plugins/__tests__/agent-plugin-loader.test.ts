@@ -438,6 +438,7 @@ describe('AgentPluginLoader', () => {
       expect.arrayContaining([
         expect.objectContaining({
           transport: 'stdio',
+          contentTrust: 'untrusted',
           command: 'node',
           cwd: realpathSync(root),
           args: [
@@ -453,6 +454,7 @@ describe('AgentPluginLoader', () => {
         }),
         expect.objectContaining({
           transport: 'streamable-http',
+          contentTrust: 'untrusted',
           endpoint: 'https://example.com/mcp',
           headers: { 'X-Tenant': 'public' },
         }),
@@ -647,6 +649,40 @@ describe('AgentPluginLoader', () => {
     });
     expect((await config.loadIntegration(metadata.id)).endpoint).toBe(
       'https://two.example/mcp',
+    );
+  });
+
+  test('ConfigLoader projects both portable MCP transports as untrusted', async () => {
+    const stationHome = home();
+    const root = plugin(stationHome);
+    writeJson(join(root, 'mcp.json'), {
+      $schema: MCP_SCHEMA,
+      mcpServers: {
+        local: { type: 'stdio', command: 'node' },
+        remote: { type: 'streamable-http', url: 'https://example.com/mcp' },
+      },
+    });
+    const source = new AgentPluginLoader({ projectHomeDir: stationHome });
+    const loader = new ConfigLoader({
+      projectHomeDir: stationHome,
+      integrationSources: [source],
+    });
+    const entries = await loader.listIntegrations();
+    expect(entries).toHaveLength(2);
+    const definitions = await Promise.all(
+      entries.map((entry) => loader.loadIntegration(entry.id)),
+    );
+    expect(definitions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          transport: 'stdio',
+          contentTrust: 'untrusted',
+        }),
+        expect.objectContaining({
+          transport: 'streamable-http',
+          contentTrust: 'untrusted',
+        }),
+      ]),
     );
   });
 

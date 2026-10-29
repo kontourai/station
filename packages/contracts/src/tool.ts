@@ -176,6 +176,7 @@ export interface UntrustedContentChange {
 }
 
 const UNTRUSTED_CONTENT_CHANGE_LIMIT = 50;
+export const DEFAULT_EXTERNAL_CONTENT_TRUST = 'untrusted' as const;
 
 export function personOwnedUntrustedContentFields(stored: ToolDef | undefined) {
   const owned = new Set(stored?.untrustedContentPersonOwned ?? []);
@@ -202,7 +203,7 @@ export function withStationIntegrationTrustDefaults(
   delete result.untrustedContentChanges;
   delete result.untrustedContentPersonOwned;
   // External integrations are untrusted until the person decides otherwise.
-  result.contentTrust = stationCuratedTrust ?? 'untrusted';
+  result.contentTrust = stationCuratedTrust ?? DEFAULT_EXTERNAL_CONTENT_TRUST;
   if (!stored) return result;
   const owned = personOwnedUntrustedContentFields(stored);
   if (owned.has('contentTrust')) {
