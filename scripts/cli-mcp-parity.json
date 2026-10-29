@@ -1032,6 +1032,78 @@
       "missing": 4282,
       "want": "Board unpin"
     },
+    "browser_capture_to_task": {
+      "exempt": "agent-self",
+      "reason": "Captures a Browser Screen into the calling agent's bound Task."
+    },
+    "browser_click": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_close": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_color_scheme": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_drag": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_evaluate": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_hover": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_navigate": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_open": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_press": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_record_to_task": {
+      "exempt": "agent-self",
+      "reason": "Records the Browser into the calling agent's bound Task; the route refuses non-internal requests."
+    },
+    "browser_resize": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_scroll": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_select": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_snapshot": {
+      "exempt": "agent-ui",
+      "reason": "Reads the person's Browser pane for the bound agent."
+    },
+    "browser_status": {
+      "exempt": "agent-ui",
+      "reason": "Lists Browser pane sessions for the bound agent."
+    },
+    "browser_type": {
+      "exempt": "agent-ui",
+      "reason": "Drives the person's Browser pane for the bound agent."
+    },
+    "browser_wait_for": {
+      "exempt": "agent-ui",
+      "reason": "Reads the person's Browser pane for the bound agent."
+    },
     "cancel_wake_up": {
       "exempt": "agent-self",
       "reason": "Cancels the caller's own wake-up."

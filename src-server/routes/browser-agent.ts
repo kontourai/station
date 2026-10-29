@@ -37,6 +37,14 @@ import {
   TaskBrowserCaptureError,
   type TaskCaptureBrowserRegistry,
 } from '../services/projects/task-browser-capture.js';
+import {
+  type TaskBrowserRecording,
+  TaskBrowserRecordingError,
+} from '../services/projects/task-browser-recording.js';
+import {
+  BROWSER_RECORD_MAX_DURATION_MS,
+  BROWSER_RECORD_MAX_ENCODED_BYTES,
+} from '../tools/station-browser-policy.js';
 import type { StationControlCaller } from '../tools/station-control-shared.js';
 
 const MAX_BODY_BYTES = 40 * 1024;
@@ -71,6 +79,7 @@ export interface BrowserAgentRoutesDeps {
     localProjectIdFor(identity: string): string | undefined;
     registry: TaskCaptureBrowserRegistry;
     captures: TaskBrowserCapture;
+    recordings?: TaskBrowserRecording;
     runtime: Pick<ProjectTaskRoomRuntime, 'sessionTaskReviewAccess'>;
   };
   settings: Pick<BrowserProjectSettingsStore, 'evaluateAllowed'>;
@@ -318,6 +327,116 @@ export function createBrowserAgentRoutes(deps: BrowserAgentRoutesDeps) {
             });
           }
           throw error;
+        }
+      }
+      case 'record-to-task': {
+        if (
+          Object.keys(body).some(
+            (key) =>
+              !['browserSessionId', 'label', 'durationMs', 'maxBytes'].includes(
+                key,
+              ),
+          ) ||
+          (id !== undefined &&
+            (typeof id !== 'string' || id.length === 0 || id.length > 80)) ||
+          !Number.isSafeInteger(body.durationMs) ||
+          (body.durationMs as number) < 1 ||
+          (body.durationMs as number) > BROWSER_RECORD_MAX_DURATION_MS ||
+          (body.maxBytes !== undefined &&
+            (!Number.isSafeInteger(body.maxBytes) ||
+              (body.maxBytes as number) < 1 ||
+              (body.maxBytes as number) > BROWSER_RECORD_MAX_ENCODED_BYTES))
+        )
+          return c.json(
+            invalid('Recording duration or byte limit is out of bounds.'),
+          );
+        const parsed = parseTaskReviewCreateCaptureRequest({
+          sourceKind: 'browser',
+          sourceSessionId: id ?? 'selected',
+          label: body.label,
+          operationId: randomUUID(),
+        });
+        if (!parsed)
+          return c.json(invalid('Invalid recording label or browser session.'));
+        const capture = deps.taskCapture;
+        if (!capture?.recordings)
+          return c.json({
+            ok: false,
+            code: 'recording-unavailable',
+            message: 'Task recordings are unavailable.',
+          });
+        const access = await capture.runtime.sessionTaskReviewAccess(
+          authority.sessionId,
+        );
+        if (
+          access.kind !== 'granted' ||
+          capture.localProjectIdFor(access.write.projectId) !==
+            authority.projectId
+        )
+          return c.json({
+            ok: false,
+            code: 'no_task_binding',
+            message: 'This Session has no current Task binding.',
+          });
+        try {
+          const manifest = await capture.recordings.record(access, authority, {
+            ...(typeof id === 'string' ? { browserSessionId: id } : {}),
+            ...(parsed.label !== undefined ? { label: parsed.label } : {}),
+            durationMs: body.durationMs as number,
+            ...(body.maxBytes !== undefined
+              ? { maxBytes: body.maxBytes as number }
+              : {}),
+            authorize: async () => {
+              const again = await authorizeBrowserAgentCaller(
+                deps.resolveCaller(c.req.raw),
+                deps.authorizePrincipal,
+              );
+              return (
+                again.ok &&
+                again.authority.sessionId === authority.sessionId &&
+                again.authority.projectId === authority.projectId &&
+                again.authority.principalId === authority.principalId &&
+                again.authority.profileKey === authority.profileKey
+              );
+            },
+          });
+          return c.json({
+            ok: true,
+            walkthroughId: manifest.id,
+            commit: manifest.source.commit,
+            recording: manifest.source.recording,
+          });
+        } catch (error) {
+          if (
+            error instanceof TaskBrowserRecordingError ||
+            error instanceof TaskBrowserCaptureError
+          ) {
+            if (
+              error instanceof TaskBrowserCaptureError &&
+              error.cause !== undefined
+            )
+              capture.logger.warn('task review agent recording failed', {
+                taskId: access.write.taskId,
+                errorName:
+                  error.cause instanceof Error
+                    ? error.cause.name
+                    : typeof error.cause,
+              });
+            return c.json({
+              ok: false,
+              code: error.code,
+              message: error.response.error,
+            });
+          }
+          capture.logger.warn('task review agent recording failed', {
+            taskId: access.write.taskId,
+            errorName: error instanceof Error ? error.name : typeof error,
+          });
+          return c.json({
+            ok: false,
+            code: 'recording-unavailable',
+            message: 'The Browser recording is unavailable.',
+          });
         }
       }
       case 'snapshot':

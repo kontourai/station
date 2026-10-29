@@ -1,0 +1,490 @@
+import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { open, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { performance } from 'node:perf_hooks';
+import {
+  parseWalkthrough,
+  WALKTHROUGH_LIMITS,
+  WALKTHROUGH_SCHEMA,
+  type WalkthroughFrame,
+} from '@kontourai/station-contracts/walkthrough';
+import {
+  BROWSER_RECORD_MAX_DURATION_MS,
+  BROWSER_RECORD_MAX_ENCODED_BYTES,
+} from '../../tools/station-browser-policy.js';
+import type { BrowserAgentAuthority } from '../browser/browser-agent-authority.js';
+import type { BrowserSessionRecord } from '../browser/browser-session-registry.js';
+import type { FeaturePreviewSelector } from '../feature-previews/feature-preview-registry.js';
+import type { LiveSurfaceRegistry } from '../live-surface/registry.js';
+import type { MediaToolsResolver } from '../media-tools/media-tools-resolver.js';
+import type { TaskReviewAccess } from '../orchestration/project-task-room-runtime.js';
+import { TaskWalkthroughStore } from '../walkthroughs/task-walkthrough-store.js';
+import {
+  TaskBrowserCapture,
+  TaskBrowserCaptureError,
+  type TaskCaptureBrowserRegistry,
+} from './task-browser-capture.js';
+import { verifyTaskReviewEvidence } from './task-review-evidence.js';
+
+const MAX_RAW_FRAME_BYTES = 64 * 1024 * 1024;
+const MAX_FRAMES = 300;
+const ENCODE_TIMEOUT_MS = 60_000;
+
+export class TaskBrowserRecordingError extends Error {
+  readonly response: { code: string; error: string };
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'TaskBrowserRecordingError';
+    this.response = { code, error: message };
+  }
+}
+
+function encode(
+  ffmpeg: string,
+  concat: string,
+  durationMs: number,
+  maxBytes: number,
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      ffmpeg,
+      [
+        '-nostdin',
+        '-v',
+        'error',
+        '-f',
+        'concat',
+        '-safe',
+        '1',
+        '-i',
+        concat,
+        '-t',
+        (durationMs / 1000).toFixed(3),
+        '-an',
+        '-vf',
+        'scale=trunc(iw/2)*2:trunc(ih/2)*2',
+        '-c:v',
+        'libvpx',
+        '-deadline',
+        'realtime',
+        '-cpu-used',
+        '8',
+        '-threads',
+        '1',
+        '-pix_fmt',
+        'yuv420p',
+        '-f',
+        'webm',
+        'pipe:1',
+      ],
+      { windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'ignore'] },
+    );
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let settled = false;
+    let abortError: Error | undefined;
+    let closeTimer: ReturnType<typeof setTimeout> | undefined;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      clearTimeout(closeTimer);
+      if (error) reject(error);
+      else resolve(Buffer.concat(chunks));
+    };
+    const abort = (error: Error) => {
+      if (settled || abortError) return;
+      abortError = error;
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        // The process may already have exited; its close event still settles it.
+      }
+      child.stdout.destroy();
+      // Give the child time to release its input files before staging cleanup.
+      closeTimer = setTimeout(() => finish(error), 5_000);
+    };
+    const timer = setTimeout(
+      () =>
+        abort(
+          new TaskBrowserRecordingError(
+            'recording-unavailable',
+            'Recording encoder timed out.',
+          ),
+        ),
+      ENCODE_TIMEOUT_MS,
+    );
+    child.stdout.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        abort(
+          new TaskBrowserRecordingError(
+            'recording-too-large',
+            'Encoded recording exceeds the byte limit.',
+          ),
+        );
+        return;
+      }
+      chunks.push(chunk);
+    });
+    child.stdout.on('error', () => {});
+    child.on('error', () =>
+      finish(
+        abortError ??
+          new TaskBrowserRecordingError(
+            'recording-unavailable',
+            'Recording encoder could not start.',
+          ),
+      ),
+    );
+    child.on('close', (code) => {
+      if (abortError) return finish(abortError);
+      if (code !== 0 || size === 0)
+        finish(
+          new TaskBrowserRecordingError(
+            'recording-unavailable',
+            'Recording encoder failed.',
+          ),
+        );
+      else finish();
+    });
+  });
+}
+
+/** Records through the shared Browser hub, leaving other viewers attached. */
+export class TaskBrowserRecording {
+  private active = 0;
+  constructor(
+    private readonly deps: {
+      captures: TaskBrowserCapture;
+      registry: TaskCaptureBrowserRegistry;
+      surfaces: Pick<LiveSurfaceRegistry, 'get'>;
+      surfaceIdFor(browserSessionId: string): string | undefined;
+      resolver: MediaToolsResolver;
+      preview: FeaturePreviewSelector;
+      store: TaskWalkthroughStore;
+    },
+  ) {}
+
+  private enabled() {
+    return this.deps.preview.select({
+      enabled: () => true,
+      disabled: () => false,
+    });
+  }
+
+  async record(
+    access: TaskReviewAccess,
+    authority: BrowserAgentAuthority,
+    input: {
+      browserSessionId?: string;
+      durationMs: number;
+      maxBytes?: number;
+      label?: string;
+      authorize(): Promise<boolean>;
+    },
+  ) {
+    if (
+      !Number.isSafeInteger(input.durationMs) ||
+      input.durationMs < 1 ||
+      input.durationMs > BROWSER_RECORD_MAX_DURATION_MS ||
+      (input.maxBytes !== undefined &&
+        (!Number.isSafeInteger(input.maxBytes) ||
+          input.maxBytes < 1 ||
+          input.maxBytes > BROWSER_RECORD_MAX_ENCODED_BYTES))
+    )
+      throw new TaskBrowserRecordingError(
+        'invalid-request',
+        'Recording duration or byte limit is out of bounds.',
+      );
+    if (!this.enabled())
+      throw new TaskBrowserRecordingError(
+        'feature_preview_disabled',
+        'Enable Walkthroughs in feature previews.',
+      );
+    if (this.active >= 2)
+      throw new TaskBrowserRecordingError(
+        'recording-unavailable',
+        'Recording capacity is exhausted.',
+      );
+    this.active++;
+    try {
+      const allowed = (session: BrowserSessionRecord) =>
+        session.principalKey === authority.profileKey;
+      const session = this.deps.captures.selectSession(
+        access,
+        input.browserSessionId,
+        this.deps.registry,
+        allowed,
+      );
+      const before = await this.deps.captures.pin(access);
+      const resolution = await this.deps.resolver.resolveFfmpeg();
+      if (resolution.status !== 'ready')
+        throw new TaskBrowserRecordingError(
+          'media-tools-unavailable',
+          'FFmpeg is unavailable; set up media tools first.',
+        );
+      const surfaceId = this.deps.surfaceIdFor(session.browserSessionId);
+      const entry = surfaceId ? this.deps.surfaces.get(surfaceId) : undefined;
+      if (
+        !entry ||
+        !(await entry.authorize(authority.principalId, 'view', {
+          agentGrant: authority.grant,
+        }))
+      )
+        throw new TaskBrowserRecordingError(
+          'recording-unavailable',
+          'Browser surface is unavailable.',
+        );
+      const stage = await this.deps.store.stage(access, before.workspace);
+      try {
+        const viewer = entry.hub.attach({
+          maxFps: 10,
+          quality: 70,
+          maxWidth: 1280,
+          maxHeight: 1280,
+        });
+        const abort = new AbortController();
+        const started = performance.now();
+        const timer = setTimeout(() => abort.abort(), input.durationMs);
+        const frames: {
+          file: string;
+          tMs: number;
+          width: number;
+          height: number;
+          bytes: number;
+        }[] = [];
+        let rawBytes = 0;
+        try {
+          while (!abort.signal.aborted) {
+            const record = await viewer.next(abort.signal);
+            if (!record) break;
+            if (record.kind !== 'frame') continue;
+            this.deps.captures.current(access);
+            if (record.header.codec !== 'jpeg')
+              throw new TaskBrowserRecordingError(
+                'recording-unavailable',
+                'Browser returned an unsupported frame.',
+              );
+            rawBytes += record.body.byteLength;
+            if (rawBytes > MAX_RAW_FRAME_BYTES || frames.length >= MAX_FRAMES)
+              throw new TaskBrowserRecordingError(
+                'recording-too-large',
+                'Browser frames exceed the recording limit.',
+              );
+            const file = `frame-${String(frames.length).padStart(4, '0')}.jpg`;
+            const tMs =
+              frames.length === 0
+                ? 0
+                : Math.min(
+                    input.durationMs - 1,
+                    Math.max(0, Math.floor(performance.now() - started)),
+                  );
+            await writeFile(join(stage.path, file), record.body, {
+              flag: 'wx',
+              mode: 0o600,
+            });
+            frames.push({
+              file,
+              tMs,
+              width: record.header.width,
+              height: record.header.height,
+              bytes: record.body.byteLength,
+            });
+          }
+          if (!abort.signal.aborted)
+            throw new TaskBrowserRecordingError(
+              'recording-unavailable',
+              'Browser surface closed during recording.',
+            );
+        } finally {
+          clearTimeout(timer);
+          viewer.close();
+        }
+        if (!frames.length)
+          throw new TaskBrowserRecordingError(
+            'recording-unavailable',
+            'Browser produced no frames.',
+          );
+        const lines = ['ffconcat version 1.0'];
+        for (let i = 0; i < frames.length; i++) {
+          const frame = frames[i]!;
+          const end = frames[i + 1]?.tMs ?? input.durationMs;
+          lines.push(
+            `file '${frame.file}'`,
+            `duration ${(Math.max(1, end - frame.tMs) / 1000).toFixed(3)}`,
+          );
+        }
+        lines.push(`file '${frames.at(-1)!.file}'`);
+        const concat = join(stage.path, 'frames.txt');
+        await writeFile(concat, `${lines.join('\n')}\n`, {
+          flag: 'wx',
+          mode: 0o600,
+        });
+        const bytes = await encode(
+          resolution.paths.ffmpeg,
+          concat,
+          input.durationMs,
+          input.maxBytes ?? BROWSER_RECORD_MAX_ENCODED_BYTES,
+        );
+        await rm(concat);
+        const video = await open(
+          join(stage.path, 'recording.webm'),
+          'wx',
+          0o600,
+        );
+        try {
+          await video.writeFile(bytes);
+          await video.sync();
+        } finally {
+          await video.close();
+        }
+        const retained: WalkthroughFrame[] = [];
+        const retainedCount = Math.min(frames.length, 10);
+        const retainedIndexes = new Set(
+          Array.from({ length: retainedCount }, (_, i) =>
+            retainedCount === 1
+              ? 0
+              : Math.round((i * (frames.length - 1)) / (retainedCount - 1)),
+          ),
+        );
+        for (const [index, frame] of frames.entries()) {
+          const keep = retainedIndexes.has(index);
+          if (keep && frame.bytes <= WALKTHROUGH_LIMITS.frameBytes) {
+            const handle = await open(join(stage.path, frame.file), 'r+');
+            try {
+              await handle.sync();
+            } finally {
+              await handle.close();
+            }
+            retained.push({
+              kind: 'frame',
+              tMs: frame.tMs,
+              frameId: `frame-${retained.length}`,
+              file: frame.file,
+              width: frame.width,
+              height: frame.height,
+              reasons: ['interval'],
+            });
+          } else await rm(join(stage.path, frame.file));
+        }
+        const after = await this.deps.captures.pin(access);
+        const current = this.deps.captures.selectSession(
+          access,
+          session.browserSessionId,
+          this.deps.registry,
+          allowed,
+        );
+        if (
+          before.workspace !== after.workspace ||
+          before.pin.commit !== after.pin.commit ||
+          before.pin.statusDigest !== after.pin.statusDigest ||
+          current.generation !== session.generation ||
+          this.deps.surfaceIdFor(session.browserSessionId) !== surfaceId ||
+          this.deps.surfaces.get(surfaceId!) !== entry
+        )
+          throw new TaskBrowserCaptureError(
+            'workspace-changed',
+            'The workspace or browser session changed during recording.',
+          );
+        const authorized = await input.authorize();
+        if (
+          !authorized ||
+          !this.enabled() ||
+          !(await entry.authorize(authority.principalId, 'view', {
+            agentGrant: authority.grant,
+          }))
+        )
+          throw new TaskBrowserRecordingError(
+            'recording-unavailable',
+            'Recording authority changed.',
+          );
+        const evidence = await verifyTaskReviewEvidence({
+          workspace: after.workspace,
+          evidence: { commit: before.pin.commit },
+          authorize: () => access.write.beforeCommit() && this.enabled(),
+          taskGateReferences: [],
+          readGate: async () => undefined,
+        });
+        if (!evidence.commitVerified)
+          throw new TaskBrowserRecordingError(
+            'recording-unavailable',
+            'The workspace commit could not be verified.',
+          );
+        const manifest = parseWalkthrough({
+          schema: WALKTHROUGH_SCHEMA,
+          id: stage.id,
+          createdAt: new Date().toISOString(),
+          ...(input.label ? { title: input.label } : {}),
+          source: {
+            adapter: 'browser-screencast',
+            adapterVersion: '1',
+            durationMs: input.durationMs,
+            commit: before.pin.commit,
+            recording: {
+              file: 'recording.webm',
+              mediaType: 'video/webm',
+              byteLength: bytes.length,
+              digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}`,
+            },
+          },
+          capture: {
+            platform: 'web',
+            width: frames[0]!.width,
+            height: frames[0]!.height,
+          },
+          coverage: {
+            transcript: 'absent',
+            frames: retained.length ? 'present' : 'absent',
+            marks: 'absent',
+            elements: 'absent',
+            route: 'absent',
+            console: 'absent',
+            network: 'absent',
+          },
+          frameSelection: { candidates: frames.length, kept: retained.length },
+          events: retained,
+        });
+        await this.deps.store.publish(access, stage, manifest, async () => {
+          if (
+            !this.enabled() ||
+            !(await input.authorize()) ||
+            !(await entry.authorize(authority.principalId, 'view', {
+              agentGrant: authority.grant,
+            }))
+          )
+            return false;
+          const final = await this.deps.captures.pin(access);
+          const live = this.deps.captures.selectSession(
+            access,
+            session.browserSessionId,
+            this.deps.registry,
+            allowed,
+          );
+          if (
+            final.workspace !== before.workspace ||
+            final.pin.commit !== before.pin.commit ||
+            final.pin.statusDigest !== before.pin.statusDigest ||
+            live.generation !== session.generation ||
+            this.deps.surfaceIdFor(session.browserSessionId) !== surfaceId ||
+            this.deps.surfaces.get(surfaceId!) !== entry
+          )
+            throw new TaskBrowserCaptureError(
+              'workspace-changed',
+              'The workspace or browser session changed during recording.',
+            );
+          return this.enabled() && access.write.beforeCommit();
+        });
+        return manifest;
+      } finally {
+        await this.deps.store.discard(stage);
+      }
+    } finally {
+      this.active--;
+    }
+  }
+}

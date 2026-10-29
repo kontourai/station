@@ -56,7 +56,7 @@ export class TaskBrowserCapture {
     },
   ) {}
 
-  private current(access: TaskReviewAccess) {
+  current(access: TaskReviewAccess) {
     if (!access.write.beforeCommit())
       throw new TaskBrowserCaptureError('not-found', 'Task not found.');
   }
@@ -95,6 +95,46 @@ export class TaskBrowserCapture {
     return pin;
   }
 
+  async pin(access: TaskReviewAccess) {
+    try {
+      this.current(access);
+      const workspace = await this.workspace(access);
+      const pin = await this.cleanPin(workspace);
+      this.current(access);
+      return { workspace, pin };
+    } catch (error) {
+      throw this.failure(error);
+    }
+  }
+
+  selectSession(
+    access: TaskReviewAccess,
+    sourceSessionId: string | undefined,
+    registry: TaskCaptureBrowserRegistry,
+    allows: (session: BrowserSessionRecord) => boolean,
+  ) {
+    this.current(access);
+    const eligible = (session: BrowserSessionRecord) =>
+      session.projectId ===
+        this.deps.localProjectIdFor(access.write.projectId) &&
+      session.state === 'live' &&
+      allows(session);
+    const choices =
+      sourceSessionId === undefined ? registry.listSessions(eligible) : [];
+    const session =
+      sourceSessionId === undefined
+        ? choices.length === 1
+          ? registry.getSession(choices[0]!.browserSessionId)
+          : undefined
+        : registry.getSession(sourceSessionId);
+    if (!session || !eligible(session))
+      throw new TaskBrowserCaptureError(
+        'not-found',
+        'Select a live browser session in this Task’s Project.',
+      );
+    return session;
+  }
+
   async capture(
     access: TaskReviewAccess,
     input: Omit<TaskReviewCreateCaptureRequest, 'sourceSessionId'> & {
@@ -110,21 +150,12 @@ export class TaskBrowserCapture {
           this.deps.localProjectIdFor(access.write.projectId) &&
         session.state === 'live' &&
         allows(session);
-      const choices =
-        input.sourceSessionId === undefined
-          ? registry.listSessions(eligible)
-          : [];
-      const session =
-        input.sourceSessionId === undefined
-          ? choices.length === 1
-            ? registry.getSession(choices[0]!.browserSessionId)
-            : undefined
-          : registry.getSession(input.sourceSessionId);
-      if (!session || !eligible(session))
-        throw new TaskBrowserCaptureError(
-          'not-found',
-          'Select a live browser session in this Task’s Project.',
-        );
+      const session = this.selectSession(
+        access,
+        input.sourceSessionId,
+        registry,
+        allows,
+      );
       const captures = this.deps.store.listCaptures(access.write);
       const prior = captures.find((c) => c.operationId === input.operationId);
       if (prior) {

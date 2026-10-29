@@ -155,6 +155,44 @@ describe('station-control browser tools', () => {
     });
   });
 
+  test('recording forwards only its selector and bounds for a bound caller', async () => {
+    const fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ ok: true, walkthroughId: 'clip' })),
+    );
+    vi.stubGlobal('fetch', fetch);
+    expect(
+      parse(
+        await run(good, 'browser_record_to_task', {
+          browserSessionId: 'bs_x',
+          durationMs: 500,
+          maxBytes: 1024,
+          label: 'Clip',
+        }),
+      ),
+    ).toEqual({ ok: true, walkthroughId: 'clip' });
+    const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(
+      'http://browser-tools.test/api/browser-agent/record-to-task',
+    );
+    expect(JSON.parse(String(init.body))).toEqual({
+      browserSessionId: 'bs_x',
+      durationMs: 500,
+      maxBytes: 1024,
+      label: 'Clip',
+    });
+    expect(
+      parse(
+        await run(
+          { ...good, assurance: 'bearer-exposed' },
+          'browser_record_to_task',
+          { durationMs: 500 },
+        ),
+      ),
+    ).toMatchObject({ ok: false, code: 'caller-not-bound' });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   test.each(['browser_snapshot', 'browser_capture_to_task'])(
     '%s returns the screenshot as image content',
     async (tool) => {
