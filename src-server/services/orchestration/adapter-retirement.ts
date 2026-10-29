@@ -222,6 +222,19 @@ export class AdapterRetirement {
           );
         }),
       ]);
+    } catch (error) {
+      this.deps.logger.warn('Provider cleanup failed', {
+        cleanup: label,
+        error: errorMessage(error).slice(0, 2_000),
+        ...(error instanceof AggregateError
+          ? {
+              causes: error.errors
+                .slice(0, 5)
+                .map((cause) => errorMessage(cause).slice(0, 2_000)),
+            }
+          : {}),
+      });
+      throw error;
     } finally {
       if (timer) clearTimeout(timer);
       // Belt-and-braces, and UNOBSERVABLE as written: `Promise.race` above
