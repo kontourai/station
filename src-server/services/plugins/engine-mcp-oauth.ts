@@ -5,6 +5,7 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import { MCP_SIGN_IN_REQUIRED_CODE } from '@kontourai/station-contracts/provider-failure';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
+import { remoteTransportFetch } from '@kontourai/station-shared/mcp';
 import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
 import { sameMCPConnectionDefinition } from '../../runtime/mcp/mcp-definition-currentness.js';
 import {
@@ -12,6 +13,7 @@ import {
   mintStationControlMcpToken,
   verifyStationControlMcpToken,
 } from '../../runtime/mcp/station-control-mcp-token.js';
+import { isCatalogSuppliedIntegration } from './integration-origin.js';
 import {
   ConnectAccountRequiredError,
   StationOwnedToolServerError,
@@ -55,6 +57,8 @@ type ProxyBinding = {
   accessToken: (rejected?: string) => Promise<string>;
   needsSignIn: (rejectedToken?: string) => Promise<void>;
   messageEndpoint?: string;
+  /** #3483: address-pinned for a catalog-supplied server; else the platform fetch. */
+  fetch?: typeof globalThis.fetch;
 };
 const bindings = new Map<string, ProxyBinding>();
 const bindingKey = (session: string, server: string) =>
@@ -154,6 +158,13 @@ export function createEngineMcpOAuthResolver(options: {
         }
         if (!selected) {
           if (knownOAuth) throw new EngineMcpNeedsSignInError(server.id);
+          // #3483: without the proxy the engine would connect to a
+          // catalog-supplied server itself, where Station cannot check the
+          // addresses it reaches. Refused rather than handed over.
+          if (isCatalogSuppliedIntegration(options.homeDir(), def.id))
+            throw new StationOwnedToolServerError(
+              `Integration '${server.id}' came from a catalog and can only connect through Station. Sign in to its account under Connections → Tools.`,
+            );
           continue;
         }
         const provider = selected;
@@ -166,6 +177,7 @@ export function createEngineMcpOAuthResolver(options: {
           binding: {
             endpoint: resource,
             transport: server.transport,
+            fetch: remoteTransportFetch(def),
             current: async () => {
               await current();
               const tokens = await provider.tokens();

@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { principalIdMatchesKind } from '@kontourai/station-contracts/principal';
 import type { CredentialOwner } from '@kontourai/station-contracts/secret-binding';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
+import { remoteTransportFetch } from '@kontourai/station-shared/mcp';
 import type {
   AuthProvider,
   OAuthClientInformationContext,
@@ -12,7 +13,6 @@ import type {
   StoredOAuthClientInformation,
   StoredOAuthTokens,
 } from '@modelcontextprotocol/client';
-
 import { refreshAuthorization } from '@modelcontextprotocol/client';
 
 import {
@@ -727,8 +727,16 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
           refreshToken: expected.refresh_token,
           resource:
             discovery.resourceMetadata?.resource ?? this.resourceIdentity,
+          // #3483: a catalog-supplied server refreshes through the same
+          // address checks as its transport.
           fetchFn: (url, init) =>
-            fetch(url, { ...init, signal: AbortSignal.timeout(15_000) }),
+            (
+              remoteTransportFetch({
+                id: this.serverId,
+                transport: 'streamable-http',
+                endpoint: this.resourceIdentity,
+              }) ?? fetch
+            )(url, { ...init, signal: AbortSignal.timeout(15_000) }),
         },
       );
       const saved = await this.saveTokensIfCurrent(

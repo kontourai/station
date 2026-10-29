@@ -66,6 +66,7 @@
     "./return-focus": "./src/return-focus.ts",
     "./temp-dir": "./src/temp-dir.ts",
     "./integration-trust-overlay": "./src/integration-trust-overlay.ts",
+    "./remote-address-guard": "./src/remote-address-guard.ts",
     "./station-curation": "./src/station-curation.ts",
     "./fs-windows-compat": "./src/fs-windows-compat.ts",
     "./windows-path-trust": "./src/windows-path-trust.ts",

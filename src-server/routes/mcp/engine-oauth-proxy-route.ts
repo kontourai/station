@@ -183,7 +183,7 @@ export function createEngineOAuthProxyRoutes(): Hono {
       const send = async () => {
         token = await isCurrent();
         headers.set('authorization', `Bearer ${token}`);
-        return fetch(target, {
+        return (binding.fetch ?? fetch)(target, {
           method: c.req.method,
           headers,
           body,

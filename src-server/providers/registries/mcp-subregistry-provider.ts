@@ -10,7 +10,6 @@
  * entries are always unqualified.
  */
 
-import { BlockList, isIP } from 'node:net';
 import { join } from 'node:path';
 import type {
   InstallResult,
@@ -20,7 +19,9 @@ import type {
   RegistryMcpSourceStatus,
 } from '@kontourai/station-contracts/catalog';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
+import { isPrivateNetworkHost } from '@kontourai/station-shared/remote-address-guard';
 import { stationCuratedCatalog as curatedSubregistry } from '@kontourai/station-shared/station-curation';
+import { allowPrivateCatalogAddresses } from '../../services/plugins/remote-mcp-address-policy.js';
 import { hasToolServerOAuthCapability } from '../../services/plugins/tool-server-oauth-capabilities.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 import type { IIntegrationRegistryProvider } from '../provider-interfaces.js';
@@ -51,75 +52,6 @@ export const UNAVAILABLE = {
   privateAddress:
     'The endpoint is a local or private network address, which catalogs cannot add by default.',
 } as const;
-
-/**
- * Loopback, private, link-local, shared, reserved and multicast ranges. A
- * catalog names an endpoint Station will connect to on the person's behalf,
- * so a catalog cannot point it at this host or its network unless the
- * operator opts in. A public name that resolves to such an address is not
- * caught here.
- */
-const PRIVATE_RANGES = (() => {
-  const list = new BlockList();
-  for (const [network, prefix] of [
-    ['0.0.0.0', 8],
-    ['10.0.0.0', 8],
-    ['100.64.0.0', 10],
-    ['127.0.0.0', 8],
-    ['169.254.0.0', 16],
-    ['172.16.0.0', 12],
-    ['192.0.0.0', 24],
-    ['192.168.0.0', 16],
-    ['198.18.0.0', 15],
-    ['224.0.0.0', 4],
-    ['240.0.0.0', 4],
-  ] as const)
-    list.addSubnet(network, prefix, 'ipv4');
-  for (const [network, prefix] of [
-    ['::', 128],
-    ['::1', 128],
-    ['fc00::', 7],
-    ['fe80::', 10],
-    ['ff00::', 8],
-  ] as const)
-    list.addSubnet(network, prefix, 'ipv6');
-  return list;
-})();
-
-/** Whether a URL's host is a local or private network address. */
-function isPrivateNetworkHost(url: string): boolean {
-  // `localhost.` and `printer.local.` name the same hosts as without the
-  // root dot, so repeated and terminal dots are dropped before any rule.
-  const host = new URL(url).hostname
-    .toLowerCase()
-    .replace(/^\[|\]$/g, '')
-    .replace(/\.{2,}/g, '.')
-    .replace(/\.$/, '');
-  if (
-    host === 'localhost' ||
-    host.endsWith('.localhost') ||
-    host.endsWith('.local')
-  )
-    return true;
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(host)?.[1];
-  if (mapped) return PRIVATE_RANGES.check(mapped, 'ipv4');
-  const family = isIP(host);
-  if (family === 4) return PRIVATE_RANGES.check(host, 'ipv4');
-  if (family === 6) {
-    // `::ffff:7f00:1` is the hex spelling of an IPv4-mapped address.
-    const hex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
-    if (hex) {
-      const high = Number.parseInt(hex[1], 16);
-      const low = Number.parseInt(hex[2], 16);
-      return PRIVATE_RANGES.check(
-        `${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`,
-        'ipv4',
-      );
-    }
-    return PRIVATE_RANGES.check(host, 'ipv6');
-  }
-  return false;
-}
 
 /** Host-side facts a listing depends on, read at listing time. */
 export interface McpListingPolicy {
@@ -359,10 +291,7 @@ export function mcpSubregistryIntegrationProviders(
   env: NodeJS.ProcessEnv = process.env,
   hasPreRegisteredClients: () => boolean = hostHasPreRegisteredClients,
 ): McpSubregistryIntegrationProvider[] {
-  const allowPrivateAddresses = ['on', '1', 'true', 'yes'].includes(
-    env.STATION_MCP_SUBREGISTRY_ALLOW_PRIVATE_ADDRESSES?.trim().toLowerCase() ??
-      '',
-  );
+  const allowPrivateAddresses = allowPrivateCatalogAddresses(env);
   // Read per listing, so a capability registered after startup applies.
   const policy = () => ({
     preRegisteredClients: hasPreRegisteredClients(),

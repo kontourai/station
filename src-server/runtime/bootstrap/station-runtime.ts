@@ -48,6 +48,7 @@ import {
   createLocalRegistryTrustPolicyAuthority,
   type RegistryTrustPolicyAuthority,
 } from '../../services/plugins/registry-trust-policy.js';
+import { installCatalogServerAddressPolicy } from '../../services/plugins/remote-mcp-address-policy.js';
 import { ToolLibraryService } from '../../services/plugins/tool-library-service.js';
 import { deriveWorkspaceHomeRoleStatus } from '../../services/plugins/workspace-home-role-service.js';
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
@@ -1159,6 +1160,8 @@ export class StationRuntime {
   /** #485: durable receiver request-claim owner for opt-in attempts. */
   private delegationAttemptClaims!: FileDelegationAttemptClaimStore;
 
+  private uninstallCatalogAddressPolicy?: () => void;
+
   private readonly engineMcpOAuth = createEngineMcpOAuthResolver({
     homeDir: () => this.configLoader.getProjectHomeDir(),
     port: () => this.port,
@@ -1350,6 +1353,11 @@ export class StationRuntime {
         report: (report) =>
           this.logger?.warn('Agent Plugin component was not loaded', report),
       });
+      // #3483: Station connects to catalog-supplied servers only at
+      // addresses it checked.
+      this.uninstallCatalogAddressPolicy = installCatalogServerAddressPolicy(
+        () => projectHomeDir,
+      );
       this.configLoader = openedConfigLoader = new ConfigLoader({
         projectHomeDir,
         watchFiles: true,
@@ -5236,6 +5244,8 @@ export class StationRuntime {
    * Shutdown the runtime
    */
   async shutdown(): Promise<void> {
+    this.uninstallCatalogAddressPolicy?.();
+    this.uninstallCatalogAddressPolicy = undefined;
     // Begin broker retirement without delaying ordinary teardown on its I/O.
     // The aggregate cleanup joins it before this home can be released.
     void this.retireSelfHostedBroker();

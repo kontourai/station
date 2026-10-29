@@ -1538,7 +1538,9 @@ Its entries are unqualified. When it cannot be reached, its last saved copy
 is shown as offline and cannot be added from until it is refreshed. A
 catalog entry pointing at this host or a private network (for example
 loopback, a private range or `localhost`) cannot be added unless the operator
-sets `STATION_MCP_SUBREGISTRY_ALLOW_PRIVATE_ADDRESSES=1`.
+sets `STATION_MCP_SUBREGISTRY_ALLOW_PRIVATE_ADDRESSES=1`. The same check runs
+on every address the server's name resolves to when Station connects, so a
+name that later points at a private address is refused.
 
 ### Tools after untrusted content
 

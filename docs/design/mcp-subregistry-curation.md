@@ -116,9 +116,24 @@ A catalog cannot add an endpoint on this host or its network: loopback,
 private, link-local, shared, reserved and multicast addresses (IPv4, IPv6,
 IPv4-mapped IPv6, and `localhost`, `*.localhost`, `*.local` names, with
 repeated or terminal root dots removed first) are listed with that reason. An operator can allow them with
-`STATION_MCP_SUBREGISTRY_ALLOW_PRIVATE_ADDRESSES=1`. A public name that
-resolves to a private address is not caught at listing time. Tool servers
+`STATION_MCP_SUBREGISTRY_ALLOW_PRIVATE_ADDRESSES=1`. Tool servers
 added by hand under **Connections → Tools** are unaffected.
+
+A public name can still resolve to a private address later, so the same
+rules apply when Station connects
+([remote-address-guard.ts](../../packages/shared/src/remote-address-guard.ts),
+[remote-mcp-address-policy.ts](../../src-server/services/plugins/remote-mcp-address-policy.ts)).
+For a server a catalog added (its recorded origin is a registry, or the
+origin record cannot be read), each connection resolves each hostname once,
+refuses the name if any address it gets is private, and connects only to the
+addresses it checked. The URL, TLS server name and `Host` header keep the
+hostname, and redirects are not followed. This covers Station's own MCP
+client (including OAuth discovery and sign-in through the transport), the
+OAuth proxy external engines use, and Station's token refresh. Station never
+hands such a server to Claude Code or Codex to connect to directly: without
+the proxy the session is refused, because Station could not check the
+addresses the engine reaches. ACP sessions receive no remote servers. The
+operator opt-in above also allows private addresses here.
 
 An operator can add one network subregistry with `STATION_MCP_SUBREGISTRY_URL`
 (https only). Its entries are unqualified. Pointed at the official registry's

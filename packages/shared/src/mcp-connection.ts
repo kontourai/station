@@ -716,6 +716,10 @@ function originBoundLiteralHeaderFetch(
   };
 }
 
+function withFetch(fetch: typeof globalThis.fetch | undefined) {
+  return fetch ? { fetch } : {};
+}
+
 function createStdioTransport(
   parameters: ConstructorParameters<typeof StdioClientTransport>[0],
 ): StdioClientTransport {
@@ -725,6 +729,34 @@ function createStdioTransport(
     spawnProcess: spawnChildWorkload,
   };
   return new StdioClientTransport(ownedParameters);
+}
+
+/**
+ * #3483: chooses the `fetch` for a remote transport, or `undefined` for the
+ * platform one. The server installs one that pins catalog-supplied servers
+ * to checked addresses (`remote-address-guard.ts`). A throw refuses the
+ * connection.
+ */
+export type RemoteTransportFetchPolicy = (
+  def: Pick<ToolDef, 'id' | 'transport' | 'endpoint'>,
+) => typeof globalThis.fetch | undefined;
+
+let remoteTransportFetchPolicy: RemoteTransportFetchPolicy | undefined;
+
+/** Installs the process-wide remote transport fetch policy; returns the previous one. */
+export function setRemoteTransportFetchPolicy(
+  policy: RemoteTransportFetchPolicy | undefined,
+): RemoteTransportFetchPolicy | undefined {
+  const previous = remoteTransportFetchPolicy;
+  remoteTransportFetchPolicy = policy;
+  return previous;
+}
+
+/** The fetch the installed policy chooses for a remote server, if any. */
+export function remoteTransportFetch(
+  def: Pick<ToolDef, 'id' | 'transport' | 'endpoint'>,
+): typeof globalThis.fetch | undefined {
+  return remoteTransportFetchPolicy?.(def);
 }
 
 export function createMCPTransport(
@@ -747,20 +779,32 @@ export function createMCPTransport(
     case 'sse':
       if (!def.endpoint)
         throw new Error(`Tool '${def.id}': sse transport requires 'endpoint'`);
-      return new SSEClientTransport(new URL(def.endpoint), { authProvider });
+      return new SSEClientTransport(new URL(def.endpoint), {
+        authProvider,
+        ...withFetch(remoteTransportFetch(def)),
+      });
 
     case 'streamable-http':
       if (!def.endpoint)
         throw new Error(
           `Tool '${def.id}': streamable-http transport requires 'endpoint'`,
         );
-      return new StreamableHTTPClientTransport(new URL(def.endpoint), {
-        authProvider,
-        requestInit: { redirect: 'error' },
-        ...(def.headers
-          ? { fetch: originBoundLiteralHeaderFetch(def.endpoint, def.headers) }
-          : {}),
-      });
+      {
+        const guarded = remoteTransportFetch(def);
+        return new StreamableHTTPClientTransport(new URL(def.endpoint), {
+          authProvider,
+          requestInit: { redirect: 'error' },
+          ...(def.headers
+            ? {
+                fetch: originBoundLiteralHeaderFetch(
+                  def.endpoint,
+                  def.headers,
+                  guarded,
+                ),
+              }
+            : withFetch(guarded)),
+        });
+      }
 
     default:
       if (def.command) {
