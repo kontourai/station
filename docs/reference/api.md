@@ -2003,8 +2003,9 @@ there is no author confirmation to review. `GET /api/usage-telemetry/disclosure`
 address. `GET /api/usage-telemetry/disclosure?publisher=kontour` returns the exact
 build destination for its separate, revision-bound acknowledgement.
 Each disclosure response, and the acknowledgement response, also carries
-`capabilities: { acknowledge, recordNotice, lower, raise }` for the calling
-credential, decided by the same gates as those writes; see
+`capabilities: { acknowledge, recordNotice, lower, raise, defaults }` for the
+calling credential, decided by the same gates as those writes (`defaults` is
+the DNT-ignored baseline a tier write is compared against); see
 [Usage telemetry](usage-telemetry.md).
 The two Lite sinks send independently after notice; the default Full receipt
 covers operator only; author Full uses a separate destination-bound receipt. `GET /api/usage-telemetry/outbox[?publisher=operator]`
