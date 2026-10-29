@@ -75,6 +75,73 @@ account identity and unexpired cookies. Another Station identity or a missing
 authority secret for an existing account store is refused. Preserve that whole
 private directory under the Station home backup/recovery procedure.
 
+### Member passkeys (Feature Preview)
+
+Invited people can use passkeys instead of, or as well as, a password
+([#4303](https://github.com/kontourai/station/issues/4303)). This is the
+**Member passkeys** Station-wide Feature Preview, off by default: turn it on in
+Settings → Advanced → Feature previews. With it on:
+
+- **Join.** The invitation page offers **Create account with a passkey**. It
+  needs only a username; the invitation is checked when the passkey request
+  starts and again before the account is created.
+- **Sign in.** **Sign in with a passkey** needs no username.
+- **Manage.** A signed-in member lists, adds and removes their passkeys. Adding
+  one needs a sign-in from the last 15 minutes, so someone holding an old
+  session cannot quietly add a credential. Station refuses to remove a
+  passkey-only account's last passkey.
+- **Recover.** The operator's recovery link offers **Add a passkey instead**
+  next to the password form. The link is the same single-use, 20-minute token,
+  so whichever path completes first uses it. Like a password reset, it ends the
+  account's other sessions. Existing passkeys stay; the member can remove the
+  lost one after signing in.
+
+Every passkey must verify the person (PIN or biometric). Station uses Better
+Auth's maintained passkey plugin for the WebAuthn ceremony and stores public
+keys in the same private account store. The plugin's own routes are not
+exposed; Station decides which account each ceremony may register to, and each
+of the six passkey operations accepts exactly one kind of authority.
+
+Passkeys follow the same account policy as passwords. A disabled account cannot
+sign in with a passkey. Disabling an account, or signing it out everywhere, ends
+sessions that started with a passkey, including the live-session checks Station
+makes before committing a change. It also stops personal access tokens made
+before then (#3586). Removing a passkey stops it from signing in but does not
+sign out existing sessions; use **Revoke sessions** for that.
+
+Member passkeys are not operator passkeys. They live in the account store, while
+[operator passkeys](operator-passkeys.md) live in a separate registry. A member
+passkey only ever creates an ordinary account session, which carries no operator
+authority.
+
+Turning the preview off withdraws the passkey options from the sign-in page and
+refuses every passkey request with `feature_preview_disabled`. Stored passkeys
+and sessions stay; a passkey-only member then needs a recovery link to set a
+password. Native-app sign-in (relay enrollment) still uses username and
+password.
+
+#### The origin decides which passkeys work
+
+WebAuthn binds every passkey to a relying-party ID. Station uses the hostname
+of `STATION_AUTHENTICATION_ORIGIN` as that ID and accepts passkey responses only
+from that exact origin.
+
+- **Use the sign-in address.** Passkeys work only on pages served from
+  `STATION_AUTHENTICATION_ORIGIN`. Another address in `ALLOWED_ORIGINS` can use
+  passwords but is refused with `passkey_origin_unsupported`. Browsers also
+  refuse a bare IP address as a passkey origin; use a DNS name or `localhost`.
+- **A new hostname orphans every member passkey.** Browsers and authenticators
+  will not offer the old passkeys, and Station would refuse them. Before
+  changing the hostname, make sure each passkey-only member can recover: issue
+  recovery links after the change so they can enrol new passkeys, or ask them to
+  set a password first. Account identities do not change, because the issuer
+  does not depend on the URL.
+- **A new scheme or port keeps the same relying-party ID.** Existing passkeys
+  keep working at the new origin.
+- **Stations that share a hostname share a relying-party ID.** A browser may
+  offer one Station's passkeys on another. Station refuses any passkey it did
+  not register, so this is only confusing, not a way in.
+
 Private-file checks enforce ownership and modes on POSIX systems. The Windows
 path checks file/directory shape and symlinks, but does not validate a private
 Windows ACL. The operator must protect that directory and its backups with
@@ -131,7 +198,12 @@ and implement idempotent resource closure.
 - `endpoints` lists exact relative paths, GET/POST methods and their login,
   callback, registration, contact-verification, recovery, refresh or revocation
   purpose. An explicit POST logout operation is required. The core `/session`,
-  `/invitation-preview`, and `/accept-invitation` paths are reserved.
+  `/invitation-preview`, and `/accept-invitation` paths are reserved. The
+  optional `passkey-sign-in`, `passkey-register`, `passkey-add`,
+  `passkey-recover`, `passkey-list` and `passkey-remove` operations declare
+  passkey endpoints. Each ceremony is one POST endpoint called twice: with
+  `{ "step": "options" }` and then with `{ "step": "verify", "response": … }`.
+  Browsers show passkey choices only for declared operations.
 - Optional `login` selects the standard browser entry: `email-password` or
   `username-password` names
   declared POST `signInPath` and optional `signUpPath` operations; `redirect`
@@ -438,7 +510,10 @@ so a provider redirect can return to it. The server's invitation expiry and
 single-use checks remain authoritative. Password-reset proof stays only in the
 open page's memory. An invalid new invitation cannot select a prior invitation
 saved in the tab. `/account/reset#token=<proof>` uses the provider's declared
-recovery operation and returns to sign-in after success.
+recovery operation and returns to sign-in after success. When the provider
+declares passkey operations and the browser supports WebAuthn, the same page
+offers passkey registration, sign-in, recovery and management. A passkey
+registration or recovery signs the person in directly.
 
 A new invitation fragment received in an already open tab replaces the current
 entry and clears its form state. An earlier acceptance finishing afterward clears

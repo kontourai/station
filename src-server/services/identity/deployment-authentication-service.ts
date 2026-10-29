@@ -7,6 +7,7 @@ import {
 } from '@kontourai/station-contracts/application-session';
 import {
   type DeploymentAuthenticationDescriptor,
+  type DeploymentAuthenticationEndpoint,
   type DeploymentAuthenticationProvider,
   type DeploymentAuthenticationResult,
   type PendingEnrollmentSessionResult,
@@ -85,12 +86,29 @@ export class DeploymentAuthenticationService {
   constructor(
     private readonly provider: DeploymentAuthenticationProvider,
     private readonly now: () => number = Date.now,
+    private readonly options: {
+      /**
+       * Whether a declared endpoint is currently offered to browsers, read on
+       * each describe(). An unoffered endpoint stays declared, so its owner
+       * can still answer a direct request with a typed refusal.
+       */
+      offers?: (endpoint: DeploymentAuthenticationEndpoint) => boolean;
+    } = {},
   ) {
     this.description = readDeploymentAuthenticationDescriptor(provider);
   }
 
   describe(): DeploymentAuthenticationDescriptor {
-    return structuredClone(this.description);
+    const description = structuredClone(this.description);
+    const offers = this.options.offers;
+    return offers
+      ? {
+          ...description,
+          endpoints: description.endpoints.filter((endpoint) =>
+            offers(endpoint),
+          ),
+        }
+      : description;
   }
 
   hasCredential(request: Request): boolean {

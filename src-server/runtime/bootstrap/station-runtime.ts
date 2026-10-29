@@ -1114,6 +1114,7 @@ export class StationRuntime {
   /** Bound during composition, then selected at the fleet-routing branch. */
   private fleetConsumerProbesPreview!: FeaturePreviewSelector;
   private chatHostImagesPreview!: FeaturePreviewSelector;
+  private memberPasskeysPreview!: FeaturePreviewSelector;
   private sshEnvironmentService: SshEnvironmentService;
   private timers: NodeJS.Timeout[] = [];
   private analyticsMaintenance?: (
@@ -1446,6 +1447,7 @@ export class StationRuntime {
       );
       this.bindFleetConsumerProbesPreview();
       this.bindChatHostImagesPreview();
+      this.bindMemberPasskeysPreview();
       // Journal consumers wire after the quarantine notice: the runtime must
       // report a recorded corruption before anything asks the store for more
       // than its publisher.
@@ -3748,6 +3750,7 @@ export class StationRuntime {
           homeDirectory: this.configLoader.getProjectHomeDir(),
         },
         this.projectMembership.service,
+        { memberPasskeys: this.memberPasskeysPreview },
       );
       this.deploymentAuthentication = this.localAccounts;
       // #3586: account-tied personal access tokens are checked against
@@ -5132,6 +5135,21 @@ export class StationRuntime {
     installSessionTmpDirPolicy(() =>
       preview.select({ enabled: () => true, disabled: () => false }),
     );
+  }
+
+  /**
+   * #4303: member passkeys for local accounts. One selector, read by the
+   * local-account provider on every passkey request and by its descriptor on
+   * every sign-in page load. Bound whether or not local accounts are on, so
+   * the operator can discover it before enabling either.
+   */
+  private bindMemberPasskeysPreview(): void {
+    this.memberPasskeysPreview = this.featurePreviews.bind({
+      id: 'member-passkeys',
+      label: 'Member passkeys',
+      description:
+        'Let invited people using Station accounts create an account, sign in and recover with a passkey. Passkeys work only at the address in STATION_AUTHENTICATION_ORIGIN.',
+    });
   }
 
   private replaceTemplateVariables(text: string, _agentName?: string): string {

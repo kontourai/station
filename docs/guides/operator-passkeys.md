@@ -9,6 +9,11 @@ requires a fresh passkey confirmation on the separate consent origin for that ex
 step-up window. The host and separately granted device-administration channels
 remain independent.
 
+Operator passkeys are separate from the passkeys invited members can use with
+Station accounts ([member passkeys](deployment-authentication.md#member-passkeys-feature-preview)).
+The two use different stores, and a member passkey never grants operator
+authority.
+
 ## Before you start
 
 - Station must be reachable at an **HTTPS name**, not an IP address. WebAuthn
