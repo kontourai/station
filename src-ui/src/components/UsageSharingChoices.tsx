@@ -1,4 +1,7 @@
-import type { TelemetryTier } from '@kontourai/station-contracts/product-telemetry';
+import type {
+  TelemetryChoiceCapabilities,
+  TelemetryTier,
+} from '@kontourai/station-contracts/product-telemetry';
 import { type Ref, useId } from 'react';
 import { PageCallout } from './PageCallout';
 import './UsageTelemetryDisclosure.css';
@@ -9,7 +12,50 @@ export const SHARING_LABELS: Record<TelemetryTier, string> = {
   full: 'Detailed usage to help improve Station',
 };
 
+const TIER_RANK = { off: 0, lite: 1, full: 2 } as const;
+
+/**
+ * Whether this caller may choose `tier` for publishers whose saved choices are
+ * `saved`, per the capabilities the server reported. It mirrors the server's
+ * own refusals: no telemetry write at all without `lower`; a raise for any
+ * publisher without `raise`; Detailed outside DNT without `acknowledge`,
+ * because saving it posts the acknowledgement first. Absent capabilities (an
+ * older host) allow every tier, as before.
+ */
+export function canChooseTelemetryTier(
+  capabilities: TelemetryChoiceCapabilities | undefined,
+  tier: TelemetryTier,
+  saved: readonly TelemetryTier[],
+  dnt: boolean,
+): boolean {
+  if (!capabilities) return true;
+  if (!capabilities.lower) return false;
+  if (tier === 'full' && !dnt && !capabilities.acknowledge) return false;
+  return (
+    capabilities.raise ||
+    saved.every((choice) => TIER_RANK[tier] <= TIER_RANK[choice])
+  );
+}
+
+/** One line saying why some choices are unavailable, or nothing. */
+export function TelemetryChoiceLimit({
+  capabilities,
+}: {
+  capabilities: TelemetryChoiceCapabilities | undefined;
+}) {
+  if (!capabilities || (capabilities.raise && capabilities.acknowledge))
+    return null;
+  return (
+    <p data-testid="usage-sharing-limit">
+      {capabilities.lower
+        ? 'This device can keep or reduce sharing. More sharing is chosen on the host computer.'
+        : 'Usage sharing is chosen on the host computer.'}
+    </p>
+  );
+}
+
 export type SharingDisclosure = {
+  capabilities?: TelemetryChoiceCapabilities;
   additionalHost?: string;
   authorDisclosure?: SharingDisclosure & {
     destination: string;
@@ -175,7 +221,10 @@ export function UsageSharingChoices({
   onDetailedIntent,
   firstRun = false,
   initialChoiceRef,
+  selectable,
 }: {
+  /** Tiers this caller may choose; see `canChooseTelemetryTier`. */
+  selectable?: (tier: TelemetryTier) => boolean;
   initialChoiceRef?: Ref<HTMLInputElement>;
   value: TelemetryTier | undefined;
   onChange: (tier: TelemetryTier) => void;
@@ -221,7 +270,10 @@ export function UsageSharingChoices({
               aria-label={SHARING_LABELS[tier]}
               aria-describedby={`${name}-${tier}-description`}
               checked={value === tier}
-              disabled={tier === 'full' && !detailedAvailable}
+              disabled={
+                (tier === 'full' && !detailedAvailable) ||
+                (selectable !== undefined && !selectable(tier))
+              }
               onClick={() => {
                 if (tier === 'full') onDetailedIntent?.();
               }}

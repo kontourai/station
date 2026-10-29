@@ -9,9 +9,11 @@ import { type ReactNode, type Ref, useState } from 'react';
 import { PageCallout } from '../../components/PageCallout';
 import { TelemetryFeedbackPrompt } from '../../components/TelemetryFeedbackPrompt';
 import {
+  canChooseTelemetryTier,
   SHARING_LABELS,
   type SharingCounts,
   type SharingDisclosure,
+  TelemetryChoiceLimit,
   UsageSharingChoices,
   UsageSharingIncluded,
 } from '../../components/UsageSharingChoices';
@@ -76,6 +78,17 @@ export function TelemetryTierSettings({
   const primaryChoice =
     kontourChoice === additionalChoice ? additionalChoice : undefined;
   const rank = { off: 0, lite: 1, full: 2 };
+  const capabilities = disclosure?.capabilities;
+  const dnt = Object.values(publishers ?? {}).some(
+    (state) => state?.reason === 'DNT',
+  );
+  // The SAVED choice, which is what the server compares a write against;
+  // the draft in `config` is what this page is about to send.
+  const savedTier = (id: TelemetryPublisherId): TelemetryTier =>
+    savedChoices?.[id] ??
+    publishers?.[id]?.userChoice ??
+    publishers?.[id]?.tier ??
+    (id.startsWith('publisher:') ? 'off' : 'lite');
   const change = (
     publisher: TelemetryPublisherId,
     tier: TelemetryTier,
@@ -122,7 +135,16 @@ export function TelemetryTierSettings({
             (state) => state?.reason === 'DNT',
           )}
           host={host}
+          selectable={(tier) =>
+            canChooseTelemetryTier(
+              capabilities,
+              tier,
+              [savedTier('kontour'), savedTier('operator')],
+              dnt,
+            )
+          }
         />
+        <TelemetryChoiceLimit capabilities={capabilities} />
         {primaryChoice !== 'full' &&
           (kontourChoice === 'full' || additionalChoice === 'full') &&
           disclosure && (
@@ -227,13 +249,44 @@ export function TelemetryTierSettings({
                       <option value="" disabled>
                         No saved choice
                       </option>
-                      <option value="off">{SHARING_LABELS.off}</option>
-                      <option value="lite">
+                      <option
+                        value="off"
+                        disabled={
+                          !canChooseTelemetryTier(
+                            capabilities,
+                            'off',
+                            [savedTier(publisher)],
+                            dnt,
+                          )
+                        }
+                      >
+                        {SHARING_LABELS.off}
+                      </option>
+                      <option
+                        value="lite"
+                        disabled={
+                          !canChooseTelemetryTier(
+                            capabilities,
+                            'lite',
+                            [savedTier(publisher)],
+                            dnt,
+                          )
+                        }
+                      >
                         {isPlugin ? 'Plugin usage counts' : SHARING_LABELS.lite}
                       </option>
                       <option
                         value="full"
-                        disabled={statusError || !status?.fullAvailable}
+                        disabled={
+                          statusError ||
+                          !status?.fullAvailable ||
+                          !canChooseTelemetryTier(
+                            capabilities,
+                            'full',
+                            [savedTier(publisher)],
+                            dnt,
+                          )
+                        }
                       >
                         {isPlugin
                           ? 'Detailed plugin usage'

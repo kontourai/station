@@ -1,5 +1,6 @@
 import {
   PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
+  type TelemetryChoiceCapabilities,
   type TelemetryFeedbackReason,
   type TelemetryPublisherId,
   type TelemetryPublisherStatus,
@@ -79,6 +80,11 @@ type Disclosure = {
    * down or the choice evaporates when the variable does.
    */
   enabledSource?: 'config' | 'env' | 'default';
+  /**
+   * What THIS caller may do with the choice, as the server's own gates will
+   * decide it. Absent on older hosts, which keep the behaviour they had.
+   */
+  capabilities?: TelemetryChoiceCapabilities;
 };
 
 /**
@@ -468,6 +474,16 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
           (state) => state?.tier === 'off',
         )
       : query.data.telemetryEnabled === false);
+  // Never prompt a caller for a decision it cannot complete. Outside DNT,
+  // every way the prompt resolves (Save choice, Not now) records the shown
+  // notice, which needs `recordNotice`; under DNT a kept or lowered choice
+  // resolves it locally, which needs `lower`. A QR-paired phone has neither
+  // outside DNT, so neither the standalone dialog nor the first-run step
+  // mounts for it, and no snooze is written. Settings still shows the choice.
+  const capabilities = query.data?.capabilities;
+  const actionable =
+    !capabilities ||
+    (capabilities.lower && (dntActive || capabilities.recordNotice));
   const dismissalRevision = query.data?.publishers
     ? `${query.data.inventoryRevision}:${status.data?.liteInventoryRevision ?? ''}:${status.data?.authorEndpoint ?? ''}:${dntActive}`
     : query.data?.inventoryRevision;
@@ -505,6 +521,7 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
         ? eligibility.current?.target === target &&
           eligibility.current.outstanding
         : !query.data.acknowledged) &&
+      actionable &&
       !dismissed,
   };
 }

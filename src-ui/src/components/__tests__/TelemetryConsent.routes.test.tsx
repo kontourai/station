@@ -1,6 +1,10 @@
 /** @vitest-environment jsdom */
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import {
+  DEFAULT_GRANT_PAIRING_SCOPE,
+  pairingScopePresetString,
+} from '@kontourai/station-contracts';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -106,6 +110,12 @@ const { UsageTelemetryService } = await import(
   serverModule('services/usage-telemetry-service.js')
 );
 const { createLogger } = await import(serverModule('utils/logger.js'));
+const { setRuntimeAuthenticatedRequestPrincipal } = await import(
+  serverModule('security/runtime-request-security.js')
+);
+const { setGrantedPairingScope } = await import(
+  serverModule('security/pairing-route-scopes.js')
+);
 
 import type { RecoveryScope } from '../../contexts/RecoveryQueryBoundary';
 import { StationConfigSection } from '../../views/settings/StationConfigSection';
@@ -123,7 +133,16 @@ const makeTempDir = trackTempDirs();
 async function publisherFixture(
   doNotTrack?: string,
   endpointFromEnv?: string,
-  options: { choices?: AppConfig['telemetryTier']; endpoint?: false } = {},
+  options: {
+    choices?: AppConfig['telemetryTier'];
+    endpoint?: false;
+    /**
+     * Serve both routes to a credential holding this pairing scope instead of
+     * the operator, through the runtime's own principal and scope seams, and
+     * let the disclosure report that caller's capabilities.
+     */
+    callerScope?: string;
+  } = {},
 ) {
   const home = makeTempDir('station-telemetry-ui-');
   const loader = new ConfigLoader({ projectHomeDir: home, watchFiles: false });
@@ -152,6 +171,20 @@ async function publisherFixture(
     },
   });
   const app = new Hono();
+  const callerScope = options.callerScope;
+  if (callerScope)
+    app.use('*', async (c, next) => {
+      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+        kind: 'credential',
+        credential: 'paired-device-credential',
+        authority: 'device-credential',
+        source: 'bearer',
+        deviceId: 'paired-device',
+        deviceKind: 'device',
+      });
+      setGrantedPairingScope(c, callerScope);
+      await next();
+    });
   app.route(
     '/config',
     withOperatorPrincipal(
@@ -174,7 +207,16 @@ async function publisherFixture(
   );
   app.route(
     '/api/usage-telemetry',
-    createUsageTelemetryDisclosureRoutes(service),
+    createUsageTelemetryDisclosureRoutes(
+      service,
+      callerScope
+        ? {
+            authorizeCredential: () => true,
+            resolveGrantedScope: () => callerScope,
+            verifyOperatorCredential: () => false,
+          }
+        : undefined,
+    ),
   );
   bridge.request.mockImplementation((url: string, init?: RequestInit) =>
     app.request(new URL(url).pathname + new URL(url).search, init),
@@ -1372,6 +1414,175 @@ test.each(['full', 'lite'] as const)(
       }
     } finally {
       settings?.unmount();
+      view.unmount();
+      client.clear();
+      loader.dispose();
+    }
+  },
+);
+
+/**
+ * Never prompt for a decision the caller cannot make, as the server reports
+ * it. A QR/manual-code paired device holds neither `access:manage` (needed to
+ * acknowledge Full or record the Lite notice) nor, if read-only, any config
+ * write; a standard device may keep or lower tiers but not raise them.
+ */
+const READ_ONLY_SCOPE = pairingScopePresetString('read-only');
+const STANDARD_SCOPE = pairingScopePresetString('standard');
+
+async function settleDisclosureReads() {
+  await waitFor(() =>
+    expect(calls('/api/usage-telemetry/disclosure').length).toBeGreaterThan(0),
+  );
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+}
+
+test.each([
+  ['a read-only paired device', READ_ONLY_SCOPE, undefined],
+  ['a standard paired device outside DNT', STANDARD_SCOPE, undefined],
+] as const)(
+  'the usage-sharing dialog never mounts for %s, and writes no snooze',
+  async (_caller, callerScope, dnt) => {
+    // Positive control on the same host state: a caller holding the default
+    // grant (access:manage included) is prompted, so the absence below is the
+    // capability's doing, not a fixture that never reaches the dialog.
+    const control = await publisherFixture(dnt, undefined, {
+      callerScope: DEFAULT_GRANT_PAIRING_SCOPE,
+    });
+    const shown = mountChoice(control.client, vi.fn(), true);
+    try {
+      expect(await screen.findByRole('dialog')).toBeTruthy();
+    } finally {
+      shown.unmount();
+      control.client.clear();
+      control.loader.dispose();
+    }
+    resetUsageTelemetryDisclosureDismissal();
+    bridge.request.mockClear();
+
+    const { client, loader } = await publisherFixture(dnt, undefined, {
+      callerScope,
+    });
+    const view = mountChoice(client, vi.fn(), true);
+    try {
+      await settleDisclosureReads();
+      expect(
+        screen.queryByRole('dialog'),
+        'prompted a device that cannot complete the decision',
+      ).toBeNull();
+      expect(
+        localStorage.getItem('station.usage-telemetry-disclosure.snoozed'),
+        'a prompt that was never shown was snoozed',
+      ).toBeNull();
+      expect(calls('/lite-notices')).toHaveLength(0);
+      expect(calls('/config/app')).toHaveLength(0);
+    } finally {
+      view.unmount();
+      client.clear();
+      loader.dispose();
+    }
+  },
+);
+
+test('under DNT a standard paired device is prompted, may keep or lower, and is not offered Detailed', async () => {
+  const { client, loader } = await publisherFixture('1', undefined, {
+    callerScope: STANDARD_SCOPE,
+  });
+  const view = mountChoice(client, vi.fn(), true);
+  try {
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        screen.getByRole('radio', { name: SHARING_LABELS.off }),
+      ).toHaveProperty('disabled', false),
+    );
+    expect(
+      screen.getByRole('radio', { name: SHARING_LABELS.lite }),
+    ).toHaveProperty('disabled', false);
+    expect(
+      screen.getByRole('radio', { name: SHARING_LABELS.full }),
+      'offered a raise the config route refuses',
+    ).toHaveProperty('disabled', true);
+    expect(screen.getByTestId('usage-sharing-limit').textContent).toBe(
+      'This device can keep or reduce sharing. More sharing is chosen on the host computer.',
+    );
+    fireEvent.click(screen.getByRole('radio', { name: SHARING_LABELS.off }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save choice' }));
+    await waitFor(async () =>
+      expect((await loader.loadAppConfig()).telemetryTier).toEqual({
+        kontour: 'off',
+        operator: 'off',
+      }),
+    );
+  } finally {
+    view.unmount();
+    client.clear();
+    loader.dispose();
+  }
+});
+
+test.each([
+  {
+    caller: 'read-only',
+    callerScope: READ_ONLY_SCOPE,
+    enabled: { off: false, lite: false, full: false },
+    limit: 'Usage sharing is chosen on the host computer.',
+  },
+  {
+    caller: 'standard',
+    callerScope: STANDARD_SCOPE,
+    enabled: { off: true, lite: true, full: false },
+    limit:
+      'This device can keep or reduce sharing. More sharing is chosen on the host computer.',
+  },
+] as const)(
+  'Settings offers a $caller paired device only the choices the server accepts',
+  async ({ callerScope, enabled, limit }) => {
+    const { client, loader, service } = await publisherFixture(
+      undefined,
+      undefined,
+      { callerScope },
+    );
+    const disclosure = (
+      await (
+        await bridge.request(
+          'http://station.test/api/usage-telemetry/disclosure',
+        )
+      ).json()
+    ).data;
+    const status = await service.telemetryStatus();
+    const view = render(
+      <QueryClientProvider client={client}>
+        <StationConfigSection
+          section="telemetry"
+          containerScope="station"
+          config={bridge.config}
+          savedTelemetryChoices={bridge.config.telemetryTier}
+          telemetryPublishers={status.publishers}
+          telemetryDisclosure={disclosure}
+          onChange={() => {}}
+        />
+      </QueryClientProvider>,
+    );
+    try {
+      for (const tier of ['off', 'lite', 'full'] as const)
+        expect(
+          screen.getByRole('radio', { name: SHARING_LABELS[tier] }),
+          `${tier} radio`,
+        ).toHaveProperty('disabled', !enabled[tier]);
+      expect(screen.getByTestId('usage-sharing-limit').textContent).toBe(limit);
+      const kontour = screen.getByRole('combobox', {
+        name: 'Kontour telemetry',
+      });
+      for (const tier of ['off', 'lite'] as const)
+        expect(
+          kontour.querySelector<HTMLOptionElement>(`option[value="${tier}"]`)
+            ?.disabled,
+          `Advanced ${tier} option`,
+        ).toBe(!enabled[tier]);
+    } finally {
       view.unmount();
       client.clear();
       loader.dispose();

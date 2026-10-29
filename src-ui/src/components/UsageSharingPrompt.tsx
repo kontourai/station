@@ -34,7 +34,9 @@ import { Dialog } from './Dialog';
 import { PageCallout } from './PageCallout';
 import { ResponsiveSurfaceActions } from './ResponsiveDialogSurface';
 import {
+  canChooseTelemetryTier,
   type SharingDisclosure,
+  TelemetryChoiceLimit,
   UsageSharingChoices,
 } from './UsageSharingChoices';
 
@@ -240,7 +242,16 @@ export function UsageSharingPrompt({
         host={host}
         data={data}
         counts={status.data?.liteInventory}
+        selectable={(tier) =>
+          canChooseTelemetryTier(
+            data.capabilities,
+            tier,
+            [kontourChoice, additionalChoice],
+            dnt,
+          )
+        }
       />
+      <TelemetryChoiceLimit capabilities={data.capabilities} />
       {initialChoice === undefined && (
         <p>
           Your current choices differ between the two destinations. Choosing an
