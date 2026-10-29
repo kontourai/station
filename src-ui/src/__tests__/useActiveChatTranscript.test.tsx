@@ -3002,6 +3002,159 @@ describe('useActiveChatTranscript', () => {
       },
     );
 
+    test('a fill through two detached gaps clears both partial starts', async () => {
+      const start6 = event('e6', 'turn.started', {
+        turnId: 'turn-6',
+        prompt: 'Q6',
+      });
+      const start9 = event('e9', 'turn.started', {
+        turnId: 'turn-9',
+        prompt: 'Q9',
+      });
+      const answer = (n: number) =>
+        event(`e${n}`, 'content.text-delta', {
+          turnId: n < 9 ? 'turn-6' : 'turn-9',
+          itemId: 'answer',
+          delta: `${n}`,
+        });
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 8,
+          hasMore: true,
+          nextCursor: 'older',
+          events: [start6, answer(8)],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 8,
+          hasMore: true,
+          nextCursor: 'history',
+          events: [
+            event('e1', 'turn.started', { turnId: 'old', prompt: 'old' }),
+          ],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 20,
+          hasMore: true,
+          nextCursor: 'gap6',
+          turnStartDetached: true,
+          events: [start6, answer(20)],
+        })
+        .mockRejectedValueOnce(new Error('gap6 failed'))
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 30,
+          hasMore: true,
+          nextCursor: 'gap9',
+          turnStartDetached: true,
+          events: [start9, answer(30)],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 30,
+          hasMore: true,
+          nextCursor: 'older',
+          events: [answer(8), start9, answer(20)],
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://two-gaps.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.hasMore).toBe(true));
+      await act(async () => result.current.loadOlder());
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(result.current.error?.message).toBe('gap6 failed'),
+      );
+      expect(result.current.partialTurnStartEventIds.has('e6')).toBe(true);
+      rerender({ revision: 2 });
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(6));
+      await waitFor(() =>
+        expect(result.current.partialTurnStartEventIds.has('e9')).toBe(false),
+      );
+      expect(result.current.partialTurnStartEventIds.has('e6')).toBe(false);
+    });
+
+    test('Load older resumes a failed contiguous reload gap before older history', async () => {
+      const start = (n: number) =>
+        event(`e${n}`, 'turn.started', {
+          turnId: `turn-${n}`,
+          prompt: `Q${n}`,
+        });
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 10,
+          hasMore: true,
+          nextCursor: 'older',
+          events: [start(9), start(10)],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 10,
+          hasMore: true,
+          nextCursor: 'history',
+          events: [start(5), start(6)],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 20,
+          hasMore: true,
+          nextCursor: 'gap',
+          events: [start(19), start(20)],
+        })
+        .mockRejectedValueOnce(new Error('gap failed'))
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 21,
+          hasMore: true,
+          nextCursor: 'new-gap',
+          events: [start(20), start(21)],
+        })
+        .mockRejectedValueOnce(new Error('new gap failed'))
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 20,
+          hasMore: true,
+          nextCursor: 'gap-next',
+          events: [start(14), start(15)],
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 20,
+          hasMore: true,
+          nextCursor: 'older',
+          events: [start(9), start(10)],
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://contiguous-gap.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.hasMore).toBe(true));
+      await act(async () => result.current.loadOlder());
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(result.current.error?.message).toBe('gap failed'),
+      );
+      rerender({ revision: 2 });
+      await waitFor(() =>
+        expect(result.current.error?.message).toBe('new gap failed'),
+      );
+      await act(async () => result.current.loadOlder());
+      expect(cursorOf(6)).toBe('new-gap');
+      expect(sequences(result.current.events)).toContain(14);
+    });
+
     test('Load older resumes a failed held gap before older history', async () => {
       const start = event('e6', 'turn.started', {
         turnId: 'turn-6',
@@ -3663,7 +3816,13 @@ describe('useActiveChatTranscript', () => {
           new Promise((resolve) => {
             resolveLatest = resolve;
           }),
-      );
+      )
+      .mockResolvedValueOnce({
+        protocolVersion: 1,
+        watermark: 8,
+        hasMore: false,
+        events: [event('e5', 'turn.started', { turnId: 'new', prompt: 'new' })],
+      });
     const { result, rerender } = renderHook(
       ({ revision }) =>
         useActiveChatTranscript('http://station.test', {
@@ -3711,7 +3870,7 @@ describe('useActiveChatTranscript', () => {
       'new',
       'latest',
     ]);
-    expect(result.current.hasMore).toBe(false);
+    await waitFor(() => expect(result.current.hasMore).toBe(false));
   });
 
   test('projects same-timestamp high-fanout events in authoritative sequence order', async () => {

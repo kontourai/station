@@ -283,13 +283,11 @@ export function useSessionEventWindow(
   const eventsRef = useRef(events);
   const pendingFloorRef = useRef<number | undefined>(undefined);
   const partialRef = useRef(new Set<string>());
-  /**
-   * A reload's detached start over held history, partial until a read runs
-   * unbroken down to `floor` (what is held), whatever an earlier fill closed.
-   */
-  const heldGapRef = useRef<
-    { anchor: string; floor: number; cursor: string } | undefined
-  >(undefined);
+  // Each cursor owes a continuous read down to its floor. Coalescing the
+  // oldest gaps at the bound retains every anchor and the lowest floor.
+  const heldGapsRef = useRef<
+    Array<{ floor: number; cursor: string; anchors: Set<string> }>
+  >([]);
   const closedRef = useRef(new Set<string>());
   const [partialTurnStartEventIds, setPartialTurnStartEventIds] =
     useState<ReadonlySet<string>>(NO_PARTIAL_TURNS);
@@ -400,7 +398,7 @@ export function useSessionEventWindow(
         ? lowest(
             eventsRef.current.at(-1)?.sequence,
             pendingFloorRef.current,
-            heldGapRef.current?.floor,
+            ...heldGapsRef.current.map((gap) => gap.floor),
           )
         : newestTurnStart(next);
       if (
@@ -418,7 +416,7 @@ export function useSessionEventWindow(
       if (!olderLoadedRef.current) {
         partialRef.current = new Set();
         closedRef.current = new Set();
-        heldGapRef.current = undefined;
+        heldGapsRef.current = [];
       }
       notePartialTurnStarts(page, partialRef.current, closedRef.current);
       // A reload whose detached start was closed by an earlier fill can land
@@ -427,20 +425,24 @@ export function useSessionEventWindow(
       const anchor = page.turnStartDetached
         ? next[0]?.event.eventId
         : undefined;
-      if (fill && olderLoadedRef.current && anchor) {
-        partialRef.current.add(anchor);
-        heldGapRef.current = { anchor, floor: fill.floor, cursor: fill.cursor };
-      } else if (heldGapRef.current && fill) {
-        partialRef.current.add(heldGapRef.current.anchor);
-        heldGapRef.current.cursor = fill.cursor;
-      } else if (
-        heldGapRef.current &&
-        contiguousFrom(page) <= heldGapRef.current.floor
-      ) {
-        partialRef.current.delete(heldGapRef.current.anchor);
-        heldGapRef.current = undefined;
-        pendingFloorRef.current = undefined;
+      if (fill && olderLoadedRef.current) {
+        const anchors = new Set(anchor ? [anchor] : []);
+        heldGapsRef.current.push({ ...fill, anchors });
+        if (heldGapsRef.current.length > 128) {
+          const oldest = heldGapsRef.current.shift()!;
+          const next = heldGapsRef.current[0]!;
+          next.floor = Math.min(oldest.floor, next.floor);
+          for (const id of oldest.anchors) next.anchors.add(id);
+        }
+      } else if (!fill) {
+        heldGapsRef.current = heldGapsRef.current.filter((gap) => {
+          if (contiguousFrom(page) > gap.floor) return true;
+          for (const id of gap.anchors) partialRef.current.delete(id);
+          return false;
+        });
       }
+      for (const gap of heldGapsRef.current)
+        for (const id of gap.anchors) partialRef.current.add(id);
       setPartialTurnStartEventIds(new Set(partialRef.current));
       if (!olderLoadedRef.current) setCursor(page.nextCursor);
       setWatermark(page.watermark);
@@ -529,20 +531,20 @@ export function useSessionEventWindow(
         // change, so its page merges whatever the reader's head is now.
         setEvents((current) => mergePages(page.events, current));
         notePartialTurnStarts(page, partialRef.current, closedRef.current);
-        const heldGap = heldGapRef.current;
-        if (heldGap) {
-          if (
-            pageCursor === heldGap.cursor &&
-            contiguousFrom(page) <= heldGap.floor
-          ) {
-            partialRef.current.delete(heldGap.anchor);
-            heldGapRef.current = undefined;
-          } else {
-            partialRef.current.add(heldGap.anchor);
-            if (pageCursor === heldGap.cursor && page.nextCursor)
-              heldGap.cursor = page.nextCursor;
-          }
+        const activeGap = heldGapsRef.current.find(
+          (gap) => gap.cursor === pageCursor,
+        );
+        if (activeGap) {
+          heldGapsRef.current = heldGapsRef.current.filter((gap) => {
+            if (contiguousFrom(page) > gap.floor) return true;
+            for (const id of gap.anchors) partialRef.current.delete(id);
+            return false;
+          });
+          if (heldGapsRef.current.includes(activeGap) && page.nextCursor)
+            activeGap.cursor = page.nextCursor;
         }
+        for (const gap of heldGapsRef.current)
+          for (const id of gap.anchors) partialRef.current.add(id);
         setPartialTurnStartEventIds(new Set(partialRef.current));
         if (options.olderLoaded) olderLoadedRef.current = true;
         if (options.adoptCursor) setCursor(page.nextCursor);
@@ -565,7 +567,7 @@ export function useSessionEventWindow(
   );
 
   const loadOlder = useCallback(async () => {
-    const heldGap = heldGapRef.current;
+    const heldGap = heldGapsRef.current.at(-1);
     if (heldGap) {
       await fillRef.current(heldGap.cursor, heldGap.floor);
       return;
@@ -601,7 +603,7 @@ export function useSessionEventWindow(
       }
       // Bounded or out of pages: Load older owns the rest of the gap.
       pendingFloorRef.current = undefined;
-      if (!adoptCursor && pageCursor && !heldGapRef.current)
+      if (!adoptCursor && pageCursor && !heldGapsRef.current.length)
         setCursor(pageCursor);
     },
     [readOlder],
@@ -618,7 +620,7 @@ export function useSessionEventWindow(
     pendingFloorRef.current = undefined;
     partialRef.current = new Set();
     closedRef.current = new Set();
-    heldGapRef.current = undefined;
+    heldGapsRef.current = [];
     setPartialTurnStartEventIds(NO_PARTIAL_TURNS);
     if (recoveryTimerRef.current !== undefined) {
       clearTimeout(recoveryTimerRef.current);
@@ -666,7 +668,7 @@ export function useSessionEventWindow(
       sessionLineage,
       handoffs,
       contextBoundaries,
-      hasMore: Boolean(cursor),
+      hasMore: Boolean(cursor || heldGapsRef.current.length),
       loading,
       settled,
       upgradeRequired,
@@ -703,7 +705,7 @@ export function useSessionEventWindow(
     ...(currentReader && sessionLineage ? { sessionLineage } : {}),
     handoffs: currentReader ? handoffs : [],
     contextBoundaries: currentReader ? contextBoundaries : [],
-    hasMore: currentReader && Boolean(cursor || heldGapRef.current),
+    hasMore: currentReader && Boolean(cursor || heldGapsRef.current.length),
     loadOlder,
     reload,
     upgradeRequired: currentReader && upgradeRequired,
