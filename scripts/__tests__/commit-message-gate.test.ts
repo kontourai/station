@@ -747,7 +747,7 @@ describe('corpus: the vocabulary constant must fit the repo it governs', () => {
     ).toBeGreaterThanOrEqual(95);
   });
 
-  it('covers every merge subject among the last 3000 commits on the request-bound history ref as exempt-or-conform', () => {
+  it('covers every merge subject on the request-bound history ref as exempt-or-conform', () => {
     // The test above excludes merges entirely (--no-merges), which was a
     // blindspot: the exemptions govern exactly the population it skipped.
     // This asserts over merge commits by parent count (>= 2), the same
@@ -756,7 +756,7 @@ describe('corpus: the vocabulary constant must fit the repo it governs', () => {
     const historyRef = resolveVerificationHistoryRef();
     const rows = execFileSync(
       'git',
-      ['log', historyRef, '-3000', '--format=%H%x00%P%x00%s'],
+      ['log', historyRef, '--merges', '--format=%H%x00%P%x00%s'],
       { encoding: 'utf8', maxBuffer: 1 << 24, windowsHide: true },
     )
       .split('\n')

@@ -25,6 +25,21 @@ const PRE_PUSH = readFileSync('.githooks/pre-push', 'utf8');
 const SCRIPTS: Record<string, string> = JSON.parse(
   readFileSync('package.json', 'utf8'),
 ).scripts;
+const HOOK_COMMANDS = PRE_PUSH.split('\n')
+  .filter((line) => !/^\s*(?:#|echo\b)/.test(line))
+  .flatMap((line) => {
+    const match =
+      /(npm run --silent \S+|node (?:scripts\/heavy-check-slot\.mjs \S+ )?scripts\/\S+\.mjs(?: --\S+)*)/.exec(
+        line,
+      );
+    return match
+      ? [
+          match[1]
+            .replace('npm run --silent ', 'npm run ')
+            .replace(/scripts\/heavy-check-slot\.mjs \S+ /, ''),
+        ]
+      : [];
+  });
 
 function runJson(args: string[]) {
   const run = spawnSync('node', ['scripts/gate-for.mjs', '--json', ...args], {
@@ -92,7 +107,7 @@ describe('gate-for report', () => {
     expect(scopes.length).toBeGreaterThan(0);
     for (const scope of scopes) {
       expect(scope.runs, scope.name).toBe(true);
-      expect(PRE_PUSH, scope.name).toContain(scope.command);
+      expect(HOOK_COMMANDS, scope.name).toContain(scope.command);
     }
   });
 
@@ -146,19 +161,12 @@ describe('gate-for report', () => {
         'resolves the liveness factor the checks inherit (#3302); refuses only a malformed override',
       ],
     ]);
-    const hookCommands = PRE_PUSH.split('\n')
-      .filter((line) => !/^\s*(?:#|echo\b)/.test(line))
-      .flatMap((line) => {
-        const match =
-          /(npm run --silent \S+|node scripts\/\S+\.mjs(?: --\S+)*)/.exec(line);
-        return match ? [match[1].replace('npm run --silent ', 'npm run ')] : [];
-      });
     for (const step of SETUP_STEPS.keys())
-      expect(hookCommands, `setup step ${step} left the hook`).toContain(step);
+      expect(HOOK_COMMANDS, `setup step ${step} left the hook`).toContain(step);
     const plan = gatePlan({ changedPaths: [], baseSha });
-    expect(hookCommands.length).toBeGreaterThan(0);
+    expect(HOOK_COMMANDS.length).toBeGreaterThan(0);
     expect(
-      new Set(hookCommands.filter((command) => !SETUP_STEPS.has(command))),
+      new Set(HOOK_COMMANDS.filter((command) => !SETUP_STEPS.has(command))),
     ).toEqual(
       new Set([
         ...plan.everyPush.map((check) => check.command),
