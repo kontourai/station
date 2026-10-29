@@ -1,9 +1,8 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
 import {
   INTERNAL_TURN_CORRELATION_HEADER,
@@ -14,8 +13,10 @@ import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 
+const makeTempDir = trackTempDirs();
+
 test('an admitted prompt origin reaches the exact Station-agent relay', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'station-prompt-origin-'));
+  const home = makeTempDir('station-prompt-origin-');
   const eventBus = new EventBus();
   const eventStore = new EventStore(join(home, 'events.sqlite'));
   const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
@@ -107,6 +108,5 @@ test('an admitted prompt origin reaches the exact Station-agent relay', async ()
   } finally {
     await service.shutdown();
     eventStore.close();
-    rmSync(home, { recursive: true, force: true });
   }
 });

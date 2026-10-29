@@ -39,13 +39,11 @@ test('prompt origin proof binds source, text, classification and expiry', () => 
 test('a prompt read as untrusted stays marked if its classification changes before send', async () => {
   const source = {
     listMCPPrompts: vi.fn().mockResolvedValue([{ name: 'summarize' }]),
-    getMCPPrompt: vi
-      .fn()
-      .mockResolvedValue({
-        messages: [
-          { role: 'user', content: { type: 'text', text: 'mail content' } },
-        ],
-      }),
+    getMCPPrompt: vi.fn().mockResolvedValue({
+      messages: [
+        { role: 'user', content: { type: 'text', text: 'mail content' } },
+      ],
+    }),
     getIntegration: vi
       .fn()
       .mockResolvedValueOnce({

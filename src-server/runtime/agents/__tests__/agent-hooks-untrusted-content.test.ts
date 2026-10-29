@@ -228,10 +228,24 @@ describe('outbound tools after untrusted content', () => {
   });
 
   test('a prompt observed untrusted remains marked after its source becomes trusted', async () => {
-    const { requester, invocation, createIssue } = setup({ mail: { contentTrust: 'trusted' } }, { invocation: { turnId: 'turn-prompt' } });
+    const { requester, invocation, createIssue } = setup(
+      { mail: { contentTrust: 'trusted' } },
+      { invocation: { turnId: 'turn-prompt' } },
+    );
     requester.mockResolvedValueOnce(false);
-    const correlation = { accountId: 'person', sessionId: invocation.conversationId, turnId: 'turn-prompt', correlationId: 'correlation' };
-    const result = await runWithAuthorizedTurnCorrelation(correlation, createIssue, undefined, undefined, { serverId: 'mail', name: 'summarize', untrusted: true });
+    const correlation = {
+      accountId: 'person',
+      sessionId: invocation.conversationId,
+      turnId: 'turn-prompt',
+      correlationId: 'correlation',
+    };
+    const result = await runWithAuthorizedTurnCorrelation(
+      correlation,
+      createIssue,
+      undefined,
+      undefined,
+      { serverId: 'mail', name: 'summarize', untrusted: true },
+    );
     expect(result).toMatchObject({ allowed: false });
     expect(requester).toHaveBeenCalledTimes(1);
   });

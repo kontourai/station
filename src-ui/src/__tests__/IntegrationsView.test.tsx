@@ -191,14 +191,12 @@ describe('IntegrationsView (#771)', () => {
       typeof import('@kontourai/station-sdk')
     >('@kontourai/station-sdk');
     _setApiBase('http://localhost');
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        new Response(JSON.stringify({ success: true }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        }),
-      );
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
     vi.stubGlobal('fetch', fetchMock);
     pathname = '/connections/tools/mail';
     trustPreview = true;
