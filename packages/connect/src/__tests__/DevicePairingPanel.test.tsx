@@ -1622,6 +1622,64 @@ describe('device pairing panels', () => {
     ).toBeTruthy();
   });
 
+  test('a passkey approval remains pending and offers the review link', async () => {
+    const pending = {
+      requestId: 'request-review',
+      offerId: 'offer-review',
+      deviceName: 'New browser',
+      scope: 'orchestration:read coding:exec',
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      source: 'same-origin',
+      status: 'pending',
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/pairing/requests/request-review/confirm')
+        return response(
+          {
+            status: 'step_up_required',
+            transaction: {
+              id: 'review',
+              reviewUrl: 'https://station.example.test:8443/consent/review',
+              expiresAt: Date.now() + 60_000,
+            },
+          },
+          202,
+        );
+      if (path === '/api/pairing/requests')
+        return response({ requests: [pending] });
+      if (path === '/api/pairing/devices') return response({ devices: [] });
+      throw new Error(`unexpected fetch ${path}`);
+    });
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.example.test"
+        getCredential={() => 'device'}
+        onCancel={vi.fn()}
+      />,
+    );
+    await screen.findByText(/New browser asks for/);
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(
+      await screen.findByText('Approval is pending passkey confirmation.'),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole('link', { name: 'Review and confirm with passkey' })
+        .getAttribute('href'),
+    ).toBe('https://station.example.test:8443/consent/review');
+    pending.status = 'confirmed';
+    await waitFor(
+      () =>
+        expect(
+          screen.queryByText('Approval is pending passkey confirmation.'),
+        ).toBeNull(),
+      { timeout: 3000 },
+    );
+  });
+
   test('names the host CLI when this Station refuses the approval (station#1490)', async () => {
     const request = {
       requestId: 'request-refused',

@@ -351,6 +351,8 @@ export function isOperatorSessionLeaf(method: string, path: string): boolean {
   return (
     isOperatorSessionRead(method, path) ||
     (method === 'POST' &&
+      /^\/api\/pairing\/requests\/[^/]+\/confirm$/.test(path)) ||
+    (method === 'POST' &&
       (/^\/api\/outside-agent\/requests\/[^/]+\/(approval|denial)$/.test(
         path,
       ) ||

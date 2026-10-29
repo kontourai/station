@@ -1323,6 +1323,25 @@ export function HostDevicePairingPanel({
   // device's own access (401 class) — the state `onReconnect` addresses.
   const [authBlocked, setAuthBlocked] = useState(false);
   const [operatorHandoff, setOperatorHandoff] = useState(false);
+  const [operatorLink, setOperatorLink] = useState<{
+    url: string;
+    review: boolean;
+    requestId?: string;
+  } | null>(null);
+  const consentLink = (value: unknown) => {
+    try {
+      if (typeof value !== 'string') return null;
+      const url = new URL(value);
+      const app = new URL(apiBase);
+      return url.protocol === 'https:' &&
+        url.hostname === app.hostname &&
+        url.origin !== app.origin
+        ? url.href
+        : null;
+    } catch {
+      return null;
+    }
+  };
   const [reconnecting, setReconnecting] = useState(false);
   // #2228 slice 3: a remembered reachable address (the tailnet or LAN URL the
   // operator last created an offer with for this Station) outranks the active
@@ -1389,6 +1408,7 @@ export function HostDevicePairingPanel({
     async (path: string, init: RequestInit = {}) =>
       request(new URL(path, apiBase), {
         ...init,
+        credentials: 'include',
         headers: { ...authHeaders(getCredential()), ...init.headers },
       }),
     [apiBase, getCredential, request],
@@ -1484,12 +1504,27 @@ export function HostDevicePairingPanel({
     };
   }, [refresh]);
 
+  useEffect(() => {
+    if (!operatorLink?.review || !operatorLink.requestId) return;
+    if (
+      requests.some(
+        (request) =>
+          request.requestId === operatorLink.requestId &&
+          request.status === 'confirmed',
+      )
+    ) {
+      setOperatorLink(null);
+      setError(null);
+    }
+  }, [operatorLink, requests, setError]);
+
   const actOnRequest = async (
     request: DevicePairingRequest,
     action: 'approve' | 'deny',
   ) => {
     if (requestActionIdsRef.current.has(request.requestId)) return;
     setError(null);
+    setOperatorLink(null);
     refreshGeneration.current += 1;
     requestActionIdsRef.current.add(request.requestId);
     setRequestActionIds(new Set(requestActionIdsRef.current));
@@ -1524,6 +1559,17 @@ export function HostDevicePairingPanel({
             : {}),
         },
       );
+      if (response.status === 202 && action === 'approve') {
+        const result = await response.json();
+        const url =
+          result?.status === 'step_up_required'
+            ? consentLink(result.transaction?.reviewUrl)
+            : null;
+        if (!url) throw new Error('Invalid operator review');
+        setOperatorLink({ url, review: true, requestId: request.requestId });
+        setError('Approval is pending passkey confirmation.');
+        return;
+      }
       if (!response.ok) {
         if (
           action === 'approve' &&
@@ -1537,15 +1583,15 @@ export function HostDevicePairingPanel({
         }
         // A refused approval names this host's own CLI (a Station that
         // predates it, or any other answer, falls back to `station`).
+        const refusal =
+          response.status === 403 && action === 'approve'
+            ? await response.json().catch(() => null)
+            : null;
+        const signInUrl = consentLink(refusal?.signInUrl);
+        if (signInUrl) setOperatorLink({ url: signInUrl, review: false });
         const operatorCli =
           response.status === 403 && action === 'approve'
-            ? knownOperatorCli(
-                (
-                  (await response.json().catch(() => null)) as {
-                    operatorCli?: unknown;
-                  } | null
-                )?.operatorCli,
-              )
+            ? knownOperatorCli(refusal?.operatorCli)
             : undefined;
         setError(
           response.status === 401
@@ -2476,6 +2522,20 @@ export function HostDevicePairingPanel({
       {error && (
         <div className="pairing-error" role="alert">
           <p>{error}</p>
+          {operatorLink && (
+            <p>
+              <a
+                href={operatorLink.url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {operatorLink.review
+                  ? 'Review and confirm with passkey'
+                  : 'Sign in as operator'}
+              </a>
+              {operatorLink.review ? '' : ', then return and approve again.'}
+            </p>
+          )}
           {authBlocked && onReconnect && (
             <button
               type="button"
