@@ -1098,9 +1098,9 @@ describe('ChromiumServerHost with a fake browser', () => {
 
 describe('effective preview WebRTC policy at browser startup', () => {
   const preferenceUrl = (calls: readonly SentCall[]) => {
-    const params = calls.findLast(
-      (call) => call.method === 'Target.createTarget',
-    )?.params;
+    const params = [...calls]
+      .reverse()
+      .find((call) => call.method === 'Target.createTarget')?.params;
     if (!params || !('url' in params) || typeof params.url !== 'string')
       throw new Error(
         'The probe target must exist before its document is read',
