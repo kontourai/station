@@ -4,10 +4,12 @@
  * making the Station unbootable.
  *
  * A change is never adopted in the generation that accepted it. The route
- * stages it (`pending`), asks the process supervisor for a handoff, and the
+ * stages it with `ready: false`, asks the process supervisor for a handoff,
+ * and arms it (`ready: true`) only after the handoff begins draining. The
  * next generation reads it at startup:
  *
- * 1. an unattempted `pending` is first marked `attempted` on disk, then used;
+ * 1. an unarmed `pending` is not used; an armed, unattempted `pending` is
+ *    first marked `attempted` on disk, then used;
  * 2. once runtime initialization succeeds, `pending` becomes `committed`;
  * 3. a boot that finds an `attempted` `pending` knows a previous boot started
  *    with it and never committed, so it drops it, records why, and boots with

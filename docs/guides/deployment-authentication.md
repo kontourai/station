@@ -68,7 +68,9 @@ force, so turning the preview off never signs invited people out.
   machine, the browser's transaction-bound consent session permits that review;
   the page's one-use nonce and origin keep app-origin scripts from deciding it.
   The listener and browser must be able to use the consent session on its host.
-  A device-bound operator passkey session is not accepted by this setting yet.
+  This is not a passkey or proof that a person is present: a local script with
+  the operator credential can automate the review and decision. A device-bound
+  operator passkey session is not accepted by this setting yet.
 - **Sign-in address.** You choose the public origin from addresses this Station
   knows serves the UI: its UI listener, Tailscale Serve mappings to that
   listener, and allowed origins witnessed at the UI proxy. The API listener is
