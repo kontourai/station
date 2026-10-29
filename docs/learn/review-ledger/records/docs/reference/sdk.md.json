@@ -798,13 +798,7 @@
 
     "packages/contracts/src/engine-capability-matrix.ts",
 
-    "src-ui/src/utils/execution.ts",
-
-    "packages/sdk/src/query-domains/attention.ts",
-
-    "packages/sdk/src/query-domains/notifications.ts",
-
-    "packages/sdk/src/__tests__/snooze-mutations.test.tsx"
+    "src-ui/src/utils/execution.ts"
   ],
 
   "checks": [

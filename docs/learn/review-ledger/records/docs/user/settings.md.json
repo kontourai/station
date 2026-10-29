@@ -46,13 +46,7 @@
 
     "src-ui/src/views/task-workspace/review/TaskReviewTab.tsx",
 
-    "tests/task-review.spec.ts",
-
-    "src-server/runtime/routes/runtime-route-support.ts",
-
-    "src-server/services/projects/attention-projection.ts",
-
-    "packages/contracts/src/attention.ts"
+    "tests/task-review.spec.ts"
   ],
 
   "checks": [

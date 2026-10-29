@@ -1,7 +1,0 @@
-{
-  "revision": "17d281164948d7cee0ccfc611d87784af173648f",
-
-  "notes": [
-    {"path":"docs/reference/sdk.md","note":"Reviewed the new attention and stored-notification snooze exports against the SDK domain implementations and index; checked encoded request payloads, explicit apiBase, non-OK errors including older-host JSON/plain-text 404s, and real mounted-query refetch tests. SDK focused tests and SDK typecheck pass; no published package or live device claim.","inputs":["docs/reference/sdk.md","packages/sdk/src/index.ts","src-server/runtime/routes/runtime-route-support.ts","src-server/security/pairing-route-scopes.ts","packages/sdk/src/query-domains/attention.ts","packages/sdk/src/query-domains/notifications.ts","packages/sdk/src/__tests__/snooze-mutations.test.tsx"]}
-  ]
-}
