@@ -13,6 +13,7 @@
 import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { coordinatorWakeClientTurnId } from '@kontourai/station-contracts/coordinator';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -23,6 +24,7 @@ import type {
   ProviderTurnStartResult,
 } from '../../../providers/adapter-shape.js';
 import { isForegroundIndeterminateShape } from '../../../routes/orchestration/orchestration.js';
+import { CoordinatorWakeDelivery } from '../coordinator-session.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -1623,4 +1625,77 @@ describe('withdrawing several entries, and a sender placement policy (#3628)', (
     ]);
     expect(asked).toEqual(['wake-1', 'wake-2']);
   });
+});
+
+test('restart preserves delivery proof before applying coordinator policy', async () => {
+  const file = join(
+    makeTempDir('review-policy-recovery-'),
+    'orchestration.sqlite',
+  );
+  const first = boot(file);
+  const firstTurn = await runningFirstTurn(first);
+  const cs = first.store.coordinatorStore();
+  cs.designate({
+    conversationId: THREAD,
+    actor: { userId: OWNER },
+    replace: false,
+    now: Date.now(),
+  });
+  for (const sessionId of ['source-a', 'source-b'])
+    cs.recordItem(
+      OWNER,
+      { kind: 'finished', sessionId, itemKey: sessionId, title: sessionId },
+      Date.now(),
+    );
+  const claim = cs.claimWake({
+    designation: cs.designation(OWNER)!,
+    now: Date.now(),
+    compose: () => FOLLOW_UP,
+  });
+  if (claim.outcome !== 'claimed') throw new Error('claim prerequisite');
+  const key = coordinatorWakeClientTurnId(claim.wake.id);
+  first.afterStart.hang = true;
+  first.inbox.submit({ conversationId: THREAD, clientTurnId: key, payload });
+  await emit(first, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(followUpSends()).toEqual([FOLLOW_UP]);
+  expect(first.inbox.entry(THREAD, key)?.state).toBe('sending');
+  await crash(first);
+
+  let policy: CoordinatorWakeDelivery | undefined;
+  const second = boot(file, {
+    placementRefusal: ({ conversationId, clientTurnId, payload, queuedAt }) =>
+      policy?.placementRefusal({
+        conversationId,
+        clientTurnId,
+        userId: payload.actor.userId,
+        queuedAt,
+      }),
+  });
+  policy = new CoordinatorWakeDelivery({
+    store: second.store.coordinatorStore(),
+    mayRead: (_userId, sessionId) => sessionId !== 'source-b',
+    conversationOf: (id) => id,
+    delegatedBy: () => undefined,
+    submit: (input) => second.inbox.submit(input),
+    withdrawQueuedWakes: () => 0,
+    logger: { warn: vi.fn() },
+    setTimer: () => () => {},
+  });
+  try {
+    await startSession(second);
+    await second.inbox.reconcile();
+    await settle(second);
+    expect(followUpSends()).toEqual([FOLLOW_UP]);
+    expect({
+      entry: second.inbox.entry(THREAD, key)?.state,
+      nonDelivery: second.inbox.nonDeliveryReason(THREAD, key),
+      released: second.store
+        .coordinatorStore()
+        .waitingItems(OWNER)
+        .map((item) => item.sessionId),
+    }).toEqual({ entry: 'sent', nonDelivery: undefined, released: [] });
+  } finally {
+    policy.stop();
+  }
 });

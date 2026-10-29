@@ -81,7 +81,10 @@ import {
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
 import { SESSION_CAPABILITY_DELIVERY_METADATA_KEY } from '@kontourai/station-contracts/provider';
-import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import {
+  isDeferredRetriableTurnError,
+  SERVER_EVENTS,
+} from '@kontourai/station-contracts/runtime-events';
 import { readNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
 import { classifyNotificationCategory } from '@kontourai/station-shared/notification-priority';
 import { notificationSessionIdentity } from '../notifications/notification-session.js';
@@ -1165,8 +1168,18 @@ export function coordinatorDeliveryPorts(deps: {
         ...TURN_TERMINAL_METHODS,
       ]);
       let ended = false;
-      for (const stored of events)
-        ended = TURN_TERMINAL_METHODS.includes(stored.payload.method);
+      let turnId: string | undefined;
+      for (const { payload: event } of events) {
+        if (event.method === 'turn.started') {
+          turnId = event.turnId;
+          ended = false;
+        } else if (
+          !isDeferredRetriableTurnError(event) &&
+          (!event.turnId || !turnId || event.turnId === turnId)
+        ) {
+          ended = true;
+        }
+      }
       return ended;
     },
     boundaryActive: (threadId) => {

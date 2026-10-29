@@ -94,7 +94,10 @@ the hourly cap bounds retries too.
 
 Read access to each item's Session is decided at observation, when a wake is
 composed or re-sent after a restart, and when the inbox is about to place it.
-The last check is the inbox's sender policy (`placementRefusal`): a wake
+For a fresh placement, the inbox first resolves any retained delivery key; an
+already accepted wake settles as delivered and an uncertain effect stays
+unconfirmed, even if access has since changed. The sender policy
+(`placementRefusal`) then checks a new send: a wake
 naming an unreadable Session is refused there and nothing is sent; its
 readable items go back for a fresh wake. The same policy refuses a wake whose
 conversation is no longer the coordinator, and one queued longer than
@@ -119,8 +122,8 @@ The person is told what Station can do: the read and write routes return
 Session's last turn has ended in the log but its durable turn boundary is
 still held (#4051: Codex and Muse turn terminals carry no invocation id). It
 does not use `hasActiveTurn`, which reads that same boundary and so cannot
-tell a stuck one from a running turn; a long turn or an approval wait reads
-`ready`. `toolsPending` holds while the live Session
+tell a stuck one from a running turn; a long turn, an approval wait, or a
+Codex retry in progress reads `ready`. `toolsPending` holds while the live Session
 started without the Station tools. This is derived rather than keyed to engine
 names, so it stops reporting `blocked` once #4051 is fixed.
 

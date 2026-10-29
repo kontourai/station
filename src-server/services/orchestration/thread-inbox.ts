@@ -1243,36 +1243,7 @@ export class ThreadInboxDelivery {
         );
         continue;
       }
-      // The live send's own rule, checked again: a sender or device that
-      // lost the right since it queued is refused, and nothing is sent.
-      let refusal: PlacementOutcome | undefined = this.refusalFor(
-        conversationId,
-        payload,
-        entry.createdAt,
-      );
-      if (!refusal && this.ports.placementRefusal) {
-        try {
-          refusal = this.ports.placementRefusal({
-            conversationId,
-            clientTurnId: entry.key,
-            payload,
-            queuedAt: entry.createdAt,
-          });
-        } catch (error) {
-          // A policy that cannot decide refuses: nothing is sent.
-          this.ports.logger.warn('thread inbox placement policy failed', {
-            error: errorText(error),
-          });
-          refusal = {
-            reasonCode: 'placement_policy_failed',
-            reason: 'Station could not check this message. Nothing was sent.',
-          };
-        }
-      }
-      if (refusal) {
-        settle(entry, 'refused', refusal, this.now());
-        continue;
-      }
+      let refusal: PlacementOutcome | undefined;
       let started: SessionStartResult | typeof DEADLINE;
       try {
         // The whole conversation's ledger first (D1): a key an earlier
@@ -1283,13 +1254,45 @@ export class ThreadInboxDelivery {
             conversationId,
             inspect: () =>
               this.inspectDelivery(conversationId, entry.key, payload),
-            start: () =>
-              this.ports.start({
+            start: async () => {
+              // The live send's own rule, checked again: a sender or device that
+              // lost the right since it queued is refused, and nothing is sent.
+              refusal = this.refusalFor(
+                conversationId,
+                payload,
+                entry.createdAt,
+              );
+              if (!refusal && this.ports.placementRefusal) {
+                try {
+                  refusal = this.ports.placementRefusal({
+                    conversationId,
+                    clientTurnId: entry.key,
+                    payload,
+                    queuedAt: entry.createdAt,
+                  });
+                } catch (error) {
+                  // A policy that cannot decide refuses: nothing is sent.
+                  this.ports.logger.warn(
+                    'thread inbox placement policy failed',
+                    {
+                      error: errorText(error),
+                    },
+                  );
+                  refusal = {
+                    reasonCode: 'placement_policy_failed',
+                    reason:
+                      'Station could not check this message. Nothing was sent.',
+                  };
+                }
+              }
+              if (refusal) return { outcome: 'indeterminate' };
+              return this.ports.start({
                 conversationId,
                 threadId: current,
                 payload,
                 clientTurnId: entry.key,
-              }),
+              });
+            },
           }),
         );
       } catch (error) {
@@ -1316,6 +1319,10 @@ export class ThreadInboxDelivery {
         continue;
       }
       if (this.stopped) return;
+      if (refusal) {
+        settle(entry, 'refused', refusal, this.now());
+        continue;
+      }
       if (started === DEADLINE) {
         settle(
           entry,

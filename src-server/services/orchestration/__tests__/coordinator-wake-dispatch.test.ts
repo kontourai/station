@@ -500,7 +500,10 @@ describe('delivery state through the production ports', () => {
    * the real service (which records its durable boundary), and the engine's
    * events as given. `stamp` decides whether they name the send's invocation.
    */
-  async function coordinatorAfter(methods: readonly string[], stamp: boolean) {
+  async function coordinatorAfter(
+    methods: readonly (string | Record<string, unknown>)[],
+    stamp: boolean,
+  ) {
     const adapter = new RecordingAdapter();
     const world = boot([adapter]);
     let sequence = 0;
@@ -530,11 +533,15 @@ describe('delivery state through the production ports', () => {
     );
     const invocationId = adapter.invocations[0];
     if (!invocationId) throw new Error('send invocation prerequisite');
-    for (const method of methods)
-      await emit(method, {
+    for (const step of methods) {
+      const fields = typeof step === 'string' ? { method: step } : step;
+      const { method, ...extra } = fields;
+      await emit(String(method), {
         turnId: 'turn-1',
+        ...extra,
         ...(stamp ? { invocationId } : {}),
       });
+    }
     return {
       world,
       delivery: () =>
@@ -556,6 +563,33 @@ describe('delivery state through the production ports', () => {
     // Why `hasActiveTurn` could not tell: it reads the held boundary too.
     expect(world.service.hasActiveTurn(COORDINATOR)).toBe(true);
     expect(delivery().wakes).toBe('blocked');
+  });
+
+  test('a Codex retry-in-progress error is not a completed turn', async () => {
+    const { world, delivery } = await coordinatorAfter(
+      [
+        'turn.started',
+        {
+          method: 'runtime.error',
+          provider: 'codex',
+          retriable: true,
+          severity: 'error',
+          message: 'Retrying transient error',
+        },
+      ],
+      true,
+    );
+    expect(
+      world.store.sessionTurnBoundaryAuthority().hasPossibleEffect(COORDINATOR),
+    ).toEqual({ kind: 'available', active: true });
+    const errors = world.store.listEventsByMethods(COORDINATOR, [
+      'runtime.error',
+    ]);
+    expect(errors.at(-1)?.payload).toMatchObject({
+      provider: 'codex',
+      retriable: true,
+    });
+    expect(delivery().wakes).toBe('ready');
   });
 
   test('a turn that ended normally reads ready', async () => {
