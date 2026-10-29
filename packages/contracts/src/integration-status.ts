@@ -6,6 +6,7 @@ import {
 
 export const INTEGRATION_ACTION_STATES = [
   'works',
+  'unverified',
   'waiting-on-provider',
   'unsupported',
   'failed',

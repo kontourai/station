@@ -479,6 +479,16 @@ export const PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS: readonly string[] = [
 ];
 
 export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
+  ...(['GET', 'HEAD'] as const).map(
+    (method): PairingScopeRouteRule => ({
+      id: `/api/integrations/status:${method}`,
+      method,
+      prefix: '/api/integrations/status',
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+      origin: 'explicit',
+    }),
+  ),
   ...(['GET', 'POST'] as const).map(
     (method): PairingScopeRouteRule => ({
       id: `/api/operator/telemetry-companion/private-usage-preparations:${method}`,

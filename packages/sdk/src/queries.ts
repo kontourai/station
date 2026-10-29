@@ -1,3 +1,9 @@
+export {
+  fetchIntegrationStatus,
+  type IntegrationStatus,
+  IntegrationStatusUnsupportedError,
+  useIntegrationStatusQuery,
+} from './query-domains/integrationStatus';
 export { runAgentMcpPrompt } from './query-domains/mcpPromptRun';
 export {
   peerEnrollmentQueries,

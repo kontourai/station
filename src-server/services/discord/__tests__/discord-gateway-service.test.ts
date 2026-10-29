@@ -340,10 +340,21 @@ describe('DiscordGatewayService', () => {
 
     service.start();
     const first = sockets[0];
+    expect(service.getGatewayStatus()).toMatchObject({ state: 'failed' });
+    first.emit('open');
+    expect(service.getGatewayStatus()).toMatchObject({ state: 'failed' });
+    first.emit('message', JSON.stringify({ op: 0, t: 'RESUMED', d: {} }));
+    expect(service.getGatewayStatus()).toMatchObject({ state: 'failed' });
+    first.emit(
+      'message',
+      JSON.stringify({ op: 0, t: 'READY', d: { session_id: '' } }),
+    );
+    expect(service.getGatewayStatus()).toMatchObject({ state: 'failed' });
     first.emit(
       'message',
       JSON.stringify({ op: 10, d: { heartbeat_interval: 1_000 } }),
     );
+    expect(service.getGatewayStatus()).toMatchObject({ state: 'failed' });
     expect(JSON.parse(first.sent[0])).toMatchObject({ op: 2 });
     first.emit(
       'message',
@@ -357,6 +368,7 @@ describe('DiscordGatewayService', () => {
         },
       }),
     );
+    expect(service.getGatewayStatus()).toMatchObject({ state: 'connected' });
     emitMessage(first);
     await settle();
     expect(authorizations).toEqual([
@@ -385,6 +397,7 @@ describe('DiscordGatewayService', () => {
     ]);
 
     first.close();
+    expect(service.getGatewayStatus()).toMatchObject({ state: 'failed' });
     await vi.advanceTimersByTimeAsync(5);
     const second = sockets[1];
     second.emit(
@@ -395,6 +408,10 @@ describe('DiscordGatewayService', () => {
       op: 6,
       d: { session_id: 'gateway-session', seq: 7 },
     });
+    second.emit('message', JSON.stringify({ op: 0, t: 'RESUMED', d: {} }));
+    expect(service.getGatewayStatus()).toMatchObject({ state: 'connected' });
+    second.emit('error');
+    expect(service.getGatewayStatus()).toMatchObject({ state: 'failed' });
 
     second.emit('message', JSON.stringify({ op: 9, d: false }));
     await vi.advanceTimersByTimeAsync(5);
@@ -406,6 +423,7 @@ describe('DiscordGatewayService', () => {
     expect(JSON.parse(third.sent[0])).toMatchObject({ op: 2 });
 
     await service.stop();
+    expect(service.getGatewayStatus().state).not.toBe('connected');
   });
 
   test('starts only mapped, granted channel-bound turns and records the real dispatch handle for relay', async () => {

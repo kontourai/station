@@ -2036,3 +2036,17 @@ test('Task capture and review comments require operate scope; capture reads use 
     requiredPairingScope('POST', '/api/tasks/task-a/review/captures/extra'),
   ).toBe('orchestration:operate');
 });
+test('integration status has only the Connections read scope', () => {
+  expect(requiredPairingScope('GET', '/api/integrations/status')).toBe(
+    'orchestration:read',
+  );
+  expect(requiredPairingScope('HEAD', '/api/integrations/status')).toBe(
+    'orchestration:read',
+  );
+  expect(
+    requiredPairingScope('POST', '/api/integrations/status'),
+  ).toBeUndefined();
+  expect(
+    requiredPairingScope('GET', '/api/integrations/status/other'),
+  ).toBeUndefined();
+});

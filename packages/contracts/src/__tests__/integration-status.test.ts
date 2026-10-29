@@ -1,3 +1,4 @@
+import { parseChatAppCapabilityChip } from '@kontourai/station-contracts/chat-app';
 import {
   INTEGRATION_ACTIONS,
   parseIntegrationActionStatus,
@@ -19,20 +20,24 @@ const connection = {
 };
 
 describe('integration status boundary', () => {
-  test.each(['works', 'waiting-on-provider', 'unsupported', 'failed'])(
-    'retains the %s action state and its probe reason',
-    (state) => {
-      const value = {
-        ...action,
-        state,
-        reason:
-          state === 'waiting-on-provider'
-            ? 'flow-agents #1508 is open'
-            : 'Probe diagnostic',
-      };
-      expect(parseIntegrationActionStatus(value)).toEqual(value);
-    },
-  );
+  test.each([
+    'works',
+    'unverified',
+    'waiting-on-provider',
+    'unsupported',
+    'failed',
+  ])('retains the %s action state and its probe reason', (state) => {
+    const value = {
+      ...action,
+      state,
+      reason:
+        state === 'waiting-on-provider'
+          ? 'flow-agents #1508 is open'
+          : 'Probe diagnostic',
+    };
+    expect(parseIntegrationActionStatus(value)).toEqual(value);
+    expect(parseChatAppCapabilityChip(value)).toEqual(value);
+  });
 
   test('refuses actions without a computation or upstream reason', () => {
     expect(
