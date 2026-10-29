@@ -1249,7 +1249,10 @@ export function ChatDockBody({
         msg,
         {
           replay: Boolean(activeSession.replay),
-          current: !transcriptPending && openPhase === 'writable',
+          current:
+            !transcriptPending &&
+            !observationUnavailable &&
+            openPhase === 'writable',
           turnInFlight: isTurnInFlight(activeSession),
           pendingSends:
             (activeSession.outboundQueuedTurns?.length ?? 0) +
@@ -1268,6 +1271,7 @@ export function ChatDockBody({
       renderedSession.messages,
       activeSession,
       transcriptPending,
+      observationUnavailable,
       openPhase,
       continueInterruptedTurn,
     ],

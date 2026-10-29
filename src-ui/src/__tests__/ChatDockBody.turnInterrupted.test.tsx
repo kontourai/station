@@ -25,6 +25,40 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   useFeaturePreviewsQuery: () => ({ data: previews.current }),
 }));
 
+const transcriptFailure = vi.hoisted(() => ({
+  current: '' as '' | 'error' | 'upgrade',
+}));
+vi.mock(
+  '../hooks/orchestration/useActiveChatTranscript',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../hooks/orchestration/useActiveChatTranscript')
+      >();
+    return {
+      ...actual,
+      useActiveChatTranscript: (
+        ...args: Parameters<typeof actual.useActiveChatTranscript>
+      ) => {
+        const transcript = actual.useActiveChatTranscript(...args);
+        return transcriptFailure.current
+          ? {
+              ...transcript,
+              enabled: true,
+              settled: true,
+              catchingUp: false,
+              error:
+                transcriptFailure.current === 'error'
+                  ? new Error('History refresh failed')
+                  : undefined,
+              upgradeRequired: transcriptFailure.current === 'upgrade',
+            }
+          : transcript;
+      },
+    };
+  },
+);
+
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({
     activeConnection: { id: 'test', name: 'Test Station' },
@@ -360,6 +394,7 @@ describe('ChatDockBody Continue after a restart', () => {
   }
 
   beforeEach(() => {
+    transcriptFailure.current = '';
     previews.current = [{ id: 'continue-interrupted-turn', enabled: true }];
   });
 
@@ -425,6 +460,19 @@ describe('ChatDockBody Continue after a restart', () => {
     await screen.findByText(BANNER_TEXT);
     expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
   });
+
+  test.each(['error', 'upgrade'] as const)(
+    'hides Continue when a settled history refresh reports %s',
+    async (failure) => {
+      const session = buildSession({ messages: [prompt, banner] });
+      const { rerender } = renderWith(session);
+      await screen.findByRole('button', { name: 'Continue' });
+      transcriptFailure.current = failure;
+      rerender({ ...session });
+      expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+      transcriptFailure.current = '';
+    },
+  );
 
   test('is not offered while a turn is running', async () => {
     renderWith(buildSession({ messages: [prompt, banner], status: 'sending' }));
