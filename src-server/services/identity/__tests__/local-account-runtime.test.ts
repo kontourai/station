@@ -3,12 +3,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   type LoadedLocalAccounts,
   loadLocalAccounts,
   readLocalAccountConfiguration,
 } from '../local-account-runtime.js';
 
+const makeTempDir = trackTempDirs();
 const roots: string[] = [];
 const loaded: LoadedLocalAccounts[] = [];
 const publicOrigin = 'http://localhost:4322';
@@ -82,10 +84,7 @@ describe('built-in local account lifetime', () => {
   });
 
   test('the provider trusts another Station origin only for local sign-out', async () => {
-    const homeDirectory = await mkdtemp(
-      join(tmpdir(), 'station-account-signout-'),
-    );
-    roots.push(homeDirectory);
+    const homeDirectory = makeTempDir('station-account-signout-');
     const alternateOrigin = 'http://localhost:4323';
     const account = await loadLocalAccounts(
       { publicOrigin },
