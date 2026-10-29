@@ -77,3 +77,33 @@ test('Fleet consumer probes toggle the actual runtime consuming path', async () 
   );
   expect(restartedRuntime.fleetProbes()).toBeDefined();
 });
+
+test('host image capture defaults on and retains an explicit off choice after restart', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'station-runtime-previews-'));
+  directories.push(directory);
+  const registry = new FeaturePreviewRegistry(directory, logger);
+  const runtime = runtimeFor(registry);
+  runtime.bindChatHostImagesPreview();
+  const selected = () =>
+    runtime.chatHostImagesPreview.select({
+      enabled: () => true,
+      disabled: () => false,
+    });
+
+  expect(selected()).toBe(true);
+  expect(registry.list()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ id: 'chat-host-images', enabled: true }),
+    ]),
+  );
+  await registry.setEnabled('chat-host-images', false);
+  expect(selected()).toBe(false);
+  const restarted = runtimeFor(new FeaturePreviewRegistry(directory, logger));
+  restarted.bindChatHostImagesPreview();
+  expect(
+    restarted.chatHostImagesPreview.select({
+      enabled: () => true,
+      disabled: () => false,
+    }),
+  ).toBe(false);
+});

@@ -5152,6 +5152,7 @@ export class StationRuntime {
     this.chatHostImagesPreview = this.featurePreviews.bind({
       id: 'chat-host-images',
       label: 'Chat images from the host',
+      defaultEnabled: true,
       description:
         "Show images an agent saves on this Station and names in its reply, on any device. Station copies each one (PNG, JPEG, GIF or WebP, up to 512 KiB, from the chat's working folder or its own temporary folder) into the chat's attachment storage when the reply finishes.",
     });
