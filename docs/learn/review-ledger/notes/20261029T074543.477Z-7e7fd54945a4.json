@@ -1,0 +1,7 @@
+{
+  "revision": "a60d013effcda0dd3db3fb33baa53930d27009b6",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"TelemetryConsent.routes.test.tsx now waits for the settled disclosure state instead of wall-clock time before asserting the dialog is absent; the behaviour this document describes (no prompt for a caller that cannot complete it) is unchanged and still pinned by that test.","inputs":["docs/reference/usage-telemetry.md","src-ui/src/components/__tests__/TelemetryConsent.routes.test.tsx"]}
+  ]
+}
