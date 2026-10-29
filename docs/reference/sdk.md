@@ -1618,7 +1618,8 @@ throw. Scoped like `useProjectChatDefaultsQuery`, under
 `[PROJECT_CHECKOUT_FRESHNESS_QUERY_KEY_PREFIX, apiBase, identity, slug]`
 (`'project-checkout-freshness'`), outside the persisted `'projects'` prefix.
 Disabled without a slug. Station reads it through `ProjectsContext`'s
-`useScopedProjectCheckoutFreshnessQuery` (`staleTime: 10_000`) in Project
+`useScopedProjectCheckoutFreshnessQuery` (`staleTime: 10_000`, refetching on
+mount and window focus, since a pull happens outside Station) in Project
 settings, enabled only while the preview is on.
 
 ### `useProjectRunLocationsQuery(config?)`
