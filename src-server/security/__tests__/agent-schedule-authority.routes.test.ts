@@ -2237,6 +2237,10 @@ describe('acting on an automation is admitted against its stored target', () => 
 
   test('real HTTP MCP list_jobs must not disclose another chat prompt', async () => {
     const world = await realWorld();
+    await world.scheduler.runJob('victim-job');
+    expect(await world.scheduler.getJobLogs('victim-job')).toMatchObject([
+      { runTarget: { kind: 'conversation', conversationId: 'conv-victim' } },
+    ]);
     facts.mayNotRead.add('conv-victim');
     facts.mayNotSend.add('conv-victim');
     try {
