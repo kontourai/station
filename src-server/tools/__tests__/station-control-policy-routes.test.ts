@@ -188,6 +188,7 @@ const ARGS: Record<string, Record<string, unknown>> = {
   get_conversation_messages: { agent: 'a', conversationId: 'c' },
   read_conversation: { conversationId: 'c', limit: 5 },
   delete_conversation: { agent: 'a', conversationId: 'c' },
+  fork_conversation: { agent: 'a', conversationId: 'c', targetAgent: 'b' },
   search_sessions: { query: 'cobalt' },
   search_conversations: { query: 'cobalt' },
   rename_session: { conversationId: 'c', title: 'A title' },

@@ -87,6 +87,12 @@ export interface ACPProcessOptions {
    */
   credentialEnv?: () => Readonly<Record<string, string>> | undefined;
   /**
+   * A session's own Station-owned TMPDIR (`session-tmpdir.ts`). Replaces the
+   * shared engine-spawn directory the augmented environment carries, after
+   * the credential layer, so neither a descriptor nor a credential moves it.
+   */
+  tmpDir?: string;
+  /**
    * Receives the child's stderr instead of it being inherited. Only the
    * short-lived sign-in process sets it, to show links the engine prints.
    */
@@ -416,9 +422,12 @@ export class ACPProcess extends EventEmitter {
       ? { ...this.opts.launchEnv, ...augmentedEnv }
       : augmentedEnv;
     const credentialEnv = this.opts.credentialEnv?.();
-    const baseEnv = credentialEnv
+    const credentialedEnv = credentialEnv
       ? { ...launchedEnv, ...credentialEnv }
       : launchedEnv;
+    const baseEnv = this.opts.tmpDir
+      ? { ...credentialedEnv, TMPDIR: this.opts.tmpDir }
+      : credentialedEnv;
     const env = this.opts.spawnEnv ? this.opts.spawnEnv(baseEnv) : baseEnv;
     // archive#1863: spawn through the owned-process primitive so the child is
     // tagged with this Station's identity and recorded in the host-wide

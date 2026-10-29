@@ -776,15 +776,15 @@ export class ChromiumServerHost implements BrowserHost {
   private async verifyWebRtcPolicy(running: Running): Promise<void> {
     const transport = running.launch.transport;
     let targetId: string | undefined;
-    let off: (() => void) | undefined;
     let verified = false;
+    const unsubscribe: (() => void)[] = [];
     try {
       const check = async () => {
         running.creating++;
         try {
           ({ targetId } = await transport.send<{ targetId: string }>(
             'Target.createTarget',
-            { url: ABOUT_BLANK },
+            { url: 'chrome://prefs-internals/' },
           ));
           running.created.add(targetId);
         } finally {
@@ -794,18 +794,111 @@ export class ChromiumServerHost implements BrowserHost {
           'Target.attachToTarget',
           { targetId, flatten: true },
         );
-        await transport.send('Page.enable', {}, sessionId);
-        const loaded = new Promise<void>((resolve) => {
-          off = transport.on('Page.loadEventFired', (_params, session) => {
-            if (session === sessionId) resolve();
-          });
+        type Frame = {
+          id: string;
+          loaderId: string;
+          url: string;
+          parentId?: unknown;
+        };
+        let snapshotReceived = false;
+        let latestCommit: Frame | undefined;
+        let document: Frame | undefined;
+        let replaced = false;
+        let resolveCommit!: (frame: Frame) => void;
+        const committed = new Promise<Frame>((resolve) => {
+          resolveCommit = resolve;
         });
-        await transport.send(
-          'Page.navigate',
-          { url: 'chrome://prefs-internals/' },
+        const observe = (value: unknown) => {
+          if (!value || typeof value !== 'object') return;
+          const candidate = value as Partial<Frame>;
+          if (
+            candidate.parentId !== undefined ||
+            typeof candidate.id !== 'string' ||
+            typeof candidate.loaderId !== 'string' ||
+            !candidate.id ||
+            !candidate.loaderId ||
+            typeof candidate.url !== 'string'
+          )
+            return;
+          const frame: Frame = {
+            id: candidate.id,
+            loaderId: candidate.loaderId,
+            url: candidate.url,
+          };
+          if (document) {
+            if (
+              frame.id !== document.id ||
+              frame.loaderId !== document.loaderId ||
+              frame.url !== document.url
+            )
+              replaced = true;
+            return;
+          }
+          latestCommit = frame;
+          if (snapshotReceived && frame.url === 'chrome://prefs-internals/') {
+            document = frame;
+            resolveCommit(frame);
+          }
+        };
+        unsubscribe.push(
+          transport.on('Page.frameNavigated', (params, session) => {
+            if (session === sessionId)
+              observe((params as { frame?: unknown })?.frame);
+          }),
+          transport.on('Page.frameDetached', (params, session) => {
+            if (
+              session === sessionId &&
+              (params as { frameId?: unknown })?.frameId === document?.id
+            )
+              replaced = true;
+          }),
+        );
+        await transport.send('Page.enable', {}, sessionId);
+        const snapshot = await transport.send<{
+          frameTree: { frame: Frame };
+        }>('Page.getFrameTree', {}, sessionId);
+        snapshotReceived = true;
+        // Events can be newer than the snapshot captured by getFrameTree.
+        observe(latestCommit ?? snapshot.frameTree.frame);
+        const frame = await committed;
+        let contextId: number | undefined;
+        let worldRequested = false;
+        const destroyed = new Set<number>();
+        unsubscribe.push(
+          transport.on(
+            'Runtime.executionContextDestroyed',
+            (params, session) => {
+              const id = (params as { executionContextId?: unknown })
+                ?.executionContextId;
+              if (session === sessionId && typeof id === 'number') {
+                destroyed.add(id);
+                if (id === contextId) replaced = true;
+              }
+            },
+          ),
+          transport.on(
+            'Runtime.executionContextsCleared',
+            (_params, session) => {
+              if (session === sessionId && worldRequested) replaced = true;
+            },
+          ),
+        );
+        await transport.send('Runtime.enable', {}, sessionId);
+        if (replaced) return false;
+        worldRequested = true;
+        const world = await transport.send<{ executionContextId: number }>(
+          'Page.createIsolatedWorld',
+          { frameId: frame.id, worldName: 'station-preview-policy' },
           sessionId,
         );
-        await loaded;
+        contextId = world.executionContextId;
+        if (
+          replaced ||
+          !Number.isSafeInteger(contextId) ||
+          contextId <= 0 ||
+          destroyed.has(contextId)
+        )
+          return false;
         const result = await transport.send<{
           result: { value?: { policy?: unknown; urlOverrides?: unknown } };
         }>(
@@ -813,12 +906,15 @@ export class ChromiumServerHost implements BrowserHost {
           {
             // This internal page reports resolved values, including managed policy.
             // Return only the network-policy fields, never the full preference dump.
-            expression: `(()=>{try{const p=JSON.parse(document.body.innerText).webrtc;return {policy:p?.ip_handling_policy?.value,urlOverrides:p?.ip_handling_url===undefined?false:!Array.isArray(p.ip_handling_url.value)||p.ip_handling_url.value.length!==0};}catch{return null}})()`,
+            expression: `(async()=>{try{if(document.readyState!=='complete')await new Promise(resolve=>addEventListener('load',resolve,{once:true}));if(location.href!=='chrome://prefs-internals/')return null;const p=JSON.parse(document.body.innerText).webrtc;return {policy:p?.ip_handling_policy?.value,urlOverrides:p?.ip_handling_url===undefined?false:!Array.isArray(p.ip_handling_url.value)||p.ip_handling_url.value.length!==0};}catch{return null}})()`,
             returnByValue: true,
+            awaitPromise: true,
+            contextId,
           },
           sessionId,
         );
         return (
+          !replaced &&
           result.result.value?.policy === 'disable_non_proxied_udp' &&
           result.result.value.urlOverrides === false
         );
@@ -831,7 +927,7 @@ export class ChromiumServerHost implements BrowserHost {
     } catch {
       verified = false;
     } finally {
-      off?.();
+      for (const off of unsubscribe) off();
       if (targetId) {
         try {
           await withTimeout(

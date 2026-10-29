@@ -1,0 +1,11 @@
+{
+  "revision": "6e2216b79b28ce8573c7e532311ff366aca2bde4",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Second fix round: approvalMode.ts changed only the Codex connection-default description and its comment; the reviewer-gap, Ask-chip and delivery-disclosure claims are unaffected.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/utils/approvalMode.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Second fix round: the Codex Default is stated as a bound on what runs unasked (never network or writes outside the folder and temp). The probed host case is described as a folder with no trust entry (read-only, on-request), not as an untrusted folder. Trusted host and station-workspace are workspace-write with no network and writable temp. Both were EXECUTED against codex-cli 0.164.0. Text is pinned by ApprovalModeChip.test.tsx and StartApprovalSummary.test.tsx.","inputs":["docs/design/chat-composer.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Second fix round: if unset, Codex never uses the network or writes outside the chat's folder and temporary directories without asking, and may ask before other writes. This matches approvalModeDescription('connection-default','codex') and the executed probes.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

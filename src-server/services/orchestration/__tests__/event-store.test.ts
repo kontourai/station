@@ -38,11 +38,11 @@ import {
   orchestrationEventsPersisted,
   orchestrationEventWindowElisions,
 } from '../../../telemetry/metrics.js';
+import { MAX_EVENT_CONTENT_BYTES } from '../event-content-spill.js';
 import type { PersistedRuntimeEvent } from '../event-store.js';
 import {
   EventStore,
   EventStoreIntegrityError,
-  MAX_EVENT_STORE_INGRESS_BYTES,
   MESSAGE_SEARCH_BACKFILL_EVENT_BATCH_SIZE,
 } from '../event-store.js';
 import {
@@ -965,6 +965,197 @@ describe('EventStore', () => {
       }
       expect(ids.size).toBe(9014 + chunks + 2);
     }
+  });
+
+  test.each([
+    { deltas: 180, detached: true },
+    { deltas: 10, detached: false },
+    // The byte budget, not the count, cuts this page.
+    { deltas: 40, detached: true, size: 2_000 },
+    // Only the `turn.started` itself was left out: re-adding it closes the page.
+    { deltas: 149, detached: false },
+  ])(
+    'a newest page reports a detached turn start only across omitted rows ($deltas deltas)',
+    ({
+      deltas,
+      detached,
+      size = 1,
+    }: {
+      deltas: number;
+      detached: boolean;
+      size?: number;
+    }) => {
+      const threadId = `detached-${deltas}-${size}`;
+      const fields = {
+        provider: 'codex' as const,
+        threadId,
+        turnId: 'turn',
+        itemId: 'answer',
+        createdAt: '2026-09-12T00:00:00Z',
+      };
+      store.appendEvent({
+        ...fields,
+        eventId: `${threadId}-start`,
+        method: 'turn.started',
+        prompt: 'Question',
+      });
+      for (let i = 0; i < deltas; i++)
+        store.appendEvent({
+          ...fields,
+          eventId: `${threadId}-delta-${i}`,
+          method: 'content.text-delta',
+          delta: 'x'.repeat(size),
+        });
+      const read = (cursor?: string) =>
+        store.listConversationEventWindowByTurn([threadId], {
+          direction: 'newest',
+          turnLimit: 1,
+          cursor,
+        });
+      const first = read();
+      expect(first.events[0].method).toBe('turn.started');
+      expect(first.turnStartDetached === true).toBe(detached);
+      // Far under the count limit: only the byte budget can have cut it.
+      if (size > 1) expect(first.events.length).toBeLessThan(deltas);
+      if (!detached) return;
+      // The cursor reads the gap: its page holds the rest of the turn and is
+      // contiguous, so together the two pages are the whole turn.
+      const gap = read(first.nextCursor);
+      expect(gap.turnStartDetached).toBeUndefined();
+      expect(
+        new Set([...first.events, ...gap.events].map((event) => event.id)).size,
+      ).toBe(deltas + 1);
+    },
+  );
+
+  test.each([
+    // A steer re-announces the turn; it is not the turn's start.
+    { label: 'steered', before: 200, steer: true, after: 20 },
+    // The oldest row that fit is turnless; the turn behind it is anchored.
+    { label: 'turnless oldest', before: 100, steer: false, after: 148 },
+    // A steer is not a turn: counting it would push the start out of range.
+    {
+      label: 'steered before the cap',
+      before: 20,
+      steer: true,
+      after: 200,
+      turnLimit: 1,
+    },
+  ])(
+    'a capped newest page re-adds the original turn start ($label)',
+    ({
+      label,
+      before,
+      steer,
+      after,
+      turnLimit = 10,
+    }: {
+      label: string;
+      before: number;
+      steer: boolean;
+      after: number;
+      turnLimit?: number;
+    }) => {
+      const threadId = `anchor-${label}`;
+      const fields = {
+        provider: 'codex' as const,
+        threadId,
+        turnId: 'turn',
+        itemId: 'answer',
+        createdAt: '2026-09-12T00:00:00Z',
+      };
+      const delta = (index: number) =>
+        store.appendEvent({
+          ...fields,
+          eventId: `${threadId}-delta-${index}`,
+          method: 'content.text-delta',
+          delta: 'x',
+        });
+      store.appendEvent({
+        ...fields,
+        eventId: `${threadId}-start`,
+        method: 'turn.started',
+        prompt: 'Question',
+      });
+      for (let i = 0; i < before; i++) delta(i);
+      if (steer)
+        store.appendEvent({
+          ...fields,
+          eventId: `${threadId}-steer`,
+          method: 'turn.started',
+          inputKind: 'steer',
+          prompt: 'Steer',
+        } as never);
+      else
+        store.appendEvent({
+          provider: 'codex',
+          threadId,
+          eventId: `${threadId}-idle`,
+          method: 'session.state-changed',
+          from: 'running',
+          to: 'idle',
+          createdAt: '2026-09-12T00:00:00Z',
+        } as never);
+      for (let i = before; i < before + after; i++) delta(i);
+      const page = store.listConversationEventWindowByTurn([threadId], {
+        direction: 'newest',
+        turnLimit,
+      });
+      expect(page.events[0].id).toBe(`${threadId}-start`);
+      expect(page.turnStartDetached).toBe(true);
+      if (!steer) expect(page.events[1].turnId).toBeUndefined();
+    },
+  );
+
+  // A steer is published after the engine accepts it, so it can land after
+  // the next turn started. Its turn's own start then lies before the range,
+  // and the steer must not be re-added in its place.
+  test('a capped newest page never re-adds a late steer as its turn start', () => {
+    const threadId = 'late-steer';
+    const base = {
+      provider: 'codex' as const,
+      threadId,
+      itemId: 'answer',
+      createdAt: '2026-09-12T00:00:00Z',
+    };
+    store.appendEvent({
+      ...base,
+      turnId: 'turn-1',
+      eventId: 'late-steer-start-1',
+      method: 'turn.started',
+      prompt: 'First',
+    });
+    store.appendEvent({
+      ...base,
+      turnId: 'turn-2',
+      eventId: 'late-steer-start-2',
+      method: 'turn.started',
+      prompt: 'Second',
+    });
+    store.appendEvent({
+      ...base,
+      turnId: 'turn-1',
+      eventId: 'late-steer-steer-1',
+      method: 'turn.started',
+      inputKind: 'steer',
+      prompt: 'Steer',
+    } as never);
+    for (let i = 0; i < 200; i++)
+      store.appendEvent({
+        ...base,
+        turnId: 'turn-1',
+        eventId: `late-steer-delta-${i}`,
+        method: 'content.text-delta',
+        delta: 'x',
+      });
+    const page = store.listConversationEventWindowByTurn([threadId], {
+      direction: 'newest',
+      turnLimit: 1,
+    });
+    expect(page.events.map((event) => event.id)).not.toContain(
+      'late-steer-steer-1',
+    );
+    expect(page.turnStartDetached).toBeUndefined();
   });
 
   test('newest paging pins its watermark and lineage while rejecting malformed cursors', () => {
@@ -4542,19 +4733,47 @@ describe('EventStore', () => {
       return found;
     };
 
+    // A long prompt is spilled out of line (event-content-spill.ts), so only
+    // a large field outside the spill allowlist (here adapter metadata) can
+    // still push a stored event past the per-event window ceiling.
+    const startTurnWithLargeMetadata = (turnId: string) => {
+      store.appendEvent({
+        eventId: `${turnId}-start`,
+        provider: 'codex',
+        threadId,
+        turnId,
+        createdAt: '2026-08-19T03:00:00.000Z',
+        method: 'turn.started',
+        prompt: 'short',
+        metadata: { note: 'p'.repeat(32_000) },
+      });
+    };
+
     test('labels a payload stripped by the serialized ceiling byte_limit', () => {
       // Comfortably past the per-event ceiling (24 KiB — sized to clear the
-      // 16 KiB transcript chunks, so this needs 32 KiB), and nothing else
-      // about it is unusual — this is the shape a very long prompt or an
-      // inline attachment produces.
-      startTurn('turn-big', 'p'.repeat(32_000));
+      // 16 KiB transcript chunks, so this needs 32 KiB).
+      startTurnWithLargeMetadata('turn-big');
       const started = windowEvent('turn-big-start');
 
       expect(started.elided).toBe('byte_limit');
       // The label is not decoration: the fields it accounts for really are
       // gone from this read.
-      expect((started.payload as { prompt?: string }).prompt).toBeUndefined();
+      expect(
+        (started.payload as { metadata?: unknown }).metadata,
+      ).toBeUndefined();
       expect(started.payload.eventId).toBe('turn-big-start');
+    });
+
+    test('a long prompt is spilled, so its event stays whole in the window', () => {
+      startTurn('turn-long', 'p'.repeat(32_000));
+      const started = windowEvent('turn-long-start');
+
+      expect(started.elided).toBeUndefined();
+      expect((started.payload as { prompt?: unknown }).prompt).toMatchObject({
+        $stationContent: 1,
+        kind: 'string',
+        length: 32_000,
+      });
     });
 
     test('labels a cut tool result output_limit and leaves the rest of the payload alone', () => {
@@ -4659,7 +4878,7 @@ describe('EventStore', () => {
      */
     test('counts what it withheld, by reason', () => {
       vi.mocked(orchestrationEventWindowElisions.add).mockClear();
-      startTurn('turn-counted', 'p'.repeat(32_000));
+      startTurnWithLargeMetadata('turn-counted');
 
       store.listEventWindowByTurn(threadId, { turnLimit: 1 });
 
@@ -4943,10 +5162,10 @@ describe('EventStore', () => {
       createdAt: '2026-08-09T02:00:02.000Z',
       method: 'tool.completed',
       toolCallId: 'tool-1',
-      // The ACP ingress ceiling rejects a megabyte before this read-side
-      // window can project it. This remains far above the 84-char window
-      // output limit while staying below that ingress boundary.
-      output: 'x'.repeat(60_000),
+      // Far above the 84-char window output limit, and below the size at
+      // which ingress would store the output out of line (16 KiB), so the
+      // window itself must cut it.
+      output: 'x'.repeat(10_000),
     } as any);
 
     const newest = store.listEventWindowByTurn(threadId, { turnLimit: 1 });
@@ -5243,7 +5462,13 @@ describe('EventStore', () => {
       (event) => event.id === 'long-turn-completed',
     )!;
     expect(completed.elided).toBeUndefined();
-    expect((completed.payload as { outputText?: string }).outputText).toBe(
+    // Past the stored-event target the reply is stored out of line: the
+    // window carries a reference whose resolution is the exact reply.
+    expect(
+      (completed.payload as { outputText?: unknown }).outputText,
+    ).toMatchObject({ $stationContent: 1, kind: 'string', length: 30_000 });
+    const [resolved] = store.resolveEventContent([completed]);
+    expect((resolved!.payload as { outputText?: string }).outputText).toBe(
       reply,
     );
     const messages = projectRuntimeEventsToMessages(
@@ -5253,6 +5478,12 @@ describe('EventStore', () => {
       'user',
       'assistant',
     ]);
+    // Unresolved, the assistant row shows the preview marked as partial,
+    // never the preview as if it were the reply.
+    const assistantText = messages[1]!.parts
+      .map((part) => (part as { text?: string }).text ?? '')
+      .join('');
+    expect(assistantText).toContain('[30000 bytes of content not inlined]');
   });
 
   test('keeps a ten-session conversation cursor within the route cursor cap', () => {
@@ -9260,6 +9491,8 @@ describe('EventStore', () => {
       expect(
         store.toolCompletedEventById('thread', 'evt-tool-result-utf8-boundary'),
       ).toMatchObject({ output: exact });
+      // Tool output is spilled out of line, so the backstop now guards only
+      // fields outside the spill allowlist (adapter-built fields).
       expect(() =>
         store.appendEvent({
           eventId: 'evt-tool-result-overflow',
@@ -9272,8 +9505,9 @@ describe('EventStore', () => {
           toolCallId: 'call',
           toolName: 'shell',
           status: 'success',
-          output: '😀'.repeat(16_384),
-        }),
+          output: 'ok',
+          adapterNote: '😀'.repeat(16_384),
+        } as CanonicalRuntimeEvent),
       ).toThrow('ingress ceiling');
       expect(
         store.toolCompletedEventById('thread', 'evt-tool-result-overflow'),
@@ -9296,8 +9530,9 @@ describe('EventStore', () => {
           toolCallId: 'call',
           toolName: 'shell',
           status: 'success',
-          output: 'x'.repeat(70_000),
-        }),
+          output: 'ok',
+          adapterNote: 'x'.repeat(70_000),
+        } as CanonicalRuntimeEvent),
       ).toThrow(
         /method=tool\.completed, threadId=external:claude:oversized.*ingress ceiling/s,
       );
@@ -9305,7 +9540,9 @@ describe('EventStore', () => {
 
     test('bounds both event insert paths before JSON serialization', () => {
       const stringify = vi.spyOn(JSON, 'stringify');
-      const oversized = '😀'.repeat(MAX_EVENT_STORE_INGRESS_BYTES);
+      // Engine content may reach the per-event ceiling before spilling; one
+      // glyph past it must be refused before anything serializes the value.
+      const oversized = '😀'.repeat(MAX_EVENT_CONTENT_BYTES / 4 + 1);
       const appenders = [
         (event: CanonicalRuntimeEvent) => store.appendEvent(event),
         (event: CanonicalRuntimeEvent) => store.appendEventIfAbsent(event),
@@ -9350,11 +9587,47 @@ describe('EventStore', () => {
       const tooManyProperties = Object.fromEntries(
         Array.from({ length: 513 }, (_, index) => [`property-${index}`, index]),
       );
-      const hostileValues: Array<[string, unknown]> = [
-        ['cycle', cycle],
+      // Wide and deep structures are refused only outside the spill
+      // allowlist; inside it they are stored out of line (asserted below).
+      const structural: Array<[string, unknown]> = [
         ['depth', nested],
         ['properties', tooManyProperties],
         ['array', Array.from({ length: 513 }, () => 'item')],
+      ];
+      for (const [appendIndex, append] of appenders.entries()) {
+        for (const [label, value] of structural) {
+          // A field outside the contract: an adapter can still send one.
+          const completed: CanonicalRuntimeEvent = {
+            eventId: `evt-ingress-structure-${appendIndex}-${label}`,
+            provider: 'claude',
+            threadId: 'thread',
+            createdAt: '2026-08-25T00:00:00.000Z',
+            method: 'tool.completed',
+            itemId: 'call',
+            toolCallId: 'call',
+            toolName: 'shell',
+            status: 'success',
+          };
+          expect(() =>
+            append(Object.assign(completed, { adapterNote: value })),
+          ).toThrow('cannot be safely persisted');
+          expect(
+            append({
+              eventId: `evt-ingress-spilled-${appendIndex}-${label}`,
+              provider: 'claude',
+              threadId: 'thread',
+              createdAt: '2026-08-25T00:00:00.000Z',
+              method: 'tool.completed',
+              toolCallId: 'call',
+              toolName: 'shell',
+              status: 'success',
+              output: value,
+            } as CanonicalRuntimeEvent),
+          ).toBeTypeOf('number');
+        }
+      }
+      const hostileValues: Array<[string, unknown]> = [
+        ['cycle', cycle],
         [
           'ownKeys',
           new Proxy(

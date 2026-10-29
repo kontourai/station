@@ -1,0 +1,7 @@
+{
+  "revision": "eeb718b8035e3151c01a770ccf5aa44736665f22",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Reviewed product snapshot controls on frozen79e runtime: two synthetic acknowledged events; foreign-source receipt404, changed same-ID payload409, original receipt/replay dedupe/revoked-source refusal across receiver+PG restart. Whole pg_dump custom-format backup restored only into new empty owned DB with new private operator/DB credentials. All14 application-table row digests matched before receiver start; migrations8 rows and Lite noise key1 row preserved, publication tables empty. Restored HTTP returned original receipt, deduplicated replay to exact2 events and refused pre-snapshot revoked key. Separate post-snapshot revoke control returned401 on original but200 on older restored snapshot: GAP_CONFIRMED, not safe-restore qualification. Both projects stopped with private backup/credentials/volumes retained. README now explicitly requires activation fencing/current-authority reconciliation; no public-release rollback, diagnostic fresh restore, real Station/personal grant/native/release acceptance is claimed.","inputs":["deployment/telemetry/README.md"]}
+  ]
+}

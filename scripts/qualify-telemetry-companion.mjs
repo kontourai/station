@@ -1,0 +1,1368 @@
+import assert from 'node:assert/strict';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:net';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
+import {
+  captureOwnedProcessOutput,
+  executeOwnedProcess,
+  terminateSuiteExecution,
+  waitForSuiteSettlement,
+} from './lib/owned-process.mjs';
+import {
+  authenticatePriorCompanion,
+  exerciseCompanionLifecycle,
+  parsePriorCompanionOptions,
+} from './lib/telemetry-companion-lifecycle.mjs';
+import { withTelemetryStation } from './lib/telemetry-station-export.mjs';
+import { verifyTelemetryCompanion } from './package-telemetry-companion.mjs';
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const token = () => randomBytes(32).toString('base64url');
+const pause = () => new Promise((done) => setTimeout(done, 500));
+
+async function poll(label, probe, timeoutMs = 45_000) {
+  const end = performance.now() + timeoutMs;
+  while (performance.now() < end) {
+    try {
+      const value = await probe();
+      if (value) return value;
+    } catch {
+      // Only reads are retried. A Docker or HTTP mutation is never retried here.
+    }
+    await pause();
+  }
+  throw new Error(`${label}: observation deadline`);
+}
+
+async function unusedPort() {
+  const server = createServer();
+  await new Promise((done, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', done);
+  });
+  const port = server.address().port;
+  await new Promise((done) => server.close(done));
+  assert(![3000, 3141].includes(port));
+  return port;
+}
+
+async function request(
+  port,
+  path,
+  { key, operator = false, basic, body, method } = {},
+) {
+  const headers = { accept: 'application/json' };
+  if (basic)
+    headers.authorization = `Basic ${Buffer.from(basic).toString('base64')}`;
+  if (key)
+    headers[operator ? 'authorization' : 'x-api-key'] = operator
+      ? `Bearer ${key}`
+      : key;
+  if (body !== undefined) headers['content-type'] = 'application/json';
+  const response = await fetch(`http://127.0.0.1:${port}${path}`, {
+    method: method ?? (body === undefined ? 'GET' : 'POST'),
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(6000),
+    redirect: 'error',
+  });
+  const chunks = [];
+  let length = 0;
+  const reader = response.body?.getReader();
+  if (reader) {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      length += value.byteLength;
+      if (length > 65536) {
+        await reader.cancel();
+        throw new Error('HTTP response bound');
+      }
+      chunks.push(value);
+    }
+  }
+  const text = Buffer.concat(chunks).toString('utf8');
+  return {
+    status: response.status,
+    body: JSON.parse(text),
+    cacheControl: response.headers.get('cache-control'),
+  };
+}
+
+async function qualifyTelemetryCompanion(candidate, output, priorOptions) {
+  if (process.platform === 'win32')
+    throw new Error('Unix private-file runtime qualification is required');
+  candidate = resolve(candidate);
+  output = resolve(output);
+  const within = relative(ROOT, output);
+  assert(
+    within === '..' || within.startsWith('../') || isAbsolute(within),
+    'Qualification output must be outside the checkout',
+  );
+  const child = relative(candidate, output);
+  assert(
+    child === '..' || child.startsWith('../') || isAbsolute(child),
+    'Output must not modify the candidate',
+  );
+  assert(
+    output !== ROOT && output !== candidate,
+    'Exclusive external output required',
+  );
+  const input = await verifyTelemetryCompanion(candidate);
+  await mkdir(output, { mode: 0o700 });
+  const snapshot = join(output, 'candidate');
+  await cp(candidate, snapshot, {
+    recursive: true,
+    force: false,
+    errorOnExist: true,
+  });
+  const manifest = await verifyTelemetryCompanion(snapshot);
+  assert.deepEqual(manifest, input, 'Candidate changed during capture');
+  const owner = randomBytes(12).toString('hex');
+  const project = `telemetry-qa-${owner}`;
+  const report = {
+    protocol: 'station-companion-runtime-diagnostic/v1',
+    scope: 'source-Station-OTel-and-component-runtime-only',
+    installationAuthority: false,
+    diagnosticProfile:
+      'station-companion-product-diagnostics-permanent-publication-suppression/v2',
+    qualificationEligible: false,
+    source: manifest.source,
+    manifestSha256: createHash('sha256')
+      .update(await readFile(join(snapshot, 'companion-manifest.json')))
+      .digest('hex'),
+    project,
+    checks: [],
+    effects: [],
+    notVerified: [
+      'installed-release Station export',
+      'trace retention beyond same-volume restart',
+      'version rollback: NOT_SUPPORTED for schema 9 to schema 8; backup-before-upgrade restore NOT_VERIFIED',
+      priorOptions
+        ? 'version rollback (upgrade controls reported separately)'
+        : 'version upgrade/rollback: no authenticated prior supplied',
+      'publisher privacy reconciliation',
+      'personal grants/sync',
+      'native/release acceptance',
+    ],
+  };
+  const save = () =>
+    writeFile(
+      join(output, 'report.json'),
+      `${JSON.stringify(report, null, 2)}\n`,
+      { mode: 0o600 },
+    );
+  report.cleanupProjects = {};
+  let sequence = 0;
+  async function command(
+    executable,
+    args,
+    label,
+    env,
+    timeoutMs = 30_000,
+    stdin,
+    expectedFailure,
+  ) {
+    const effect = {
+      label,
+      executable,
+      args,
+      state: 'started',
+      sequence: sequence++,
+    };
+    report.effects.push(effect);
+    await save();
+    const execution = executeOwnedProcess(executable, args, undefined, label, {
+      cwd: ROOT,
+      env,
+      windowsHide: true,
+      stdio: [stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+    });
+    if (stdin !== undefined) {
+      execution.child.stdin.on('error', () => {});
+      execution.child.stdin.end(stdin);
+    }
+    const capture = captureOwnedProcessOutput(execution, {
+      maxBytes: 1024 * 1024,
+    });
+    let timer;
+    let result;
+    let captured;
+    let failure;
+    let complete = false;
+    try {
+      result = await Promise.race([
+        execution.completion,
+        new Promise((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('command deadline; daemon outcome unknown')),
+            timeoutMs,
+          );
+        }),
+      ]);
+    } catch (error) {
+      effect.state = 'unknown';
+      failure = error;
+    } finally {
+      clearTimeout(timer);
+      const cleanup = await terminateSuiteExecution(execution, {
+        terminationGraceMs: 1000,
+        terminationForceMs: 1000,
+        waitForSuiteSettlement,
+      });
+      if (!cleanup.settled) effect.state = 'unsettled';
+      const bytes = capture.finish();
+      captured = bytes;
+      await writeFile(
+        join(output, `${effect.sequence}.log`),
+        bytes.stdout.text + bytes.stderr.text,
+        { mode: 0o600 },
+      );
+      complete =
+        cleanup.settled &&
+        !cleanup.escalated &&
+        cleanup.errors.length === 0 &&
+        !bytes.truncated &&
+        !bytes.invalidUtf8;
+      await save();
+    }
+    if (failure) throw failure;
+    assert(complete, `${label}: incomplete process evidence`);
+    effect.state =
+      result.status === 0 && !result.error ? 'completed' : 'refused';
+    await save();
+    assert(!result.error, `${label}: process launch failed`);
+    if (expectedFailure) {
+      assert(
+        Number.isInteger(result.status) && result.status !== 0,
+        `${label}: expected refusal`,
+      );
+      assert(
+        captured.stderr.text.includes(expectedFailure),
+        `${label}: wrong refusal`,
+      );
+    } else
+      assert.equal(
+        result.status,
+        0,
+        `${label}: command refused; see private log`,
+      );
+    return captured.stdout.text.trim();
+  }
+  let endpoint;
+  let env;
+  let started = false;
+  let compose;
+  const ownedProjects = [project];
+  const docker = (args, label, timeout) =>
+    command('docker', ['--host', endpoint, ...args], label, env, timeout);
+  async function retireProject(project) {
+    assert(
+      ownedProjects.includes(project),
+      'Retirement requires owned project',
+    );
+    try {
+      const ids = (
+        await docker(
+          [
+            'ps',
+            '-aq',
+            '--filter',
+            `label=com.docker.compose.project=${project}`,
+          ],
+          'identify owned containers',
+        )
+      )
+        .split(/\s+/)
+        .filter(Boolean);
+      assert(ids.length <= 7);
+      for (const id of ids) {
+        const [info] = JSON.parse(
+          await docker(['inspect', id], 'verify container custody'),
+        );
+        assert.equal(info.Config.Labels['com.docker.compose.project'], project);
+      }
+      if (ids.length)
+        await docker(
+          ['stop', '--time', '15', ...ids],
+          'stop exact owned containers including one-shot',
+          60_000,
+        );
+      assert.equal(
+        await docker(
+          [
+            'ps',
+            '-q',
+            '--filter',
+            `label=com.docker.compose.project=${project}`,
+          ],
+          'confirm no owned listener remains',
+        ),
+        '',
+      );
+      if (ids.length)
+        await docker(
+          ['rm', ...ids],
+          'remove stopped exact owned containers; retain volumes',
+          60_000,
+        );
+      assert.equal(
+        await docker(
+          [
+            'ps',
+            '-aq',
+            '--filter',
+            `label=com.docker.compose.project=${project}`,
+          ],
+          'confirm all exact owned containers removed',
+        ),
+        '',
+      );
+      const networks = (
+        await docker(
+          [
+            'network',
+            'ls',
+            '-q',
+            '--filter',
+            `label=com.docker.compose.project=${project}`,
+          ],
+          'identify exact owned qualification networks',
+        )
+      )
+        .split(/\s+/)
+        .filter(Boolean);
+      for (const id of networks) {
+        const [network] = JSON.parse(
+          await docker(
+            ['network', 'inspect', id],
+            'verify empty network custody',
+          ),
+        );
+        assert.equal(network.Labels['com.docker.compose.project'], project);
+        assert.deepEqual(Object.keys(network.Containers ?? {}), []);
+        await docker(
+          ['network', 'rm', id],
+          'release exact owned empty network',
+        );
+      }
+      report.cleanupProjects[project] =
+        'stopped owned containers removed; empty owned networks released; private credentials, candidate, image and volumes retained';
+      await save();
+    } catch (error) {
+      report.cleanupProjects[project] =
+        'UNPROVEN; reconcile owned project before retry';
+      report.state = 'failed';
+      await save();
+      throw error;
+    }
+  }
+  async function mutate(port, path, options, label) {
+    const requestFile = `${report.effects.length}.request.json`;
+    await writeFile(
+      join(output, requestFile),
+      `${JSON.stringify(options.body)}\n`,
+      { mode: 0o600, flag: 'wx' },
+    );
+    const effect = {
+      label,
+      kind: 'http',
+      state: 'started',
+      path,
+      requestFile,
+      bodySha256: createHash('sha256')
+        .update(JSON.stringify(options.body))
+        .digest('hex'),
+    };
+    report.effects.push(effect);
+    await save();
+    try {
+      const result = await request(port, path, options);
+      effect.state = 'responded';
+      effect.status = result.status;
+      await save();
+      return result;
+    } catch (error) {
+      effect.state = 'unknown';
+      await save();
+      throw error;
+    }
+  }
+  const check = async (label) => {
+    report.checks.push(label);
+    await save();
+  };
+  try {
+    assert.equal(
+      await command(
+        'git',
+        ['rev-parse', 'HEAD'],
+        'source revision',
+        process.env,
+      ),
+      manifest.source,
+    );
+    assert.equal(
+      await command(
+        'git',
+        ['status', '--porcelain'],
+        'clean source',
+        process.env,
+      ),
+      '',
+    );
+    if (
+      process.env.DOCKER_HOST &&
+      !process.env.DOCKER_HOST.startsWith('unix://')
+    )
+      throw new Error('Local Unix Docker context required');
+    endpoint =
+      process.env.DOCKER_HOST && !process.env.DOCKER_CONTEXT
+        ? process.env.DOCKER_HOST
+        : await command(
+            'docker',
+            ['context', 'inspect', '--format', '{{.Endpoints.docker.Host}}'],
+            'selected context',
+            process.env,
+          );
+    assert(
+      endpoint.startsWith('unix://'),
+      'Local Unix Docker context required',
+    );
+    const privateDir = join(output, 'private');
+    await mkdir(privateDir, { mode: 0o700 });
+    const password = token(),
+      operatorKey = `sto_${token()}`,
+      otelKey = token(),
+      grafanaPassword = token();
+    for (const [name, value] of Object.entries({
+      'postgres-password': password,
+      'database-url': `postgresql://station_telemetry:${password}@postgres:5432/station_telemetry`,
+      'product-operator-key': operatorKey,
+      'otel-key': otelKey,
+      'grafana-password': grafanaPassword,
+    }))
+      await writeFile(join(privateDir, name), value, {
+        mode: 0o400,
+        flag: 'wx',
+      });
+    const ports = await Promise.all([unusedPort(), unusedPort(), unusedPort()]);
+    assert.equal(
+      new Set(ports).size,
+      3,
+      'Distinct reserved host ports required',
+    );
+    const image = `station-telemetry-qa:${owner}`;
+    report.ports = ports;
+    report.imageTag = image;
+    env = {
+      ...process.env,
+      DOCKER_HOST: endpoint,
+      DOCKER_CONTEXT: '',
+      COMPOSE_PROJECT_NAME: project,
+      TELEMETRY_PRIVATE_DIR: privateDir,
+      TELEMETRY_RECEIVER_IMAGE: image,
+      TELEMETRY_PRODUCT_PORT: String(ports[0]),
+      TELEMETRY_OTLP_PORT: String(ports[1]),
+      TELEMETRY_GRAFANA_PORT: String(ports[2]),
+    };
+    compose = [
+      'compose',
+      '-p',
+      project,
+      '-f',
+      join(snapshot, 'deployment/compose.yaml'),
+    ];
+    await docker(
+      [
+        'build',
+        '--label',
+        `station.telemetry.qualifier=${owner}`,
+        '-t',
+        image,
+        snapshot,
+      ],
+      'build captured candidate',
+      180_000,
+    );
+    report.image = await docker(
+      ['image', 'inspect', image, '--format', '{{.Id}}'],
+      'capture image identity',
+    );
+    await docker(
+      [
+        ...compose,
+        'pull',
+        'postgres',
+        'collector',
+        'prometheus',
+        'tempo',
+        'grafana',
+      ],
+      'pull immutable dependencies',
+      180_000,
+    );
+    started = true;
+    await docker(
+      [
+        ...compose,
+        'up',
+        '-d',
+        '--no-build',
+        '--pull',
+        'never',
+        '--wait',
+        '--wait-timeout',
+        '120',
+      ],
+      'start isolated profile',
+      150_000,
+    );
+    const operator = { key: operatorKey, operator: true };
+    await poll('product storage', async () => {
+      const r = await request(ports[0], '/v1/operator/storage', operator);
+      return (
+        r.status === 200 &&
+        r.body.state === 'ready' &&
+        r.body.scope === 'postgres-schema-v1'
+      );
+    });
+    assert.equal(
+      (
+        await request(ports[0], '/v1/operator/storage', {
+          key: `sto_${token()}`,
+          operator: true,
+        })
+      ).status,
+      401,
+    );
+    await check('host product storage schema ready; wrong operator refused');
+    await poll(
+      'Grafana HTTP/database',
+      async () =>
+        (await request(ports[2], '/api/health')).body.database === 'ok',
+      120_000,
+    );
+    assert.equal((await request(ports[2], '/api/search')).status, 401);
+    assert.equal(
+      (
+        await request(ports[1], '/v1/metrics', {
+          key: 'wrong-key',
+          body: { resourceMetrics: [] },
+        })
+      ).status,
+      401,
+    );
+    await check(
+      'Grafana database ready; anonymous dashboard and wrong Collector credential refused',
+    );
+    for (const [service, containerPort, hostPort] of [
+      ['receiver', 43891, ports[0]],
+      ['collector', 4318, ports[1]],
+      ['grafana', 3000, ports[2]],
+    ]) {
+      const [info] = JSON.parse(
+        await docker(
+          ['inspect', `${project}-${service}-1`],
+          `inspect ${service}`,
+        ),
+      );
+      assert.deepEqual(info.NetworkSettings.Ports[`${containerPort}/tcp`], [
+        { HostIp: '127.0.0.1', HostPort: String(hostPort) },
+      ]);
+    }
+    for (const [service, network] of [
+      ['postgres', 'product'],
+      ['prometheus', 'diagnostics'],
+      ['tempo', 'diagnostics'],
+    ]) {
+      const [info] = JSON.parse(
+        await docker(
+          ['inspect', `${project}-${service}-1`],
+          `inspect ${service}`,
+        ),
+      );
+      assert.deepEqual(Object.keys(info.NetworkSettings.Networks), [
+        `${project}_${network}`,
+      ]);
+      assert(
+        Object.values(info.NetworkSettings.Ports).every(
+          (port) => port === null,
+        ),
+      );
+    }
+    await check(
+      'loopback-only frontends and unpublished separately networked backends',
+    );
+    const metricName = `companion_qualification_${owner}_requests`;
+    const metricStart = BigInt(Date.now() - 2000) * 1_000_000n;
+    for (const [index, value] of [2, 3].entries()) {
+      const result = await mutate(
+        ports[1],
+        '/v1/metrics',
+        {
+          key: otelKey,
+          body: {
+            resourceMetrics: [
+              {
+                resource: {
+                  attributes: [
+                    {
+                      key: 'service.name',
+                      value: { stringValue: 'station-qualification' },
+                    },
+                  ],
+                },
+                scopeMetrics: [
+                  {
+                    scope: { name: 'companion-runtime-qualification' },
+                    metrics: [
+                      {
+                        name: metricName,
+                        sum: {
+                          aggregationTemporality: 1,
+                          isMonotonic: true,
+                          dataPoints: [
+                            {
+                              startTimeUnixNano: String(
+                                metricStart + BigInt(index) * 1_000_000_000n,
+                              ),
+                              timeUnixNano: String(
+                                metricStart +
+                                  BigInt(index + 1) * 1_000_000_000n,
+                              ),
+                              asInt: String(value),
+                            },
+                          ],
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        `send synthetic delta metric ${index + 1}`,
+      );
+      assert.equal(result.status, 200);
+      assert.equal(
+        Number(result.body.partialSuccess?.rejectedDataPoints ?? 0),
+        0,
+      );
+      assert(
+        !result.body.partialSuccess?.errorMessage,
+        'Collector reported metric rejection',
+      );
+    }
+    const readMetric = async (time = '') => {
+      const result = await request(
+        ports[2],
+        `/api/datasources/proxy/uid/station-prometheus/api/v1/query?query=${encodeURIComponent(`${metricName}_total`)}${time ? `&time=${encodeURIComponent(time)}` : ''}`,
+        { basic: `telemetry-admin:${grafanaPassword}` },
+      );
+      return (
+        result.status === 200 &&
+        result.body.status === 'success' &&
+        result.body.data.result.length === 1 &&
+        Number(result.body.data.result[0].value[1]) === 5 &&
+        result.body.data.result[0].value
+      );
+    };
+    const observedMetric = await poll(
+      'Grafana queries cumulative diagnostic metric',
+      () => readMetric(),
+      90_000,
+    );
+    await check(
+      'authenticated Collector delta samples 2+3 query as cumulative 5 through Grafana',
+    );
+    report.metricObservation = {
+      name: `${metricName}_total`,
+      timestamp: observedMetric[0],
+      value: observedMetric[1],
+    };
+    await save();
+    const traceId = randomBytes(16).toString('hex');
+    const spanId = randomBytes(8).toString('hex');
+    const traceStart = String(BigInt(Date.now() - 1000) * 1_000_000n);
+    const traceEnd = String(BigInt(traceStart) + 1_000_000n);
+    const canary = `synthetic-private-canary-${owner}`;
+    const traceBody = {
+      resourceSpans: [
+        {
+          resource: {
+            attributes: [
+              {
+                key: 'service.name',
+                value: { stringValue: 'station-qualification' },
+              },
+              { key: 'host.name', value: { stringValue: canary } },
+            ],
+          },
+          scopeSpans: [
+            {
+              scope: {
+                name: 'companion-runtime-qualification',
+                attributes: [
+                  { key: 'private.scope', value: { stringValue: canary } },
+                ],
+              },
+              spans: [
+                {
+                  traceId,
+                  spanId,
+                  name: canary,
+                  traceState: canary,
+                  kind: 2,
+                  startTimeUnixNano: traceStart,
+                  endTimeUnixNano: traceEnd,
+                  attributes: [
+                    {
+                      key: 'http.request.method',
+                      value: { stringValue: 'GET' },
+                    },
+                    { key: 'http.url', value: { stringValue: canary } },
+                  ],
+                  status: { code: 2, message: canary },
+                  events: [{ timeUnixNano: traceStart, name: canary }],
+                  links: [
+                    {
+                      traceId,
+                      spanId,
+                      attributes: [
+                        { key: 'private.link', value: { stringValue: canary } },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    assert.equal(
+      (
+        await request(ports[1], '/v1/traces', {
+          key: 'wrong-key',
+          body: { resourceSpans: [] },
+        })
+      ).status,
+      401,
+    );
+    const sentTrace = await mutate(
+      ports[1],
+      '/v1/traces',
+      {
+        key: otelKey,
+        body: traceBody,
+      },
+      'send synthetic privacy trace',
+    );
+    assert.equal(sentTrace.status, 200);
+    assert.equal(Number(sentTrace.body.partialSuccess?.rejectedSpans ?? 0), 0);
+    assert(
+      !sentTrace.body.partialSuccess?.errorMessage,
+      'Collector rejected trace',
+    );
+    const tracePath = `/api/datasources/proxy/uid/station-tempo/api/v2/traces/${traceId}`;
+    assert.equal((await request(ports[2], tracePath)).status, 401);
+    const readTrace = async () => {
+      const result = await request(ports[2], tracePath, {
+        basic: `telemetry-admin:${grafanaPassword}`,
+      });
+      return (
+        result.status === 200 &&
+        result.body.trace?.resourceSpans?.length > 0 &&
+        result.body.trace
+      );
+    };
+    const projectTrace = (trace) => {
+      assert(
+        !JSON.stringify(trace).includes(canary),
+        'Private trace canary survived projection',
+      );
+      assert.equal(trace.resourceSpans.length, 1);
+      const resource = trace.resourceSpans[0];
+      assert.deepEqual(resource.resource.attributes, [
+        {
+          key: 'service.name',
+          value: { stringValue: 'station-qualification' },
+        },
+      ]);
+      assert.equal(resource.scopeSpans.length, 1);
+      const scope = resource.scopeSpans[0];
+      assert.deepEqual(scope.scope.attributes ?? [], []);
+      assert.equal(scope.spans.length, 1);
+      const span = scope.spans[0];
+      assert.equal(
+        span.traceId,
+        Buffer.from(traceId, 'hex').toString('base64'),
+      );
+      assert.equal(span.spanId, Buffer.from(spanId, 'hex').toString('base64'));
+      assert.equal(span.name, 'station.operation');
+      assert.equal(span.startTimeUnixNano, traceStart);
+      assert.equal(span.endTimeUnixNano, traceEnd);
+      assert.deepEqual(span.attributes, [
+        { key: 'http.request.method', value: { stringValue: 'GET' } },
+      ]);
+      assert.equal(span.status?.message ?? '', '');
+      assert.equal(span.traceState ?? '', '');
+      assert.deepEqual(span.events ?? [], []);
+      assert.deepEqual(span.links ?? [], []);
+      return {
+        traceId: span.traceId,
+        spanId: span.spanId,
+        start: span.startTimeUnixNano,
+        end: span.endTimeUnixNano,
+        name: span.name,
+        resource: resource.resource.attributes,
+        attributes: span.attributes,
+      };
+    };
+    const observedTrace = projectTrace(
+      await poll(
+        'Grafana queries privacy-projected diagnostic trace',
+        readTrace,
+        90_000,
+      ),
+    );
+    report.traceObservation = observedTrace;
+    await check(
+      'authenticated trace query preserves IDs/time/allowed attributes and removes synthetic private fields',
+    );
+    const stationProductKey = `stp_${token()}`;
+    const stationProductSource = randomUUID();
+    assert.equal(
+      (
+        await mutate(
+          ports[0],
+          '/v1/operator/sources',
+          {
+            ...operator,
+            body: {
+              id: stationProductSource,
+              label: 'isolated-real-Station',
+              credentialHash: createHash('sha256')
+                .update(stationProductKey)
+                .digest('hex'),
+            },
+          },
+          'provision isolated Station product source',
+        )
+      ).status,
+      201,
+    );
+    const stationInput = {
+      root: ROOT,
+      source: manifest.source,
+      output,
+      owner,
+      collectorPort: ports[1],
+      otelKey,
+      product: { port: ports[0], key: stationProductKey },
+      record: async (effect) => {
+        if (!report.effects.includes(effect)) report.effects.push(effect);
+        await save();
+      },
+    };
+    report.stationObservation = await withTelemetryStation(
+      stationInput,
+      async ({ port, serviceName, home }) => {
+        const realTraceId = randomBytes(16).toString('hex');
+        const parentSpanId = randomBytes(8).toString('hex');
+        const refused = await fetch(
+          `http://127.0.0.1:${port}/api/auth/status`,
+          {
+            signal: AbortSignal.timeout(10_000),
+            redirect: 'error',
+          },
+        );
+        await refused.body?.cancel();
+        assert.equal(
+          refused.status,
+          401,
+          'Station allowed an unauthenticated probe',
+        );
+        const { credential } = JSON.parse(
+          await readFile(join(home, 'security/environment.json'), 'utf8'),
+        );
+        assert(
+          typeof credential === 'string' && credential.length > 0,
+          'Station operator credential unavailable',
+        );
+        const response = await fetch(
+          `http://127.0.0.1:${port}/api/auth/status`,
+          {
+            headers: {
+              authorization: `Bearer ${credential}`,
+              traceparent: `00-${realTraceId}-${parentSpanId}-01`,
+            },
+            signal: AbortSignal.timeout(10_000),
+            redirect: 'error',
+          },
+        );
+        await response.body?.cancel();
+        assert.equal(
+          response.status,
+          200,
+          'real Station auth-status request failed',
+        );
+        const identity = createHash('sha256')
+          .update(
+            (
+              await readFile(join(home, 'config/otel-installation-id'), 'utf8')
+            ).trim(),
+          )
+          .digest('hex');
+        const query = `station_system_boot_records_written_total{service_name="${serviceName}",service_installation_id="${identity}"}`;
+        const metric = await poll(
+          'real Station boot metric reaches Prometheus',
+          async () => {
+            const result = await request(
+              ports[2],
+              `/api/datasources/proxy/uid/station-prometheus/api/v1/query?query=${encodeURIComponent(query)}`,
+              { basic: `telemetry-admin:${grafanaPassword}` },
+            );
+            const rows = result.body.data?.result;
+            return (
+              result.status === 200 &&
+              result.body.status === 'success' &&
+              rows?.length === 1 &&
+              Number(rows[0].value[1]) === 1 &&
+              rows[0]
+            );
+          },
+          120_000,
+        );
+        const trace = await poll(
+          'real Station HTTP span reaches Tempo',
+          async () => {
+            const result = await request(
+              ports[2],
+              `/api/datasources/proxy/uid/station-tempo/api/v2/traces/${realTraceId}`,
+              { basic: `telemetry-admin:${grafanaPassword}` },
+            );
+            return (
+              result.status === 200 &&
+              result.body.trace?.resourceSpans?.length > 0 &&
+              result.body.trace
+            );
+          },
+          90_000,
+        );
+        const resource = trace.resourceSpans.find((item) =>
+          item.resource.attributes.some(
+            (attribute) =>
+              attribute.key === 'service.name' &&
+              attribute.value.stringValue === serviceName,
+          ),
+        );
+        assert(
+          !JSON.stringify(trace).includes(credential),
+          'Station credential reached trace storage',
+        );
+        assert(resource, 'Station trace service identity missing');
+        const attributes = Object.fromEntries(
+          resource.resource.attributes.map((attribute) => [
+            attribute.key,
+            attribute.value.stringValue,
+          ]),
+        );
+        assert.equal(attributes['service.installation.id'], identity);
+        assert.deepEqual(Object.keys(attributes).sort(), [
+          'os.type',
+          'service.installation.id',
+          'service.name',
+        ]);
+        const spans = resource.scopeSpans.flatMap((scope) => scope.spans);
+        const span = spans.find(
+          (item) =>
+            item.traceId === Buffer.from(realTraceId, 'hex').toString('base64'),
+        );
+        assert(span, 'Station HTTP trace identity missing');
+        assert.equal(span.name, 'station.operation');
+        assert(
+          span.attributes.some(
+            (attribute) =>
+              attribute.key === 'http.request.method' &&
+              attribute.value.stringValue === 'GET',
+          ),
+        );
+        assert(
+          spans.every(
+            (item) =>
+              !item.events?.length &&
+              !item.links?.length &&
+              !item.traceState &&
+              !item.status?.message,
+          ),
+        );
+        const stationOperator = { operator: true, key: credential };
+        const disclosure = await request(
+          port,
+          '/api/usage-telemetry/disclosure',
+          stationOperator,
+        );
+        assert.equal(disclosure.status, 200);
+        assert.equal(disclosure.body.data.acknowledged, false);
+        const status = await request(
+          port,
+          '/api/usage-telemetry/status',
+          stationOperator,
+        );
+        assert.equal(status.status, 200);
+        assert.equal(status.body.data.publishers.kontour.fullAvailable, false);
+        const acknowledged = await mutate(
+          port,
+          '/api/usage-telemetry/disclosure/acknowledgements',
+          {
+            ...stationOperator,
+            body: {
+              acknowledgementProtocol:
+                disclosure.body.data.acknowledgementProtocol,
+              inventoryRevision: disclosure.body.data.inventoryRevision,
+              publisher: 'operator',
+            },
+          },
+          'acknowledge isolated Station operator disclosure',
+        );
+        assert.equal(acknowledged.status, 200);
+        const enabled = await mutate(
+          port,
+          '/config/app',
+          {
+            ...stationOperator,
+            method: 'PUT',
+            body: { telemetryTier: { operator: 'full', kontour: 'off' } },
+          },
+          'enable isolated Station operator product sending',
+        );
+        assert.equal(enabled.status, 200);
+        return {
+          serviceName,
+          installationId: identity,
+          metric: metric.value,
+          traceId: realTraceId,
+          spanId: span.spanId,
+          httpStatus: response.status,
+        };
+      },
+    );
+    await check(
+      'real isolated Station boot metric and HTTP trace query through authenticated companion with persisted installation identity',
+    );
+    report.stationProductObservation = await withTelemetryStation(
+      { ...stationInput, restart: true },
+      async ({ port, home }) => {
+        const { credential } = JSON.parse(
+          await readFile(join(home, 'security/environment.json'), 'utf8'),
+        );
+        const stationOperator = { operator: true, key: credential };
+        const disclosure = await request(
+          port,
+          '/api/usage-telemetry/disclosure',
+          stationOperator,
+        );
+        assert.equal(disclosure.status, 200);
+        assert.equal(disclosure.body.data.acknowledged, true);
+        assert.equal(disclosure.body.data.publishers.operator.tier, 'full');
+        assert.equal(disclosure.body.data.publishers.kontour.tier, 'off');
+        const from = new Date(Date.now() - 300_000).toISOString();
+        const to = new Date(Date.now() + 300_000).toISOString();
+        const path = `/v1/operator/trends?${new URLSearchParams({ from, to })}`;
+        const observed = await poll(
+          'real Station product startup query',
+          async () => {
+            const result = await request(ports[0], path, operator);
+            assert.equal(result.status, 200);
+            const rows = result.body.rows?.filter(
+              (row) =>
+                row.event === 'station_started' && row.sha === manifest.source,
+            );
+            return rows?.length === 1 && rows[0].count === 1 && rows[0];
+          },
+        );
+        assert.equal(observed.shaSource, 'checkout');
+        const delivery = await request(
+          port,
+          '/api/usage-telemetry/delivery-status',
+          stationOperator,
+        );
+        assert.equal(delivery.status, 200);
+        assert.equal(delivery.body.data.product.phase, 'acknowledged');
+        assert(delivery.body.data.product.counts.acknowledged >= 1);
+        assert.equal(delivery.body.data.product.lastFailure, null);
+        return {
+          source: manifest.source,
+          observation: observed,
+          window: { from, to },
+        };
+      },
+    );
+    await check(
+      'real Station operator disclosure and destination survive restart; startup observation reaches durable product query',
+    );
+    await docker(
+      [
+        ...compose,
+        'stop',
+        '--timeout',
+        '15',
+        'collector',
+        'prometheus',
+        'tempo',
+        'grafana',
+      ],
+      'stop diagnostic services before durability check',
+      90_000,
+    );
+    await docker(
+      [
+        ...compose,
+        'start',
+        '--wait',
+        '--wait-timeout',
+        '120',
+        'collector',
+        'prometheus',
+        'tempo',
+        'grafana',
+      ],
+      'restart diagnostic services on retained volumes',
+      150_000,
+    );
+    const retainedMetric = await poll(
+      'Grafana queries retained historical sample without resending',
+      () => readMetric(String(observedMetric[0])),
+      90_000,
+    );
+    assert.deepEqual(retainedMetric, observedMetric);
+    await check(
+      'same-volume diagnostic restart retains the exact historical metric query without resend',
+    );
+    const retainedTrace = projectTrace(
+      await poll(
+        'Grafana queries retained trace without resending',
+        readTrace,
+        90_000,
+      ),
+    );
+    assert.deepEqual(retainedTrace, observedTrace);
+    await check(
+      'same-volume Tempo restart retains the exact privacy-projected trace without resend',
+    );
+    const sourceKey = `stp_${token()}`,
+      sourceId = randomUUID();
+    await writeFile(join(privateDir, 'source-key'), sourceKey, {
+      mode: 0o400,
+      flag: 'wx',
+    });
+    report.sourceId = sourceId;
+    const provision = await mutate(
+      ports[0],
+      '/v1/operator/sources',
+      {
+        ...operator,
+        body: {
+          id: sourceId,
+          label: 'runtime-qualification',
+          credentialHash: createHash('sha256').update(sourceKey).digest('hex'),
+        },
+      },
+      'provision synthetic source',
+    );
+    assert.equal(provision.status, 201);
+    const inventory = (await request(ports[0], '/health/live')).body
+      .inventoryRevision;
+    const now = new Date().toISOString();
+    const batch = {
+      schema_version: 1,
+      inventory_revision: inventory,
+      distinct_id: randomBytes(32).toString('hex'),
+      events: [
+        {
+          event_id: randomUUID(),
+          event: 'engine_turn',
+          occurred_at: now,
+          observed_at: now,
+          build: { version: '9.8.7', platform: 'linux', arch: 'x64' },
+          properties: { engine: 'codex', outcome: 'completed' },
+        },
+      ],
+    };
+    const first = await mutate(
+      ports[0],
+      '/v1/product/events',
+      {
+        key: sourceKey,
+        body: batch,
+      },
+      'commit synthetic event',
+    );
+    assert.equal(first.status, 202);
+    assert.equal(first.body.receipt.inserted, 1);
+    const retry = await mutate(
+      ports[0],
+      '/v1/product/events',
+      {
+        key: sourceKey,
+        body: batch,
+      },
+      'explicit replay dedupe control',
+    );
+    assert.equal(retry.status, 202);
+    assert.equal(retry.body.receipt.inserted, 0);
+    assert.equal(retry.body.receipt.alreadyPresent, 1);
+    await check('synthetic source event committed and replay deduplicated');
+    const retainedReceipt = await request(
+      ports[0],
+      `/v1/product/receipts/${first.body.receipt.receiptId}`,
+      { key: sourceKey },
+    );
+    assert.equal(retainedReceipt.status, 200);
+    const retainedWindow = report.stationProductObservation.window;
+    const trendsPath = `/v1/operator/trends?${new URLSearchParams(retainedWindow)}`;
+    const retainedProduct = await request(ports[0], trendsPath, operator);
+    assert.equal(retainedProduct.status, 200);
+    await docker(
+      [...compose, 'stop', '--timeout', '15', 'receiver', 'postgres'],
+      'stop receiver and PostgreSQL before product durability check',
+      90_000,
+    );
+    await docker(
+      [
+        ...compose,
+        'start',
+        '--wait',
+        '--wait-timeout',
+        '120',
+        'postgres',
+        'receiver',
+      ],
+      'restart receiver and PostgreSQL on retained product volume',
+      150_000,
+    );
+    await poll(
+      'restarted product storage ready',
+      async () =>
+        (await request(ports[0], '/v1/operator/storage', operator)).status ===
+        200,
+    );
+    assert.deepEqual(
+      await request(
+        ports[0],
+        `/v1/product/receipts/${first.body.receipt.receiptId}`,
+        { key: sourceKey },
+      ),
+      retainedReceipt,
+    );
+    assert.deepEqual(
+      await request(ports[0], trendsPath, operator),
+      retainedProduct,
+    );
+    await check(
+      'receiver and PostgreSQL restart retain exact product receipt and real Station trends without resend',
+    );
+    const previous = priorOptions
+      ? await authenticatePriorCompanion({
+          options: priorOptions,
+          output,
+          command,
+          env,
+        })
+      : undefined;
+    report.lifecycle = await exerciseCompanionLifecycle({
+      output,
+      snapshot,
+      project,
+      env,
+      compose,
+      ports,
+      operator,
+      sourceKey,
+      receiptId: first.body.receipt.receiptId,
+      trendsPath,
+      retainedProduct,
+      command,
+      request,
+      mutate,
+      poll,
+      check,
+      report,
+      save,
+      unusedPort,
+      ownedProjects,
+      retireProject,
+      previous,
+    });
+    assert.equal(
+      await command(
+        'git',
+        ['rev-parse', 'HEAD'],
+        'final source revision',
+        process.env,
+      ),
+      manifest.source,
+    );
+    assert.equal(
+      await command(
+        'git',
+        ['status', '--porcelain'],
+        'final clean source',
+        process.env,
+      ),
+      '',
+    );
+    report.state = 'passed';
+  } catch (error) {
+    report.state = 'failed';
+    await writeFile(
+      join(output, 'failure.log'),
+      error?.stack ?? String(error),
+      {
+        mode: 0o600,
+        flag: 'wx',
+      },
+    );
+    report.failure =
+      'A required runtime check failed; inspect private command logs and retained project before manual retry';
+    throw new Error(report.failure);
+  } finally {
+    if (started) {
+      for (const project of ownedProjects) {
+        try {
+          await retireProject(project);
+        } catch {
+          report.cleanupProjects[project] =
+            'UNPROVEN; reconcile owned project before retry';
+          report.state = 'failed';
+        }
+      }
+    }
+    await save();
+  }
+  assert.equal(report.state, 'passed');
+  return {
+    report: join(output, 'report.json'),
+    scope: report.scope,
+    state: report.state,
+    installationAuthority: false,
+  };
+}
+
+if (invokedDirectly(import.meta.url)) {
+  const [candidate, output, ...extra] = process.argv.slice(2);
+  const priorOptions = parsePriorCompanionOptions(extra);
+  if (!candidate || !output)
+    throw new Error(
+      'Usage: qualify-telemetry-companion.mjs <candidate> <new-private-output> [--prior-companion path --prior-parent-archive path --prior-signed-manifest path]',
+    );
+  process.stdout.write(
+    `${JSON.stringify(await qualifyTelemetryCompanion(candidate, output, priorOptions))}\n`,
+  );
+}

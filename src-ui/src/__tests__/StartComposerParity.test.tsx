@@ -75,6 +75,8 @@ const state = vi.hoisted(() => ({
   runLocations: undefined as Record<string, unknown> | undefined,
   /** `GET /api/projects/:slug/chat-defaults`, by slug. */
   chatDefaults: {} as Record<string, unknown>,
+  /** `GET /api/feature-previews`: visual skills on unless a test says not. */
+  featurePreviews: [] as Array<{ id: string; enabled: boolean }>,
 }));
 
 vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
@@ -89,6 +91,7 @@ vi.mock('../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => undefined,
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  useFeaturePreviewsQuery: () => ({ data: state.featurePreviews }),
   useSshEnvironmentsQuery: () => ({
     data: [],
     isSuccess: true,
@@ -265,6 +268,7 @@ beforeEach(() => {
   state.agentConnections = [];
   state.runLocations = undefined;
   state.chatDefaults = {};
+  state.featurePreviews = [{ id: 'visual-skills', enabled: true }];
   resetHeldHomeDraftsForTests();
 });
 // Every dock listener a test adds, removed even when the test fails, so a
@@ -521,6 +525,87 @@ describe('Home and the dock start the same way', () => {
       ),
     ).toBeTruthy();
   });
+
+  test('the Permissions chip picks this start’s mode, and the start carries it', async () => {
+    state.agents = [
+      {
+        ...CLAUDE,
+        engineConnectionType: 'claude',
+        execution: { agentConnectionId: 'claude' },
+      },
+    ];
+    state.agentConnections = [
+      {
+        id: 'claude',
+        name: 'Claude',
+        type: 'claude',
+        kind: 'agent',
+        config: {},
+        enabled: true,
+        status: 'ready',
+        capabilities: ['agent-runtime'],
+      },
+    ];
+    const ui = renderBoth();
+    const home = screen.getByTestId('home');
+    const typeAndStart = async (root: HTMLElement) => {
+      fireEvent.change(
+        within(formOf(root)).getByRole('textbox', {
+          name: 'What would you like done?',
+        }),
+        { target: { value: 'Go' } },
+      );
+      await waitFor(() =>
+        expect(
+          within(formOf(root)).getByRole('button', { name: 'Start' }),
+        ).not.toHaveProperty('disabled', true),
+      );
+      fireEvent.click(
+        within(formOf(root)).getByRole('button', { name: 'Start' }),
+      );
+    };
+
+    // Home: Ask, chosen in the picker, is what the start sends.
+    fireEvent.click(
+      await within(formOf(home)).findByRole('button', {
+        name: /^Permissions: Full access/,
+      }),
+    );
+    fireEvent.click(await screen.findByRole('radio', { name: /^Ask first/ }));
+    expect(
+      await within(formOf(home)).findByRole('button', {
+        name: /^Permissions: Ask\. Chosen for this chat/,
+      }),
+    ).toBeTruthy();
+    await typeAndStart(home);
+    expect(ui.starts.at(-1)!.detail.selection).toMatchObject({
+      agentSlug: 'claude',
+      approvalMode: 'ask',
+    });
+
+    // The dock: full access takes its confirmation, then reaches onSelect.
+    fireEvent.click(
+      within(formOf(ui.dock())).getByRole('button', {
+        name: /^Permissions: /,
+      }),
+    );
+    fireEvent.click(await screen.findByRole('radio', { name: /^Auto/ }));
+    fireEvent.click(
+      within(formOf(ui.dock())).getByRole('button', {
+        name: /^Permissions: Auto/,
+      }),
+    );
+    fireEvent.click(
+      await screen.findByRole('radio', { name: /^Never ask \(full access\)/ }),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Enable full access' }),
+    );
+    await typeAndStart(ui.dock());
+    await waitFor(() => expect(ui.dockSelect).toHaveBeenCalled());
+    expect(ui.dockSelect.mock.calls.at(-1)![18]).toBe('never');
+    ui.cleanupListener();
+  }, 30_000);
 
   test('a Project page fixes its start context independently of the ambient dock', () => {
     const ui = renderBoth('station');
@@ -1198,6 +1283,15 @@ describe('Home and the dock start the same way', () => {
       }) as HTMLTextAreaElement;
     const startButton = () =>
       screen.getByRole('button', { name: 'Start' }) as HTMLButtonElement;
+    test('with the visual-skills preview off, Home offers no visual skills', () => {
+      state.featurePreviews = [{ id: 'visual-skills', enabled: false }];
+      renderHome();
+      // "Use a visual skill" is the menu's only action, so no menu at all.
+      expect(
+        screen.queryByRole('button', { name: 'More start options' }),
+      ).toBeNull();
+    });
+
     async function handOffSkills() {
       fireEvent.click(
         screen.getByRole('button', { name: 'More start options' }),

@@ -744,9 +744,9 @@ describe('TaskWorkspaceView', () => {
     render(<TaskWorkspaceView taskId="task-alpha" />);
 
     expect(screen.getByText('Project deleted')).toBeTruthy();
-    expect(screen.getByText(/Task is retained in history/)).toBeTruthy();
+    expect(screen.getByText(/Chats and Task details remain/)).toBeTruthy();
     expect(
-      screen.getByText(/live Project workspace controls are unavailable/),
+      screen.getByText(/Project workspace controls are unavailable/),
     ).toBeTruthy();
     expect(
       screen.queryByRole('region', { name: 'Task room workspace' }),
@@ -1417,7 +1417,7 @@ describe('TaskWorkspaceView', () => {
     ).toBeTruthy();
     expect(
       screen.getByText(
-        'Provenance was recorded in a format this version of Station cannot read. Nothing about this answer is being claimed from it.',
+        'Provenance was recorded in a format this version of Station cannot read.',
       ),
     ).toBeTruthy();
   });

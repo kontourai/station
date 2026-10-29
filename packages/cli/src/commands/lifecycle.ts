@@ -49,7 +49,10 @@ import {
   mediaUploadPolicy,
 } from '@kontourai/station-contracts/walkthrough';
 import { readGitHeadSha, resolveGitInfo } from '@kontourai/station-shared/git';
-import { configureHttpReceive } from '@kontourai/station-shared/http-upload';
+import {
+  configureHttpKeepAlive,
+  configureHttpReceive,
+} from '@kontourai/station-shared/http-upload';
 import {
   claimInstanceEntry,
   findRunning as findRunningHomeInstances,
@@ -95,11 +98,16 @@ import {
   type StationHomeBackupResult,
   type StationHomeRestoreResult,
 } from '@kontourai/station-shared/station-home-archive';
+import { acquireStationHomeMaintenanceLease } from '@kontourai/station-shared/station-home-lifecycle';
 import { inspectStationHomeRecovery } from '@kontourai/station-shared/station-home-recovery-preflight';
 import {
   ensureStationHomeSchemaSync,
   stationHomeSchemaNeedsReset,
 } from '@kontourai/station-shared/station-home-schema';
+import {
+  UI_IMMUTABLE_ASSET_PATTERN,
+  uiDocumentContentSecurityPolicy,
+} from '@kontourai/station-shared/ui-document-policy';
 import {
   publishActiveLocalStation,
   removeOwnedActiveLocalStation,
@@ -191,6 +199,8 @@ export const UI_MIME_TYPES: Record<string, string> = {
   '.woff': 'font/woff',
   '.ttf': 'font/ttf',
   '.map': 'application/json',
+  '.wasm': 'application/wasm',
+  '.webmanifest': 'application/manifest+json',
 };
 
 export { UI_PROXY_BACKEND_PREFIXES };
@@ -238,6 +248,17 @@ interface UiServerDeps {
 }
 
 /**
+ * The UI document rules shared with the web service worker
+ * (`@kontourai/station-shared/ui-document-policy`). Module imports do not
+ * survive `toString` serialization, so the spawned listener receives them as
+ * dependencies like everything else; the in-process wrapper supplies them.
+ */
+interface UiRequestHandlerDeps extends UiServerDeps {
+  immutableAsset: RegExp;
+  documentCsp: (scriptNonce?: string) => string;
+}
+
+/**
  * Request handler for the static UI server. Serves built assets, injects the
  * API base into index.html (only when an explicit override was configured —
  * see `buildUiServerScript`), reverse-proxies backend calls to the sibling
@@ -263,13 +284,18 @@ interface UiServerDeps {
  * the unit test — no drift between the two.
  */
 export function uiRequestHandler(deps: UiServerDeps) {
-  return createUiRequestHandler(deps, (method, path) =>
-    mediaUploadPolicy(method, path, MEDIA_UPLOAD_POLICIES),
+  return createUiRequestHandler(
+    {
+      immutableAsset: UI_IMMUTABLE_ASSET_PATTERN,
+      documentCsp: uiDocumentContentSecurityPolicy,
+      ...deps,
+    },
+    (method, path) => mediaUploadPolicy(method, path, MEDIA_UPLOAD_POLICIES),
   );
 }
 
 function createUiRequestHandler(
-  deps: UiServerDeps,
+  deps: UiRequestHandlerDeps,
   uploadPolicy: (
     method: string,
     path: string,
@@ -292,6 +318,8 @@ function createUiRequestHandler(
     internalApiToken,
     trustedTailscaleServeOrigin,
     hostedTenantAuthorities,
+    immutableAsset,
+    documentCsp,
   } = deps;
   const canonicalRoot = fs.realpathSync(dir);
   const containedAsset = (rawUrl: string) => {
@@ -542,23 +570,7 @@ function createUiRequestHandler(
   const READINESS_IDENTITY_BUDGET_MAX_MS = 40_000;
   const READINESS_BUDGET_REQUEST_HEADER = 'x-station-readiness-budget-ms';
   const securityHeaders = (nonce: string) => ({
-    'Content-Security-Policy': [
-      "default-src 'none'",
-      `script-src 'self' 'nonce-${nonce}' 'wasm-unsafe-eval'`,
-      // Fonts are self-hosted (#2648) — no external font origins.
-      "style-src 'self' 'unsafe-inline'",
-      "font-src 'self' data:",
-      "img-src 'self' data: blob:",
-      "media-src 'self' blob:",
-      "connect-src 'self' http: https: ws: wss:",
-      "frame-src 'self' blob: http: https:",
-      "worker-src 'self' blob:",
-      "manifest-src 'self'",
-      "object-src 'none'",
-      "base-uri 'none'",
-      "frame-ancestors 'none'",
-      "form-action 'self'",
-    ].join('; '),
+    'Content-Security-Policy': documentCsp(nonce),
     'Referrer-Policy': 'no-referrer',
     'X-Content-Type-Options': 'nosniff',
   });
@@ -903,10 +915,7 @@ function createUiRequestHandler(
         .relative(canonicalRoot, p)
         .split(path.sep)
         .join('/');
-      const immutable =
-        /^assets\/(?:[\w-]+\/)*[\w.-]+-[A-Za-z0-9_-]{8,}\.[\w]+$/.test(
-          relative,
-        );
+      const immutable = immutableAsset.test(relative);
       const quality = new Map<string, number>();
       for (const item of (req.headers['accept-encoding'] ?? '').split(',')) {
         const [coding, ...parameters] = item.trim().toLowerCase().split(';');
@@ -1351,6 +1360,8 @@ export function buildUiServerScript(opts: {
     const backendPrefixes=${JSON.stringify(UI_PROXY_BACKEND_PREFIXES)};
     const backendExcludedPrefixes=${JSON.stringify(UI_PROXY_EXCLUDED_PREFIXES)};
     const backendNavigationPrefixes=${JSON.stringify(UI_PROXY_BACKEND_NAVIGATION_PREFIXES)};
+    const immutableAsset=new RegExp(${JSON.stringify(UI_IMMUTABLE_ASSET_PATTERN.source)});
+    const documentCsp=${uiDocumentContentSecurityPolicy.toString()};
     const readinessFile=${JSON.stringify(opts.readinessFile)};
     const identity=${JSON.stringify(opts.identity)};
     const internalApiToken=process.env.STATION_INTERNAL_API_TOKEN;
@@ -1360,8 +1371,9 @@ export function buildUiServerScript(opts: {
     const classifyMediaUpload=${mediaUploadPolicy.toString()};
     const uploadPolicy=(method,path)=>classifyMediaUpload(method,path,mediaUploadPolicies);
     const uiRequestHandler=(deps)=>(${createUiRequestHandler.toString()})(deps,uploadPolicy);
-    const server=http.createServer(uiRequestHandler({http,crypto,fs,path,dir,mime,inject,upstreamPort,backendPrefixes,backendExcludedPrefixes,backendNavigationPrefixes,readinessFile,identity,internalApiToken,trustedTailscaleServeOrigin,hostedTenantAuthorities}));
+    const server=http.createServer(uiRequestHandler({http,crypto,fs,path,dir,mime,inject,upstreamPort,backendPrefixes,backendExcludedPrefixes,backendNavigationPrefixes,readinessFile,identity,internalApiToken,trustedTailscaleServeOrigin,hostedTenantAuthorities,immutableAsset,documentCsp}));
     (${configureHttpReceive.toString()})(server,uploadPolicy,mediaUploadPolicies.walkthrough.totalMs);
+    (${configureHttpKeepAlive.toString()})(server);
     server.listen(${opts.uiPort},${JSON.stringify(opts.host ?? '0.0.0.0')});
     ${opts.exitWithLauncher ? "if(process.connected)process.on('disconnect',()=>process.exit(0));else process.exit(0);" : ''}
   `;
@@ -5563,8 +5575,14 @@ export async function clean(
   }
 
   stop({ instanceId, serverPort, uiPort, baseDir: projectHome });
-  rmSync(projectHome, { recursive: true, force: true });
-  removeOwnedBuildOutputs(resolveBuildPaths(instanceId));
+  const maintenance = acquireStationHomeMaintenanceLease(projectHome);
+  try {
+    assertStationHomeInactive(projectHome, 'clean');
+    rmSync(projectHome, { recursive: true, force: true });
+    removeOwnedBuildOutputs(resolveBuildPaths(instanceId));
+  } finally {
+    maintenance.release();
+  }
   console.log('  ✓ Cleaned');
 }
 
@@ -5596,23 +5614,31 @@ export function homeReset(options: HomeResetOptions = {}): HomeResetResult {
   }
 
   assertStationHomeInactive(projectHome, 'reset');
+  const maintenance = acquireStationHomeMaintenanceLease(projectHome);
+  try {
+    assertStationHomeInactive(projectHome, 'reset');
+    if (options.ifIncompatible && !stationHomeSchemaNeedsReset(projectHome)) {
+      return { archived: false, projectHome };
+    }
+    if (!existsSync(projectHome)) {
+      return { archived: false, projectHome };
+    }
 
-  if (!existsSync(projectHome)) {
-    return { archived: false, projectHome };
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    let archivePath = `${projectHome}.pre-schema-reset.${stamp}`;
+    for (let suffix = 1; existsSync(archivePath); suffix += 1) {
+      archivePath = `${projectHome}.pre-schema-reset.${stamp}-${suffix}`;
+    }
+    renameSync(projectHome, archivePath);
+    return { archived: true, archivePath, projectHome };
+  } finally {
+    maintenance.release();
   }
-
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  let archivePath = `${projectHome}.pre-schema-reset.${stamp}`;
-  for (let suffix = 1; existsSync(archivePath); suffix += 1) {
-    archivePath = `${projectHome}.pre-schema-reset.${stamp}-${suffix}`;
-  }
-  renameSync(projectHome, archivePath);
-  return { archived: true, archivePath, projectHome };
 }
 
 function assertStationHomeInactive(
   projectHome: string,
-  operation: 'backup' | 'reset' | 'restore',
+  operation: 'backup' | 'clean' | 'reset' | 'restore',
 ): void {
   const normalizedSelector = normalizeSelector({ baseDir: projectHome });
   const runningMatches = listRunningInstances({ projectHome }).filter(

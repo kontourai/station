@@ -206,7 +206,7 @@ function wrapsWholeRequest(clause: ts.CatchClause): boolean {
  */
 const ALLOWED_FALLBACKS: ReadonlyMap<string, string> = new Map([
   [
-    'publicStationCapabilities.ts#fetchPublicStationCapabilities',
+    'client/publicStationCapabilities.ts#fetchPublicStationCapabilities',
     'public capability discovery: a failed request means unknown, with bounded retry',
   ],
   [

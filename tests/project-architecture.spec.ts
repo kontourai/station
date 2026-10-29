@@ -316,7 +316,7 @@ test.describe('Project Sidebar', () => {
         navigation.getByRole('button', { name: gone, exact: true }),
       ).toHaveCount(0);
     }
-    // …and the configuration destinations are behind the gear. Connections is
+    // …and the configuration destinations are behind Customize. Connections is
     // listed as 'Engines & Models' (#2144 decision 7): the row names what a
     // reader is looking for and opens the hub at that tab.
     const sections = await openCustomize(page);

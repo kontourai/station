@@ -270,9 +270,22 @@ export interface TaskReviewView {
   readonly items: readonly TaskReviewItem[];
   readonly threads: readonly TaskReviewThreadSummary[];
   readonly authors?: readonly TaskReviewAuthorIdentity[];
+  /** Absent on legacy projections; action admission remains server-owned. */
+  readonly capabilities?: TaskReviewCapabilities;
   /** Unfiltered counts, even when the request selects one state. */
   readonly counts: TaskReviewCounts;
   readonly limits: typeof TASK_REVIEW_LIMITS;
+}
+
+export interface TaskReviewCapabilities {
+  readonly view: boolean;
+  readonly comment: boolean;
+  readonly send: boolean;
+}
+
+/** Multiplayer list producers must supply the admitted person's capabilities. */
+export interface TaskReviewListProjection extends TaskReviewView {
+  readonly capabilities: TaskReviewCapabilities;
 }
 
 export type TaskReviewRefusalCode =

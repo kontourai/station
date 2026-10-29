@@ -57,7 +57,9 @@ not qualified by this native-return receipt.
 
 New seed-backed ordinary continuations and `continue-from-history` context starts
 also pin their exact text and source cutoffs before the replacement provider
-starts. Retries recheck source access and use that pin, even if a cursor becomes
+starts. A seed reads each message at its full size, including a reply Station
+stored out of line, so a long reply is seeded whole or disclosed as omitted,
+never cut to its preview. Retries recheck source access and use that pin, even if a cursor becomes
 available later. Ordinary reuse requires the seed-bearing invocation's exact
 completion witness and, where required, its current native identity. Failed or
 ambiguous delivery refuses further ordinary turns rather than silently dropping
@@ -339,7 +341,11 @@ Agent, engine kind, provider, and honest model launch plan. When the send starte
 its Session (a new conversation, a successor, or a handoff target), the handle also
 carries `sessionStarted: true`, and the receipt's engine is that Session's. A turn
 sent to an already-running Session omits it: the receipt then describes the Agent's
-current binding, which can differ from the engine that Session runs on. A validated continuation
+current binding, which can differ from the engine that Session runs on. A replay
+answered from an earlier attempt's turn says the same as that attempt: a handoff
+replay carries it, and a same-key retry carries it when that Session's recorded
+start was for this key on the engine the receipt names (not after the Agent was
+repointed, and not for a Session started before Station recorded the key). A validated continuation
 without an owned-worktree binding reports its server-read bound directory rather
 than the Project's current default, including an accepted-key retry. Owned-worktree
 bindings retain the existing repository-root receipt form. Changing the default
@@ -388,9 +394,10 @@ one. See [TurnDeduplicator](../architecture/module-map.md#turndeduplicator) for
 the exact submission scope, unsupported-input refusal and mixed-version limits.
 
 A send that names its own idempotency key (`clientTurnId`, up to 200
-characters) and its `conversationId` can be looked up afterwards, for example
-by a device whose connection dropped before the answer arrived, or that was
-closed mid-send:
+characters, not starting `memory-continue-`, which Station reserves for its
+own continuation after a memory kill and refuses with `400`) and its
+`conversationId` can be looked up afterwards, for example by a device whose
+connection dropped before the answer arrived, or that was closed mid-send:
 
 ```
 GET /api/orchestration/conversations/<conversationId>/turn-deliveries/<clientTurnId>[?projectSlug=<slug>]
@@ -756,11 +763,6 @@ clicking Allow/Deny on an approval card. Requests surface as `request.opened` ca
 runtime events (see [Reading session activity](#reading-session-activity)); resolve them
 by `requestId`.
 
-Codex approval events larger than 48 KiB are refused on the wire before they
-enter the approval inbox. Station emits `codex-approval-request-too-large` and
-asks the Agent to split the operation. It never offers approval over truncated
-command or permission details.
-
 For Codex, this is Station's canonical string ID. The
 [adapter](../../src-server/providers/adapters/codex-adapter-transport.ts)
 maps it to Codex's original wire ID and preserves that ID's value and type in
@@ -777,9 +779,31 @@ requests through simulated process streams; they are not a live Codex receipt.
   "threadId": "string, required, min length 1",
   "requestId": "string, required, min length 1 — from the request.opened event",
   "decision": "'accept' | 'acceptForSession' | 'decline' | 'cancel'",
-  "sessionGrantScope": "'server', optional, only with acceptForSession"
+  "sessionGrantScope": "'server', optional, only with acceptForSession",
+  "expectedRequestEventId": "string, optional — the exact request.opened event answered",
+  "viewedContentDigest": "'sha256-<hex>', required to allow a request with spilledContent"
 }
 ```
+
+An approval of any size is delivered whole. When its content is too large
+to keep inside the event, Station stores it out of line and the event carries
+`spilledContent` plus a reference in place of each large value
+([design](../design/event-content-spill.md)). Allowing such a request needs
+`viewedContentDigest`: the `sha256-` digest of the stored request event (and,
+when the tool call it gates holds spilled arguments, of their references:
+a Codex file change's diff lives only in its `tool.started`).
+`GET /api/orchestration/sessions/:threadId/requests/:requestId/content-binding`
+returns what an allow must load: the stored `request`, its `bound`
+`tool.started` events, whether the digest is `required`, and the
+`viewedContentDigest`. A client loads every reference in them through
+`GET /api/orchestration/sessions/:threadId/content/:ref`, checks the digest
+against its own computation, and sends it. Without it the
+server answers 409 `request_content_not_loaded`; a client answered 409 after
+loading refetches the binding (a bound call can arrive after the request). Declining never needs it,
+and neither does answering a form (`payload.inputRequest`, or a legacy
+`mcpElicitation`/`questionnaire`): the form itself is never stored out of
+line and the answer is validated against it.
+A client that has not loaded the content therefore cannot allow the request.
 
 Harness questions and a tool server's form elicitation carry a
 `station.input-request/v1` form as `payload.inputRequest` on `request.opened`

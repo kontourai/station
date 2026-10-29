@@ -115,6 +115,7 @@ import {
   WORKSPACE_CHAT_OPENER,
 } from '../../regions/pane-opener';
 import type { ChatSession, DockMode, FileAttachment } from '../../types';
+import { chatExecutionBinding } from '../../utils/engine';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import {
   type EffectiveModelSource,
@@ -1271,10 +1272,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // header's engine label reads it the same way the composer's chip does.
   const { data: acpConnections } = useACPConnections();
   // A conversation override runs on its execution Agent's engine; the header
-  // and the composer chip both compare against that Agent.
-  const activeExecutionAgent = activeSession?.executionAgentId
-    ? agents.find((agent) => agent.slug === activeSession.executionAgentId)
-    : activeChatAgent;
+  // and the composer chip both resolve that Agent with `chatExecutionBinding`.
+  const activeExecutionAgent = activeSession
+    ? chatExecutionBinding(activeSession, agents)
+    : null;
   timelineSourceRef.current = activeSession?.id ?? null;
 
   // station#3309: the model the dock header names — the same answer the
@@ -3669,6 +3670,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             executionOnCurrentStation,
             initialFiles,
             ambientContext,
+            approvalMode,
           ) => {
             // station#4525: an explicit project choice inside the New Chat
             // modal is exactly as deliberate as a picker pick (#4524's
@@ -3709,6 +3711,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             );
             if (sessionId && ambientContext?.includes(TASK_SHAPING_INSTRUCTION))
               updateChat(sessionId, { taskShaping: true });
+            // Before the first send is scheduled: that send carries a queued
+            // pick to the server, which records it before the engine starts.
+            if (sessionId && approvalMode)
+              updateChat(sessionId, { queuedApprovalMode: approvalMode });
             if (sessionId && experienceDraft)
               updateChat(sessionId, {
                 skillExperienceDraft: experienceDraft,

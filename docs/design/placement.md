@@ -38,9 +38,37 @@ The current `resolveLayoutChatPlacement` returns `center` for the built-in
 Coding layout on every device, including phones and bottom-only tablets.
 The workbench owns Chat and suspends the ambient Chat surface; crossing 768px
 does not transfer Chat between those two owners. The wide presentation is
-selected by the 1280px viewport query, independent of pointer type. Below it,
+selected by the 1280px viewport query outside the shared mobile predicate.
+Short coarse-pointer viewports retain the single-tool mobile presentation. Below it,
 tools are drill-ins; at or above it, the existing side/lower panels apply.
 This source contract does not renew browser or native geometry qualification.
+
+## Mobile tool navigation (2026-10-27)
+
+On a phone, the Coding workbench replaces its trailing icon rail and breadcrumb
+with a compact header: Inbox on Chat, Chat when a tool is open, and the current
+tool's labeled picker. The picker opens the shared Dialog as a bottom sheet.
+It lists Chat and the host's pane instances in the layout's declared order,
+including added panes, changed-file counts, the Browser launcher when available,
+and Add tool when the host can open its catalog. Choosing a pane uses the same
+canonical navigation and unsaved-change handling as the desktop rail. Dismissal
+does not select anything. Existing pane mounting and session ownership remain
+with the host; the picker does not recreate terminal sessions or chat drafts.
+Desktop and tablet rail behavior and the 1280px side/lower panel fold are retained.
+
+Tool-specific controls belong inside their tool, separate from this picker.
+[ToolControls](../../src-ui/src/components/ToolControls.tsx) supplies a sticky,
+floating surface within the tool's scroll boundary. File preview's Go to line
+form uses it only while requested; terminal accessory keys retain their existing
+keyboard-adjacent row. The shared surface does not add tool actions or server
+operations. This is a responsive presentation of existing capabilities rather
+than a new preview capability.
+
+Mounted browser evidence is in
+[coding-mobile-tools.browser.test.tsx](../../src-ui/src/__tests__/coding-mobile-tools.browser.test.tsx);
+it covers phone tool selection, full-width content, draft preservation, dismissal,
+and desktop resizing in both themes. Its Chat and tool occupants are fixtures;
+it does not establish live terminal, provider, or native-shell behavior.
 
 ## The two layers
 
@@ -1948,7 +1976,7 @@ crowded and that nothing said what belonged in it. The rule:
 | In the bar | Where it went instead |
 | --- | --- |
 | Identity, one line: title, then agent and engine, muted. The engine is the one the chat's Session runs on, by the composer chip's rule ([chat composer §3.1](chat-composer.md#31-provider-and-model-picker)). When they do not all fit, the engine and then the agent step off the line (they wrap onto a clipped second line) before the title truncates; the title's tooltip names all three, and model and route are the context's tooltip. | Model and route: the composer's model picker names them. |
-| Inbox toggle, with the working chats' count (the inbox's Running rows) as a badge and unread as a dot; both are in its name. While it shows a number, the More trigger shows its background-task count as a dot, not a second number. | "N chats working" dropdown: the working chats are the More menu's first rows (with their ⌘1–9 chords); the unread pill: the toggle. |
+| Inbox toggle at the far left, before the region tabs or Coding breadcrumb, with the working chats' count (the inbox's Running rows) as a badge and unread as a dot; both are in its name. While it shows a number, the More trigger shows its background-task count as a dot, not a second number. | "N chats working" dropdown: the working chats are the More menu's first rows (with their ⌘1–9 chords); the unread pill: the toggle. |
 | New, as a split button whose second half is the destination project (`ChatDockProjectContext`); switching rebinds only (#4524). | "New chats / <project>" badge, "This chat: <project>", branch badge: the destination joined New; the chat's own project and branch are the session context card's. |
 | One overflow (⋯). Where the region host offers its commands (`RegionMenu` in `RegionChromeSlots`), Chat folds the region's Move to …, Add pane… and Maximize/Restore size into it as a last group. | Region Move, "+" and maximize buttons: rows of that menu. The bar drops its own buttons only while a pane absorbs the rows; other panes keep them. |
 | The region's ⋮⋮ grab (shown on hover or focus) and the show/hide chevron. | — |

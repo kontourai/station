@@ -1,3 +1,4 @@
+import { isRuntimeEventContentRef } from '@kontourai/station-contracts/runtime-event-content';
 import { MAX_TAPE_FRAMES } from './limits';
 
 type RecordValue = Record<string, unknown>;
@@ -113,12 +114,20 @@ function runtimeEvent(value: unknown, elided = false): boolean {
     return false;
   if (value.method.startsWith('request.') && !text(value.requestId))
     return false;
+  // A plan too large for one event carries a reference to its entries
+  // (docs/design/event-content-spill.md); that is a valid frame.
+  if (
+    value.method === 'plan.updated' &&
+    isRuntimeEventContentRef(value.entries)
+  )
+    return true;
   if (value.method === 'plan.updated')
     return list(
       value.entries,
       (entry) =>
         record(entry) &&
-        typeof entry.content === 'string' &&
+        (typeof entry.content === 'string' ||
+          isRuntimeEventContentRef(entry.content)) &&
         typeof entry.status === 'string',
     );
   if (value.method === 'policy.stop-verdict')

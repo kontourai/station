@@ -213,6 +213,16 @@ interface PublicIngressOriginResolver {
    * complete list.
    */
   resolve(): Promise<readonly string[] | undefined>;
+  /**
+   * This node's MagicDNS name, read by the same cached lookup, or `undefined`
+   * when Tailscale is absent or offline. Never throws.
+   */
+  magicDnsHost(): Promise<string | undefined>;
+}
+
+interface IngressLookup {
+  readonly host?: string;
+  readonly origins?: readonly string[];
 }
 
 /**
@@ -234,34 +244,44 @@ export function createPublicIngressOriginResolver(input: {
   const ttlMs = input.ttlMs ?? 30_000;
   const now = input.now ?? Date.now;
   let cachedAt = Number.NEGATIVE_INFINITY;
-  let cached: readonly string[] | undefined;
-  let inFlight: Promise<readonly string[] | undefined> | undefined;
+  let cached: IngressLookup = {};
+  let inFlight: Promise<IngressLookup> | undefined;
 
-  const lookup = async (): Promise<readonly string[] | undefined> => {
+  const lookup = async (): Promise<IngressLookup> => {
     try {
       const status = await input.cli(['status', '--json']);
-      if (status.exitCode !== 0) return undefined;
+      if (status.exitCode !== 0) return {};
       const host = parseMagicDnsHost(status.stdout);
-      if (!host) return undefined;
+      if (!host) return {};
       const serve = await input.cli(['serve', 'status', '--json']);
-      if (serve.exitCode !== 0) return undefined;
-      return parseServePublicOrigins(serve.stdout, host, input.localPorts);
+      if (serve.exitCode !== 0) return { host };
+      return {
+        host,
+        origins: parseServePublicOrigins(serve.stdout, host, input.localPorts),
+      };
     } catch {
-      return undefined;
+      return {};
     }
+  };
+
+  const read = async (): Promise<IngressLookup> => {
+    if (now() - cachedAt < ttlMs) return cached;
+    // Collapse concurrent misses so a burst of requests spawns one lookup.
+    inFlight ??= lookup().finally(() => {
+      inFlight = undefined;
+    });
+    const resolved = await inFlight;
+    cached = resolved;
+    cachedAt = now();
+    return resolved;
   };
 
   return {
     async resolve() {
-      if (now() - cachedAt < ttlMs) return cached;
-      // Collapse concurrent misses so a burst of requests spawns one lookup.
-      inFlight ??= lookup().finally(() => {
-        inFlight = undefined;
-      });
-      const resolved = await inFlight;
-      cached = resolved;
-      cachedAt = now();
-      return resolved;
+      return (await read()).origins;
+    },
+    async magicDnsHost() {
+      return (await read()).host;
     },
   };
 }

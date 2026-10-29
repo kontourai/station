@@ -962,9 +962,17 @@
 
     "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
 
+    "src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx",
+
     "tests/helpers/fixture-audit.ts",
 
     "tests/helpers/journey-profile.ts",
+
+    "src-server/routes/system/telemetry-companion-routes.ts",
+
+    "src-server/services/telemetry-companion.ts",
+
+    "packages/contracts/src/telemetry-delivery.ts",
 
     "src-server/domain/telemetry-bootstrap-config.ts",
 
@@ -1256,7 +1264,49 @@
 
     "src-server/services/connections/lan-discovery.ts",
 
-    "src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx",
+    "src-server/services/telemetry-companion-release.ts",
+
+    "src-server/services/telemetry-companion-archive.ts",
+
+    "src-server/services/telemetry-companion-extract.ts",
+
+    "src-server/services/telemetry-companion-artifact.mjs",
+
+    "scripts/qualify-telemetry-companion.mjs",
+
+    "scripts/lib/telemetry-station-export.mjs",
+
+    "scripts/lib/telemetry-station-child.mjs",
+
+    "src-server/services/telemetry-companion-install.ts",
+
+    "src-server/services/telemetry-companion-storage.ts",
+
+    "src-server/services/telemetry-companion-control.ts",
+
+    "src-server/services/__tests__/telemetry-companion-control.test.ts",
+
+    "packages/sdk/src/query-domains/telemetryCompanion.ts",
+
+    "packages/contracts/src/product-telemetry.ts",
+
+    "src-ui/src/views/developer/CompanionManaged.tsx",
+
+    "src-ui/src/views/developer/CompanionProductTrends.tsx",
+
+    "src-ui/src/views/developer/CompanionManaged.css",
+
+    "src-server/analytics/source-grant-store.ts",
+
+    "src-server/analytics/source-export-proof.ts",
+
+    "src-server/analytics/recipient-store.ts",
+
+    "src-server/routes/operations/source-grant-export.ts",
+
+    "src-server/routes/operations/source-grant-approvals.ts",
+
+    "src-server/routes/operations/__tests__/source-credential-delivery.test.ts",
 
     "src-server/services/orchestration/adapter-retirement.ts",
 
@@ -1321,6 +1371,14 @@
     "src-server/routes/projects/terminal-session-routes.ts",
 
     "src-server/services/terminal/__tests__/terminal-sessions.process.test.ts",
+
+    "src-server/services/terminal/terminal-gateway.ts",
+
+    "src-server/services/terminal/terminal-channel-connection.ts",
+
+    "src-server/adapters/pty-process-groups.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts",
 
     "packages/contracts/src/required-slots.ts",
 
@@ -1388,7 +1446,9 @@
 
     "src-ui/src/views/task-workspace/review/__tests__/TaskReviewTab.test.tsx",
 
-    "tests/task-review.spec.ts"
+    "tests/task-review.spec.ts",
+
+    "packages/shared/src/__tests__/station-home-update-backup.test.ts"
   ],
 
   "checks": [

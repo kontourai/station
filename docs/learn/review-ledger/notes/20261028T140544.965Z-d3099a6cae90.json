@@ -1,0 +1,7 @@
+{
+  "revision": "1d825e357f35914d79e23c32568d9a82c371783e",
+
+  "notes": [
+    {"path":"packages/monument/CONTEXT.md","note":"Rechecked after the newest window stopped counting steer turn.started rows as turns: no claim here about turn counting, window anchoring, or paging.","inputs":["packages/monument/CONTEXT.md","src-server/services/orchestration/event-store.ts"]}
+  ]
+}

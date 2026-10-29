@@ -13,6 +13,39 @@ export interface ChildWorkloadOutcome {
   readonly result: string;
   readonly memoryPeakBytes?: number;
   readonly memoryMaxBytes?: number;
+  /** The scope's `memory.events` `oom_kill` count when it was closed. */
+  readonly oomKills?: number;
+  /**
+   * Of {@link oomKills}, those no {@link watchChildWorkloadOomKills} listener
+   * was told about while the scope ran: kills at or near the scope's end.
+   */
+  readonly unreportedOomKills?: number;
+}
+
+/** A process inside a running scope was killed by the kernel OOM killer. */
+export interface ChildWorkloadOomKill {
+  /** The scope's `oom_kill` count after this observation. */
+  readonly oomKills: number;
+  /** New kills since the previous observation. */
+  readonly newKills: number;
+  readonly memoryMaxBytes?: number;
+}
+
+/**
+ * Whether a launch's own process ended because its scope ran out of memory.
+ * Under `OOMPolicy=continue` systemd does not record `Result=oom-kill` for
+ * the scope, so the kernel's `oom_kill` count is the evidence: the process
+ * was SIGKILLed and the scope recorded a kill nobody had been told about yet
+ * (a command kill reported while the engine ran is not its death). A scope
+ * that systemd itself reports as `oom-kill` still counts.
+ */
+export function childWorkloadMemoryExhausted(
+  outcome: ChildWorkloadOutcome | undefined,
+  signal: NodeJS.Signals | null | undefined,
+): boolean {
+  if (!outcome) return false;
+  if (outcome.result === 'oom-kill') return true;
+  return signal === 'SIGKILL' && (outcome.unreportedOomKills ?? 0) > 0;
 }
 
 const outcomes = new WeakMap<
@@ -27,8 +60,26 @@ export function childWorkloadOutcome(
   return outcomes.get(child);
 }
 
+type OomKillWatch = (
+  listener: (kill: ChildWorkloadOomKill) => void,
+) => () => void;
+const oomWatches = new WeakMap<object, OomKillWatch>();
+
+/**
+ * Observe OOM kills inside this child's scope while it runs (a command the
+ * engine started, normally). Undefined when the child has no managed scope.
+ * Returns the unsubscribe.
+ */
+export function watchChildWorkloadOomKills(
+  child: object,
+  listener: (kill: ChildWorkloadOomKill) => void,
+): (() => void) | undefined {
+  return oomWatches.get(child)?.(listener);
+}
+
 /** Installed by the server; standalone SDK consumers keep their ordinary launch. */
 export interface ChildWorkloadLaunch {
+  watchOomKills?: OomKillWatch;
   command: string;
   args: string[];
   env: NodeJS.ProcessEnv;
@@ -121,6 +172,7 @@ export function spawnChildWorkload(
     throw error;
   }
   if (launch?.outcome) outcomes.set(child, launch.outcome);
+  if (launch?.watchOomKills) oomWatches.set(child, launch.watchOomKills);
   trackChildWorkload(launch, child.pid);
   const cleanup = () => {
     // The runtime launcher retains and reports a failed cleanup for recovery.

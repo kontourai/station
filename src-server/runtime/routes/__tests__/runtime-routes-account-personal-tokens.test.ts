@@ -17,6 +17,7 @@ import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { usageExportOwnerIds } from '../../../analytics/usage-export-reader.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import { deploymentAccountPrincipal } from '../../../services/identity/deployment-authentication-service.js';
@@ -182,6 +183,12 @@ describe('account-tied personal access tokens over the production composition', 
         },
       ),
       environmentSecurityService: security,
+      orchestrationService: deepStub({
+        usageExportOwnerIds: (
+          authority: Parameters<typeof usageExportOwnerIds>[0],
+          scope: Parameters<typeof usageExportOwnerIds>[1],
+        ) => usageExportOwnerIds(authority, scope, () => undefined),
+      }),
       eventBus: new EventBus(),
       taskGraphService: { listTasks: () => [] },
     });
@@ -249,9 +256,10 @@ describe('account-tied personal access tokens over the production composition', 
     const pairAccountDevice = (
       account: { accountId: string; principalId: string },
       name: string,
+      scope = GRANT,
     ) => {
       const pairing = security.devicePairing;
-      const offer = pairing.createOffer({ endpoint: ORIGIN, scope: GRANT });
+      const offer = pairing.createOffer({ endpoint: ORIGIN, scope });
       const pending = pairing.requestPairing({
         offerId: offer.offerId,
         proof: offer.challenge,
@@ -296,6 +304,7 @@ describe('account-tied personal access tokens over the production composition', 
       const credential = pairAccountDevice(account, `${username}-laptop`);
       return {
         ...account,
+        credential,
         device: withHeaders({
           Authorization: `Bearer ${credential}`,
           Cookie: account.cookie,
@@ -384,6 +393,7 @@ describe('account-tied personal access tokens over the production composition', 
       request,
       operator,
       person,
+      pairAccountDevice,
       mintToken,
       bearer,
       shareWith,
@@ -391,6 +401,92 @@ describe('account-tied personal access tokens over the production composition', 
       projectService,
     };
   }
+
+  test('telemetry person leaves compose account session, Device scope, principal ownership and operator separation', async () => {
+    const h = await setup();
+    const alice = await h.person('analyticsalice');
+    const bob = await h.person('analyticsbob');
+    const base = '/api/analytics/source-enrollments';
+    const operationId = '02234567-89ab-4cde-8fab-0123456789ab';
+    const create = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        operationId,
+        proposedDestination: {
+          stationId: 'receiver',
+          origin: 'https://receiver.example.test',
+        },
+        scope: 'individual',
+        expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        retention: { mode: 'live-mirror' },
+      }),
+    };
+    const created = await h.request(base, alice.device(create));
+    expect(created.status, await created.clone().text()).toBe(200);
+    const own = await h.request(`${base}/${operationId}`, alice.device());
+    expect(own.status, await own.clone().text()).toBe(200);
+    expect(await own.json()).toMatchObject({
+      data: { operationId, exportAuthority: false },
+    });
+    expect(
+      (await h.request(`${base}/${operationId}`, bob.device())).status,
+    ).toBe(404);
+    const noRead = h.pairAccountDevice(alice, 'no-read', 'inference:invoke');
+    const deniedScope = await h.request(base, {
+      headers: { Authorization: `Bearer ${noRead}`, Cookie: alice.cookie },
+    });
+    expect(deniedScope.status).toBe(403);
+    expect(await deniedScope.json()).toMatchObject({
+      error: { code: 'insufficient_scope' },
+    });
+    const missingSession = await h.request(base, h.bearer(alice.credential)());
+    expect(missingSession.status).toBe(401);
+    expect(await missingSession.json()).toMatchObject({
+      error: { code: 'account_authentication_required' },
+    });
+    const conflict = await h.request(base, {
+      headers: {
+        Authorization: `Bearer ${alice.credential}`,
+        Cookie: bob.cookie,
+      },
+    });
+    expect(conflict.status).toBe(401);
+    expect(await conflict.json()).toMatchObject({
+      error: { code: 'account_identity_conflict' },
+    });
+    const minted = await h.mintToken(alice.device);
+    expect(minted.status).toBe(201);
+    const token = (await readJson<{ secret: string }>(minted)).secret;
+    const tokenRead = await h.request(base, h.bearer(token)());
+    expect(tokenRead.status).toBe(403);
+    expect(await tokenRead.json()).toMatchObject({
+      error: { code: 'account_bound_device_route_forbidden' },
+    });
+    const agent = await h.request(
+      base,
+      alice.device({ headers: { 'x-station-control-origin': 'agent-tool' } }),
+    );
+    expect(agent.status).toBe(403);
+    const management = await h.request(
+      `/api/operator/telemetry-companion/private-usage-preparations/${operationId}`,
+      alice.device(),
+    );
+    expect(management.status).toBe(403);
+    expect(await management.json()).toMatchObject({
+      error: { code: 'insufficient_scope' },
+    });
+    const generic = await h.request('/api/analytics/usage', alice.device());
+    expect(generic.status).toBe(403);
+    expect(await generic.json()).toMatchObject({
+      error: { code: 'account_bound_device_route_forbidden' },
+    });
+    const revoked = h.security.devicePairing.identifyDevice(alice.credential);
+    expect(revoked).not.toBeNull();
+    if (!revoked) throw new Error('Missing paired device');
+    h.security.devicePairing.revokeDevice(revoked.id, 'operator-credential');
+    expect((await h.request(base, alice.device())).status).toBe(401);
+  });
 
   test('a member token reads its Project; a non-member token gets 404 and an empty catalogue', async () => {
     const h = await setup();

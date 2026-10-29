@@ -1237,10 +1237,12 @@ daily, in a **digest-pinned Playwright container** on a hosted runner. That is
 not an implementation detail: the comparator hashes a decoded RGBA buffer with
 no threshold, so a baseline is only meaningful against the renderer that
 produced it, and that renderer has to be reproducible. `--font-sans` resolves
-to `"DM Sans", system-ui, sans-serif` and the bundled woff2 subsets cover
-latin + latin-ext only, so the glyphs the UI draws for `⌘`, `⋯`, `→`, `●` and
-`✓` come from the **host's** fonts — pinning the image by digest pins the
-rasterizer, fontconfig and that font set together. The job logs the Playwright
+to `"DM Sans"`, then two width-matched fallback faces that read a local Arial
+and a local Roboto, then `system-ui, sans-serif`. The bundled woff2 subsets
+cover latin + latin-ext only, so the glyphs the UI draws for `⌘`, `⋯`, `→`,
+`●` and `✓` come from the **host's** fonts (the render container has neither
+Arial nor Roboto, so fontconfig picks them) — pinning the image by digest pins
+the rasterizer, fontconfig and that font set together. The job logs the Playwright
 build and the resolved font families for exactly this reason.
 
 **The render container's font set is part of the baseline.** A hash captured
