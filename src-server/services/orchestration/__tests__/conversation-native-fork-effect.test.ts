@@ -1706,6 +1706,36 @@ describe('native fork SQLite effect and publication ownership', () => {
     change(input: NativeForkCommitInput): NativeForkCommitInput;
   }[] = [
     {
+      name: 'started event method',
+      change: (input) => {
+        Object.assign(input.startedEvent, {
+          method: 'content.text-delta',
+          delta: 'not a native initialization fact',
+        });
+        return input;
+      },
+    },
+    {
+      name: 'configured event method',
+      change: (input) => {
+        Object.assign(input.configuredEvent, {
+          method: 'content.text-delta',
+          delta: 'not a native configuration fact',
+        });
+        return input;
+      },
+    },
+    {
+      name: 'fork event method',
+      change: (input) => {
+        Object.assign(input.forkEvent, {
+          method: 'content.text-delta',
+          delta: 'not a native fork fact',
+        });
+        return input;
+      },
+    },
+    {
       name: 'fork thread',
       change: (input) => ({
         ...input,
@@ -1802,7 +1832,9 @@ describe('native fork SQLite effect and publication ownership', () => {
       const effect = f.reserve();
       effect.sessionStart.beginInvocation(NOW);
       f.observe(effect);
+      const append = vi.spyOn(f.store, 'appendEvent');
       expect(() => effect.commit(change(f.commit))).toThrow();
+      expect(append).not.toHaveBeenCalled();
       f.reopen();
       expect(f.store.readNativeForkEffect('child')?.state).toBe(
         'child-observed',
