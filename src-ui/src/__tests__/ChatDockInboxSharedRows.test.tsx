@@ -636,7 +636,16 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       screen.getByRole('button', { name: 'Details for Shared row title' }),
     );
     expect(await screen.findByRole('button', { name: '3 hours' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Close chat' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Dismiss from inbox' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '3 hours' }));
+    const snoozed = screen.getByRole('region', { name: 'Snoozed · 1' });
+    expect(
+      within(snoozed).getByRole('button', {
+        name: 'Shared row title, Shared project',
+      }),
+    ).toBeTruthy();
   });
 
   it('the desktop panel’s snooze is one control that opens the duration choice (D7)', () => {
