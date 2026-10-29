@@ -332,7 +332,9 @@ export function holderIsLive(
 
 /**
  * The live holder of claim `nonce` on slot `index` in `dir`, or null: the
- * record must still carry that nonce and its process must still be alive.
+ * record must still carry that nonce and its process must still be alive. A
+ * record that is momentarily unreadable (Windows contention) is not proof the
+ * claim ended, so it counts as held, with an unknown pid.
  *
  * @param {string} dir
  * @param {number} index
@@ -341,6 +343,7 @@ export function holderIsLive(
  */
 export function liveSlotClaim(dir, index, nonce, liveness) {
   const observed = readSlotRecord(slotPath(dir, index));
+  if (observed.busy) return { pid: null };
   if (observed.record?.nonce !== nonce) return null;
   return holderIsLive(observed.record, liveness) ? observed.record : null;
 }

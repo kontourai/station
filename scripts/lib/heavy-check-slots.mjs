@@ -136,7 +136,8 @@ function resolveWaitMs(env) {
 }
 
 /**
- * The pid of the live claim `env`'s marker names, or null. The marker names
+ * The live claim `env`'s marker names (its holder's pid, null when unknown),
+ * or null when there is none. The marker names
  * one exact slot claim (directory, index, nonce), so it admits only while
  * that claim is still held by a live process: not after the slot was
  * released, not after its holder died, and not when the pid was recycled.
@@ -158,9 +159,8 @@ function liveMarkedHolder(env, liveness = {}) {
     typeof claim.nonce !== 'string'
   )
     return null;
-  return (
-    liveSlotClaim(claim.dir, claim.index, claim.nonce, liveness)?.pid ?? null
-  );
+  const held = liveSlotClaim(claim.dir, claim.index, claim.nonce, liveness);
+  return held ? { pid: held.pid ?? null } : null;
 }
 
 /**
@@ -235,7 +235,12 @@ export function holdHeavyCheckSlot({
           }
         : {}),
     });
-    return { env: withHeavyCheckHeld(env, slot), release: slot.release };
+    // Admitted without a claim of its own (an ancestor's claim became
+    // readable in between): its children keep the inherited marker.
+    return {
+      env: slot.index >= 0 ? withHeavyCheckHeld(env, slot) : env,
+      release: slot.release,
+    };
   })();
 }
 
@@ -297,7 +302,7 @@ function admittedWithoutSlot({
   const ancestor = liveMarkedHolder(env, liveness);
   if (ancestor === null) return null;
   log(
-    `[heavy-check-slots] ${label || 'check'} runs under the heavy-check slot held by pid ${ancestor}.`,
+    `[heavy-check-slots] ${label || 'check'} runs under the heavy-check slot held by pid ${ancestor.pid ?? 'unknown'}.`,
   );
   return 'reentrant';
 }
